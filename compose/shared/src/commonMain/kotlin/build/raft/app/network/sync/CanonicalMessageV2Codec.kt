@@ -107,6 +107,7 @@ fun validateCanonicalMessageV2(
         if (
             card.sourceServerId?.isNotCanonicalString() == true ||
             card.targetServerName?.isNotCanonicalString() == true ||
+            card.executedByUserId?.isNotCanonicalString() == true ||
             (card.confirmationVersion ?: 0) < 0
         ) return CANONICAL_MESSAGE_V2_EXACT_KEYS
     }
@@ -228,9 +229,9 @@ private val CANONICAL_ACTION_CARD_KEYS = setOf(
     "kind", "version", "action", "state", "executedAt", "executedByUserName", "result",
 )
 
-/** Manifest v8: the additive optional action-card keys (absent = not known; never `null`). */
+/** Manifest v8 (+ v9 `executedByUserId`): the additive optional action-card keys (absent = not known; never `null`). */
 private val CANONICAL_ACTION_CARD_OPTIONAL_KEYS = setOf(
-    "sourceServerId", "targetServerName", "confirmationVersion", "presentation",
+    "sourceServerId", "targetServerName", "confirmationVersion", "presentation", "executedByUserId",
 )
 
 /** The one optional `$.fact` key (RFC 077): present only on a retracted message. */
@@ -284,6 +285,21 @@ private fun validateMembershipShape(element: JsonElement?): String? {
     return validateMessageRef(membership["root"]) ?: validateReplyScope(membership["parentScope"])
 }
 
+/**
+ * Manifest v9: the schema 6 result keys are always there; an optional key is present only with a value
+ * and only on a kind that takes it ([CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND]).
+ */
+private fun validateActionCardResultShape(element: JsonElement?): String? {
+    if (element == null || element is JsonNull) return null
+    val result = element as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    if (!result.keys.containsAll(CANONICAL_ACTION_CARD_RESULT_BASE_KEYS)) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    val optional = result.keys - CANONICAL_ACTION_CARD_RESULT_BASE_KEYS.toSet()
+    if (optional.isEmpty()) return null
+    val kind = (result["kind"] as? JsonPrimitive)?.canonicalStringOrNull() ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    val allowed = CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND[kind].orEmpty()
+    return if (optional.all { it in allowed && result[it] !is JsonNull }) null else CANONICAL_MESSAGE_V2_EXACT_KEYS
+}
+
 private fun validateActionMetadataShape(element: JsonElement?): String? {
     if (element == null || element is JsonNull) return null
     val action = element as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
@@ -304,12 +320,7 @@ private fun validateActionMetadataShape(element: JsonElement?): String? {
                     "agentName", "clientId", "clientKey", "clientName", "scopes",
                 )
             ) return CANONICAL_MESSAGE_V2_EXACT_KEYS
-            val result = action["result"]
-            if (result != null && result !is JsonNull &&
-                (result as? JsonObject)?.hasExactKeys(
-                    "kind", "id", "name", "channelId", "channelName", "addedHumanIds", "addedAgentIds",
-                ) != true
-            ) CANONICAL_MESSAGE_V2_EXACT_KEYS else null
+            validateActionCardResultShape(action["result"])
         }
         "forwarded-bundle" -> {
             if (!action.hasExactKeys("kind", "version", "items")) return CANONICAL_MESSAGE_V2_EXACT_KEYS

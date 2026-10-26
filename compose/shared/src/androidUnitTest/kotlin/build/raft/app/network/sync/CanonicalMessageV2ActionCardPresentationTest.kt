@@ -38,19 +38,20 @@ class CanonicalMessageV2ActionCardPresentationTest {
         assertEquals(V2ActionCardPresentation, card.presentation)
         assertNotNull(card.presentation!!["card"], "presentation.card (action-card.v1) is kept")
 
-        // The user pointer id and the conversion bookkeeping are admitted but never stored.
+        // Task #43: executedByUserId is carried (manifest v9); the conversion bookkeeping is never stored.
+        assertEquals("user-1", card.executedByUserId)
         val bytes = encodeCanonicalMessageV2(conversion.envelope, "server-a")
-        listOf("executedByUserId", "conversionJobId", "conversionEpoch", "reconfirmedAt", "user-secret", "job-1").forEach {
+        listOf("conversionJobId", "conversionEpoch", "reconfirmedAt", "job-1").forEach {
             assertFalse(it in bytes, "$it in $bytes")
         }
-        // Twin: an unknown root key still refuses the card as not full V2.
+        // Task #43: an unknown root key is dropped, the card is kept (it used to refuse the whole card).
         val unknown = JsonObject(currentServerCard + ("somethingNew" to Json.parseToJsonElement("1")))
-        val refused = CanonicalMessageFoldInput(
+        val kept = CanonicalMessageFoldInput(
             CanonicalMessageFoldKind.Updated,
             assertNotNull(decodeCanonicalMessageWire(wire(unknown), ProductionFace.EnrichedUpdated)).row,
             MessageAggregateField.entries.toList(),
         ).toCanonicalMessageV2Conversion(partitionA, replyCount = 0)
-        assertIs<CanonicalMessageV2EnvelopeConversion.NotFull>(refused)
+        assertEquals(conversion.envelope, assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(kept, kept.toString()).envelope)
     }
 
     @Test
@@ -141,7 +142,7 @@ class CanonicalMessageV2ActionCardPresentationTest {
     private val currentServerCard: JsonObject = Json.parseToJsonElement(
         """{"kind":"action-card","sourceServerId":"server-a","targetServerName":"Raft HQ",""" +
             """"action":{"type":"channel:create","name":"launch"},"presentation":$V2ActionCardPresentation,""" +
-            """"state":"prepared","executedAt":null,"executedByUserId":"user-secret","executedByUserName":null,""" +
+            """"state":"prepared","executedAt":null,"executedByUserId":"user-1","executedByUserName":null,""" +
             """"result":null,"confirmationVersion":3,"conversionJobId":"job-1","conversionEpoch":"e1","reconfirmedAt":null}""",
     ).jsonObject
 
