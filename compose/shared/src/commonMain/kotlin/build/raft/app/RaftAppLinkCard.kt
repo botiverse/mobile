@@ -1,25 +1,14 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AppLinkResult
@@ -35,7 +24,6 @@ import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import coil3.compose.AsyncImagePainter
 
 /**
  * An App link's item card (web `AppLinkChip` hover card: raft-ui `PreviewCardContent` with
@@ -44,7 +32,8 @@ import coil3.compose.AsyncImagePainter
  *
  * - Body: the App's full title (headline, up to 3 lines), then [RaftAppLinkCardBody] for the
  *   App's tree, when [card] has one.
- * - Footer: under a hairline, the App's icon, its name and the link's domain.
+ * - Footer: under a hairline, the App's name and the link's domain. No App icon: raft-ui keeps
+ *   it on the chip, the App's only mark of its own.
  *
  * Render only: no reading, no actions run. [onAction] is for v2's Buttons (RFC 076), which
  * report their element id; the v1 catalog has none, so it is never called yet. Width: the
@@ -71,7 +60,7 @@ internal fun RaftAppLinkCardView(
             )
             card.card?.let { RaftAppLinkCardBody(it, onAction) }
         }
-        RaftAppLinkCardFooter(appName = card.app.name, appIcon = card.app.icon, domain = appLinkDomain(card.url).orEmpty())
+        RaftAppLinkCardFooter(appName = card.app.name, domain = appLinkDomain(card.url).orEmpty())
     }
 }
 
@@ -111,11 +100,11 @@ private fun RaftAppLinkCardNode(card: RaftAppLinkCard, id: String, depth: Int) {
 }
 
 /**
- * PreviewCardFooter: a caption under a hairline, px-4 py-2: the App's icon and name, then the
- * link's domain. The name gives way first; a domain too long loses its start, never its end.
+ * PreviewCardFooter: a caption under a hairline, px-4 py-2: the App's name, then the link's
+ * domain. The name gives way first; a domain too long loses its start, never its end.
  */
 @Composable
-private fun RaftAppLinkCardFooter(appName: String, appIcon: String?, domain: String) {
+private fun RaftAppLinkCardFooter(appName: String, domain: String) {
     val muted = RaftTheme.colors.foregroundMuted
     val caption = RaftTheme.typography.caption
     RaftSeparator()
@@ -124,10 +113,9 @@ private fun RaftAppLinkCardFooter(appName: String, appIcon: String?, domain: Str
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftAppLinkCardAppIcon(appIcon, muted)
         RaftText(
             text = appName,
-            modifier = Modifier.padding(start = 2.dp).weight(1f, fill = false),
+            modifier = Modifier.weight(1f, fill = false),
             style = caption,
             color = muted,
             maxLines = 1,
@@ -136,27 +124,6 @@ private fun RaftAppLinkCardFooter(appName: String, appIcon: String?, domain: Str
         if (domain.isNotEmpty()) {
             RaftText(text = "·", style = caption, color = muted, maxLines = 1)
             RaftText(text = raftAppLinkKeepEnd(domain, 40), style = caption, color = muted, maxLines = 1, softWrap = false)
-        }
-    }
-}
-
-/** web `AppLinkIcon` / `MessageReferenceIcon`: the App's image in a 14dp box with 2dp corners, or the AppWindow glyph. Decorative. */
-@Composable
-private fun RaftAppLinkCardAppIcon(icon: String?, tint: Color) {
-    var broken by remember(icon) { mutableStateOf(false) }
-    if (icon != null && !broken) {
-        Box(Modifier.size(14.dp).clip(RoundedCornerShape(2.dp))) {
-            RaftCachedImage(
-                source = icon,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                onImageStateChange = { state -> if (state is AsyncImagePainter.State.Error) broken = true },
-            )
-        }
-    } else {
-        Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-            RaftLucideIcon(name = RaftLucideIconName.AppWindow, modifier = Modifier.size(12.dp), color = raftArgbHex(tint), strokeWidth = 2f)
         }
     }
 }

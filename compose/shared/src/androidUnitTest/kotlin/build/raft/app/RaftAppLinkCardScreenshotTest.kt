@@ -35,8 +35,8 @@ import org.robolectric.annotation.GraphicsMode
  * #proj-mobile task #34: App link item cards ([RaftAppLinkCardView]) at the web's 300dp, light
  * and dark: a Linear issue (a column of a Badge, a default and a muted Text), a nested column
  * with two Badges, a Stamp pull request with only its title (no card body), and a long title
- * that clamps to 3 lines over a long App name and domain. No App icon loads (the generic
- * AppWindow glyph). Reports land in `build/reports/home-screenshots/`.
+ * that clamps to 3 lines over a long App name and domain. The footer has no App icon
+ * (raft-ui keeps it on the chip). Reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
