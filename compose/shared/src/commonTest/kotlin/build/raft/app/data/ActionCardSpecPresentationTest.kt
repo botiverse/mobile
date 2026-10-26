@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -83,16 +84,48 @@ class ActionCardSpecPresentationTest {
         val unsupported = assertIs<ActionCardSpecButton>(read.spec.element("open")).action
         assertEquals(ActionCardSpecAction.Unsupported(originalKind = "open", originalIntent = "plan_picker"), unsupported)
 
+        val withConfirm = RAFT_APP_ACTION_CARD_CAPABILITIES + "confirm.v1" + "intent.create_channel"
         for (intent in listOf("create_channel", "plan_picker")) {
-            val rendered = assertNotNull(stripActionCardSpec(assertNotNull(parseActionCardSpec(Json.parseToJsonElement(cardJson(intent))))))
-            // An execute behind a confirm is kept as it is (confirm.v1 is declared).
+            val card = assertNotNull(parseActionCardSpec(Json.parseToJsonElement(cardJson(intent))))
+            // Today's App declares only card.v1: a confirm it cannot show yet is "Open in web", never a plain execute.
+            val go = stripActionCardSpec(card)!!.spec.element("go") as ActionCardSpecButton
+            assertEquals(ActionCardSpecAction.OpenInWeb to ActionCardSpecEmphasis.Secondary, go.action to go.emphasis)
+            // Once confirm.v1 is declared, the execute behind its confirm is kept as it is.
+            val rendered = assertNotNull(stripActionCardSpec(card, withConfirm))
             assertEquals(ActionCardSpecAction.Execute("sure"), (rendered.spec.element("go") as ActionCardSpecButton).action)
-            // `open` intents wait for A4's dispatch; an unknown one never opens natively.
+            // A known intent opens natively once declared; an unknown one never does.
             val open = rendered.spec.element("open") as ActionCardSpecButton
-            assertEquals(ActionCardSpecAction.OpenInWeb, open.action, intent)
-            assertEquals(ACTION_CARD_OPEN_IN_WEB_LABEL, open.label)
+            val expected = if (intent == "create_channel") ActionCardSpecAction.Open(ActionCardSpecIntent.CreateChannel) else ActionCardSpecAction.OpenInWeb
+            assertEquals(expected, open.action, intent)
+            val stripped = stripActionCardSpec(card)!!.spec.element("open") as ActionCardSpecButton
+            assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, stripped.action to stripped.label)
         }
+        assertEquals(listOf("card.v1"), RAFT_APP_ACTION_CARD_CAPABILITIES)
         assertNull(stripActionCardSpec(read, capabilities = emptyList()))
+    }
+
+    @Test
+    fun rebuildingTheCardFromMetadataReusesTheParsedSpec() {
+        val metadata = assertNotNull(wire(cardJson()).toThreadActionCard()).toMessageMetadata()
+        val first = assertNotNull(actionCardFromMessageMetadata(metadata)?.presentationCard)
+        assertSame(first, actionCardFromMessageMetadata(metadata)?.presentationCard)
+    }
+
+    @Test
+    fun theAppLanguageMapsToTheContractLocaleKeys() {
+        val tags =
+            mapOf(
+                "en" to "en", "zh-Hans" to "zh-cn", "zh-CN" to "zh-cn", "zh_rCN" to "zh-cn", "zh" to "zh-cn",
+                "zh-Hant" to "zh-tw", "zh-TW" to "zh-tw", "zh-Hant-HK" to "zh-tw", "ja" to "ja", "ja-JP" to "ja",
+                "ko-KR" to "ko", "es-419" to "es", "pt-BR" to "pt-br", "pt" to "pt-br", "fr" to "en", "" to "en", null to "en",
+            )
+        for ((tag, key) in tags) assertEquals(key, actionCardDisplayLocale(tag), "$tag")
+        val locales =
+            mapOf(
+                (AppLocale.English to null) to "en", (AppLocale.SimplifiedChinese to null) to "zh-cn", (AppLocale.Japanese to null) to "ja",
+                (AppLocale.System to "zh-CN") to "zh-cn", (AppLocale.System to "ja") to "ja", (AppLocale.System to "fr-FR") to "en",
+            )
+        for ((input, key) in locales) assertEquals(key, input.first.actionCardDisplayLocale(input.second), "$input")
     }
 
     @Test

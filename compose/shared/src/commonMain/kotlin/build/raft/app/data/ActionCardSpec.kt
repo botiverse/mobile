@@ -46,17 +46,16 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 
 /**
  * What this App can do with a card, declared by the App itself (the card is pushed to the whole
- * channel, so the server cannot strip per viewer). The single list [stripActionCardSpec] reads:
- * the card renderer (A2) draws the `card.v1` elements and the execute / confirm / navigate
- * buttons, the form sheet (A3) every `field.*` here. An `open` intent is added when the button
- * dispatch (A4) opens its native dialog; until then such a button is "Open in web".
+ * channel, so the server cannot strip per viewer). The single list [stripActionCardSpec] reads.
+ *
+ * Rule: a capability is listed only once the App really renders / handles it, in the same PR
+ * that ships the feature; a declared capability without its UI would keep a button that does
+ * nothing, where strip would have made it "Open in web". `card.v1` covers the elements and the
+ * plain execute / navigate buttons; then `confirm.v1` comes with the confirm dialog, `form.v1`
+ * and each `field.*` with the form sheet and that field (A3), each `intent.*` when the button
+ * dispatch (A4) opens that native dialog. Anything not listed is "Open in web".
  */
-val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
-    listOf(
-        "card.v1", "confirm.v1", "form.v1",
-        "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
-        "field.agent_picker",
-    )
+val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> = listOf("card.v1")
 
 /** Tree and size limits (`ACTION_CARD_SPEC_LIMITS`; the root is at depth 0). */
 object ActionCardSpecLimits {
@@ -155,6 +154,26 @@ sealed interface ActionCardMsgSegment {
     /** A mention / channel chip where the slot allows rich content, the plain name elsewhere (Button labels). */
     data class Ref(val ref: ActionCardSpecEntityRef) : ActionCardMsgSegment
 }
+
+/**
+ * The contract locale key (`DISPLAY_LOCALES`: `en`, `es`, `pt-br`, `ko`, `ja`, `zh-cn`, `zh-tw`) for
+ * a BCP 47 [languageTag] such as [AppLocale.displayLanguageTag]'s: `zh-Hans` / `zh-CN` / `zh` ->
+ * `zh-cn`, `zh-Hant` / `zh-TW` / `zh-HK` -> `zh-tw`, `pt` / `pt-BR` -> `pt-br`, otherwise the
+ * language subtag when it is a display locale, else `en`.
+ */
+fun actionCardDisplayLocale(languageTag: String?): String {
+    val tag = languageTag?.trim()?.lowercase()?.replace('_', '-').orEmpty()
+    if (tag in ACTION_CARD_SPEC_LOCALES) return tag
+    val parts = tag.split('-')
+    return when (parts.first()) {
+        "zh" -> if (parts.drop(1).any { it == "hant" || it == "tw" || it == "hk" || it == "mo" }) "zh-tw" else "zh-cn"
+        "pt" -> "pt-br"
+        else -> parts.first().takeIf { it in ACTION_CARD_SPEC_LOCALES } ?: "en"
+    }
+}
+
+/** The contract locale key for the language the App UI is shown in ([AppLocale.displayLanguageTag]). */
+fun AppLocale.actionCardDisplayLocale(systemLanguage: String?): String = build.raft.app.data.actionCardDisplayLocale(displayLanguageTag(systemLanguage))
 
 /** The template a viewer reads (`pickActionCardTemplate`): their display locale's, else English. */
 fun pickActionCardTemplate(msg: ActionCardSpecMsg, displayLocale: String): String =

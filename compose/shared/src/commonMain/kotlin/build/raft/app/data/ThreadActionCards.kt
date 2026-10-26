@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -84,9 +86,7 @@ internal data class ThreadActionCard(
      * [stripActionCardSpec] before rendering; entities without a `serverId` live on
      * [sourceServerId] ([ActionCardSpecEntityRef.serverIdOr]). Not rendered yet (A2).
      */
-    val presentationCard: ActionCardSpecCard? by lazy {
-        presentationCardJson?.let { json -> runCatching { threadActionCardJson.parseToJsonElement(json) }.getOrNull()?.let(::parseActionCardSpec) }
-    }
+    val presentationCard: ActionCardSpecCard? by lazy { presentationCardJson?.let(::cachedActionCardSpec) }
 
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
@@ -229,6 +229,28 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         confirmationVersion = meta.confirmationVersion,
         presentationCardJson = meta.presentation?.card?.takeIf { parseActionCardSpec(it) != null }?.toString(),
     )
+}
+
+private const val ACTION_CARD_SPEC_CACHE_SIZE = 64
+
+/**
+ * Parsed cards by their JSON: the thread rebuilds a [ThreadActionCard] from message metadata on
+ * every read (`RaftThreadMessageItem.threadActionCard()`), so the card is parsed once per JSON, not
+ * per recomposition. Copy-on-write and bounded (oldest out); a race at worst parses twice.
+ */
+private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>())
+
+internal fun cachedActionCardSpec(json: String): ActionCardSpecCard? {
+    val snapshot = actionCardSpecCache.value
+    if (json in snapshot) return snapshot[json]
+    val card = runCatching { threadActionCardJson.parseToJsonElement(json) }.getOrNull()?.let(::parseActionCardSpec)
+    actionCardSpecCache.update { current ->
+        LinkedHashMap(current).apply {
+            put(json, card)
+            while (size > ACTION_CARD_SPEC_CACHE_SIZE) remove(keys.first())
+        }
+    }
+    return card
 }
 
 internal fun WireActionCardAction.toWireJsonObject(): JsonObject =
