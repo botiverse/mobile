@@ -1934,11 +1934,11 @@ class SharedServerMembersStore internal constructor(
                 }
             }
         }
-        val processResult =
+        val loadFromProcess: suspend (Boolean) -> ProcessServerMembersLoadResult = { loadForce ->
             processCore.load(
                 owner = owner,
                 priority = priority,
-                force = force,
+                force = loadForce,
                 reason = reason,
                 ownerWriteGeneration = directoryBinding.writeGeneration,
                 onFlight = { permit ->
@@ -1968,6 +1968,28 @@ class SharedServerMembersStore internal constructor(
                     }
                 }
             )
+        }
+        var processResult = loadFromProcess(force)
+        // Hands 291310aa: a same-owner invalidation (presence transport reconnect right after a
+        // server switch) retires the flight this load joined and starts a replacement. The retired
+        // result is unpublishable, but the owner is still current: follow the replacement flight
+        // (or its fresh cache) instead of surfacing members_owner_stale, which the Members page
+        // showed as a load error on its first open.
+        var supersededRetries = 0
+        while (
+            !processResult.publicationCurrent &&
+            supersededRetries < SharedServerMembersSupersededFlightRetries &&
+            processOwner(ServerId(key)) == owner &&
+            currentDirectoryOwnerBinding(ServerId(key)) == directoryBinding
+        ) {
+            supersededRetries += 1
+            logger(
+                "store_load domain=server_members serverId=$key result=superseded_flight_rejoin " +
+                    "attempt=$supersededRetries force=$force priority=${priority.name} reason=$reason " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            processResult = loadFromProcess(false)
+        }
         val currentOwner = processOwner(ServerId(key))
         if (
             !processResult.publicationCurrent ||
@@ -3755,3 +3777,9 @@ internal fun SharedServerMembersEntry?.keepsLoadedStatusDuring(priority: DataReq
 
 /** Tenny rule 3: in-memory rosters per members store (one per shell), least recently used evicted. */
 internal const val SharedServerMembersMaxCachedServers = 16
+
+/**
+ * How many times one roster load follows a replacement flight after a same-owner invalidation
+ * retired the flight it joined, before reporting members_owner_stale.
+ */
+internal const val SharedServerMembersSupersededFlightRetries = 2
