@@ -120,11 +120,13 @@ private fun ActionCardSpecElement.toJsonObject(): JsonObject =
                 mono?.let { put("mono", it) }
                 muted?.let { put("muted", it) }
                 breakAll?.let { put("breakAll", it) }
+                clamp?.let { put("clamp", it) }
             }
         is ActionCardSpecDisplayElement.EntityRef -> buildJsonObject { put("type", "EntityRef"); put("props", ref.toJsonObject()) }
         is ActionCardSpecDisplayElement.ScopeList ->
             element("ScopeList") {
                 put("scopes", JsonArray(scopes.map(::JsonPrimitive)))
+                groups?.let { ids -> put("groups", JsonArray(ids.map(::JsonPrimitive))) }
                 agentName?.let { put("agentName", it) }
             }
         is ActionCardSpecDisplayElement.Notice -> element("Notice") { put("text", text.toJsonObject()); put("tone", tone.wire) }

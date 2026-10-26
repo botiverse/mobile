@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /*
- * The pieces Raft's two closed, inert card catalogs share (botiverse/slock 4befacd2
+ * The pieces Raft's two closed, inert card catalogs share (botiverse/slock 2d901b90
  * `packages/shared/src/cardElements.ts`): App link cards ([RaftAppLinkCard], RFC 076) and
  * first-party action cards ([ActionCardSpecCard], `action-card.v1`). Each catalog builds its own
  * element union from these, so neither reads the other's schema: a shared element type
@@ -209,7 +209,8 @@ fun isCardPublicUrl(raw: String): Boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Readers for the shared elements, as zod reads them: strict objects, defaults filled in.
+// Readers for the shared elements, as zod reads them: strict objects (or stripping, for an action
+// card read: [CardUnknownKeys]), defaults filled in.
 
 /** A JSON string's value; null for anything else (a number or `null` is not a string to zod). */
 internal fun JsonElement?.cardString(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -240,11 +241,31 @@ internal fun JsonElement?.cardSafeInteger(): Long? {
 /** The object's keys are all among [allowed] (zod `.strict()`). */
 internal fun JsonObject.hasOnlyKeys(allowed: Set<String>): Boolean = allowed.containsAll(keys)
 
+/**
+ * What a card object does with a key it does not know (`CardUnknownKeys`): [Strict] refuses it
+ * (link cards; action cards as a server emits them), [Strip] drops it without looking at its value
+ * (action cards as a client reads them, so an older App still shows a card with a newer prop).
+ */
+enum class CardUnknownKeys {
+    Strict,
+    Strip,
+    ;
+
+    /** Whether [obj] passes: [Strip] takes any key, [Strict] only [allowed] (`cardObject`). */
+    internal fun accepts(obj: JsonObject, allowed: Set<String>): Boolean = this == Strip || obj.hasOnlyKeys(allowed)
+
+    /**
+     * An element object other than a Stack (`cardElementObject`): `{type, props}`; with [Strip] any
+     * other key is dropped too, but `children` belongs to a Stack and is refused either way.
+     */
+    internal fun acceptsElement(obj: JsonObject): Boolean = if (this == Strip) "children" !in obj else obj.hasOnlyKeys(setOf("type", "props"))
+}
+
 /** `cardStackElement`: `{type: "Stack", props: {direction?, wrap?}, children?}`, or null. */
-internal fun readCardStack(obj: JsonObject): CardStack? {
-    if (!obj.hasOnlyKeys(setOf("type", "props", "children"))) return null
+internal fun readCardStack(obj: JsonObject, unknownKeys: CardUnknownKeys = CardUnknownKeys.Strict): CardStack? {
+    if (!unknownKeys.accepts(obj, setOf("type", "props", "children"))) return null
     val props = obj["props"] as? JsonObject ?: return null
-    if (!props.hasOnlyKeys(setOf("direction", "wrap"))) return null
+    if (!unknownKeys.accepts(props, setOf("direction", "wrap"))) return null
     val direction =
         if ("direction" in props) {
             CardStackDirection.entries.firstOrNull { it.wire == props["direction"].cardString() } ?: return null
@@ -265,19 +286,19 @@ internal fun readCardStack(obj: JsonObject): CardStack? {
 }
 
 /** `cardRelativeTimeElement`: `{type: "RelativeTime", props: {at}}`, or null. */
-internal fun readCardRelativeTime(obj: JsonObject): CardRelativeTime? {
-    if (!obj.hasOnlyKeys(setOf("type", "props"))) return null
+internal fun readCardRelativeTime(obj: JsonObject, unknownKeys: CardUnknownKeys = CardUnknownKeys.Strict): CardRelativeTime? {
+    if (!unknownKeys.acceptsElement(obj)) return null
     val props = obj["props"] as? JsonObject ?: return null
-    if (!props.hasOnlyKeys(setOf("at"))) return null
+    if (!unknownKeys.accepts(props, setOf("at"))) return null
     val at = props["at"].cardString()?.takeIf(::isCardTimestamp) ?: return null
     return CardRelativeTime(at)
 }
 
 /** `cardDurationElement`: `{type: "Duration", props: {start, end?}}`, `end` not before `start`, or null. */
-internal fun readCardDuration(obj: JsonObject): CardDuration? {
-    if (!obj.hasOnlyKeys(setOf("type", "props"))) return null
+internal fun readCardDuration(obj: JsonObject, unknownKeys: CardUnknownKeys = CardUnknownKeys.Strict): CardDuration? {
+    if (!unknownKeys.acceptsElement(obj)) return null
     val props = obj["props"] as? JsonObject ?: return null
-    if (!props.hasOnlyKeys(setOf("start", "end"))) return null
+    if (!unknownKeys.accepts(props, setOf("start", "end"))) return null
     val start = props["start"].cardString()?.takeIf(::isCardTimestamp) ?: return null
     val end = if ("end" in props) props["end"].cardString()?.takeIf(::isCardTimestamp) ?: return null else null
     if (end != null && cardRfc3339EpochMillis(end)!! < cardRfc3339EpochMillis(start)!!) return null

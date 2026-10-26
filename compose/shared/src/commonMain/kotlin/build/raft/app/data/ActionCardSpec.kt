@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.resource.StringResource
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -11,7 +13,8 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock 4befacd2 (#11226) `packages/shared/src/actionCardSpec.ts`, pinned by
+ * Contract: botiverse/slock 2d901b90 (S0 #11226, S0.1 #11232, S0.2 #11234)
+ * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
  * `presentation.card` only describes how it is shown, in a closed, inert catalog: no expressions,
@@ -22,8 +25,10 @@ import kotlinx.serialization.json.put
  * [ActionCardSpecCard.title]) and the status line from `actionMetadata`.
  *
  * This client reads cards in the contract's "read" mode ([parseActionCardSpec]): the server's
- * strict schema with exactly five leniencies, so an older App still shows a newer card and turns
- * only the button it cannot handle into "Open in web" ([stripActionCardSpec]). Any other problem
+ * strict schema with seven leniencies, so an older App still shows a newer card and turns only the
+ * button it cannot handle into "Open in web" ([stripActionCardSpec]). Unknown keys are dropped,
+ * except where they could change what a press does (a Button's props, its action, the confirm it
+ * opens): there the button becomes "Open in web". Any other problem
  * makes the whole card unreadable (null) and the App shows the legacy presentation. The
  * emit-only rules (the 24,576-byte size) are the server's and are not checked here.
  *
@@ -85,6 +90,8 @@ enum class ActionCardSpecIcon(val wire: String) {
     Plug("plug"),
     Message("message"),
     Sparkles("sparkles"),
+    Shield("shield"),
+    CreditCard("credit_card"),
 }
 
 /** The native dialogs an `open` button opens, prefilled from `metadata.action` as today. */
@@ -317,20 +324,32 @@ sealed interface ActionCardSpecDisplayElement : ActionCardSpecElement {
         val tone: CardBadgeTone = CardBadgeTone.Neutral,
     ) : ActionCardSpecDisplayElement
 
-    /** `Field`: a property row (what `displayItems` were). The flags are null when the card did not write them. */
+    /**
+     * `Field`: a property row (what `displayItems` were). The flags are null when the card did not
+     * write them; [clamp], as on Text: the value shows at most that many lines (1-6).
+     */
     data class Field(
         val label: ActionCardSpecMsg,
         val value: ActionCardSpecFieldValue,
         val mono: Boolean? = null,
         val muted: Boolean? = null,
         val breakAll: Boolean? = null,
+        val clamp: Int? = null,
     ) : ActionCardSpecDisplayElement
 
     /** `EntityRef`: one entity by reference. */
     data class EntityRef(val ref: ActionCardSpecEntityRef) : ActionCardSpecDisplayElement
 
-    /** `ScopeList`: 1-64 unique scope ids; the client names each itself. */
-    data class ScopeList(val scopes: List<String>, val agentName: String? = null) : ActionCardSpecDisplayElement
+    /**
+     * `ScopeList`: 1-64 unique scope ids and, when set, 1-32 unique permission group ids ([groups]:
+     * `server`, `agent`, `channel`, `computer`, `agent_reminder_write` today, see
+     * [actionCardScopeGroupLabel]); the client names each itself.
+     */
+    data class ScopeList(
+        val scopes: List<String>,
+        val groups: List<String>? = null,
+        val agentName: String? = null,
+    ) : ActionCardSpecDisplayElement
 
     /** `Notice`: an info or warning callout. */
     data class Notice(
@@ -338,6 +357,21 @@ sealed interface ActionCardSpecDisplayElement : ActionCardSpecElement {
         val tone: ActionCardSpecNoticeTone = ActionCardSpecNoticeTone.Info,
     ) : ActionCardSpecDisplayElement
 }
+
+/**
+ * The App's own name for a `ScopeList` permission group id (`APP_NOTIFICATION_GROUPS`), worded as
+ * the web's `permissionGroupLabel`: "<resource> · read", except `agent_reminder_write`, which is
+ * written as is. Null for a group this App does not know.
+ */
+fun actionCardScopeGroupLabel(group: String): StringResource? =
+    when (group) {
+        "server" -> MR.strings.thread_action_card_scope_group_server
+        "agent" -> MR.strings.thread_action_card_scope_group_agent
+        "channel" -> MR.strings.thread_action_card_scope_group_channel
+        "computer" -> MR.strings.thread_action_card_scope_group_computer
+        "agent_reminder_write" -> MR.strings.thread_action_card_scope_group_agent_reminder_write
+        else -> null
+    }
 
 /** `Button`: [label] is a Msg of 1-24 code points; [disabledReason], when set, disables it and says why. */
 data class ActionCardSpecButton(
@@ -376,8 +410,9 @@ data class ActionCardSpecNavigateTarget(
  * - [Navigate] / [NavigateUrl]: open the entity natively, or a public HTTPS URL outside Raft
  *   [card.v1].
  *
- * [Unsupported] appears only in a card as read (an action kind or `open` intent this App does not
- * know) and [OpenInWeb] only after [stripActionCardSpec], which turns every button the App cannot
+ * [Unsupported] appears only in a card as read: an action kind or `open` intent this App does not
+ * know, or a press a key it does not know could change (on the action, the Button's props, or the
+ * confirm an execute opens: that key may be a new safety check it must not ignore). [OpenInWeb] only after [stripActionCardSpec], which turns every button the App cannot
  * handle into one: open this message's web link in a browser (the builder is A4's, symmetric to
  * the `RaftMessageLink` parser).
  */
@@ -604,6 +639,17 @@ private val OPTION_VALUE = Regex("^[A-Za-z0-9_.:-]{1,64}$")
 
 /** `open_web` comes only from strip, and `unsupported` only from a read; neither may arrive. */
 private val KNOWN_ACTION_KINDS = setOf("execute", "open_form", "open", "navigate", "open_web", "unsupported")
+
+/** The keys each action kind takes (`ACTION_KEYS`); a read takes one with any other key as unsupported (leniency 7). */
+private val ACTION_KEYS: Map<String, Set<String>> =
+    mapOf(
+        "execute" to setOf("kind", "confirm"),
+        "open_form" to setOf("kind", "form"),
+        "open" to setOf("kind", "intent", "gate"),
+        "navigate" to setOf("kind", "target", "url"),
+    )
+private val BUTTON_PROPS = setOf("label", "emphasis", "action", "disabledReason")
+private val CONFIRM_KEYS = setOf("title", "confirmLabel", "spec")
 private val KNOWN_FIELD_TYPES = setOf("TextInput", "TextArea", "Select", "Toggle", "MemberPicker", "ChannelPicker", "AgentPicker")
 
 /**
@@ -618,8 +664,21 @@ private val KNOWN_FIELD_TYPES = setOf("TextInput", "TextArea", "Select", "Toggle
  *    the form kept;
  * 4. an envelope key it does not know is dropped, and so is an icon;
  * 5. a Msg locale it does not know (`^[a-z]{2,3}(-[a-z0-9]{2,8})?$`) is dropped, its template
- *    unchecked.
- * Everything else, an unknown element type included, makes the whole card invalid. Never throws.
+ *    unchecked;
+ * 6. any other object's key it does not know is dropped, its value unchecked: on an element
+ *    (besides type, props and a Stack's children) and the props of every element but a Button, a
+ *    Msg, an EntityRef (element, Field value, param, picker default), a navigate target (chosen by
+ *    kind), a tree, a form, a known field and a Select option. Known keys keep their rules, and
+ *    `children` on an element other than a Stack is still refused;
+ * 7. except where a key could change what a press does: a key outside a Button's props, outside
+ *    its action's kind ([ACTION_KEYS]), or outside a confirm (title, confirmLabel, spec). The known
+ *    keys are checked as usual, then the button's action reads as [ActionCardSpecAction.Unsupported]
+ *    (an `open` keeps `originalIntent`; a marker stays as it is), so strip makes it "Open in web".
+ *    Such a confirm is dropped from `confirms` (which stays, possibly empty) once the rest of the
+ *    card is valid, and every execute in `spec` naming it is marked.
+ * The tree rules and the confirm / form references see the markers 7 made from a Button's props
+ * or action, not the action they replace; a dropped confirm changes no verdict. Everything else, an
+ * unknown element type included, makes the whole card invalid. Never throws.
  */
 fun parseActionCardSpec(raw: JsonElement): ActionCardSpecCard? = actionCardSpecIssue(raw).first
 
@@ -659,6 +718,23 @@ private object ActionCardSpecReader {
         if (unknown.isNotEmpty()) invalid("$what: unknown keys $unknown")
         return this
     }
+
+    /** Whether this object has a key outside [keys] (`hasKeyOutside`). */
+    private fun JsonObject.hasKeyOutside(keys: Set<String>): Boolean = this.keys.any { it !in keys }
+
+    /** Only the [keys] of this object (the others dropped, as zod's stripping object does). */
+    private fun JsonObject.only(keys: Set<String>): JsonObject = JsonObject(filterKeys { it in keys })
+
+    /** The marker for an action a read will not perform as written (`unsupportedAction`); a marker stays as it is. */
+    private fun unsupported(action: ActionCardSpecAction): ActionCardSpecAction =
+        when (action) {
+            is ActionCardSpecAction.Unsupported -> action
+            is ActionCardSpecAction.Open -> ActionCardSpecAction.Unsupported("open", action.intent.wire)
+            is ActionCardSpecAction.Execute -> ActionCardSpecAction.Unsupported("execute")
+            is ActionCardSpecAction.OpenForm -> ActionCardSpecAction.Unsupported("open_form")
+            is ActionCardSpecAction.Navigate, is ActionCardSpecAction.NavigateUrl -> ActionCardSpecAction.Unsupported("navigate")
+            ActionCardSpecAction.OpenInWeb -> invalid("open_web never arrives")
+        }
 
     private fun JsonElement?.str(what: String): String = cardString() ?: invalid("$what: expected a string")
 
@@ -716,7 +792,7 @@ private object ActionCardSpecReader {
     }
 
     private fun entityRef(raw: JsonElement?, what: String): ActionCardSpecEntityRef {
-        val obj = raw.obj(what).strict(what, "kind", "id", "serverId", "fallback")
+        val obj = raw.obj(what)
         return ActionCardSpecEntityRef(
             kind = enumOf(obj["kind"], "$what.kind", ActionCardSpecEntityKind::wire),
             id = matching(obj["id"], "$what.id", LOWER_UUID),
@@ -732,7 +808,7 @@ private object ActionCardSpecReader {
     }
 
     fun msg(raw: JsonElement?, max: Int, what: String = "msg"): ActionCardSpecMsg {
-        val obj = raw.obj(what).strict(what, "key", "text", "params")
+        val obj = raw.obj(what)
         val key = matching(obj["key"], "$what.key", MSG_KEY)
         val rawText = obj["text"].obj("$what.text")
         rawText.keys.firstOrNull { it !in ACTION_CARD_SPEC_LOCALES && !LOCALE_KEY.matches(it) }?.let { invalid("$what.text: bad locale key $it") }
@@ -775,7 +851,6 @@ private object ActionCardSpecReader {
     private fun navigateTarget(raw: JsonElement?, what: String): ActionCardSpecNavigateTarget {
         val obj = raw.obj(what)
         val kind = enumOf(obj["kind"], "$what.kind", ActionCardSpecNavigateTarget.Kind::wire)
-        if (kind.needsChannel) obj.strict(what, "kind", "id", "channelId", "serverId") else obj.strict(what, "kind", "id", "serverId")
         return ActionCardSpecNavigateTarget(
             kind = kind,
             id = matching(obj["id"], "$what.id", LOWER_UUID),
@@ -786,6 +861,20 @@ private object ActionCardSpecReader {
 
     private fun action(raw: JsonElement?, what: String): ActionCardSpecAction {
         val obj = raw.obj(what)
+        val kind = obj["kind"].cardString()
+        val keys = ACTION_KEYS[kind]
+        if (keys != null && obj.hasKeyOutside(keys)) {
+            // Leniency 7. An open with an intent this App does not know stays leniency 2, other keys ignored.
+            val rawIntent = obj["intent"].cardString()
+            if (kind == "open" && rawIntent != null && ActionCardSpecIntent.entries.none { it.wire == rawIntent } && ACTION_ID.matches(rawIntent)) {
+                return ActionCardSpecAction.Unsupported("open", rawIntent)
+            }
+            return unsupported(knownAction(obj.only(keys), what))
+        }
+        return knownAction(obj, what)
+    }
+
+    private fun knownAction(obj: JsonObject, what: String): ActionCardSpecAction {
         return when (val kind = obj["kind"].cardString()) {
             "execute" -> {
                 obj.strict(what, "kind", "confirm")
@@ -828,19 +917,20 @@ private object ActionCardSpecReader {
         }
     }
 
-    private fun props(element: JsonObject, what: String, vararg keys: String): JsonObject {
-        element.strict(what, "type", "props")
-        return element["props"].obj("$what.props").strict("$what.props", *keys)
+    /** A display element's props (leniency 6: unknown keys dropped, `children` refused). */
+    private fun props(element: JsonObject, what: String): JsonObject {
+        if (!CardUnknownKeys.Strip.acceptsElement(element)) invalid("$what: only a Stack has children")
+        return element["props"].obj("$what.props")
     }
 
     private fun element(raw: JsonElement?, what: String): ActionCardSpecElement {
         val obj = raw.obj(what)
         return when (obj["type"].cardString()) {
-            "Stack" -> readCardStack(obj) ?: invalid("$what: bad Stack")
-            "RelativeTime" -> readCardRelativeTime(obj) ?: invalid("$what: bad RelativeTime")
-            "Duration" -> readCardDuration(obj) ?: invalid("$what: bad Duration")
+            "Stack" -> readCardStack(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad Stack")
+            "RelativeTime" -> readCardRelativeTime(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad RelativeTime")
+            "Duration" -> readCardDuration(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad Duration")
             "Text" -> {
-                val props = props(obj, what, "text", "tone", "mono", "clamp")
+                val props = props(obj, what)
                 ActionCardSpecDisplayElement.Text(
                     text = content(props["text"], "$what.text", 2000, 500),
                     tone = props.opt("tone") { enumOf(it, "$what.tone", ActionCardSpecTextTone::wire) } ?: ActionCardSpecTextTone.Default,
@@ -849,14 +939,14 @@ private object ActionCardSpecReader {
                 )
             }
             "Badge" -> {
-                val props = props(obj, what, "text", "tone")
+                val props = props(obj, what)
                 ActionCardSpecDisplayElement.Badge(
                     text = content(props["text"], "$what.text", 60, 60),
                     tone = props.opt("tone") { enumOf(it, "$what.tone", CardBadgeTone::wire) } ?: CardBadgeTone.Neutral,
                 )
             }
             "Field" -> {
-                val props = props(obj, what, "label", "value", "mono", "muted", "breakAll")
+                val props = props(obj, what)
                 val rawValue = props["value"]
                 val value =
                     when {
@@ -873,34 +963,39 @@ private object ActionCardSpecReader {
                     mono = props.opt("mono") { it.bool("$what.mono") },
                     muted = props.opt("muted") { it.bool("$what.muted") },
                     breakAll = props.opt("breakAll") { it.bool("$what.breakAll") },
+                    clamp = props.opt("clamp") { it.int("$what.clamp", 1..6) },
                 )
             }
-            "EntityRef" -> {
-                obj.strict(what, "type", "props")
-                ActionCardSpecDisplayElement.EntityRef(entityRef(obj["props"], "$what.props"))
-            }
+            "EntityRef" -> ActionCardSpecDisplayElement.EntityRef(entityRef(props(obj, what), "$what.props"))
             "ScopeList" -> {
-                val props = props(obj, what, "scopes", "agentName")
+                val props = props(obj, what)
                 val scopes = props["scopes"].array("$what.scopes", 1..64).map { matching(it, "$what.scopes[]", SCOPE_ID) }
                 if (scopes.toSet().size != scopes.size) invalid("$what.scopes: must be unique")
-                ActionCardSpecDisplayElement.ScopeList(scopes, props.opt("agentName") { text(it, "$what.agentName", 1, 100) })
+                val groups =
+                    props.opt("groups") { raw ->
+                        raw.array("$what.groups", 1..32).map { matching(it, "$what.groups[]", SCOPE_ID) }
+                            .also { if (it.toSet().size != it.size) invalid("$what.groups: must be unique") }
+                    }
+                ActionCardSpecDisplayElement.ScopeList(scopes, groups, props.opt("agentName") { text(it, "$what.agentName", 1, 100) })
             }
             "Notice" -> {
-                val props = props(obj, what, "text", "tone")
+                val props = props(obj, what)
                 ActionCardSpecDisplayElement.Notice(
                     text = msg(props["text"], 500, "$what.text"),
                     tone = props.opt("tone") { enumOf(it, "$what.tone", ActionCardSpecNoticeTone::wire) } ?: ActionCardSpecNoticeTone.Info,
                 )
             }
             "Button" -> {
-                val props = props(obj, what, "label", "emphasis", "action", "disabledReason")
-                val button =
+                // The element object strips (leniency 6); its props do not (leniency 7).
+                val props = props(obj, what)
+                val read =
                     ActionCardSpecButton(
                         label = msg(props["label"], 24, "$what.label"),
                         emphasis = props.opt("emphasis") { enumOf(it, "$what.emphasis", ActionCardSpecEmphasis::wire) } ?: ActionCardSpecEmphasis.Secondary,
                         action = action(props["action"], "$what.action"),
                         disabledReason = props.opt("disabledReason") { msg(it, 200, "$what.disabledReason") },
                     )
+                val button = if (props.hasKeyOutside(BUTTON_PROPS)) read.copy(action = unsupported(read.action)) else read
                 val action = button.action
                 val destructiveAllowed = action is ActionCardSpecAction.Unsupported || (action is ActionCardSpecAction.Execute && action.confirm != null)
                 if (button.emphasis == ActionCardSpecEmphasis.Destructive && !destructiveAllowed) invalid("$what: only an execute button with a confirm can be destructive")
@@ -913,7 +1008,7 @@ private object ActionCardSpecReader {
     private enum class TreeRule { Spec, Result, Confirm }
 
     private fun tree(raw: JsonElement?, what: String, rule: TreeRule): ActionCardSpecTree {
-        val obj = raw.obj(what).strict(what, "root", "elements")
+        val obj = raw.obj(what)
         val root = matching(obj["root"], "$what.root", CARD_ELEMENT_ID)
         val elements =
             record(obj["elements"], "$what.elements", key = { matching(JsonPrimitive(it), "$what element id", CARD_ELEMENT_ID) }) { id, value ->
@@ -946,7 +1041,6 @@ private object ActionCardSpecReader {
     private fun field(raw: JsonElement?, what: String): ActionCardSpecFormField {
         val obj = raw.obj(what)
         val type = obj["type"].cardString()
-        val common = arrayOf("type", "name", "label", "placeholder", "description")
         fun fieldName() = name(obj["name"], "$what.name", FIELD_NAME)
         fun label() = msg(obj["label"], 40, "$what.label")
         fun placeholder() = obj.opt("placeholder") { msg(it, 120, "$what.placeholder") }
@@ -956,10 +1050,8 @@ private object ActionCardSpecReader {
         fun multiple() = obj["multiple"].bool("$what.multiple")
         fun maxItems() = obj.opt("maxItems") { it.int("$what.maxItems", 1..50) }
         fun defaults() = obj.opt("default") { entityRefs(it, "$what.default") }
-        val picker = arrayOf("required", "emptyText", "multiple", "maxItems", "default")
         return when (type) {
             "TextInput", "TextArea" -> {
-                if (type == "TextInput") obj.strict(what, *common, "required", "maxLength", "default") else obj.strict(what, *common, "required", "maxLength", "rows", "default")
                 val maxLength = obj["maxLength"].int("$what.maxLength", if (type == "TextInput") 1..500 else 1..8000)
                 val default = obj.opt("default") { it.str("$what.default") }
                 if (default != null && cardCodePoints(default) > maxLength) invalid("$what.default: longer than maxLength")
@@ -971,10 +1063,9 @@ private object ActionCardSpecReader {
                 }
             }
             "Select" -> {
-                obj.strict(what, *common, "required", "options", "default")
                 val options =
                     obj["options"].array("$what.options", 1..ActionCardSpecLimits.MAX_OPTIONS).mapIndexed { i, rawOption ->
-                        val option = rawOption.obj("$what.options[$i]").strict("$what.options[$i]", "value", "label")
+                        val option = rawOption.obj("$what.options[$i]")
                         ActionCardSpecSelectOption(matching(option["value"], "$what.options[$i].value", OPTION_VALUE), msg(option["label"], 40, "$what.options[$i].label"))
                     }
                 if (options.map { it.value }.toSet().size != options.size) invalid("$what.options: values must be unique")
@@ -983,11 +1074,9 @@ private object ActionCardSpecReader {
                 ActionCardSpecSelectField(fieldName(), label(), placeholder(), description(), required(), options, default)
             }
             "Toggle" -> {
-                obj.strict(what, *common, "default")
                 ActionCardSpecToggleField(fieldName(), label(), placeholder(), description(), obj.opt("default") { it.bool("$what.default") })
             }
             "MemberPicker" -> {
-                obj.strict(what, *common, *picker, "kinds", "scope")
                 val kinds = obj["kinds"].array("$what.kinds", 1..2).map { enumOf(it, "$what.kinds[]", ActionCardSpecMemberKind::wire) }
                 if (kinds != listOf(ActionCardSpecMemberKind.Human) && kinds != listOf(ActionCardSpecMemberKind.Agent) &&
                     kinds != listOf(ActionCardSpecMemberKind.Human, ActionCardSpecMemberKind.Agent)
@@ -1006,7 +1095,6 @@ private object ActionCardSpecReader {
                 field
             }
             "ChannelPicker" -> {
-                obj.strict(what, *common, *picker, "scope")
                 val field =
                     ActionCardSpecChannelPickerField(
                         fieldName(), label(), placeholder(), description(), required(), emptyText(), multiple(), maxItems(), defaults(),
@@ -1016,7 +1104,6 @@ private object ActionCardSpecReader {
                 field
             }
             "AgentPicker" -> {
-                obj.strict(what, *common, *picker)
                 val field = ActionCardSpecAgentPickerField(fieldName(), label(), placeholder(), description(), required(), emptyText(), multiple(), maxItems(), defaults())
                 checkPicker(field, what) { it == ActionCardSpecEntityKind.Agent }
                 field
@@ -1031,7 +1118,7 @@ private object ActionCardSpecReader {
     }
 
     fun form(raw: JsonElement?, what: String = "form"): ActionCardSpecForm {
-        val obj = raw.obj(what).strict(what, "title", "submitLabel", "description", "fields")
+        val obj = raw.obj(what)
         val fields = obj["fields"].array("$what.fields", 1..ActionCardSpecLimits.MAX_FIELDS).mapIndexed { i, f -> field(f, "$what.fields[$i]") }
         if (fields.map { it.name }.toSet().size != fields.size) invalid("$what.fields: names must be unique")
         return ActionCardSpecForm(
@@ -1042,13 +1129,16 @@ private object ActionCardSpecReader {
         )
     }
 
-    private fun confirm(raw: JsonElement?, what: String): ActionCardSpecConfirm {
-        val obj = raw.obj(what).strict(what, "title", "confirmLabel", "spec")
-        return ActionCardSpecConfirm(
-            title = msg(obj["title"], 80, "$what.title"),
-            confirmLabel = msg(obj["confirmLabel"], 24, "$what.confirmLabel"),
-            spec = tree(obj["spec"], "$what.spec", TreeRule.Confirm),
-        )
+    /** A confirm, and whether it has a key a read does not know (leniency 7: the card drops it). */
+    private fun confirm(raw: JsonElement?, what: String): Pair<ActionCardSpecConfirm, Boolean> {
+        val obj = raw.obj(what)
+        val confirm =
+            ActionCardSpecConfirm(
+                title = msg(obj["title"], 80, "$what.title"),
+                confirmLabel = msg(obj["confirmLabel"], 24, "$what.confirmLabel"),
+                spec = tree(obj["spec"], "$what.spec", TreeRule.Confirm),
+            )
+        return confirm to obj.hasKeyOutside(CONFIRM_KEYS)
     }
 
     fun card(raw: JsonElement): ActionCardSpecCard {
@@ -1057,12 +1147,14 @@ private object ActionCardSpecReader {
         if (obj["catalog"].cardString() != ACTION_CARD_SPEC_CATALOG) invalid("card.catalog: expected $ACTION_CARD_SPEC_CATALOG")
         val icon = obj.opt("icon") { it.str("card.icon") }?.let { wire -> ActionCardSpecIcon.entries.firstOrNull { it.wire == wire } }
         val actionIdKey = { what: String -> { key: String -> name(JsonPrimitive(key), what, ACTION_ID); Unit } }
+        val rawConfirms =
+            obj.opt("confirms") { record(it, "card.confirms", ActionCardSpecLimits.MAX_CONFIRMS, actionIdKey("confirm id")) { id, v -> confirm(v, "card.confirms.$id") } }
         val card =
             ActionCardSpecCard(
                 icon = icon,
                 title = msg(obj["title"], 80, "card.title"),
                 spec = tree(obj["spec"], "card.spec", TreeRule.Spec),
-                confirms = obj.opt("confirms") { record(it, "card.confirms", ActionCardSpecLimits.MAX_CONFIRMS, actionIdKey("confirm id")) { id, v -> confirm(v, "card.confirms.$id") } },
+                confirms = rawConfirms?.mapValues { it.value.first },
                 forms = obj.opt("forms") { record(it, "card.forms", ActionCardSpecLimits.MAX_FORMS, actionIdKey("form id")) { id, v -> form(v, "card.forms.$id") } },
                 result = obj.opt("result") { tree(it, "card.result", TreeRule.Result) },
             )
@@ -1072,7 +1164,19 @@ private object ActionCardSpecReader {
             if (action is ActionCardSpecAction.Execute && action.confirm != null && card.confirms?.containsKey(action.confirm) != true) invalid("card.spec.$id: no confirm ${action.confirm}")
             if (action is ActionCardSpecAction.OpenForm && card.forms?.containsKey(action.form) != true) invalid("card.spec.$id: no form ${action.form}")
         }
-        return card
+        // Last, once the card is otherwise valid (leniency 7): a confirm with a key a read does not know
+        // is dropped, and each execute naming it reads as unsupported, so it is never shown with that key ignored.
+        val dropped = rawConfirms.orEmpty().filterValues { it.second }.keys
+        if (dropped.isEmpty()) return card
+        return card.copy(
+            spec = card.spec.copy(
+                elements = card.spec.elements.mapValues { (_, node) ->
+                    val action = (node as? ActionCardSpecButton)?.action
+                    if (action is ActionCardSpecAction.Execute && action.confirm in dropped) node.copy(action = unsupported(action)) else node
+                },
+            ),
+            confirms = card.confirms?.filterKeys { it !in dropped },
+        )
     }
 }
 
@@ -1081,7 +1185,13 @@ private object ActionCardSpecReader {
 
 /** The label of every button [stripActionCardSpec] replaces (`ACTION_CARD_OPEN_IN_WEB_LABEL`). */
 val ACTION_CARD_OPEN_IN_WEB_LABEL: ActionCardSpecMsg =
-    ActionCardSpecMsg(key = "actionCard.openInWeb", text = mapOf("en" to "Open in web", "zh-cn" to "在网页打开"))
+    ActionCardSpecMsg(
+        key = "actionCard.openInWeb",
+        text = mapOf(
+            "en" to "Open in web", "es" to "Abrir en la web", "pt-br" to "Abrir na web", "ko" to "웹에서 열기",
+            "ja" to "ウェブで開く", "zh-cn" to "在网页打开", "zh-tw" to "在網頁開啟",
+        ),
+    )
 
 /**
  * What this App renders of a read card (`stripActionCardSpec`). Without `card.v1` in
@@ -1157,20 +1267,42 @@ data class ActionCardFormIssue(
     val message: ActionCardSpecMsg,
 )
 
-/** The generic message per issue code (`ACTION_CARD_FORM_ISSUE_MESSAGES`); too_long and too_many take `{max}`. */
+/** The generic message per issue code, in every display locale (`ACTION_CARD_FORM_ISSUE_MESSAGES`); too_long and too_many take `{max}`. */
 val ACTION_CARD_FORM_ISSUE_MESSAGES: Map<ActionCardFormIssueCode, ActionCardSpecMsg> =
     listOf(
-        ActionCardFormIssueCode.Required to ("This field is required." to "此项为必填项。"),
-        ActionCardFormIssueCode.TooLong to ("Use {max} characters or fewer." to "最多 {max} 个字符。"),
-        ActionCardFormIssueCode.TooMany to ("Choose {max} or fewer." to "最多选择 {max} 项。"),
-        ActionCardFormIssueCode.InvalidOption to ("Choose one of the options." to "请从选项中选择。"),
-        ActionCardFormIssueCode.NotFound to ("This no longer exists." to "该项已不存在。"),
-        ActionCardFormIssueCode.NotAllowed to ("You can't choose this." to "你不能选择此项。"),
-        ActionCardFormIssueCode.Conflict to ("This is already taken." to "已被占用。"),
-        ActionCardFormIssueCode.InvalidFormat to ("This value is not valid." to "此值无效。"),
-    ).associate { (code, copy) ->
-        code to ActionCardSpecMsg(key = "actionCard.form.issue.${code.wire}", text = mapOf("en" to copy.first, "zh-cn" to copy.second))
-    }
+        ActionCardFormIssueCode.Required to mapOf(
+            "en" to "This field is required.", "es" to "Este campo es obligatorio.", "pt-br" to "Este campo é obrigatório.", "ko" to "필수 항목이에요.",
+            "ja" to "この項目は必須です。", "zh-cn" to "此项为必填项。", "zh-tw" to "此欄位為必填。",
+        ),
+        ActionCardFormIssueCode.TooLong to mapOf(
+            "en" to "Use {max} characters or fewer.", "es" to "Usa {max} caracteres o menos.", "pt-br" to "Use no máximo {max} caracteres.", "ko" to "{max}자 이하로 입력해 주세요.",
+            "ja" to "{max} 文字以内で入力してください。", "zh-cn" to "最多 {max} 个字符。", "zh-tw" to "最多 {max} 個字元。",
+        ),
+        ActionCardFormIssueCode.TooMany to mapOf(
+            "en" to "Choose {max} or fewer.", "es" to "Elige {max} o menos.", "pt-br" to "Escolha no máximo {max}.", "ko" to "{max}개 이하로 선택해 주세요.",
+            "ja" to "{max} 個以内で選択してください。", "zh-cn" to "最多选择 {max} 项。", "zh-tw" to "最多選擇 {max} 項。",
+        ),
+        ActionCardFormIssueCode.InvalidOption to mapOf(
+            "en" to "Choose one of the options.", "es" to "Elige una de las opciones.", "pt-br" to "Escolha uma das opções.", "ko" to "옵션 중에서 선택해 주세요.",
+            "ja" to "選択肢から選択してください。", "zh-cn" to "请从选项中选择。", "zh-tw" to "請從選項中選擇。",
+        ),
+        ActionCardFormIssueCode.NotFound to mapOf(
+            "en" to "This no longer exists.", "es" to "Ya no existe.", "pt-br" to "Isso não existe mais.", "ko" to "더 이상 존재하지 않아요.",
+            "ja" to "これはもう存在しません。", "zh-cn" to "该项已不存在。", "zh-tw" to "該項目已不存在。",
+        ),
+        ActionCardFormIssueCode.NotAllowed to mapOf(
+            "en" to "You can't choose this.", "es" to "No puedes elegir esto.", "pt-br" to "Você não pode escolher isso.", "ko" to "이 항목은 선택할 수 없어요.",
+            "ja" to "これは選択できません。", "zh-cn" to "你不能选择此项。", "zh-tw" to "你無法選擇此項。",
+        ),
+        ActionCardFormIssueCode.Conflict to mapOf(
+            "en" to "This is already taken.", "es" to "Ya está en uso.", "pt-br" to "Isso já está em uso.", "ko" to "이미 사용 중이에요.",
+            "ja" to "すでに使用されています。", "zh-cn" to "已被占用。", "zh-tw" to "已被使用。",
+        ),
+        ActionCardFormIssueCode.InvalidFormat to mapOf(
+            "en" to "This value is not valid.", "es" to "Este valor no es válido.", "pt-br" to "Este valor não é válido.", "ko" to "유효하지 않은 값이에요.",
+            "ja" to "この値は無効です。", "zh-cn" to "此值无效。", "zh-tw" to "此值無效。",
+        ),
+    ).associate { (code, text) -> code to ActionCardSpecMsg(key = "actionCard.form.issue.${code.wire}", text = text) }
 
 /** An issue with the generic message for its [code] (`actionCardFormIssue`). */
 fun actionCardFormIssue(

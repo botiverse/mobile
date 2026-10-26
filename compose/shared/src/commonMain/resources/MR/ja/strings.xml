@@ -3188,4 +3188,9 @@
     <string name="thread_link_preview_prompt_decline_failed">%1$s の選択を保存できませんでした。接続を確認して、もう一度お試しください。</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s はこのサーバーではリンクのプレビューを表示できません。</string>
     <string name="thread_link_preview_open_link">リンクを開く</string>
+    <string name="thread_action_card_scope_group_server">サーバー · 読み取り</string>
+    <string name="thread_action_card_scope_group_agent">エージェント · 読み取り</string>
+    <string name="thread_action_card_scope_group_channel">チャンネル · 読み取り</string>
+    <string name="thread_action_card_scope_group_computer">コンピューター · 読み取り</string>
+    <string name="thread_action_card_scope_group_agent_reminder_write">エージェントのリマインダー</string>
 </resources>

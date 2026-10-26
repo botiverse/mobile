@@ -3188,4 +3188,9 @@
     <string name="thread_link_preview_prompt_decline_failed">没能保存你对 %1$s 的选择。请检查网络后重试。</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s 无法在这个服务器上显示链接预览。</string>
     <string name="thread_link_preview_open_link">打开链接</string>
+    <string name="thread_action_card_scope_group_server">服务器 · 只读</string>
+    <string name="thread_action_card_scope_group_agent">Agent · 只读</string>
+    <string name="thread_action_card_scope_group_channel">频道 · 只读</string>
+    <string name="thread_action_card_scope_group_computer">计算机 · 只读</string>
+    <string name="thread_action_card_scope_group_agent_reminder_write">Agent 提醒</string>
 </resources>

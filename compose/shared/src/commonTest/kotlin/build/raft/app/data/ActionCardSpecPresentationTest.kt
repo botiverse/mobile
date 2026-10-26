@@ -189,4 +189,24 @@ class ActionCardSpecPresentationTest {
         }
         assertNull(parseRaftAppLinkCard(JsonObject(cycle)))
     }
+    @Test
+    fun sharedElementsStayStrictForLinkCardsAndStripOnlyForAnActionCardRead() {
+        val stack = Json.parseToJsonElement("""{"type":"Stack","props":{"direction":"row","gap":4},"children":["b"],"note":"x"}""").jsonObject
+        assertNull(readCardStack(stack))
+        assertEquals(CardStack(CardStackDirection.Row, false, listOf("b")), readCardStack(stack, CardUnknownKeys.Strip))
+        val time = Json.parseToJsonElement("""{"type":"RelativeTime","props":{"at":"2026-10-26T00:00:00Z","format":"short"}}""").jsonObject
+        assertNull(readCardRelativeTime(time))
+        assertNotNull(readCardRelativeTime(time, CardUnknownKeys.Strip))
+        // children belongs to a Stack: refused on any other element, in either mode.
+        val withChildren = Json.parseToJsonElement("""{"type":"Duration","props":{"start":"2026-10-26T00:00:00Z"},"children":[]}""").jsonObject
+        assertNull(readCardDuration(withChildren, CardUnknownKeys.Strip))
+        val linkCard = Json.parseToJsonElement("""{"root":"a","elements":{"a":{"type":"Badge","props":{"text":"ok","hint":"x"}}}}""")
+        assertNull(parseRaftAppLinkCard(linkCard))
+    }
+
+    @Test
+    fun scopeGroupsHaveTheAppsOwnNames() {
+        for (group in listOf("server", "agent", "channel", "computer", "agent_reminder_write")) assertNotNull(actionCardScopeGroupLabel(group), group)
+        assertNull(actionCardScopeGroupLabel("billing"))
+    }
 }
