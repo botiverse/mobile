@@ -3,12 +3,9 @@
 package build.raft.app.resources
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.intl.Locale
-import build.raft.app.KmmResourceLocaleRuntime
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.DensityQualifier
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -48,9 +45,17 @@ sealed interface StringDesc {
     }
 
     companion object {
-        /** Process-wide app language for string lookups. */
-        @Volatile
-        var localeType: LocaleType = LocaleType.System
+        private val localeTypeState = mutableStateOf<LocaleType>(LocaleType.System)
+
+        /**
+         * Process-wide app language for string lookups. Compose snapshot state: every composable
+         * that resolved a string with it recomposes when it changes (equal writes are no-ops).
+         */
+        var localeType: LocaleType
+            get() = localeTypeState.value
+            set(value) {
+                localeTypeState.value = value
+            }
     }
 }
 
@@ -83,7 +88,7 @@ fun StringResource.format(args: List<Any>): ResourceFormattedStringDesc = Resour
 fun StringResource.format(vararg args: Any): ResourceFormattedStringDesc = ResourceFormattedStringDesc(this, args.toList())
 
 /** [this] in the app language, outside composition (host strings, toasts, logs shown to users). */
-fun StringDesc.resolve(): String = resolveIn(raftResourceEnvironment(StringDesc.localeType, raftSystemPreferredLanguageTags()))
+fun StringDesc.resolve(): String = resolveIn(raftResourceEnvironment(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()))
 
 /** [this] in the app language; recomposes when the app language changes. */
 @Composable
@@ -108,19 +113,17 @@ fun stringResource(resource: StringResource, vararg args: Any): String {
 }
 
 /**
- * The lookup environment for the current [StringDesc.localeType]. Reading
- * [KmmResourceLocaleRuntime.locale] subscribes the caller to app-language changes (the shell seed
- * updates [StringDesc.localeType] in the same recomposition, before its children).
+ * The lookup environment for the current [StringDesc.localeType]. The read subscribes the caller
+ * (snapshot state), and the environment is keyed by the value itself, so a language switch always
+ * recomposes into the new catalog. Locale.current keys system language changes; the lookup walks
+ * the whole preferred-language list.
  */
 @Composable
 private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
-    val runtimeLocale by KmmResourceLocaleRuntime.locale.collectAsState()
     val localeType = StringDesc.localeType
-    // Locale.current is the recomposition key for system language changes; the lookup walks the
-    // whole preferred-language list.
     val systemLocale = Locale.current
-    return remember(runtimeLocale, localeType, systemLocale) {
-        raftResourceEnvironment(localeType, raftSystemPreferredLanguageTags())
+    return remember(localeType, systemLocale) {
+        raftResourceEnvironment(localeType, raftSystemPreferredLanguageTagsOrEmpty())
     }
 }
 
@@ -148,6 +151,18 @@ internal data class RaftResourceLocale(val language: String, val region: String)
  * list; iOS: `NSLocale.preferredLanguages`).
  */
 internal expect fun raftSystemPreferredLanguageTags(): List<String>
+
+/** [raftSystemPreferredLanguageTags], or empty where the platform cannot tell (unit-test stubs). */
+internal fun raftSystemPreferredLanguageTagsOrEmpty(): List<String> =
+    runCatching { raftSystemPreferredLanguageTags() }.getOrDefault(emptyList())
+
+/**
+ * The catalog the system language selects: the one source for UI strings, the UI text locale
+ * (Han glyph forms) and the display language tag, so the three always agree.
+ */
+internal fun raftSystemResourceLocale(
+    systemLanguageTags: List<String> = raftSystemPreferredLanguageTagsOrEmpty(),
+): RaftResourceLocale = raftResourceLocale(StringDesc.LocaleType.System, systemLanguageTags)
 
 /**
  * Catalog selection, matching what the platform resource lookups did for kmmresource: an

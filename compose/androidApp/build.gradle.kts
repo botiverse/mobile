@@ -695,6 +695,11 @@ android {
         // Robolectric tests (AndroidUnreadNotificationPosterPreviewTest) resolve the app's own strings.
         unitTests.isIncludeAndroidResources = true
     }
+    // Compose resources string catalogs (assets/composeResources/**/*.cvr) are read on demand;
+    // store them uncompressed so a lookup does not inflate the whole catalog first.
+    androidResources {
+        noCompress += "cvr"
+    }
     packaging {
         dex {
             useLegacyPackaging = raftDexUseLegacyPackaging.orNull

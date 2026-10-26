@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resources.raftSystemResourceLocale
 import build.raft.app.resources.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -95,22 +96,25 @@ val AppLocale.stringDescLocaleType: StringDesc.LocaleType
 
 /**
  * The BCP 47 tag of the language the app UI is actually shown in. An explicit
- * choice is its own tag; [AppLocale.System] resolves the device language
- * against the shipped catalogs (Chinese -> Simplified Chinese, Japanese) and
- * otherwise falls back to the English base catalog, as resource lookup does.
+ * choice is its own tag; [AppLocale.System] takes the catalog the string lookup
+ * selects from the device's preferred languages ([raftSystemResourceLocale]), so
+ * the tag always names the language the strings are shown in.
  */
-fun AppLocale.displayLanguageTag(systemLanguage: String?): String =
+fun AppLocale.displayLanguageTag(systemLanguages: List<String>): String =
     when (this) {
         AppLocale.English,
         AppLocale.SimplifiedChinese,
         AppLocale.Japanese -> languageTag
         AppLocale.System ->
-            when (systemLanguage?.trim()?.lowercase()?.replace('_', '-')?.substringBefore('-')) {
+            when (raftSystemResourceLocale(systemLanguages).language) {
                 "zh" -> AppLocale.SimplifiedChinese.languageTag
                 "ja" -> AppLocale.Japanese.languageTag
                 else -> AppLocale.English.languageTag
             }
     }
+
+/** [displayLanguageTag] for a single device language (null: unknown). */
+fun AppLocale.displayLanguageTag(systemLanguage: String?): String = displayLanguageTag(listOfNotNull(systemLanguage))
 
 data class LocaleSnapshot(
     val current: AppLocale,
