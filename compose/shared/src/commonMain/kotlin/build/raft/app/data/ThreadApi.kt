@@ -579,7 +579,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
     diagnosticsLogger(
-        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=${parseDispatcher.parseDispatcherLabel()}"
     )
     val result =
         withContext(parseDispatcher) {
@@ -595,7 +595,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     }
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=${parseDispatcher.parseDispatcherLabel()}"
     )
     return result
 }
@@ -613,7 +613,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
     diagnosticsLogger(
-        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=${parseDispatcher.parseDispatcherLabel()}"
     )
     val result =
         withContext(parseDispatcher) {
@@ -627,7 +627,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
     val messageCount = (result as? ThreadApiResult.Success<ThreadMessagesPage>)?.data?.messageCount ?: 0
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=${parseDispatcher.parseDispatcherLabel()}"
     )
     return result
 }
@@ -939,3 +939,7 @@ private fun PendingMentionActionExecuteResultDto.toDomain(): PendingMentionActio
         status = status,
         reason = reason
     )
+
+/** The production parse dispatcher keeps its platform label; an injected one (tests) names itself. */
+private fun CoroutineDispatcher.parseDispatcherLabel(): String =
+    if (this === RaftJsonParseDispatcher) RAFT_JSON_PARSE_DISPATCHER_LABEL else toString()

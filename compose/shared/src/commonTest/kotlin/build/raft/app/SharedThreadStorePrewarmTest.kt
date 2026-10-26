@@ -94,7 +94,8 @@ class SharedThreadStorePrewarmTest {
             SharedThreadPayloadStore(
                 scope = appScope,
                 maxConcurrentPrewarms = 2,
-                prewarmStartIntervalMillis = 40
+                prewarmStartIntervalMillis = 40,
+                prewarmStartTimeSource = testScheduler.timeSource,
             )
         val origin = testScheduler.timeSource.markNow()
         val starts = mutableListOf<Long>()

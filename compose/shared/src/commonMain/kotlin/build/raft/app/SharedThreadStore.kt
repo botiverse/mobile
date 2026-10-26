@@ -1019,6 +1019,10 @@ internal class SharedThreadPayloadStore(
     internal val foregroundLoadGate: SharedForegroundLoadGate = SharedForegroundLoadGate(),
     /** A visible open never waits on an in-flight prewarm longer than this before fetching itself. */
     private val prewarmJoinTimeoutMillis: Long = SharedThreadPrewarmJoinTimeoutMillis,
+    // task #41: the clock of the prewarm start rate limit. Its wait is a `delay`, so a virtual-time
+    // test hands in the scheduler's time source to keep the elapsed check and the wait on one clock;
+    // production keeps the monotonic wall clock.
+    private val prewarmStartTimeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadOwnedPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
     // Least recently used first. Guarded by [recencyLock]; lock order is ledger -> recency, never
@@ -1692,7 +1696,7 @@ internal class SharedThreadPayloadStore(
             if (remainingMillis > 0L) {
                 delay(remainingMillis)
             }
-            lastPrewarmStartedAt = TimeSource.Monotonic.markNow()
+            lastPrewarmStartedAt = prewarmStartTimeSource.markNow()
         }
     }
 
