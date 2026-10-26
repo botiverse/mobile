@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,13 +30,11 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialogSheet
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * What a thread page gives its spec cards (task #39, A4). The default is the page without spec
@@ -94,8 +93,8 @@ internal fun actionCardAppMsg(key: String, text: String, displayLocale: String):
 internal fun threadActionCardSpecErrorText(error: ThreadActionCardSpecError?): String? =
     when (error) {
         null -> null
-        ThreadActionCardSpecError.FormRequired -> stringResource(MR.strings.thread_action_card_form_required)
-        is ThreadActionCardSpecError.Failed -> error.serverMessage ?: stringResource(MR.strings.thread_action_card_execute_failed)
+        ThreadActionCardSpecError.FormRequired -> stringResource(Res.string.thread_action_card_form_required)
+        is ThreadActionCardSpecError.Failed -> error.serverMessage ?: stringResource(Res.string.thread_action_card_execute_failed)
     }
 
 /** An entity's name from the thread's lookup; only for the viewer's own server, else the card's fallback. */
@@ -138,13 +137,13 @@ internal fun ThreadActionCardSpecView(
         when {
             card.isExecuted -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
-                card.targetServerName?.let { stringResource(MR.strings.thread_action_card_blocked_target_server, it) }
-                    ?: stringResource(MR.strings.thread_action_card_blocked_source_workspace)
+                card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
+                    ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(MR.strings.thread_action_card_committed_by, it) }
+    val committedBy = card.executedByUserName?.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.thread_action_card_committed_by, it) }
     val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
-    val reconfirmLabel = stringResource(MR.strings.thread_action_card_reconfirm)
+    val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
     val rendered =
         remember(spec, card.needsReconfirmation, reconfirmLabel, displayLocale) {
             if (card.needsReconfirmation) {
@@ -204,8 +203,8 @@ internal fun ThreadActionCardSpecConfirmSheet(
             commitEnabled = !state.card.isExecuted && !state.card.isFrozen,
             commitLoading = state.submitting,
             commitVariant = if (state.destructive) RaftButtonVariant.Danger else RaftButtonVariant.Primary,
-            closeLabel = stringResource(MR.strings.common_close),
-            cancelLabel = stringResource(MR.strings.common_cancel),
+            closeLabel = stringResource(Res.string.common_close),
+            cancelLabel = stringResource(Res.string.common_cancel),
             closeEnabled = !state.submitting,
         ) {
             Column(

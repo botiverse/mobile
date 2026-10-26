@@ -8490,7 +8490,7 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
 
-    val actionCardSpecCopiedLabel = stringResource(MR.strings.common_copied)
+    val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
     // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
     // (threadActionCardSpecPress).
@@ -8519,11 +8519,11 @@ private fun SharedThreadRouteContentContent(
             actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form) }.distinctUntilChanged()
         }
     val actionCardSpecState by actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
-    val actionCardAlreadyExecutedLabel = stringResource(MR.strings.thread_action_card_already_executed)
+    val actionCardAlreadyExecutedLabel = stringResource(Res.string.thread_action_card_already_executed)
     val actionCardAlreadyExecutedByTemplate =
-        stringResource(MR.strings.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
-    val actionCardOpenInWebFailedLabel = stringResource(MR.strings.thread_action_card_open_in_web_failed)
-    val actionCardFrozenClosedLabel = stringResource(MR.strings.thread_action_card_frozen_closed)
+        stringResource(Res.string.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
+    val actionCardOpenInWebFailedLabel = stringResource(Res.string.thread_action_card_open_in_web_failed)
+    val actionCardFrozenClosedLabel = stringResource(Res.string.thread_action_card_frozen_closed)
     LaunchedEffect(actionCardSpecStore) {
         actionCardSpecStore.effects.collect { effect ->
             when (effect) {
