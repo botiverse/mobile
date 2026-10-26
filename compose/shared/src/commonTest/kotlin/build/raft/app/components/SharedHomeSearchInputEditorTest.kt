@@ -106,4 +106,35 @@ class SharedHomeSearchInputEditorTest {
         assertEquals(TextRange("i18n search".length), owner.value.selection)
         assertEquals(listOf("i18n search"), projected)
     }
+
+    @Test
+    fun selectAllSelectsTheWholeQueryWithoutAStoreProjection() {
+        val owner = SharedHomeSearchEditorOwner("")
+        val projections = mutableListOf<String>()
+        owner.acceptEditorValue(
+            TextFieldValue("hello", selection = TextRange(2), composition = TextRange(0, 5))
+        ) { projections += it }
+
+        owner.selectAll()
+
+        assertEquals("hello", owner.value.text)
+        assertEquals(TextRange(0, 5), owner.value.selection)
+        assertEquals(null, owner.value.composition)
+        assertEquals(listOf("hello"), projections)
+
+        // Typing over the selection replaces the old query.
+        owner.acceptEditorValue(TextFieldValue("w", selection = TextRange(1))) { projections += it }
+        assertEquals(listOf("hello", "w"), projections)
+    }
+
+    @Test
+    fun selectAllLeavesAnEmptyFieldUntouched() {
+        val owner = SharedHomeSearchEditorOwner("")
+        val before = owner.value
+
+        owner.selectAll()
+
+        assertSame(before, owner.value)
+        assertEquals(TextRange(0), owner.value.selection)
+    }
 }
