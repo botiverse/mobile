@@ -13,8 +13,8 @@ import kotlin.test.assertTrue
 
 /**
  * artin 10-26: a message opened from Activity showed its row's cut preview ("…") until the page
- * loaded. A cut preview is now flagged on the seed message and shown without its "…" (the card ends
- * it with a loading indicator); a full copy this device already holds is used instead.
+ * loaded. A cut preview is now flagged on the seed message and shown with its "…" (it says the text is
+ * cut), with a loading indicator below it; a full copy this device already holds is used instead.
  */
 class ThreadActivityOpenSeedTruncatedPreviewTest {
     @Test
@@ -41,11 +41,11 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
     }
 
     @Test
-    fun aCutChannelPreviewSeedsAFlaggedMessageWithoutItsEllipsis() {
+    fun aCutChannelPreviewSeedsAFlaggedMessageThatKeepsItsEllipsis() {
         val cut = "x".repeat(139) + " …"
         val seeded = seed(channelRow(preview = cut), channelRoute()).single()
         assertTrue(seeded.activityPreviewTruncated)
-        assertEquals("x".repeat(139), seeded.body, "no trailing ellipsis or space")
+        assertEquals(cut, seeded.body, "the server's cut text, trailing \"…\" kept")
 
         val full = seed(channelRow(preview = "the whole message"), channelRoute()).single()
         assertFalse(full.activityPreviewTruncated)
@@ -96,7 +96,7 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
         val cut = seed(channelRow(preview = "y".repeat(140) + "…"), channelRoute()).single()
         val other = cut.copy(id = "m-other", body = "another message", activityPreviewTruncated = false)
         val localFull = cut.copy(body = "y".repeat(400), activityPreviewTruncated = false, seq = 7)
-        val localCut = cut.copy(body = "y".repeat(140))
+        val localCut = cut.copy(body = "y".repeat(140) + "…")
 
         assertEquals(listOf(localFull), listOf(cut).withLocalFullMessages(listOf(other, localFull)))
         assertEquals(listOf(cut), listOf(cut).withLocalFullMessages(listOf(other, localCut)), "never another stand-in")
@@ -115,11 +115,11 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
         val full = cut.mergeRealtimeUpdate(cut.copy(body = "z".repeat(300), activityPreviewTruncated = false))
         assertEquals("z".repeat(300) to false, full.body to full.activityPreviewTruncated)
         val sparse = cut.mergeRealtimeUpdate(cut.copy(body = "", activityPreviewTruncated = false))
-        assertEquals("z".repeat(140) to true, sparse.body to sparse.activityPreviewTruncated)
+        assertEquals("z".repeat(140) + "…" to true, sparse.body to sparse.activityPreviewTruncated)
     }
 
     @Test
-    fun aSettledCutSeedStopsLoadingAndGetsItsEllipsisBack() {
+    fun aSettledCutSeedStopsLoadingAndKeepsItsEllipsis() {
         val cut = seed(channelRow(preview = "w".repeat(140) + "…"), channelRoute()).single()
         val plain = cut.copy(id = "m2", body = "short", activityPreviewTruncated = false)
         val settled = RaftThreadScreenPayload(status = "content", messages = listOf(plain, cut)).withActivityPreviewsSettled()

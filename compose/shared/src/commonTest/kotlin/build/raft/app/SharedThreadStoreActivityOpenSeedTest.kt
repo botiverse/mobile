@@ -36,15 +36,15 @@ import kotlin.test.assertTrue
 class SharedThreadStoreActivityOpenSeedTest {
     @Test
     fun theActivityRowMessageIsTheFirstFrameAndTheCanonicalLoadReplacesIt() = runBlocking {
-        // artin 10-26: a cut preview stands in without its "…" and flagged (the card ends it with a
-        // loading indicator); the canonical message replaces it and is never flagged. When the load
-        // fails (offline), the stand-in stays but stops loading and gets its "…" back.
+        // artin 10-26: a cut preview stands in with its "…" and flagged (the card shows a loading
+        // indicator below it); the canonical message replaces it and is never flagged. When the load
+        // fails (offline), the stand-in stays, "…" still on, but stops loading.
         val cut = "c".repeat(140)
         assertSeedThenCanonical(preview = "seen in Activity", expectedBody = "seen in Activity", expectedTruncated = false)
-        assertSeedThenCanonical(preview = "$cut…", expectedBody = cut, expectedTruncated = true)
+        assertSeedThenCanonical(preview = "$cut…", expectedBody = "$cut…", expectedTruncated = true)
         assertSeedThenCanonical(
             preview = "$cut…",
-            expectedBody = cut,
+            expectedBody = "$cut…",
             expectedTruncated = true,
             loadFails = true,
             expectedAfterLoad = Triple("m1", "$cut…", false),
