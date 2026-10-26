@@ -545,6 +545,7 @@
     <string name="thread_add_member_failed">UNABLE TO ADD MEMBER</string>
     <string name="thread_member_role_agent">Agent</string>
     <string name="thread_quoted_permalink_loading">Loading message…</string>
+    <string name="thread_message_loading_full">Loading full message…</string>
     <string name="thread_quoted_permalink_no_content">(no content)</string>
     <string name="thread_quoted_permalink_unavailable">Message preview unavailable</string>
 <string name="thread_member_role_member">Member</string>

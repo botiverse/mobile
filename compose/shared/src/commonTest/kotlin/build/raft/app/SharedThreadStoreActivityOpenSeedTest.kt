@@ -36,6 +36,20 @@ import kotlin.test.assertTrue
 class SharedThreadStoreActivityOpenSeedTest {
     @Test
     fun theActivityRowMessageIsTheFirstFrameAndTheCanonicalLoadReplacesIt() = runBlocking {
+        // artin 10-26: a cut preview stands in without its "…" and flagged (the card ends it with a
+        // loading indicator); the canonical message replaces it and is never flagged.
+        val cut = "c".repeat(140)
+        val cases =
+            listOf(
+                Triple("seen in Activity", "seen in Activity", false),
+                Triple("$cut…", cut, true),
+            )
+        for ((preview, shown, truncated) in cases) {
+            assertSeedThenCanonical(preview = preview, expectedBody = shown, expectedTruncated = truncated)
+        }
+    }
+
+    private suspend fun assertSeedThenCanonical(preview: String, expectedBody: String, expectedTruncated: Boolean) {
         // runBlocking, not virtual time: the canonical page resumes off the test dispatcher (the
         // existing gated-fetch store tests wait the same way), so the replacement is awaited with a
         // bounded wait that fails with the state it saw.
@@ -45,7 +59,7 @@ class SharedThreadStoreActivityOpenSeedTest {
         api.channelMessagesStarted = CompletableDeferred()
         api.releaseChannelMessages = CompletableDeferred()
         // The row's latest message is the same message the canonical page returns ("m1").
-        val source = source(channelRow(channelId = "channel-1", messageId = "m1", preview = "seen in Activity"))
+        val source = source(channelRow(channelId = "channel-1", messageId = "m1", preview = preview))
         try {
             val store = SharedThreadStore(dataSource = dataSource(api, source), scope = scope)
             store.dispatch(SharedThreadIntent.Start(channelRoute()))
@@ -53,7 +67,10 @@ class SharedThreadStoreActivityOpenSeedTest {
 
             val first = store.state.value.payload
             assertEquals("content", first.status, "the row's message stands in while the load runs")
-            assertEquals(listOf("m1" to "seen in Activity"), first.messages.map { it.id to it.body })
+            assertEquals(
+                listOf(Triple("m1", expectedBody, expectedTruncated)),
+                first.messages.map { Triple(it.id, it.body, it.activityPreviewTruncated) },
+            )
             assertTrue(first.durableLastKnown, "a stand-in: no paging authority")
             assertFalse(first.canLoadMoreBefore)
 
@@ -64,7 +81,11 @@ class SharedThreadStoreActivityOpenSeedTest {
 
             val canonical = store.state.value.payload
             assertEquals("content", canonical.status)
-            assertEquals(listOf("m1" to "network body"), canonical.messages.map { it.id to it.body }, "replaced, not doubled")
+            assertEquals(
+                listOf(Triple("m1", "network body", false)),
+                canonical.messages.map { Triple(it.id, it.body, it.activityPreviewTruncated) },
+                "replaced, not doubled, never flagged",
+            )
         } finally {
             api.releaseChannelMessages?.complete(Unit)
             scopeJob.cancelAndJoin()

@@ -56,13 +56,68 @@ internal fun threadActivityOpenSeedMessages(
         .forEach { item ->
             item.activitySeedMessages(principalId, names).forEach { message ->
                 val existing = byId[message.id]
-                // A reply window entry carries the server seq; it wins over a row-derived copy.
-                if (existing == null || (existing.seq == null && message.seq != null)) {
+                // A reply window entry carries the server seq; it wins over a row-derived copy, and a
+                // full body wins over a cut preview of the same message.
+                if (
+                    existing == null ||
+                        (existing.seq == null && message.seq != null) ||
+                        (existing.activityPreviewTruncated && !message.activityPreviewTruncated)
+                ) {
                     byId[message.id] = message
                 }
             }
         }
     return byId.values.toList().sortedByThreadTimeline()
+}
+
+/**
+ * artin 10-26: a seed message whose Activity preview was cut takes the full copy of the same message
+ * when this device already holds one. [localMessages] are the open path's other candidate frames (the
+ * superseded memory copy, the durable last-known frame), each already matched to the route identity
+ * and owner; only a message with the same id is taken, and never another cut stand-in.
+ */
+internal fun List<RaftThreadMessageItem>.withLocalFullMessages(
+    localMessages: Collection<RaftThreadMessageItem>,
+): List<RaftThreadMessageItem> {
+    if (none { it.activityPreviewTruncated } || localMessages.isEmpty()) return this
+    val fullById =
+        localMessages
+            .filter { local -> !local.activityPreviewTruncated && local.body.isNotBlank() }
+            .associateBy { it.id }
+    return map { seed -> if (seed.activityPreviewTruncated) fullById[seed.id] ?: seed else seed }
+}
+
+/** The server's preview ellipsis (`truncatePreview`, `historyLimitedPreview`). */
+internal const val ActivityPreviewEllipsis = "…"
+
+/** `inboxPolicyModel.truncatePreview(…, 140)`: the first 140 UTF-16 units, then "…". */
+internal const val ActivityPreviewMaxLength = 140
+
+/** `historyPreview.HISTORY_PREVIEW_CHARS`: a message behind the history cutoff is a 40-code-point glimpse. */
+internal const val ActivityHistoryGlimpseCodePoints = 40
+
+/**
+ * Whether an Activity row's preview is the server's cut of a longer message. The inbox row carries no
+ * "truncated" field, so this reads the two cuts the server makes (slock packages/server
+ * `inboxPolicyModel.truncatePreview`, `historyPreview.historyLimitedPreview`): exactly 140 UTF-16
+ * units plus "…", or exactly 40 code points ending in "…". A shorter text ending in "…" is the
+ * message itself. Both server cuts and Kotlin strings count UTF-16 units the same way.
+ */
+internal fun activitySeedPreviewIsTruncated(preview: String): Boolean {
+    if (!preview.endsWith(ActivityPreviewEllipsis)) return false
+    if (preview.length == ActivityPreviewMaxLength + ActivityPreviewEllipsis.length) return true
+    return preview.codePointCountCompat() == ActivityHistoryGlimpseCodePoints
+}
+
+private fun String.codePointCountCompat(): Int {
+    var count = 0
+    var index = 0
+    while (index < length) {
+        val high = this[index]
+        index += if (high.isHighSurrogate() && index + 1 < length && this[index + 1].isLowSurrogate()) 2 else 1
+        count++
+    }
+    return count
 }
 
 /**
@@ -175,7 +230,15 @@ private fun InboxItem.activitySeedMessage(
     names: ActivitySeedNames,
 ): RaftThreadMessageItem? {
     val messageId = id?.takeIf { it.isNotBlank() } ?: return null
-    val text = body?.takeIf { it.isNotBlank() } ?: return null
+    val preview = body?.takeIf { it.isNotBlank() } ?: return null
+    // artin 10-26: a cut preview shows without its "…" and ends in a loading indicator instead.
+    val truncated = activitySeedPreviewIsTruncated(preview)
+    val text =
+        if (truncated) {
+            preview.removeSuffix(ActivityPreviewEllipsis).trimEnd().takeIf { it.isNotBlank() } ?: return null
+        } else {
+            preview
+        }
     val at = createdAt?.takeIf { it.isNotBlank() } ?: return null
     val author = senderId?.takeIf { it.isNotBlank() } ?: return null
     // Web `isSystemSender`: a membership note is stored as sender type `user` with sender id `system`,
@@ -196,6 +259,7 @@ private fun InboxItem.activitySeedMessage(
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(at),
         messageType = if (system) "System" else "Chat",
         body = text,
+        activityPreviewTruncated = truncated,
     ).withActivityRetraction(this)
 }
 
@@ -206,7 +270,11 @@ private fun InboxItem.activitySeedMessage(
  */
 private fun RaftThreadMessageItem.withActivityRetraction(row: InboxItem): RaftThreadMessageItem {
     val latestId = if (row.kind == InboxItemKind.Thread) row.latestActivityMessageId else row.lastMessageId
-    return if (row.latestRetracted && id == latestId?.value) copy(deletedAt = RetractedAtUnknown) else this
+    return if (row.latestRetracted && id == latestId?.value) {
+        copy(deletedAt = RetractedAtUnknown, activityPreviewTruncated = false)
+    } else {
+        this
+    }
 }
 
 private fun ReplyPreview.toActivitySeedMessage(

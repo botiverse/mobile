@@ -3004,6 +3004,13 @@ internal data class RaftThreadMessageItem(
     val systemEventType: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
+    /**
+     * artin 10-26: this is a stand-in seeded from an Activity row whose server preview was cut
+     * ([activitySeedPreviewIsTruncated]); [body] holds the cut text without its "…", and the card
+     * ends it with a loading indicator until the canonical load replaces the message. Only the
+     * Activity open seed sets it; a message read from the server or a cache never does.
+     */
+    val activityPreviewTruncated: Boolean = false,
     val randomId: String? = null,
     val threadChannelId: String? = null,
     val replyCount: Int = 0,
@@ -25658,7 +25665,7 @@ private fun ThreadMessageCardContent(
                                 // content coordinates with the body — an in-flow
                                 // Row child, so sending → sent removes only
                                 // left-side width and the End edge cannot move.
-                                val messageBodyBlock: @Composable () -> Unit = {
+                                val messageBodyContent: @Composable () -> Unit = {
                                     if (translation?.pendingPlaceholder == true) {
                                         ThreadMessageTranslationPendingPlaceholder()
                                     } else {
@@ -25751,6 +25758,21 @@ private fun ThreadMessageCardContent(
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                // artin 10-26: a body cut from an Activity preview ends in a loading
+                                // indicator until the canonical load replaces the message.
+                                val messageBodyBlock: @Composable () -> Unit = {
+                                    if (message.activityPreviewTruncated) {
+                                        Column(
+                                            horizontalAlignment =
+                                                if (alignOwnMessageRight) Alignment.End else Alignment.Start
+                                        ) {
+                                            messageBodyContent()
+                                            ThreadMessageFullBodyLoadingIndicator()
+                                        }
+                                    } else {
+                                        messageBodyContent()
                                     }
                                 }
                                 if (alignOwnMessageRight) {
@@ -26426,6 +26448,21 @@ private fun ThreadMessageLocalSendStatus(
             }
         }
     }
+}
+
+/**
+ * artin 10-26: ends a message whose body is a cut Activity preview while the full message loads
+ * ([RaftThreadMessageItem.activityPreviewTruncated]): the raft-ui Spinner at its smallest size in the
+ * muted ink, named for screen readers.
+ */
+@Composable
+internal fun ThreadMessageFullBodyLoadingIndicator(modifier: Modifier = Modifier) {
+    RaftSpinner(
+        modifier = modifier.padding(top = RaftAppSpacing.Xs),
+        size = RaftSpinnerSize.Xs,
+        color = RaftColor.TextMutedGray,
+        contentDescription = stringResource(MR.strings.thread_message_loading_full),
+    )
 }
 
 @Composable

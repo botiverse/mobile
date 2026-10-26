@@ -545,6 +545,7 @@
     <string name="thread_add_member_failed">无法添加成员</string>
     <string name="thread_member_role_agent">Agent</string>
     <string name="thread_quoted_permalink_loading">正在加载消息…</string>
+    <string name="thread_message_loading_full">正在加载完整消息…</string>
     <string name="thread_quoted_permalink_no_content">（无内容）</string>
     <string name="thread_quoted_permalink_unavailable">消息预览不可用</string>
 <string name="thread_member_role_member">成员</string>

@@ -22,6 +22,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -36,6 +37,9 @@ import org.robolectric.annotation.GraphicsMode
  *    directory although the row carries no name.
  *  - `thread.system-message-seed`: "@Jasper joined this channel." (sender id `system`) is the muted
  *    centered system line, not a chat message from "system" with an "S" face.
+ *  - `thread.activity-seed-truncated` (artin 10-26): a row whose preview the server cut at 140
+ *    characters shows that text without its "…", ended by the small muted loading spinner (frozen on
+ *    its first step), below a short message that needs none.
  * Light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -52,6 +56,10 @@ class ThreadActivityOpenSeedScreenshotTest {
     @Test fun systemMessageLight() = capture("thread.system-message-seed", RaftAppAppearance.Light) { SystemMessageRows() }
 
     @Test fun systemMessageDark() = capture("thread.system-message-seed.dark", RaftAppAppearance.Dark) { SystemMessageRows() }
+
+    @Test fun truncatedPreviewLight() = capture("thread.activity-seed-truncated", RaftAppAppearance.Light) { TruncatedPreviewRows() }
+
+    @Test fun truncatedPreviewDark() = capture("thread.activity-seed-truncated.dark", RaftAppAppearance.Dark) { TruncatedPreviewRows() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, rows: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -118,6 +126,26 @@ private val humanSeed =
 
 private val systemSeed =
     seedFrom(channelRow("sys-1", "@Jasper joined this channel.", "2026-10-24T07:13:00Z", "system")).single()
+
+// What the server sends for a longer message: its first 140 characters, then "…".
+private val truncatedSeed =
+    seedFrom(
+        channelRow(
+            "m-2",
+            ("Checked the Activity open path on the alpha: the thread page shows the row preview first, " +
+                "then swaps in the full message once the channel load answers.").take(140) + "…",
+            "2026-10-24T07:02:00Z",
+            "u-jasper",
+        )
+    ).single()
+
+@Composable
+private fun TruncatedPreviewRows() {
+    CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
+        SeedMessageRow(humanSeed)
+        SeedMessageRow(truncatedSeed)
+    }
+}
 
 @Composable
 private fun StandInLoadingRows() {

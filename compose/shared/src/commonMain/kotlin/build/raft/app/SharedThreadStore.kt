@@ -7634,10 +7634,17 @@ internal class SharedThreadStore(
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
                 }
-        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeed)
+        // artin 10-26: a seed message whose Activity preview was cut shows the full copy when either
+        // route-matched local frame already holds that message.
+        val activitySeedBodies =
+            activitySeed.withLocalFullMessages(
+                listOfNotNull(supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
+            )
+        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeedBodies)
         if (activitySeed.isNotEmpty()) {
             diagnosticsLogger?.invoke(
                 "thread_start_activity_seed threadId=${threadId.orEmpty()} seed=${activitySeed.size} " +
+                    "truncated=${activitySeedBodies.count { it.activityPreviewTruncated }} " +
                     "standIn=${standInFirstFrame.status}/${standInFirstFrame.messages.size} " +
                     "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
             )
