@@ -29,7 +29,11 @@ APP=""
 BUILD=""
 CHANNEL=""
 HANDS_JSON=""
-HANDS_CLI="${HANDS_CLI:-hands}"
+# Same CLI selection as finalize_android_hands_release.sh, which exports these: the
+# pinned npm package unless HANDS_CLI names a local binary.
+HANDS_CLI="${HANDS_CLI:-}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.32}"
+HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org/}"
 
 die() {
   echo "release-channel-guard: $*" >&2
@@ -62,9 +66,16 @@ if [ -n "${HANDS_JSON}" ]; then
   [ -f "${HANDS_JSON}" ] || die "hands json not found: ${HANDS_JSON}"
   BODY="$(cat "${HANDS_JSON}")"
 else
-  command -v "${HANDS_CLI}" >/dev/null 2>&1 ||
-    die "${HANDS_CLI} not found; pass --hands-json to check a recorded response"
-  BODY="$("${HANDS_CLI}" api GET "/api/apps/${APP}/builds/${BUILD}" --json 2>/dev/null)" ||
+  if [ -n "${HANDS_CLI}" ]; then
+    command -v "${HANDS_CLI}" >/dev/null 2>&1 ||
+      die "HANDS_CLI=${HANDS_CLI} not found; pass --hands-json to check a recorded response"
+    HANDS=("${HANDS_CLI}")
+  else
+    command -v npm >/dev/null 2>&1 ||
+      die "npm is required to run ${HANDS_CLI_PACKAGE}; pass --hands-json to check a recorded response"
+    HANDS=(npm exec --yes --registry "${HANDS_NPM_REGISTRY}" --package "${HANDS_CLI_PACKAGE}" -- hands)
+  fi
+  BODY="$("${HANDS[@]}" api GET "/api/apps/${APP}/builds/${BUILD}" --json 2>/dev/null)" ||
     die "could not read build ${BUILD} from Hands"
 fi
 
