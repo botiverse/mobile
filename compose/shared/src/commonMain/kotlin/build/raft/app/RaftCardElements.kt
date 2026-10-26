@@ -38,6 +38,9 @@ import build.raft.app.data.ActionCardSpecIcon
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecNoticeTone
 import build.raft.app.data.ActionCardSpecTextTone
+import build.raft.app.data.AppLocale
+import build.raft.app.data.actionCardDisplayLocale
+import build.raft.app.data.currentSystemLanguageTag
 import build.raft.app.data.CardDuration
 import build.raft.app.data.CardElement
 import build.raft.app.data.CardRelativeTime
@@ -48,7 +51,6 @@ import build.raft.app.data.RaftAppLinkCardElement
 import build.raft.app.data.RaftAppLinkTextTone
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.renderActionCardMsg
-import build.raft.app.format.RaftFormatLocale
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
@@ -402,19 +404,14 @@ private fun RaftCardDuration(node: CardDuration) {
 // ---------------------------------------------------------------------------
 // Msg text and entity names.
 
-/** The contract locale key a card Msg is read in: the app's UI language (`en`, `zh-cn`, `ja`). */
+/** The contract locale key a card Msg is read in: the app's UI language (A1's [actionCardDisplayLocale]). */
 @Composable
 internal fun rememberActionCardDisplayLocale(): String {
     val appLocale by KmmResourceLocaleRuntime.locale.collectAsState()
-    return remember(appLocale) { actionCardDisplayLocale(RaftFormatLocale.current()) }
-}
-
-internal fun actionCardDisplayLocale(locale: RaftFormatLocale): String =
-    when (locale) {
-        RaftFormatLocale.English -> "en"
-        RaftFormatLocale.SimplifiedChinese -> "zh-cn"
-        RaftFormatLocale.Japanese -> "ja"
+    return remember(appLocale) {
+        (appLocale ?: AppLocale.System).actionCardDisplayLocale(runCatching { currentSystemLanguageTag() }.getOrNull())
     }
+}
 
 /** An entity's name from the store, else the card's fallback; never its id. */
 internal fun actionCardEntityName(ref: ActionCardSpecEntityRef, context: RaftCardTreeContext): String =

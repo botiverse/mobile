@@ -10,14 +10,13 @@ import build.raft.app.data.ActionCardSpecFieldValue
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecMsgParam
 import build.raft.app.data.CardElement
-import build.raft.app.format.RaftFormatLocale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
  * Task #36 (action card A2): what the renderer writes for card copy and entities. The Msg
- * template pick and fill are A1's (vector-tested there); this pins the app locale key, entity
+ * template pick and fill are A1's (vector-tested there); this pins the locale pick as the renderer uses it, entity
  * names (never an id) and how a column groups its runs.
  */
 class RaftActionCardMsgTest {
@@ -26,10 +25,7 @@ class RaftActionCardMsgTest {
     private val computer = ActionCardSpecEntityRef(ActionCardSpecEntityKind.Computer, "bf6c2d7e-4a9b-4c8d-9e7f-60718293a4b5", fallback = "Ada's MacBook")
 
     @Test
-    fun theAppLanguageIsAContractLocaleKey() {
-        assertEquals("en", actionCardDisplayLocale(RaftFormatLocale.English))
-        assertEquals("zh-cn", actionCardDisplayLocale(RaftFormatLocale.SimplifiedChinese))
-        assertEquals("ja", actionCardDisplayLocale(RaftFormatLocale.Japanese))
+    fun copyIsReadInTheViewersLocaleElseEnglish() {
         val msg = ActionCardSpecMsg("actionCard.test.m", mapOf("en" to "Create channel", "zh-cn" to "创建频道"))
         assertEquals("创建频道", actionCardMsgPlain(msg, RaftCardTreeContext(displayLocale = "zh-cn")))
         assertEquals("Create channel", actionCardMsgPlain(msg, RaftCardTreeContext(displayLocale = "ja")))
