@@ -52,13 +52,20 @@ class RaftDesktopBridgeTransport(private val onClosePage: () -> Unit) : HostBrid
         }
     }
 
+    /** Web and mail links only: anything else (file:, custom schemes, ...) is not handed to the OS. */
     private fun openUrl(url: String) {
-        if (url.isBlank()) return
-        runCatching { Desktop.getDesktop().browse(URI(url)) }
-            .onFailure { log("openUrl failed: ${it.message}") }
+        val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return
+        if (uri.scheme?.lowercase() !in OPEN_URL_SCHEMES) {
+            log("openUrl refused scheme=${uri.scheme}")
+            return
+        }
+        runCatching { Desktop.getDesktop().browse(uri) }
+            .onFailure { log("openUrl failed: ${it::class.simpleName}") }
     }
 
     companion object {
+        private val OPEN_URL_SCHEMES = setOf("http", "https", "mailto")
+
         val NOT_IMPLEMENTED: String =
             JsonObject(mapOf("code" to JsonPrimitive(-1), "message" to JsonPrimitive("Method not implemented")))
                 .toRaftJsonString()

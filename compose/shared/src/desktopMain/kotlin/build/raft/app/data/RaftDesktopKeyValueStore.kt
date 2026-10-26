@@ -1,8 +1,7 @@
 package build.raft.app.data
 
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -13,7 +12,8 @@ import kotlinx.serialization.json.Json
  * [RaftDesktopPaths.keyValueDir], written through (atomic replace) on every change. One
  * instance per namespace per process, so every reader sees every write.
  *
- * TODO(desktop): values are stored in plain files; auth tokens should move to the macOS Keychain.
+ * Files are owner-only (0600, in a 0700 data dir). TODO(desktop): auth tokens should move to the
+ * macOS Keychain.
  */
 internal class RaftDesktopFileKeyValueStore private constructor(private val file: File) : RaftKeyValueStore {
     private val values: MutableMap<String, String> = load(file)
@@ -28,9 +28,12 @@ internal class RaftDesktopFileKeyValueStore private constructor(private val file
     }
 
     private fun persist() {
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        tmp.writeText(json.encodeToString(serializer, values.toMap()))
-        Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        try {
+            RaftDesktopPrivateFiles.writeAtomically(file, json.encodeToString(serializer, values.toMap()))
+        } catch (e: IOException) {
+            // The in-memory value stays current; the next write retries the file.
+            System.err.println("W RaftDesktopKeyValueStore: persist failed file=${file.name} error=${e::class.simpleName}")
+        }
     }
 
     companion object {

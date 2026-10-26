@@ -71,16 +71,8 @@ object RaftDesktopRealtimeHost {
             )
         when (action) {
             "reconcile" -> reconcile(params, witness)
-            "connect" ->
-                connect(
-                    serverId = ServerId(params.str("serverId")),
-                    accessToken = params.str("accessToken"),
-                    socketUrl = params.str("socketUrl"),
-                    environmentId = "",
-                    requestedLastSeq = params.long("lastSeq"),
-                    forceReconnect = params.bool("forceReconnect"),
-                    witness = witness,
-                )
+            // The shared shell reports "reconcile" (one current server); the per-shell "connect"
+            // request is not used by desktop and is ignored rather than half-validated.
             "cursorAdvance" -> cursorAdvance(ServerId(params.str("serverId")), params.long("appliedSeq"), witness)
             "disconnect" -> disconnect(params.str("reason").ifBlank { "shared_disconnect" }, params.str("serverId"))
             "authRefreshFinished" -> RaftDesktopLog.d(TAG, "auth_refresh_finished success=${params.bool("success")}")
@@ -101,7 +93,15 @@ object RaftDesktopRealtimeHost {
             return
         }
         val accessToken = params.str("accessToken")
-        if (accessToken.isBlank() || witness.scopeLeaseId.isBlank() || witness.principalId.isBlank() || witness.authGeneration <= 0L) {
+        // Android's authority guard (process_reconcile_skip reason=invalid_authority).
+        if (
+            accessToken.isBlank() ||
+            params.str("environmentId").isBlank() ||
+            witness.scopeLeaseId.isBlank() ||
+            witness.principalId.isBlank() ||
+            witness.authGeneration <= 0L ||
+            witness.connectionFamilyId.isBlank()
+        ) {
             closeSession("invalid_process_authority")
             RaftDesktopLog.w(TAG, "reconcile_skip reason=invalid_authority")
             return

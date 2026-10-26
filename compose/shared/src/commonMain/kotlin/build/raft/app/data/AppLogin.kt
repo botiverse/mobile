@@ -195,4 +195,4 @@ private val LoopbackHttpUrl = Regex("^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?
  * The browser login page must be served over https; plain http only to this machine (a local
  * development server, e.g. raftdev, whose web app has no TLS).
  */
-internal fun isAllowedAppLoginUrl(url: String): Boolean = url.startsWith("https://") || LoopbackHttpUrl.containsMatchIn(url)
+fun isAllowedAppLoginUrl(url: String): Boolean = url.startsWith("https://") || LoopbackHttpUrl.containsMatchIn(url)

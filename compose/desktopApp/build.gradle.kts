@@ -42,7 +42,8 @@ compose.desktop {
         mainClass = "build.raft.app.desktop.MainKt"
         jvmArgs += listOf("-Dapple.awt.application.name=Raft")
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Deb)
+            // macOS dmg only for now (Linux packages would need their own data-dir and URL handler story).
+            targetFormats(TargetFormat.Dmg)
             packageName = "Raft"
             packageVersion = raftDesktopVersion.get()
             description = "Raft"
@@ -50,8 +51,8 @@ compose.desktop {
             // java.sql: SQLDelight's JDBC SQLite driver; jdk.unsupported: OkHttp / Skiko.
             modules("java.sql", "jdk.unsupported", "java.naming")
             macOS {
-                // Same identifier as the iOS app (build.raft.app).
-                bundleID = "build.raft.app"
+                // Not the iOS app's build.raft.app: on Apple Silicon the iOS app can be installed too.
+                bundleID = "build.raft.app.desktop"
                 appCategory = "public.app-category.productivity"
                 // Browser sign-in returns to raft://login/callback (an app-login return URI the
                 // server allows); macOS hands it to the app's open-URI handler.
@@ -73,9 +74,6 @@ compose.desktop {
                 // Signing and notarization run on macOS CI (DevOps): pass
                 // -Pcompose.desktop.mac.sign=true plus the identity / notarization properties
                 // documented in README.md.
-            }
-            linux {
-                iconFile.set(project.file("../iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png"))
             }
         }
     }

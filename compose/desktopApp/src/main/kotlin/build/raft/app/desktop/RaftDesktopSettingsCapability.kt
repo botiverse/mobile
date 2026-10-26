@@ -1,5 +1,6 @@
 package build.raft.app.desktop
 
+import build.raft.app.data.isAllowedAppLoginUrl
 import build.raft.app.toRaftJsonString
 import java.awt.Desktop
 import java.net.URI
@@ -53,19 +54,17 @@ object RaftDesktopSettingsCapability {
     }
 
     private fun openAppLogin(authorizationUrl: String): Map<String, String> {
-        // https only, plus plain http to this machine (a local development server).
-        val loopbackHttp = Regex("^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?/").containsMatchIn(authorizationUrl)
-        if (!authorizationUrl.startsWith("https://") && !loopbackHttp) {
+        // Same rule as the shared app login: https, or plain http to this machine (local server).
+        if (!isAllowedAppLoginUrl(authorizationUrl)) {
             return mapOf("status" to "error", "code" to "settings_mobile_oauth_url_invalid")
         }
-        log("app login: opening the browser for $authorizationUrl")
+        log("app login: opening the browser")
         return runCatching { Desktop.getDesktop().browse(URI(authorizationUrl)) }
             .fold(
                 onSuccess = { mapOf("status" to "started") },
                 onFailure = {
-                    log("app login: no browser (${it.message}); open the URL above manually")
-                    // The URL is logged, so a developer can still finish the flow by hand.
-                    mapOf("status" to "started")
+                    log("app login: no browser available (${it::class.simpleName})")
+                    mapOf("status" to "error", "code" to "settings_mobile_oauth_browser_unavailable")
                 },
             )
     }

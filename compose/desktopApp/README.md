@@ -7,7 +7,7 @@ The desktop host for the shared Compose Multiplatform pages (`:shared`, rendered
 
 ```bash
 ./gradlew :desktopApp:run                    # run from the build
-./gradlew :desktopApp:createDistributable    # app image for the current OS
+./gradlew :desktopApp:createDistributable    # app image for the current OS (smoke tests)
 ./gradlew :desktopApp:packageDmg             # macOS only
 ```
 
@@ -19,7 +19,10 @@ Data (key-value stores, database, caches) lives in `~/Library/Application Suppor
 "Sign in to Raft" uses the same browser handoff as the mobile apps: the server's app-login
 request with `returnUri = raft://login/callback`, approved in the browser. The packaged macOS
 app declares the `raft` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
-open-URI handler. Elsewhere (and for `./gradlew :desktopApp:run`) start the app again with the
+open-URI handler. The bundle identifier is `build.raft.app.desktop` (not the iOS app's
+`build.raft.app`), but both apps register the `raft` scheme: on an Apple Silicon Mac that also
+has the iOS Raft app installed, macOS may hand the callback to either app (the first launched /
+registered wins), and sign-in in the other one then never completes. Elsewhere (and for `./gradlew :desktopApp:run`) start the app again with the
 callback URL as its argument: the second launch hands it to the running app and exits.
 
 ## Realtime
