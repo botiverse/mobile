@@ -3668,6 +3668,22 @@ internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay
         nowEpochMillis = null
     )
 
+/**
+ * The time on an action card's done line (web `CommittedByLine`: `formatMessageTime(executedAt)`):
+ * the clock today, else the date and the clock, in the person's 12h/24h choice. The thread payload
+ * carries no "today", so the page's live day ([LocalRaftTimeContextProvider]) supplies it, as for the
+ * date dividers. Without a day there is no time rather than the raw wire timestamp.
+ */
+internal fun ThreadTimelineRenderConfig.formatActionCardExecutedTimeLabel(
+    executedAt: String?,
+    liveTodayEpochDay: Long?
+): String? {
+    val value = executedAt?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val context = dateDividerTimeContext(liveTodayEpochDay)
+    if (context.todayEpochDay == null) return null
+    return context.formatTimestampLabel(value).takeIf { it.isNotBlank() }
+}
+
 internal fun formatThreadCompactTimestampLabel(
     value: String,
     timeContext: RaftTimeContext?
@@ -21975,8 +21991,10 @@ private fun ThreadMessagesListContent(
                                 timestampLabel = message.timestampLabel,
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
                                 actionCardExecutedTimeLabel =
-                                    message.threadActionCard()?.executedAt?.takeIf { it.isNotBlank() }
-                                        ?.let { renderConfig.formatTimestampLabel(it) }?.takeIf { it.isNotBlank() },
+                                    renderConfig.formatActionCardExecutedTimeLabel(
+                                        message.threadActionCard()?.executedAt,
+                                        liveTodayEpochDay
+                                    ),
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
