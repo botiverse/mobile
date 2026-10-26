@@ -44,7 +44,7 @@ import org.robolectric.shadows.ShadowDialog
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h1100dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h1500dp-xxhdpi")
 class MembersAgentControlsScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
