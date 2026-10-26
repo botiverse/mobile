@@ -74,6 +74,23 @@ class RaftActionCardMsgTest {
     }
 
     @Test
+    fun openInWebIsALinkThatRunsNothingAndStaysUsable() {
+        val card = ActionCardSpecFixtures.card("read_unknown_prop_execute")
+        val run = card.spec.elements["run"] as ActionCardSpecButton
+        // Strip made the unknown execute "Open in web": no confirm, no execute left to call.
+        assertEquals(ActionCardSpecAction.OpenInWeb, run.action)
+        val frozenAndBusy = RaftActionCardFrameState(status = RaftActionCardStatus.Frozen, busyElementKey = "other", blockedReason = "View only")
+        assertEquals(RaftCardButtonState.Enabled, actionCardFrameButtonState(frozenAndBusy, "run", run))
+        assertEquals(RaftCardButtonState.Enabled, actionCardFrameButtonState(RaftActionCardFrameState(readOnly = true), "run", run))
+        val execute = run.copy(action = ActionCardSpecAction.Execute())
+        assertEquals(RaftCardButtonState.Disabled, actionCardFrameButtonState(frozenAndBusy, "run", execute))
+        assertEquals(RaftCardButtonState.Hidden, actionCardFrameButtonState(RaftActionCardFrameState(readOnly = true), "run", execute))
+        assertEquals(RaftCardButtonState.Busy, actionCardFrameButtonState(RaftActionCardFrameState(busyElementKey = "run"), "run", execute))
+        // A done card keeps its body without buttons; its result tree has its own.
+        assertEquals(RaftCardButtonState.Hidden, actionCardFrameButtonState(RaftActionCardFrameState(), "run", run, inSpecOfExecutedCard = true))
+    }
+
+    @Test
     fun aColumnGroupsRunsOfFieldsAndOfButtons() {
         val label = ActionCardSpecMsg("actionCard.test.l", mapOf("en" to "Name"))
         val field = ActionCardSpecDisplayElement.Field(label, ActionCardSpecFieldValue.Plain("x"))

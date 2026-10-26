@@ -685,6 +685,7 @@
     <string name="thread_action_card_reconfirm">Reconfirm</string>
     <string name="thread_action_card_reconfirm_failed">Reconfirmation failed</string>
     <string name="thread_action_card_blocked_target_server">This action runs on %1$s. Switch to %1$s to run it.</string>
+    <string name="thread_action_card_runs_on_server">Runs on %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">This is a history copy. Only the source workspace can run this action.</string>
     <string name="thread_action_card_field_description">Description</string>
     <string name="thread_action_card_field_humans">Humans</string>

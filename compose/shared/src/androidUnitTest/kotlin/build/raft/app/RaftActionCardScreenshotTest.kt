@@ -43,6 +43,9 @@ import org.robolectric.annotation.GraphicsMode
  * - frame-1: busy, executed with its result tree (record under the title), executed without
  *   a result (action buttons gone), frozen.
  * - frame-2: confirm again, view only with a reason, read-only, an error.
+ * - s0-updates (S0.1 / S0.2): Field clamp (1 and 6 lines), ScopeList groups, the shield and
+ *   credit_card header icons, "Runs on {server}" on a joint channel's card, and an execute with
+ *   a key this App doesn't take, stripped to "Open in web", still usable on a frozen card.
  * - limits: every string at its limit in English and Chinese (title wraps, labels truncate),
  *   and the install card in `zh-cn`.
  *
@@ -75,6 +78,10 @@ class RaftActionCardScreenshotTest {
     @Test fun frame2Light() = capture("thread.action-card.frame-2", RaftAppAppearance.Light) { Frame2() }
 
     @Test fun frame2Dark() = capture("thread.action-card.frame-2.dark", RaftAppAppearance.Dark) { Frame2() }
+
+    @Test fun contractUpdatesLight() = capture("thread.action-card.s0-updates", RaftAppAppearance.Light) { ContractUpdates() }
+
+    @Test fun contractUpdatesDark() = capture("thread.action-card.s0-updates.dark", RaftAppAppearance.Dark) { ContractUpdates() }
 
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 
@@ -171,6 +178,15 @@ private fun Frame2() {
     Card("approve_login_execute", RaftActionCardFrameState(blockedReason = "Prepared in Raft Labs. Open it there to approve."), expanded = true)
     Card("open_create_agent", RaftActionCardFrameState(readOnly = true))
     Card("open_feedback_form", RaftActionCardFrameState(error = "Couldn't open the feedback form. Try again."))
+}
+
+@Composable
+private fun ContractUpdates() {
+    Card("field_clamp_6")
+    Card("scope_list_groups")
+    Card("icon_shield", RaftActionCardFrameState(runsOnServerName = "Raft Labs"))
+    Card("icon_credit_card")
+    Card("read_unknown_prop_execute", RaftActionCardFrameState(status = RaftActionCardStatus.Frozen))
 }
 
 @Composable

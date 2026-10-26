@@ -687,6 +687,7 @@
     <string name="thread_action_card_reconfirm">再確認</string>
     <string name="thread_action_card_reconfirm_failed">再確認に失敗しました</string>
     <string name="thread_action_card_blocked_target_server">この操作は %1$s で実行されます。実行するには %1$s に切り替えてください。</string>
+    <string name="thread_action_card_runs_on_server">%1$s で実行</string>
     <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
     <string name="thread_action_card_field_description">説明</string>
     <string name="thread_action_card_field_humans">人間</string>

@@ -50,6 +50,7 @@ import build.raft.app.data.RAFT_APP_LINK_CARD_MAX_DEPTH
 import build.raft.app.data.RaftAppLinkCardElement
 import build.raft.app.data.RaftAppLinkTextTone
 import build.raft.app.data.appLinkDomain
+import build.raft.app.data.actionCardScopeGroupLabel
 import build.raft.app.data.renderActionCardMsg
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -269,6 +270,8 @@ private fun RaftCardFields(fields: List<ActionCardSpecDisplayElement.Field>, con
                     },
                 mono = field.mono == true,
                 valueColor = if (field.muted == true) colors.foregroundHint else Color.Unspecified,
+                // S0.1: at most `clamp` lines (1-6), with an ellipsis.
+                valueMaxLines = field.clamp ?: Int.MAX_VALUE,
             )
         }
     }
@@ -277,23 +280,29 @@ private fun RaftCardFields(fields: List<ActionCardSpecDisplayElement.Field>, con
 /**
  * The permissions an app asks for (web `ActionCardScopes`): "Permissions (N)", then each scope
  * with Raft's sentence for it; when Raft describes none of them, their names on one mono line.
+ * S0.2 `groups` (permission groups, A1's [actionCardScopeGroupLabel]: "Servers · read") follow
+ * as rows of their own, a group this build has no name for under its id. The web does not draw
+ * them yet; nothing emits them before S1.
  */
 @Composable
 private fun RaftCardScopeList(node: ActionCardSpecDisplayElement.ScopeList) {
     val scopes = remember(node.scopes) { node.scopes.map { it.trim() }.filter { it.isNotEmpty() }.distinct() }
+    val groups = node.groups.orEmpty()
     val label = stringResource(MR.strings.thread_action_card_permissions, scopes.size)
-    if (scopes.none { it.lowercase() in RaftCardDescribedScopes }) {
-        RaftMessageActionCardScopeList(label = label) {
+    val described = scopes.any { it.lowercase() in RaftCardDescribedScopes }
+    RaftMessageActionCardScopeList(label = label, viewportDescription = label.takeIf { described || groups.isNotEmpty() }) {
+        if (described) {
+            scopes.forEach { scope -> RaftMessageActionCardScope(scope, raftCardScopeDescription(scope)) }
+        } else {
             RaftText(
                 text = scopes.joinToString(", "),
                 style = RaftTheme.typography.monoMeta,
                 color = RaftTheme.colors.foreground,
             )
         }
-        return
-    }
-    RaftMessageActionCardScopeList(label = label, viewportDescription = label) {
-        scopes.forEach { scope -> RaftMessageActionCardScope(scope, raftCardScopeDescription(scope)) }
+        groups.forEach { group ->
+            RaftMessageActionCardScope(name = actionCardScopeGroupLabel(group)?.let { stringResource(it) } ?: group)
+        }
     }
 }
 
@@ -460,7 +469,7 @@ private fun AnnotatedString.Builder.appendActionCardEntity(ref: ActionCardSpecEn
     }
 }
 
-/** The header icon the frame paints; one this build has no glyph for draws the default (zap). */
+/** The header icon the frame paints (web `SPEC_ICONS`); none draws the default (zap). */
 internal fun actionCardIconName(icon: ActionCardSpecIcon?): RaftLucideIconName? =
     when (icon) {
         ActionCardSpecIcon.Hash -> RaftLucideIconName.Hash
@@ -471,6 +480,10 @@ internal fun actionCardIconName(icon: ActionCardSpecIcon?): RaftLucideIconName? 
         ActionCardSpecIcon.Package -> RaftLucideIconName.Package
         ActionCardSpecIcon.Message -> RaftLucideIconName.MessageSquare
         ActionCardSpecIcon.Sparkles -> RaftLucideIconName.Sparkles
-        // Plug (no Lucide plug in the app's catalog yet), and icons a later contract adds: the frame's default.
+        ActionCardSpecIcon.Plug -> RaftLucideIconName.Plug
+        // As the web's typed cards draw them (ActionTypeIcon): restoring an App owner, upgrading.
+        ActionCardSpecIcon.Shield -> RaftLucideIconName.ShieldAlert
+        ActionCardSpecIcon.CreditCard -> RaftLucideIconName.CreditCard
+        // No icon, or one a later contract adds: the frame's default.
         else -> null
     }
