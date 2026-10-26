@@ -125,6 +125,9 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
+import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.ThreadComposerDirectUploadPhase
@@ -2521,49 +2524,12 @@ internal fun RaftThreadScreenPayload.replyThreadRealtimeRoomIds(): Set<String> {
         .toSet()
 }
 
+/** This page's [message] as a web link ([threadMessageLink] built by [buildRaftMessageLink]). */
 internal fun RaftThreadScreenPayload.threadMessagePermalink(
     message: RaftThreadMessageItem,
     serverSlug: String?,
     webBaseUrl: String? = null
-): String? {
-    val cleanServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val cleanMessageId = message.id.trim().takeIf { it.isNotBlank() } ?: return null
-    val replyParentMessageId =
-        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: parentMessageId?.takeIf { it.isNotBlank() }
-        } else {
-            null
-        }
-    val channelForLink =
-        if (replyParentMessageId != null) {
-            parentChannelId?.takeIf { it.isNotBlank() }
-        } else {
-            sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: streamChannelId?.takeIf { it.isNotBlank() }
-                ?: parentChannelId?.takeIf { it.isNotBlank() }
-        } ?: return null
-    val routeKind =
-        if (
-            (replyParentMessageId != null && parentChannelKind.isThreadPermalinkDmKind()) ||
-            (replyParentMessageId == null && (surfaceKind == RaftThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()))
-        ) {
-            "dm"
-        } else {
-            "channel"
-        }
-    val params =
-        if (replyParentMessageId != null) {
-            "msg=$cleanMessageId&thread=$channelForLink%3A$replyParentMessageId"
-        } else {
-            "msg=$cleanMessageId"
-        }
-    return "${sharedSettingsResolvedWebBaseUrl(webBaseUrl)}/s/$cleanServerSlug/$routeKind/$channelForLink?$params"
-}
-
-private fun String?.isThreadPermalinkDmKind(): Boolean =
-    // #417 contract parse (accepts "direct"); no private DM vocab table (t432 PR-A).
-    parseConversationKindOrNull(this) == ConversationKind.DirectMessage
+): String? = threadMessageLink(message.id, serverSlug)?.let { buildRaftMessageLink(it, webBaseUrl) }
 
 internal fun RaftThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
@@ -8524,6 +8490,94 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
 
+    val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
+    // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
+    // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
+    // (threadActionCardSpecPress).
+    val actionCardSpecStore =
+        remember(threadInstanceKey) {
+            ThreadActionCardSpecStore(
+                scope = coroutineScope,
+                execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
+                applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
+                onNoPermission = { result -> routeAuthRequired(result) },
+                loadWebUrl = {
+                    (
+                        BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
+                            .loadDeveloper() as? DataResult.Content
+                    )?.data?.webUrl
+                },
+                openInBrowser = { url ->
+                    bridge.log("thread_action_card_open_in_web")
+                    bridge.hostCapabilities.openUrlInBrowser(url)
+                },
+            )
+        }
+    // The page reads only the open confirm / form; each card reads its own slice (ThreadActionCardSpecView).
+    val actionCardSpecDialogsFlow =
+        remember(actionCardSpecStore) {
+            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form) }.distinctUntilChanged()
+        }
+    val actionCardSpecState by actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
+    val actionCardAlreadyExecutedLabel = stringResource(Res.string.thread_action_card_already_executed)
+    val actionCardAlreadyExecutedByTemplate =
+        stringResource(Res.string.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
+    val actionCardOpenInWebFailedLabel = stringResource(Res.string.thread_action_card_open_in_web_failed)
+    val actionCardFrozenClosedLabel = stringResource(Res.string.thread_action_card_frozen_closed)
+    LaunchedEffect(actionCardSpecStore) {
+        actionCardSpecStore.effects.collect { effect ->
+            when (effect) {
+                is ThreadActionCardSpecEffect.AlreadyExecuted ->
+                    bridge.toast(
+                        when {
+                            effect.frozen -> actionCardFrozenClosedLabel
+                            effect.executedByUserName != null ->
+                                actionCardAlreadyExecutedByTemplate.replace(ThreadLocalizedFeedbackPlaceholder, effect.executedByUserName)
+                            else -> actionCardAlreadyExecutedLabel
+                        }
+                    )
+                ThreadActionCardSpecEffect.OpenInWebFailed -> bridge.toast(actionCardOpenInWebFailedLabel)
+            }
+        }
+    }
+    // The card's server may not be this page's (a joint channel): its flags are asked for once.
+    val actionCardSpecFlagRequests = remember(threadInstanceKey) { mutableSetOf<String>() }
+    val latestActionCardThread by rememberUpdatedState(renderedThread)
+    val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
+    // Home's DM rows: a navigate to a message in a DM opens the DM route.
+    val actionCardDirectMessageIds =
+        remember(sharedHomeState.content) {
+            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.directMessages.orEmpty().mapTo(HashSet()) { it.channelId.value }
+        }
+    val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
+    // Keyed on flags only: each card selects its own slice of the store's state.
+    val actionCardSpecHost =
+        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore) {
+            ThreadActionCardSpecHost(
+                specEnabled = { serverId ->
+                    serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
+                },
+                ensureFlags = { serverId ->
+                    val flags = sharedStores.serverFeatureFlags
+                    if (flags.isDecisionPending(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY) && actionCardSpecFlagRequests.add(serverId)) {
+                        coroutineScope.launch { runCatching { flags.prefetch(ServerId(serverId)) } }
+                    }
+                },
+                capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
+                state = actionCardSpecStore.state,
+                onIntent = actionCardSpecStore::dispatch,
+                openInWeb = { messageId ->
+                    actionCardSpecStore.dispatch(
+                        ThreadActionCardSpecIntent.OpenInWeb(
+                            messageId,
+                            latestActionCardThread.threadMessageLink(messageId, latestActionCardServerSlug),
+                        )
+                    )
+                },
+                isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
+            )
+        }
+
     LaunchedEffect(tasksViewModel, unableToUpdateTaskLabel) {
         tasksViewModel?.uiEvents?.collect { event ->
             when (event) {
@@ -11370,6 +11424,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
                 LocalThreadActionCardNames provides actionCardNames,
+                LocalThreadActionCardSpecHost provides actionCardSpecHost,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -11621,6 +11676,48 @@ private fun SharedThreadRouteContentContent(
                 }
             },
             onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
+                // An in-app open of a Raft web link target (a permalink, a spec card's channel).
+                fun openThreadWebLinkTargetInApp(target: RaftThreadWebLinkTarget) {
+                    val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                    val directory =
+                        listOfNotNull(
+                            serverId?.let { conversationIdentityProvider?.resolveProjection(it, target.channelId) }
+                        ).toSharedConversationDirectoryState()
+                    val request =
+                        target.resolveMarkdownOpenRequest(
+                            serverId = serverId?.value.orEmpty(),
+                            conversationDirectory = directory
+                        )
+                    val loadingPayload = request?.let { openRequest ->
+                        buildAppShellThreadPayload(
+                            conversation = openRequest.conversationIdentity,
+                            timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                            compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                            anchorMessageId = openRequest.anchorMessageId,
+                            originFallback = openRequest.originFallback,
+                            onWarn = bridge::logWarn
+                        )
+                    }
+                    if (loadingPayload == null) {
+                        bridge.logWarn(
+                            "thread_markdown_open_rejected reason=identity_unresolved " +
+                                "channelId=${target.channelId} parentMessageId=${target.threadParentMessageId.orEmpty()}"
+                        )
+                        bridge.toast(localizedUnableToOpenTarget(target.channelId.take(32)))
+                        return
+                    }
+                    bridge.log(
+                        "thread_route_open action=markdown_url routeKind=${target.routeKind} " +
+                            "targetChannelId=${target.channelId} messageId=${target.messageId.orEmpty()} " +
+                            "threadParentMessageId=${target.threadParentMessageId.orEmpty()} " +
+                            "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
+                            "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
+                            "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
+                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                    )
+                    onOpenThreadPayload(loadingPayload)
+                }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
@@ -12302,47 +12399,12 @@ private fun SharedThreadRouteContentContent(
                     if (target == null) {
                         linkNavigator.open(itemId)
                     } else {
-                        val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-                        val directory =
-                            listOfNotNull(
-                                serverId?.let { conversationIdentityProvider?.resolveProjection(it, target.channelId) }
-                            ).toSharedConversationDirectoryState()
-                        val request =
-                            target.resolveMarkdownOpenRequest(
-                                serverId = serverId?.value.orEmpty(),
-                                conversationDirectory = directory
-                            )
-                        val loadingPayload = request?.let { openRequest ->
-                            buildAppShellThreadPayload(
-                                conversation = openRequest.conversationIdentity,
-                                timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
-                                alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
-                                compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                                anchorMessageId = openRequest.anchorMessageId,
-                                originFallback = openRequest.originFallback,
-                                onWarn = bridge::logWarn
-                            )
-                        }
-                        if (loadingPayload == null) {
-                            bridge.logWarn(
-                                "thread_markdown_open_rejected reason=identity_unresolved " +
-                                    "channelId=${target.channelId} parentMessageId=${target.threadParentMessageId.orEmpty()}"
-                            )
-                            bridge.toast(localizedUnableToOpenTarget(target.channelId.take(32)))
-                            return@ThreadPageContent
-                        }
-                        bridge.log(
-                            "thread_route_open action=markdown_url routeKind=${target.routeKind} " +
-                                "targetChannelId=${target.channelId} messageId=${target.messageId.orEmpty()} " +
-                                "threadParentMessageId=${target.threadParentMessageId.orEmpty()} " +
-                                "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
-                                "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
-                                "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
-                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                        )
-                        onOpenThreadPayload(loadingPayload)
+                        openThreadWebLinkTargetInApp(target)
                     }
                 }
+                // A4: a spec card's navigate to a channel, as a channel link opens it.
+                action == "openActionCardChannel" && !itemId.isNullOrBlank() ->
+                    openThreadWebLinkTargetInApp(RaftThreadWebLinkTarget(channelId = itemId))
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
                     val localTarget = renderedThread.resolveMarkdownMentionOpenTarget(itemId, emptyList())
                     if (localTarget != null) {
@@ -13354,6 +13416,54 @@ private fun SharedThreadRouteContentContent(
         }
         installAppDialogState?.let { dialogState ->
             ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
+        }
+        // A4: a spec card's confirm / form follows the live card (its confirmation version, done elsewhere).
+        val actionCardSpecDialogMessageId = actionCardSpecState.confirm?.messageId ?: actionCardSpecState.form?.messageId
+        val liveActionCardSpecCard =
+            actionCardSpecDialogMessageId?.let { messageId ->
+                renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
+            }
+        LaunchedEffect(actionCardSpecDialogMessageId, liveActionCardSpecCard) {
+            val messageId = actionCardSpecDialogMessageId ?: return@LaunchedEffect
+            liveActionCardSpecCard?.let { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.CardUpdated(messageId, it)) }
+        }
+        actionCardSpecState.confirm?.let { confirmState ->
+            // The sheet sits outside the thread's locals: give it the card's names and viewer server.
+            CompositionLocalProvider(
+                LocalThreadActionCardNames provides actionCardNames,
+                LocalThreadViewerServerId provides currentServerId,
+            ) {
+                ThreadActionCardSpecConfirmSheet(state = confirmState, onIntent = actionCardSpecStore::dispatch)
+            }
+        }
+        actionCardSpecState.form?.let { formState ->
+            // Pickers choose from what this device already holds (spec §3.4): the server's and
+            // this channel's members, and the Home sidebar's channels.
+            val homeChannels =
+                (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.channels.orEmpty()
+            val candidates =
+                remember(formState.messageId, threadServerMembersEntry, homeChannels) {
+                    threadActionCardFormCandidates(
+                        serverMembers =
+                            threadMembersServerId?.let { serverMembersStore?.currentServerMembers(it) }.orEmpty(),
+                        channelMembers =
+                            threadMembersServerId?.let { serverId ->
+                                threadMembersChannelId?.let { channelId -> serverMembersStore?.currentChannelMembers(serverId, channelId) }
+                            }.orEmpty(),
+                        channels = homeChannels,
+                    )
+                }
+            RaftActionCardFormSheet(
+                form = formState.form,
+                values = formState.values,
+                onValuesChange = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.FormValuesChanged(it)) },
+                fieldErrors = formState.issues,
+                submitting = formState.submitting,
+                onSubmit = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.SubmitForm(it)) },
+                onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
+                candidates = candidates,
+                formError = threadActionCardSpecErrorText(formState.error),
+            )
         }
         createAgentDialogState?.let { dialogState ->
             ThreadCreateAgentActionDialogHost(
@@ -21877,6 +21987,7 @@ private fun ThreadMessagesListContent(
                                 pendingActionCardIds = if (isRichContentEnabled) pendingActionCardIds else emptySet(),
                                 writeActionsEnabled = writeActionsEnabled,
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
                                 currentServerSlug = currentServerSlug,
                                 quotedPermalinkLoader = quotedPermalinkLoader,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -24969,6 +25080,8 @@ private class ThreadMessageCardCallbacks(
     val onRetryLocalSend: () -> Unit,
     val onCopyLocalSendFailureDetails: () -> Unit,
     val onCommitActionCard: (String) -> Unit,
+    /** A spec card's navigate to a channel (its id): ThreadPage `openActionCardChannel`. */
+    val onOpenActionCardChannel: (String) -> Unit = {},
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
     val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
@@ -25032,6 +25145,7 @@ fun ThreadMessageCard(
     pendingActionCardIds: Set<String> = emptySet(),
     writeActionsEnabled: Boolean = true,
     onCommitActionCard: (String) -> Unit = {},
+    onOpenActionCardChannel: (String) -> Unit = {},
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -25128,6 +25242,7 @@ fun ThreadMessageCard(
                 onRetryLocalSend = onRetryLocalSend,
                 onCopyLocalSendFailureDetails = onCopyLocalSendFailureDetails,
                 onCommitActionCard = onCommitActionCard,
+                onOpenActionCardChannel = onOpenActionCardChannel,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                 onMentionAuthor = onMentionAuthor,
@@ -25698,14 +25813,64 @@ private fun ThreadMessageCardContent(
                         }
                         val forwardBundle = message.forwardBundle
                         if (richContentEnabled && actionCard != null) {
-                            ThreadActionCardView(
-                                card = actionCard,
-                                pending = message.id in pendingActionCardIds,
-                                commitEnabled = writeActionsEnabled,
-                                executedTimeLabel = data.actionCardExecutedTimeLabel,
-                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                onCommit = { onCommitActionCard(message.id) }
-                            )
+                            // A4: the spec card when `action_card_spec` is on for the card's
+                            // server; otherwise (and for every card without a spec) the typed card.
+                            val specHost = LocalThreadActionCardSpecHost.current
+                            val viewerServerId = LocalThreadViewerServerId.current
+                            val specFlagServerId = actionCard.actionCardSpecFlagServerId(viewerServerId)
+                            val specEnabled = specHost.specEnabled(specFlagServerId)
+                            val specCard =
+                                remember(actionCard, specEnabled, specHost.capabilities) {
+                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities)
+                                }
+                            if (actionCard.presentationCardJson != null && specFlagServerId != null) {
+                                LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
+                            }
+                            if (specCard != null) {
+                                ThreadActionCardSpecView(
+                                    messageId = message.id,
+                                    card = actionCard,
+                                    spec = specCard,
+                                    commitEnabled = writeActionsEnabled,
+                                    typedPending = message.id in pendingActionCardIds,
+                                    executedTimeLabel = data.actionCardExecutedTimeLabel,
+                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                    onAction = { elementId ->
+                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId, viewerServerId)) {
+                                            ThreadActionCardSpecPress.Ignore -> Unit
+                                            ThreadActionCardSpecPress.Typed -> {
+                                                specHost.onIntent(ThreadActionCardSpecIntent.TypedPress(message.id, elementId))
+                                                onCommitActionCard(message.id)
+                                            }
+                                            ThreadActionCardSpecPress.Store ->
+                                                specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
+                                            ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
+                                            is ThreadActionCardSpecPress.OpenUrl -> onOpenMarkdownUrl(press.url)
+                                            is ThreadActionCardSpecPress.Navigate ->
+                                                openActionCardSpecTarget(
+                                                    target = press.target,
+                                                    cardSourceServerId = actionCard.sourceServerId,
+                                                    viewerServerId = viewerServerId,
+                                                    serverSlug = currentServerSlug,
+                                                    isDirectMessageChannel = specHost.isDirectMessageChannel,
+                                                    onOpenUrl = onOpenMarkdownUrl,
+                                                    onOpenChannel = callbacks.onOpenActionCardChannel,
+                                                    onOpenMember = callbacks.onOpenMember,
+                                                    onOpenTask = callbacks.onOpenTask,
+                                                )
+                                        }
+                                    },
+                                )
+                            } else {
+                                ThreadActionCardView(
+                                    card = actionCard,
+                                    pending = message.id in pendingActionCardIds,
+                                    commitEnabled = writeActionsEnabled,
+                                    executedTimeLabel = data.actionCardExecutedTimeLabel,
+                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                    onCommit = { onCommitActionCard(message.id) }
+                                )
+                            }
                         } else if (richContentEnabled && forwardBundle != null) {
                             // Web MessageItem parity: the server stores the forward
                             // note as the message content; render it above the card
@@ -30169,6 +30334,7 @@ private fun ThreadOriginCard(
                                 attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
                                 pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                                 onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                onOpenActionCardChannel = { onThreadEvent("openActionCardChannel", it, null, null) },
                                 currentServerSlug = currentServerSlug,
                                 onOpenMarkdownTag = onOpenMarkdownTag,
                                 onOpenMarkdownUrl = onOpenMarkdownUrl,

@@ -22,6 +22,8 @@ internal class RaftHostCapabilities(
 
     override fun openUrl(url: String, mimeType: String?) = bridge.openUrl(url, mimeType)
 
+    override fun openUrlInBrowser(url: String) = bridge.openUrl(url, inBrowser = true)
+
     override suspend fun settingsCapability(command: JsonObject): JsonObject? =
         bridge.settingsCapability(command.toKuiklyJson())?.toJsonObject()
 

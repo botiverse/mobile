@@ -41,6 +41,14 @@ interface HostFeedbackCapability {
 /** `openUrl`: hands a URL (optionally typed) to the system. */
 interface HostLinkCapability {
     fun openUrl(url: String, mimeType: String? = null)
+
+    /**
+     * An http(s) URL in the user's web browser, never back in Raft through Android App Links (an
+     * action card's "Open in web" is a Raft link on purpose). Android pins the VIEW to a browser
+     * package (the default browser, never a Raft app), else the ordinary external path; iOS shows
+     * it in an SFSafariViewController. A host without a browser path: [openUrl].
+     */
+    fun openUrlInBrowser(url: String) = openUrl(url)
 }
 
 /**

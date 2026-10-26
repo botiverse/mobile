@@ -67,6 +67,8 @@ internal fun actionCardFrameButtonState(
     elementId: String,
     button: ActionCardSpecButton,
     inSpecOfExecutedCard: Boolean = false,
+    /** False for a link this viewer can't follow (a navigate to another server's entity): disabled, as on the web. */
+    linkNavigable: Boolean = true,
 ): RaftCardButtonState {
     val link =
         button.action is ActionCardSpecAction.Navigate ||
@@ -74,7 +76,7 @@ internal fun actionCardFrameButtonState(
             button.action == ActionCardSpecAction.OpenInWeb
     return when {
         inSpecOfExecutedCard -> RaftCardButtonState.Hidden
-        link -> RaftCardButtonState.Enabled
+        link -> if (linkNavigable) RaftCardButtonState.Enabled else RaftCardButtonState.Disabled
         state.readOnly || state.status == RaftActionCardStatus.Executed -> RaftCardButtonState.Hidden
         elementId == state.busyElementKey -> RaftCardButtonState.Busy
         state.busyElementKey != null || state.status == RaftActionCardStatus.Frozen || state.blockedReason != null -> RaftCardButtonState.Disabled
@@ -118,6 +120,8 @@ internal fun RaftActionCardView(
     displayLocale: String = rememberActionCardDisplayLocale(),
     /** Overrides whether the card starts open (a done or view-only card starts folded). */
     initiallyExpanded: Boolean? = null,
+    /** Whether a link Button leads somewhere this viewer can open ([actionCardFrameButtonState] `linkNavigable`). */
+    linkNavigable: (ActionCardSpecButton) -> Boolean = { true },
 ) {
     val executed = state.status == RaftActionCardStatus.Executed
     val viewOnly = !executed && (state.readOnly || state.blockedReason != null)
@@ -129,7 +133,7 @@ internal fun RaftActionCardView(
             entityName = { ref -> entityName(ref, ref.serverIdOr(sourceServerId)) },
             onAction = onAction,
             columnGap = 8.dp,
-            buttonState = { id, button -> actionCardFrameButtonState(state, id, button, inSpecOfExecutedCard) },
+            buttonState = { id, button -> actionCardFrameButtonState(state, id, button, inSpecOfExecutedCard, linkNavigable(button)) },
         )
     val context = context(inSpecOfExecutedCard = executed)
     val title = actionCardMsgPlainMentions(card.title, context)

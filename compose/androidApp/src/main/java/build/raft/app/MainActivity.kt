@@ -631,6 +631,13 @@ internal fun selectExternalWebHandlerPackage(
         ?: externalPackages.firstOrNull()
 }
 
+/**
+ * Whether an `openUrl` is pinned to a browser package first: only when the caller asked for the
+ * browser (`browser: true`, HostLinkCapability.openUrlInBrowser) and it is an untyped http(s) URL.
+ */
+internal fun openUrlUsesBrowserPackage(browser: Boolean, mimeType: String?, scheme: String?): Boolean =
+    browser && mimeType == null && scheme?.lowercase() in setOf("http", "https")
+
 private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || startsWith("$RAFT_APP_PACKAGE.")
 
 private const val RAFT_APP_PACKAGE = "build.raft.app"

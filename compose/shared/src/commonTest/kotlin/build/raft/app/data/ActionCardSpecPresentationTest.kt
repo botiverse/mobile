@@ -63,7 +63,7 @@ class ActionCardSpecPresentationTest {
         // A card with markers for what this App does not know is kept as the server sent it.
         val newer = assertNotNull(wire(cardJson(intent = "plan_picker")).toThreadActionCard())
         assertNotNull(actionCardFromMessageMetadata(newer.toMessageMetadata())?.presentationCard)
-        // The legacy presentation is still what the App renders (until A2).
+        // The legacy presentation fields stay beside the card.
         assertEquals("Create #release-notes", projected.presentationTitle)
         assertEquals("Create", projected.presentationConfirmLabel)
     }
@@ -84,11 +84,12 @@ class ActionCardSpecPresentationTest {
         val unsupported = assertIs<ActionCardSpecButton>(read.spec.element("open")).action
         assertEquals(ActionCardSpecAction.Unsupported(originalKind = "open", originalIntent = "plan_picker"), unsupported)
 
-        val withConfirm = RAFT_APP_ACTION_CARD_CAPABILITIES + "confirm.v1" + "intent.create_channel"
+        val cardOnly = listOf("card.v1")
+        val withConfirm = cardOnly + "confirm.v1" + "intent.create_channel"
         for (intent in listOf("create_channel", "plan_picker")) {
             val card = assertNotNull(parseActionCardSpec(Json.parseToJsonElement(cardJson(intent))))
-            // Today's App declares only card.v1: a confirm it cannot show yet is "Open in web", never a plain execute.
-            val go = stripActionCardSpec(card)!!.spec.element("go") as ActionCardSpecButton
+            // With card.v1 alone, a confirm it cannot show is "Open in web", never a plain execute.
+            val go = stripActionCardSpec(card, cardOnly)!!.spec.element("go") as ActionCardSpecButton
             assertEquals(ActionCardSpecAction.OpenInWeb to ActionCardSpecEmphasis.Secondary, go.action to go.emphasis)
             // Once confirm.v1 is declared, the execute behind its confirm is kept as it is.
             val rendered = assertNotNull(stripActionCardSpec(card, withConfirm))
@@ -97,10 +98,9 @@ class ActionCardSpecPresentationTest {
             val open = rendered.spec.element("open") as ActionCardSpecButton
             val expected = if (intent == "create_channel") ActionCardSpecAction.Open(ActionCardSpecIntent.CreateChannel) else ActionCardSpecAction.OpenInWeb
             assertEquals(expected, open.action, intent)
-            val stripped = stripActionCardSpec(card)!!.spec.element("open") as ActionCardSpecButton
+            val stripped = stripActionCardSpec(card, cardOnly)!!.spec.element("open") as ActionCardSpecButton
             assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, stripped.action to stripped.label)
         }
-        assertEquals(listOf("card.v1"), RAFT_APP_ACTION_CARD_CAPABILITIES)
         assertNull(stripActionCardSpec(read, capabilities = emptyList()))
     }
 
