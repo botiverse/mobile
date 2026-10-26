@@ -71,7 +71,23 @@ internal data class ThreadActionCard(
      * `expectedConfirmationVersion` when it is run, so a card converted meanwhile is refused.
      */
     val confirmationVersion: Int? = null,
+    /**
+     * Wire `presentation.card` (`action-card.v1`) exactly as the server sent it, kept only when the
+     * contract's read parse accepts it. The server's JSON, not the parsed card written back: a read
+     * card may hold `unsupported` markers, which the contract refuses as input.
+     */
+    val presentationCardJson: String? = null,
 ) {
+    /**
+     * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
+     * this App cannot read, and the legacy presentation fields above are shown. Strip it with
+     * [stripActionCardSpec] before rendering; entities without a `serverId` live on
+     * [sourceServerId] ([ActionCardSpecEntityRef.serverIdOr]). Not rendered yet (A2).
+     */
+    val presentationCard: ActionCardSpecCard? by lazy {
+        presentationCardJson?.let { json -> runCatching { threadActionCardJson.parseToJsonElement(json) }.getOrNull()?.let(::parseActionCardSpec) }
+    }
+
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
 
@@ -98,6 +114,8 @@ internal data class WireActionCardPresentation(
     val warning: String? = null,
     val genericApprovalAllowed: Boolean = false,
     val displayItems: List<ThreadActionCardMetadataItem> = emptyList(),
+    /** `presentation.card` (`action-card.v1`), untrusted until [parseActionCardSpec] reads it. */
+    val card: JsonElement? = null,
 )
 
 @Serializable
@@ -209,6 +227,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         sourceServerId = meta.sourceServerId?.takeIf { it.isNotBlank() },
         targetServerName = meta.targetServerName?.takeIf { it.isNotBlank() },
         confirmationVersion = meta.confirmationVersion,
+        presentationCardJson = meta.presentation?.card?.takeIf { parseActionCardSpec(it) != null }?.toString(),
     )
 }
 
@@ -254,6 +273,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("sourceServerId", sourceServerId)
         putString("targetServerName", targetServerName)
         putString("confirmationVersion", confirmationVersion?.toString())
+        putString("presentationCard", presentationCardJson)
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -301,6 +321,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         sourceServerId = metadata["${ActionCardMetadataPrefix}sourceServerId"]?.takeIf { it.isNotBlank() },
         targetServerName = metadata["${ActionCardMetadataPrefix}targetServerName"]?.takeIf { it.isNotBlank() },
         confirmationVersion = metadata["${ActionCardMetadataPrefix}confirmationVersion"]?.toIntOrNull(),
+        presentationCardJson = metadata["${ActionCardMetadataPrefix}presentationCard"]?.takeIf { it.isNotBlank() },
     )
 }
 
