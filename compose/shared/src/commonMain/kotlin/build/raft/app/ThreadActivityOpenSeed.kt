@@ -93,32 +93,33 @@ internal const val ActivityPreviewEllipsis = "…"
 /** `inboxPolicyModel.truncatePreview(…, 140)`: the first 140 UTF-16 units, then "…". */
 internal const val ActivityPreviewMaxLength = 140
 
-/** `historyPreview.HISTORY_PREVIEW_CHARS`: a message behind the history cutoff is a 40-code-point glimpse. */
-internal const val ActivityHistoryGlimpseCodePoints = 40
-
 /**
  * Whether an Activity row's preview is the server's cut of a longer message. The inbox row carries no
- * "truncated" field, so this reads the two cuts the server makes (slock packages/server
- * `inboxPolicyModel.truncatePreview`, `historyPreview.historyLimitedPreview`): exactly 140 UTF-16
- * units plus "…", or exactly 40 code points ending in "…". A shorter text ending in "…" is the
- * message itself. Both server cuts and Kotlin strings count UTF-16 units the same way.
+ * "truncated" field, so this reads the cut the server makes on every row (slock packages/server
+ * `inboxPolicyModel.truncatePreview`): exactly 140 UTF-16 units plus "…" (both sides count UTF-16
+ * units). The server's other cut, the 40-character glimpse of a message behind a plan's history
+ * window (`historyPreview.historyLimitedPreview`), is not flagged: neither the row nor the inbox page
+ * says a row is behind the window, and a real 40-character message ending in "…" (the client's own
+ * realtime preview keeps the full body) must not get a loading indicator.
  */
-internal fun activitySeedPreviewIsTruncated(preview: String): Boolean {
-    if (!preview.endsWith(ActivityPreviewEllipsis)) return false
-    if (preview.length == ActivityPreviewMaxLength + ActivityPreviewEllipsis.length) return true
-    return preview.codePointCountCompat() == ActivityHistoryGlimpseCodePoints
-}
+internal fun activitySeedPreviewIsTruncated(preview: String): Boolean =
+    preview.endsWith(ActivityPreviewEllipsis) &&
+        preview.length == ActivityPreviewMaxLength + ActivityPreviewEllipsis.length
 
-private fun String.codePointCountCompat(): Int {
-    var count = 0
-    var index = 0
-    while (index < length) {
-        val high = this[index]
-        index += if (high.isHighSurrogate() && index + 1 < length && this[index + 1].isLowSurrogate()) 2 else 1
-        count++
+/**
+ * A cut seed message whose full copy did not arrive (the main load failed, or the page is offline):
+ * no loading indicator that would spin forever, and the "…" back so the cut text does not read as the
+ * whole message. The seed stripped exactly that suffix (and the space before it, which stays gone).
+ */
+internal fun RaftThreadMessageItem.withActivityPreviewSettled(): RaftThreadMessageItem =
+    if (activityPreviewTruncated) copy(body = body + ActivityPreviewEllipsis, activityPreviewTruncated = false) else this
+
+internal fun RaftThreadScreenPayload.withActivityPreviewsSettled(): RaftThreadScreenPayload =
+    if (messages.none { it.activityPreviewTruncated }) {
+        this
+    } else {
+        copy(messages = messages.map { it.withActivityPreviewSettled() })
     }
-    return count
-}
 
 /**
  * Adds the Activity messages to a first-frame candidate that is not canonical yet: nothing (the

@@ -11860,6 +11860,10 @@ internal class SharedThreadViewModel(
 }
 
 private fun RaftThreadScreenPayload.asRefreshFailed(code: String): RaftThreadScreenPayload =
+    // artin 10-26: a failed load brings no full message, so a cut Activity seed stops loading.
+    withActivityPreviewsSettled().asRefreshFailedSettled(code)
+
+private fun RaftThreadScreenPayload.asRefreshFailedSettled(code: String): RaftThreadScreenPayload =
     if (hasRenderableThreadContent()) {
         copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     } else if (isDurableEmptyStandIn()) {
@@ -14592,6 +14596,8 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         systemEventType = update.systemEventType ?: systemEventType,
         metadata = update.metadata.ifEmpty { metadata },
         body = update.body.ifBlank { body },
+        // A realtime update with a body carries the full text: a cut Activity seed is no longer cut.
+        activityPreviewTruncated = activityPreviewTruncated && update.body.isBlank(),
         threadChannelId = update.threadChannelId ?: threadChannelId,
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),

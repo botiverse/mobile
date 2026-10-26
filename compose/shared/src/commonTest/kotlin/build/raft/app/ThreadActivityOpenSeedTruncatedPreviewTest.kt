@@ -23,8 +23,12 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
             listOf(
                 // truncatePreview(…, 140): 140 UTF-16 units + "…".
                 "a".repeat(140) + "…" to true,
-                // historyLimitedPreview: 39 code points + "…" (an emoji is one code point, two units).
-                "😀" + "b".repeat(38) + "…" to true,
+                // historyLimitedPreview's 40-code-point glimpse: no row says it is behind the history
+                // window, and a real 40-character message ending in "…" must not spin.
+                "😀" + "b".repeat(38) + "…" to false,
+                "b".repeat(39) + "…" to false,
+                // A cut 140 units long counts even when it ends inside a surrogate pair.
+                "a".repeat(139) + "\uD83D…" to true,
                 // Shorter or longer texts ending in "…" are the message itself.
                 "hmm…" to false,
                 "a".repeat(139) + "…" to false,
@@ -103,6 +107,26 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
             RaftThreadScreenPayload(sourceThreadId = "channel-1", status = "loading")
                 .withActivityOpenSeed(listOf(cut).withLocalFullMessages(listOf(localFull)))
         assertEquals(listOf("y".repeat(400) to false), frame.messages.map { it.body to it.activityPreviewTruncated })
+    }
+
+    @Test
+    fun aRealtimeUpdateWithABodyClearsTheFlagAndASparseOneKeepsIt() {
+        val cut = seed(channelRow(preview = "z".repeat(140) + "…"), channelRoute()).single()
+        val full = cut.mergeRealtimeUpdate(cut.copy(body = "z".repeat(300), activityPreviewTruncated = false))
+        assertEquals("z".repeat(300) to false, full.body to full.activityPreviewTruncated)
+        val sparse = cut.mergeRealtimeUpdate(cut.copy(body = "", activityPreviewTruncated = false))
+        assertEquals("z".repeat(140) to true, sparse.body to sparse.activityPreviewTruncated)
+    }
+
+    @Test
+    fun aSettledCutSeedStopsLoadingAndGetsItsEllipsisBack() {
+        val cut = seed(channelRow(preview = "w".repeat(140) + "…"), channelRoute()).single()
+        val plain = cut.copy(id = "m2", body = "short", activityPreviewTruncated = false)
+        val settled = RaftThreadScreenPayload(status = "content", messages = listOf(plain, cut)).withActivityPreviewsSettled()
+        assertEquals(
+            listOf("short" to false, "w".repeat(140) + "…" to false),
+            settled.messages.map { it.body to it.activityPreviewTruncated },
+        )
     }
 
     private fun seed(item: InboxItem, route: RaftThreadScreenPayload) =
