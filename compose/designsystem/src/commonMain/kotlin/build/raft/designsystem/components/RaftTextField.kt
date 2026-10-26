@@ -70,6 +70,20 @@ object RaftTextFieldDefaults {
 
     /** `--control-embedded-inset`: how far an embedded chip or button sits inside the field's outer edge, and from its sibling. */
     val EmbeddedInset: Dp = 6.dp
+
+    /**
+     * Keyboard options for a single-line field that holds a name or an identifier (an agent,
+     * channel or server name, a slug, a key, a model ID): autocorrect off. Pass it as
+     * `keyboardOptions`, or `.copy(...)` it to add a keyboard type or an IME action.
+     *
+     * Besides not "fixing" identifiers, this works around an iOS crash in dialogs:
+     * CMP-10674 (https://youtrack.jetbrains.com/issue/CMP-10674). When a tap lands while UIKit
+     * holds an uncommitted autocorrect / inline-prediction candidate, UIKit commits it inside
+     * Compose's touch flush, and `FlushCoroutineDispatcher.flush()` re-enters and runs tasks
+     * twice. With autocorrect off there is no candidate to commit. A mitigation only (CJK IME
+     * composition can still hit it); drop this reason once CMP ships the fix.
+     */
+    val NoAutoCorrectKeyboardOptions: KeyboardOptions = KeyboardOptions(autoCorrectEnabled = false)
 }
 
 /** Resolved colours of a field box (input, input group, textarea) in one state. */

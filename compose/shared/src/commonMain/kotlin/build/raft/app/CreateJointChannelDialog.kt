@@ -29,6 +29,7 @@ import build.raft.app.data.jointRetryAfterSeconds
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -191,6 +192,7 @@ internal fun CreateJointChannelDialog(
             RaftField(label = stringResource(MR.strings.joint_create_name_label), required = true, enabled = !state.submitting) {
                 RaftTextField(
                     value = state.name,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { onIntent(CreateJointChannelIntent.SetName(it)) },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = stringResource(MR.strings.joint_create_name_placeholder),
@@ -252,6 +254,7 @@ private fun CreateJointInviteDrafts(state: CreateJointChannelState, onIntent: (C
                     RaftField(label = stringResource(MR.strings.joint_connections_slug_label), required = true, enabled = !state.submitting) {
                         RaftTextField(
                             value = draft.targetServerSlug,
+                            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                             onValueChange = { onIntent(CreateJointChannelIntent.UpdateDraft(draft.id, targetServerSlug = it)) },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = stringResource(MR.strings.joint_connections_slug_placeholder),

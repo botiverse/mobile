@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.RaftIconSpinner
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
@@ -1453,6 +1454,7 @@ internal fun SharedCreateAgentDialog(
                         label = stringResource(MR.strings.agent_create_label_name),
                         required = true,
                         value = name,
+                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                         onValueChange = { name = it },
                         placeholder = stringResource(MR.strings.agent_create_placeholder_name),
                         enabled = !submitting,
@@ -2086,6 +2088,7 @@ internal fun BuiltInRuntimeSection(
                             label = copy?.label ?: "Base URL",
                             required = true,
                             value = baseUrl,
+                            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                             onValueChange = onBaseUrlChange,
                             placeholder = copy?.placeholder.orEmpty(),
                             enabled = enabled
@@ -2120,6 +2123,7 @@ internal fun BuiltInRuntimeSection(
                                 label = copy?.label ?: "Model",
                                 required = true,
                                 value = model,
+                                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                                 onValueChange = onModelChange,
                                 placeholder = copy?.placeholder.orEmpty(),
                                 enabled = enabled
@@ -2315,6 +2319,7 @@ internal fun AdvancedRuntimeSection(
                     label = stringResource(MR.strings.agent_create_label_api_url),
                     required = true,
                     value = providerApiUrl,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { onProviderApiUrlChange(it) },
                     placeholder = "https://gateway.example.com",
                     enabled = enabled
@@ -2431,6 +2436,7 @@ internal fun AdvancedRuntimeSection(
                     label = stringResource(MR.strings.agent_create_label_custom_model),
                     required = true,
                     value = customModelName,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { onCustomModelNameChange(it) },
                     placeholder = stringResource(MR.strings.agent_create_placeholder_model),
                     enabled = enabled
@@ -2673,6 +2679,7 @@ internal fun EnvVarsEditor(
                 RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_key),
                     value = key,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { newKey ->
                         onChange(entries.toMutableList().also { it[idx] = newKey to value })
                     },
