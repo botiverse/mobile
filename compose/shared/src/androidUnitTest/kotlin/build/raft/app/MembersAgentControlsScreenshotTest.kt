@@ -36,7 +36,8 @@ import org.robolectric.shadows.ShadowDialog
  * docs/raftbrutal-migration.md), light and dark:
  * - `members.agent-controls`: the archive confirmation (warning commit with the Archive icon),
  *   the agent role as plain text, the inline role editor (default soft badge, md Save / Cancel),
- *   the avatar picker (selected sticker cell) and the permissions load-error banner with Retry.
+ *   and the permissions load-error banner with Retry (the avatar picker is the change-avatar
+ *   dialog's, `members.agent-avatar.*`).
  * - `members.agent-permissions`: a customised permission set (Use default, Save permissions,
  *   Discard).
  * - `members.report-issue`: the report-issue dialog (Field + Textarea, primary lg submit).
@@ -132,13 +133,6 @@ private fun AgentControlsContent() {
             onSelect = {},
             onSave = {},
             onCancel = {},
-        )
-        MembersAgentAvatarChoiceGrid(
-            member = controlsAgent,
-            uploading = false,
-            onUploadClick = {},
-            onClear = {},
-            onSelect = {},
         )
         // No agents API: the tab's first load fails into the error banner with its Retry.
         MembersAgentPermissionsTab(

@@ -103,3 +103,16 @@ internal val PixelAvatarFixedSpecs = mapOf(
 internal val PixelAvatarReservedKeys: Set<String> = setOf("finch", "mug")
 
 internal const val PixelAvatarDefaultKey = "robot"
+
+/** The avatar picker's series in canonical order (mirrors React `AVATAR_SERIES`). */
+internal val PixelAvatarBundledSeries: List<PixelAvatarSeries> = listOf(
+    PixelAvatarSeries("bots", listOf("robot", "antenna", "visor", "drone", "tv", "led", "catbot", "boxbot")),
+    PixelAvatarSeries("critters", listOf("cat", "dog", "fox", "frog", "bunny", "bear", "penguin", "owl")),
+    PixelAvatarSeries("space", listOf("alien", "star", "rocket", "planet", "moon", "ufo", "astronaut", "satellite")),
+    PixelAvatarSeries("desk", listOf("bell", "terminal", "bulb", "magnifier", "pencil", "plane", "clipboard", "floppy")),
+    PixelAvatarSeries("food", listOf("onigiri", "donut", "icecream", "strawberry", "pizza", "egg", "cookie", "cupcake")),
+    PixelAvatarSeries("quest", listOf("crown", "diamond", "heart", "sword", "shield", "potion", "key", "chest")),
+    PixelAvatarSeries("weather", listOf("sun", "cloud", "bolt", "umbrella", "rainbow", "snowman", "raincloud", "partlysunny")),
+    PixelAvatarSeries("plants", listOf("tree", "mushroom", "cactus", "tulip", "sunflower", "pine", "leaf", "sprout")),
+    PixelAvatarSeries("spooky", listOf("ghost", "skull", "eye", "flame", "pumpkin", "bat", "wizard", "spider"))
+)

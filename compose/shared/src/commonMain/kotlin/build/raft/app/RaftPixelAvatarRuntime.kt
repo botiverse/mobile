@@ -41,12 +41,25 @@ private data class PixelAvatarWireAvatar(
 )
 
 @Serializable
+private data class PixelAvatarWireSeries(
+    val key: String,
+    val avatars: List<String>
+)
+
+@Serializable
 private data class PixelAvatarWireDocument(
     val version: Int,
     val palette: Map<String, String>,
     val avatars: Map<String, PixelAvatarWireAvatar>,
     val reservedKeys: List<String> = emptyList(),
-    val defaultKey: String
+    val defaultKey: String,
+    val series: List<PixelAvatarWireSeries> = emptyList()
+)
+
+/** One group of the avatar picker: a heading ([key], e.g. `bots`) over its avatars, in order. */
+internal data class PixelAvatarSeries(
+    val key: String,
+    val avatars: List<String>
 )
 
 /** A resolved pixel-avatar table — same shapes as the generated RaftPixelAvatarData symbols. */
@@ -56,7 +69,8 @@ internal class PixelAvatarData(
     val paletteArgb: Map<Char, String>,
     val specs: Map<String, PixelAvatarSpec>,
     val reservedKeys: Set<String>,
-    val defaultKey: String
+    val defaultKey: String,
+    val series: List<PixelAvatarSeries> = emptyList()
 )
 
 /**
@@ -141,6 +155,7 @@ internal fun parsePixelAvatarData(jsonText: String): PixelAvatarData? {
     }
     if (wire.defaultKey !in wire.avatars) return reject("default_key_unknown")
     if (wire.reservedKeys.any { it !in wire.avatars }) return reject("reserved_key_unknown")
+    if (wire.series.any { series -> series.avatars.any { it !in wire.avatars } }) return reject("series_key_unknown")
     val knownBackgroundArgb = pixelAvatarKnownBackgroundArgb(palette, paletteArgb, literalBackgroundArgb)
     val specs = LinkedHashMap<String, PixelAvatarSpec>()
     pending.forEach { avatar ->
@@ -159,7 +174,8 @@ internal fun parsePixelAvatarData(jsonText: String): PixelAvatarData? {
         paletteArgb = paletteArgb,
         specs = specs,
         reservedKeys = wire.reservedKeys.toSet(),
-        defaultKey = wire.defaultKey
+        defaultKey = wire.defaultKey,
+        series = wire.series.map { PixelAvatarSeries(it.key, it.avatars) }
     )
 }
 
@@ -176,7 +192,8 @@ internal object RaftPixelAvatarRuntime {
             paletteArgb = PixelAvatarPaletteArgb,
             specs = PixelAvatarFixedSpecs,
             reservedKeys = PixelAvatarReservedKeys,
-            defaultKey = PixelAvatarDefaultKey
+            defaultKey = PixelAvatarDefaultKey,
+            series = PixelAvatarBundledSeries
         )
 
     var current: PixelAvatarData by mutableStateOf(bundled)
@@ -227,6 +244,31 @@ internal object RaftPixelAvatarRuntime {
         current = bundled
     }
 }
+
+/**
+ * The avatar picker's groups for [data] (web `AVATAR_SERIES`): each series with only the avatars
+ * the table has and the picker may offer (not reserved), then, in one untitled group (null key),
+ * any pickable avatar no series names, so a table without series (or a newer avatar) still shows.
+ */
+internal fun pixelAvatarPickerGroups(data: PixelAvatarData = RaftPixelAvatarRuntime.current): List<PixelAvatarPickerGroup> {
+    val pickable = data.specs.keys.filterNot { it in data.reservedKeys }
+    val pickableSet = pickable.toSet()
+    val named = HashSet<String>()
+    val groups = ArrayList<PixelAvatarPickerGroup>()
+    data.series.forEach { series ->
+        val avatars = series.avatars.filter { it in pickableSet && named.add(it) }
+        if (avatars.isNotEmpty()) groups += PixelAvatarPickerGroup(series.key, avatars)
+    }
+    val rest = pickable.filterNot { it in named }
+    if (rest.isNotEmpty()) groups += PixelAvatarPickerGroup(null, rest)
+    return groups
+}
+
+/** One group of the avatar picker; [seriesKey] null is the untitled group. */
+internal data class PixelAvatarPickerGroup(
+    val seriesKey: String?,
+    val avatars: List<String>
+)
 
 /** Active default avatar key — the runtime table's defaultKey (bundled `robot` until swapped). */
 internal val PixelAvatarActiveDefaultKey: String

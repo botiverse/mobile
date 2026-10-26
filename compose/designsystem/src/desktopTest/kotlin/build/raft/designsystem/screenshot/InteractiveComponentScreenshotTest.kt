@@ -50,6 +50,7 @@ import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftDialogSheetCenteredSurface
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.components.RaftDialogSurface
@@ -841,6 +842,21 @@ class InteractiveComponentScreenshotTest {
                         closeEnabled = false,
                         modifier = Modifier.height(320.dp),
                     ) {}
+                }
+                Column(Modifier.width(358.dp)) {
+                    Caption("Commit running (loading), × disabled", Modifier.padding(bottom = 12.dp))
+                    // The spinner holds its first step, as every captured spinner does.
+                    CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
+                        RaftDialogSheetSurface(
+                            title = "Change avatar",
+                            commitLabel = "Save",
+                            onCommit = {},
+                            onClose = {},
+                            commitLoading = true,
+                            closeEnabled = false,
+                            modifier = Modifier.height(320.dp),
+                        ) {}
+                    }
                 }
             }
         }
