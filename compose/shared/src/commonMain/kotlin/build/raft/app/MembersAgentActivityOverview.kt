@@ -66,16 +66,12 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.StateFlow
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.layout.ContentScale
 import build.raft.app.data.AgentActivityAppEvent
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
@@ -880,7 +876,7 @@ private fun MembersAgentActivityAppEvents(events: List<AgentActivityAppEvent>, c
     }
 }
 
-/** The app's logo (web ConnectedAppLogo `xs`), or the generic app tile. */
+/** The app's logo (web ConnectedAppLogo `xs`), or the generic app tile when it has none. */
 @Composable
 private fun MembersAgentActivityAppLogo(event: AgentActivityAppEvent) {
     val logoUrl = event.logoUrl
@@ -890,14 +886,7 @@ private fun MembersAgentActivityAppLogo(event: AgentActivityAppEvent) {
         }
         return
     }
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    Box(
-        Modifier.size(RaftIconTileSize.Sm.edge)
-            .background(RaftColor.StickerPaper, shape)
-            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
-    ) {
-        RaftCachedImage(source = logoUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-    }
+    RaftConnectedAppLogo(name = event.appName.ifBlank { event.clientKey }, logoUrl = logoUrl)
 }
 
 @Composable
