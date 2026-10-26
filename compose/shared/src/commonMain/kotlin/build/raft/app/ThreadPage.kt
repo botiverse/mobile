@@ -18,6 +18,14 @@ import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
 import build.raft.app.components.RaftSlotIcon
@@ -62,18 +70,12 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.components.RaftAttachmentPreviewCard
 import build.raft.app.components.RaftAttachmentPreviewCardAction
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiSuccessBanner
-import build.raft.app.components.RaftUiControlledMenu
-import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.RaftToolbarChip
@@ -5410,7 +5412,7 @@ internal fun ThreadMembersPageContent(
                             avatarFill = RaftColor.AccentLavender,
                             cacheSubject = null, cacheServerId = null,
                             statusColor = member.lastSeenAt?.let { seen ->
-                                if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
+                                if (isExternalAgentSeenOnline(seen, now)) RaftColor.PresenceOnline else RaftColor.PresenceExternal
                             },
                             statusPulsing = false,
                             badges = listOfNotNull(
@@ -5773,7 +5775,7 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     RaftAnchoredMetaChip(
                         label = "#88 @Nathan",
                         iconName = RaftLucideIconName.CircleDashed,
-                        color = RaftColor.AccentCyan,
+                        color = RaftColor.Info,
                         contentColor = RaftColor.StickerInk,
                         iconColorArgb = raftArgbHex(RaftColor.StickerInk),
                         onClick = {}
@@ -13531,7 +13533,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                         label = stringResource(MR.strings.thread_task_candidate_current),
                         iconName = RaftLucideIconName.Hash,
                         iconSize = 10.dp,
-                        color = RaftColor.BrandYellow,
+                        color = RaftColor.Brand,
                         contentColor = RaftColor.StickerInk,
                         iconColorArgb = raftArgbHex(RaftColor.StickerInk),
                         modifier = Modifier.widthIn(max = 112.dp),
@@ -17037,10 +17039,12 @@ private fun ThreadHeaderFocusModeMenu(
     focusEnabled: Boolean = true,
 ) {
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
+    // The shell draws these rows (a RaftMenuSurface of RaftMenuItem); the page only sends id,
+    // label and enabled.
     val items =
         buildList {
             add(
-                RaftBrutalDropdownMenuItem(
+                RaftShellOverlayItem(
                     id = FOCUS_MODE_MENU_ITEM_ID,
                     label =
                         stringResource(
@@ -17050,8 +17054,6 @@ private fun ThreadHeaderFocusModeMenu(
                                 MR.strings.thread_focus_mode_focus
                             }
                         ),
-                    // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
-                    icon = if (focused) RaftLucideIconName.Square else RaftLucideIconName.Maximize2,
                     enabled = focusEnabled
                 )
             )
@@ -17060,7 +17062,7 @@ private fun ThreadHeaderFocusModeMenu(
             // the row is not offered at all rather than shown disabled.
             if (followed != null && onToggleFollow != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftShellOverlayItem(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
@@ -17070,7 +17072,6 @@ private fun ThreadHeaderFocusModeMenu(
                                     MR.strings.thread_action_follow_thread
                                 }
                             ),
-                        icon = threadFollowMenuIcon(followed),
                         enabled = true
                     )
                 )
@@ -17164,14 +17165,7 @@ private fun ThreadHeaderFocusModeMenu(
                     requestId = requestId,
                     pageKey = pageKey,
                     anchor = windowAnchor,
-                    items =
-                        items.map {
-                            RaftShellOverlayItem(
-                                id = it.id,
-                                label = it.label,
-                                enabled = it.enabled
-                            )
-                        }
+                    items = items
                 ).toJson()
             )
         },
@@ -17257,13 +17251,11 @@ internal fun threadHeaderChannelTitleGapDp(): Float =
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 30.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md
     )
 }
 
@@ -24591,15 +24583,13 @@ private fun ThreadInlineActionRow(
     leadingIcon: RaftLucideIconName? = null,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 36.dp,
-        leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
@@ -29003,12 +28993,11 @@ internal data class ThreadMessageMenuAction(
 )
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
-// popup, 36dp `min-h-9` rows with lucide 14 icons, and a `h-9 gap-1 px-2` quick-reaction
+// popup, 36dp `min-h-9` RaftMenuItem rows, and a `h-9 gap-1 px-2` quick-reaction
 // row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
 // the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
-private val ThreadMessageMenuIconSize = 14.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
 private val ThreadMessageMenuReactionButtonSize = 28.dp
 private val ThreadMessageMenuReactionGap = 4.dp
@@ -29037,7 +29026,7 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
-    // raft-ui menu (RaftBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
+    // raft-ui menu (RaftMenuSurface): `p-1.5` popup inset on
     // both edges, a hairline separator with a 6dp inset either side between groups and
     // under the reaction header; the seam ring is drawn over the content and the float
     // shadow takes no layout space.
@@ -29715,45 +29704,41 @@ internal fun ThreadMessageMenuChrome(
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // task #11 (artin: 统一两套菜单): the action rows render through the shared
-    // RaftBrutalDropdownMenu surface — press wash, row metrics and icon specs
-    // come from the one component instead of a hand-rolled Button stack. The
-    // reaction bar rides in the surface's header slot; group boundaries map to
-    // dividerBeforeIds.
-    val menuItems = actions.mapIndexed { index, action ->
-        RaftBrutalDropdownMenuItem(
-            id = index.toString(),
-            label = action.label.localized(),
-            icon = action.icon,
-            enabled = action.enabled
-        )
-    }
-    val groupDividerIds = actions.mapIndexedNotNull { index, action ->
-        val previousGroup = actions.getOrNull(index - 1)?.group
-        if (index > 0 && previousGroup != action.group) index.toString() else null
-    }.toSet()
-    RaftBrutalDropdownMenuSurface(
-        items = menuItems,
-        onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
-        modifier = modifier,
-        width = threadMessageMenuWidthDp(showReactionActions).dp,
-        // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
-        rowHeight = ThreadMessageMenuRowHeight,
-        showDividers = false,
-        dividerBeforeIds = groupDividerIds,
-        iconSize = ThreadMessageMenuIconSize,
-        headerContent =
-            if (showReactionActions) {
-                {
-                    ThreadMessageReactionRow(
-                        reactionAtlasImage = reactionAtlasImage,
-                        onReact = onReact
-                    )
-                }
-            } else {
-                null
+    // task #11 (artin: 统一两套菜单): the design-system menu popup (RaftMenuSurface) with a
+    // RaftMenuItem per action; the reaction bar sits above a separator, and a separator
+    // marks each change of action group.
+    RaftMenuSurface(
+        modifier = modifier.raftFloatingContentClickTarget(),
+        width = raftMenuWidth(threadMessageMenuWidthDp(showReactionActions).dp)
+    ) {
+        if (showReactionActions) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ThreadMessageReactionRow(
+                    reactionAtlasImage = reactionAtlasImage,
+                    onReact = onReact
+                )
             }
-    )
+            RaftMenuSeparator()
+        }
+        if (actions.isEmpty()) {
+            RaftMenuItem(
+                text = stringResource(MR.strings.common_no_actions_available),
+                onClick = {},
+                enabled = false
+            )
+        }
+        actions.forEachIndexed { index, action ->
+            if (index > 0 && actions[index - 1].group != action.group) {
+                RaftMenuSeparator()
+            }
+            RaftMenuItem(
+                text = action.label.localized(),
+                onClick = { if (action.enabled) action.onClick() },
+                enabled = action.enabled,
+                leadingIcon = { RaftSlotIcon(action.icon) }
+            )
+        }
+    }
 }
 
 @Composable
@@ -30372,7 +30357,7 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
         modifier = Modifier,
         avatarSize = 36.dp,
         borderWidth = RaftAppStroke.Default,
-        fill = RaftColor.AccentCyan
+        fill = RaftColor.Info
     ) {
         RaftLucideIcon(
             RaftLucideIconName.Link,
@@ -31400,7 +31385,7 @@ private fun ThreadAttachmentCommentsFilterChip(
         onClick = onClick,
         active = selected,
         uppercase = false,
-        activeBackgroundColor = RaftColor.BrandYellow,
+        activeBackgroundColor = RaftColor.Brand,
         inactiveBackgroundColor = RaftColor.SurfaceWhite,
         borderColor = RaftColor.BorderBlack
     )
@@ -31433,8 +31418,11 @@ private fun ThreadAttachmentCommentRow(
                 modifier = Modifier.weight(1f)
             )
             comment.createdAt.takeIf { it.isNotBlank() }?.let { createdAt ->
-                Text(
-                    text = createdAt,
+                // Web CommentEntryTime: the message time (formatMessageTime), not the wire ISO.
+                RaftRelativeTimestampText(
+                    value = createdAt,
+                    timeContext = LocalRaftTimeContextProvider.current?.current,
+                    displayGroup = RaftTimestampDisplayGroup.Conversation,
                     style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1,
@@ -31485,15 +31473,13 @@ private fun ThreadAttachmentCommentTinyButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = icon,
+    RaftButton(
+        text = label,
+        leadingIcon = { RaftSlotIcon(icon) },
         onClick = onClick,
         enabled = enabled,
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 28.dp,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Default,
+        size = RaftButtonSize.Md
     )
 }
 
@@ -31527,16 +31513,18 @@ private fun ThreadAttachmentCommentComposer(
                 color = RaftColor.TextMutedGray
             )
         }
-        RaftBrutalTextField(
+        RaftField(
             label = stringResource(MR.strings.thread_comments_label),
-            value = state.draft,
-            placeholder = stringResource(MR.strings.thread_comments_placeholder),
-            enabled = enabled,
-            maxLines = if (compact) 3 else 4,
-            fieldMinHeight = if (compact) 64.dp else 82.dp,
-            onValueChange = onDraftChange,
-            password = false
-        )
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled
+        ) {
+            RaftTextarea(
+                value = state.draft,
+                onValueChange = onDraftChange,
+                placeholder = stringResource(MR.strings.thread_comments_placeholder),
+                minHeight = if (compact) 64.dp else 82.dp
+            )
+        }
         RaftModalFullWidthActionButton(
             label =
                 if (state.sending) {
@@ -31547,7 +31535,6 @@ private fun ThreadAttachmentCommentComposer(
             icon = RaftLucideIconName.Send,
             // Busy keeps the button's colour under the spinner (raft-ui Button > States).
             enabled = (enabled || state.sending) && state.draft.text.isNotBlank(),
-            color = RaftColor.AccentCyan,
             loading = state.sending,
             onClick = onSend
         )
@@ -32561,12 +32548,11 @@ private fun ThreadForwardBundleLoadFailure(
             color = RaftColor.TextBlack
         )
         Spacer(Modifier.height(RaftAppSpacing.Md))
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.common_retry),
+        RaftButton(
+            text = stringResource(MR.strings.common_retry),
             onClick = onRetry,
-            backgroundColor = RaftColor.SurfaceWhite,
-            minWidth = 0.dp,
-            minHeight = 36.dp
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md
         )
     }
 }
@@ -32972,41 +32958,46 @@ internal fun ThreadForwardNoteDialog(
                 )
             }
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(MR.strings.thread_state_note),
-                    value = note,
-                    placeholder =
-                        if (messageCount == 1) {
-                            stringResource(MR.strings.thread_forward_placeholder_one)
-                        } else {
-                            stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
-                        },
-                    maxLines = 3,
-                    fieldMinHeight = 76.dp,
-                    onValueChange = onNoteChange,
-                    password = false
-                )
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    RaftTextarea(
+                        value = note,
+                        onValueChange = onNoteChange,
+                        placeholder =
+                            if (messageCount == 1) {
+                                stringResource(MR.strings.thread_forward_placeholder_one)
+                            } else {
+                                stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
+                            },
+                        minHeight = 76.dp
+                    )
+                }
             }
         }
         RaftDialogFooter {
-            RaftModalActionButton(
-                label = stringResource(MR.strings.common_back),
-                icon = RaftLucideIconName.ArrowLeft,
+            RaftButton(
+                text = stringResource(MR.strings.common_back),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowLeft) },
                 onClick = onDismiss,
-                enabled = !sending
+                enabled = !sending,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
-            RaftModalActionButton(
-                label =
+            RaftButton(
+                text =
                     if (sending) {
                         stringResource(MR.strings.thread_forward_sending)
                     } else {
                         stringResource(MR.strings.common_send)
                     },
-                icon = RaftLucideIconName.Send,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Send) },
                 onClick = onSend,
-                color = RaftColor.AccentPink,
                 enabled = selectedTargetLabel.isNotBlank(),
-                loading = sending
+                loading = sending,
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
             )
         }
     }
@@ -33132,25 +33123,7 @@ internal fun ThreadShareSelectionToolbar(
     bottomSafeArea: Dp = raftBottomSafeAreaPadding()
 ) {
     val hasSelection = selectedCount > 0
-    var moreMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
-    val moreItems =
-        listOfNotNull(
-            RaftBrutalDropdownMenuItem(
-                id = "generate-image",
-                label = stringResource(MR.strings.thread_share_generate_image),
-                icon = RaftLucideIconName.Image,
-                enabled = hasSelection
-            ),
-            onCopyMarkdown?.let {
-                RaftBrutalDropdownMenuItem(
-                    id = "copy-md",
-                    label = stringResource(MR.strings.thread_share_copy_markdown),
-                    icon = RaftLucideIconName.Copy,
-                    enabled = hasSelection
-                )
-            }
-        )
+    var moreMenuOpen by remember { mutableStateOf(false) }
     Column(
         modifier =
             Modifier
@@ -33209,32 +33182,42 @@ internal fun ThreadShareSelectionToolbar(
                     onClick = onCopyLinks,
                     enabled = hasSelection
                 )
-                ThreadShareSelectionIconButton(
-                    icon = RaftLucideIconName.Ellipsis,
-                    tooltip = stringResource(MR.strings.thread_new_message_menu_more),
-                    onClick = {
-                        moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
-                    },
-                    enabled = hasSelection,
-                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
-                )
+                Box {
+                    ThreadShareSelectionIconButton(
+                        icon = RaftLucideIconName.Ellipsis,
+                        tooltip = stringResource(MR.strings.thread_new_message_menu_more),
+                        onClick = { moreMenuOpen = true },
+                        enabled = hasSelection
+                    )
+                    // The toolbar sits on the bottom edge: the menu flips above the button.
+                    RaftDropdownMenu(
+                        expanded = moreMenuOpen,
+                        onDismissRequest = { moreMenuOpen = false }
+                    ) {
+                        RaftMenuItem(
+                            text = stringResource(MR.strings.thread_share_generate_image),
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Image) },
+                            enabled = hasSelection,
+                            onClick = {
+                                moreMenuOpen = false
+                                onExportImage()
+                            }
+                        )
+                        if (onCopyMarkdown != null) {
+                            RaftMenuItem(
+                                text = stringResource(MR.strings.thread_share_copy_markdown),
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Copy) },
+                                enabled = hasSelection,
+                                onClick = {
+                                    moreMenuOpen = false
+                                    onCopyMarkdown()
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
-    }
-    moreMenuAnchor?.let { anchor ->
-        RaftBrutalDropdownMenu(
-            anchor = anchor,
-            items = moreItems,
-            onSelect = { id ->
-                moreMenuAnchor = null
-                when (id) {
-                    "generate-image" -> onExportImage()
-                    "copy-md" -> onCopyMarkdown?.invoke()
-                }
-            },
-            onDismiss = { moreMenuAnchor = null },
-            verticalPlacement = RaftFloatingVerticalPlacement.Above
-        )
     }
 }
 
@@ -33461,7 +33444,7 @@ private fun ThreadMembersPagerRow(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun ThreadAddMemberModal(
+internal fun ThreadAddMemberModal(
     members: List<RaftThreadMemberItem>,
     candidates: List<RaftThreadMemberItem>,
     canAddMembers: Boolean,
@@ -33498,7 +33481,6 @@ private fun ThreadAddMemberModal(
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
     var createAgentMenuOpen by remember { mutableStateOf(false) }
-    var createAgentMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     val addFailedLabel = stringResource(MR.strings.thread_add_member_failed)
     val genericErrorLabel = stringResource(MR.strings.common_error)
     val errorText =
@@ -33525,18 +33507,30 @@ private fun ThreadAddMemberModal(
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
                 color = RaftColor.TextBlack
             )
-            RaftBrutalSearchField(
+            val searchEditor =
+                rememberRaftDesignSystemEditor(
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
+                    keyboardHeightChange = {},
+                    focusRequester = remember { androidx.compose.ui.focus.FocusRequester() },
+                    autoFocus = false,
+                    onFocus = {},
+                    onBlur = {}
+                )
+            RaftTextField(
                 value = query,
-                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
-                leadingIcon = RaftLucideIconName.Search,
-                enabled = !blocked,
                 onValueChange = {
                     if (!blocked) {
                         query = it
                         if (!inline) selectedKey = null
                         localError = false
                     }
-                }
+                },
+                modifier = Modifier.fillMaxWidth().then(searchEditor.modifier),
+                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
+                enabled = !blocked,
+                leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+                keyboardOptions = searchEditor.keyboardOptions
             )
             val candidateRows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                 if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
@@ -33661,19 +33655,41 @@ private fun ThreadAddMemberModal(
             }
             if (inline) {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
-                RaftBrutalActionButton(
-                    label = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
-                        else stringResource(MR.strings.thread_members_create_named_agent, createName),
-                    modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
-                    enabled = !adding && canCreateAgents,
-                    onClick = {},
-                    onClick2 = { anchor ->
-                        if (canCreateAgents) {
-                            createAgentMenuAnchor = anchor
-                            createAgentMenuOpen = true
-                        }
-                    },
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    RaftButton(
+                        text = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
+                            else stringResource(MR.strings.thread_members_create_named_agent, createName),
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
+                        enabled = !adding && canCreateAgents,
+                        onClick = { if (canCreateAgents) createAgentMenuOpen = true },
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
+                    )
+                    // Web renderAgentActionMenu: Create Agent / Create External Agent.
+                    RaftDropdownMenu(
+                        expanded = createAgentMenuOpen,
+                        onDismissRequest = { createAgentMenuOpen = false },
+                        minWidth = MembersCreateAgentMenuMinWidth
+                    ) {
+                        RaftMenuItem(
+                            text = stringResource(MR.strings.agent_create_action_create),
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bot) },
+                            onClick = {
+                                createAgentMenuOpen = false
+                                onCreateAgent(createName, MembersCreateAgentMode.Managed)
+                            }
+                        )
+                        RaftMenuItem(
+                            text = stringResource(MR.strings.agent_create_action_create_external),
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link2) },
+                            onClick = {
+                                createAgentMenuOpen = false
+                                onCreateAgent(createName, MembersCreateAgentMode.External)
+                            }
+                        )
+                    }
+                }
                 if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = RaftType.Caption)
                 RaftButton(
                     text = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
@@ -33700,35 +33716,6 @@ private fun ThreadAddMemberModal(
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
-    }
-    if (createAgentMenuOpen && createAgentMenuAnchor != null) {
-        RaftUiControlledMenu(
-            expanded = true,
-            anchor = createAgentMenuAnchor!!,
-            width = 220.dp,
-            items = listOf(
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.Managed.name,
-                    label = stringResource(MR.strings.agent_create_action_create),
-                    icon = RaftLucideIconName.Bot
-                ),
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.External.name,
-                    label = stringResource(MR.strings.agent_create_action_create_external),
-                    icon = RaftLucideIconName.Link2
-                )
-            ),
-            onSelect = { id ->
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
-                val mode = MembersCreateAgentMode.entries.firstOrNull { it.name == id } ?: return@RaftUiControlledMenu
-                onCreateAgent(createName, mode)
-            },
-            onDismiss = {
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
-            }
-        )
     }
 }
 
@@ -34238,26 +34225,43 @@ internal fun ThreadSettingsModal(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(MR.strings.thread_settings_name),
-                        value = name,
-                        placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
-                        onValueChange = { name = it },
-                        required = true,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
-                    )
+                        modifier = Modifier.fillMaxWidth(),
+                        required = true
+                    ) {
+                        val nameEditor =
+                            rememberRaftDesignSystemEditor(
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+                                keyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
+                                keyboardHeightChange = {},
+                                focusRequester = remember { androidx.compose.ui.focus.FocusRequester() },
+                                autoFocus = false,
+                                onFocus = {},
+                                onBlur = {}
+                            )
+                        RaftTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            modifier = Modifier.fillMaxWidth().then(nameEditor.modifier),
+                            placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
+                            keyboardOptions = nameEditor.keyboardOptions
+                        )
+                    }
                 }
                 item {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(MR.strings.thread_settings_description),
-                        value = description,
-                        placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
-                        onValueChange = { description = it },
-                        optional = true,
-                        fieldMinHeight = 66.dp,
-                        maxLines = 2,
-                        password = false
-                    )
+                        modifier = Modifier.fillMaxWidth(),
+                        optional = true
+                    ) {
+                        RaftTextarea(
+                            value = description,
+                            onValueChange = { description = it },
+                            placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
+                            minHeight = 66.dp
+                        )
+                    }
                 }
                 if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     item {
@@ -34286,15 +34290,21 @@ internal fun ThreadSettingsModal(
                     RaftDialogFooter {
                         // React's Edit Channel form buttons carry no leading icons
                         // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        RaftModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
-                        RaftModalActionButton(
-                            label =
+                        RaftButton(
+                            text = stringResource(MR.strings.common_cancel),
+                            onClick = onDismiss,
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftButtonSize.Lg
+                        )
+                        RaftButton(
+                            text =
                                 if (profileSaving) {
                                     stringResource(MR.strings.thread_settings_saving)
                                 } else {
                                     stringResource(MR.strings.thread_action_save_changes)
                                 },
-                            color = RaftColor.AccentPink,
+                            variant = RaftButtonVariant.Primary,
+                            size = RaftButtonSize.Lg,
                             enabled = profileValid && profileChanged,
                             loading = profileSaving,
                             onClick = {
@@ -34325,13 +34335,17 @@ internal fun ThreadSettingsModal(
                                 )
                             }
                             conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
+                                RaftButton(
+                                    text =
                                         stringResource(
                                             if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
                                         ),
-                                    icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
-                                    color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
+                                    leadingIcon = {
+                                        RaftSlotIcon(if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    variant = if (pinState.pinned) RaftButtonVariant.Primary else RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Lg,
                                     onClick = { onTogglePin?.invoke() }
                                 )
                             }

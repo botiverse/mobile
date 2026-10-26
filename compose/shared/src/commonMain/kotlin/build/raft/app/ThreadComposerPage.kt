@@ -10,6 +10,9 @@ import build.raft.app.transfer.RaftComposerUploadPhase
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -29,9 +32,7 @@ import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftAppCheckbox
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftLookOverlaySurface
@@ -157,10 +158,6 @@ private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
-private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
-private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 // raft-ui 0.6.0 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1.5`, opening
 // `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
 // title/meta content row; `px-2.5 pt-2 pb-1` caption group labels; 19dp compact avatars
@@ -4801,34 +4798,26 @@ private fun ComposerIconButton(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     contentDescription: String,
-    // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
-    backgroundColor: Color = Color.Transparent,
-    disabledBackgroundColor: Color = RaftColor.EmptyStateGray,
-    disabledAlpha: Float = 1f,
-    disabledIconColor: String = "#4D000000",
+    // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon, `icon-md` 32dp.
+    variant: RaftButtonVariant = RaftButtonVariant.Ghost,
     loading: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
     onClick: () -> Unit
 ) {
-    RaftBrutalIconButton(
-        iconName = icon,
+    RaftIconButton(
         onClick = onClick,
-        contentDescription = contentDescription,
+        tooltip = contentDescription,
         modifier = modifier,
+        variant = variant,
+        size = RaftIconButtonSize.Md,
         enabled = enabled,
-        backgroundColor = backgroundColor,
-        disabledBackgroundColor = disabledBackgroundColor,
-        disabledAlpha = disabledAlpha,
-        disabledBorderColor = RaftColor.BorderBlack,
-        disabledShadowColor = RaftColor.ShadowBlack,
-        disabledIconColor = disabledIconColor,
-        size = ThreadComposerIconButtonSize,
-        iconSize = ThreadComposerIconSize,
         loading = loading,
         onLongClick = onLongClick,
-        longClickLabel = longClickLabel,
-    )
+        longClickLabel = longClickLabel
+    ) {
+        RaftSlotIcon(icon)
+    }
 }
 
 @Composable
@@ -4837,37 +4826,16 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val icon = RaftLucideIconName.Send
-    val contentDescription = stringResource(MR.strings.common_send)
-    if (sending) {
-        ComposerIconButton(
-            icon = icon,
-            // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
-            enabled = true,
-            contentDescription = contentDescription,
-            backgroundColor = RaftColor.AccentPink,
-            disabledBackgroundColor = RaftColor.AccentPink,
-            disabledAlpha = 1f,
-            disabledIconColor = "#FF000000",
-            loading = true,
-            onClick = onClick
-        )
-    } else {
-        RaftBrutalIconButton(
-            iconName = icon,
-            onClick = onClick,
-            contentDescription = contentDescription,
-            enabled = enabled,
-            backgroundColor = RaftColor.AccentPink,
-            disabledBackgroundColor = ThreadComposerDisabledSendBackground,
-            disabledAlpha = 1f,
-            disabledBorderColor = ThreadComposerDisabledSendBorder,
-            disabledShadowColor = ThreadComposerDisabledSendShadow,
-            disabledIconColor = ThreadComposerDisabledSendIconArgb,
-            size = ThreadComposerIconButtonSize,
-            iconSize = ThreadComposerIconSize
-        )
-    }
+    // raft-ui composer send: the primary `icon-md` button. Busy keeps the fill under the
+    // spinner and ignores taps (raft-ui Button > States).
+    ComposerIconButton(
+        icon = RaftLucideIconName.Send,
+        enabled = enabled || sending,
+        contentDescription = stringResource(MR.strings.common_send),
+        variant = RaftButtonVariant.Primary,
+        loading = sending,
+        onClick = onClick
+    )
 }
 
 internal fun threadComposerVisibleLeftActionGapDp(): Float =
@@ -4944,16 +4912,14 @@ private fun ComposerTextChip(
         return
     }
 
-    RaftBrutalActionButton(
-        label = text,
+    RaftButton(
+        text = text,
         onClick = onClick,
         enabled = enabled,
         loading = loading,
-        backgroundColor = if (variant == ComposerTextChipVariant.Pink) RaftColor.AccentPink else RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 26.dp,
-        leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
+        variant = if (variant == ComposerTextChipVariant.Pink) RaftButtonVariant.Primary else RaftButtonVariant.Default,
+        size = RaftButtonSize.Md,
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
