@@ -6,6 +6,7 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
+import build.raft.app.network.sync.CanonicalActionMetadataV2
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageNodeV2
@@ -81,6 +82,29 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertEquals(1, api.channelMessageCalls, "no older page went to the network")
         assertEquals(3, logs.count { "thread_durable_older_page" in it && "served=30" in it }, logs.toString())
         assertTrue(logs.any { "served=30 reason=reached_oldest" in it }, logs.toString())
+        scopeJob.cancelAndJoin()
+    }
+
+    @Test
+    fun anOlderPageFromDiskKeepsAnActionCardsPresentationAndConfirmationVersion() = runBlocking {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
+        // seq 40 is outside the 30 shown first: it only arrives with an older page read from disk.
+        val reader = FakeReader(
+            frame(count = 120, hasLoadedOldest = true, actionMetadataBySeq = mapOf(40 to v2ActionCardWithPresentation(confirmationVersion = 7))),
+        )
+        val store = SharedThreadStore(dataSource(api, reader), scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(store.state.value.payload.messages.none { it.id == "v2-40" })
+
+        repeat(3) { store.accept(SharedThreadIntent.LoadOlder) }
+        val paged = store.state.value.payload
+        assertTrue(paged.durableLastKnown)
+        assertEquals(1, api.channelMessageCalls, "the pages came from disk")
+        assertRestoredActionCardPresentation(paged.messages.single { it.id == "v2-40" }.metadata, confirmationVersion = 7)
+        // Positive control: a plain neighbour has no card.
+        assertTrue(paged.messages.single { it.id == "v2-41" }.metadata.isEmpty())
         scopeJob.cancelAndJoin()
     }
 
@@ -286,7 +310,11 @@ class SharedThreadStoreDurableOlderPagingTest {
         )
 
     /** Owner A's window: facts seq 1..[count] (stored newest-first), cursor oldest=1. */
-    private fun frame(count: Int, hasLoadedOldest: Boolean): ThreadDurableLastKnownFrame =
+    private fun frame(
+        count: Int,
+        hasLoadedOldest: Boolean,
+        actionMetadataBySeq: Map<Int, CanonicalActionMetadataV2> = emptyMap(),
+    ): ThreadDurableLastKnownFrame =
         ThreadDurableLastKnownFrame(
             scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
             envelopes = (count downTo 1).map { index ->
@@ -300,6 +328,7 @@ class SharedThreadStoreDurableOlderPagingTest {
                         messageType = "chat",
                         createdAt = "2026-05-19T16:${(index / 60).toString().padStart(2, '0')}:${(index % 60).toString().padStart(2, '0')}Z",
                         senderName = "Owner A",
+                        actionMetadata = actionMetadataBySeq[index],
                     ),
                     context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
                 )
