@@ -19,8 +19,29 @@ Data (key-value stores, database, caches) lives in `~/Library/Application Suppor
 "Sign in to Raft" uses the same browser handoff as the mobile apps: the server's app-login
 request with `returnUri = raft://login/callback`, approved in the browser. The packaged macOS
 app declares the `raft` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
-open-URI handler. `./gradlew :desktopApp:run` has no app bundle: pass the callback URL as a
-program argument instead.
+open-URI handler. Elsewhere (and for `./gradlew :desktopApp:run`) start the app again with the
+callback URL as its argument: the second launch hands it to the running app and exits.
+
+## Realtime
+
+`reportRealTime` drives a Socket.IO client (`realtime/`, copied from androidApp's
+SocketIoRealtimeClient) through the shared realtime runtime: one socket for the current server.
+
+## Local development server (raftdev)
+
+Point the app at a local stack by seeding `<dataDir>/kv/slock_api_server_environment.json`:
+
+```json
+{"environment":"custom","custom_label":"Local raftdev","custom_api_base_url":"http://localhost:13081/api/",
+ "custom_socket_base_url":"http://localhost:13081","custom_web_url":"http://localhost:15253"}
+```
+
+(ports from `./raftdev start <name>`). The browser login page may then be plain http on localhost.
+
+## CI
+
+`.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) runs `:desktopApp:packageDmg`
+on a macOS runner and uploads the unsigned `.dmg` as the `raft-desktop-macos-dmg` artifact.
 
 ## Signing and notarization (DevOps, macOS CI)
 
