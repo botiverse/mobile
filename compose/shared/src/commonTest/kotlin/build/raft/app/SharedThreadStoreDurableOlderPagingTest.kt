@@ -94,7 +94,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         val reader = FakeReader(
             frame(count = 120, hasLoadedOldest = true, actionMetadataBySeq = mapOf(40 to v2ActionCardWithPresentation(confirmationVersion = 7))),
         )
-        val store = SharedThreadStore(dataSource(api, reader), scope = scope)
+        val store = SharedThreadStore(dataSource(backgroundScope, api, reader), scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(store.state.value.payload.messages.none { it.id == "v2-40" })
 

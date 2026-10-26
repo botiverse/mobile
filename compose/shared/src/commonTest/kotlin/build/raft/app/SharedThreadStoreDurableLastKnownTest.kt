@@ -100,6 +100,7 @@ class SharedThreadStoreDurableLastKnownTest {
         val store =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(
                         frames = mapOf(partition(ownerA) to frame("card body", actionMetadata = v2ActionCardWithPresentation())),
@@ -119,6 +120,7 @@ class SharedThreadStoreDurableLastKnownTest {
         val bare =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(
                         frames = mapOf(
