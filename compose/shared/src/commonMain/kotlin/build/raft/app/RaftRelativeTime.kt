@@ -15,6 +15,9 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
 import build.raft.app.resources.MR
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -144,6 +147,9 @@ internal fun RaftRelativeTimestampText(
     softWrap: Boolean = true,
     toggleEnabled: Boolean = true,
     clampFuture: Boolean = false,
+    // false: the toggle is a tap only, so a screen reader reads the time into the item around
+    // it (a message row) instead of stopping on a button of its own.
+    toggleAccessible: Boolean = true,
     onToggle: (RaftTimestampDisplayMode) -> Unit = {}
 ) {
     val effectiveContext = currentRaftTimeContext(timeContext)
@@ -171,8 +177,14 @@ internal fun RaftRelativeTimestampText(
         } else {
             stringResource(MR.strings.relative_time_toggle_state_absolute)
         }
+    val currentToggle by rememberUpdatedState {
+        val nextMode = displayState.toggle(displayGroup, value, effectiveContext)
+        onToggle(nextMode)
+    }
     val interactiveModifier =
-        if (toggleAvailable) {
+        if (toggleAvailable && !toggleAccessible) {
+            modifier.pointerInput(Unit) { detectTapGestures(onTap = { currentToggle() }) }
+        } else if (toggleAvailable) {
             modifier
                 .clickable(
                     onClickLabel = onClickLabel,

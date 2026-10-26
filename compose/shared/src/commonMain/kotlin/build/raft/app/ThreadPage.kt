@@ -21,6 +21,11 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuLabel
+import build.raft.designsystem.components.RaftMultiChoiceList
+import build.raft.designsystem.components.RaftChoiceListItem
+import build.raft.designsystem.components.RaftChoiceListGroup
+import build.raft.designsystem.components.RaftChoiceListSearch
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftTextField
@@ -284,6 +289,9 @@ import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.model.civilDateFromEpochDay
+import build.raft.app.model.formatRaftClock
+import build.raft.app.model.twoDigits
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.model.RaftTimeFormat24Hour
@@ -406,8 +414,11 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -3725,6 +3736,30 @@ internal fun formatThreadCompactTimestampLabel(
         todayEpochDay = localEpochDay,
         timeFormat = RaftTimeFormat24Hour
     )
+}
+
+/**
+ * The message menu's label (raft-design dropdown-menu.md "The message menu"; web MessageItem
+ * `sent-at`): the message's full date and time, `2026-10-26 14:20` in the user's clock format,
+ * on any day. Null when the value is not a wire timestamp or there is no time authority yet.
+ */
+internal fun threadMessageMenuSentAtLabel(value: String, timeContext: RaftTimeContext?): String? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty() || timeContext == null) return null
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return null
+    val localMillis = epochMillis + timeContext.localOffsetMinutes * 60_000L
+    val millisPerDay = 86_400_000L
+    val epochDay = localMillis.floorDiv(millisPerDay)
+    val millisOfDay = localMillis.mod(millisPerDay)
+    val date = civilDateFromEpochDay(epochDay)
+    val clock =
+        formatRaftClock(
+            hour = (millisOfDay / 3_600_000L).toInt(),
+            minute = ((millisOfDay % 3_600_000L) / 60_000L).toInt(),
+            second = null,
+            timeFormat = timeContext.timeFormat
+        )
+    return "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()} $clock"
 }
 
 internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: RaftThreadMessageItem): String =
@@ -25474,10 +25509,27 @@ private fun ThreadMessageCardContent(
                 threadMessageLocatedFill(locatedStrength)
             }
         val rowSurface = rowFill.compositeOver(RaftColor.Canvas)
+        val profileActionLabel = stringResource(MR.strings.member_label_profile)
+        val currentOpenAuthorProfile by rememberUpdatedState<(String) -> Unit> { source -> openAuthorProfile(source) }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    // raft-ui 0.24 (raft-design #740): a message is one item for a screen reader,
+                    // named by its sender and time, read in the header's order before the text (a
+                    // continuation row by its time). Buttons inside it (reactions, files, links)
+                    // stay their own items; the sender's profile is the row's action.
+                    .semantics(mergeDescendants = true) {
+                        if (showAuthorChrome && message.canOpenThreadAuthorProfile(shareSelectionActive)) {
+                            customActions =
+                                listOf(
+                                    CustomAccessibilityAction(profileActionLabel) {
+                                        currentOpenAuthorProfile("a11y_action")
+                                        true
+                                    }
+                                )
+                        }
+                    }
                     // raft-ui `MessageItem` root: the row wash spans the whole
                     // row and the content sits at px-2 py-2 inside it.
                     .background(rowFill)
@@ -25575,7 +25627,11 @@ private fun ThreadMessageCardContent(
                                                 // subtitle and time share the first baseline.
                                                 .alignByBaseline()
                                                 .widthIn(max = 220.dp)
-                                                .clickable { openAuthorProfile("author_name") }
+                                                // A tap, not a clickable: the name is read into the
+                                                // row (its action opens the profile for a screen reader).
+                                                .pointerInput(Unit) {
+                                                    detectTapGestures(onTap = { currentOpenAuthorProfile("author_name") })
+                                                }
                                     )
                                     // task #392 (port of Web PR #7545): agent
                                     // model name after the name, before
@@ -28993,15 +29049,20 @@ internal data class ThreadMessageMenuAction(
 )
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
-// popup, 36dp `min-h-9` RaftMenuItem rows, and a `h-9 gap-1 px-2` quick-reaction
-// row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
-// the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
+// popup, the sent-at label, then raft-ui `MessageReactionQuickRow` (0.25, raft-design #751):
+// seven 36dp (`size-9`) buttons with 22dp drawings, `gap-0.5`, `px-0.75` so the first drawing
+// lines up with the items' icons -- 7 * 36 + 6 * 2 + 2 * 3 = 270dp, wider than the 240dp
+// minimum -- then 36dp `min-h-9` RaftMenuItem rows. raft-ui ends the quick row with a
+// smile-plus button; the app's Add Reaction is the first menu row instead (artin 2026-10-21).
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
-private val ThreadMessageMenuReactionButtonSize = 28.dp
-private val ThreadMessageMenuReactionGap = 4.dp
-private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
+private val ThreadMessageMenuReactionButtonSize = 36.dp
+private val ThreadMessageMenuReactionGlyphSize = 22.dp
+private val ThreadMessageMenuReactionGap = 2.dp
+private val ThreadMessageMenuReactionPaddingHorizontal = 3.dp
+// RaftMenuLabel: caption 16dp line, 8dp above and 4dp below.
+private val ThreadMessageMenuLabelHeight = 28.dp
 // Web places a touch context menu's top-left corner at the press point
 // (`placeTouchMessageContextMenu`), clamped 8px inside the viewport.
 private val ThreadMessageMenuViewportGap = 8.dp
@@ -29019,7 +29080,8 @@ internal fun threadMessageMenuWidthDp(showReactionActions: Boolean): Float {
 
 internal fun threadMessageMenuContentHeightDp(
     actionGroups: List<String>,
-    showReactionActions: Boolean
+    showReactionActions: Boolean,
+    showSentAtLabel: Boolean = false
 ): Float {
     // The popover chooses above/below before drawing its content. Feeding it a
     // generic first-frame estimate and replacing that with onGloballyPositioned
@@ -29043,6 +29105,7 @@ internal fun threadMessageMenuContentHeightDp(
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
         groupDividerCount * separatorHeight +
         reactionHeaderHeight +
+        (if (showSentAtLabel) ThreadMessageMenuLabelHeight.value else 0f) +
         RaftMetrics.PopupPadding.value * 2
 }
 
@@ -29201,6 +29264,13 @@ internal fun threadMessageMenuActions(
     onAddReaction: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
     buildList {
+        // raft-ui message menu (raft-design dropdown-menu.md "The message menu", stdrc
+        // 2026-10-20; web MessageItem): after the quick reactions, sections by what the action
+        // does to the message. Keep going on it (Reply in Thread, Follow, the task action); take
+        // it elsewhere (Copy Link, Copy Markdown, Forward, Select Message); just for me (Save,
+        // Translate). Mobile-only rows: Add Reaction opens the full picker, first (artin
+        // 2026-10-21: no smile-plus in the quick row); Select Text with the copies; Delete /
+        // Cancel of an unsent message last.
         if (showAddReactionAction) {
             add(
                 ThreadMessageMenuAction(
@@ -29208,6 +29278,57 @@ internal fun threadMessageMenuActions(
                     icon = RaftLucideIconName.SmilePlus,
                     group = "reaction",
                     onClick = onAddReaction
+                )
+            )
+        }
+        if (showReplyAction) {
+            add(ThreadMessageMenuAction(MR.strings.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "thread", onClick = onReply))
+        }
+        val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+        if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (replyMetadata.isThreadFollowed) {
+                            MR.strings.thread_action_unfollow_thread.desc()
+                        } else {
+                            MR.strings.thread_action_follow_thread.desc()
+                        },
+                    icon = threadFollowMenuIcon(replyMetadata.isThreadFollowed),
+                    group = "thread",
+                    onClick = {
+                        if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
+                            onUnfollowThread(followThreadChannelId)
+                        } else {
+                            onFollowThread()
+                        }
+                    }
+                )
+            )
+        }
+        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
+            val isDone = message.isThreadTaskDone()
+            add(
+                ThreadMessageMenuAction(
+                    label =
+                        if (isDone) {
+                            MR.strings.thread_action_reopen_task.desc()
+                        } else {
+                            MR.strings.thread_action_mark_done.desc()
+                        },
+                    icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
+                    group = "thread",
+                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
+                )
+            )
+        }
+        if (showConvertToTaskAction && message.canConvertToTask()) {
+            add(
+                ThreadMessageMenuAction(
+                    label = MR.strings.thread_action_convert_to_task.desc(),
+                    icon = RaftLucideIconName.ClipboardCheck,
+                    group = "thread",
+                    onClick = onConvertToTask
                 )
             )
         }
@@ -29223,21 +29344,9 @@ internal fun threadMessageMenuActions(
         }
         add(ThreadMessageMenuAction(MR.strings.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
         add(ThreadMessageMenuAction(MR.strings.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
-        if (showTranslateAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (translatePending) {
-                            MR.strings.translation_state_in_progress.desc()
-                        } else {
-                            MR.strings.thread_action_translate.desc()
-                        },
-                    icon = RaftLucideIconName.Languages,
-                    group = "copy",
-                    enabled = !translatePending,
-                    onClick = onTranslate
-                )
-            )
+        if (showForwardAction) {
+            // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
+            add(ThreadMessageMenuAction(MR.strings.thread_action_forward.desc(), RaftLucideIconName.Send, "copy", onClick = onForward))
         }
         if (showShareMessagesAction) {
             add(
@@ -29249,13 +29358,6 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
-        if (showReplyAction) {
-            add(ThreadMessageMenuAction(MR.strings.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
-        }
-        if (showForwardAction) {
-            // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
-            add(ThreadMessageMenuAction(MR.strings.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
-        }
         if (showSaveAction) {
             add(
                 ThreadMessageMenuAction(
@@ -29266,30 +29368,24 @@ internal fun threadMessageMenuActions(
                             MR.strings.thread_action_save_message.desc()
                         },
                     icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
-                    group = "message",
+                    group = "personal",
                     onClick = onSave
                 )
             )
         }
-        val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
-        if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
+        if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
                     label =
-                        if (replyMetadata.isThreadFollowed) {
-                            MR.strings.thread_action_unfollow_thread.desc()
+                        if (translatePending) {
+                            MR.strings.translation_state_in_progress.desc()
                         } else {
-                            MR.strings.thread_action_follow_thread.desc()
+                            MR.strings.thread_action_translate.desc()
                         },
-                    icon = threadFollowMenuIcon(replyMetadata.isThreadFollowed),
-                    group = "message",
-                    onClick = {
-                        if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
-                            onUnfollowThread(followThreadChannelId)
-                        } else {
-                            onFollowThread()
-                        }
-                    }
+                    icon = RaftLucideIconName.Languages,
+                    group = "personal",
+                    enabled = !translatePending,
+                    onClick = onTranslate
                 )
             )
         }
@@ -29310,32 +29406,6 @@ internal fun threadMessageMenuActions(
                     icon = RaftLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
-                )
-            )
-        }
-        message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
-            val isDone = message.isThreadTaskDone()
-            add(
-                ThreadMessageMenuAction(
-                    label =
-                        if (isDone) {
-                            MR.strings.thread_action_reopen_task.desc()
-                        } else {
-                            MR.strings.thread_action_mark_done.desc()
-                        },
-                    icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
-                    group = "task",
-                    onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
-                )
-            )
-        }
-        if (showConvertToTaskAction && message.canConvertToTask()) {
-            add(
-                ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_convert_to_task.desc(),
-                    icon = RaftLucideIconName.ClipboardCheck,
-                    group = "task",
-                    onClick = onConvertToTask
                 )
             )
         }
@@ -29446,13 +29516,15 @@ private fun ThreadMessageActionMenu(
                 onAddReaction = onAddReaction
             )
         }
+    val sentAtLabel = threadMessageMenuSentAtLabel(message.timestampLabel, LocalRaftTimeContextProvider.current?.current)
     val density = LocalDensity.current
     val menuWidth = with(density) { threadMessageMenuWidthDp(showReactionActions).dp.toPx() }
     val menuHeight =
         with(density) {
             threadMessageMenuContentHeightDp(
                 actionGroups = actions.map { it.group },
-                showReactionActions = showReactionActions
+                showReactionActions = showReactionActions,
+                showSentAtLabel = sentAtLabel != null
             ).dp.toPx()
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
@@ -29505,7 +29577,8 @@ private fun ThreadMessageActionMenu(
                 showReactionActions = showReactionActions,
                 reactionAtlasImage = reactionAtlasImage,
                 onReact = onReact,
-                modifier = Modifier
+                modifier = Modifier,
+                sentAtLabel = sentAtLabel
             )
         }
         return
@@ -29574,7 +29647,8 @@ private fun ThreadMessageActionMenu(
                 showReactionActions = showReactionActions,
                 reactionAtlasImage = reactionAtlasImage,
                 onReact = onReact,
-                modifier = Modifier
+                modifier = Modifier,
+                sentAtLabel = sentAtLabel
             )
         }
     } else {
@@ -29602,7 +29676,8 @@ private fun ThreadMessageActionMenu(
                                 onReact = { emoji ->
                                     onReact(emoji)
                                 },
-                                modifier = Modifier
+                                modifier = Modifier,
+                                sentAtLabel = sentAtLabel
                             )
                         }
                     },
@@ -29702,7 +29777,8 @@ internal fun ThreadMessageMenuChrome(
     showReactionActions: Boolean,
     reactionAtlasImage: ImageBitmap?,
     onReact: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sentAtLabel: String? = null
 ) {
     // task #11 (artin: 统一两套菜单): the design-system menu popup (RaftMenuSurface) with a
     // RaftMenuItem per action; the reaction bar sits above a separator, and a separator
@@ -29711,11 +29787,16 @@ internal fun ThreadMessageMenuChrome(
         modifier = modifier.raftFloatingContentClickTarget(),
         width = raftMenuWidth(threadMessageMenuWidthDp(showReactionActions).dp)
     ) {
+        // The message's full date and time, a label that can't be chosen: on a phone the only
+        // place a merged message's time shows.
+        sentAtLabel?.let { RaftMenuLabel(it) }
         if (showReactionActions) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 ThreadMessageReactionRow(
                     reactionAtlasImage = reactionAtlasImage,
-                    onReact = onReact
+                    onReact = onReact,
+                    glyphSize = ThreadMessageMenuReactionGlyphSize,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 )
             }
             RaftMenuSeparator()
@@ -29750,10 +29831,9 @@ private fun ThreadMessageReactionRow(
     glyphSize: Dp = 18.dp,
     horizontalPadding: Dp = ThreadMessageMenuReactionPaddingHorizontal,
     enabled: Boolean = true,
-    // The context menu packs web's `gap-1`; the wider compact menu spreads the buttons.
     horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
 ) {
-    // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
+    // raft-ui `MessageReactionQuickRow`: `justify-between gap-0.5 px-0.75`, 36dp buttons.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -30139,6 +30219,8 @@ private fun ThreadMessageTimestampLabel(
     RaftRelativeTimestampText(
         value = timestampLabel,
         displayGroup = RaftTimestampDisplayGroup.Conversation,
+        // The time is read into its message row, not a separate button.
+        toggleAccessible = false,
         style =
             RaftType.Caption.copy(
                 fontFamily = RaftMonoFamily,
@@ -33463,21 +33545,23 @@ internal fun ThreadAddMemberModal(
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    // Caller-local TextFieldValue is the sole editor owner for the search box;
-    // the modal's mount is the session boundary, so it is never re-seeded from
-    // a projected String (task #130 Phase D).
-    var query by remember { mutableStateOf(TextFieldValue()) }
-    var selectedKey by remember(candidates, initialSelectedId) {
-        mutableStateOf(candidates.firstOrNull { it.id == initialSelectedId }?.memberKey)
-    }
-    var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
-    var localError by remember { mutableStateOf(false) }
+    // The search text: the modal's mount is the session boundary, never re-seeded from a
+    // projection (task #130 Phase D). The choice list draws the field; the text stays here for
+    // the people search and the "Create …" footer.
+    var query by remember { mutableStateOf("") }
     val currentKeys = remember(members, localServerId) { threadAddMemberJoinedKeys(members, localServerId) }
-    val selectedCandidates = candidates.filter { it.memberKey in selectedKeys && it.memberKey !in currentKeys }
-    val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
-    val createName = query.text.trim().removePrefix("@").takeIf { filteredCandidates.isEmpty() }.orEmpty()
-    val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
-    val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
+    // Web ChannelMembers: the candidates are the agents and people not in the channel yet.
+    val available = remember(candidates, currentKeys) { candidates.distinctBy { it.memberKey }.filter { it.memberKey !in currentKeys } }
+    var selectedKeys by remember(candidates, initialSelectedId) {
+        mutableStateOf(listOfNotNull(available.firstOrNull { it.id == initialSelectedId }?.memberKey))
+    }
+    var localError by remember { mutableStateOf(false) }
+    val selectedCandidates = selectedKeys.mapNotNull { key -> available.firstOrNull { it.memberKey == key } }
+    // The people search @mentions use, ranked: the list shows its matches in its order (web
+    // MemberChoiceList `matchedValues`).
+    val matchedKeys =
+        if (query.isBlank()) null else filterThreadAddMemberCandidates(query = query, candidates = available).map { it.memberKey }
+    val createName = query.trim().removePrefix("@").takeIf { matchedKeys != null && matchedKeys.isEmpty() }.orEmpty()
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
     var createAgentMenuOpen by remember { mutableStateOf(false) }
@@ -33493,6 +33577,41 @@ internal fun ThreadAddMemberModal(
                         ?: genericErrorLabel)
             else -> null
         }
+    val choiceItems =
+        available.map { member ->
+            val kind = member.kind.parsedMemberKindOrNull()
+            RaftChoiceListItem(
+                value = member.memberKey,
+                label = member.displayName.ifBlank { member.handle },
+                descriptions = listOfNotNull(threadAddMemberCandidateSubtitle(member.description).takeIf { it.isNotBlank() }?.let(::AnnotatedString)),
+                searchText = listOf(member.displayName, member.handle, member.description).filter { it.isNotBlank() }.joinToString(" "),
+                media = {
+                    val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                    val avatarWireValue =
+                        rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id) ?: member.modalAvatarWireValue()
+                    RaftAvatarWithStatus(
+                        statusColor = status?.color,
+                        avatarSize = ThreadAddMemberAvatarSize,
+                        statusPulsing = status?.pulsing == true
+                    ) {
+                        RaftAppAvatar(
+                            avatarWireValue = avatarWireValue,
+                            label = member.modalAvatarLabel(),
+                            avatarSize = ThreadAddMemberAvatarSize,
+                            cacheSubject = raftMemberAvatarCacheSubject(kind, member.id),
+                            cacheServerId = member.sourceServerId,
+                            fallbackFill = raftAvatarFallbackFill(kind)
+                        )
+                    }
+                },
+                group = if (member.kind.equals("agent", ignoreCase = true)) "agent" else "human",
+            )
+        }
+    val choiceGroups =
+        listOf(
+            RaftChoiceListGroup("agent", stringResource(MR.strings.thread_members_agents)),
+            RaftChoiceListGroup("human", stringResource(MR.strings.thread_members_humans)),
+        )
     val content: @Composable () -> Unit = {
         Column(modifier = if (inline) Modifier.fillMaxSize() else Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!errorText.isNullOrBlank()) {
@@ -33502,208 +33621,94 @@ internal fun ThreadAddMemberModal(
                     color = RaftColor.AccentRed
                 )
             }
-            Text(
-                text = stringResource(MR.strings.thread_add_member_search),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack
-            )
-            val searchEditor =
-                rememberRaftDesignSystemEditor(
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions.Default,
-                    keyboardHeightChange = {},
-                    focusRequester = remember { androidx.compose.ui.focus.FocusRequester() },
-                    autoFocus = false,
-                    onFocus = {},
-                    onBlur = {}
-                )
-            RaftTextField(
-                value = query,
-                onValueChange = {
-                    if (!blocked) {
-                        query = it
-                        if (!inline) selectedKey = null
-                        localError = false
+            // Web: removable chips of the chosen people sit above the list, outside it.
+            if (selectedCandidates.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    selectedCandidates.forEach { member ->
+                        RaftToolbarChip(label = member.displayName, uppercase = false, active = true,
+                            trailingIconName = RaftLucideIconName.X, enabled = !adding,
+                            onClick = { selectedKeys = selectedKeys - member.memberKey })
+                    }
+                }
+            }
+            // raft-ui ChoiceList `multiple`, search always, Agents / People headings and the
+            // create entry as its footer (web MemberChoiceList, raft-design #767 / #774 / #780).
+            RaftMultiChoiceList(
+                items = choiceItems,
+                values = selectedCandidates.map { it.memberKey },
+                onValuesChange = {
+                    selectedKeys = it
+                    localError = false
+                },
+                searchPlaceholder = stringResource(MR.strings.thread_add_member_name_placeholder),
+                clearSearchLabel = stringResource(MR.strings.thread_add_member_clear_search),
+                noMatchLabel = stringResource(MR.strings.thread_add_member_no_matches, query.trim()),
+                emptyLabel = stringResource(MR.strings.thread_add_member_all_added),
+                modifier = if (inline) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth(),
+                enabled = !blocked && !adding,
+                search = RaftChoiceListSearch.Always,
+                searchValue = query,
+                onSearchValueChange = {
+                    query = it
+                    localError = false
+                },
+                matchedValues = matchedKeys,
+                groups = choiceGroups,
+                footer = {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        ThreadAddMemberCreateAgentEntry(
+                            label =
+                                if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
+                                else stringResource(MR.strings.thread_members_create_named_agent, createName),
+                            promoted = createName.isNotBlank(),
+                            enabled = !adding && canCreateAgents,
+                            noPermissionLabel =
+                                if (canCreateAgents) null else stringResource(MR.strings.thread_members_create_no_permission),
+                            onClick = { if (canCreateAgents) createAgentMenuOpen = true }
+                        )
+                        // Web renderAgentActionMenu: Create Agent / Create External Agent.
+                        RaftDropdownMenu(
+                            expanded = createAgentMenuOpen,
+                            onDismissRequest = { createAgentMenuOpen = false },
+                            minWidth = MembersCreateAgentMenuMinWidth
+                        ) {
+                            RaftMenuItem(
+                                text = stringResource(MR.strings.agent_create_action_create),
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bot) },
+                                onClick = {
+                                    createAgentMenuOpen = false
+                                    onCreateAgent(createName, MembersCreateAgentMode.Managed)
+                                }
+                            )
+                            RaftMenuItem(
+                                text = stringResource(MR.strings.agent_create_action_create_external),
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link2) },
+                                onClick = {
+                                    createAgentMenuOpen = false
+                                    onCreateAgent(createName, MembersCreateAgentMode.External)
+                                }
+                            )
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().then(searchEditor.modifier),
-                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
-                enabled = !blocked,
-                leading = { RaftSlotIcon(RaftLucideIconName.Search) },
-                keyboardOptions = searchEditor.keyboardOptions
+                fill = inline,
             )
-            val candidateRows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
-                if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        selectedCandidates.forEach { member ->
-                            RaftToolbarChip(label = member.displayName, uppercase = false, active = true,
-                                trailingIconName = RaftLucideIconName.X, enabled = !adding,
-                                onClick = { selectedKeys = selectedKeys - member.memberKey })
-                        }
+            RaftButton(
+                text = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
+                enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
+                loading = adding,
+                onClick = {
+                    if (selectedCandidates.isEmpty()) {
+                        localError = true
+                    } else {
+                        onSubmitBatch?.invoke(selectedCandidates) ?: selectedCandidates.forEach(onSubmit)
                     }
-                }
-                if (filteredCandidates.isEmpty()) {
-                    item {
-                        ThreadModalEmptyState(
-                            title =
-                                if (candidates.isEmpty()) {
-                                    stringResource(MR.strings.thread_add_member_no_people_loaded)
-                                } else {
-                                    stringResource(MR.strings.thread_add_member_no_matching_people)
-                                },
-                            detail =
-                                if (candidates.isEmpty()) {
-                                    stringResource(MR.strings.thread_members_refresh_detail)
-                                } else {
-                                    stringResource(MR.strings.thread_add_member_try_different_search)
-                                }
-                        )
-                    }
-                } else {
-                    if (humanCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
-                        items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
-                            val member = humanCandidates[index]
-                            val alreadyJoined = member.memberKey in currentKeys
-                            val interaction =
-                                threadAddMemberRowInteraction(
-                                    memberKey = member.memberKey,
-                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
-                                    blocked = blocked,
-                                    adding = adding,
-                                    alreadyJoined = alreadyJoined
-                                )
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            RaftModalCompactMemberRow(
-                                title = member.displayName,
-                                subtitle = threadAddMemberCandidateSubtitle(member.description),
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
-                                cacheServerId = member.sourceServerId,
-                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                selected = interaction.selected,
-                                selectionChecked = if (inline) interaction.selected else null,
-                                enabled = interaction.enabled,
-                                clickEnabled = interaction.clickEnabled,
-                                avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
-                                onClick = {
-                                    if (inline) {
-                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
-                                    } else {
-                                        selectedKey = member.memberKey
-                                        onSubmit(member)
-                                    }
-                                    localError = false
-                                }
-                            )
-                        }
-                    }
-                    if (agentCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
-                        items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
-                            val member = agentCandidates[index]
-                            val alreadyJoined = member.memberKey in currentKeys
-                            val interaction =
-                                threadAddMemberRowInteraction(
-                                    memberKey = member.memberKey,
-                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
-                                    blocked = blocked,
-                                    adding = adding,
-                                    alreadyJoined = alreadyJoined
-                                )
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            RaftModalCompactMemberRow(
-                                title = member.displayName,
-                                subtitle = threadAddMemberCandidateSubtitle(member.description),
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
-                                cacheServerId = member.sourceServerId,
-                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                selected = interaction.selected,
-                                selectionChecked = if (inline) interaction.selected else null,
-                                enabled = interaction.enabled,
-                                clickEnabled = interaction.clickEnabled,
-                                avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
-                                onClick = {
-                                    if (inline) {
-                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
-                                    } else {
-                                        selectedKey = member.memberKey
-                                        onSubmit(member)
-                                    }
-                                    localError = false
-                                }
-                            )
-                        }
-                    }
-
-                }
-            }
-            if (inline) {
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    RaftButton(
-                        text = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
-                            else stringResource(MR.strings.thread_members_create_named_agent, createName),
-                        modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
-                        enabled = !adding && canCreateAgents,
-                        onClick = { if (canCreateAgents) createAgentMenuOpen = true },
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Lg,
-                    )
-                    // Web renderAgentActionMenu: Create Agent / Create External Agent.
-                    RaftDropdownMenu(
-                        expanded = createAgentMenuOpen,
-                        onDismissRequest = { createAgentMenuOpen = false },
-                        minWidth = MembersCreateAgentMenuMinWidth
-                    ) {
-                        RaftMenuItem(
-                            text = stringResource(MR.strings.agent_create_action_create),
-                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bot) },
-                            onClick = {
-                                createAgentMenuOpen = false
-                                onCreateAgent(createName, MembersCreateAgentMode.Managed)
-                            }
-                        )
-                        RaftMenuItem(
-                            text = stringResource(MR.strings.agent_create_action_create_external),
-                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Link2) },
-                            onClick = {
-                                createAgentMenuOpen = false
-                                onCreateAgent(createName, MembersCreateAgentMode.External)
-                            }
-                        )
-                    }
-                }
-                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = RaftType.Caption)
-                RaftButton(
-                    text = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
-                    enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
-                    onClick = { onSubmitBatch?.invoke(selectedCandidates) },
-                    variant = RaftButtonVariant.Primary,
-                    size = RaftButtonSize.Lg,
-                )
-            } else {
-                RaftModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,
-                    content = candidateRows)
-            }
+                },
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
+            )
         }
     }
     if (inline) {
@@ -33716,6 +33721,72 @@ internal fun ThreadAddMemberModal(
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
+    }
+}
+
+private val ThreadAddMemberAvatarSize = 20.dp
+
+/**
+ * Web ChannelMembers `createAgentFooter`: the way to an agent that isn't in the list, under the
+ * candidates. A 24dp dashed plus tile and the label (callout 600); `brand-soft` once the search
+ * found no one, when it names the agent after the typed text. Without permission it stays,
+ * disabled, with the reason under it.
+ */
+@Composable
+private fun ThreadAddMemberCreateAgentEntry(
+    label: String,
+    promoted: Boolean,
+    enabled: Boolean,
+    noPermissionLabel: String?,
+    onClick: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val ink = if (enabled) colors.foreground else colors.foregroundDisabled
+    val tileInk = if (enabled) colors.foregroundHint else colors.foregroundDisabled
+    val shape = RoundedCornerShape(RaftAppRadius.Chip)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (promoted && enabled) colors.brandSoft else Color.Transparent, shape)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(24.dp)
+                        .drawBehind {
+                            val stroke = 1.5.dp.toPx()
+                            drawRoundRect(
+                                color = tileInk,
+                                topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+                                size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(RaftAppRadius.Sticker.toPx()),
+                                style =
+                                    androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = stroke,
+                                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 2.dp.toPx()))
+                                    )
+                            )
+                        },
+                contentAlignment = Alignment.Center
+            ) {
+                RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(14.dp), color = raftArgbHex(tileInk))
+            }
+            build.raft.designsystem.text.RaftText(
+                text = label,
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        noPermissionLabel?.let {
+            build.raft.designsystem.text.RaftText(text = it, style = RaftTheme.typography.caption, color = colors.foregroundHint)
+        }
     }
 }
 

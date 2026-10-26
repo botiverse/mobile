@@ -41,8 +41,8 @@ import org.robolectric.shadows.ShadowDialog
 
 /**
  * The conversation page's menus and forms, light and dark:
- * - `thread.message-menu`: a message's long-press menu (quick reactions, then every action group)
- *   above the select-mode toolbar.
+ * - `thread.message-menu`: a message's long-press menu (its date and time, the quick reactions, then
+ *   every action section) above the select-mode toolbar.
  * - `thread.attachment-comments`: a file's comments (filter, a comment with its time and anchor,
  *   a resolved one, the composer).
  * - `thread.add-member`: the inline Add Members panel with its search, picks and create-agent row.
@@ -172,6 +172,7 @@ private fun MessageMenuAndToolbar() {
                 showReactionActions = true,
                 reactionAtlasImage = null,
                 onReact = {},
+                sentAtLabel = threadMessageMenuSentAtLabel(menuMessage.timestampLabel, pickerTimeContext),
             )
         }
         ThreadShareSelectionToolbar(

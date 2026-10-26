@@ -71,9 +71,39 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun menuWidthIsMinW60OrTheQuickReactionRow() {
-        // 7 x 28 (size-7) + 6 x 4 (gap-1) + 2 x 8 (px-2) + 2 x 6 (p-1.5) = 248.
-        assertEquals(248f, threadMessageMenuWidthDp(showReactionActions = true))
+        // raft-ui MessageReactionQuickRow: 7 x 36 (size-9) + 6 x 2 (gap-0.5) + 2 x 3 (px-0.75)
+        // + 2 x 6 (p-1.5) = 282.
+        assertEquals(282f, threadMessageMenuWidthDp(showReactionActions = true))
         assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
+    }
+
+    @Test
+    fun theSentAtLabelAddsItsRowToTheHeight() {
+        // RaftMenuLabel: 8 + 16 + 4.
+        assertEquals(
+            133f + 28f,
+            threadMessageMenuContentHeightDp(
+                actionGroups = listOf("copy", "copy", "message"),
+                showReactionActions = false,
+                showSentAtLabel = true
+            )
+        )
+    }
+
+    @Test
+    fun theSentAtLabelIsTheFullLocalDateAndTime() {
+        val utc8 = build.raft.app.model.RaftTimeContext(localOffsetMinutes = 8 * 60)
+        assertEquals("2026-10-26 10:20", threadMessageMenuSentAtLabel("2026-10-26T02:20:00Z", utc8))
+        assertEquals(
+            "2026-10-26 10:20 AM",
+            threadMessageMenuSentAtLabel(
+                "2026-10-26T02:20:00Z",
+                utc8.copy(timeFormat = build.raft.app.model.RaftTimeFormat12Hour)
+            )
+        )
+        // A display clock (fixtures) or no time authority yet: no label.
+        assertEquals(null, threadMessageMenuSentAtLabel("10:38", utc8))
+        assertEquals(null, threadMessageMenuSentAtLabel("2026-10-26T02:20:00Z", null))
     }
 
     @Test

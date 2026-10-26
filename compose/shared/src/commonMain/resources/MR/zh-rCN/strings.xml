@@ -543,6 +543,9 @@
     <string name="thread_add_member_no_permission">你没有添加成员的权限。</string>
     <string name="thread_add_member_select_before_adding">请先选择要添加的成员。</string>
     <string name="thread_add_member_failed">无法添加成员</string>
+    <string name="thread_add_member_clear_search">清除搜索</string>
+    <string name="thread_add_member_no_matches">没有符合「%1$s」的成员</string>
+    <string name="thread_add_member_all_added">所有成员都已添加</string>
     <string name="thread_member_role_agent">Agent</string>
     <string name="thread_quoted_permalink_loading">正在加载消息…</string>
     <string name="thread_message_loading_full">正在加载完整消息…</string>

@@ -3,6 +3,8 @@ package build.raft.designsystem.screenshot
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -13,7 +15,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftChoiceList
+import build.raft.designsystem.components.RaftChoiceListGroup
+import build.raft.designsystem.components.RaftChoiceListSearch
+import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -28,7 +36,8 @@ import kotlin.test.Test
  * three rows with two description lines (a used-up window in `warning-strong`), an info action
  * and a disabled row; eight rows with the search field, the frame scrolling past 288dp; a
  * search keeping the chosen row first above the matches; a search matching nothing else; and
- * no items at all.
+ * no items at all. [choiceListMultiple]: the `multiple` variant with avatars under Agents and People
+ * headings, the search always on, a footer, and a `fill` list in a fixed height.
  */
 class ChoiceListScreenshotTest {
     private fun capture(name: String, content: @Composable () -> Unit) =
@@ -103,6 +112,81 @@ class ChoiceListScreenshotTest {
                     Case(computers(8), value = "c3", query = "tyz")
                     Caption("Nothing else matches")
                     Case(computers(8), value = "c3", query = "zzz", action = false)
+                }
+            }
+        }
+
+    private val people =
+        listOf(
+            Triple("agent:ux", "Product UX Designer", "agent"),
+            Triple("agent:cindy", "Cindy", "agent"),
+            Triple("human:artin", "artin", "human"),
+            Triple("human:designer", "Designer", "human"),
+        )
+
+    @Composable
+    private fun peopleItems(): List<RaftChoiceListItem<String>> =
+        people.map { (value, name, kind) ->
+            RaftChoiceListItem(
+                value = value,
+                label = name,
+                descriptions = if (value == "agent:ux") listOf(AnnotatedString("Turns product feedback into UX specs.")) else emptyList(),
+                media = {
+                    RaftAvatar(
+                        type = if (kind == "agent") RaftAvatarType.Agent else RaftAvatarType.Human,
+                        size = RaftAvatarSize.Xs,
+                        initials = name.take(1).uppercase(),
+                    )
+                },
+                group = kind,
+            )
+        }
+
+    private val peopleGroups = listOf(RaftChoiceListGroup("agent", "Agents"), RaftChoiceListGroup("human", "People"))
+
+    @Composable
+    private fun MultipleCase(values: List<String>, query: String = "", footer: Boolean = true, fill: Boolean = false, modifier: Modifier = Modifier) {
+        RaftMultiChoiceList(
+            items = peopleItems(),
+            values = values,
+            onValuesChange = {},
+            searchPlaceholder = "Search by name",
+            clearSearchLabel = "Clear search",
+            noMatchLabel = "No one matches",
+            emptyLabel = "Everyone is already here",
+            modifier = modifier,
+            initialQuery = query,
+            search = RaftChoiceListSearch.Always,
+            groups = peopleGroups,
+            footer =
+                if (footer) {
+                    { RaftText("Create an agent", Modifier.padding(horizontal = 10.dp, vertical = 8.dp), style = RaftTheme.typography.callout) }
+                } else {
+                    null
+                },
+            fill = fill,
+        )
+    }
+
+    @Test
+    fun choiceListMultiple() =
+        capture("choice_list_multiple") {
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("multiple, groups, search always, footer")
+                    MultipleCase(values = listOf("agent:cindy", "human:designer"))
+                }
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("Searching \"a\": chosen rows first in their group")
+                    MultipleCase(values = listOf("human:designer"), query = "a", footer = false)
+                    Caption("Nothing matches")
+                    MultipleCase(values = emptyList(), query = "zzz", footer = false)
+                }
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("fill: 240dp tall, rows scroll above the footer")
+                    Column(Modifier.height(240.dp)) {
+                        MultipleCase(values = listOf("agent:ux"), fill = true, modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }

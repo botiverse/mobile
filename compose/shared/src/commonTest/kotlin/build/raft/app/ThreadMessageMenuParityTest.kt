@@ -115,7 +115,7 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun classicMenuOrdersReplyInThreadForwardThenSaveAfterAddReaction() {
+    fun classicMenuFollowsRaftUiSectionsAfterAddReaction() {
         var forwarded = 0
         var reactionPickerOpened = 0
         val actions =
@@ -130,15 +130,20 @@ class ThreadMessageMenuParityTest {
         assertEquals(
             listOf(
                 MR.strings.thread_action_add_reaction.desc(),
+                MR.strings.thread_action_reply_in_thread.desc(),
                 MR.strings.thread_action_copy_link.desc(),
                 MR.strings.thread_action_copy_markdown.desc(),
                 MR.strings.thread_action_select_text.desc(),
-                MR.strings.thread_action_select_message.desc(),
-                MR.strings.thread_action_reply_in_thread.desc(),
                 MR.strings.thread_action_forward.desc(),
+                MR.strings.thread_action_select_message.desc(),
                 MR.strings.thread_action_save_message.desc()
             ),
             actions.map { it.label }
+        )
+        // raft-design dropdown-menu.md "The message menu": keep going / take it elsewhere / just for me.
+        assertEquals(
+            listOf("reaction", "thread", "copy", "copy", "copy", "copy", "copy", "personal"),
+            actions.map { it.group }
         )
         assertEquals(RaftLucideIconName.SmilePlus, actions.first().icon)
         assertEquals(RaftLucideIconName.Send, actions.single { it.label == MR.strings.thread_action_forward.desc() }.icon)
@@ -162,7 +167,7 @@ class ThreadMessageMenuParityTest {
 
     @Test
     fun classicSaveTogglesToRemoveFromSaved() {
-        val saved = classicActions(message(isSaved = true)).single { it.group == "message" && it.icon == RaftLucideIconName.BookmarkMinus }
+        val saved = classicActions(message(isSaved = true)).single { it.group == "personal" && it.icon == RaftLucideIconName.BookmarkMinus }
         assertEquals(MR.strings.thread_action_remove_from_saved.desc(), saved.label)
     }
 
