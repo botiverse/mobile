@@ -383,7 +383,8 @@ jobs:
             # Same entitlements minus Associated Domains (see the signing step).
             FALLBACK_ENTITLEMENTS="${RUNNER_TEMP}/ios-release/iosApp-no-associated-domains.entitlements"
             cp iosApp/iosApp.entitlements "${FALLBACK_ENTITLEMENTS}"
-            plutil -remove com.apple.developer.associated-domains "${FALLBACK_ENTITLEMENTS}"
+            # PlistBuddy, not `plutil -remove`: plutil reads the dots in the key as a key path.
+            /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.associated-domains' "${FALLBACK_ENTITLEMENTS}"
             BUILD_SETTINGS+=("CODE_SIGN_ENTITLEMENTS=${FALLBACK_ENTITLEMENTS}")
           fi
           set -o pipefail
