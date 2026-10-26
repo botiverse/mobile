@@ -56,9 +56,13 @@ class MembersAgentControlsScreenshotTest {
     fun controlsDark() = capture("members.agent-controls.dark", RaftAppAppearance.Dark) { AgentControlsContent() }
 
     @Test
+    // The whole scope list plus the action bar under it.
+    @Config(sdk = [34], qualifiers = "w390dp-h1700dp-xxhdpi")
     fun permissionsLight() = capture("members.agent-permissions", RaftAppAppearance.Light) { AgentPermissionsContent() }
 
     @Test
+    // The whole scope list plus the action bar under it.
+    @Config(sdk = [34], qualifiers = "w390dp-h1700dp-xxhdpi")
     fun permissionsDark() = capture("members.agent-permissions.dark", RaftAppAppearance.Dark) { AgentPermissionsContent() }
 
     @Test
