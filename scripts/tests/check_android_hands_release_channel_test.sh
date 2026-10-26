@@ -88,6 +88,57 @@ else
   failures=$((failures + 1))
 fi
 
+# CLI selection. None of these call the Hands API: CI has no Hands credentials, so a live
+# call would fail for a reason unrelated to this script. Adapted from #3702 (Mahua).
+
+# An explicitly named HANDS_CLI that does not exist must fail closed, not fall back.
+got=0
+env HANDS_CLI=definitely-not-a-real-binary \
+  "${GUARD}" --app "${APP}" --build "${BUILD}" --channel main >/dev/null 2>&1 || got=$?
+if [ "${got}" = "1" ]; then
+  echo "ok   explicit-cli-missing (exit 1)"
+else
+  echo "FAIL explicit-cli-missing: expected exit 1, got ${got}" >&2
+  failures=$((failures + 1))
+fi
+
+# With no HANDS_CLI and no npm, the guard must fail closed rather than skip the check,
+# even when a local `hands` is on PATH: the pinned package is the only default.
+NO_NPM_BIN="${WORK}/no-npm-bin"
+mkdir -p "${NO_NPM_BIN}"
+printf '#!/bin/sh\necho "local hands must not be used" >&2\nexit 0\n' > "${NO_NPM_BIN}/hands"
+chmod +x "${NO_NPM_BIN}/hands"
+got=0
+env -u HANDS_CLI PATH="${NO_NPM_BIN}" /bin/bash "${GUARD}" \
+  --app "${APP}" --build "${BUILD}" --channel main >"${WORK}/no-npm.out" 2>&1 || got=$?
+if [ "${got}" = "1" ] && grep -q "npm is required" "${WORK}/no-npm.out"; then
+  echo "ok   no-npm-ignores-local-hands (exit 1)"
+else
+  echo "FAIL no-npm-ignores-local-hands: expected exit 1 naming npm, got ${got}" >&2
+  sed 's/^/    /' "${WORK}/no-npm.out" >&2
+  failures=$((failures + 1))
+fi
+
+# The pinned package must resolve from the registry; a machine without credentials needs
+# at least this much. Skip, visibly, only when the registry cannot be reached.
+if command -v npm >/dev/null 2>&1; then
+  PINNED="$(sed -n 's/^HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-\(.*\)}"$/\1/p' "${GUARD}")"
+  got=0
+  npm exec --yes --registry https://registry.npmjs.org/ --package "${PINNED}" -- hands --version \
+    >"${WORK}/npmver.out" 2>&1 || got=$?
+  if [ "${got}" = "0" ] && [ "@botiverse/hands-cli@$(tail -1 "${WORK}/npmver.out")" = "${PINNED}" ]; then
+    echo "ok   pinned-package-resolves (${PINNED})"
+  elif grep -qiE "ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET" "${WORK}/npmver.out"; then
+    echo "skip pinned-package-resolves (registry unreachable)"
+  else
+    echo "FAIL pinned-package-resolves: ${PINNED}, exit ${got}" >&2
+    sed 's/^/    /' "${WORK}/npmver.out" >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "skip pinned-package-resolves (npm not installed)"
+fi
+
 if [ "${failures}" -ne 0 ]; then
   echo "${failures} failure(s)" >&2
   exit 1
