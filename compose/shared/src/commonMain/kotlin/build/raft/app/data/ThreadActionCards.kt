@@ -45,9 +45,9 @@ internal data class ThreadActionCard(
     val executedByUserName: String? = null,
     /**
      * Who executed the card (wire `executedByUserId`). Read only to tell whether the viewer is the
-     * sender (a done `feedback:submit` card's "View in Settings", S0.3). Absent on the canonical V2
-     * read path, which does not carry user pointer ids: there the App treats the viewer as not the
-     * sender.
+     * sender (a done `feedback:submit` card's "View in Settings", S0.3). Carried by both the REST
+     * and the canonical V2 paths (manifest v9, #3739); when absent, the App treats the viewer as not
+     * the sender.
      */
     val executedByUserId: String? = null,
     val resultKind: String? = null,
