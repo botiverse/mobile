@@ -2524,49 +2524,12 @@ internal fun RaftThreadScreenPayload.replyThreadRealtimeRoomIds(): Set<String> {
         .toSet()
 }
 
+/** This page's [message] as a web link ([threadMessageLink] built by [buildRaftMessageLink]). */
 internal fun RaftThreadScreenPayload.threadMessagePermalink(
     message: RaftThreadMessageItem,
     serverSlug: String?,
     webBaseUrl: String? = null
-): String? {
-    val cleanServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val cleanMessageId = message.id.trim().takeIf { it.isNotBlank() } ?: return null
-    val replyParentMessageId =
-        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: parentMessageId?.takeIf { it.isNotBlank() }
-        } else {
-            null
-        }
-    val channelForLink =
-        if (replyParentMessageId != null) {
-            parentChannelId?.takeIf { it.isNotBlank() }
-        } else {
-            sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: streamChannelId?.takeIf { it.isNotBlank() }
-                ?: parentChannelId?.takeIf { it.isNotBlank() }
-        } ?: return null
-    val routeKind =
-        if (
-            (replyParentMessageId != null && parentChannelKind.isThreadPermalinkDmKind()) ||
-            (replyParentMessageId == null && (surfaceKind == RaftThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()))
-        ) {
-            "dm"
-        } else {
-            "channel"
-        }
-    val params =
-        if (replyParentMessageId != null) {
-            "msg=$cleanMessageId&thread=$channelForLink%3A$replyParentMessageId"
-        } else {
-            "msg=$cleanMessageId"
-        }
-    return "${sharedSettingsResolvedWebBaseUrl(webBaseUrl)}/s/$cleanServerSlug/$routeKind/$channelForLink?$params"
-}
-
-private fun String?.isThreadPermalinkDmKind(): Boolean =
-    // #417 contract parse (accepts "direct"); no private DM vocab table (t432 PR-A).
-    parseConversationKindOrNull(this) == ConversationKind.DirectMessage
+): String? = threadMessageLink(message.id, serverSlug)?.let { buildRaftMessageLink(it, webBaseUrl) }
 
 internal fun RaftThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
@@ -8527,6 +8490,7 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
 
+    val actionCardSpecCopiedLabel = stringResource(MR.strings.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
     // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
     // (threadActionCardSpecPress).
@@ -8537,31 +8501,58 @@ private fun SharedThreadRouteContentContent(
                 execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
+                loadWebUrl = {
+                    (
+                        BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
+                            .loadDeveloper() as? DataResult.Content
+                    )?.data?.webUrl
+                },
+                openInBrowser = { url ->
+                    bridge.log("thread_action_card_open_in_web")
+                    bridge.hostCapabilities.openUrlInBrowser(url)
+                },
             )
         }
-    val actionCardSpecState by actionCardSpecStore.state.collectAsState()
+    // The page reads only the open confirm / form; each card reads its own slice (ThreadActionCardSpecView).
+    val actionCardSpecDialogsFlow =
+        remember(actionCardSpecStore) {
+            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form) }.distinctUntilChanged()
+        }
+    val actionCardSpecState by actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
     val actionCardAlreadyExecutedLabel = stringResource(MR.strings.thread_action_card_already_executed)
     val actionCardAlreadyExecutedByTemplate =
         stringResource(MR.strings.thread_action_card_already_executed_by, ThreadLocalizedFeedbackPlaceholder)
     val actionCardOpenInWebFailedLabel = stringResource(MR.strings.thread_action_card_open_in_web_failed)
+    val actionCardFrozenClosedLabel = stringResource(MR.strings.thread_action_card_frozen_closed)
     LaunchedEffect(actionCardSpecStore) {
         actionCardSpecStore.effects.collect { effect ->
             when (effect) {
                 is ThreadActionCardSpecEffect.AlreadyExecuted ->
                     bridge.toast(
-                        effect.executedByUserName?.let { actionCardAlreadyExecutedByTemplate.replace(ThreadLocalizedFeedbackPlaceholder, it) }
-                            ?: actionCardAlreadyExecutedLabel
+                        when {
+                            effect.frozen -> actionCardFrozenClosedLabel
+                            effect.executedByUserName != null ->
+                                actionCardAlreadyExecutedByTemplate.replace(ThreadLocalizedFeedbackPlaceholder, effect.executedByUserName)
+                            else -> actionCardAlreadyExecutedLabel
+                        }
                     )
+                ThreadActionCardSpecEffect.OpenInWebFailed -> bridge.toast(actionCardOpenInWebFailedLabel)
             }
         }
     }
     // The card's server may not be this page's (a joint channel): its flags are asked for once.
     val actionCardSpecFlagRequests = remember(threadInstanceKey) { mutableSetOf<String>() }
-    val actionCardSpecCopiedLabel = stringResource(MR.strings.common_copied)
     val latestActionCardThread by rememberUpdatedState(renderedThread)
     val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
+    // Home's DM rows: a navigate to a message in a DM opens the DM route.
+    val actionCardDirectMessageIds =
+        remember(sharedHomeState.content) {
+            (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.directMessages.orEmpty().mapTo(HashSet()) { it.channelId.value }
+        }
+    val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
+    // Keyed on flags only: each card selects its own slice of the store's state.
     val actionCardSpecHost =
-        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecState, actionCardSpecStore) {
+        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore) {
             ThreadActionCardSpecHost(
                 specEnabled = { serverId ->
                     serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
@@ -8573,27 +8564,17 @@ private fun SharedThreadRouteContentContent(
                     }
                 },
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
-                state = actionCardSpecState,
+                state = actionCardSpecStore.state,
                 onIntent = actionCardSpecStore::dispatch,
                 openInWeb = { messageId ->
-                    // "Open in web": this message's link on the Developer environment's web URL
-                    // (AGENTS.md "Environment Web Link URL Rule"), in the external browser.
-                    val link = latestActionCardThread.threadMessageLink(messageId, latestActionCardServerSlug)
-                    coroutineScope.launch {
-                        val webUrl =
-                            (
-                                BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
-                                    .loadDeveloper() as? DataResult.Content
-                            )?.data?.webUrl
-                        val url = link?.let { buildRaftMessageLink(it, webUrl) }
-                        if (url == null) {
-                            bridge.toast(actionCardOpenInWebFailedLabel)
-                        } else {
-                            bridge.log("thread_action_card_open_in_web messageId=$messageId")
-                            bridge.hostCapabilities.openUrlInBrowser(url)
-                        }
-                    }
+                    actionCardSpecStore.dispatch(
+                        ThreadActionCardSpecIntent.OpenInWeb(
+                            messageId,
+                            latestActionCardThread.threadMessageLink(messageId, latestActionCardServerSlug),
+                        )
+                    )
                 },
+                isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
             )
         }
 
@@ -25855,7 +25836,7 @@ private fun ThreadMessageCardContent(
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                     onAction = { elementId ->
-                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId)) {
+                                        when (val press = threadActionCardSpecPress(actionCard, specCard, elementId, viewerServerId)) {
                                             ThreadActionCardSpecPress.Ignore -> Unit
                                             ThreadActionCardSpecPress.Typed -> {
                                                 specHost.onIntent(ThreadActionCardSpecIntent.TypedPress(message.id, elementId))
@@ -25871,6 +25852,7 @@ private fun ThreadMessageCardContent(
                                                     cardSourceServerId = actionCard.sourceServerId,
                                                     viewerServerId = viewerServerId,
                                                     serverSlug = currentServerSlug,
+                                                    isDirectMessageChannel = specHost.isDirectMessageChannel,
                                                     onOpenUrl = onOpenMarkdownUrl,
                                                     onOpenChannel = callbacks.onOpenActionCardChannel,
                                                     onOpenMember = callbacks.onOpenMember,

@@ -760,6 +760,7 @@
     <string name="thread_action_card_form_required">此卡片已更新。请刷新会话后重试。</string>
     <string name="thread_action_card_already_executed_by">%1$s 已完成此操作。</string>
     <string name="thread_action_card_already_executed">已有人完成此操作。</string>
+    <string name="thread_action_card_frozen_closed">频道转换期间，此卡片已冻结。</string>
     <string name="thread_action_card_open_in_web_failed">无法在网页打开此消息。</string>
     <string name="thread_action_card_permission_set_login_scopes">登录权限</string>
     <string name="thread_action_card_permission_set_data_access">数据访问</string>

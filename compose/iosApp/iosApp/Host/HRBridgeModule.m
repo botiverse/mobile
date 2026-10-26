@@ -14,6 +14,7 @@
 #import <os/lock.h>
 #import <pthread.h>
 #import <Photos/Photos.h>
+#import <SafariServices/SafariServices.h>
 #import <PhotosUI/PhotosUI.h>
 #import <SDWebImage/SDImageCache.h>
 #import <stdatomic.h>
@@ -3536,6 +3537,21 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     NSURL *url = [NSURL URLWithString:urlText];
     if (!url || url.scheme.length == 0) {
         NSLog(@"[%@][warn] openUrl ignored invalid url", RaftBridgeDefaultLogTag);
+        return;
+    }
+    // HostLinkCapability.openUrlInBrowser (`browser: true`): an http(s) page in Safari inside the
+    // app, so a Raft universal link can't route back into Raft. Everything else: openURL.
+    NSString *scheme = url.scheme.lowercaseString;
+    BOOL webUrl = [scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"];
+    if ([params[@"browser"] boolValue] && webUrl) {
+        RaftBridgeRunOnMain(^{
+            UIViewController *controller = [self raft_currentViewController];
+            if (controller) {
+                [controller presentViewController:[[SFSafariViewController alloc] initWithURL:url] animated:YES completion:nil];
+                return;
+            }
+            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+        });
         return;
     }
     RaftBridgeRunOnMain(^{

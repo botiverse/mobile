@@ -632,10 +632,10 @@ internal fun selectExternalWebHandlerPackage(
 }
 
 /**
- * Whether an `openUrl` goes to the browser selector first: only when the caller asked for the
+ * Whether an `openUrl` is pinned to a browser package first: only when the caller asked for the
  * browser (`browser: true`, HostLinkCapability.openUrlInBrowser) and it is an untyped http(s) URL.
  */
-internal fun openUrlUsesBrowserSelector(browser: Boolean, mimeType: String?, scheme: String?): Boolean =
+internal fun openUrlUsesBrowserPackage(browser: Boolean, mimeType: String?, scheme: String?): Boolean =
     browser && mimeType == null && scheme?.lowercase() in setOf("http", "https")
 
 private fun String.isRaftAppPackage(): Boolean = this == RAFT_APP_PACKAGE || startsWith("$RAFT_APP_PACKAGE.")

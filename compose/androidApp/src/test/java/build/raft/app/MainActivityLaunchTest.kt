@@ -390,13 +390,25 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun onlyABrowserRequestForAnUntypedWebUrlUsesTheBrowserSelector() {
-        assertTrue(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "https"))
-        assertTrue(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "HTTP"))
+    fun onlyABrowserRequestForAnUntypedWebUrlIsPinnedToABrowser() {
+        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "https"))
+        assertTrue(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "HTTP"))
         // An ordinary openUrl keeps the external-handler path; typed or non-web URLs never take a browser.
-        assertFalse(openUrlUsesBrowserSelector(browser = false, mimeType = null, scheme = "https"))
-        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = "application/pdf", scheme = "https"))
-        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "mailto"))
-        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = null))
+        assertFalse(openUrlUsesBrowserPackage(browser = false, mimeType = null, scheme = "https"))
+        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = "application/pdf", scheme = "https"))
+        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = "mailto"))
+        assertFalse(openUrlUsesBrowserPackage(browser = true, mimeType = null, scheme = null))
+    }
+
+    @Test
+    fun theBrowserForOpenInWebIsTheDefaultOneAndNeverARaftApp() {
+        // Candidates of the no-host https probe: browsers (and any Raft build that takes https).
+        val browsers = listOf("build.raft.app", "build.raft.app.debug", "org.mozilla.firefox", "com.android.chrome")
+        assertEquals("com.android.chrome", selectExternalWebHandlerPackage("build.raft.app.debug", "com.android.chrome", browsers))
+        // No default (the resolver), or a Raft app as the default: the first other browser.
+        assertEquals("org.mozilla.firefox", selectExternalWebHandlerPackage("build.raft.app.debug", "android", browsers))
+        assertEquals("org.mozilla.firefox", selectExternalWebHandlerPackage("build.raft.app.debug", "build.raft.app", browsers))
+        // Only Raft apps: none, and openUrl takes its ordinary path.
+        assertEquals(null, selectExternalWebHandlerPackage("build.raft.app", null, listOf("build.raft.app", "build.raft.app.alpha")))
     }
 }

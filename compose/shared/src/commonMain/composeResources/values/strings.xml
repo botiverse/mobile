@@ -760,6 +760,7 @@
     <string name="thread_action_card_form_required">This card has changed. Refresh the conversation and try again.</string>
     <string name="thread_action_card_already_executed_by">%1$s already completed this.</string>
     <string name="thread_action_card_already_executed">Someone already completed this.</string>
+    <string name="thread_action_card_frozen_closed">This card is frozen while its channel is being converted.</string>
     <string name="thread_action_card_open_in_web_failed">Couldn’t open this message on the web.</string>
     <string name="thread_action_card_permission_set_login_scopes">Login scopes</string>
     <string name="thread_action_card_permission_set_data_access">Data access</string>

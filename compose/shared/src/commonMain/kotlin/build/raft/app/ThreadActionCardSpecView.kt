@@ -7,6 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -38,17 +44,21 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * - [specEnabled]: the `action_card_spec` flag for a server (the card's own,
  *   [actionCardSpecFlagServerId]); [ensureFlags] asks for that server's flags once when this
  *   process has none yet (a joint channel's card from another server).
- * - [capabilities]: what strip keeps ([build.raft.app.data.raftAppActionCardCapabilities]).
- * - [state] / [onIntent]: [ThreadActionCardSpecStore].
- * - [openInWeb]: this message's web link in the browser.
+ * - [capabilities]: what strip keeps ([build.raft.app.data.raftAppActionCardCapabilities]), cut
+ *   per card ([actionCardSpecCapabilitiesFor]).
+ * - [state] / [onIntent]: [ThreadActionCardSpecStore]; each card reads only its own
+ *   [ThreadActionCardSpecState.slice], so the host does not change when one card runs.
+ * - [openInWeb]: dispatches [ThreadActionCardSpecIntent.OpenInWeb] with this message's link.
+ * - [isDirectMessageChannel]: whether a channel id is a DM this device knows (a message target's route).
  */
 internal data class ThreadActionCardSpecHost(
     val specEnabled: (serverId: String?) -> Boolean = { false },
     val ensureFlags: (serverId: String) -> Unit = {},
     val capabilities: List<String> = RAFT_APP_ACTION_CARD_CAPABILITIES,
-    val state: ThreadActionCardSpecState = ThreadActionCardSpecState(),
+    val state: StateFlow<ThreadActionCardSpecState> = MutableStateFlow(ThreadActionCardSpecState()),
     val onIntent: (ThreadActionCardSpecIntent) -> Unit = {},
     val openInWeb: (messageId: String) -> Unit = {},
+    val isDirectMessageChannel: (channelId: String) -> Boolean = { false },
 )
 
 internal val LocalThreadActionCardSpecHost = compositionLocalOf { ThreadActionCardSpecHost() }
@@ -119,6 +129,8 @@ internal fun ThreadActionCardSpecView(
     onAction: (elementId: String) -> Unit,
 ) {
     val host = LocalThreadActionCardSpecHost.current
+    val sliceFlow = remember(host.state, messageId) { host.state.map { it.slice(messageId) }.distinctUntilChanged() }
+    val slice by sliceFlow.collectAsState(remember(host.state, messageId) { host.state.value.slice(messageId) })
     val viewerServerId = LocalThreadViewerServerId.current
     val names = LocalThreadActionCardNames.current
     val displayLocale = rememberActionCardDisplayLocale()
@@ -147,8 +159,8 @@ internal fun ThreadActionCardSpecView(
             record = record,
             blockedReason = blockedReason,
             readOnly = !commitEnabled,
-            busyElementKey = host.state.busyElement(messageId, typedPending),
-            error = threadActionCardSpecErrorText(host.state.errors[messageId]),
+            busyElementKey = slice.busyElement(typedPending),
+            error = threadActionCardSpecErrorText(slice.error),
         )
     RaftActionCardView(
         card = rendered,
@@ -158,6 +170,7 @@ internal fun ThreadActionCardSpecView(
         modifier = modifier,
         sourceServerId = card.sourceServerId,
         displayLocale = displayLocale,
+        linkNavigable = { button -> button.actionCardSpecLinkNavigable(card.sourceServerId, viewerServerId) },
     )
 }
 

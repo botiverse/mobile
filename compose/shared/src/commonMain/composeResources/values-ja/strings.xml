@@ -762,6 +762,7 @@
     <string name="thread_action_card_form_required">このカードは更新されました。会話を更新してもう一度お試しください。</string>
     <string name="thread_action_card_already_executed_by">%1$s がすでに完了しました。</string>
     <string name="thread_action_card_already_executed">すでに他のメンバーが完了しました。</string>
+    <string name="thread_action_card_frozen_closed">チャンネルの変換中のため、このカードは凍結されています。</string>
     <string name="thread_action_card_open_in_web_failed">このメッセージをウェブで開けませんでした。</string>
     <string name="thread_action_card_permission_set_login_scopes">ログインのスコープ</string>
     <string name="thread_action_card_permission_set_data_access">データアクセス</string>

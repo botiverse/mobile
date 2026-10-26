@@ -7,6 +7,7 @@ import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
+import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecNavigateTarget
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
@@ -64,6 +65,7 @@ class ThreadActionCardSpecStoreTest {
         val calls = mutableListOf<Triple<String, Int?, ExecuteActionFormBody?>>()
         val answers = ArrayDeque<CompletableDeferred<DataResult<ActionCardExecuteOutcome>>>()
         val applied = mutableListOf<Pair<String, ThreadActionCard>>()
+        val opened = mutableListOf<String>()
         val store =
             ThreadActionCardSpecStore(
                 scope = scope.backgroundScope,
@@ -72,6 +74,8 @@ class ThreadActionCardSpecStoreTest {
                     answers.removeFirst().await()
                 },
                 applyCard = { messageId, card -> applied += messageId to card },
+                loadWebUrl = { "https://staging.raft.example" },
+                openInBrowser = { url -> opened += url },
             )
 
         fun answer(result: DataResult<ActionCardExecuteOutcome>) = CompletableDeferred<DataResult<ActionCardExecuteOutcome>>().also {
@@ -147,8 +151,78 @@ class ThreadActionCardSpecStoreTest {
             )
         for ((input, expected) in cases) {
             val (card, spec, id) = input
-            assertEquals(expected, threadActionCardSpecPress(card, spec, id), "${card.state} $id")
+            assertEquals(expected, threadActionCardSpecPress(card, spec, id, viewerServerId = "s-1"), "${card.state} $id")
         }
+        // web isOnViewerServer: no viewer server, or a target on another server, opens nothing (its Button is disabled).
+        val elsewhere = """{"kind":"navigate","target":{"kind":"agent","id":"7b2e8f3a-0c5d-4e4f-9a3b-2c3d4e5f6071","serverId":"c07d3e8f-5bac-4d9e-8f8a-718293a4b5c6"}}"""
+        assertEquals(ThreadActionCardSpecPress.Ignore, threadActionCardSpecPress(card(), spec("nav" to navigate), "nav", viewerServerId = null))
+        assertEquals(ThreadActionCardSpecPress.Ignore, threadActionCardSpecPress(card(), spec("nav" to elsewhere), "nav", viewerServerId = "s-1"))
+        val farButton = spec("nav" to elsewhere).spec.element("nav") as ActionCardSpecButton
+        assertEquals(false, farButton.actionCardSpecLinkNavigable(cardSourceServerId = null, viewerServerId = "s-1"))
+        assertEquals(true, farButton.actionCardSpecLinkNavigable(cardSourceServerId = null, viewerServerId = "c07d3e8f-5bac-4d9e-8f8a-718293a4b5c6"))
+        // A card from another server: its targets without a serverId live there too.
+        assertEquals(false, actionCardTargetOnViewerServer(ActionCardSpecNavigateTarget(ActionCardSpecNavigateTarget.Kind.Channel, "c"), "other", "s-1"))
+    }
+
+    @Test
+    fun anIntentIsKeptOnlyForTheCardTypeItsNativePathBelongsTo() {
+        val createChannel = """{"kind":"open","intent":"create_channel"}"""
+        val createAgent = """{"kind":"open","intent":"create_agent"}"""
+        val json = cardJson("chan" to createChannel, "agent" to createAgent)
+        val onChannelCard = assertNotNull(card(type = "channel:create", spec = json).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
+        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateChannel), (onChannelCard.spec.element("chan") as ActionCardSpecButton).action)
+        // Another type's dialog: "Open in web", with that label, not the spec's.
+        val other = onChannelCard.spec.element("agent") as ActionCardSpecButton
+        assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, other.action to other.label)
+        val onAgentCard = assertNotNull(card(type = "agent:create", spec = json).actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES))
+        assertEquals(ActionCardSpecAction.OpenInWeb, (onAgentCard.spec.element("chan") as ActionCardSpecButton).action)
+        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateAgent), (onAgentCard.spec.element("agent") as ActionCardSpecButton).action)
+        assertEquals(
+            RAFT_APP_ACTION_CARD_CAPABILITIES.filterNot { it.startsWith("intent.") } + "intent.create_agent",
+            card(type = "agent:create").actionCardSpecCapabilitiesFor(RAFT_APP_ACTION_CARD_CAPABILITIES),
+        )
+    }
+
+    @Test
+    fun aCardDoneOrFrozenElsewhereClosesItsOpenSheetAndSaysSo() = runTest {
+        val h = Harness(this)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "fill", card(), spec("fill" to form)))
+        // A newer version of the same prepared card just follows along.
+        h.store.dispatch(ThreadActionCardSpecIntent.CardUpdated("m-1", card(version = 4)))
+        assertEquals(4, h.store.state.value.form?.card?.confirmationVersion)
+        h.store.dispatch(ThreadActionCardSpecIntent.CardUpdated("m-1", card(state = "executed").copy(executedByUserName = "Ada")))
+        assertNull(h.store.state.value.form)
+        assertEquals(ThreadActionCardSpecEffect.AlreadyExecuted("Ada"), h.store.effects.first())
+
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "sure", card(), spec("sure" to confirmed)))
+        h.store.dispatch(ThreadActionCardSpecIntent.CardUpdated("m-1", card(state = "frozen")))
+        assertNull(h.store.state.value.confirm)
+        assertEquals(ThreadActionCardSpecEffect.AlreadyExecuted(null, frozen = true), h.store.effects.first())
+
+        // While its own submit runs, the answer decides: the sheet stays.
+        val pending = CompletableDeferred<DataResult<ActionCardExecuteOutcome>>().also { h.answers += it }
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "fill", card(), spec("fill" to form)))
+        h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(mapOf("title" to ActionCardFormValue.Text("Hi"))))
+        runCurrent()
+        h.store.dispatch(ThreadActionCardSpecIntent.CardUpdated("m-1", card(state = "executed")))
+        assertEquals(true, h.store.state.value.form?.submitting)
+        pending.complete(DataResult.Content(ActionCardExecuteOutcome.Executed(card(state = "executed"))))
+        runCurrent()
+        assertNull(h.store.state.value.form)
+    }
+
+    @Test
+    fun openInWebOpensTheMessageLinkOnTheEnvironmentsWebUrlInTheBrowser() = runTest {
+        val h = Harness(this)
+        val link = RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c-1", messageId = "m-1")
+        h.store.dispatch(ThreadActionCardSpecIntent.OpenInWeb("m-1", link))
+        runCurrent()
+        assertEquals(listOf("https://staging.raft.example/s/acme/channel/c-1?msg=m-1"), h.opened)
+        assertEquals(link, parseRaftMessageLink(h.opened.single(), "https://staging.raft.example"))
+        // No link for this message (no server slug): it says so and opens nothing.
+        h.store.dispatch(ThreadActionCardSpecIntent.OpenInWeb("m-2", null))
+        assertEquals(ThreadActionCardSpecEffect.OpenInWebFailed, h.store.effects.first())
+        assertEquals(1, h.opened.size)
     }
 
     @Test

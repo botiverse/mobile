@@ -54,8 +54,20 @@ internal fun ThreadActionCard.actionCardSpecToRender(specEnabled: Boolean, capab
     if (!specEnabled) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
     val read = presentationCard ?: return null
-    return stripActionCardSpec(read, capabilities)
+    return stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities))
 }
+
+/**
+ * [capabilities] for this card: an `intent.*` only for the intent whose native path is this card's
+ * type ([typedActionType]). The App's native paths are per type (the typed card's button), so an
+ * `open` for another type's dialog strips to "Open in web" with that label, not a button that
+ * keeps its own label and quietly opens the browser.
+ */
+internal fun ThreadActionCard.actionCardSpecCapabilitiesFor(capabilities: Collection<String>): List<String> =
+    capabilities.filter { capability ->
+        val intent = ActionCardSpecIntent.entries.firstOrNull { it.capability == capability } ?: return@filter true
+        intent.typedActionType()?.equals(type, ignoreCase = true) == true
+    }
 
 /** The card type whose existing native path an `open` intent runs; null for one the App has none for. */
 internal fun ActionCardSpecIntent.typedActionType(): String? =
@@ -105,11 +117,21 @@ internal sealed interface ThreadActionCardSpecPress {
  * done or frozen card, and an `open` intent whose native path is for another type (or none) opens
  * in web, as strip would have.
  */
-internal fun threadActionCardSpecPress(card: ThreadActionCard, spec: ActionCardSpecCard, elementId: String): ThreadActionCardSpecPress {
+internal fun threadActionCardSpecPress(
+    card: ThreadActionCard,
+    spec: ActionCardSpecCard,
+    elementId: String,
+    viewerServerId: String? = null,
+): ThreadActionCardSpecPress {
     val button = spec.button(elementId) ?: return ThreadActionCardSpecPress.Ignore
     if (button.disabledReason != null) return ThreadActionCardSpecPress.Ignore
     return when (val action = button.action) {
-        is ActionCardSpecAction.Navigate -> ThreadActionCardSpecPress.Navigate(action.target)
+        is ActionCardSpecAction.Navigate ->
+            if (actionCardTargetOnViewerServer(action.target, card.sourceServerId, viewerServerId)) {
+                ThreadActionCardSpecPress.Navigate(action.target)
+            } else {
+                ThreadActionCardSpecPress.Ignore
+            }
         is ActionCardSpecAction.NavigateUrl -> ThreadActionCardSpecPress.OpenUrl(action.url)
         ActionCardSpecAction.OpenInWeb, is ActionCardSpecAction.Unsupported -> ThreadActionCardSpecPress.OpenInWeb
         is ActionCardSpecAction.Execute, is ActionCardSpecAction.OpenForm, is ActionCardSpecAction.Open ->
@@ -165,6 +187,20 @@ internal fun RaftThreadScreenPayload.threadMessageLink(messageId: String, server
 }
 
 /**
+ * Whether a navigate target is on the viewer's server, so the App can open it (web
+ * `isOnViewerServer`): its own server, else the card's, else the viewer's; never without a viewer
+ * server. A target elsewhere is a disabled Button, as on the web.
+ */
+internal fun actionCardTargetOnViewerServer(target: ActionCardSpecNavigateTarget, cardSourceServerId: String?, viewerServerId: String?): Boolean {
+    if (viewerServerId.isNullOrBlank()) return false
+    return (target.serverId ?: cardSourceServerId ?: viewerServerId) == viewerServerId
+}
+
+/** A Button the frame shows disabled for this viewer: a navigate to another server's entity. */
+internal fun ActionCardSpecButton.actionCardSpecLinkNavigable(cardSourceServerId: String?, viewerServerId: String?): Boolean =
+    (action as? ActionCardSpecAction.Navigate)?.let { actionCardTargetOnViewerServer(it.target, cardSourceServerId, viewerServerId) } ?: true
+
+/**
  * A `navigate` Button's target, opened natively (web `useActionCardNavigate().toTarget`): a channel
  * by id, an agent's or a person's profile, a message through the in-app permalink route, a task as
  * the task list opens it. Only a target on the viewer's server opens (web
@@ -175,13 +211,14 @@ internal fun openActionCardSpecTarget(
     cardSourceServerId: String?,
     viewerServerId: String?,
     serverSlug: String?,
+    isDirectMessageChannel: (channelId: String) -> Boolean,
     onOpenUrl: (String) -> Unit,
     onOpenChannel: (String) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onOpenTask: (String) -> Unit,
 ) {
-    val server = target.serverIdOr(cardSourceServerId)
-    if (server != null && viewerServerId != null && server != viewerServerId) return
+    if (!actionCardTargetOnViewerServer(target, cardSourceServerId, viewerServerId)) return
+    val server = viewerServerId
     when (target.kind) {
         ActionCardSpecNavigateTarget.Kind.Channel -> onOpenChannel(target.id)
         ActionCardSpecNavigateTarget.Kind.Agent ->
@@ -192,7 +229,8 @@ internal fun openActionCardSpecTarget(
             val channelId = target.channelId ?: return
             val slug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return
             // The production origin is one the in-app permalink route always takes.
-            buildRaftMessageLink(RaftMessageLink(slug, ConversationKind.Channel, channelId, messageId = target.id), webUrl = null)
+            val routeKind = if (isDirectMessageChannel(channelId)) ConversationKind.DirectMessage else ConversationKind.Channel
+            buildRaftMessageLink(RaftMessageLink(slug, routeKind, channelId, messageId = target.id), webUrl = null)
                 ?.let(onOpenUrl)
         }
         ActionCardSpecNavigateTarget.Kind.Task -> onOpenTask(target.id)
@@ -253,6 +291,25 @@ internal data class ThreadActionCardSpecState(
     /** The Button the frame shows busy: the store's run, else the typed path's while it is pending. */
     fun busyElement(messageId: String, typedPending: Boolean): String? =
         busy[messageId] ?: typedPress[messageId]?.takeIf { typedPending }
+
+    /** What one card's frame reads: a card selects only this, so another card's run does not recompose it. */
+    fun slice(messageId: String): ThreadActionCardSpecCardSlice =
+        ThreadActionCardSpecCardSlice(busy = busy[messageId], typedPress = typedPress[messageId], error = errors[messageId])
+}
+
+/** The sheets [ThreadActionCardSpecState] has open: what the page draws over the thread. */
+internal data class ThreadActionCardSpecDialogs(
+    val confirm: ThreadActionCardSpecConfirmState? = null,
+    val form: ThreadActionCardSpecFormState? = null,
+)
+
+/** One card's part of [ThreadActionCardSpecState]. */
+internal data class ThreadActionCardSpecCardSlice(
+    val busy: String? = null,
+    val typedPress: String? = null,
+    val error: ThreadActionCardSpecError? = null,
+) {
+    fun busyElement(typedPending: Boolean): String? = busy ?: typedPress?.takeIf { typedPending }
 }
 
 internal sealed interface ThreadActionCardSpecIntent {
@@ -276,12 +333,21 @@ internal sealed interface ThreadActionCardSpecIntent {
     data class SubmitForm(val values: Map<String, ActionCardFormValue>) : ThreadActionCardSpecIntent
 
     data object DismissForm : ThreadActionCardSpecIntent
+
+    /** "Open in web": [link] (this message on this page) on the Developer environment's web URL, in the browser. */
+    data class OpenInWeb(val messageId: String, val link: RaftMessageLink?) : ThreadActionCardSpecIntent
 }
 
 /** One-shot results for the page. */
 internal sealed interface ThreadActionCardSpecEffect {
-    /** 409 `ALREADY_EXECUTED`: someone ran the card first; its sheet closed. */
-    data class AlreadyExecuted(val executedByUserName: String?) : ThreadActionCardSpecEffect
+    /**
+     * The card was handled elsewhere while its sheet was open: a 409 `ALREADY_EXECUTED`, or the
+     * card turning done or frozen under an open confirm or form (realtime). The sheet closed.
+     */
+    data class AlreadyExecuted(val executedByUserName: String?, val frozen: Boolean = false) : ThreadActionCardSpecEffect
+
+    /** "Open in web" had no link to open (no server slug, or an id a link can't carry). */
+    data object OpenInWebFailed : ThreadActionCardSpecEffect
 }
 
 /**
@@ -304,6 +370,10 @@ internal class ThreadActionCardSpecStore(
     private val applyCard: (messageId: String, card: ThreadActionCard) -> Unit,
     /** A NoPermission the route handles (session expired): true when it did. */
     private val onNoPermission: (DataResult.NoPermission) -> Boolean = { false },
+    /** The Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule"); null is production. */
+    private val loadWebUrl: suspend () -> String? = { null },
+    /** HostLinkCapability.openUrlInBrowser: the browser, never Raft through App Links. */
+    private val openInBrowser: (url: String) -> Unit = {},
 ) {
     private val _state = MutableStateFlow(ThreadActionCardSpecState())
     val state: StateFlow<ThreadActionCardSpecState> = _state.asStateFlow()
@@ -323,6 +393,18 @@ internal class ThreadActionCardSpecStore(
                 update { current -> current.form?.takeIf { !it.submitting }?.let { current.copy(form = it.copy(values = intent.values)) } ?: current }
             is ThreadActionCardSpecIntent.SubmitForm -> submitForm(intent.values)
             ThreadActionCardSpecIntent.DismissForm -> update { if (it.form?.submitting == true) it else it.copy(form = null) }
+            is ThreadActionCardSpecIntent.OpenInWeb -> openInWeb(intent.link)
+        }
+    }
+
+    private fun openInWeb(link: RaftMessageLink?) {
+        if (link == null) {
+            effectChannel.trySend(ThreadActionCardSpecEffect.OpenInWebFailed)
+            return
+        }
+        scope.launch {
+            val url = buildRaftMessageLink(link, loadWebUrl())
+            if (url == null) effectChannel.send(ThreadActionCardSpecEffect.OpenInWebFailed) else openInBrowser(url)
         }
     }
 
@@ -468,11 +550,41 @@ internal class ThreadActionCardSpecStore(
                 if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
         }
 
+    /**
+     * The live card under an open confirm or form. Done or frozen elsewhere while nothing is in
+     * flight here: the sheet closes and says so, as a 409 would (no Submit that can only fail). While
+     * its own submit runs, the answer decides.
+     */
     private fun cardUpdated(messageId: String, card: ThreadActionCard) {
-        update { current ->
-            val confirm = current.confirm?.takeIf { it.messageId == messageId && it.card != card }?.copy(card = card)
-            val form = current.form?.takeIf { it.messageId == messageId && it.card != card }?.copy(card = card)
-            current.copy(confirm = confirm ?: current.confirm, form = form ?: current.form)
+        val current = _state.value
+        val handledElsewhere = card.isExecuted || card.isFrozen
+        val confirmOpen = current.confirm?.takeIf { it.messageId == messageId && it.card != card }
+        val formOpen = current.form?.takeIf { it.messageId == messageId && it.card != card }
+        var closed = false
+        val next =
+            current.copy(
+                confirm =
+                    when {
+                        confirmOpen == null -> current.confirm
+                        handledElsewhere && !confirmOpen.submitting -> null.also { closed = true }
+                        else -> confirmOpen.copy(card = card)
+                    },
+                form =
+                    when {
+                        formOpen == null -> current.form
+                        handledElsewhere && !formOpen.submitting -> null.also { closed = true }
+                        else -> formOpen.copy(card = card)
+                    },
+            )
+        if (next != current) _state.value = next
+        if (closed) {
+            dialogToken++
+            effectChannel.trySend(
+                ThreadActionCardSpecEffect.AlreadyExecuted(
+                    executedByUserName = card.executedByUserName?.takeIf { it.isNotBlank() && card.isExecuted },
+                    frozen = !card.isExecuted,
+                ),
+            )
         }
     }
 }
