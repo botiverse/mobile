@@ -32,9 +32,9 @@ private const val PunycodeInitialN = 0x80
 
 /** RFC 3492 section 6.3: [label]'s code points as basic code points, without the `xn--` prefix. */
 internal fun punycodeEncode(label: String): String {
-    val input = label.codePoints()
+    val input = label.unicodeScalars()
     val output = StringBuilder()
-    input.filter { it < 0x80 }.forEach { output.append(it.toChar()) }
+    input.filter { it < 0x80 }.forEach { output.append(Char(it)) }
     val basicCount = output.length
     var handled = basicCount
     if (basicCount > 0) output.append('-')
@@ -87,7 +87,7 @@ private fun punycodeAdapt(delta: Long, points: Int, first: Boolean): Int {
 
 private fun punycodeDigit(d: Int): Char = if (d < 26) 'a' + d else '0' + (d - 26)
 
-private fun String.codePoints(): List<Int> {
+private fun String.unicodeScalars(): List<Int> {
     val points = ArrayList<Int>(length)
     var i = 0
     while (i < length) {
