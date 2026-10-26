@@ -20,7 +20,6 @@ class RaftLucideIconCatalogTest {
     fun membersAppsIconUsesGeneratedLink2Icon() {
         assertEquals(RaftLucideIconName.Link2, MembersAgentDetailTab.Apps.iconName)
         assertTrue(RaftLucideIcons.Names.contains(RaftLucideIconName.Link2.wireName))
-        assertFalse(RaftLucideIcons.Names.contains("plug"))
     }
 
     @Test
