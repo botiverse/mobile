@@ -97,6 +97,16 @@ internal fun raftBannerMetrics(size: RaftBannerSize): RaftBannerMetrics =
     }
 
 /**
+ * raft-ui 0.25 (#677) `sm` compound: with a × the banner keeps
+ * `py-[calc((--spacing(8)-1lh)/2+--spacing(1))]`, (32 - 20) / 2 + 4 = 10dp above and below, so
+ * the ×'s 32dp pressed fill (overhanging the first line by 6dp) stays 4dp inside the edges.
+ */
+internal fun raftBannerPaddingY(size: RaftBannerSize, metrics: RaftBannerMetrics, closable: Boolean): Dp =
+    if (size == RaftBannerSize.Sm && closable) RaftBannerSmClosablePaddingY else metrics.paddingY
+
+private val RaftBannerSmClosablePaddingY = 10.dp
+
+/**
  * raft-ui 0.8.0 Banner: a notice people read before they act, inside a dialog or a form.
  * A soft tint of its [status] with a 1dp inset `line-hairline` ring and the container
  * radius; never an ink border. The status icon (20dp, 16dp at [RaftBannerSize.Sm]) leads,
@@ -155,7 +165,7 @@ fun RaftBanner(
             .fillMaxWidth()
             .background(raftBannerFill(status, colors), shape)
             .border(RaftStroke.Hairline, colors.lineHairline, shape)
-            .padding(horizontal = metrics.paddingX, vertical = metrics.paddingY)
+            .padding(horizontal = metrics.paddingX, vertical = raftBannerPaddingY(size, metrics, closable = onDismiss != null && action == null))
             .semantics {
                 liveRegion = if (status == RaftBannerStatus.Destructive) LiveRegionMode.Assertive else LiveRegionMode.Polite
             },

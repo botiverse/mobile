@@ -743,7 +743,7 @@ class DisplayComponentScreenshotTest {
                     pending = true,
                 )
                 RaftBanner(description = "Waiting for the computer to connect.", status = RaftBannerStatus.Info, size = RaftBannerSize.Sm, pending = true)
-                Caption("Sm: warning with a title, success")
+                Caption("Sm: warning with a title, success, with a ×")
                 RaftBanner(
                     title = "Wug stops while it restarts",
                     description = "Its open tasks stay where they are.",
@@ -751,6 +751,7 @@ class DisplayComponentScreenshotTest {
                     size = RaftBannerSize.Sm,
                 )
                 RaftBanner(description = "Moved to the new computer.", status = RaftBannerStatus.Success, size = RaftBannerSize.Sm)
+                RaftBanner(description = "Wug's computer reconnected.", status = RaftBannerStatus.Info, size = RaftBannerSize.Sm, onDismiss = {})
                 Caption("Panel notice")
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime is missing.",
