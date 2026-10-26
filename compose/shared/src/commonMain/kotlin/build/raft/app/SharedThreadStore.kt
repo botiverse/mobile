@@ -3971,6 +3971,11 @@ internal class SharedThreadDataSource(
         )
     }
 
+    /**
+     * POST /actions/:id/mark-executed answers `{ messageId, metadata }` with the stored card
+     * (executedBy/At, result, `presentation.card`), as execute does; that card is applied.
+     * [executedCard], built here, is only the fallback for an answer without the card.
+     */
     private suspend fun markThreadActionCardExecuted(
         actionsApi: RaftIntegrationsActionsPushApiClient,
         messageId: String,
@@ -3978,7 +3983,7 @@ internal class SharedThreadDataSource(
         executedCard: ThreadActionCard
     ): DataResult<ThreadActionCard> =
         when (val result = actionsApi.markActionExecuted(MessageId(messageId), body)) {
-            is DataResult.Content -> DataResult.Content(executedCard)
+            is DataResult.Content -> DataResult.Content(result.data.actionCard ?: executedCard)
             is DataResult.Empty ->
                 DataResult.Error(ScreenError(code = "action_card_mark_executed_empty", retryable = true))
             is DataResult.Error -> result
@@ -14045,8 +14050,16 @@ internal fun RaftThreadScreenPayload.withActionCard(messageId: String, card: Thr
         }
     )
 
-private fun RaftThreadMessageItem.withActionCard(card: ThreadActionCard): RaftThreadMessageItem =
-    copy(metadata = metadata.filterKeys { !it.startsWith("actionCard.") } + card.toMessageMetadata())
+private fun RaftThreadMessageItem.withActionCard(card: ThreadActionCard): RaftThreadMessageItem {
+    // A card the client rebuilt after its execute/mark-executed call (no server `executedAt`) must
+    // not replace a done card the server already sent (realtime `message_updated` can land before
+    // the HTTP answer): that would drop the committed-by line and the result.
+    val current = threadActionCard()
+    if (current != null && current.isExecuted && current.executedAt != null && card.isExecuted && card.executedAt == null) {
+        return this
+    }
+    return copy(metadata = metadata.filterKeys { !it.startsWith("actionCard.") } + card.toMessageMetadata())
+}
 
 private fun List<String>.cleanActionCardIds(): List<String> =
     map { it.trim() }
