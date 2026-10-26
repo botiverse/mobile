@@ -68,7 +68,7 @@ import build.raft.designsystem.components.RaftMessageActionCardScopeList
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.coroutines.delay
 
 /**
