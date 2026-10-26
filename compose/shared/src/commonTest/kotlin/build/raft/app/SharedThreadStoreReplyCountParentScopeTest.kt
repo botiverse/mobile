@@ -30,7 +30,7 @@ class SharedThreadStoreReplyCountParentScopeTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
         // Every message fetch fails: whatever the reopened DM shows comes from the shared cache.
-        val dataSource = dataSource()
+        val dataSource = dataSource(storeScope = backgroundScope)
         try {
             seedCache(dataSource, dmPayload())
             val openThread = openPage(dataSource, scope, otherThreadRoute(), otherThreadPayload())
@@ -58,7 +58,7 @@ class SharedThreadStoreReplyCountParentScopeTest {
     fun aReplyToAParentOnTheOpenPageIsAppliedThereAsBefore() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val dataSource = dataSource()
+        val dataSource = dataSource(storeScope = backgroundScope)
         val diagnostics = mutableListOf<String>()
         try {
             val openDm = openPage(dataSource, scope, dmRoute(), dmPayload(), diagnostics)
@@ -78,9 +78,12 @@ class SharedThreadStoreReplyCountParentScopeTest {
         }
     }
 
-    private fun dataSource(): SharedThreadDataSource {
+    private fun dataSource(storeScope: CoroutineScope): SharedThreadDataSource {
         val sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = UserId, selectedServerId = ServerId))
         return SharedThreadDataSource(
+            messageStore = SharedThreadMessageStore(scope = storeScope),
+            payloadStore = SharedThreadPayloadStore(scope = storeScope),
+            threadParseDispatcher = storeScope.testDispatcher(),
             networkApi = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
             sessionStore = sessionStore,
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

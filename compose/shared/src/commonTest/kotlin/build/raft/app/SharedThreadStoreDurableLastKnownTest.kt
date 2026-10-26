@@ -25,12 +25,12 @@ import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,13 +47,13 @@ import kotlin.test.assertTrue
  */
 class SharedThreadStoreDurableLastKnownTest {
     @Test
-    fun startRendersDurableFrameOnMemoryMissAndNetworkContentReplacesIt() = runBlocking {
+    fun startRendersDurableFrameOnMemoryMissAndNetworkContentReplacesIt() = runTest {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
         val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseLoadingState = CompletableDeferred<Unit>()
-        val dataSource = dataSource(reader = reader, identity = { ownerA })
+        val dataSource = dataSource(storeScope = backgroundScope, reader = reader, identity = { ownerA })
         val store =
             SharedThreadStore(
                 dataSource = dataSource,
@@ -95,11 +95,12 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun durableFrameRestoresAnActionCardWithItsPresentationAndConfirmationVersion() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun durableFrameRestoresAnActionCardWithItsPresentationAndConfirmationVersion() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(
                         frames = mapOf(partition(ownerA) to frame("card body", actionMetadata = v2ActionCardWithPresentation())),
@@ -115,10 +116,11 @@ class SharedThreadStoreDurableLastKnownTest {
         scope.cancel()
 
         // Twin: the same card stored without the optional keys renders only the legacy fallback.
-        val bareScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val bareScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val bare =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(
                         frames = mapOf(
@@ -142,12 +144,13 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun durableFrameSurvivesTransientFetchFailureButYieldsToCanonicalEmpty() = runBlocking {
-        val failingScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun durableFrameSurvivesTransientFetchFailureButYieldsToCanonicalEmpty() = runTest {
+        val failingScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val failingApi = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val failingStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = failingApi,
                     reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body"))),
                     identity = { ownerA },
@@ -164,10 +167,11 @@ class SharedThreadStoreDurableLastKnownTest {
         assertTrue(afterFailure.mainLoadFailed, "a failed main load is flagged for recovery")
         failingScope.cancel()
 
-        val emptyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val emptyScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val emptyStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(bodyText = """{"historyLimited": false, "messages": []}"""),
                     reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body"))),
                     identity = { ownerA },
@@ -184,13 +188,14 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun accountSwitchAsksForTheCurrentOwnersPartitionAndNeverRendersThePreviousOne() = runBlocking {
+    fun accountSwitchAsksForTheCurrentOwnersPartitionAndNeverRendersThePreviousOne() = runTest {
         // Positive control: owner A's frame renders for owner A.
-        val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val controlScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val controlReader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
         val controlStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = controlReader,
                     identity = { ownerA },
@@ -204,13 +209,13 @@ class SharedThreadStoreDurableLastKnownTest {
         // Same server, same device, owner B is now current: only B's partition is consulted, and
         // since B has no baseline the ordinary loading shell is shown — never A's frame.
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
         val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseLoadingState = CompletableDeferred<Unit>()
         val store =
             SharedThreadStore(
-                dataSource = dataSource(reader = reader, identity = { ownerB }),
+                dataSource = dataSource(storeScope = backgroundScope, reader = reader, identity = { ownerB }),
                 scope = scope,
                 afterRefreshLoadingStateApplied = { payload ->
                     loadingStateApplied.complete(payload)
@@ -233,13 +238,13 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun noOwnerMemoryCacheAndReplyRoutesNeverConsultTheDurableReader() = runBlocking {
+    fun noOwnerMemoryCacheAndReplyRoutesNeverConsultTheDurableReader() = runTest {
         // Auth generation 0 is the registry's "no session" sentinel: no owner ⇒ no partition ⇒ no read.
-        val noOwnerScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val noOwnerScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val noOwnerReader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
         val noOwnerStore =
             SharedThreadStore(
-                dataSource = dataSource(reader = noOwnerReader, identity = { ownerA.copy(authGeneration = 0L) }),
+                dataSource = dataSource(storeScope = backgroundScope, reader = noOwnerReader, identity = { ownerA.copy(authGeneration = 0L) }),
                 scope = noOwnerScope,
             )
         noOwnerStore.accept(SharedThreadIntent.Start(basePayload()))
@@ -248,9 +253,10 @@ class SharedThreadStoreDurableLastKnownTest {
         noOwnerScope.cancel()
 
         // A memory-cached payload for the same owner wins; disk is never asked.
-        val cachedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val cachedScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val cachedReader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
         val cachedDataSource = dataSource(
+            storeScope = backgroundScope,
             api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
             reader = cachedReader,
             identity = { ownerA },
@@ -266,11 +272,11 @@ class SharedThreadStoreDurableLastKnownTest {
 
         // A reply route never reads a top-level window (task #168 step 3: it reads its own thread
         // scope through `readReplyThread`, covered in SharedThreadStoreReplyThreadDurableTest).
-        val replyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val replyScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val replyReader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
         val replyStore =
             SharedThreadStore(
-                dataSource = dataSource(reader = replyReader, identity = { ownerA }),
+                dataSource = dataSource(storeScope = backgroundScope, reader = replyReader, identity = { ownerA }),
                 scope = replyScope,
             )
         replyStore.accept(SharedThreadIntent.Start(replyRoute()))
@@ -279,17 +285,18 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun identitySwitchWhileTheDiskReadIsSuspendedNeverRendersThePreviousOwnersFrame() = runBlocking {
+    fun identitySwitchWhileTheDiskReadIsSuspendedNeverRendersThePreviousOwnersFrame() = runTest {
         // Positive control with the same parked reader: no switch while suspended ⇒ A's frame renders
         // AND its author is seeded into the shared member-profile cache (the side effect that runs
         // before the commit gate, see below).
-        val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val controlScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val controlReader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
         controlReader.parkNextRead()
-        val controlMembers = SharedServerMembersStore(PresenceNoopMemberRepository)
+        val controlMembers = testServerMembersStore(PresenceNoopMemberRepository, scope = backgroundScope)
         val controlStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = controlReader,
                     identity = { ownerA },
@@ -316,11 +323,12 @@ class SharedThreadStoreDurableLastKnownTest {
         // that gate. This assertion is what bites if that check is removed.
         var identity = ownerA
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
         reader.parkNextRead()
-        val members = SharedServerMembersStore(PresenceNoopMemberRepository)
+        val members = testServerMembersStore(PresenceNoopMemberRepository, scope = backgroundScope)
         val dataSource = dataSource(
+            storeScope = backgroundScope,
             api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
             reader = reader,
             identity = { identity },
@@ -352,12 +360,13 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun emptyFrameStandsInAsAnEmptyChannelThroughAFailureAndYieldsToContent() = runBlocking {
+    fun emptyFrameStandsInAsAnEmptyChannelThroughAFailureAndYieldsToContent() = runTest {
         // Task #1137. Negative control: with no durable frame, an offline start ends in the error state.
-        val noFrameScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val noFrameScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val noFrameStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(frames = emptyMap()),
                     identity = { ownerA },
@@ -370,10 +379,11 @@ class SharedThreadStoreDurableLastKnownTest {
 
         // An empty baseline: offline, the channel shows as empty (flagged last-known), never as an error.
         val logs = mutableListOf<String>()
-        val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val offlineScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val offlineStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
                     identity = { ownerA },
@@ -393,10 +403,11 @@ class SharedThreadStoreDurableLastKnownTest {
         offlineScope.cancel()
 
         // Online, the network answer replaces the stand-in and clears the flag.
-        val onlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val onlineScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val onlineStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
                     identity = { ownerA },
                 ),
@@ -411,14 +422,15 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun standInShowsOnlyTheNewestPageOfALargeStoredScope() = runBlocking {
+    fun standInShowsOnlyTheNewestPageOfALargeStoredScope() = runTest {
         // 45 stored facts, network first page = 30 (SharedThreadPaging.DefaultPageSize): the stand-in is
         // the newest 30 in timeline order, not the whole scope (artin, Hands 2d15915b).
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
                     identity = { ownerA },
@@ -438,10 +450,11 @@ class SharedThreadStoreDurableLastKnownTest {
         scope.cancel()
 
         // Positive control: a scope within one page is shown whole.
-        val smallScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val smallScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val small =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 12))),
                     identity = { ownerA },
@@ -454,13 +467,14 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runBlocking {
+    fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runTest {
         // Positive control: a "channel" frame renders on the channel route (same logger wiring).
         val controlLogs = mutableListOf<String>()
-        val controlScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val controlScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val controlStore =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body"))),
                     identity = { ownerA },
@@ -475,11 +489,12 @@ class SharedThreadStoreDurableLastKnownTest {
 
         // A committed "dm" baseline under the same id must not render on a Channel route.
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("dm body", scopeKind = "dm")))
         val store =
             SharedThreadStore(
                 dataSource = dataSource(
+                    storeScope = backgroundScope,
                     api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
                     reader = reader,
                     identity = { ownerA },
@@ -532,6 +547,7 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     private fun dataSource(
+        storeScope: CoroutineScope,
         api: SharedThreadStoreTest.FakeThreadApi = SharedThreadStoreTest.FakeThreadApi(),
         reader: ThreadDurableLastKnownReader,
         identity: () -> ThreadReplyCacheIdentitySnapshot,
@@ -539,6 +555,9 @@ class SharedThreadStoreDurableLastKnownTest {
         serverMembersStore: SharedServerMembersStore? = null,
     ): SharedThreadDataSource =
         SharedThreadDataSource(
+            threadParseDispatcher = storeScope.testDispatcher(),
+            messageStore = SharedThreadMessageStore(scope = storeScope),
+            payloadStore = SharedThreadPayloadStore(scope = storeScope),
             networkApi = api,
             sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

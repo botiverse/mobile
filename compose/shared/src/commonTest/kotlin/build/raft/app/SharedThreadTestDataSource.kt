@@ -13,6 +13,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -22,6 +23,9 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageExtender
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.ContinuationInterceptor
 
 /**
  * Test constructor for [SharedThreadDataSource] (task #1122). Mirrors the production secondary
@@ -60,7 +64,15 @@ internal fun testSharedThreadDataSource(
     canonicalConversationIdentityPublisher:
         suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
     createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
-    diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
+    diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+    /**
+     * Confines the data source's own default message / payload stores to [storeScope] (task #41).
+     * Their production defaults launch on an implicit `Dispatchers.Default` scope, which a
+     * `runTest` scheduler cannot see: virtual time would then race real threads. Tests pass
+     * `backgroundScope` so every store coroutine - and the thread API's response decoding - runs
+     * on the test scheduler. Ignored for a store the caller passes explicitly.
+     */
+    storeScope: CoroutineScope? = null,
 ): SharedThreadDataSource =
     SharedThreadDataSource(
     networkApi = networkApi,
@@ -73,11 +85,11 @@ internal fun testSharedThreadDataSource(
     channelRepository = channelRepository,
     homeSnapshotProvider = homeSnapshotProvider,
     channelProfileUpdateSink = channelProfileUpdateSink,
-    messageStore = messageStore,
+    messageStore = messageStore ?: storeScope?.let { SharedThreadMessageStore(scope = it) },
     cacheEnvironmentIdProvider = cacheEnvironmentIdProvider,
     apiEnvironmentIdProvider = apiEnvironmentIdProvider,
     replyCacheIdentityTransitionWaiter = replyCacheIdentityTransitionWaiter,
-    payloadStore = payloadStore,
+    payloadStore = payloadStore ?: storeScope?.let { SharedThreadPayloadStore(scope = it) },
     durableLastKnownReader = durableLastKnownReader,
     enteredScopeSnapshotLoader = enteredScopeSnapshotLoader,
     durablePageExtender = durablePageExtender,
@@ -91,6 +103,7 @@ internal fun testSharedThreadDataSource(
     canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
     createAgentCoordinator = createAgentCoordinator,
     diagnosticsLogger = diagnosticsLogger,
+    threadParseDispatcher = storeScope?.testDispatcher() ?: RaftJsonParseDispatcher,
     replyCacheIdentityAuthority = {
         testThreadReplyCacheIdentityAuthority(
                 sessionStore = sessionStore,
@@ -98,4 +111,29 @@ internal fun testSharedThreadDataSource(
                 selectedServerStore = selectedServerStore,
             ).capture()
         },
+    )
+
+/**
+ * The dispatcher of a test-owned [CoroutineScope] (task #41), for production seams that take a
+ * dispatcher rather than a scope (e.g. `SharedThreadDataSource.threadParseDispatcher`).
+ */
+internal fun CoroutineScope.testDispatcher(): CoroutineDispatcher =
+    requireNotNull(coroutineContext[ContinuationInterceptor] as? CoroutineDispatcher) {
+        "test scope has no CoroutineDispatcher: $coroutineContext"
+    }
+
+/**
+ * A [SharedServerMembersStore] whose process core runs its member fetch flights on [scope] (task #41)
+ * instead of the core's implicit `Dispatchers.Default` default, so virtual-time tests see them.
+ */
+internal fun testServerMembersStore(
+    memberRepository: MemberRepository,
+    scope: CoroutineScope,
+): SharedServerMembersStore =
+    SharedServerMembersStore(
+        memberRepository = memberRepository,
+        processCore = build.raft.app.data.ProcessServerMembersCore(
+            fetchMembers = memberRepository::getMembers,
+            scope = scope,
+        ),
     )

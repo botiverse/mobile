@@ -13,14 +13,14 @@ import build.raft.app.network.sync.ReplyPreview
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
  */
 class SharedThreadStoreActivityOpenSeedTest {
     @Test
-    fun theActivityRowMessageIsTheFirstFrameAndTheCanonicalLoadReplacesIt() = runBlocking {
+    fun theActivityRowMessageIsTheFirstFrameAndTheCanonicalLoadReplacesIt() = runTest {
         // artin 10-26: a cut preview stands in with its "…" and flagged (the card shows a loading
         // indicator below it); the canonical message replaces it and is never flagged. When the load
         // fails (offline), the stand-in stays, "…" still on, but stops loading.
@@ -51,25 +51,25 @@ class SharedThreadStoreActivityOpenSeedTest {
         )
     }
 
-    private suspend fun assertSeedThenCanonical(
+    private suspend fun TestScope.assertSeedThenCanonical(
         preview: String,
         expectedBody: String,
         expectedTruncated: Boolean,
         loadFails: Boolean = false,
         expectedAfterLoad: Triple<String, String, Boolean> = Triple("m1", "network body", false),
     ) {
-        // runBlocking, not virtual time: the canonical page resumes off the test dispatcher (the
-        // existing gated-fetch store tests wait the same way), so the replacement is awaited with a
-        // bounded wait that fails with the state it saw.
+        // Virtual time (task #41): the data source's own stores run on [scope] too, so the canonical
+        // page resumes on the test scheduler; the bounded waits below are virtual and still fail with
+        // the state they saw.
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = loadFails)
         api.channelMessagesStarted = CompletableDeferred()
         api.releaseChannelMessages = CompletableDeferred()
         // The row's latest message is the same message the canonical page returns ("m1").
         val source = source(channelRow(channelId = "channel-1", messageId = "m1", preview = preview))
         try {
-            val store = SharedThreadStore(dataSource = dataSource(api, source), scope = scope)
+            val store = SharedThreadStore(dataSource = dataSource(api, source, storeScope = scope), scope = scope)
             store.dispatch(SharedThreadIntent.Start(channelRoute()))
             withTimeout(5_000) { api.channelMessagesStarted!!.await() }
 
@@ -120,7 +120,7 @@ class SharedThreadStoreActivityOpenSeedTest {
             val api = SharedThreadStoreTest.FakeThreadApi()
             api.releaseChannelMessages = CompletableDeferred()
             try {
-                val store = SharedThreadStore(dataSource = dataSource(api, source), scope = scope)
+                val store = SharedThreadStore(dataSource = dataSource(api, source, storeScope = scope), scope = scope)
                 store.dispatch(SharedThreadIntent.Start(channelRoute()))
                 advanceUntilIdle()
 
@@ -209,8 +209,12 @@ class SharedThreadStoreActivityOpenSeedTest {
     private fun dataSource(
         api: SharedThreadStoreTest.FakeThreadApi,
         source: ThreadActivityOpenSeedSource,
+        storeScope: CoroutineScope,
     ): SharedThreadDataSource =
         SharedThreadDataSource(
+            threadParseDispatcher = storeScope.testDispatcher(),
+            messageStore = SharedThreadMessageStore(scope = storeScope),
+            payloadStore = SharedThreadPayloadStore(scope = storeScope),
             networkApi = api,
             sessionStore = InMemoryRaftAuthSessionStore(ownerA.session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

@@ -16,7 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -29,10 +30,10 @@ import kotlin.test.assertTrue
  */
 class SharedThreadStoreEnteredScopeTest {
     @Test
-    fun channelEntryRequestsOneLoadForTheCurrentOwnersPartition() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun channelEntryRequestsOneLoadForTheCurrentOwnersPartition() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val loader = FakeLoader()
-        val store = SharedThreadStore(dataSource = dataSource(loader = loader, identity = { ownerA }), scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = loader, identity = { ownerA }), scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
         assertEquals(listOf(true), loader.stillCurrentAtCall)
@@ -40,20 +41,21 @@ class SharedThreadStoreEnteredScopeTest {
     }
 
     @Test
-    fun directMessageEntryRequestsTheLoadToo() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun directMessageEntryRequestsTheLoadToo() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val loader = FakeLoader()
-        val store = SharedThreadStore(dataSource = dataSource(loader = loader, identity = { ownerA }), scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = loader, identity = { ownerA }), scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage)))
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
         scope.cancel()
     }
 
     @Test
-    fun memoryCachedEntryStillRefreshesTheBaseline() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun memoryCachedEntryStillRefreshesTheBaseline() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val loader = FakeLoader()
         val dataSource = dataSource(
+            storeScope = backgroundScope,
             api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
             loader = loader,
             identity = { ownerA },
@@ -68,21 +70,21 @@ class SharedThreadStoreEnteredScopeTest {
     }
 
     @Test
-    fun replyRoutesAndRoutesWithoutAnOwnerNeverRequestTheLoad() = runBlocking {
+    fun replyRoutesAndRoutesWithoutAnOwnerNeverRequestTheLoad() = runTest {
         // A reply route is never loaded as a top-level window (task #168 step 3: its own entry is
         // `loadReplyThreadOnEnter`, covered in SharedThreadStoreReplyThreadDurableTest).
-        val replyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val replyScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val replyLoader = FakeLoader()
-        SharedThreadStore(dataSource = dataSource(loader = replyLoader, identity = { ownerA }), scope = replyScope)
+        SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = replyLoader, identity = { ownerA }), scope = replyScope)
             .accept(SharedThreadIntent.Start(replyRoute()))
         assertTrue(replyLoader.loads.isEmpty(), replyLoader.loads.toString())
         replyScope.cancel()
 
         // Auth generation 0 is the registry's "no session" sentinel: no owner ⇒ no partition ⇒ no write.
-        val noOwnerScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val noOwnerScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val noOwnerLoader = FakeLoader()
         SharedThreadStore(
-            dataSource = dataSource(loader = noOwnerLoader, identity = { ownerA.copy(authGeneration = 0L) }),
+            dataSource = dataSource(storeScope = backgroundScope, loader = noOwnerLoader, identity = { ownerA.copy(authGeneration = 0L) }),
             scope = noOwnerScope,
         ).accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(noOwnerLoader.loads.isEmpty(), noOwnerLoader.loads.toString())
@@ -103,6 +105,7 @@ class SharedThreadStoreEnteredScopeTest {
     }
 
     internal fun dataSource(
+        storeScope: CoroutineScope,
         api: SharedThreadStoreTest.FakeThreadApi = SharedThreadStoreTest.FakeThreadApi(),
         loader: ThreadEnteredScopeSnapshotLoader,
         reader: ThreadDurableLastKnownReader? = null,
@@ -110,6 +113,9 @@ class SharedThreadStoreEnteredScopeTest {
         diagnosticsLogger: (String) -> Unit = {},
     ): SharedThreadDataSource =
         SharedThreadDataSource(
+            threadParseDispatcher = storeScope.testDispatcher(),
+            messageStore = SharedThreadMessageStore(scope = storeScope),
+            payloadStore = SharedThreadPayloadStore(scope = storeScope),
             networkApi = api,
             sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },

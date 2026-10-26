@@ -21,7 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,8 +42,8 @@ import kotlin.test.assertTrue
  */
 class SharedThreadStoreEnterBaselineAwaitTest {
     @Test
-    fun baselineCommittedInsideTheAwaitWindowIsTheFirstFrameAndTheChannelIsFetchedOnce() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun baselineCommittedInsideTheAwaitWindowIsTheFirstFrameAndTheChannelIsFetchedOnce() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         // Stands in for CanonicalMessageV2EnteredScopeLoader.loadAndCommit: the real one writes the
@@ -55,7 +56,7 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         val logs = mutableListOf<String>()
         val store =
             SharedThreadStore(
-                dataSource = dataSource(api = api, reader = reader, loader = loader),
+                dataSource = dataSource(api = api, reader = reader, loader = loader, storeScope = backgroundScope),
                 scope = scope,
                 diagnosticsLogger = logs::add,
             )
@@ -78,17 +79,17 @@ class SharedThreadStoreEnterBaselineAwaitTest {
     }
 
     @Test
-    fun loaderThatCommitsNothingLeavesTheOrdinaryLoadingShell() = runBlocking {
+    fun loaderThatCommitsNothingLeavesTheOrdinaryLoadingShell() = runTest {
         // Awaited, finished, wrote nothing (flag off / not a member / failed): the disk read then
         // misses as it does today and the first frame is the plain loading shell — the await must
         // not surface anything the baseline never committed.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         val loader = SharedThreadStoreEnteredScopeTest.FakeLoader()
         val logs = mutableListOf<String>()
         val store =
             SharedThreadStore(
-                dataSource = dataSource(reader = reader, loader = loader),
+                dataSource = dataSource(reader = reader, loader = loader, storeScope = backgroundScope),
                 scope = scope,
                 diagnosticsLogger = logs::add,
             )
@@ -105,10 +106,10 @@ class SharedThreadStoreEnterBaselineAwaitTest {
     }
 
     @Test
-    fun baselineCommittedDuringTheWaitIsTheFirstFrameWhenTheDiskWasEmpty() = runBlocking {
+    fun baselineCommittedDuringTheWaitIsTheFirstFrameWhenTheDiskWasEmpty() = runTest {
         // Task #390 path kept by task #18: nothing on disk at the first read, the load commits while the
         // entry waits, and the second read's frame (not a loading shell) is the first frame.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         val loader =
             SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
@@ -118,7 +119,7 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         val logs = mutableListOf<String>()
         val store =
             SharedThreadStore(
-                dataSource = dataSource(reader = reader, loader = loader),
+                dataSource = dataSource(reader = reader, loader = loader, storeScope = backgroundScope),
                 scope = scope,
                 diagnosticsLogger = logs::add,
             )
@@ -134,11 +135,11 @@ class SharedThreadStoreEnterBaselineAwaitTest {
     }
 
     @Test
-    fun aFrameAlreadyOnDiskIsTheFirstFrameWithoutWaitingForTheLoad() = runBlocking {
+    fun aFrameAlreadyOnDiskIsTheFirstFrameWithoutWaitingForTheLoad() = runTest {
         // Task #18 (Hands e342666b): with a frame on disk the entry must not wait for the baseline
         // load (on a real network it never finished inside the window). The load here never ends; the
         // first frame is still the disk frame, nothing waited, and the load is left running.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         reader.frames[partition(ownerA)] = frame("disk body")
         val neverEnds = CompletableDeferred<Unit>()
@@ -146,7 +147,7 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         val logs = mutableListOf<String>()
         val store =
             SharedThreadStore(
-                dataSource = dataSource(reader = reader, loader = loader),
+                dataSource = dataSource(reader = reader, loader = loader, storeScope = backgroundScope),
                 scope = scope,
                 diagnosticsLogger = logs::add,
             )
@@ -164,17 +165,17 @@ class SharedThreadStoreEnterBaselineAwaitTest {
     }
 
     @Test
-    fun memoryCachedEntryNeverReadsDiskEvenWhenTheLoaderCommits() = runBlocking {
+    fun memoryCachedEntryNeverReadsDiskEvenWhenTheLoaderCommits() = runTest {
         // The await + disk read live strictly inside the no-memory-candidate branch: a cached
         // payload is newer by construction and the loader's write must not be observed this entry.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         val loader =
             SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
                 reader.frames[partition] = frame("baseline body")
             }
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
-        val dataSource = dataSource(api = api, reader = reader, loader = loader)
+        val dataSource = dataSource(api = api, reader = reader, loader = loader, storeScope = backgroundScope)
         assertNotNull(dataSource.readSession())
         assertTrue(dataSource.cachePayload(memoryContent("memory cached body"), serverId = "server-1"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -206,8 +207,10 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         api: SharedThreadStoreTest.FakeThreadApi = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
         reader: MutableFakeReader,
         loader: SharedThreadStoreEnteredScopeTest.FakeLoader,
+        storeScope: CoroutineScope,
     ): SharedThreadDataSource =
         SharedThreadStoreEnteredScopeTest().dataSource(
+            storeScope = storeScope,
             api = api,
             loader = loader,
             reader = reader,

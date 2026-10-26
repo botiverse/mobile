@@ -26,10 +26,10 @@ import build.raft.app.network.sync.TopLevelScopeRefV2
 import build.raft.app.network.sync.initialThreadRepliesReadModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -42,11 +42,11 @@ import kotlin.test.assertTrue
  */
 class SharedThreadStoreReplyWindowColdStartTest {
     @Test
-    fun durableFirstFrameCarriesThePersistedRepliesBlock() = runBlocking {
+    fun durableFirstFrameCarriesThePersistedRepliesBlock() = runTest {
         val storage = RaftInMemoryThreadReplyWindowStorage()
         val persisted = repliesModel(replyCount = 3)
         // Previous process: the summaries were accepted and written behind.
-        val previousProcessScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousProcessScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         RaftThreadReplyWindowCache(storage, previousProcessScope).record(
             listOf(
                 ThreadRepliesAcceptedProjection(
@@ -59,7 +59,7 @@ class SharedThreadStoreReplyWindowColdStartTest {
         assertTrue(storage.values.isNotEmpty(), "the window was written behind")
 
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         // Cold start: a fresh cache over the same durable storage.
         val reader = ReplyWindowReader(RaftThreadReplyWindowCache(storage, scope))
         val firstFrameApplied = CompletableDeferred<RaftThreadScreenPayload>()
@@ -68,6 +68,9 @@ class SharedThreadStoreReplyWindowColdStartTest {
             SharedThreadStore(
                 dataSource =
                     SharedThreadDataSource(
+                        threadParseDispatcher = scope.testDispatcher(),
+                        messageStore = SharedThreadMessageStore(scope = scope),
+                        payloadStore = SharedThreadPayloadStore(scope = scope),
                         networkApi = SharedThreadStoreTest.FakeThreadApi(),
                         sessionStore = InMemoryRaftAuthSessionStore(owner.session),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -113,9 +116,9 @@ class SharedThreadStoreReplyWindowColdStartTest {
     }
 
     @Test
-    fun anotherPrincipalsWindowsAreNeverShown() = runBlocking {
+    fun anotherPrincipalsWindowsAreNeverShown() = runTest {
         val storage = RaftInMemoryThreadReplyWindowStorage()
-        val previousProcessScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousProcessScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         RaftThreadReplyWindowCache(storage, previousProcessScope).record(
             listOf(
                 ThreadRepliesAcceptedProjection(
@@ -131,13 +134,16 @@ class SharedThreadStoreReplyWindowColdStartTest {
             )
         )
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val firstFrameApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseFirstFrame = CompletableDeferred<Unit>()
         val store =
             SharedThreadStore(
                 dataSource =
                     SharedThreadDataSource(
+                        threadParseDispatcher = scope.testDispatcher(),
+                        messageStore = SharedThreadMessageStore(scope = scope),
+                        payloadStore = SharedThreadPayloadStore(scope = scope),
                         networkApi = SharedThreadStoreTest.FakeThreadApi(),
                         sessionStore = InMemoryRaftAuthSessionStore(owner.session),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
