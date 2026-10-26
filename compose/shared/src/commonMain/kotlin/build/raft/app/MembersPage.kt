@@ -4,6 +4,7 @@ import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.raftSoftWash
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftIconSpinner
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.components.raftControlSurface
@@ -22,9 +23,7 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftAnchorPlacement
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.RaftAppCheckbox
@@ -34,7 +33,6 @@ import build.raft.app.components.RaftCheckMarkerTone
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAppSectionEyebrow
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
@@ -199,11 +197,18 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import build.raft.app.components.rememberRaftDesignSystemEditor
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -442,20 +447,18 @@ internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean =
 
 internal enum class MembersAgentServerRole(
     val wireValue: String,
-    val label: String,
-    val backgroundColor: Color
+    val label: String
 ) {
-    Admin("admin", "Admin", RaftColor.AccentPink),
-    Member("member", "Member", RaftColor.AccentLavender)
+    Admin("admin", "Admin"),
+    Member("member", "Member")
 }
 
 internal enum class MembersHumanServerRole(
-    val wireValue: String,
-    val backgroundColor: Color
+    val wireValue: String
 ) {
-    Owner("owner", RaftColor.AccentOrange),
-    Admin("admin", RaftColor.AccentPink),
-    Member("member", RaftColor.AccentLavender)
+    Owner("owner"),
+    Admin("admin"),
+    Member("member")
 }
 
 @Composable
@@ -649,7 +652,7 @@ internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
  * LiBai against slock-source@01d0064d9; task #261.
  */
 internal sealed interface MembersAgentServerRoleDisplay {
-    /** A role we recognise: render its own label and colour. */
+    /** A role we recognise: render its own label. */
     data class Known(val role: MembersAgentServerRole) : MembersAgentServerRoleDisplay
 
     /**
@@ -7428,7 +7431,7 @@ private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, 
     }
 
 @Composable
-private fun MembersLifecycleConfirmation(
+internal fun MembersLifecycleConfirmation(
     action: MembersAgentLifecycleAction,
     agentName: String,
     busy: Boolean,
@@ -7447,7 +7450,6 @@ private fun MembersLifecycleConfirmation(
     // confirm button at warning until the user picks "delete the workspace".
     val destructive =
         if (isArchive) archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete else action.destructive
-    val accent = if (destructive) RaftColor.AccentRed else RaftColor.AccentOrange
     // Hosted inside RaftUnifiedDialog, which owns the card padding.
     // Banner metrics mirror React Banner density=md: p-3 (12), gap-3 (12),
     // text-sm (14/20), border-2, and ConfirmDialog's mb-5 (20) to the buttons.
@@ -7509,18 +7511,24 @@ private fun MembersLifecycleConfirmation(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
+            RaftButton(
                 // #148: the confirm button says the verb only; the title names the agent.
-                label = when {
+                text = when {
                     isArchive -> stringResource(MR.strings.member_archive_confirm)
                     action == MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_confirm)
                     else -> membersLifecycleConfirmTitle(action, agentName)
                 },
                 loading = busy,
-                backgroundColor = accent,
+                // Web ConfirmDialog: confirmVariant danger for what cannot be undone, warning otherwise.
+                variant = if (destructive) RaftButtonVariant.Danger else RaftButtonVariant.Warning,
+                size = RaftButtonSize.Lg,
                 // Web ConfirmDialog carries confirmIcon=<Archive> on the archive
                 // confirm; other actions stay icon-less.
-                leadingIcon = if (isArchive) RaftLucideIconName.Archive else null,
+                leadingIcon = if (isArchive) {
+                    { RaftSlotIcon(RaftLucideIconName.Archive) }
+                } else {
+                    null
+                },
                 onClick = onConfirm
             )
         }
@@ -7704,11 +7712,13 @@ private fun MembersAgentArchiveSection(
             )
         }
         if (canDeleteWorkspace) {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.member_archive_action_delete_workspace),
+            RaftButton(
+                text = stringResource(MR.strings.member_archive_action_delete_workspace),
                 onClick = { confirmDelete = true },
                 enabled = !deleting,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md
             )
         }
     }
@@ -7757,11 +7767,12 @@ private fun MembersAgentArchiveSection(
                         variant = RaftButtonVariant.Ghost,
                         size = RaftButtonSize.Lg
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.member_archive_delete_workspace_confirm),
+                    RaftButton(
+                        text = stringResource(MR.strings.member_archive_delete_workspace_confirm),
                         loading = deleting,
-                        backgroundColor = RaftColor.AccentRed,
-                        leadingIcon = RaftLucideIconName.Trash2,
+                        variant = RaftButtonVariant.Danger,
+                        size = RaftButtonSize.Lg,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Trash2) },
                         onClick = {
                             deleting = true
                             deleteError = null
@@ -7819,7 +7830,7 @@ private fun MembersArchiveWorkspaceOption(
 }
 
 @Composable
-private fun MembersAgentIssueReportDialog(
+internal fun MembersAgentIssueReportDialog(
     agentName: String,
     runtimeTranscriptAvailable: Boolean,
     busy: Boolean,
@@ -7867,17 +7878,18 @@ private fun MembersAgentIssueReportDialog(
                 }
             }
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(MR.strings.member_report_issue_description_label),
-                    value = description,
-                    placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
-                    onValueChange = { description = it },
+                    modifier = Modifier.fillMaxWidth(),
                     optional = true,
-                    enabled = !busy,
-                    maxLines = 4,
-                    fieldMinHeight = 88.dp,
-                    password = false
-                )
+                    enabled = !busy
+                ) {
+                    RaftTextarea(
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = stringResource(MR.strings.member_report_issue_description_placeholder)
+                    )
+                }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -7980,18 +7992,19 @@ private fun MembersAgentIssueReportDialog(
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label =
+            RaftButton(
+                text =
                     if (busy) {
                         stringResource(MR.strings.member_report_issue_submitting)
                     } else {
                         stringResource(MR.strings.member_report_issue_submit)
                     },
-                leadingIcon = RaftLucideIconName.Bug,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bug) },
                 enabled = consented,
                 loading = busy,
-                // Web ReportIssueDialog submits with the pink primary action.
-                backgroundColor = RaftColor.AccentPink,
+                // Web ReportIssueDialog submits with the pink primary action, lg in the footer.
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
                 onClick = {
                     onSubmit(
                         description.text,
@@ -8144,16 +8157,19 @@ private fun MembersAgentIssueReportReceiptDialog(
                         value = stringResource(MR.strings.member_report_issue_runtime_transcript_queued)
                     )
                 }
-                RaftBrutalActionButton(
-                    label =
+                // Web ReportIssueDialog: outline (default) md inside the receipt card.
+                RaftButton(
+                    text =
                         if (referenceCopied) {
                             stringResource(MR.strings.member_report_issue_reference_copied)
                         } else {
                             stringResource(MR.strings.member_report_issue_copy_reference)
                         },
-                    leadingIcon = if (referenceCopied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    minHeight = 28.dp,
+                    leadingIcon = {
+                        RaftSlotIcon(if (referenceCopied) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                    },
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md,
                     onClick = onCopyReference
                 )
             }
@@ -8774,7 +8790,6 @@ private fun MembersHumanInfoSection(
                         // profile and still uses the older chip/button styling.
                         MembersServerRoleEditor(
                             displayValue = draftRole.localizedLabel(),
-                            badgeBackgroundColor = draftRole.backgroundColor,
                             expanded = roleMenuExpanded,
                             enabled = !savingRole,
                             saving = savingRole,
@@ -8914,9 +8929,8 @@ private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MembersServerRoleEditor(
+internal fun MembersServerRoleEditor(
     displayValue: String,
-    badgeBackgroundColor: Color,
     expanded: Boolean,
     enabled: Boolean,
     saving: Boolean,
@@ -8937,7 +8951,8 @@ private fun MembersServerRoleEditor(
             modifier = Modifier
                 .widthIn(min = 160.dp)
                 .height(33.dp)
-                .raftControlSurface(fill = raftSoftWash(badgeBackgroundColor), border = RaftColor.LineField)
+                // Web InlineBadgeEditor with the roles' `default` soft badge: the fill-muted wash.
+                .raftControlSurface(fill = RaftColor.FillMuted, border = RaftColor.LineField)
                 .clickable(enabled = enabled, onClick = onToggle)
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
@@ -8966,19 +8981,21 @@ private fun MembersServerRoleEditor(
                 onSelect = { option -> onSelect(option.id) }
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+        // Web HumanDetailPanel role editor: accent md Save, default md Cancel.
+        Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
             RaftButton(
                 text = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                 onClick = onSave,
                 enabled = enabled && saveEnabled,
                 variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg
+                size = RaftButtonSize.Md
             )
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 onClick = onCancel,
                 enabled = enabled,
-                backgroundColor = RaftColor.SurfaceWhite
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md
             )
         }
         error?.let {
@@ -9011,33 +9028,25 @@ private fun MembersAgentServerRoleDisplay.rememberKey(): String =
     }
 
 @Composable
-private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
-    // Hidden renders nothing: no membership row, or a deleted agent. Any chip here would
+internal fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
+    // Hidden renders nothing: no membership row, or a deleted agent. Any value here would
     // assert a membership that does not exist (#261).
     if (display is MembersAgentServerRoleDisplay.Hidden) return
-    val role = (display as? MembersAgentServerRoleDisplay.Known)?.role
     val label =
         when (display) {
             is MembersAgentServerRoleDisplay.Known -> display.role.localizedLabel()
-            // Shown as sent, only title-cased to match the recognised chips. We have no
-            // colour for a role we do not know, so it takes the neutral background.
+            // Shown as sent, only title-cased to match the recognised roles.
             is MembersAgentServerRoleDisplay.Unrecognized -> display.rawName.membersRoleDisplayName()
             MembersAgentServerRoleDisplay.Hidden -> ""
         }
-    val backgroundColor = role?.backgroundColor ?: RaftColor.EmptyStateGray
-    Box(
-        modifier = Modifier
-            .background(raftSoftWash(backgroundColor), RoundedCornerShape(RaftAppRadius.Chip))
-            .padding(horizontal = 6.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    // Web AgentDetailPanel InfoRow: the role is the row's plain value (`<span>`), no chip.
+    Text(
+        text = label,
+        style = RaftType.Body.copy(fontSize = MembersInfoValueFontSize, lineHeight = MembersInfoValueLineHeight),
+        color = RaftColor.TextBlack,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -9205,21 +9214,22 @@ private fun MembersHumanCreatedAgentRow(
     )
 }
 
-private val MembersAgentAvatarPickerCellSize = 40.dp
+// Web AgentProfileEditDialog preset button: size-11 (44), control radius, 1.5 edge.
+private val MembersAgentAvatarPickerCellSize = 44.dp
 private val MembersAgentAvatarPickerAvatarSize = 36.dp
 
 @Composable
-private fun MembersAgentAvatarChoiceGrid(
+internal fun MembersAgentAvatarChoiceGrid(
     member: MemberProfile,
     uploading: Boolean,
     onUploadClick: () -> Unit,
     onClear: () -> Unit,
     onSelect: (String) -> Unit
 ) {
-    // React parity: each cell renders the actual pixel art (or upload icon
-    // for the first cell) inside a 40dp cell with a 2dp border, mirroring
-    // `AgentDetailPanel.tsx`. Active selection gets a pink border
-    // + pink tint background (React `border-palette-pink bg-palette-pink/20`).
+    // Web AgentProfileEditDialog `presetButtonClass`: each cell renders the pixel art (or
+    // the upload icon for the first cell) in a 44dp control-radius cell. The selected cell
+    // is the selected sticker (`bg-selected`, sticker-ink edge); the rest have no edge,
+    // except the upload cell, which keeps a `line-strong` one (web draws it dashed).
     val activeCustomAvatar = member.avatarUrl != null
     val activePixelKey = if (activeCustomAvatar) {
         null
@@ -9235,9 +9245,7 @@ private fun MembersAgentAvatarChoiceGrid(
         Box(
             modifier = Modifier
                 .size(MembersAgentAvatarPickerCellSize)
-                .border(RaftAppStroke.Default, if (activeCustomAvatar) RaftColor.AccentPink else RaftColor.BorderBlack)
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                .background(if (activeCustomAvatar) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+                .membersAvatarPickerCellSurface(selected = activeCustomAvatar, restEdge = RaftColor.BorderBlack)
                 .clickable(enabled = !uploading) { onUploadClick() },
             contentAlignment = Alignment.Center
         ) {
@@ -9289,9 +9297,7 @@ private fun MembersAgentAvatarPickerCell(
     Box(
         modifier = modifier
             .size(MembersAgentAvatarPickerCellSize)
-            .border(RaftAppStroke.Default, if (active) RaftColor.AccentPink else RaftColor.BorderBlack)
-            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-            .background(if (active) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+            .membersAvatarPickerCellSurface(selected = active, restEdge = Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -9302,6 +9308,14 @@ private fun MembersAgentAvatarPickerCell(
             borderWidth = 0.dp
         )
     }
+}
+
+private fun Modifier.membersAvatarPickerCellSurface(selected: Boolean, restEdge: Color): Modifier {
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    return this
+        .clip(shape)
+        .background(if (selected) RaftColor.Brand else Color.Transparent, shape)
+        .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else restEdge, shape)
 }
 
 private const val MembersAgentProfileDescriptionMaxLength = 3000
@@ -9921,9 +9935,22 @@ private fun MembersAgentProfileFieldsSection(
                     modifier = Modifier.fillMaxWidth(),
                     error = displayNameError?.takeIf { it.isNotBlank() }
                 ) {
-                    RaftBrutalInputField(
+                    // The app editor behaviour (IME action, focus dismiss) plus the open-on-edit focus.
+                    val displayNameEditor =
+                        rememberRaftDesignSystemEditor(
+                            keyboardOptions = KeyboardOptions.Default,
+                            keyboardActions = KeyboardActions.Default,
+                            keyboardHeightChange = {},
+                            focusRequester = remember { FocusRequester() },
+                            autoFocus = !savingDisplayName,
+                            onFocus = {},
+                            onBlur = {}
+                        )
+                    RaftTextField(
                         value = draftDisplayName,
                         placeholder = stringResource(MR.strings.member_label_display_name),
+                        modifier = Modifier.fillMaxWidth().then(displayNameEditor.modifier),
+                        keyboardOptions = displayNameEditor.keyboardOptions,
                         onValueChange = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -9934,10 +9961,7 @@ private fun MembersAgentProfileFieldsSection(
                                 if (localDisplayNameError != null) localDisplayNameError = null
                             }
                         },
-                        enabled = !savingDisplayName,
-                        autoFocus = true,
-                        borderColor = if (displayNameError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
-                        enabledBackgroundColor = if (displayNameError != null) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFF4F4)) else RaftColor.SurfaceWhite // raft-color: light legacy error wash
+                        enabled = !savingDisplayName
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
@@ -9948,8 +9972,10 @@ private fun MembersAgentProfileFieldsSection(
                         variant = RaftButtonVariant.Primary,
                         size = RaftButtonSize.Lg
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_cancel),
+                    RaftButton(
+                        text = stringResource(MR.strings.common_cancel),
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
                         onClick = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -9962,8 +9988,7 @@ private fun MembersAgentProfileFieldsSection(
                             }
                             displayNameEditorAuthority = null
                         },
-                        enabled = !savingDisplayName,
-                        backgroundColor = RaftColor.SurfaceWhite
+                        enabled = !savingDisplayName
                     )
                 }
             }
@@ -10009,9 +10034,16 @@ private fun MembersAgentProfileFieldsSection(
                     modifier = Modifier.fillMaxWidth(),
                     error = roleError?.takeIf { it.isNotBlank() }
                 ) {
-                    RaftBrutalInputField(
+                    val descriptionFocus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) {
+                        delay(100)
+                        descriptionFocus.requestFocus()
+                    }
+                    RaftTextarea(
                         value = draftRole,
                         placeholder = stringResource(MR.strings.member_placeholder_description),
+                        modifier = Modifier.fillMaxWidth(),
+                        inputModifier = Modifier.focusRequester(descriptionFocus),
                         onValueChange = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -10022,12 +10054,7 @@ private fun MembersAgentProfileFieldsSection(
                                 if (localRoleError != null) localRoleError = null
                             }
                         },
-                        enabled = !savingRole,
-                        autoFocus = true,
-                        maxLines = 4,
-                        fieldMinHeight = 86.dp,
-                        borderColor = if (roleError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
-                        enabledBackgroundColor = if (roleError != null) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFF4F4)) else RaftColor.SurfaceWhite // raft-color: light legacy error wash
+                        enabled = !savingRole
                     )
                 }
                 Row(
@@ -10042,8 +10069,10 @@ private fun MembersAgentProfileFieldsSection(
                         variant = RaftButtonVariant.Primary,
                         size = RaftButtonSize.Lg
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_cancel),
+                    RaftButton(
+                        text = stringResource(MR.strings.common_cancel),
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
                         onClick = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -10055,8 +10084,7 @@ private fun MembersAgentProfileFieldsSection(
                                 localEditingRole = false
                             }
                         },
-                        enabled = !savingRole,
-                        backgroundColor = RaftColor.SurfaceWhite
+                        enabled = !savingRole
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -10258,7 +10286,6 @@ private fun MembersAgentInfoSection(
                 ) {
                     MembersServerRoleEditor(
                         displayValue = draftServerRole.localizedLabel(),
-                        badgeBackgroundColor = draftServerRole.backgroundColor,
                         expanded = serverRoleMenuExpanded,
                         enabled = !savingServerRole,
                         saving = savingServerRole,
@@ -11997,11 +12024,12 @@ private fun MembersAgentRuntimeConfigDialog(
                                     .copy(color = RaftColor.AccentRed),
                                 color = RaftColor.AccentRed
                             )
-                            RaftBrutalActionButton(
-                                label = stringResource(MR.strings.common_retry),
-                                leadingIcon = RaftLucideIconName.RefreshCw,
+                            RaftButton(
+                                text = stringResource(MR.strings.common_retry),
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
                                 enabled = !builtInFormLoading && !saving,
-                                backgroundColor = RaftColor.SurfaceWhite,
+                                variant = RaftButtonVariant.Default,
+                                size = RaftButtonSize.Md,
                                 onClick = { builtInFormReloadGeneration += 1 }
                             )
                         }
@@ -12125,8 +12153,9 @@ private fun MembersAgentRuntimeConfigDialog(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
-                RaftBrutalActionButton(
-                    label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
+                // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
+                RaftButton(
+                    text = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
                     enabled =
                         !saving &&
                             !catalogValidationInFlight &&
@@ -12136,8 +12165,8 @@ private fun MembersAgentRuntimeConfigDialog(
                             !providerUrlInvalid &&
                             !providerKeyInvalid &&
                             !piProviderKeyInvalid,
-                    backgroundColor = RaftColor.AccentPink,
-                    minWidth = 166.dp,
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
                     onClick = {
                         val effectiveModel = if (customModelMode) customModelName.trim() else model
                         val reasoningMetadata =
@@ -12148,7 +12177,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             )
                         val nextConfig =
                             if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                builtInConfigForSave ?: return@RaftBrutalActionButton
+                                builtInConfigForSave ?: return@RaftButton
                             } else buildRuntimeConfig(
                                 runtime = runtime,
                                 model = if (customModelMode) customModelName else model,
@@ -12216,7 +12245,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                     requestGeneration = requestGeneration
                                 )
                             onRuntimeModelsRequest(runtime, true)
-                            return@RaftBrutalActionButton
+                            return@RaftButton
                         }
                         val validatedCatalogGeneration =
                             runtimeModelGenerationsByRuntime[runtime] ?: 0L
@@ -12418,9 +12447,10 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
-                RaftBrutalActionButton(
-                    label = confirmation.confirmLabel.localized(),
-                    backgroundColor = RaftColor.AccentOrange,
+                RaftButton(
+                    text = confirmation.confirmLabel.localized(),
+                    variant = RaftButtonVariant.Warning,
+                    size = RaftButtonSize.Lg,
                     onClick = onConfirm
                 )
             }
@@ -14067,7 +14097,7 @@ private fun MembersAgentScopeRow.localizedDescription(): String =
     }
 
 @Composable
-private fun MembersAgentPermissionsTab(
+internal fun MembersAgentPermissionsTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
@@ -14241,14 +14271,14 @@ private fun MembersAgentPermissionsTab(
                 )
             }
             if (isCustom) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.member_action_use_default),
+                RaftButton(
+                    text = stringResource(MR.strings.member_action_use_default),
                     onClick = {
                         scope.launch { resetToDefault() }
                     },
                     enabled = !saving,
-                    minWidth = 88.dp,
-                    minHeight = 32.dp
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md
                 )
             }
         }
@@ -14266,20 +14296,21 @@ private fun MembersAgentPermissionsTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            RaftBrutalActionButton(
-                label = if (saving) stringResource(MR.strings.common_loading) else stringResource(MR.strings.member_action_save_permissions),
+            RaftButton(
+                text = if (saving) stringResource(MR.strings.common_loading) else stringResource(MR.strings.member_action_save_permissions),
                 onClick = {
                     scope.launch { save() }
                 },
                 enabled = !saving && isDirty,
-                backgroundColor = RaftColor.AccentPink,
-                minWidth = 132.dp
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.member_action_discard),
+            RaftButton(
+                text = stringResource(MR.strings.member_action_discard),
                 onClick = ::discard,
                 enabled = !saving && isDirty,
-                minWidth = 88.dp
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Lg
             )
             Text(
                 text = stringResource(MR.strings.member_label_revision, currentServer.revision.toString()),
@@ -14752,14 +14783,6 @@ private fun MembersAvatar(
         )
     }
 }
-
-private val MemberKind.membersAvatarColor: Color
-    get() = when (this) {
-        MemberKind.Human -> RaftColor.AccentLavender
-        MemberKind.Agent -> RaftColor.AccentPink
-        MemberKind.System -> RaftColor.AccentCyan
-        MemberKind.External -> RaftColor.AccentCyan
-    }
 
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
@@ -15362,11 +15385,11 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
             modifier = Modifier.weight(1f)
         )
         if (action != null && onAction != null) {
-            RaftBrutalActionButton(
-                label = action,
+            RaftButton(
+                text = action,
                 onClick = onAction,
-                minWidth = 72.dp,
-                minHeight = 32.dp
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md
             )
         }
     }

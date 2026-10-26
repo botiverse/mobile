@@ -9,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
@@ -164,15 +163,16 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
-                RaftBrutalActionButton(
-                    label =
+                // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
+                RaftButton(
+                    text =
                         if (saving) stringResource(MR.strings.member_action_saving)
                         else stringResource(MR.strings.member_action_save_runtime_config),
                     enabled = !saving && form != null && changed && errors.isEmpty(),
-                    backgroundColor = RaftColor.AccentPink,
-                    minWidth = 166.dp,
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
                     onClick = {
-                        val submitting = current ?: form ?: return@RaftBrutalActionButton
+                        val submitting = current ?: form ?: return@RaftButton
                         onSave(
                             RuntimeFormV2SubmitBody(
                                 runtimeId = submitting.form.runtimeId,
