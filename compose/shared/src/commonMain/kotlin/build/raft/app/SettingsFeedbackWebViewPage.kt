@@ -9,6 +9,9 @@ import build.raft.app.data.isFeedbackSubmitAction
 internal const val SETTINGS_FEEDBACK_ACTION_CARD_ID = "settingsFeedbackActionCardId"
 internal const val SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID = "settingsFeedbackActionCardServerId"
 
+/** pageData key for a Feedback WebView opened on one ticket (a done feedback card's "View in Settings", S0.3): identity only. */
+internal const val SETTINGS_FEEDBACK_TICKET_ID = "settingsFeedbackTicketId"
+
 /**
  * The card a Feedback WebView is opened for (slock `docs/development/feedback-native-entry.md`,
  * "Opened from a feedback card"): the card's message id and the server the person is viewing the
@@ -44,10 +47,12 @@ internal fun ThreadActionCard.opensFeedbackCardEntry(productFeedbackMultiAppEnab
     productFeedbackMultiAppEnabled && isFeedbackSubmitAction() && !isExecuted
 
 /**
- * `<web>/feedback/?embed=…&shell=host[&actionCard=<id>&server=<id>]`, on the current environment's
- * web origin. Both card params are added together or not at all.
+ * `<web>/feedback/?embed=…&shell=host[&actionCard=<id>&server=<id>][&ticket=<id>]`, on the current
+ * environment's web origin. Both card params are added together or not at all. [ticketId] (a UUID,
+ * [feedbackTicketIdOrNull]) asks the page to open on that ticket; a page that does not read
+ * `ticket` yet opens the list, which is the S0.3 fallback.
  */
-internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCardEntry?): String =
+internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCardEntry?, ticketId: String? = null): String =
     sharedSettingsHostShellWebUrl(
         webBaseUrl,
         "feedback/",
@@ -56,7 +61,7 @@ internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCard
                 "actionCard" to it.actionCardMessageId.feedbackQueryEncode(),
                 "server" to it.serverId.feedbackQueryEncode(),
             )
-        }.orEmpty(),
+        }.orEmpty() + listOfNotNull(feedbackTicketIdOrNull(ticketId)?.let { "ticket" to it.feedbackQueryEncode() }),
     )
 
 internal fun JSONObject.putSettingsFeedbackCardEntry(entry: RaftFeedbackCardEntry?): JSONObject =
@@ -65,6 +70,13 @@ internal fun JSONObject.putSettingsFeedbackCardEntry(entry: RaftFeedbackCardEntr
         put(SETTINGS_FEEDBACK_ACTION_CARD_ID, entry.actionCardMessageId)
         put(SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID, entry.serverId)
     }
+
+internal fun JSONObject.putSettingsFeedbackTicketId(ticketId: String?): JSONObject =
+    apply { feedbackTicketIdOrNull(ticketId)?.let { put(SETTINGS_FEEDBACK_TICKET_ID, it) } }
+
+/** The ticket a Feedback WebView opens on, or null (the list): only a UUID. */
+internal fun settingsFeedbackTicketIdFromPageData(params: JSONObject): String? =
+    feedbackTicketIdOrNull(params.optString(SETTINGS_FEEDBACK_TICKET_ID))
 
 /** Both ids or no card: a half entry opens the ordinary Feedback page. */
 internal fun settingsFeedbackCardEntryFromPageData(params: JSONObject): RaftFeedbackCardEntry? {
@@ -76,16 +88,17 @@ internal fun settingsFeedbackCardEntryFromPageData(params: JSONObject): RaftFeed
 internal fun Pager.openSettingsFeedbackWebViewPage(
     storeScope: build.raft.app.data.RaftShellStoreScope,
     cardEntry: RaftFeedbackCardEntry? = null,
+    ticketId: String? = null,
 ) {
-    openSettingsWebViewPage(SettingsWebViewSurface.Feedback, storeScope, feedbackCardEntry = cardEntry)
+    openSettingsWebViewPage(SettingsWebViewSurface.Feedback, storeScope, feedbackCardEntry = cardEntry, feedbackTicketId = ticketId)
 }
 
-internal fun settingsFeedbackWebViewSpec(cardEntry: RaftFeedbackCardEntry? = null): StandaloneSettingsWebViewSpec =
+internal fun settingsFeedbackWebViewSpec(cardEntry: RaftFeedbackCardEntry? = null, ticketId: String? = null): StandaloneSettingsWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Feedback,
         hostEventsEnabled = true,
         allowNavigation = false,
-        buildWebUrl = { webBaseUrl, _, _ -> settingsFeedbackWebUrl(webBaseUrl, cardEntry) },
+        buildWebUrl = { webBaseUrl, _, _ -> settingsFeedbackWebUrl(webBaseUrl, cardEntry, ticketId) },
     )
 
 private fun String.feedbackQueryEncode(): String = buildString {

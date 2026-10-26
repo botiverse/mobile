@@ -68,6 +68,7 @@ internal fun settingsWebViewPageData(
     storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
+    feedbackTicketId: String? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
@@ -81,6 +82,7 @@ internal fun settingsWebViewPageData(
         }
         if (surface == SettingsWebViewSurface.Feedback) {
             putSettingsFeedbackCardEntry(feedbackCardEntry)
+            putSettingsFeedbackTicketId(feedbackTicketId)
         }
     }
 
@@ -94,10 +96,11 @@ internal fun Pager.openSettingsWebViewPage(
     storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
     feedbackCardEntry: RaftFeedbackCardEntry? = null,
+    feedbackTicketId: String? = null,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry),
+        settingsWebViewPageData(surface, storeScope, versionCode, feedbackCardEntry, feedbackTicketId),
     )
 }
 
@@ -171,7 +174,10 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.MessageSquarePlus,
                 spec =
                     remember(pager.pageData.params) {
-                        settingsFeedbackWebViewSpec(settingsFeedbackCardEntryFromPageData(pager.pageData.params))
+                        settingsFeedbackWebViewSpec(
+                            settingsFeedbackCardEntryFromPageData(pager.pageData.params),
+                            settingsFeedbackTicketIdFromPageData(pager.pageData.params),
+                        )
                     },
                 onHostMessage = { kind, _ ->
                     when (kind) {

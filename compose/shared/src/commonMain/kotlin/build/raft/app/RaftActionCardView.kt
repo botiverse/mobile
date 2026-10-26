@@ -70,10 +70,13 @@ internal fun actionCardFrameButtonState(
     /** False for a link this viewer can't follow (a navigate to another server's entity): disabled, as on the web. */
     linkNavigable: Boolean = true,
 ): RaftCardButtonState {
+    // A result intent (`open feedback_ticket`, S0.3) only views what the done card's result names:
+    // a link too, shown on the done card.
     val link =
         button.action is ActionCardSpecAction.Navigate ||
             button.action is ActionCardSpecAction.NavigateUrl ||
-            button.action == ActionCardSpecAction.OpenInWeb
+            button.action == ActionCardSpecAction.OpenInWeb ||
+            (button.action as? ActionCardSpecAction.Open)?.intent?.resultOnly == true
     return when {
         inSpecOfExecutedCard -> RaftCardButtonState.Hidden
         link -> if (linkNavigable) RaftCardButtonState.Enabled else RaftCardButtonState.Disabled
