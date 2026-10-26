@@ -3,7 +3,11 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 private val appLinkPreviewsJson = Json {
     ignoreUnknownKeys = true
@@ -12,11 +16,14 @@ private val appLinkPreviewsJson = Json {
 /**
  * Typed boundary of App link previews (artin #20 lane L), as the web reads them.
  *
- * Server contract (botiverse/slock staging 2d4f961df):
+ * Server contract (botiverse/slock staging 2d4f961df; the card catalog re-checked at
+ * 3652d3703232dd2e61b8f07b0217befe94337118):
  *  - `GET messages/:messageId/app-link-previews` (`packages/server/src/routes/messages.ts`,
  *    `services/appLinkPreviewService.ts`) answers
  *    `{ previews: [{ version: 1, url, appName, title, card? }], prompts: [{ url, app: { id, name, icon } }],
- *    appIcons: { [previewUrl]: string | null } }`; 404 for a message the viewer can't see. The
+ *    appIcons: { [previewUrl]: string | null } }` with `Cache-Control: private, no-store`; 404 for
+ *    a message the viewer can't see, a 429 (60 reads a minute per person) answers
+ *    `{ previews: [], prompts: [] }`. The
  *    server only calls an App for a viewer who consented to it on this Server and hasn't
  *    declined it; a prompt never calls the App.
  *  - `POST integrations/clients/:clientId/link-preview-consent` allows,
@@ -28,7 +35,9 @@ private val appLinkPreviewsJson = Json {
  * `appLinkPreviewListResponseSchema`, `packages/web/src/components/message/useAppLinkPreviews.ts`
  * `readAppLinkPreviewAnswer`): the top level is tolerant of new fields; the previews (with
  * `appIcons`) are read as one list and the prompts as another, so an entry this client can't
- * read drops only its own list. One result per link, one prompt per App. This client reads with
+ * read drops only its own list. Each preview is strict (`.strict()`): an unknown key, or a `card`
+ * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
+ * result per link, one prompt per App. This client reads with
  * the GET only: it declares no `card.v2`, so the batched link-card read (and its
  * `connect_account` chip) is not used.
  *
@@ -38,14 +47,6 @@ internal const val APP_LINK_PREVIEW_URL_MAX_LENGTH = 2000
 
 /** The links a v1 read covers (`messagePreviewUrls(content, 3)` on the server). */
 internal const val APP_LINK_PREVIEW_V1_LINK_LIMIT = 3
-
-@Serializable
-private data class WireAppLinkPreview(
-    val version: Int? = null,
-    val url: String? = null,
-    val appName: String? = null,
-    val title: String? = null,
-)
 
 @Serializable
 private data class WireAppLinkPromptApp(
@@ -81,8 +82,16 @@ sealed interface AppLinkResult {
     /** The link's normalized href, the key it is looked up by. */
     val url: String
 
-    /** A cyan chip with the App's icon and its title. */
-    data class Card(override val url: String, val app: AppLinkApp, val title: String) : AppLinkResult
+    /**
+     * A cyan chip with the App's icon and its title; [card], when the App sent one, is the
+     * read-only body the chip's card shows (json-render catalog v1, already validated).
+     */
+    data class Card(
+        override val url: String,
+        val app: AppLinkApp,
+        val title: String,
+        val card: RaftAppLinkCard? = null,
+    ) : AppLinkResult
 
     /** The viewer hasn't answered this App: a grey chip that asks first. */
     data class Consent(override val url: String, val app: AppLinkPromptApp) : AppLinkResult
@@ -329,17 +338,23 @@ private fun readAppLinkPreviews(list: WireAppLinkPreviewList): List<AppLinkResul
     if (previews.size > 10) return null
     val icons = list.appIcons.orEmpty()
     if (icons.values.any { (it?.length ?: 0) > APP_LINK_PREVIEW_URL_MAX_LENGTH }) return null
-    return previews.map { element ->
-        val wire =
-            runCatching { appLinkPreviewsJson.decodeFromJsonElement(WireAppLinkPreview.serializer(), element) }
-                .getOrNull() ?: return null
-        val rawUrl = wire.url ?: return null
-        val url = appLinkPreviewHref(rawUrl) ?: return null
-        val title = wire.title?.takeIf { it.isNotEmpty() && it.length <= 160 } ?: return null
-        val appName = wire.appName?.takeIf { it.length <= 300 } ?: return null
-        if (wire.version != 1) return null
-        AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title)
-    }
+    return previews.map { element -> readAppLinkPreview(element, icons) ?: return null }
+}
+
+/** The keys a v1 list preview may carry (`appLinkPreviewResponseSchema.extend({ url, appName })`, strict). */
+private val APP_LINK_PREVIEW_KEYS = setOf("version", "title", "card", "url", "appName")
+
+/** One preview of the list, or null when the web's schema would refuse it. */
+private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>): AppLinkResult.Card? {
+    val obj = element as? JsonObject ?: return null
+    if (!APP_LINK_PREVIEW_KEYS.containsAll(obj.keys)) return null
+    if (!obj["version"].isJsonNumber(1.0)) return null
+    val rawUrl = obj["url"].jsonStringOrNull() ?: return null
+    val url = appLinkPreviewHref(rawUrl) ?: return null
+    val title = obj["title"].jsonStringOrNull()?.takeIf { it.length in 1..160 } ?: return null
+    val appName = obj["appName"].jsonStringOrNull()?.takeIf { it.length <= 300 } ?: return null
+    val card = if ("card" in obj) parseRaftAppLinkCard(obj.getValue("card")) ?: return null else null
+    return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card)
 }
 
 /** The prompts as one list (web `promptListSchema`), or null when any of them can't be read. */
@@ -447,3 +462,119 @@ internal fun String.appLinkPathSegment(): String = buildString {
         }
     }
 }
+
+/**
+ * An App's read-only link card (botiverse/slock 3652d3703 `packages/shared/src/appLinkPreview.ts`
+ * `appPreviewCardSchema`, json-render catalog version 1): one bounded tree of [elements] from
+ * [root]. Read only through [parseRaftAppLinkCard], so a value always holds the schema's limits:
+ * at most [RAFT_APP_LINK_CARD_MAX_ELEMENTS] elements, every element reached exactly once from
+ * [root], at most [RAFT_APP_LINK_CARD_MAX_DEPTH] levels below it, ids matching
+ * `^[a-zA-Z][a-zA-Z0-9_-]{0,63}$`. No expressions, actions or remote content.
+ *
+ * [version] is the catalog the card was read with; version 2 (RFC 076: Stack direction/wrap,
+ * Text warning/mono, RelativeTime, Duration, Button) is not read yet and adds its own
+ * [RaftAppLinkCardElement] subtypes when it is.
+ */
+data class RaftAppLinkCard(
+    val root: String,
+    /** By element id, in the App's order. */
+    val elements: Map<String, RaftAppLinkCardElement>,
+    val version: Int = 1,
+) {
+    /** The element [id] names, or null (a child id always names one in a parsed card). */
+    fun element(id: String): RaftAppLinkCardElement? = elements[id]
+}
+
+/** One element of a [RaftAppLinkCard] (the catalog's discriminated `type`). */
+sealed interface RaftAppLinkCardElement {
+    /** `Stack`: its [children] (element ids, at most 12) top to bottom; no props in v1. */
+    data class Stack(val children: List<String>) : RaftAppLinkCardElement
+
+    /** `Text`: 1-500 characters of plain text. */
+    data class Text(val text: String, val tone: RaftAppLinkTextTone = RaftAppLinkTextTone.Default) : RaftAppLinkCardElement
+
+    /** `Badge`: the App's state in its own words, 1-60 characters (a neutral soft badge on the web). */
+    data class Badge(val text: String) : RaftAppLinkCardElement
+}
+
+/** `Text.props.tone` (default `default`). */
+enum class RaftAppLinkTextTone { Default, Muted }
+
+const val RAFT_APP_LINK_CARD_MAX_ELEMENTS = 16
+const val RAFT_APP_LINK_CARD_MAX_DEPTH = 4
+private const val RAFT_APP_LINK_CARD_MAX_CHILDREN = 12
+private val RAFT_APP_LINK_CARD_KEY = Regex("^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
+private val RAFT_APP_LINK_CARD_RESERVED_IDS = setOf("constructor", "prototype", "__proto__")
+
+/**
+ * Reads a v1 `card` exactly as `appPreviewCardSchema` does, or null when it would refuse it:
+ * strict objects throughout (no unknown keys, no `state`, `on`, `visible` or expressions), a
+ * known element `type`, the props' types and lengths, at most 16 elements, no reserved ids, and
+ * one tree from `root` that reaches every element once, at most 4 levels deep.
+ */
+fun parseRaftAppLinkCard(element: JsonElement): RaftAppLinkCard? {
+    val obj = element as? JsonObject ?: return null
+    if (!setOf("root", "elements").containsAll(obj.keys)) return null
+    val root = obj["root"].jsonStringOrNull()?.takeIf(RAFT_APP_LINK_CARD_KEY::matches) ?: return null
+    val rawElements = obj["elements"] as? JsonObject ?: return null
+    val elements = LinkedHashMap<String, RaftAppLinkCardElement>()
+    for ((id, raw) in rawElements) {
+        if (!RAFT_APP_LINK_CARD_KEY.matches(id)) return null
+        elements[id] = readRaftAppLinkCardElement(raw) ?: return null
+    }
+    if (elements.size > RAFT_APP_LINK_CARD_MAX_ELEMENTS || elements.keys.any { it in RAFT_APP_LINK_CARD_RESERVED_IDS }) return null
+    val visited = mutableSetOf<String>()
+    fun visit(id: String, depth: Int): Boolean {
+        val node = elements[id] ?: return false
+        if (!visited.add(id) || depth > RAFT_APP_LINK_CARD_MAX_DEPTH) return false
+        return node !is RaftAppLinkCardElement.Stack || node.children.all { visit(it, depth + 1) }
+    }
+    if (!visit(root, 0) || visited.size != elements.size) return null
+    return RaftAppLinkCard(root = root, elements = elements)
+}
+
+private fun readRaftAppLinkCardElement(raw: JsonElement): RaftAppLinkCardElement? {
+    val obj = raw as? JsonObject ?: return null
+    val props = obj["props"] as? JsonObject ?: return null
+    return when (obj["type"].jsonStringOrNull()) {
+        "Stack" -> {
+            if (!setOf("type", "props", "children").containsAll(obj.keys) || props.isNotEmpty()) return null
+            val children =
+                if ("children" in obj) {
+                    val list = obj["children"] as? JsonArray ?: return null
+                    if (list.size > RAFT_APP_LINK_CARD_MAX_CHILDREN) return null
+                    list.map { child -> child.jsonStringOrNull()?.takeIf(RAFT_APP_LINK_CARD_KEY::matches) ?: return null }
+                } else {
+                    emptyList()
+                }
+            RaftAppLinkCardElement.Stack(children)
+        }
+        "Text" -> {
+            if (!setOf("type", "props").containsAll(obj.keys) || !setOf("text", "tone").containsAll(props.keys)) return null
+            val text = props["text"].jsonStringOrNull()?.takeIf { it.length in 1..500 } ?: return null
+            val tone =
+                if ("tone" in props) {
+                    when (props["tone"].jsonStringOrNull()) {
+                        "default" -> RaftAppLinkTextTone.Default
+                        "muted" -> RaftAppLinkTextTone.Muted
+                        else -> return null
+                    }
+                } else {
+                    RaftAppLinkTextTone.Default
+                }
+            RaftAppLinkCardElement.Text(text, tone)
+        }
+        "Badge" -> {
+            if (!setOf("type", "props").containsAll(obj.keys) || !setOf("text").containsAll(props.keys)) return null
+            RaftAppLinkCardElement.Badge(props["text"].jsonStringOrNull()?.takeIf { it.length in 1..60 } ?: return null)
+        }
+        else -> null
+    }
+}
+
+/** A JSON string's value; null for anything else (a number or `null` is not a string to zod). */
+private fun JsonElement?.jsonStringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+/** A JSON number equal to [value] (zod `z.literal(1)` takes `1` and `1.0`, never `"1"`). */
+private fun JsonElement?.isJsonNumber(value: Double): Boolean =
+    (this as? JsonPrimitive)?.takeIf { !it.isString && it !is JsonNull }?.content?.toDoubleOrNull() == value

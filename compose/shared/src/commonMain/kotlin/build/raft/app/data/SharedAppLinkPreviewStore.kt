@@ -4,8 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,6 +42,8 @@ data class SharedAppLinkPreviewState(
      * keep the plain link for the session.
      */
     val claims: Map<String, String> = emptyMap(),
+    /** Moves on [SharedAppLinkPreviewStore.clearAll]: a read asked for before it is not kept. */
+    val generation: Int = 0,
 )
 
 /** What a message row shows, and whether it should read (again). */
@@ -48,6 +53,13 @@ data class AppLinkMessageView(
     /** Changes when the row should read again (another Allow while a read is on its way). */
     val readSignature: String,
 )
+
+/**
+ * The message's links that came back with a card body ([AppLinkResult.Card.card]), in link order:
+ * what a row shows as App link cards. The chip of each is still in [AppLinkMessageView.results].
+ */
+val AppLinkMessageView.cards: List<AppLinkResult.Card>
+    get() = results.values.filterIsInstance<AppLinkResult.Card>().filter { it.card != null }
 
 /** `${viewer}:${server}`: whose answers on which Server. */
 fun appLinkViewerKey(viewerId: String, serverId: String): String = "$viewerId:$serverId"
@@ -121,6 +133,22 @@ class SharedAppLinkPreviewStore internal constructor(
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
 
     private val inFlight = mutableSetOf<String>()
+
+    /**
+     * One message's [AppLinkMessageView] (its chips, cards and whether it should read), emitted
+     * only when that message's view changes: the selector a row collects instead of [state].
+     */
+    fun messageViewFlow(viewerKey: String, messageId: String, content: String, conversationId: String): Flow<AppLinkMessageView> =
+        state.map { it.messageView(viewerKey, messageId, content, conversationId) }.distinctUntilChanged()
+
+    /**
+     * Drops every answer and every consent status (sign-out, account or environment switch).
+     * Entries are keyed by viewer and Server, so a Server switch needs no clear. A read on its
+     * way when this runs is not kept.
+     */
+    fun clearAll() {
+        _state.update { SharedAppLinkPreviewState(generation = it.generation + 1) }
+    }
     private var epochSeq = initialState.epoch.values.maxOrNull() ?: 0
 
     /**
@@ -139,6 +167,7 @@ class SharedAppLinkPreviewStore internal constructor(
         if (!before.messageView(viewerKey, messageId, content, conversationId).wantsRead) return
         if (!inFlight.add(readScope)) return
         val askedAt = before.epoch
+        val askedGeneration = before.generation
         val response =
             try {
                 api.readPreviews(messageId, serverId)
@@ -154,6 +183,7 @@ class SharedAppLinkPreviewStore internal constructor(
         if (parsed == null) {
             diagnosticsLogger("app_link_previews_read_failed code=${response?.code ?: -1}")
             _state.update { state ->
+                if (state.generation != askedGeneration) return@update state
                 val previous = state.entries[readScope] ?: return@update state
                 val kept =
                     previous.results.filterValues { result ->
@@ -169,6 +199,7 @@ class SharedAppLinkPreviewStore internal constructor(
         val results = parsed.filterValues { it !is AppLinkResult.Consent || it.url in bare }
         val conversationKey = appLinkConversationKey(viewerKey, conversationId)
         _state.update { state ->
+            if (state.generation != askedGeneration) return@update state
             val claims = state.claims.toMutableMap()
             results.values.filterIsInstance<AppLinkResult.Consent>().forEach { prompt ->
                 val key = "$conversationKey:${prompt.app.id}"

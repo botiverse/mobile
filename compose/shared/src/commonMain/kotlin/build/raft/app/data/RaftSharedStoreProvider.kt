@@ -448,7 +448,7 @@ internal class RaftSharedStoreProvider private constructor(
      * App link previews of the messages on screen and the viewer's answers to their prompts
      * (artin #20 lane L): one per process, in memory for the session, keyed by viewer and Server.
      */
-    val appLinkPreviewStore: SharedAppLinkPreviewStore by lazy {
+    private val appLinkPreviewStoreLazy = lazy {
         SharedAppLinkPreviewStore(
             api = NetworkRaftAppLinkPreviewApi(networkClient),
             scope = RaftStoreThreading.newScope(),
@@ -456,6 +456,7 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SlockAppLinkPreviews", "shared_app_link_previews"),
         )
     }
+    val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy
 
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
@@ -791,6 +792,8 @@ internal class RaftSharedStoreProvider private constructor(
                     threadDurableLastKnownReader.replyWindowCache?.clearAll()
                     // In-memory channel / thread timelines: same lifetime as the reply previews.
                     threadPayloadStore.clearAll()
+                    // App link previews and consent answers are the viewer's: same lifetime.
+                    if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
