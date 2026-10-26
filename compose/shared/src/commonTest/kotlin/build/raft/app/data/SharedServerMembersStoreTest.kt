@@ -730,6 +730,58 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun loadSupersededBySameOwnerInvalidationFollowsTheReplacementFlight() = runBlocking {
+        // Hands 291310aa: the Members page load joined a roster flight right after a server
+        // switch; the presence transport connected, invalidated the owner and started a
+        // replacement flight. The page's load must end with the roster, not members_owner_stale.
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var fetches = 0
+        val core =
+            ProcessServerMembersCore(fetchMembers = { _, _ ->
+                fetches += 1
+                if (fetches == 1) {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                    DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u1", "Old"))))
+                } else {
+                    DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u2", "New"))))
+                }
+            })
+        val store =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                channelMembersOwner = { owner.channelMembersOwnerBinding() }
+            )
+
+        val page = async { store.refreshMembers(ServerId("server-1"), reason = "members_page") }
+        firstStarted.await()
+        core.invalidate(owner, reason = "presence_transport_connected")
+        assertIs<DataResult.Content<Unit>>(
+            store.refreshMembers(
+                ServerId("server-1"),
+                priority = DataRequestPriority.Background,
+                force = true,
+                reason = "presence_transport_connected"
+            )
+        )
+        releaseFirst.complete(Unit)
+
+        assertIs<DataResult.Content<Unit>>(page.await())
+        assertEquals(2, fetches, "the page follows the replacement flight's cache, no extra fetch")
+        assertEquals(listOf("u2"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
+    }
+
+    @Test
     fun shellFacadesShareProcessRosterFlightAndPublishSameVersion() = runBlocking {
         val owner =
             ProcessServerMembersOwner(
