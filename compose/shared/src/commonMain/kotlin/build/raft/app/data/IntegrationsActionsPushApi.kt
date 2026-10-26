@@ -267,7 +267,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
 
 private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> {
     if (!isSuccessful) {
-        // routes/actions.ts answers a refusal with `{ error, code }`; keep both so a caller can
+        // routes/actions.ts `handleError` answers a refusal with `{ error, errorCode }`; keep both so a caller can
         // name a refusal no retry fixes (an install card's 409 `APP_PERMISSIONS_CHANGED`, ...).
         val envelope = actionErrorEnvelopeOrNull()
         val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
@@ -282,7 +282,7 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
                 code = contractCode,
                 retryable = code >= 500,
                 serverMessage = serverMessage,
-                serverCode = envelope?.code?.takeIf { it.isNotBlank() },
+                serverCode = envelope?.errorCode?.takeIf { it.isNotBlank() },
                 serverFields =
                     buildMap {
                         // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
@@ -393,10 +393,11 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 
 // ── Wire DTOs ──
 
+/** routes/actions.ts `handleError`: `{ error, errorCode }` (an `ActionCardError`'s status, code and message). */
 @Serializable
 private data class ActionErrorEnvelopeDto(
     val error: String? = null,
-    val code: String? = null,
+    val errorCode: String? = null,
     @SerialName("current_text_revision_id")
     val currentTextRevisionId: String? = null,
 )
