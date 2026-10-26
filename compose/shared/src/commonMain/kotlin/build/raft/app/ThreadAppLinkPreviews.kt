@@ -1,14 +1,8 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -22,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -42,14 +35,11 @@ import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconTile
-import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
-import coil3.compose.AsyncImagePainter
 import kotlinx.coroutines.launch
 
 /**
@@ -254,29 +244,8 @@ private fun ThreadAppLinkConsentDestination(app: AppLinkPromptApp, url: String, 
     }
 }
 
-/** web ConnectedAppLogo `xs` (27dp): the App's logo, or the generic App tile. Decorative. */
+/** web ConnectedAppLogo `xs` (27dp): the App's logo, or its initials. Decorative. */
 @Composable
 private fun ThreadAppLinkAppLogo(app: AppLinkPromptApp) {
-    val icon = app.icon
-    var broken by remember(icon) { mutableStateOf(false) }
-    if (icon == null || broken) {
-        RaftIconTile(size = RaftIconTileSize.Sm) {
-            RaftContentLucideIcon(RaftLucideIconName.AppWindow, size = RaftIconTileSize.Sm.icon)
-        }
-        return
-    }
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    Box(
-        Modifier.size(RaftIconTileSize.Sm.edge)
-            .background(RaftColor.StickerPaper, shape)
-            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
-    ) {
-        RaftCachedImage(
-            source = icon,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            onImageStateChange = { if (it is AsyncImagePainter.State.Error) broken = true },
-        )
-    }
+    RaftConnectedAppLogo(name = app.name.ifBlank { app.id }, logoUrl = app.icon)
 }
