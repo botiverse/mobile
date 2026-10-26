@@ -740,6 +740,13 @@
     <string name="thread_action_card_install_dialog_app_changed">%1$s 已无法通过这个请求安装，所以没有安装。重试也没用，请让 @%2$s 重新准备请求。</string>
     <string name="thread_action_card_install_dialog_scopes_changed">%1$s 已不再允许这个请求申请的权限，所以没有安装。重试也没用，请让 @%2$s 重新准备请求。</string>
     <string name="thread_action_card_install_dialog_agent_changed">准备这个请求之后 @%1$s 发生了变化，所以没有安装。重试也没用，请让 @%1$s 重新准备请求。</string>
+    <string name="thread_action_card_install_dialog_text_changed">准备这个请求之后 %1$s 改了加进 Agent prompt 的文字，所以没有安装。重试也没用，请让 @%2$s 重新准备请求，再重新查看。</string>
+    <string name="thread_action_card_install_dialog_card_done">这个请求已经完成，无需再安装。</string>
+    <string name="thread_action_card_install_dialog_card_reconfirm">这个请求有变化，需要先在卡片上重新确认，才能安装。</string>
+    <string name="thread_action_card_install_dialog_card_frozen">这个请求所在的频道正在转换，请求已冻结，暂时无法安装。</string>
+    <string name="thread_action_card_prompt_text_title">加进 Agent prompt 的文字</string>
+    <string name="thread_action_card_prompt_text_install_note">Raft 会把这段文字加进此服务器上每个 Agent 的 system prompt。Agent 下次启动时生效。</string>
+    <string name="thread_action_card_prompt_text_empty">不会加进 Agent prompt：此应用没有填写使用时机。</string>
     <string name="thread_action_card_execute_failed">执行操作失败</string>
     <string name="thread_action_card_permission_set_login_scopes">登录权限</string>
     <string name="thread_action_card_permission_set_data_access">数据访问</string>

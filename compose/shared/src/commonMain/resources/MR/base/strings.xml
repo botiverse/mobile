@@ -740,6 +740,13 @@
     <string name="thread_action_card_install_dialog_app_changed">%1$s can no longer be installed from this request, so nothing was installed. Trying again won\'t help: ask @%2$s to prepare a fresh request.</string>
     <string name="thread_action_card_install_dialog_scopes_changed">%1$s no longer allows the scopes this request asked for, so nothing was installed. Trying again won\'t help: ask @%2$s to prepare a fresh request.</string>
     <string name="thread_action_card_install_dialog_agent_changed">@%1$s changed after this request was prepared, so nothing was installed. Trying again won\'t help: ask @%1$s to prepare a fresh request.</string>
+    <string name="thread_action_card_install_dialog_text_changed">%1$s changed the text it adds to agent prompts after this request was prepared, so nothing was installed. Trying again won\'t help: ask @%2$s to prepare a fresh request, then review it again.</string>
+    <string name="thread_action_card_install_dialog_card_done">This request was already completed, so there is nothing to install.</string>
+    <string name="thread_action_card_install_dialog_card_reconfirm">This request changed and has to be confirmed again on its card before it can be installed.</string>
+    <string name="thread_action_card_install_dialog_card_frozen">This request is frozen while its channel is being converted, so it can\'t be installed now.</string>
+    <string name="thread_action_card_prompt_text_title">Text added to agent prompts</string>
+    <string name="thread_action_card_prompt_text_install_note">Raft adds this to the system prompt of every agent on this Server. Agents get it the next time they start.</string>
+    <string name="thread_action_card_prompt_text_empty">Not added to agent prompts: this app has no When to use.</string>
     <string name="thread_action_card_execute_failed">Failed to execute action</string>
     <string name="thread_action_card_permission_set_login_scopes">Login scopes</string>
     <string name="thread_action_card_permission_set_data_access">Data access</string>

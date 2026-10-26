@@ -13,13 +13,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
+import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardInstallText
+import build.raft.app.data.boundInstallText
 import build.raft.app.data.installSetBound
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialogSheet
@@ -37,44 +41,73 @@ import kotlinx.coroutines.launch
  * The confirmation an `integration:install_marketplace_app` card's button opens (web
  * `InstallAppCardDialog`, audit V-85). The card asks only for the scopes one agent login needs,
  * but installing approves the app's whole declaration on this Server, so the admin confirms the
- * set the server bound to the card (`installScopes` / `installGroups`) first. Only its Install
- * executes the card; × (Cancel) and Back run nothing.
+ * set the server bound to the card (`installScopes` / `installGroups`) first, and the text the
+ * app adds to agent prompts when the card carries one (`installTextRevisionId` / `installText`).
+ * Only its Install executes the card; × (Cancel) and Back run nothing.
  */
 internal data class ThreadInstallAppActionDialogState(
     val messageId: String,
+    /** The live card (follows realtime and the execute answer, not the one the dialog opened with). */
     val card: ThreadActionCard,
     val submitting: Boolean = false,
     /** A refusal no retry fixes (the card no longer matches the app): Install stays disabled. */
     val blocked: Boolean = false,
-    /** The server's 409 `code` for a stale card ([ThreadInstallAppStaleCode]), else null. */
+    /** The server's 409 for a stale card ([ThreadInstallAppStaleCode]), else null. */
     val staleCode: ThreadInstallAppStaleCode? = null,
     /** Any other failure: the server's text, else the generic "Failed to execute action". */
     val failed: Boolean = false,
     val errorServerMessage: String? = null,
 ) {
-    /** Install is enabled: the set is bound, nothing refused it, nothing in flight. */
+    /** The card left `prepared` while the dialog was open (done, frozen, or to confirm again). */
+    val cardChange: ThreadInstallAppCardChange?
+        get() =
+            when {
+                card.isExecuted -> ThreadInstallAppCardChange.Executed
+                card.needsReconfirmation -> ThreadInstallAppCardChange.NeedsReconfirmation
+                card.isFrozen -> ThreadInstallAppCardChange.Frozen
+                else -> null
+            }
+
+    /** Install is enabled: the set is bound, the card is still prepared, nothing refused it or is in flight. */
     val canInstall: Boolean
-        get() = card.installSetBound && !blocked && !submitting
+        get() = card.installSetBound && cardChange == null && !blocked && !submitting
 }
+
+/** Why a card that changed while its confirmation was open can't be installed from it. */
+internal enum class ThreadInstallAppCardChange { Executed, NeedsReconfirmation, Frozen }
 
 /**
  * 409s from executing an install card that no retry can fix (web `STALE_CARD_MESSAGE_IDS`): the
  * card is bound to an app, an agent and a set of scopes, and one of them no longer matches.
+ * [TextChanged]: the app's prompt text moved past the revision the dialog showed (web
+ * `appTextChangedCurrent`: a 409 `APP_PERMISSIONS_CHANGED` whose `current_text_revision_id`
+ * differs from the card's `installTextRevisionId`).
  */
-internal enum class ThreadInstallAppStaleCode(val wire: String) {
+internal enum class ThreadInstallAppStaleCode(val wire: String?) {
     PermissionsChanged("APP_PERMISSIONS_CHANGED"),
     AppChanged("MARKETPLACE_APP_CHANGED"),
     ScopesChanged("SCOPE_BINDING_CHANGED"),
-    AgentChanged("AGENT_BINDING_CHANGED");
+    AgentChanged("AGENT_BINDING_CHANGED"),
+    TextChanged(null);
 
     companion object {
-        fun fromWire(code: String?): ThreadInstallAppStaleCode? = entries.firstOrNull { it.wire == code }
+        fun from(error: ScreenError, shownTextRevisionId: String?): ThreadInstallAppStaleCode? {
+            val code = error.serverCode ?: return null
+            if (shownTextRevisionId != null && code == PermissionsChanged.wire) {
+                val current = error.serverFields["current_text_revision_id"]
+                if (current != null && current != shownTextRevisionId) return TextChanged
+            }
+            return entries.firstOrNull { it.wire != null && it.wire == code }
+        }
     }
 }
 
 internal sealed interface ThreadInstallAppActionIntent {
     /** The card's button: show the confirmation. Executes nothing. */
     data class Open(val messageId: String, val card: ThreadActionCard) : ThreadInstallAppActionIntent
+
+    /** The card as the thread now holds it (realtime, the execute answer). */
+    data class CardUpdated(val messageId: String, val card: ThreadActionCard) : ThreadInstallAppActionIntent
 
     /** × / Cancel / Back: close without running anything (ignored while installing). */
     data object Dismiss : ThreadInstallAppActionIntent
@@ -86,7 +119,7 @@ internal sealed interface ThreadInstallAppActionIntent {
 /**
  * MVI owner of the install confirmation. [install] is the server call
  * (`SharedThreadDataSource.confirmInstallMarketplaceAppActionCard`); it runs only on
- * [ThreadInstallAppActionIntent.Confirm], at most once at a time.
+ * [ThreadInstallAppActionIntent.Confirm], at most once at a time, with the live card.
  */
 internal class ThreadInstallAppActionDialogStore(
     private val scope: CoroutineScope,
@@ -98,6 +131,7 @@ internal class ThreadInstallAppActionDialogStore(
 ) {
     private val _state = MutableStateFlow<ThreadInstallAppActionDialogState?>(null)
     val state: StateFlow<ThreadInstallAppActionDialogState?> = _state.asStateFlow()
+    private var requestToken = 0L
 
     fun dispatch(intent: ThreadInstallAppActionIntent) {
         when (intent) {
@@ -105,6 +139,12 @@ internal class ThreadInstallAppActionDialogStore(
                 if (!intent.card.isInstallMarketplaceAppAction()) return
                 if (_state.value?.submitting == true) return
                 _state.value = ThreadInstallAppActionDialogState(messageId = intent.messageId, card = intent.card)
+            }
+            is ThreadInstallAppActionIntent.CardUpdated -> {
+                val current = _state.value ?: return
+                if (current.messageId != intent.messageId || current.card == intent.card) return
+                if (!intent.card.isInstallMarketplaceAppAction()) return
+                _state.value = current.copy(card = intent.card)
             }
             ThreadInstallAppActionIntent.Dismiss -> {
                 if (_state.value?.submitting == true) return
@@ -117,46 +157,69 @@ internal class ThreadInstallAppActionDialogStore(
     private fun confirm() {
         val current = _state.value ?: return
         if (!current.canInstall) return
-        val submitting = current.copy(submitting = true, failed = false, staleCode = null, errorServerMessage = null)
-        _state.value = submitting
+        val token = ++requestToken
+        _state.value = current.copy(submitting = true, failed = false, staleCode = null, errorServerMessage = null)
         scope.launch {
-            val result = install(submitting.messageId, submitting.card)
-            // A later Open (another card) replaced this dialog: drop the answer.
-            if (_state.value !== submitting) return@launch
+            val result = install(current.messageId, current.card)
+            val latest = _state.value
+            // Closed, or replaced by another card's dialog: drop the answer.
+            if (token != requestToken || latest == null || latest.messageId != current.messageId) return@launch
+            val settled = latest.copy(submitting = false)
             when (result) {
                 is DataResult.Content -> {
                     _state.value = null
-                    onInstalled(submitting.messageId, result.data)
+                    onInstalled(current.messageId, result.data)
                 }
-                is DataResult.Empty ->
-                    _state.value = submitting.copy(submitting = false, failed = true)
+                is DataResult.Empty -> _state.value = settled.copy(failed = settled.cardChange == null)
                 is DataResult.Error -> {
-                    val stale = ThreadInstallAppStaleCode.fromWire(result.error.serverCode)
+                    val stale = ThreadInstallAppStaleCode.from(result.error, current.card.installTextRevisionId)
                     _state.value =
-                        submitting.copy(
-                            submitting = false,
-                            blocked = stale != null || result.error.code == "action_card_install_unbound",
-                            staleCode = stale,
-                            failed = stale == null,
-                            errorServerMessage = result.error.serverMessage?.takeIf { stale == null && it.isNotBlank() },
-                        )
+                        when {
+                            // The card moved on meanwhile (done elsewhere, frozen, to reconfirm): say that.
+                            settled.cardChange != null -> settled
+                            stale != null -> settled.copy(blocked = true, staleCode = stale)
+                            else ->
+                                settled.copy(
+                                    blocked = result.error.code == "action_card_install_unbound",
+                                    failed = true,
+                                    errorServerMessage = result.error.serverMessage?.takeIf { it.isNotBlank() },
+                                )
+                        }
                 }
                 is DataResult.NoPermission -> {
-                    if (onNoPermission(result)) {
-                        _state.value = null
-                    } else {
-                        _state.value =
-                            submitting.copy(
-                                submitting = false,
-                                failed = true,
-                                errorServerMessage = result.blocker.serverMessage?.takeIf { it.isNotBlank() },
-                            )
-                    }
+                    _state.value =
+                        if (onNoPermission(result)) {
+                            null
+                        } else {
+                            settled.copy(failed = true, errorServerMessage = result.blocker.serverMessage?.takeIf { it.isNotBlank() })
+                        }
                 }
             }
         }
     }
 }
+
+/**
+ * The production wiring of [ThreadInstallAppActionDialogStore] (ThreadPage): the data source's
+ * confirmation call, the executed card applied to the thread, and an expired session routed
+ * through the page's `routeAuthRequired` like every other card path.
+ */
+internal fun threadInstallAppActionDialogStore(
+    scope: CoroutineScope,
+    dataSource: SharedThreadDataSource,
+    applyCard: (messageId: String, card: ThreadActionCard) -> Unit,
+    toastInstalled: () -> Unit,
+    routeAuthRequired: (DataResult.NoPermission) -> Boolean,
+): ThreadInstallAppActionDialogStore =
+    ThreadInstallAppActionDialogStore(
+        scope = scope,
+        install = { messageId, card -> dataSource.confirmInstallMarketplaceAppActionCard(messageId, card) },
+        onInstalled = { messageId, card ->
+            applyCard(messageId, card)
+            toastInstalled()
+        },
+        onNoPermission = routeAuthRequired,
+    )
 
 /** The confirmation as a raft-ui phone sheet (web `NarrowDialogContent narrow="sheet"`). */
 @Composable
@@ -175,6 +238,8 @@ internal fun ThreadInstallAppActionDialog(
             onCommit = { onIntent(ThreadInstallAppActionIntent.Confirm) },
             closeLabel = stringResource(MR.strings.common_close),
             cancelLabel = stringResource(MR.strings.common_cancel),
+            // web closeDisabled={installing}
+            closeEnabled = !state.submitting,
         ) {
             ThreadInstallAppActionDialogBody(state)
         }
@@ -195,6 +260,7 @@ internal fun ThreadInstallAppActionSheetSurfaceForFixture(
         onClose = {},
         modifier = modifier,
         closeLabel = stringResource(MR.strings.common_close),
+        closeEnabled = !state.submitting,
     ) {
         ThreadInstallAppActionDialogBody(state)
     }
@@ -227,27 +293,121 @@ private fun ColumnScope.ThreadInstallAppActionDialogBody(state: ThreadInstallApp
                 size = RaftBannerSize.Sm,
             )
         }
+        card.boundInstallText?.let { text -> ThreadAppPromptTextSection(text, service = card.clientKey) }
         val error =
-            when (state.staleCode) {
-                ThreadInstallAppStaleCode.PermissionsChanged ->
-                    stringResource(MR.strings.thread_action_card_install_dialog_permissions_changed, client, agent)
-                ThreadInstallAppStaleCode.AppChanged ->
-                    stringResource(MR.strings.thread_action_card_install_dialog_app_changed, client, agent)
-                ThreadInstallAppStaleCode.ScopesChanged ->
-                    stringResource(MR.strings.thread_action_card_install_dialog_scopes_changed, client, agent)
-                ThreadInstallAppStaleCode.AgentChanged ->
-                    stringResource(MR.strings.thread_action_card_install_dialog_agent_changed, agent)
+            when (state.cardChange) {
+                ThreadInstallAppCardChange.Executed -> stringResource(MR.strings.thread_action_card_install_dialog_card_done)
+                ThreadInstallAppCardChange.NeedsReconfirmation ->
+                    stringResource(MR.strings.thread_action_card_install_dialog_card_reconfirm)
+                ThreadInstallAppCardChange.Frozen -> stringResource(MR.strings.thread_action_card_install_dialog_card_frozen)
                 null ->
-                    if (state.failed) {
-                        state.errorServerMessage ?: stringResource(MR.strings.thread_action_card_execute_failed)
-                    } else {
-                        null
+                    when (state.staleCode) {
+                        ThreadInstallAppStaleCode.PermissionsChanged ->
+                            stringResource(MR.strings.thread_action_card_install_dialog_permissions_changed, client, agent)
+                        ThreadInstallAppStaleCode.AppChanged ->
+                            stringResource(MR.strings.thread_action_card_install_dialog_app_changed, client, agent)
+                        ThreadInstallAppStaleCode.ScopesChanged ->
+                            stringResource(MR.strings.thread_action_card_install_dialog_scopes_changed, client, agent)
+                        ThreadInstallAppStaleCode.AgentChanged ->
+                            stringResource(MR.strings.thread_action_card_install_dialog_agent_changed, agent)
+                        ThreadInstallAppStaleCode.TextChanged ->
+                            stringResource(MR.strings.thread_action_card_install_dialog_text_changed, client, agent)
+                        null ->
+                            if (state.failed) {
+                                state.errorServerMessage ?: stringResource(MR.strings.thread_action_card_execute_failed)
+                            } else {
+                                null
+                            }
                     }
             }
         if (error != null) {
             RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
         }
     }
+}
+
+/**
+ * web `AppPromptTextSection`: the heading, where the text goes, and the text exactly as agents
+ * get it ([threadAppPromptTextLines]) in a plain code block that wraps, so the admin reads every
+ * word before confirming.
+ */
+@Composable
+internal fun ThreadAppPromptTextSection(text: ThreadActionCardInstallText, service: String?, modifier: Modifier = Modifier) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftText(
+            stringResource(MR.strings.thread_action_card_prompt_text_title),
+            style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground,
+        )
+        RaftText(stringResource(MR.strings.thread_action_card_prompt_text_install_note), style = typography.footnote, color = colors.foregroundMuted)
+        val lines = threadAppPromptTextLines(text, service)
+        if (lines == null) {
+            RaftText(stringResource(MR.strings.thread_action_card_prompt_text_empty), style = typography.footnote, color = colors.foregroundMuted)
+        } else {
+            RaftCodeBlock(text = lines.joinToString("\n"), wrap = true)
+        }
+    }
+}
+
+private val PromptTextServiceId = Regex("^[a-z][a-z0-9-]{2,63}$")
+private const val PromptTextLineMax = 160
+private const val PromptTextInertMax = 4_000
+private val PromptTextAgentMarkup = Regex("</?(?:result|preview|match)\\b[^>]*>|<omit\\s*/>", RegexOption.IGNORE_CASE)
+
+/**
+ * The two lines one app adds to every agent's system prompt (slock shared `appPromptTextLines`:
+ * the inert rendering, then the directory's one-line clamp and format), or null when it adds
+ * nothing (no name or no When to use).
+ */
+internal fun threadAppPromptTextLines(text: ThreadActionCardInstallText, service: String?): List<String>? {
+    fun inert(value: String): String {
+        val clamped = if (value.length <= PromptTextInertMax) value else value.take(PromptTextInertMax) + "\n[truncated]"
+        return PromptTextAgentMarkup.replace(clamped) { tag ->
+            tag.value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        }
+    }
+    fun oneLine(value: String): String {
+        val collapsed =
+            buildString {
+                value.forEach { char ->
+                    when (char.category) {
+                        CharCategory.FORMAT -> Unit
+                        CharCategory.CONTROL -> append(' ')
+                        else -> append(char)
+                    }
+                }
+            }.replace(Regex("\\s+"), " ").trim()
+        val points = collapsed.codePointList()
+        return if (points.size <= PromptTextLineMax) collapsed else points.take(PromptTextLineMax).joinToString("") + "[truncated]"
+    }
+    val name = oneLine(inert(text.name))
+    val whenToUse = oneLine(text.whenToUse?.let(::inert).orEmpty())
+    if (name.isEmpty() || whenToUse.isEmpty()) return null
+    val description = text.description?.takeIf { it.isNotEmpty() }?.let { oneLine(inert(it)) }.orEmpty()
+    val serviceId = service?.takeIf { PromptTextServiceId.matches(it) }
+    return listOf(
+        "- $name" + (serviceId?.let { " (service `$it`)" } ?: "") + (if (description.isNotEmpty()) " — $description" else ""),
+        "  Use it when: $whenToUse",
+    )
+}
+
+/** Splits into Unicode code points (a surrogate pair stays one), as JS `[...string]` does. */
+private fun String.codePointList(): List<String> {
+    val out = ArrayList<String>(length)
+    var i = 0
+    while (i < length) {
+        val c = this[i]
+        if (c.isHighSurrogate() && i + 1 < length && this[i + 1].isLowSurrogate()) {
+            out += substring(i, i + 2)
+            i += 2
+        } else {
+            out += c.toString()
+            i += 1
+        }
+    }
+    return out
 }
 
 /**

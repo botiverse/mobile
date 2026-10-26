@@ -59,6 +59,11 @@ data class ScreenError(
      * `Retry-After` header (delta-seconds). Null when the response named no wait.
      */
     val retryAfterSeconds: Long? = null,
+    /**
+     * A refusal's other machine-readable string fields a caller needs to tell refusals apart
+     * (an install card's 409 `current_text_revision_id`). Never user-facing copy.
+     */
+    val serverFields: Map<String, String> = emptyMap(),
 )
 
 data class PermissionBlocker(

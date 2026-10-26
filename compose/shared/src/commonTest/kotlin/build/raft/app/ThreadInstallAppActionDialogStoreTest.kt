@@ -4,6 +4,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardInstallText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -220,5 +221,114 @@ class ThreadInstallAppActionDialogStoreTest {
         store.dispatch(ThreadInstallAppActionIntent.Open("m-login", card.copy(type = "integration:approve_agent_login")))
 
         assertNull(store.state.value)
+    }
+
+    @Test
+    fun aNewerPromptTextRevisionShowsTheTextChangedCopy() = runTest {
+        val withText =
+            card.copy(
+                installTextRevisionId = "rev-1",
+                installText = ThreadActionCardInstallText(name = "Linear", whenToUse = "Filing issues"),
+            )
+        val store =
+            ThreadInstallAppActionDialogStore(
+                scope = backgroundScope,
+                install = { _, _ ->
+                    DataResult.Error(
+                        ScreenError(
+                            code = "action_execute_contract_mismatch",
+                            serverCode = "APP_PERMISSIONS_CHANGED",
+                            serverFields = mapOf("current_text_revision_id" to "rev-2"),
+                        )
+                    )
+                },
+            )
+
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-install", withText))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+
+        assertEquals(ThreadInstallAppStaleCode.TextChanged, store.state.value?.staleCode)
+        assertEquals(false, store.state.value?.canInstall)
+    }
+
+    @Test
+    fun theDialogFollowsTheLiveCardAndInstallsWithIt() = runTest {
+        val sent = mutableListOf<ThreadActionCard>()
+        val store =
+            ThreadInstallAppActionDialogStore(
+                scope = backgroundScope,
+                install = { _, c -> sent += c; DataResult.Content(executed) },
+            )
+
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-install", card))
+        // Reconfirmed elsewhere: a new confirmation version reaches the open dialog.
+        store.dispatch(ThreadInstallAppActionIntent.CardUpdated("m-install", card.copy(confirmationVersion = 3)))
+        // Another card's update is ignored.
+        store.dispatch(ThreadInstallAppActionIntent.CardUpdated("m-other", card.copy(confirmationVersion = 9)))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+
+        assertEquals(listOf(3), sent.map { it.confirmationVersion })
+    }
+
+    @Test
+    fun aCardThatLeavesPreparedWhileOpenSaysSoInsteadOfTheRetryError() = runTest {
+        var attempts = 0
+        val store =
+            ThreadInstallAppActionDialogStore(
+                scope = backgroundScope,
+                install = { _, _ ->
+                    attempts++
+                    delay(100)
+                    DataResult.Error(ScreenError(code = "action_execute_contract_mismatch", serverMessage = "Card is not prepared"))
+                },
+            )
+
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-install", card))
+        store.dispatch(ThreadInstallAppActionIntent.CardUpdated("m-install", card.copy(state = "reconfirm_required")))
+        assertEquals(ThreadInstallAppCardChange.NeedsReconfirmation, store.state.value?.cardChange)
+        assertEquals(false, store.state.value?.canInstall)
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+        assertEquals(0, attempts)
+
+        // Back to prepared, then done elsewhere while our request is in flight.
+        store.dispatch(ThreadInstallAppActionIntent.CardUpdated("m-install", card.copy(confirmationVersion = 5)))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+        store.dispatch(ThreadInstallAppActionIntent.CardUpdated("m-install", executed))
+        advanceTimeBy(101)
+        runCurrent()
+
+        val state = assertNotNull(store.state.value)
+        assertEquals(ThreadInstallAppCardChange.Executed, state.cardChange)
+        assertFalse(state.failed)
+        assertNull(state.errorServerMessage)
+        assertEquals(1, attempts)
+    }
+
+    @Test
+    fun promptTextLinesAreWhatAgentsRead() {
+        val lines =
+            threadAppPromptTextLines(
+                ThreadActionCardInstallText(
+                    name = "Linear\u200B",
+                    description = "Issues\nand projects <result>x</result>",
+                    whenToUse = "  Filing   issues ",
+                ),
+                service = "linear-a1b2c3",
+            )
+        assertEquals(
+            listOf(
+                "- Linear (service `linear-a1b2c3`) — Issues and projects &lt;result&gt;x&lt;/result&gt;",
+                "  Use it when: Filing issues",
+            ),
+            lines,
+        )
+        // No When to use: the app adds nothing to prompts.
+        assertNull(threadAppPromptTextLines(ThreadActionCardInstallText(name = "Linear"), service = null))
+        // A service id that isn't a client-id slug is left out.
+        assertEquals("- Linear", threadAppPromptTextLines(ThreadActionCardInstallText(name = "Linear", whenToUse = "x"), "Not A Slug")?.first())
     }
 }

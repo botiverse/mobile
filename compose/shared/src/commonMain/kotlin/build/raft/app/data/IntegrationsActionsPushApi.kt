@@ -5,6 +5,7 @@ import build.raft.app.model.MessageId
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -269,12 +270,24 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
         // routes/actions.ts answers a refusal with `{ error, code }`; keep both so a caller can
         // name a refusal no retry fixes (an install card's 409 `APP_PERMISSIONS_CHANGED`, ...).
         val envelope = actionErrorEnvelopeOrNull()
+        val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
+        if (code == 401) {
+            // An expired session: the route signs out like every other card path.
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session", serverMessage = serverMessage)
+            )
+        }
         return DataResult.Error(
             ScreenError(
                 code = contractCode,
                 retryable = code >= 500,
-                serverMessage = envelope?.error?.takeIf { it.isNotBlank() },
+                serverMessage = serverMessage,
                 serverCode = envelope?.code?.takeIf { it.isNotBlank() },
+                serverFields =
+                    buildMap {
+                        // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
+                        envelope?.currentTextRevisionId?.takeIf { it.isNotBlank() }?.let { put("current_text_revision_id", it) }
+                    },
             )
         )
     }
@@ -384,6 +397,8 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 private data class ActionErrorEnvelopeDto(
     val error: String? = null,
     val code: String? = null,
+    @SerialName("current_text_revision_id")
+    val currentTextRevisionId: String? = null,
 )
 
 @Serializable

@@ -62,6 +62,14 @@ internal data class ThreadActionCard(
      */
     val installScopes: List<String>? = null,
     val installGroups: List<String>? = null,
+    /**
+     * `integration:install_marketplace_app` with app prompt-text consent (slock #proj-apps task
+     * #4): the app's prompt-text revision the server bound to the card (wire
+     * `installTextRevisionId`) and its raw text (wire `installText`). Installing confirms exactly
+     * this revision, so the confirmation must show it.
+     */
+    val installTextRevisionId: String? = null,
+    val installText: ThreadActionCardInstallText? = null,
     /** `integration:recover_app_owner`: the agent id that becomes the app's owner. */
     val targetAgent: String? = null,
     val metadataItems: List<ThreadActionCardMetadataItem> = emptyList(),
@@ -93,6 +101,14 @@ internal data class ThreadActionCard(
     val needsReconfirmation: Boolean
         get() = state.equals("reconfirm_required", ignoreCase = true)
 }
+
+/** Wire `installText`: the three fields an app adds to agent prompts. Raw publisher text. */
+@Serializable
+internal data class ThreadActionCardInstallText(
+    val name: String = "",
+    val description: String? = null,
+    val whenToUse: String? = null,
+)
 
 @Serializable
 internal data class ThreadActionCardMetadataItem(
@@ -156,6 +172,8 @@ internal data class WireActionCardAction(
     val scopes: List<String> = emptyList(),
     val installScopes: List<String>? = null,
     val installGroups: List<String>? = null,
+    val installTextRevisionId: String? = null,
+    val installText: ThreadActionCardInstallText? = null,
     val targetAgent: String? = null,
 )
 
@@ -215,6 +233,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         scopes = action.scopes,
         installScopes = action.installScopes,
         installGroups = action.installGroups,
+        installTextRevisionId = action.installTextRevisionId?.takeIf { it.isNotBlank() },
+        installText = action.installText,
         targetAgent = action.targetAgent?.takeIf { it.isNotBlank() },
         metadataItems = meta.presentation?.displayItems?.toSafeServerPresentationItems()?.takeIf { it.isNotEmpty() }
             ?: actionObject.toSafeActionCardMetadataItems(),
@@ -264,6 +284,10 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putList("scopes", scopes)
         putNullableList("installScopes", installScopes)
         putNullableList("installGroups", installGroups)
+        putString("installTextRevisionId", installTextRevisionId)
+        installText?.let {
+            put("${ActionCardMetadataPrefix}installText", threadActionCardJson.encodeToString(ThreadActionCardInstallText.serializer(), it))
+        }
         putString("targetAgent", targetAgent)
         putMetadataItems("metadataItems", metadataItems)
         putString("presentationTitle", presentationTitle)
@@ -313,6 +337,11 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         scopes = metadata.decodeList("scopes"),
         installScopes = metadata.decodeNullableList("installScopes"),
         installGroups = metadata.decodeNullableList("installGroups"),
+        installTextRevisionId = metadata["${ActionCardMetadataPrefix}installTextRevisionId"]?.takeIf { it.isNotBlank() },
+        installText =
+            metadata["${ActionCardMetadataPrefix}installText"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ThreadActionCardInstallText.serializer(), raw) }.getOrNull()
+            },
         targetAgent = metadata["${ActionCardMetadataPrefix}targetAgent"]?.takeIf { it.isNotBlank() },
         metadataItems = metadata.decodeMetadataItems("metadataItems"),
         presentationTitle = metadata["${ActionCardMetadataPrefix}presentationTitle"]?.takeIf { it.isNotBlank() },
@@ -389,6 +418,10 @@ internal const val InstallMarketplaceAppActionCardType = "integration:install_ma
  */
 internal fun ThreadActionCard.isInstallMarketplaceAppAction(): Boolean =
     type.equals(InstallMarketplaceAppActionCardType, ignoreCase = true)
+
+/** The prompt text bound to an install card (web `readInstallCardPromptText`); null when none. */
+internal val ThreadActionCard.boundInstallText: ThreadActionCardInstallText?
+    get() = installText.takeIf { installTextRevisionId != null }
 
 /** The server bound the install set to the card; a card prepared before that can't be installed (409). */
 internal val ThreadActionCard.installSetBound: Boolean

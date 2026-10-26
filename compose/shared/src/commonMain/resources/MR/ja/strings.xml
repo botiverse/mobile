@@ -742,6 +742,13 @@
     <string name="thread_action_card_install_dialog_app_changed">%1$s はこのリクエストからインストールできなくなったため、インストールは行われませんでした。再試行しても解決しません。@%2$s にリクエストを作り直すよう依頼してください。</string>
     <string name="thread_action_card_install_dialog_scopes_changed">このリクエストで要求されたスコープを %1$s が許可しなくなったため、インストールは行われませんでした。再試行しても解決しません。@%2$s にリクエストを作り直すよう依頼してください。</string>
     <string name="thread_action_card_install_dialog_agent_changed">このリクエストの作成後に @%1$s が変更されたため、インストールは行われませんでした。再試行しても解決しません。@%1$s にリクエストを作り直すよう依頼してください。</string>
+    <string name="thread_action_card_install_dialog_text_changed">このリクエストの作成後に %1$s がエージェントのプロンプトに追加するテキストを変更したため、インストールは行われませんでした。再試行しても解決しません。@%2$s にリクエストを作り直してもらい、改めて内容を確認してください。</string>
+    <string name="thread_action_card_install_dialog_card_done">このリクエストはすでに完了しているため、インストールするものはありません。</string>
+    <string name="thread_action_card_install_dialog_card_reconfirm">このリクエストは変更されたため、インストールする前にカードで再確認する必要があります。</string>
+    <string name="thread_action_card_install_dialog_card_frozen">このリクエストはチャンネルの変換中のため凍結されています。現在はインストールできません。</string>
+    <string name="thread_action_card_prompt_text_title">エージェントのプロンプトに追加されるテキスト</string>
+    <string name="thread_action_card_prompt_text_install_note">Raft はこのテキストを、このサーバーのすべてのエージェントのシステムプロンプトに追加します。エージェントが次に起動したときに反映されます。</string>
+    <string name="thread_action_card_prompt_text_empty">エージェントのプロンプトには追加されません。このアプリには「使用するタイミング」がありません。</string>
     <string name="thread_action_card_execute_failed">操作を実行できませんでした</string>
     <string name="thread_action_card_permission_set_login_scopes">ログインのスコープ</string>
     <string name="thread_action_card_permission_set_data_access">データアクセス</string>

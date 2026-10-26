@@ -7585,20 +7585,6 @@ private fun SharedThreadRouteContentContent(
     val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val actionCardReconfirmFailedLabel = stringResource(MR.strings.thread_action_card_reconfirm_failed)
-    // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
-    val installAppDialogStore =
-        remember(threadInstanceKey) {
-            ThreadInstallAppActionDialogStore(
-                scope = coroutineScope,
-                install = { messageId, card -> dataSource.confirmInstallMarketplaceAppActionCard(messageId, card) },
-                onInstalled = { messageId, card ->
-                    threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card))
-                    // The card's done line names what was installed.
-                    bridge.toast(genericActionCardSuccessLabel)
-                },
-            )
-        }
-    val installAppDialogState by installAppDialogStore.state.collectAsState()
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
@@ -8523,6 +8509,20 @@ private fun SharedThreadRouteContentContent(
         } else {
             false
         }
+
+    // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
+    val installAppDialogStore =
+        remember(threadInstanceKey) {
+            threadInstallAppActionDialogStore(
+                scope = coroutineScope,
+                dataSource = dataSource,
+                applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
+                // The card's done line names what was installed.
+                toastInstalled = { bridge.toast(genericActionCardSuccessLabel) },
+                routeAuthRequired = { result -> routeAuthRequired(result) },
+            )
+        }
+    val installAppDialogState by installAppDialogStore.state.collectAsState()
 
     LaunchedEffect(tasksViewModel, unableToUpdateTaskLabel) {
         tasksViewModel?.uiEvents?.collect { event ->
@@ -11338,6 +11338,7 @@ private fun SharedThreadRouteContentContent(
                 jointActors = serverMembersStore?.jointActors,
                 knownEntities = knownEntityResolver,
                 accountId = knownEntityAccountId,
+                knownEntitiesRevision = sharedHomeState.content,
             )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
@@ -13341,6 +13342,15 @@ private fun SharedThreadRouteContentContent(
                             ?.withQuotedAttachmentComment(comment)
                 }
             )
+        }
+        // The dialog follows the live card (realtime / the execute answer), not the one it opened with.
+        val liveInstallCard =
+            installAppDialogState?.messageId?.let { messageId ->
+                renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
+            }
+        LaunchedEffect(installAppDialogState?.messageId, liveInstallCard) {
+            val messageId = installAppDialogState?.messageId ?: return@LaunchedEffect
+            liveInstallCard?.let { installAppDialogStore.dispatch(ThreadInstallAppActionIntent.CardUpdated(messageId, it)) }
         }
         installAppDialogState?.let { dialogState ->
             ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)

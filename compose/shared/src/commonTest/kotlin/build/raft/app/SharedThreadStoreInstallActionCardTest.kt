@@ -5,10 +5,15 @@ import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardInstallText
+import build.raft.app.data.isAuthSessionBlocker
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -104,5 +109,67 @@ class SharedThreadStoreInstallActionCardTest {
         assertEquals("action_execute_contract_mismatch", result.error.code)
         assertEquals("APP_PERMISSIONS_CHANGED", result.error.serverCode)
         assertEquals(1, actionCardsApi.calls.size)
+    }
+
+    private fun dataSourceAnswering(response: HomeNetworkResponse) =
+        testSharedThreadDataSource(
+            networkApi = SharedThreadStoreTest.FakeThreadApi(),
+            sessionStore = InMemoryRaftAuthSessionStore(SharedThreadStoreTest.sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            actionCardsApiClient = RaftIntegrationsActionsPushApiClient(SharedThreadStoreTest.RecordingActionCardsApi(executeResponse = response))
+        )
+
+    @Test
+    fun anExpiredSessionRoutesThroughThePageLikeOtherCardPaths() = runTest {
+        // The ThreadPage wiring: the real data source, the page's routeAuthRequired.
+        val routed = mutableListOf<DataResult.NoPermission>()
+        val applied = mutableListOf<String>()
+        val store =
+            threadInstallAppActionDialogStore(
+                scope = backgroundScope,
+                dataSource = dataSourceAnswering(HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"Unauthorized"}""")),
+                applyCard = { id, _ -> applied += id },
+                toastInstalled = {},
+                routeAuthRequired = { result -> routed += result; result.blocker.isAuthSessionBlocker() },
+            )
+
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-install", installCard()))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        store.state.first { it == null || !it.submitting }
+
+        assertEquals(1, routed.size, "state=${store.state.value}")
+        assertTrue(routed.single().blocker.isAuthSessionBlocker())
+        assertNull(store.state.value)
+        assertTrue(applied.isEmpty())
+    }
+
+    @Test
+    fun aNewerTextRevisionRefusalReachesTheDialogAsTextChanged() = runTest {
+        val store =
+            threadInstallAppActionDialogStore(
+                scope = backgroundScope,
+                dataSource =
+                    dataSourceAnswering(
+                        HomeNetworkResponse(
+                            code = 409,
+                            bodyText = null,
+                            errorBodyText = """{"error":"stale","code":"APP_PERMISSIONS_CHANGED","current_text_revision_id":"rev-2"}"""
+                        )
+                    ),
+                applyCard = { _, _ -> },
+                toastInstalled = {},
+                routeAuthRequired = { false },
+            )
+
+        store.dispatch(
+            ThreadInstallAppActionIntent.Open(
+                "m-install",
+                installCard().copy(installTextRevisionId = "rev-1", installText = ThreadActionCardInstallText(name = "Linear", whenToUse = "x"))
+            )
+        )
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        store.state.first { it == null || !it.submitting }
+
+        assertEquals(ThreadInstallAppStaleCode.TextChanged, store.state.value?.staleCode, "state=${store.state.value}")
     }
 }

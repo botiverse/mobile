@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import build.raft.app.data.KnownEntityScope
@@ -9,6 +11,8 @@ import build.raft.app.data.SharedJointActorDirectory
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /** What an id on an action card names (web `useActionCardDetail` lookups). */
 internal enum class ThreadActionCardEntityKind { Human, Agent, Channel }
@@ -75,6 +79,13 @@ internal fun threadActionCardNameLookup(
     }
 }
 
+/**
+ * The lookup as composition state: it is rebuilt, and the cards re-read their names, whenever a
+ * source it reads changes, so a name that arrives after the card painted replaces "Unknown".
+ * The roster is the collected [members] entry; joint actors are collected from
+ * [SharedJointActorDirectory.rows]; known conversations have no flow of their own, so the caller
+ * passes [knownEntitiesRevision], the state it already observes for them (the Home store's content).
+ */
 @Composable
 internal fun rememberThreadActionCardNameLookup(
     members: SharedServerMembersEntry?,
@@ -82,10 +93,14 @@ internal fun rememberThreadActionCardNameLookup(
     jointActors: SharedJointActorDirectory?,
     knownEntities: RaftKnownEntityResolver?,
     accountId: String?,
-): ThreadActionCardNameLookup =
-    remember(members, serverId, jointActors, knownEntities, accountId) {
+    knownEntitiesRevision: Any?,
+): ThreadActionCardNameLookup {
+    val jointRowsFlow: StateFlow<Map<*, *>> = remember(jointActors) { jointActors?.rows ?: MutableStateFlow<Map<*, *>>(emptyMap<Any?, Any?>()) }
+    val jointRows by jointRowsFlow.collectAsState()
+    return remember(members, serverId, jointActors, jointRows, knownEntities, accountId, knownEntitiesRevision) {
         threadActionCardNameLookup(members, serverId, jointActors, knownEntities, accountId)
     }
+}
 
 private val ThreadActionCardUuidPattern =
     Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")

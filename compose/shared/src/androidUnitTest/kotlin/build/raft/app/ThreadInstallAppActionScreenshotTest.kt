@@ -56,6 +56,32 @@ class ThreadInstallAppActionScreenshotTest {
     private val stale =
         waiting.copy(blocked = true, staleCode = ThreadInstallAppStaleCode.PermissionsChanged)
 
+    private val withPromptText =
+        ThreadInstallAppActionDialogState(
+            messageId = "m-install",
+            card =
+                card.copy(
+                    clientKey = "linear-a1b2c3",
+                    installScopes = listOf("openid", "agent:read"),
+                    installGroups = emptyList(),
+                    installTextRevisionId = "rev-1",
+                    installText =
+                        build.raft.app.data.ThreadActionCardInstallText(
+                            name = "Linear",
+                            description = "Issues and projects",
+                            whenToUse = "Filing or updating issues for a release",
+                        ),
+                ),
+            // Installing: × and Install are disabled until the answer arrives.
+            submitting = true,
+        )
+
+    @Test
+    fun promptTextLight() = capture("thread.install-app-confirm.prompt-text", RaftAppAppearance.Light, withPromptText)
+
+    @Test
+    fun promptTextDark() = capture("thread.install-app-confirm.prompt-text.dark", RaftAppAppearance.Dark, withPromptText)
+
     @Test
     fun confirmLight() = capture("thread.install-app-confirm", RaftAppAppearance.Light, waiting)
 

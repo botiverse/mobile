@@ -192,7 +192,9 @@ class ThreadActionCardsTest {
                     "agentName":"lumen",
                     "scopes":["openid","agent:read"],
                     "installScopes":["openid","profile","agent:read"],
-                    "installGroups":[]
+                    "installGroups":[],
+                    "installTextRevisionId":"6f1e2d3c-4b5a-4968-8776-655443322110",
+                    "installText":{"name":"Linear","description":"Issues","whenToUse":"Filing release issues"}
                   },
                   "presentation":{"title":"Install Linear on this Server","confirmLabel":"Install App","genericApprovalAllowed":true,"displayItems":[]}
                 }
@@ -214,6 +216,8 @@ class ThreadActionCardsTest {
         assertEquals(card.installScopes, projected.installScopes)
         assertEquals(emptyList(), projected.installGroups)
         assertTrue(projected.installSetBound)
+        assertEquals("6f1e2d3c-4b5a-4968-8776-655443322110", projected.installTextRevisionId)
+        assertEquals(ThreadActionCardInstallText("Linear", "Issues", "Filing release issues"), projected.boundInstallText)
         val unbound = assertNotNull(actionCardFromMessageMetadata(card.copy(installScopes = null, installGroups = null).toMessageMetadata()))
         assertEquals(null, unbound.installScopes)
         assertFalse(unbound.installSetBound)
