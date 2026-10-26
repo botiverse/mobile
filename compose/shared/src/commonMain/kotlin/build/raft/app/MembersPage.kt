@@ -258,7 +258,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import build.raft.designsystem.components.raftDetectDragGesturesAfterHold
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -8353,7 +8353,8 @@ private fun MembersAgentTabBar(
                         )
                         .pointerInput(tab, onReorderTabs) {
                             if (onReorderTabs == null) return@pointerInput
-                            detectDragGesturesAfterLongPress(
+                            // raft-ui 0.32.2 (#787): the drag starts after the 500ms touch hold.
+                            raftDetectDragGesturesAfterHold(
                                 onDragStart = {
                                     draggedTab = tab
                                     dragOffsetX = 0f

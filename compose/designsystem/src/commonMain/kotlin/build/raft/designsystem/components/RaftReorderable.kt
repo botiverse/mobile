@@ -4,6 +4,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,9 +20,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.isOutOfBounds
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -36,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
+import kotlin.coroutines.cancellation.CancellationException
 
 // raft-ui "Dragging on a touch screen" (design/foundations/states.md; lib/touch-drag.ts
 // `useHoldThenMoveTouchSensor`): a finger that holds still on a row for 500ms lifts it; moving
@@ -58,6 +66,63 @@ object RaftReorderDefaults {
 
     /** …by this much a frame. */
     val EdgeScrollStep: Dp = 8.dp
+}
+
+/**
+ * raft-ui 0.32.2 (raft-design #787): every touch drag waits the [RaftReorderDefaults.HoldMillis]
+ * hold. Compose's `detectDragGesturesAfterLongPress` with that hold instead of the platform's long
+ * press (400ms on Android), for a drag that doesn't use [raftReorderableItem]. As there, a lift,
+ * a consumed event (the list scrolled) or leaving the element before the hold is up ends it.
+ */
+suspend fun PointerInputScope.raftDetectDragGesturesAfterHold(
+    onDragStart: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onDrag: (change: PointerInputChange, dragAmount: Offset) -> Unit,
+) {
+    awaitEachGesture {
+        try {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val held = awaitTouchDragHold(down) ?: return@awaitEachGesture
+            onDragStart(held.position)
+            val ended =
+                drag(held.id) {
+                    onDrag(it, it.positionChange())
+                    it.consume()
+                }
+            if (ended) {
+                currentEvent.changes.forEach { if (it.changedToUp()) it.consume() }
+                onDragEnd()
+            } else {
+                onDragCancel()
+            }
+        } catch (c: CancellationException) {
+            onDragCancel()
+            throw c
+        }
+    }
+}
+
+/** The pointer still down after [RaftReorderDefaults.HoldMillis], or null when the hold ended. */
+private suspend fun AwaitPointerEventScope.awaitTouchDragHold(down: PointerInputChange): PointerInputChange? {
+    var last = down
+    return try {
+        withTimeout(RaftReorderDefaults.HoldMillis) {
+            var holding = true
+            while (holding) {
+                val change = awaitPointerEvent(PointerEventPass.Main).changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed || change.isConsumed || change.isOutOfBounds(size, extendedTouchPadding)) {
+                    holding = false
+                } else {
+                    last = change
+                    if (awaitPointerEvent(PointerEventPass.Final).changes.any { it.isConsumed }) holding = false
+                }
+            }
+        }
+        null
+    } catch (_: PointerEventTimeoutCancellationException) {
+        last
+    }
 }
 
 /**
