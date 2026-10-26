@@ -15,12 +15,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /** Full schema-v6 is a separate apply gate; the V1 persisted envelope remains permanently ineligible. */
 const val CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE: Boolean = true
@@ -1667,7 +1668,9 @@ private data class CanonicalActionMetadataProducer(
     val state: String = "prepared",
     val executedAt: String? = null,
     val executedByUserName: String? = null,
-    val result: CanonicalActionCardResultV2? = null,
+    val executedByUserId: String? = null,
+    /** Read key by key ([toCanonicalActionCardResultV2OrNull]): a key its kind does not take is dropped. */
+    val result: JsonElement? = null,
     val sourceServerId: String? = null,
     val targetServerName: String? = null,
     val confirmationVersion: Int? = null,
@@ -1703,7 +1706,10 @@ private fun JsonElement?.toCanonicalActionMetadataV2OrNull(): CanonicalActionMet
     val element = this ?: return null
     if (!element.hasSupportedCanonicalActionProducerShape()) return null
     val producer = runCatching {
-        canonicalV2ProducerJson.decodeFromString<CanonicalActionMetadataProducer>(element.toString())
+        canonicalV2ProducerJson.decodeFromJsonElement(
+            CanonicalActionMetadataProducer.serializer(),
+            element.withKnownActionCardKeysOnly(),
+        )
     }.getOrNull() ?: return null
     return when (producer.kind) {
         "action-card" -> {
@@ -1715,11 +1721,12 @@ private fun JsonElement?.toCanonicalActionMetadataV2OrNull(): CanonicalActionMet
                 state = producer.state,
                 executedAt = producer.executedAt,
                 executedByUserName = producer.executedByUserName,
-                result = producer.result,
+                result = producer.result.toCanonicalActionCardResultV2OrNull(),
                 sourceServerId = producer.sourceServerId?.takeIf { it.isCanonicalV2Value() },
                 targetServerName = producer.targetServerName?.trim()?.takeIf { it.isNotEmpty() },
                 confirmationVersion = producer.confirmationVersion?.takeIf { it >= 0 },
                 presentation = producer.presentation as? JsonObject,
+                executedByUserId = producer.executedByUserId?.takeIf { it.isCanonicalV2Value() },
             )
         }
         "forwarded-bundle" -> CanonicalActionMetadataV2.ForwardedBundle(
@@ -1767,16 +1774,11 @@ private fun String.isCanonicalV2Value(): Boolean = isNotBlank() && this == trim(
 
 private fun JsonElement.hasSupportedCanonicalActionProducerShape(): Boolean {
     val root = this as? JsonObject ?: return false
-    val kind = (root["kind"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+    val kind = (root["kind"] as? JsonPrimitive)?.content
     return when (kind) {
-        "action-card" -> {
-            if (!root.keys.all(ACTION_CARD_ROOT_KEYS::contains)) return false
-            val action = root["action"] as? JsonObject ?: return false
-            if (!action.keys.all(ACTION_CARD_ACTION_KEYS::contains)) return false
-            val result = root["result"]
-            result == null || result is JsonNull ||
-                ((result as? JsonObject)?.keys?.all(ACTION_CARD_RESULT_KEYS::contains) == true)
-        }
+        // Lenient by key (task #43): a key the fact does not carry is dropped
+        // ([withKnownActionCardKeysOnly], [toCanonicalActionCardResultV2OrNull]), never the card.
+        "action-card" -> root["action"] is JsonObject
         "forwarded-bundle" -> {
             if (!root.keys.all(FORWARDED_ROOT_KEYS::contains)) return false
             val items = root["forwardedItems"] as? JsonArray ?: return false
@@ -1801,21 +1803,85 @@ private fun JsonElement.hasSupportedCanonicalActionProducerShape(): Boolean {
     }
 }
 
+/**
+ * The producer card's root and action with only the keys the fact knows. Before task #43 any other key
+ * refused the whole card, so a done feedback card (action `feedbackType` / `message`, result `ticketId` /
+ * `reference` / `source`) never reached the V2 store, and neither did the page or the realtime window it
+ * was in. Dropped keys: the conversion bookkeeping (`conversionJobId`, `conversionEpoch`, `reconfirmedAt`;
+ * the card's `state` already says frozen / reconfirm_required) and whatever a newer server adds.
+ */
+private fun JsonElement.withKnownActionCardKeysOnly(): JsonElement {
+    val root = this as? JsonObject ?: return this
+    if ((root["kind"] as? JsonPrimitive)?.content != "action-card") return this
+    val action = root["action"] as? JsonObject
+    return JsonObject(
+        root.filterKeys(ACTION_CARD_ROOT_KEYS::contains).let { kept ->
+            if (action == null) kept else kept + ("action" to JsonObject(action.filterKeys(ACTION_CARD_ACTION_KEYS::contains)))
+        },
+    )
+}
+
+/**
+ * The producer `result` keyed by its kind ([CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND]). A key the kind
+ * does not take, or one whose value has the wrong type, is dropped; a result without a usable `kind` is
+ * dropped (the card stays, without a result). Wire `null` on an optional key is absent in the fact.
+ */
+private fun JsonElement?.toCanonicalActionCardResultV2OrNull(): CanonicalActionCardResultV2? {
+    val result = this as? JsonObject ?: return null
+    val kind = (result["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        ?.takeIf { it.isCanonicalV2Value() } ?: return null
+    val allowed = CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND[kind] ?: setOf("kind")
+    fun string(key: String): String? =
+        if (key !in allowed) null else (result[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    fun strings(key: String): List<String>? {
+        if (key !in allowed) return null
+        val array = result[key] as? JsonArray ?: return null
+        return array.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null }
+    }
+    fun boolean(key: String): Boolean? =
+        if (key !in allowed) null else (result[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull
+    return CanonicalActionCardResultV2(
+        kind = kind,
+        id = string("id"),
+        name = string("name"),
+        channelId = string("channelId"),
+        channelName = string("channelName"),
+        addedHumanIds = strings("addedHumanIds").orEmpty(),
+        addedAgentIds = strings("addedAgentIds").orEmpty(),
+        mode = string("mode"),
+        requestId = string("requestId"),
+        grantId = string("grantId"),
+        mcpServerId = string("mcpServerId"),
+        serverId = string("serverId"),
+        agentId = string("agentId"),
+        agentName = string("agentName"),
+        clientId = string("clientId"),
+        clientKey = string("clientKey"),
+        clientName = string("clientName"),
+        ownerAgentId = string("ownerAgentId"),
+        ownerAgentName = string("ownerAgentName"),
+        returnUrl = string("returnUrl"),
+        homepageUrl = string("homepageUrl"),
+        agentManifestUrl = string("agentManifestUrl"),
+        setupUrl = string("setupUrl"),
+        setupDescription = string("setupDescription"),
+        scopes = strings("scopes"),
+        unsafeDemoUrlOverride = boolean("unsafeDemoUrlOverride"),
+        ticketId = string("ticketId"),
+        reference = string("reference"),
+        source = string("source"),
+    )
+}
+
 private val ACTION_CARD_ROOT_KEYS = setOf(
     "kind", "version", "action", "state", "executedAt", "executedByUserName", "result",
-    // Carried into the fact (manifest v8 optional keys).
-    "sourceServerId", "targetServerName", "confirmationVersion", "presentation",
-    // Admitted but never carried: a user pointer id and the conversion bookkeeping. The App reads none of
-    // them (the card's `state` already says frozen / reconfirm_required).
-    "executedByUserId", "conversionJobId", "conversionEpoch", "reconfirmedAt",
+    // Carried into the fact as optional keys (manifest v8; executedByUserId v9).
+    "sourceServerId", "targetServerName", "confirmationVersion", "presentation", "executedByUserId",
 )
 private val ACTION_CARD_ACTION_KEYS = setOf(
     "type", "name", "description", "visibility", "channel", "suggestedComputer", "requiredComputer",
     "humans", "agents", "initialHumans", "initialAgents", "draftHint", "requestId", "agentId",
     "agentName", "clientId", "clientKey", "clientName", "scopes",
-)
-private val ACTION_CARD_RESULT_KEYS = setOf(
-    "kind", "id", "name", "channelId", "channelName", "addedHumanIds", "addedAgentIds",
 )
 private val FORWARDED_ROOT_KEYS = setOf("kind", "version", "forwardedItems")
 private val FORWARDED_ITEM_KEYS = setOf(
