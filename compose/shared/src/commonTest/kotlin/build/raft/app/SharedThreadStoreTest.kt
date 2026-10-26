@@ -148,6 +148,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -208,13 +211,14 @@ private class ConcurrentTestLogBuffer {
 
 class SharedThreadStoreTest {
     @Test
-    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = runBlocking {
+    fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = runTest {
         // No coroutines-test; suspend fakes complete inline on this explicit scope.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
                 replyCount = 8, unreadReplyCount = 4)))))
         val dataSource = testSharedThreadDataSource(
+            storeScope = backgroundScope,
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
@@ -248,13 +252,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun receiverZeroReadEventClearsStaleJumpThroughStore() = runBlocking {
+    fun receiverZeroReadEventClearsStaleJumpThroughStore() = runTest {
         // No coroutines-test; suspend fakes complete inline on this explicit scope.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
                 replyCount = 8).copy(firstUnreadReplyMessageId = MessageId("reply-old"))))))
         val dataSource = testSharedThreadDataSource(
+            storeScope = backgroundScope,
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
@@ -347,10 +352,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun mountedAttachmentCommentWritesRecheckCurrentAuthorityBeforeApiCall() = runBlocking {
+    fun mountedAttachmentCommentWritesRecheckCurrentAuthorityBeforeApiCall() = runTest {
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -408,8 +414,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelProfileUpdateAppliesCanonicalResponseAndPublishesHomeProjection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun channelProfileUpdateAppliesCanonicalResponseAndPublishesHomeProjection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeChannelRepository(
                 homeResult = { DataResult.Empty(EmptyReason.NoChannels) },
@@ -422,6 +428,7 @@ class SharedThreadStoreTest {
         val published = mutableListOf<ChannelProfileUpdateResult>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -456,11 +463,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun unchangedChannelProfileClosesWithoutRequest() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun unchangedChannelProfileClosesWithoutRequest() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository = FakeChannelRepository()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -489,14 +497,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedChannelProfileUpdateKeepsCanonicalStateAndExposesError() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun failedChannelProfileUpdateKeepsCanonicalStateAndExposesError() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeChannelRepository(
                 profileUpdater = { DataResult.Error(ScreenError("channel_name_taken", retryable = false)) }
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -527,8 +536,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun mismatchedChannelProfileResponseMutatesNeitherThreadNorHomeProjection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun mismatchedChannelProfileResponseMutatesNeitherThreadNorHomeProjection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeChannelRepository(
                 profileUpdater = {
@@ -538,6 +547,7 @@ class SharedThreadStoreTest {
         val published = mutableListOf<ChannelProfileUpdateResult>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -570,8 +580,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun routeSwitchDuringChannelProfileProjectionCannotCompleteNewRouteStatus() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun routeSwitchDuringChannelProfileProjectionCannotCompleteNewRouteStatus() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val sinkStarted = CompletableDeferred<Unit>()
         val releaseSink = CompletableDeferred<Unit>()
         val repository =
@@ -583,6 +593,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -627,8 +638,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelProfileProjectionFailureDoesNotLeaveSuccessfulRequestInFlight() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun channelProfileProjectionFailureDoesNotLeaveSuccessfulRequestInFlight() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeChannelRepository(
                 profileUpdater = {
@@ -638,6 +649,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -669,8 +681,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun lateChannelProfileResponseCannotMutateAnotherRoute() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun lateChannelProfileResponseCannotMutateAnotherRoute() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val repository =
@@ -685,6 +697,7 @@ class SharedThreadStoreTest {
         val published = mutableListOf<ChannelProfileUpdateResult>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -725,8 +738,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreDeduplicatesConcurrentMessageFetches() = runBlocking {
-        val store = SharedThreadMessageStore()
+    fun sharedThreadMessageStoreDeduplicatesConcurrentMessageFetches() = runTest {
+        val store = SharedThreadMessageStore(scope = backgroundScope)
         val server = ServerId("server-1")
         val parentChannel = ChannelId("channel-1")
         val parentMessageId = MessageId("m1")
@@ -764,8 +777,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossServers() = runBlocking {
-        val store = SharedThreadMessageStore()
+    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossServers() = runTest {
+        val store = SharedThreadMessageStore(scope = backgroundScope)
         val channel = ChannelId("channel-1")
         val messageId = MessageId("m1")
 
@@ -789,8 +802,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossEnvironmentAndPrincipalScopes() = runBlocking {
-        val store = SharedThreadMessageStore()
+    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossEnvironmentAndPrincipalScopes() = runTest {
+        val store = SharedThreadMessageStore(scope = backgroundScope)
         val channel = ChannelId("channel-1")
         val messageId = MessageId("m1")
         val prodAccountOne = "https://prod.example.test\u001faccount-1\u001fserver-1"
@@ -819,8 +832,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreDoesNotShareInFlightParentFetchAcrossPrincipalScopes() = runBlocking {
-        val store = SharedThreadMessageStore()
+    fun sharedThreadMessageStoreDoesNotShareInFlightParentFetchAcrossPrincipalScopes() = runTest {
+        val store = SharedThreadMessageStore(scope = backgroundScope)
         val channel = ChannelId("channel-1")
         val messageId = MessageId("m1")
         val releaseAccountOne = CompletableDeferred<Unit>()
@@ -850,8 +863,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreTreatsForwardBundleOnlyMessageAsHydrated() = runBlocking {
-        val store = SharedThreadMessageStore()
+    fun sharedThreadMessageStoreTreatsForwardBundleOnlyMessageAsHydrated() = runTest {
+        val store = SharedThreadMessageStore(scope = backgroundScope)
         val server = ServerId("server-1")
         val channel = ChannelId("channel-1")
         val messageId = MessageId("forward-1")
@@ -893,8 +906,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreProducerSurvivesFirstWaiterCancellation() = runBlocking {
-        val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun sharedThreadMessageStoreProducerSurvivesFirstWaiterCancellation() = runTest {
+        val producerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadMessageStore(scope = producerScope)
         val server = ServerId("server-1")
         val channel = ChannelId("channel-1")
@@ -933,7 +946,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreNeverJoinsACompletedProducerAwaitingCleanup() = runBlocking {
+    fun sharedThreadMessageStoreNeverJoinsACompletedProducerAwaitingCleanup() = runTest {
         // The producer scope's in-flight cleanup is a separate coroutine launched on completion.
         // Hold it back (as a busy Default pool does) and make sure a new request does not join the
         // finished producer and get its stale non-cacheable Missing/Error back.
@@ -978,8 +991,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadMessageStoreLateFetchCannotOverwriteNewerSeed() = runBlocking {
-        val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun sharedThreadMessageStoreLateFetchCannotOverwriteNewerSeed() = runTest {
+        val producerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadMessageStore(scope = producerScope)
         val server = ServerId("server-1")
         val channel = ChannelId("channel-1")
@@ -1488,9 +1501,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sameServerOwnerCannotJoinOrConsumeAnotherOwnersPrewarm() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun sameServerOwnerCannotJoinOrConsumeAnotherOwnersPrewarm() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val store = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val ownerA = "https://prod.example.test\u001fu-a\u001fserver-1\u001f1\u001f1"
         val ownerB = "https://prod.example.test\u001fu-b\u001fserver-1\u001f2\u001f1"
         val route = basePayload()
@@ -1607,8 +1620,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadPayloadStorePoolsPrewarmRequestsGlobally() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun sharedThreadPayloadStorePoolsPrewarmRequestsGlobally() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadPayloadStore(
                 scope = appScope,
@@ -1650,15 +1663,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sharedThreadPayloadStoreRateLimitsPrewarmStarts() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun sharedThreadPayloadStoreRateLimitsPrewarmStarts() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadPayloadStore(
                 scope = appScope,
                 maxConcurrentPrewarms = 2,
                 prewarmStartIntervalMillis = 40
             )
-        val origin = kotlin.time.TimeSource.Monotonic.markNow()
+        val origin = testScheduler.timeSource.markNow()
         val starts = mutableListOf<Long>()
         val jobs =
             (1..2).map { index ->
@@ -1680,8 +1693,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun initialThreadFetchJoinsCanonicalPrewarmInFlightWithoutRepositoryRequest() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun initialThreadFetchJoinsCanonicalPrewarmInFlightWithoutRepositoryRequest() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(appScope)
         val repository =
             FakeConversationRepository(
@@ -1705,6 +1718,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -1752,12 +1766,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun initialThreadFetchConsumesCompletedPrewarmCacheWithoutRepositoryRequest() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun initialThreadFetchConsumesCompletedPrewarmCacheWithoutRepositoryRequest() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(appScope)
         val repository = FakeConversationRepository()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -1788,9 +1803,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun supersededPrewarmCompletionCannotReplaceTheNewestActivityGeneration() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun supersededPrewarmCompletionCannotReplaceTheNewestActivityGeneration() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val stale =
             contentPayloadForRoute(
@@ -1844,9 +1859,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun lateCompletionFromSupersededInFlightGenerationPublishesNoReadyCandidate() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun lateCompletionFromSupersededInFlightGenerationPublishesNoReadyCandidate() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val stale =
             contentPayloadForRoute(
@@ -1877,9 +1892,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun serverInvalidationMakesReadyAndOrdinaryCachedCandidatesUnusable() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun serverInvalidationMakesReadyAndOrdinaryCachedCandidatesUnusable() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val cached =
             contentPayloadForRoute(
@@ -1901,9 +1916,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun ordinaryCanonicalFetchRetriesCurrentGenerationBeforeReturningOrCaching() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun ordinaryCanonicalFetchRetriesCurrentGenerationBeforeReturningOrCaching() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         var responseIndex = 0
         val repository = FakeConversationRepository()
         repository.threadResultProvider = { _, _, _ ->
@@ -1919,6 +1934,7 @@ class SharedThreadStoreTest {
         repository.releaseGetThread = release
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -1952,15 +1968,16 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleJoinOfSupersededPrewarmRefetchesCurrentGeneration() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun visibleJoinOfSupersededPrewarmRefetchesCurrentGeneration() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "current after join", id = "fresh"))
             )
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val result = testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2002,9 +2019,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun supersededFailedTakeoverRetriesCurrentGenerationBeforeVisibleSuccess() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun supersededFailedTakeoverRetriesCurrentGenerationBeforeVisibleSuccess() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         var responseIndex = 0
         val repository = FakeConversationRepository()
         repository.threadResultProvider = { _, _, _ ->
@@ -2020,6 +2037,7 @@ class SharedThreadStoreTest {
         repository.releaseGetThread = release
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2044,9 +2062,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retiredOwnerFailedPrewarmTakeoverDoesNotRetryOrWriteEitherOwnerCache() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun retiredOwnerFailedPrewarmTakeoverDoesNotRetryOrWriteEitherOwnerCache() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "retired owner", id = "retired"))
@@ -2058,6 +2076,7 @@ class SharedThreadStoreTest {
         val authStore = InMemoryRaftAuthSessionStore(sampleSession())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = authStore,
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2092,9 +2111,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun removeAfterReadyPrewarmSelfHealsToOneFreshFlight() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun removeAfterReadyPrewarmSelfHealsToOneFreshFlight() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val stale =
             contentPayloadForRoute(
@@ -2130,8 +2149,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedPrewarmTakeoverIsSingleFlightAcrossVisibleStores() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun failedPrewarmTakeoverIsSingleFlightAcrossVisibleStores() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(appScope)
         val repository =
             FakeConversationRepository(
@@ -2160,6 +2179,7 @@ class SharedThreadStoreTest {
         repository.releaseGetReplyThread = releaseTakeover
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val dataSource = testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2190,9 +2210,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedNewGenerationCannotReturnThePreviousReadyPayloadDuringVisibleTakeover() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun failedNewGenerationCannotReturnThePreviousReadyPayloadDuringVisibleTakeover() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val stale =
             contentPayloadForRoute(
@@ -2237,6 +2257,7 @@ class SharedThreadStoreTest {
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = FakeThreadApi(),
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2276,8 +2297,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun manualRetrySuccessClearsTerminalFailedPrewarmGeneration() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun manualRetrySuccessClearsTerminalFailedPrewarmGeneration() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(appScope)
         val repository =
             FakeConversationRepository(
@@ -2286,6 +2307,7 @@ class SharedThreadStoreTest {
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val dataSource = testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2354,8 +2376,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedPrewarmTakeoverJoinsNewPrewarmStartedDuringHandoff() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun failedPrewarmTakeoverJoinsNewPrewarmStartedDuringHandoff() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(appScope)
         payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
             DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
@@ -2400,8 +2422,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyPrewarmUsesBackgroundRepositoryPriorityAndCanonicalCache() = runBlocking {
-        val payloadStore = SharedThreadPayloadStore()
+    fun activityReplyPrewarmUsesBackgroundRepositoryPriorityAndCanonicalCache() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -2424,6 +2446,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2452,8 +2475,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun ownerTransitionDropsLateReplyPrewarmWithoutWritingEitherOwnerCache() = runBlocking {
-        val payloadStore = SharedThreadPayloadStore(prewarmStartIntervalMillis = 0L)
+    fun ownerTransitionDropsLateReplyPrewarmWithoutWritingEitherOwnerCache() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, prewarmStartIntervalMillis = 0L)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -2500,6 +2523,8 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2542,8 +2567,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun newerActivityVersionReplacesCompletedPrewarmBeforeVisibleOpen() = runBlocking {
-        val payloadStore = SharedThreadPayloadStore(prewarmStartIntervalMillis = 0L)
+    fun newerActivityVersionReplacesCompletedPrewarmBeforeVisibleOpen() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, prewarmStartIntervalMillis = 0L)
         fun snapshot(messages: List<Message>) =
             DataResult.Content(
                 threadSnapshot(
@@ -2585,6 +2610,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2678,11 +2704,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun unresolvedReplyStartDoesNotRenderPreviousResolvedReplyTimeline() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun unresolvedReplyStartDoesNotRenderPreviousResolvedReplyTimeline() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -2712,14 +2739,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun viewModelEnsureStartedDispatchesStartExactlyOnce() = runBlocking {
+    fun viewModelEnsureStartedDispatchesStartExactlyOnce() = runTest {
         // task #387 follow-up: the page calls ensureStarted() during composition; recompositions
         // and the page's later effect must not double the load. The injected scope stands in for
         // the Kuikly page scope (unavailable in JUnit — it needs the pager id).
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -2747,11 +2775,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedThreadPayloadSurvivesVisibleFetchFailure() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun cachedThreadPayloadSurvivesVisibleFetchFailure() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -2770,9 +2799,9 @@ class SharedThreadStoreTest {
 
 
     @Test
-    fun sameServerAccountSwitchShowsLoadingShellInsteadOfPreviousOwnersCachedTimeline() = runBlocking {
+    fun sameServerAccountSwitchShowsLoadingShellInsteadOfPreviousOwnersCachedTimeline() = runTest {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val ownerASession =
             sampleSession().copy(
@@ -2799,6 +2828,8 @@ class SharedThreadStoreTest {
         val releaseLoadingState = CompletableDeferred<Unit>()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2856,9 +2887,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun ownerSwitchDuringFirstFrameAdmissionRetainsOldCacheWithoutPublishingIt() = runBlocking {
+    fun ownerSwitchDuringFirstFrameAdmissionRetainsOldCacheWithoutPublishingIt() = runTest {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val ownerASession =
             sampleSession().copy(
@@ -2887,6 +2918,8 @@ class SharedThreadStoreTest {
         val releaseLoading = CompletableDeferred<Unit>()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -2963,9 +2996,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun authGenerationAdvanceDuringFetchStillDeliversContent() = runBlocking {
+    fun authGenerationAdvanceDuringFetchStillDeliversContent() = runTest {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val ownerASession =
             sampleSession().copy(
@@ -2988,6 +3021,8 @@ class SharedThreadStoreTest {
         api.releaseChannelMessages = CompletableDeferred()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3046,9 +3081,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun ownerSwitchDuringFetchDropsResult() = runBlocking {
+    fun ownerSwitchDuringFetchDropsResult() = runTest {
         val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val ownerASession =
             sampleSession().copy(
@@ -3077,6 +3112,8 @@ class SharedThreadStoreTest {
         api.releaseChannelMessages = CompletableDeferred()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3145,11 +3182,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startRendersChannelShellWhenRealtimeInvalidatedFirstFrameCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startRendersChannelShellWhenRealtimeInvalidatedFirstFrameCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3171,12 +3209,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startRendersCachedReplyParentContentBeforeReplyNetworkFetch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val messageStore = SharedThreadMessageStore()
+    fun startRendersCachedReplyParentContentBeforeReplyNetworkFetch() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val api = FakeThreadApi(bodyText = messagesResponse("reply body"))
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
@@ -3211,12 +3251,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyStartKeepsStoreParentWhenTimelineCacheStillMarksItMissing() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val messageStore = SharedThreadMessageStore()
+    fun activityReplyStartKeepsStoreParentWhenTimelineCacheStillMarksItMissing() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val api = FakeThreadApi(bodyText = messagesResponse("network reply"))
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
@@ -3278,11 +3320,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startDoesNotRenderOrCacheContentFromRoutePayload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startDoesNotRenderOrCacheContentFromRoutePayload() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3314,14 +3357,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sameRouteIntentDoesNotRestartOrImportOriginCandidateContent() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun sameRouteIntentDoesNotRestartOrImportOriginCandidateContent() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val originCommitStarted = CompletableDeferred<Unit>()
         val releaseOriginCommit = CompletableDeferred<Unit>()
         val originCommitFinished = CompletableDeferred<Unit>()
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3405,14 +3449,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun repeatedActivityReplyOpenUpdatesFocusedMessageForSameThread() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun repeatedActivityReplyOpenUpdatesFocusedMessageForSameThread() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("reply body", id = "reply-2", channelId = "thread-m1")
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3430,9 +3475,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun staleFocusedOriginWriterCannotOverwriteRepeatedActivityReplyFocus() = runBlocking {
+    fun staleFocusedOriginWriterCannotOverwriteRepeatedActivityReplyFocus() = runTest {
         val externalJob = SupervisorJob()
-        val scope = CoroutineScope(externalJob + Dispatchers.Default)
+        val scope = CoroutineScope(externalJob + StandardTestDispatcher(testScheduler))
         val staleCommitStarted = CompletableDeferred<Unit>()
         val freshCommitStarted = CompletableDeferred<Unit>()
         val releaseStaleCommit = CompletableDeferred<Unit>()
@@ -3446,6 +3491,7 @@ class SharedThreadStoreTest {
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = api,
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3495,11 +3541,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun routeContextDoesNotOverrideCanonicalCacheMembershipState() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun routeContextDoesNotOverrideCanonicalCacheMembershipState() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3530,11 +3577,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun successfulFetchWritesPayloadCacheForNextStart() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun successfulFetchWritesPayloadCacheForNextStart() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3555,11 +3603,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyDirectMessageFetchRendersEmptyStateInsteadOfError() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun emptyDirectMessageFetchRendersEmptyStateInsteadOfError() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = emptyMessagesResponse())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3584,8 +3633,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun freshDirectMessageEmptyResolvesBeforeDelayedHomeProjection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun freshDirectMessageEmptyResolvesBeforeDelayedHomeProjection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val homeRequested = CompletableDeferred<Unit>()
         val releaseHome = CompletableDeferred<Unit>()
         val channelRepository =
@@ -3596,6 +3645,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3649,8 +3699,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun freshDirectMessageEmptyStaysLoadingWhenHomeCompletesFirstWithoutCandidate() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun freshDirectMessageEmptyStaysLoadingWhenHomeCompletesFirstWithoutCandidate() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val conversationRepository =
             FakeConversationRepository(
                 threadResult = DataResult.Empty(EmptyReason.NoMessages)
@@ -3660,6 +3710,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3716,10 +3767,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun existingChannelEmptyResolvesWithCanonicalEmptyAndHomeCandidate() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun existingChannelEmptyResolvesWithCanonicalEmptyAndHomeCandidate() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3748,13 +3800,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyChannelFromLaunchPlaceholderShowsNoMessagesNotLoading() = runBlocking {
+    fun emptyChannelFromLaunchPlaceholderShowsNoMessagesNotLoading() = runTest {
         // task #326: a channel that resolves to Content with zero messages (in the
         // joined home directory) must not keep the route placeholder's "Loading..."
         // as its empty-state title — otherwise the empty channel shows 「加载中」 forever.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3792,8 +3845,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyReplyThreadStillFailsClosedWithoutParentAccessCandidate() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun emptyReplyThreadStillFailsClosedWithoutParentAccessCandidate() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route =
             activityReplyPayload(
                 parentKind = ConversationKind.Channel,
@@ -3803,6 +3856,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3836,11 +3890,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun noPermissionAndErrorRemainFailClosedForDirectMessageAccess() = runBlocking {
+    fun noPermissionAndErrorRemainFailClosedForDirectMessageAccess() = runTest {
         suspend fun resolve(result: DataResult<ThreadSnapshot>): SharedThreadState {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = FakeThreadApi(failChannelMessages = true),
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -3893,10 +3948,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runPortableCoroutineTest {
+    fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runTest {
         repeat(25) { iteration ->
             val scopeJob = SupervisorJob()
-            val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+            val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
             val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
             val releaseLoadingState = CompletableDeferred<Unit>()
             val networkStarted = CompletableDeferred<Unit>()
@@ -3908,6 +3963,7 @@ class SharedThreadStoreTest {
                 }
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = api,
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -3962,12 +4018,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmChannelCacheResolvesFooterFromHomeCandidateBeforeCanonicalFetch() = runBlocking {
+    fun warmChannelCacheResolvesFooterFromHomeCandidateBeforeCanonicalFetch() = runTest {
         // Task #1141: on a Channel route with renderable cached content, the Home directory
         // candidate (joined + canSend) is the write authority; the footer must resolve when the
         // directory answers, not after the first network refresh. Home releases first, the
         // canonical fetch stays held.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -3991,6 +4047,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4050,8 +4107,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -4075,6 +4132,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4142,8 +4200,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmReplyThreadCacheUsesJoinedParentAccessWhenCanonicalCompletesFirst() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmReplyThreadCacheUsesJoinedParentAccessWhenCanonicalCompletesFirst() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4175,6 +4233,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4244,8 +4303,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmReplyThreadCacheUsesJoinedParentAccessWhenHomeCompletesFirst() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmReplyThreadCacheUsesJoinedParentAccessWhenHomeCompletesFirst() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4273,6 +4332,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4345,8 +4405,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmReplyThreadCacheUsesUnjoinedParentAccessOverCanonicalThreadAccess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmReplyThreadCacheUsesUnjoinedParentAccessOverCanonicalThreadAccess() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4373,6 +4433,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4425,8 +4486,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmReplyThreadCacheUsesUnjoinedParentAccessWhenHomeCompletesFirst() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmReplyThreadCacheUsesUnjoinedParentAccessWhenHomeCompletesFirst() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4453,6 +4514,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4506,8 +4568,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesJoinedDirectMessageParentAccess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadUsesJoinedDirectMessageParentAccess() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.DirectMessage,
             parentChannelId = "dm-1",
@@ -4538,6 +4600,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4571,8 +4634,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesCanonicalHomeStoreSnapshotWithoutDuplicateHomeRequest() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadUsesCanonicalHomeStoreSnapshotWithoutDuplicateHomeRequest() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4593,6 +4656,7 @@ class SharedThreadStoreTest {
         val channelRepository = FakeChannelRepository { DataResult.Error(ScreenError("unexpected_home_request")) }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4619,8 +4683,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesJoinedJointParentAccess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadUsesJoinedJointParentAccess() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Joint,
             parentChannelId = "joint-1",
@@ -4651,6 +4715,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4679,8 +4744,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadKeepsCanonicalRepliesReadableWhenParentAccessCandidateIsMissing() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadKeepsCanonicalRepliesReadableWhenParentAccessCandidateIsMissing() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4705,6 +4770,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4754,9 +4820,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun readOnlyReplyBecomingEmptyStaysWriteClosedInBothParentRefreshCompletionOrders() = runBlocking {
+    fun readOnlyReplyBecomingEmptyStaysWriteClosedInBothParentRefreshCompletionOrders() = runTest {
         suspend fun verify(homeCompletesFirst: Boolean) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
             val route =
                 activityReplyPayload(
                     parentKind = ConversationKind.Channel,
@@ -4813,6 +4879,7 @@ class SharedThreadStoreTest {
                 SharedThreadStore(
                     dataSource =
                         testSharedThreadDataSource(
+                            storeScope = backgroundScope,
                             networkApi = FakeThreadApi(failChannelMessages = true),
                             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4891,8 +4958,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesLoadedParentContextWhenParentAccessLookupTimesOut() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadUsesLoadedParentContextWhenParentAccessLookupTimesOut() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -4930,6 +4997,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -4978,8 +5046,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyThreadUsesLoadedParentContextWhenHomeLookupCompletesFirstWithoutCandidate() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun activityReplyThreadUsesLoadedParentContextWhenHomeLookupCompletesFirstWithoutCandidate() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val route = activityReplyPayload(
             parentKind = ConversationKind.Channel,
             parentChannelId = "channel-1",
@@ -5010,6 +5078,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5048,9 +5117,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshCanonicalAccessWinsInEitherInitialLookupCompletionOrder() = runBlocking {
+    fun refreshCanonicalAccessWinsInEitherInitialLookupCompletionOrder() = runTest {
         for (homeCompletesFirst in listOf(false, true)) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
             val homeCalls = Channel<Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>>(Channel.UNLIMITED)
             val canonicalCalls = Channel<Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>>>(Channel.UNLIMITED)
             val channelRepository =
@@ -5087,6 +5156,7 @@ class SharedThreadStoreTest {
                 }
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = FakeThreadApi(failChannelMessages = true),
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5155,8 +5225,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmCacheRefreshFailureDoesNotReenableStaleFooterAccess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmCacheRefreshFailureDoesNotReenableStaleFooterAccess() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val releaseHome = CompletableDeferred<Unit>()
         val channelRepository =
             FakeChannelRepository {
@@ -5172,6 +5242,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5205,8 +5276,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retryResetsTimedOutHomeVerdictWithoutOverridingCanonicalJoinedAccess() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun retryResetsTimedOutHomeVerdictWithoutOverridingCanonicalJoinedAccess() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val firstHomeNeverCompletes = CompletableDeferred<Unit>()
         val releaseRetryHome = CompletableDeferred<Unit>()
         var homeAttempt = 0
@@ -5226,6 +5297,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5280,11 +5352,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun resolvedAccessStaysReadyDuringOrdinaryBackgroundRefresh() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun resolvedAccessStaysReadyDuringOrdinaryBackgroundRefresh() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val repository = FakeConversationRepository()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5318,8 +5391,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun initialHomeAccessTimeoutFallsBackToCanonicalThreadAccessOnce() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun initialHomeAccessTimeoutFallsBackToCanonicalThreadAccessOnce() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val neverReleaseHome = CompletableDeferred<Unit>()
         val channelRepository =
             FakeChannelRepository {
@@ -5328,6 +5401,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5488,10 +5562,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun memoryCachedDirectMessageSnapshotCanRemainSparseWhenSnapshotOmitsDisplayMetadata() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun memoryCachedDirectMessageSnapshotCanRemainSparseWhenSnapshotOmitsDisplayMetadata() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -5564,8 +5639,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun staleRefreshResultDoesNotOverwriteCurrentThreadRoute() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun staleRefreshResultDoesNotOverwriteCurrentThreadRoute() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val channelStarted = CompletableDeferred<Unit>()
         val channelRelease = CompletableDeferred<Unit>()
         val replyStarted = CompletableDeferred<Unit>()
@@ -5583,6 +5658,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -5831,8 +5907,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startKeepsPayloadAccessDefaultsWithoutHomeSnapshot() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startKeepsPayloadAccessDefaultsWithoutHomeSnapshot() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -5858,6 +5934,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -5881,8 +5958,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startAndInitialContentDoNotBlockOnHomeSnapshotFallback() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startAndInitialContentDoNotBlockOnHomeSnapshotFallback() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val homeRequested = CompletableDeferred<Unit>()
         val releaseHome = CompletableDeferred<Unit>()
         val channelRepository =
@@ -5894,6 +5971,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -5916,11 +5994,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startAndPagingUseConfiguredThreadPageSize() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startAndPagingUseConfiguredThreadPageSize() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -5938,10 +6017,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun messageReactionIntentPatchesOnlyPayloadSliceAndNoopsWhenEquivalent() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun messageReactionIntentPatchesOnlyPayloadSliceAndNoopsWhenEquivalent() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6214,11 +6294,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6257,10 +6338,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendSuccessReplacesTempBubbleWithCanonicalMessage() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendSuccessReplacesTempBubbleWithCanonicalMessage() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6279,11 +6361,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun concurrentSendCompletionPreservesSiblingSendAndInterleavedAgentReply() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun concurrentSendCompletionPreservesSiblingSendAndInterleavedAgentReply() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val sessionStore = ParkableReadSessionStore(sampleSession())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = sessionStore,
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6329,11 +6412,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun staleRefreshCannotDeletePendingOrAcknowledgedSendsStartedAfterItsObservationFence() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun staleRefreshCannotDeletePendingOrAcknowledgedSendsStartedAfterItsObservationFence() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6395,10 +6479,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeOwnMessageEchoReplacesTransientLocalSendingBubble() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeOwnMessageEchoReplacesTransientLocalSendingBubble() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6455,10 +6540,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun appendSentPageDropsMatchingTransientLocalSendingBubble() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun appendSentPageDropsMatchingTransientLocalSendingBubble() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6479,11 +6565,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendSuccessCachesCanonicalMessageWithoutTempSendingBubble() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendSuccessCachesCanonicalMessageWithoutTempSendingBubble() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6503,8 +6590,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retiredOwnerLocalSendSuccessAndFailureCannotMutateCurrentOwnerStateOrCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun retiredOwnerLocalSendSuccessAndFailureCannotMutateCurrentOwnerStateOrCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val ownerASession =
             sampleSession().copy(
@@ -6529,6 +6616,8 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6606,8 +6695,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retiredOwnerNullProvenanceGapRejectsLocalSendBeforeApiOrStateMutation() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun retiredOwnerNullProvenanceGapRejectsLocalSendBeforeApiOrStateMutation() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
         val api = FakeThreadApi()
         val ownerASession =
@@ -6645,6 +6734,8 @@ class SharedThreadStoreTest {
         val releaseTransitionWaiter = CompletableDeferred<Unit>()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6683,7 +6774,7 @@ class SharedThreadStoreTest {
             )
 
         identity = null
-        val ownerTransition = async(Dispatchers.Default) { dataSource.captureReplyCacheProducerContext() }
+        val ownerTransition = async { dataSource.captureReplyCacheProducerContext() }
         transitionWaiterEntered.await()
 
         assertTrue(store.state.value.writeActionsEnabled)
@@ -6772,11 +6863,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadLocalSendSuccessKeepsCanonicalSentMessageWhenEchoUsesParentChannel() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun replyThreadLocalSendSuccessKeepsCanonicalSentMessageWhenEchoUsesParentChannel() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6840,9 +6932,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachePayloadDropsTransientLocalSendingBubble() = runBlocking {
+    fun cachePayloadDropsTransientLocalSendingBubble() = runTest {
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -6866,10 +6959,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedPayloadDoesNotPersistHeaderFallbackTitleAsConversationName() = runBlocking {
+    fun cachedPayloadDoesNotPersistHeaderFallbackTitleAsConversationName() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6891,11 +6985,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun canonicalPayloadCacheKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runBlocking {
+    fun canonicalPayloadCacheKeepsThreadTimelineInMemoryWithoutPersistentRewrite() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(threadSnapshot(body = "stale db body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6951,10 +7046,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedReplyPayloadDoesNotPersistParentDisplaySubtitle() = runBlocking {
+    fun cachedReplyPayloadDoesNotPersistParentDisplaySubtitle() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -6992,11 +7088,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendFailurePersistsFailedBubbleWithRetryContext() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendFailurePersistsFailedBubbleWithRetryContext() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7028,11 +7125,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendFailurePersistsReadableErrorMessage() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendFailurePersistsReadableErrorMessage() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7061,10 +7159,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun dataSourceCachesLocalSendFailureAfterPageScopeEnds() = runBlocking {
+    fun dataSourceCachesLocalSendFailureAfterPageScopeEnds() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7092,9 +7191,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun dataSourceCachesLocalSendSuccessAfterPageScopeEnds() = runBlocking {
+    fun dataSourceCachesLocalSendSuccessAfterPageScopeEnds() = runTest {
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -7119,11 +7219,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7144,11 +7245,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cancelLocalSendRemovesSendingBubbleFromStateAndLocalCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun cancelLocalSendRemovesSendingBubbleFromStateAndLocalCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7168,11 +7270,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshRetainsLocalFailedBubbleMissingFromServerPage() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun refreshRetainsLocalFailedBubbleMissingFromServerPage() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7194,10 +7297,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendFailureKeepsFailedBubbleWithRetryContext() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendFailureKeepsFailedBubbleWithRetryContext() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -7226,10 +7330,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retryFailureReusesSameTempBubbleAndRetrySuccessReplacesIt() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun retryFailureReusesSameTempBubbleAndRetrySuccessReplacesIt() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -7264,10 +7369,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendReplacementDoesNotDuplicateServerMessageAlreadyInFlow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendReplacementDoesNotDuplicateServerMessageAlreadyInFlow() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -7286,10 +7392,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retryPreservesAttachmentIdsAcrossFailureAndRetryCycle() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun retryPreservesAttachmentIdsAcrossFailureAndRetryCycle() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -7324,8 +7431,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun loadMembersEnrichesThreadMembersFromRepository() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val serverMembers =
             listOf(
@@ -7353,7 +7460,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
         serverMembersStore.seed(
             MemberSnapshot(
                 server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
@@ -7362,6 +7469,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7401,11 +7509,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadMembersRetriesAfterTransientFailure() = runBlocking {
+    fun loadMembersRetriesAfterTransientFailure() = runTest {
         // Verifies the loadMembers idempotency contract: a transient
         // failure on the first call must NOT set status=Loaded, so the
         // next modal open / explicit LoadMembers re-fetches.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val flakyMemberRepository =
             FakeMemberRepository(
@@ -7415,6 +7523,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7452,8 +7561,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadMembersDoesNotBackfillAvatarsFromServerProfile() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun loadMembersDoesNotBackfillAvatarsFromServerProfile() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val uploadedAvatar = "https://cdn.slock.ai/avatars/users/stdrc.webp"
         val memberRepository =
             FakeMemberRepository(
@@ -7462,6 +7571,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7536,8 +7646,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun acceptedCachedPayloadSeedsAvatarResolverBeforeFailedRefresh() = runBlocking {
-        val payloadStore = SharedThreadPayloadStore()
+    fun acceptedCachedPayloadSeedsAvatarResolverBeforeFailedRefresh() = runTest {
+        val payloadStore = SharedThreadPayloadStore(backgroundScope)
         val uploadedAvatar =
             "https://cdn.raft.build/avatars/users/0123456789abcdef0123456789abcdef.webp"
         val cached =
@@ -7554,9 +7664,10 @@ class SharedThreadStoreTest {
                         )
                 )
             }
-        val memberStore = SharedServerMembersStore(FakeMemberRepository())
+        val memberStore = testServerMembersStore(FakeMemberRepository(), scope = backgroundScope)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7564,7 +7675,7 @@ class SharedThreadStoreTest {
                 payloadStore = payloadStore
             )
         dataSource.cachePayloadForTest(cached)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -7578,10 +7689,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun serverSwitchCacheHitsSeedOnlyTheirSelectedServerInEitherDirection() = runBlocking {
+    fun serverSwitchCacheHitsSeedOnlyTheirSelectedServerInEitherDirection() = runTest {
         for (serverOrder in listOf(listOf("server-a", "server-b"), listOf("server-b", "server-a"))) {
-            val payloadStore = SharedThreadPayloadStore()
-            val memberStore = SharedServerMembersStore(FakeMemberRepository())
+            val payloadStore = SharedThreadPayloadStore(backgroundScope)
+            val memberStore = testServerMembersStore(FakeMemberRepository(), scope = backgroundScope)
             val avatars =
                 mapOf(
                     "server-a" to "https://cdn.raft.build/avatars/users/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp",
@@ -7613,6 +7724,7 @@ class SharedThreadStoreTest {
                     )
                 val dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(failChannelMessages = true),
                         sessionStore = InMemoryRaftAuthSessionStore(session),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7621,7 +7733,7 @@ class SharedThreadStoreTest {
                     )
                 assertNotNull(dataSource.readSession())
                 assertTrue(dataSource.cachePayload(cached, serverId = serverId))
-                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
                 val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
                 store.accept(SharedThreadIntent.Start(basePayload()))
@@ -7680,11 +7792,12 @@ class SharedThreadStoreTest {
         route: RaftThreadScreenPayload,
         parentScopeKind: String,
         threadChannelId: String,
-    ) = runBlocking {
+    ) = runTest {
         val parentScopeId = requireNotNull(route.sourceThreadId)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7809,13 +7922,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val memberRepository = FakeMemberRepository()
-        val memberStore = SharedServerMembersStore(memberRepository)
+        val memberStore = testServerMembersStore(memberRepository, scope = backgroundScope)
         val sessionStore = ParkableReadSessionStore(sampleSession())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = sessionStore,
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7929,7 +8043,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun addChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
+    fun addChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runTest {
         val memberRepository =
             FakeMemberRepository(
                 serverMembers =
@@ -7947,6 +8061,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -7965,11 +8080,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelCreateActionCardUsesTypedRepositoryAndMarksExecuted() = runBlocking {
+    fun channelCreateActionCardUsesTypedRepositoryAndMarksExecuted() = runTest {
         val channelRepository = FakeChannelRepository()
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8014,11 +8130,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun agentCreateActionCardRequiresDialogInsteadOfDirectCommit() = runBlocking {
+    fun agentCreateActionCardRequiresDialogInsteadOfDirectCommit() = runTest {
         val agentsApi = RecordingAgentsApi()
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8061,11 +8178,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun agentCreateActionCardDialogSubmitUsesTypedApiAndMarksExecuted() = runBlocking {
+    fun agentCreateActionCardDialogSubmitUsesTypedApiAndMarksExecuted() = runTest {
         val agentsApi = RecordingAgentsApi()
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8102,13 +8220,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun actionCardCreateDoesNotReturnExecutedCardWhenMarkExecutedFails() = runBlocking {
+    fun actionCardCreateDoesNotReturnExecutedCardWhenMarkExecutedFails() = runTest {
         val agentsApi = RecordingAgentsApi()
         val actionCardsApi = RecordingActionCardsApi(
             markResponse = HomeNetworkResponse(code = 500, bodyText = """{"error":"server_unavailable"}""")
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8126,11 +8245,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelAddMembersActionCardUsesTypedRepositoryAndMarksExecuted() = runBlocking {
+    fun channelAddMembersActionCardUsesTypedRepositoryAndMarksExecuted() = runTest {
         val memberRepository = FakeMemberRepository()
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8176,7 +8296,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelAddMembersActionCardAlreadyMembersOnlyIsIdempotentSuccess() = runBlocking {
+    fun channelAddMembersActionCardAlreadyMembersOnlyIsIdempotentSuccess() = runTest {
         // task #352 / #361 blocker: the server defines an all-already-members batch
         // as an idempotent SUCCESS (added:[], ids under alreadyMembers). The action
         // card must therefore advance to executed, not fail — so a re-send never
@@ -8188,6 +8308,7 @@ class SharedThreadStoreTest {
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8222,10 +8343,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun integrationApproveLoginActionCardExecutesInlineAction() = runBlocking {
+    fun integrationApproveLoginActionCardExecutesInlineAction() = runTest {
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8258,7 +8380,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun reconfirmCardReconfirmsAndAFrozenCardRunsNothing() = runBlocking {
+    fun reconfirmCardReconfirmsAndAFrozenCardRunsNothing() = runTest {
         // web ActionCard: a `reconfirm_required` card's button POSTs /actions/:id/reconfirm (no
         // execute); a `frozen` card's button is disabled. The prepared card carries its version.
         val actionCardsApi =
@@ -8272,6 +8394,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8290,7 +8413,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun genericRegisterAppActionCardExecutesThroughServerAuthority() = runBlocking {
+    fun genericRegisterAppActionCardExecutesThroughServerAuthority() = runTest {
         val actionCardsApi =
             RecordingActionCardsApi(
                 executeResponse =
@@ -8326,6 +8449,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8359,10 +8483,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retiredUpdateRegistrationCardDoesNotCallGenericExecute() = runBlocking {
+    fun retiredUpdateRegistrationCardDoesNotCallGenericExecute() = runTest {
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8382,14 +8507,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
+    fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runTest {
         val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
         val memberRepository =
             FakeMemberRepository(
                 serverMembers = serverMembers,
                 channelMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
             )
-        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
         serverMembersStore.seed(
             MemberSnapshot(
                 server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
@@ -8398,6 +8523,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8417,15 +8543,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startHydratesThreadMembersInBackgroundAfterRefresh() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startHydratesThreadMembersInBackgroundAfterRefresh() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
         val memberRepository =
             FakeMemberRepository(
                 serverMembers = serverMembers,
                 channelMembers = listOf(member("u1", "Artin"))
             )
-        val serverMembersStore = SharedServerMembersStore(memberRepository)
+        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
         serverMembersStore.seed(
             MemberSnapshot(
                 server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
@@ -8434,6 +8560,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8454,8 +8581,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun threadMembersPreserveRemoteSourceServerAndDisableRemoteRemove() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun threadMembersPreserveRemoteSourceServerAndDisableRemoteRemove() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val remoteMember =
             MemberProfile(
                 id = MemberId("remote-agent"),
@@ -8474,6 +8601,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8493,8 +8621,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun persistentCachedThreadSnapshotIsIgnoredOnVisibleFetchFailure() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun persistentCachedThreadSnapshotIsIgnoredOnVisibleFetchFailure() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
             ThreadSnapshot(
@@ -8521,6 +8649,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8538,8 +8667,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelPersistentCachedSnapshotIsNotReadBeforeLoadingFrame() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun channelPersistentCachedSnapshotIsNotReadBeforeLoadingFrame() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
             ThreadSnapshot(
@@ -8566,6 +8695,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8581,8 +8711,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun directMessagePersistentSnapshotIsIgnored() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun directMessagePersistentSnapshotIsIgnored() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
             ThreadSnapshot(
@@ -8608,6 +8738,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8629,8 +8760,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun agentDirectMessagePersistentSnapshotIsIgnored() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun agentDirectMessagePersistentSnapshotIsIgnored() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
             ThreadSnapshot(
@@ -8665,6 +8796,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8692,8 +8824,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun persistentCachedThreadSnapshotWindowIsIgnored() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun persistentCachedThreadSnapshotWindowIsIgnored() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
             ThreadSnapshot(
@@ -8703,6 +8835,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8719,11 +8852,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun successfulFetchCachesThreadTimelineInMemoryWithoutPersistentSnapshot() = runBlocking {
+    fun successfulFetchCachesThreadTimelineInMemoryWithoutPersistentSnapshot() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8738,7 +8872,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusedReplyContextRestoresOriginFromCachedParentMessage() = runBlocking {
+    fun focusedReplyContextRestoresOriginFromCachedParentMessage() = runTest {
         val repository =
             replyHintRepository().also { fake ->
                 fake.messageContextResult =
@@ -8752,6 +8886,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8807,7 +8942,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforeMemoryCacheWrite() = runBlocking {
+    fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforeMemoryCacheWrite() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -8829,6 +8964,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8844,7 +8980,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchedThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runBlocking {
+    fun fetchedThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runTest {
         val memberRepository =
             FakeMemberRepository(
                 serverMembers =
@@ -8861,6 +8997,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8876,8 +9013,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun secondaryRefreshDoesNotFetchOrPatchSenderProfileAvatars() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun secondaryRefreshDoesNotFetchOrPatchSenderProfileAvatars() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val memberRepository =
             FakeMemberRepository(
@@ -8894,6 +9031,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8913,7 +9051,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun taskReplyThreadPayloadDoesNotBlockOnMemberProfileAvatarForOriginBeforeFirstRender() = runBlocking {
+    fun taskReplyThreadPayloadDoesNotBlockOnMemberProfileAvatarForOriginBeforeFirstRender() = runTest {
         val agentParent =
             message(threadId = "channel-1", id = "m1", seq = 1, body = "agent task parent")
                 .copy(
@@ -8966,6 +9104,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -8994,7 +9133,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun taskReplyThreadPayloadFallsBackToStreamChannelNameWithoutHomeSnapshot() = runBlocking {
+    fun taskReplyThreadPayloadFallsBackToStreamChannelNameWithoutHomeSnapshot() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -9040,6 +9179,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9071,9 +9211,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchedThreadPayloadNormalizesAgentAvatarBeforeFirstRender() = runBlocking {
+    fun fetchedThreadPayloadNormalizesAgentAvatarBeforeFirstRender() = runTest {
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -9086,10 +9227,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
+    fun fetchThreadPayloadWithoutSessionReturnsAuthRequiredNoPermission() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -9104,13 +9246,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun openMessageContextWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
+    fun openMessageContextWithoutSessionReturnsAuthRequiredNoPermission() = runTest {
         val repository =
             FakeConversationRepository(
                 messageContextResult = DataResult.Content(threadSnapshot())
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9126,7 +9269,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun openMessageContextKeepsExplicitDirectMessageParentSurfaceWhenSnapshotLooksThread() = runBlocking {
+    fun openMessageContextKeepsExplicitDirectMessageParentSurfaceWhenSnapshotLooksThread() = runTest {
         val timelineMessage =
             message(
                 threadId = "dm-1",
@@ -9167,6 +9310,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9213,13 +9357,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadPrefersConversationRepositorySnapshotWhenAvailable() = runBlocking {
+    fun fetchThreadPayloadPrefersConversationRepositorySnapshotWhenAvailable() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
             threadResult = DataResult.Content(threadSnapshot(body = "repository body"))
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9235,7 +9380,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun initialMessagePageSummaryAdmitsInlinePreviewBeforeFirstContentReady() = runBlocking {
+    fun initialMessagePageSummaryAdmitsInlinePreviewBeforeFirstContentReady() = runTest {
         val firstFrameSummary =
             ThreadReplySummariesSnapshot(
                 threads =
@@ -9288,12 +9433,13 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -9314,7 +9460,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runBlocking {
+    fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -9373,12 +9519,13 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -9403,7 +9550,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun delayedSecondaryProjectionDoesNotReplaceCommittedNewerPage() = runBlocking {
+    fun delayedSecondaryProjectionDoesNotReplaceCommittedNewerPage() = runTest {
         val initialMessages =
             (1L..16L).map { seq ->
                 message(
@@ -9423,7 +9570,7 @@ class SharedThreadStoreTest {
                 threadReplySummariesResult = replySummaries(replyCount = 7),
                 newerResult = DataResult.Content(threadSnapshot(messages = newerMessages)),
             )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         lateinit var store: SharedThreadStore
         var projectionCommitCount = 0
         var maxSeqAfterNewerCommit: Long? = null
@@ -9432,6 +9579,9 @@ class SharedThreadStoreTest {
                 beforeProjectionCommit = {
                     projectionCommitCount += 1
                     if (projectionCommitCount == 2) {
+                        // Not a wait: the hook is synchronous by contract, and this re-enters the store
+                        // INSIDE the projection commit. The store runs on the unconfined test
+                        // dispatcher, so the nested load completes on this thread without a clock.
                         runBlocking {
                             assertTrue(store.loadNewer() is ThreadNewerPageLoadOutcome.Applied)
                             maxSeqAfterNewerCommit = store.state.value.payload.messages.mapNotNull { it.seq }.maxOrNull()
@@ -9444,6 +9594,7 @@ class SharedThreadStoreTest {
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9473,7 +9624,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun lateSummaryFromPreviousRouteCannotMutateCurrentCanonicalMessages() = runBlocking {
+    fun lateSummaryFromPreviousRouteCannotMutateCurrentCanonicalMessages() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResultsById =
@@ -9489,11 +9640,12 @@ class SharedThreadStoreTest {
                 it.releaseThreadReplySummaries = CompletableDeferred()
                 it.ignoreThreadReplySummariesCancellation = true
             }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9525,7 +9677,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelSummaryBackfillWithNoChangesDoesNotRefetchTimelineOrEmitState() = runBlocking {
+    fun channelSummaryBackfillWithNoChangesDoesNotRefetchTimelineOrEmitState() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
@@ -9534,13 +9686,14 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -9563,7 +9716,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun earlySummaryResultStashesUntilFirstContentReady() = runBlocking {
+    fun earlySummaryResultStashesUntilFirstContentReady() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
@@ -9573,11 +9726,12 @@ class SharedThreadStoreTest {
                 it.releaseThreadReplySummaries = CompletableDeferred()
                 it.ignoreThreadReplySummariesCancellation = true
             }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9604,7 +9758,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun lateSummaryResultAppliesImmediatelyAfterFirstContentReady() = runBlocking {
+    fun lateSummaryResultAppliesImmediatelyAfterFirstContentReady() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
@@ -9614,11 +9768,12 @@ class SharedThreadStoreTest {
                 it.releaseThreadReplySummaries = CompletableDeferred()
                 it.ignoreThreadReplySummariesCancellation = true
             }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9638,7 +9793,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun summarySnapshotDoesNotOverwriteNewerRealtimeFact() = runBlocking {
+    fun summarySnapshotDoesNotOverwriteNewerRealtimeFact() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
@@ -9650,12 +9805,13 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -9681,8 +9837,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadStartPromotesQueuedActivityPrewarmToForeground() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun replyThreadStartPromotesQueuedActivityPrewarmToForeground() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val payloadStore =
             SharedThreadPayloadStore(
                 scope = appScope,
@@ -9732,6 +9888,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9760,7 +9917,7 @@ class SharedThreadStoreTest {
             }
         assertEquals(emptyList(), repository.getReplyThreadRequests)
 
-        val visibleScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val visibleScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource = dataSource,
@@ -9808,13 +9965,19 @@ class SharedThreadStoreTest {
                 )
         )
 
+    /** The foreground gate on the test scheduler's clock (task #41): lease ages and "opened since" are virtual. */
+    private fun TestScope.virtualForegroundLoadGate(): build.raft.app.data.SharedForegroundLoadGate =
+        build.raft.app.data.SharedForegroundLoadGate(nowMillis = { testScheduler.currentTime })
+
     private fun foregroundGateDataSource(
         repository: FakeConversationRepository,
         payloadStore: SharedThreadPayloadStore,
         scopeName: String,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+        storeScope: CoroutineScope,
     ): SharedThreadDataSource =
         testSharedThreadDataSource(
+            storeScope = storeScope,
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -9828,12 +9991,12 @@ class SharedThreadStoreTest {
         )
 
     @Test
-    fun replyThreadStartJoinsInFlightPrewarmOfSameThreadWithoutSecondRequest() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun replyThreadStartJoinsInFlightPrewarmOfSameThreadWithoutSecondRequest() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         val logs = ConcurrentTestLogBuffer()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-same", logs::add)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-same", logs::add, storeScope = backgroundScope)
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val warmed = contentPayloadForRoute(base = route, body = "prewarmed reply body", id = "reply-warm", channelId = "thread-m1")
         val fetchStarted = CompletableDeferred<Unit>()
@@ -9848,7 +10011,7 @@ class SharedThreadStoreTest {
                 }
             }
         fetchStarted.await()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         val opened = async { store.accept(SharedThreadIntent.Start(route)) }
@@ -9868,12 +10031,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadStartOfDifferentThreadDoesItsOwnFetchWhilePrewarmIsInFlight() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun replyThreadStartOfDifferentThreadDoesItsOwnFetchWhilePrewarmIsInFlight() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         val logs = ConcurrentTestLogBuffer()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-other", logs::add)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-other", logs::add, storeScope = backgroundScope)
         val fetchStarted = CompletableDeferred<Unit>()
         val releaseFetch = CompletableDeferred<Unit>()
         val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
@@ -9886,7 +10049,7 @@ class SharedThreadStoreTest {
                 }
             }
         fetchStarted.await()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         withTimeout(10_000L) {
@@ -9903,13 +10066,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadStartStopsWaitingOnStuckPrewarmAndFetchesItself() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun replyThreadStartStopsWaitingOnStuckPrewarmAndFetchesItself() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val payloadStore =
-            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, prewarmJoinTimeoutMillis = 100L)
+            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate(), prewarmJoinTimeoutMillis = 100L)
         val repository = foregroundGateReplyRepository()
         val logs = ConcurrentTestLogBuffer()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-stuck", logs::add)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-stuck", logs::add, storeScope = backgroundScope)
         val fetchStarted = CompletableDeferred<Unit>()
         val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
         val stuckPrewarm =
@@ -9920,7 +10083,7 @@ class SharedThreadStoreTest {
                 }
             }
         fetchStarted.await()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         withTimeout(10_000L) {
@@ -9936,15 +10099,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun threadStartHoldsForegroundGateUntilLoadEndsAndReleasesOnFailure() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun threadStartHoldsForegroundGateUntilLoadEndsAndReleasesOnFailure() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         repository.getReplyThreadStarted = CompletableDeferred()
         repository.releaseGetReplyThread = CompletableDeferred()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-failure")
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-failure", storeScope = backgroundScope)
         val gate = payloadStore.foregroundLoadGate
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val logs = ConcurrentTestLogBuffer()
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
@@ -9964,20 +10127,20 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun threadForegroundGateIsReleasedByFirstContentReadyCancellationAndClear() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun threadForegroundGateIsReleasedByFirstContentReadyCancellationAndClear() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         // One payload store (and so one gate) per variant: a shared one would serve the next
         // variant's Start from the memory cache the previous variant wrote.
         lateinit var gate: SharedForegroundLoadGate
 
         suspend fun startBlocked(name: String): Triple<SharedThreadStore, CoroutineScope, FakeConversationRepository> {
-            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
             gate = payloadStore.foregroundLoadGate
             val repository = foregroundGateReplyRepository()
             repository.getReplyThreadStarted = CompletableDeferred()
             repository.releaseGetReplyThread = CompletableDeferred()
-            val dataSource = foregroundGateDataSource(repository, payloadStore, name)
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val dataSource = foregroundGateDataSource(repository, payloadStore, name, storeScope = backgroundScope)
+            val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
             val store = SharedThreadStore(dataSource = dataSource, scope = scope)
             store.dispatch(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1")))
             withTimeout(10_000L) { repository.getReplyThreadStarted?.await() }
@@ -10007,17 +10170,17 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityReplyPrewarmWaitsForAVisibleThreadStartThroughTheSharedPayloadStore() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun activityReplyPrewarmWaitsForAVisibleThreadStartThroughTheSharedPayloadStore() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         repository.getReplyThreadStarted = CompletableDeferred()
         repository.releaseGetReplyThread = CompletableDeferred()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-activity")
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-activity", storeScope = backgroundScope)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val prewarmCalls = kotlinx.atomicfu.atomic(0)
-        val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val activityScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val activity =
             build.raft.app.data.activityStore(
                 scope = activityScope,
@@ -10052,13 +10215,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun lateCompletionOfATimedOutPrewarmCannotOverwriteTheOpensOwnFetch() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun lateCompletionOfATimedOutPrewarmCannotOverwriteTheOpensOwnFetch() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val payloadStore =
-            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, prewarmJoinTimeoutMillis = 100L)
+            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate(), prewarmJoinTimeoutMillis = 100L)
         val repository = foregroundGateReplyRepository()
         val logs = ConcurrentTestLogBuffer()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-late", logs::add)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-late", logs::add, storeScope = backgroundScope)
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val stale = contentPayloadForRoute(base = route, body = "stale prewarm body", id = "reply-stale", channelId = "thread-m1")
         val fetchStarted = CompletableDeferred<Unit>()
@@ -10073,7 +10236,7 @@ class SharedThreadStoreTest {
                 }
             }
         fetchStarted.await()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         withTimeout(10_000L) { store.accept(SharedThreadIntent.Start(route)) }
         assertEquals("reply body", store.state.value.payload.messages.single().body)
@@ -10085,7 +10248,7 @@ class SharedThreadStoreTest {
 
         assertEquals("reply body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
         assertNull(payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", ownerScopeId))
-        val nextScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val nextScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val nextLogs = ConcurrentTestLogBuffer()
         val nextStore = SharedThreadStore(dataSource = dataSource, scope = nextScope, diagnosticsLogger = nextLogs::add)
         withTimeout(10_000L) { nextStore.accept(SharedThreadIntent.Start(route)) }
@@ -10097,15 +10260,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun threadRestartReleasesThePreviousForegroundLease() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun threadRestartReleasesThePreviousForegroundLease() = runTest {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         repository.getReplyThreadStarted = CompletableDeferred()
         repository.releaseGetReplyThread = CompletableDeferred()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-restart")
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-restart", storeScope = backgroundScope)
         val gate = payloadStore.foregroundLoadGate
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val logs = ConcurrentTestLogBuffer()
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
@@ -10131,7 +10294,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityTabOpenThatCachedTheThreadDropsItsQueuedPrewarm() = runBlocking {
+    fun activityTabOpenThatCachedTheThreadDropsItsQueuedPrewarm() = runTest {
         val run = activityTabOpenWithQueuedPrewarm(openFails = false)
         assertEquals(0, run.prewarmCalls, "the queued prewarm must not run for the opened, cached thread")
         assertEquals(run.requestsAfterOpen, run.finalRequests, "the queued prewarm must not re-fetch the opened thread")
@@ -10139,7 +10302,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun activityTabOpenThatFailedLeavesItsQueuedPrewarmToRun() = runBlocking {
+    fun activityTabOpenThatFailedLeavesItsQueuedPrewarmToRun() = runTest {
         // Twin: same route, same queue, same tap; the open's load fails, so nothing is cached.
         val run = activityTabOpenWithQueuedPrewarm(openFails = true)
         // (Its repository request may be answered by the data source's remembered failed lookup, so the
@@ -10155,14 +10318,14 @@ class SharedThreadStoreTest {
         val logs: ConcurrentTestLogBuffer,
     )
 
-    private suspend fun activityTabOpenWithQueuedPrewarm(openFails: Boolean): ActivityTabOpenRun {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    private suspend fun TestScope.activityTabOpenWithQueuedPrewarm(openFails: Boolean): ActivityTabOpenRun {
+        val appScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, foregroundLoadGate = virtualForegroundLoadGate())
         val repository = foregroundGateReplyRepository()
         if (openFails) repository.threadResult = DataResult.Error(ScreenError(code = "thread_network", retryable = true))
         val logs = ConcurrentTestLogBuffer()
-        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-activity-tab-$openFails", logs::add)
-        val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-activity-tab-$openFails", logs::add, storeScope = backgroundScope)
+        val activityScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val prewarmCalls = kotlinx.atomicfu.atomic(0)
         val activity =
             build.raft.app.data.activityStore(
@@ -10194,7 +10357,7 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", route.sourceThreadId)
         assertEquals("channel-1", route.parentChannelId)
         assertEquals("m1", route.parentMessageId)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         withTimeout(10_000L) { store.accept(SharedThreadIntent.Start(route)) }
         val requestsAfterOpen = repository.getReplyThreadRequests.size
@@ -10249,6 +10412,7 @@ class SharedThreadStoreTest {
         repository.releaseGetReplyThread = releaseReplyFetch
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10353,7 +10517,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadCarriesRepositoryJointChannelKind() = runBlocking {
+    fun fetchThreadPayloadCarriesRepositoryJointChannelKind() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -10375,6 +10539,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10397,7 +10562,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadKeepsRouteJointChannelKindOverGenericRepositoryKind() = runBlocking {
+    fun fetchThreadPayloadKeepsRouteJointChannelKindOverGenericRepositoryKind() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -10419,6 +10584,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10441,7 +10607,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun repositoryThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runBlocking {
+    fun repositoryThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -10479,6 +10645,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10494,7 +10661,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadUsesFocusedMessageContextWhenRouteCarriesFocusedMessage() = runBlocking {
+    fun fetchThreadPayloadUsesFocusedMessageContextWhenRouteCarriesFocusedMessage() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
             threadResult = DataResult.Content(threadSnapshot(body = "latest body", id = "latest", seq = 30)),
@@ -10516,6 +10683,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10536,7 +10704,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadScopesFocusedMessageContextToLocalThreadChannel() = runBlocking {
+    fun fetchReplyThreadPayloadScopesFocusedMessageContextToLocalThreadChannel() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
             threadResult = DataResult.Content(threadSnapshot(body = "fallback body")),
@@ -10570,6 +10738,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10597,7 +10766,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusedReplyContextKeepsRouteParentAsOrigin() = runBlocking {
+    fun focusedReplyContextKeepsRouteParentAsOrigin() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
             threadResult = DataResult.Content(threadSnapshot(body = "fallback body")),
@@ -10646,6 +10815,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10675,7 +10845,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusedReplyCommitsTimelineBeforeParentAndCachesLateOrigin() = runBlocking {
+    fun focusedReplyCommitsTimelineBeforeParentAndCachesLateOrigin() = runTest {
         val parentMessageId = MessageId("parent-1")
         val focusedMessageId = MessageId("reply-focus-1")
         val releaseParent = CompletableDeferred<Unit>()
@@ -10714,9 +10884,11 @@ class SharedThreadStoreTest {
                 fake.messageContextStartedById[parentMessageId] = parentStarted
                 fake.releaseMessageContextById[parentMessageId] = releaseParent
             }
-        val messageStore = SharedThreadMessageStore()
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -10727,7 +10899,7 @@ class SharedThreadStoreTest {
                 )
             )
         val route = focusedReplyRoute()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(route))
@@ -10748,7 +10920,7 @@ class SharedThreadStoreTest {
         assertEquals("late parent", afterParent.originMessage?.body)
         assertEquals(null, afterParent.errorCode)
 
-        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val secondScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val secondStore = SharedThreadStore(dataSource = dataSource, scope = secondScope)
         secondStore.accept(SharedThreadIntent.Start(route.copy(focusedMessageRequestNonce = 2)))
         assertEquals("loaded", secondStore.state.value.payload.originStatus)
@@ -10759,7 +10931,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusedReplyParentAbsenceAndFailureStayTypedWithoutReplacingTimeline() = runBlocking {
+    fun focusedReplyParentAbsenceAndFailureStayTypedWithoutReplacingTimeline() = runTest {
         val parentMessageId = MessageId("parent-1")
         val focusedMessageId = MessageId("reply-focus-1")
         val repository =
@@ -10778,11 +10950,12 @@ class SharedThreadStoreTest {
                             )
                     )
             )
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10810,10 +10983,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusMessageUpdatesMessageIdAndIncrementsNonce() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun focusMessageUpdatesMessageIdAndIncrementsNonce() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -10868,7 +11042,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun focusedReplyParentCompletionCannotMutateLaterRoute() = runBlocking {
+    fun focusedReplyParentCompletionCannotMutateLaterRoute() = runTest {
         val parentMessageId = MessageId("parent-1")
         val focusedMessageId = MessageId("reply-focus-1")
         val laterFocusedMessageId = MessageId("later-target")
@@ -10925,11 +11099,12 @@ class SharedThreadStoreTest {
                 fake.messageContextStartedById[parentMessageId] = parentStarted
                 fake.releaseMessageContextById[parentMessageId] = releaseParent
             }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10962,7 +11137,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadFallsBackWhenFocusedMessageContextDoesNotMatchRouteThread() = runBlocking {
+    fun fetchThreadPayloadFallsBackWhenFocusedMessageContextDoesNotMatchRouteThread() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
             threadResult = DataResult.Content(threadSnapshot(body = "repository body")),
@@ -10980,6 +11155,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -10998,7 +11174,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadLeavesHeaderBlankWhenRepositorySnapshotTitleIsIdentity() = runBlocking {
+    fun fetchThreadPayloadLeavesHeaderBlankWhenRepositorySnapshotTitleIsIdentity() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -11032,6 +11208,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11051,7 +11228,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadUsesParentPairRepositoryPath() = runBlocking {
+    fun fetchReplyThreadPayloadUsesParentPairRepositoryPath() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11099,6 +11276,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11123,11 +11301,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReplyMetadataSeedsSharedStoreForDirectReplyThreadFetch() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
+    fun visibleReplyMetadataSeedsSharedStoreForDirectReplyThreadFetch() = runTest {
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val parent = contentPayload("parent body").messages.single()
         val seedDataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
@@ -11179,6 +11359,8 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -11212,11 +11394,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyParentContextStoreDoesNotReuseSameUuidAcrossPrincipals() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
+    fun replyParentContextStoreDoesNotReuseSameUuidAcrossPrincipals() = runTest {
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val environmentId = "https://prod.example.test"
         val accountOneDataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1")),
                 messageStore = messageStore,
@@ -11266,6 +11450,8 @@ class SharedThreadStoreTest {
             )
         val accountTwoDataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-2")),
                 conversationRepository = accountTwoRepository,
@@ -11293,12 +11479,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyParentCandidateRejectsStaleProducerAfterIdentityPublication() = runBlocking {
+    fun replyParentCandidateRejectsStaleProducerAfterIdentityPublication() = runTest {
         val environmentId = "https://prod.example.test"
         val authStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1"))
-        val messageStore = SharedThreadMessageStore()
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 messageStore = messageStore,
@@ -11354,7 +11542,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun resolvedParentPairSeedsReplyThreadResolveCache() = runBlocking {
+    fun resolvedParentPairSeedsReplyThreadResolveCache() = runTest {
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -11381,6 +11569,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -11405,8 +11594,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadResolutionCacheIsScopedByEnvironmentPrincipalAndRouteServer() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
+    fun replyThreadResolutionCacheIsScopedByEnvironmentPrincipalAndRouteServer() = runTest {
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val parent = contentPayload("parent body").messages.single()
         val base = contentPayload("parent body")
         var environmentId = " https://prod.example.test/ "
@@ -11421,6 +11610,8 @@ class SharedThreadStoreTest {
         val repository = FakeConversationRepository()
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 selectedServerStore = selectedServerStore,
@@ -11467,6 +11658,8 @@ class SharedThreadStoreTest {
         repository.configureReplyThread("thread-account-2", parent.id)
         val accountTwoDataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 selectedServerStore = selectedServerStore,
@@ -11488,6 +11681,8 @@ class SharedThreadStoreTest {
         repository.configureReplyThread("thread-staging", parent.id)
         val stagingDataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 selectedServerStore = selectedServerStore,
@@ -11512,7 +11707,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadResolutionRejectsOwnerChangedWhileCreateOrOpenSuspends() = runBlocking {
+    fun replyThreadResolutionRejectsOwnerChangedWhileCreateOrOpenSuspends() = runTest {
         val authStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1"))
         val selectedServerStore =
             SelectedServerStore(
@@ -11529,11 +11724,13 @@ class SharedThreadStoreTest {
         repository.releaseCreateOrOpen = releaseCreate
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = authStore,
                 selectedServerStore = selectedServerStore,
                 conversationRepository = repository,
-                messageStore = SharedThreadMessageStore(),
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
                     sessionProvider = authStore::readSession,
@@ -11575,7 +11772,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadFiltersParentChannelMessagesFromSnapshot() = runBlocking {
+    fun fetchReplyThreadPayloadFiltersParentChannelMessagesFromSnapshot() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11613,6 +11810,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11629,7 +11827,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadUsesOriginParentMessageFallbackForParentPair() = runBlocking {
+    fun fetchReplyThreadPayloadUsesOriginParentMessageFallbackForParentPair() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11664,6 +11862,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11685,7 +11884,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadVerifiesStreamHintBeforeEmitting() = runBlocking {
+    fun fetchReplyThreadPayloadVerifiesStreamHintBeforeEmitting() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11757,6 +11956,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11782,7 +11982,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadKeepsResolvedEmptyThreadRenderable() = runBlocking {
+    fun fetchReplyThreadPayloadKeepsResolvedEmptyThreadRenderable() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11833,6 +12033,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11859,7 +12060,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadNormalizesLoadedOriginWithNoRepliesToEmptyState() = runBlocking {
+    fun fetchReplyThreadPayloadNormalizesLoadedOriginWithNoRepliesToEmptyState() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -11902,6 +12103,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11923,11 +12125,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startSkipsMismatchedReplyThreadMemoryCacheBeforeResolvedFetch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startSkipsMismatchedReplyThreadMemoryCacheBeforeResolvedFetch() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository = replyHintRepository()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -11962,13 +12165,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startSkipsMismatchedReplyThreadPersistentCacheBeforeResolvedFetch() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startSkipsMismatchedReplyThreadPersistentCacheBeforeResolvedFetch() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(wrongReplyThreadSnapshot())
         val repository = replyHintRepository()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12001,8 +12205,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startSkipsMismatchedReplyThreadCacheWhenResolutionFails() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startSkipsMismatchedReplyThreadCacheWhenResolutionFails() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(wrongReplyThreadSnapshot())
         val repository =
@@ -12013,6 +12217,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12041,8 +12246,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startWithUnresolvedActivityReplyThreadCreatesStreamBeforeLoadingReplies() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startWithUnresolvedActivityReplyThreadCreatesStreamBeforeLoadingReplies() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -12080,6 +12285,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12141,8 +12347,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startWithUnresolvedEmptyReplyThreadKeepsFirstReplyPanelOpen() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startWithUnresolvedEmptyReplyThreadKeepsFirstReplyPanelOpen() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Empty(EmptyReason.NoMessages),
@@ -12158,6 +12364,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12213,8 +12420,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startWithZeroReplyTaskDoesNotWaitIndefinitelyForOriginContext() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun startWithZeroReplyTaskDoesNotWaitIndefinitelyForOriginContext() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val diagnostics = mutableListOf<String>()
         val repository =
             FakeConversationRepository(
@@ -12232,6 +12439,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12282,8 +12490,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyInitialLoadStaysLoadingUntilCanonicalFetchCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun emptyInitialLoadStaysLoadingUntilCanonicalFetchCompletes() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadDelayMillis = 100L,
@@ -12294,6 +12502,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12324,14 +12533,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmContentStaysVisibleDuringSlowRefresh() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun warmContentStaysVisibleDuringSlowRefresh() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "cached content"))
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12364,8 +12574,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshWithUnchangedSnapshotKeepsTimelineList() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun refreshWithUnchangedSnapshotKeepsTimelineList() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -12381,6 +12591,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12414,8 +12625,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshSummaryPatchOnlyReplacesAffectedMessageRow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun refreshSummaryPatchOnlyReplacesAffectedMessageRow() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -12431,6 +12642,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12471,10 +12683,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun restThreadFetchRendersPersistedTaskLifecycleSystemRow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun restThreadFetchRendersPersistedTaskLifecycleSystemRow() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(
                     bodyText =
                         systemMessagesResponse(
@@ -12499,15 +12712,16 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMergeWarmsFirstFrameCacheWithLiveStoreSnapshot() = runBlocking {
+    fun realtimeMergeWarmsFirstFrameCacheWithLiveStoreSnapshot() = runTest {
         // task #562 contract (KMP-专家/HanXin agreed): the first-frame cache is
         // a read-only snapshot of the LIVE STORE's merged state, written after
         // the reduce — one merge algorithm, no cache-side event logic. Active
         // conversations stay warm on re-entry; every open still refreshes.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12544,13 +12758,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun noPermissionRefreshInvalidatesFirstFrameCache() = runBlocking {
+    fun noPermissionRefreshInvalidatesFirstFrameCache() = runTest {
         // task #562 boundary: invalidation is reserved for unrecoverable
         // scenarios — the canonical fetch reporting permission loss drops the
         // candidate so a revoked thread can never seed a first frame again.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(channelMessagesResponseCode = 403),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12568,10 +12783,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeForOtherThreadLeavesThisThreadsFirstFrameCacheIntact() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeForOtherThreadLeavesThisThreadsFirstFrameCacheIntact() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12605,10 +12821,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewMergesVisiblePayloadWhenMemoryCacheMissesEvent() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeMessageNewMergesVisiblePayloadWhenMemoryCacheMissesEvent() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12637,8 +12854,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewAcrossContextWindowNewerGapSyncsMissingWindow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeMessageNewAcrossContextWindowNewerGapSyncsMissingWindow() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -12646,6 +12863,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -12674,10 +12892,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun localSendAdmissionClearsFocusedNewerContext() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun localSendAdmissionClearsFocusedNewerContext() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi =
                     FakeThreadApi(
                         bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
@@ -12702,8 +12921,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewKeepsAvatarFieldsOutOfCachedSenderProfileMerge() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeMessageNewKeepsAvatarFieldsOutOfCachedSenderProfileMerge() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
             HomeSnapshot(
@@ -12725,6 +12944,7 @@ class SharedThreadStoreTest {
         )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12765,9 +12985,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeThreadUpdatedAppliesReplyMetadataToDirectMessageParent() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeThreadUpdatedAppliesReplyMetadataToDirectMessageParent() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload = directMessagePayload(),
@@ -12818,9 +13038,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val cachedPayload =
             contentPayload("cached body").let { content ->
                 content.copy(messages = content.messages.map { message -> message.copy(seq = 43L) })
@@ -12853,13 +13073,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeLocalWriteFailureDoesNotRollbackVisiblePayload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeLocalWriteFailureDoesNotRollbackVisiblePayload() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val backingStore = InMemoryComposeLocalDataStore()
         backingStore.writeThread(threadSnapshot(body = "cached body"))
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12892,12 +13113,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun irrelevantRealtimeMessageDoesNotChangeVisibleThread() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun irrelevantRealtimeMessageDoesNotChangeVisibleThread() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -12932,10 +13154,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun payloadSelectorDoesNotEmitForMembersLoadStatusOnlyChanges() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun payloadSelectorDoesNotEmitForMembersLoadStatusOnlyChanges() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -12945,7 +13168,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payloadEvents = mutableListOf<RaftThreadScreenPayload>()
-        val job = launch(Dispatchers.Unconfined) {
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
             store.payloadFlow().collect { payload -> payloadEvents += payload }
         }
         assertEquals(emptyList(), payloadEvents.single().messages)
@@ -12961,10 +13184,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun timelineSelectorDoesNotEmitForMembersOnlyPayloadChanges() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun timelineSelectorDoesNotEmitForMembersOnlyPayloadChanges() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -12974,7 +13198,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val timelineEvents = mutableListOf<ThreadTimelineSlice>()
-        val job = launch(Dispatchers.Unconfined) {
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
             store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
         }
         assertEquals(listOf("cached body"), timelineEvents.single().messages.map { it.body })
@@ -12997,10 +13221,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun timelineSelectorEmitsForMessageChanges() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun timelineSelectorEmitsForMessageChanges() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13020,7 +13245,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val timelineEvents = mutableListOf<ThreadTimelineSlice>()
-        val job = launch(Dispatchers.Unconfined) {
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
             store.timelineSliceFlow().collect { slice -> timelineEvents += slice }
         }
         timelineEvents.clear()
@@ -13036,9 +13261,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -13065,9 +13290,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedCannotRewriteCreationTimeOrTimelineOrder() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedCannotRewriteCreationTimeOrTimelineOrder() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val first =
             contentPayload("first", id = "m1").messages.single().copy(
                 seq = 30,
@@ -13111,9 +13336,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -13141,9 +13366,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedCanHydrateUnknownAuthorIdentity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedCanHydrateUnknownAuthorIdentity() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val cachedPayload = contentPayload("cached body")
         dataSource.cachePayloadForTest(
             cachedPayload.copy(
@@ -13181,9 +13406,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val route =
             basePayload().copy(
                 instanceId = "shared-shell-thread-thread-m1",
@@ -13247,13 +13472,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyCountGapCatchUpPageBringsRepliesStrandedBelowTheVisibleTail() = runBlocking {
+    fun replyCountGapCatchUpPageBringsRepliesStrandedBelowTheVisibleTail() = runTest {
         // task #296: replies stranded below the visible tail seq (backgrounded
         // receipt, initial short load) must come back, otherwise the thread shows
         // "N replies" but only the messages that arrived via realtime. Since task
         // #168 step 1 the catch-up IS the channel's latest page, so one request
         // brings them (no `messageSync` delta, no second tail refetch).
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val allReplies =
             (1..4).map { index ->
                 message(
@@ -13297,6 +13522,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13367,9 +13593,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -13432,9 +13658,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedDoesNotRevertJustAcknowledgedLocalReactionSelection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedDoesNotRevertJustAcknowledgedLocalReactionSelection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -13503,9 +13729,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageUpdatedKeepsVisibleReactionOrder() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeMessageUpdatedKeepsVisibleReactionOrder() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val initialMessage =
             contentPayload("cached body").messages.single().copy(
                 reactions =
@@ -13556,9 +13782,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeThreadUpdatedMergesButTaskUpdatedDoesNotMutatePayloadTaskFacts() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeThreadUpdatedMergesButTaskUpdatedDoesNotMutatePayloadTaskFacts() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val initial =
             contentPayload("task body").copy(
                 messages =
@@ -13649,9 +13875,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeTaskUpdatedLeavesThreadPayloadTaskFallbackUntouched() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeTaskUpdatedLeavesThreadPayloadTaskFallbackUntouched() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val initial =
             contentPayload("task body").copy(
                 messages =
@@ -13700,9 +13926,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeThreadUpdatedCanDecreaseAuthoritativeReplyCount() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun realtimeThreadUpdatedCanDecreaseAuthoritativeReplyCount() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         dataSource.cachePayloadForTest(
             contentPayload("parent").copy(
                 messages =
@@ -13740,11 +13966,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeThreadUpdatedReplyCountSurvivesCanonicalReprojection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore()
+    fun realtimeThreadUpdatedReplyCountSurvivesCanonicalReprojection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(backgroundScope)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13810,11 +14037,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadMarksChannel() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun visibleReadMarksChannel() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13824,7 +14052,7 @@ class SharedThreadStoreTest {
                     ),
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.accept(SharedThreadIntent.MarkVisibleRead())
@@ -13835,8 +14063,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedTimelineMarksReadOnlyAfterCanonicalAccessResolves() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun cachedTimelineMarksReadOnlyAfterCanonicalAccessResolves() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val api =
             FakeThreadApi().also {
                 it.channelMessagesStarted = CompletableDeferred()
@@ -13844,12 +14072,13 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
 
         try {
             store.dispatch(SharedThreadIntent.Start(basePayload()))
@@ -13881,11 +14110,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cachedTimelineNeverMarksReadWhenCanonicalAccessIsDenied() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun cachedTimelineNeverMarksReadWhenCanonicalAccessIsDenied() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13895,7 +14125,7 @@ class SharedThreadStoreTest {
                     )
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals(ThreadAccessResolution.NoPermission, store.state.value.accessResolution)
@@ -13908,11 +14138,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadUsesLatestSeqWhenAvailable() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun visibleReadUsesLatestSeqWhenAvailable() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13926,7 +14157,7 @@ class SharedThreadStoreTest {
                 content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
             }
         dataSource.cachePayloadForTest(payload)
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.accept(SharedThreadIntent.MarkVisibleRead())
@@ -13937,10 +14168,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun inlineReplyScopeOpenReadUsesCanonicalReadAllWhenPreviewIsBounded() = runBlocking {
+    fun inlineReplyScopeOpenReadUsesCanonicalReadAllWhenPreviewIsBounded() = runTest {
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13954,11 +14186,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadCoalescesImmediateSameChannelCompletion() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun visibleReadCoalescesImmediateSameChannelCompletion() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -13968,7 +14201,7 @@ class SharedThreadStoreTest {
                     ),
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.accept(SharedThreadIntent.MarkVisibleRead())
@@ -13998,13 +14231,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun deferredReadIsDroppedWhenANewerMessageArrivedUnseen() = runBlocking {
+    fun deferredReadIsDroppedWhenANewerMessageArrivedUnseen() = runTest {
         // Review of task #19: the deferred retry marks only the marker the user was shown. A message that
         // arrives during the window without a new visible-read dispatch (page backgrounded) stays unread.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14014,7 +14248,7 @@ class SharedThreadStoreTest {
                     ),
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
         fun newMessage(id: String, seq: Long) =
             SharedThreadIntent.ApplyRealtimeEvent(
@@ -14043,12 +14277,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadOfTheSameMarkerInsideTheWindowIsNotRetried() = runBlocking {
+    fun visibleReadOfTheSameMarkerInsideTheWindowIsNotRetried() = runTest {
         // Negative twin of the deferred retry: nothing new arrived, so nothing is re-sent after the window.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14058,7 +14293,7 @@ class SharedThreadStoreTest {
                     ),
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.accept(SharedThreadIntent.MarkVisibleRead())
@@ -14071,11 +14306,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyReplyThreadReadClearsParentUnreadProjectionAndCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun applyReplyThreadReadClearsParentUnreadProjectionAndCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api = FakeThreadApi(failChannelMessages = true)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14140,8 +14376,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadCoalescesInFlightBurstToLatestMarker() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun visibleReadCoalescesInFlightBurstToLatestMarker() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(failChannelMessages = true).also {
                 it.failReadAll = false
@@ -14149,6 +14385,7 @@ class SharedThreadStoreTest {
             }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14158,7 +14395,7 @@ class SharedThreadStoreTest {
                     ),
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.dispatch(SharedThreadIntent.MarkVisibleRead())
@@ -14210,10 +14447,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun sendMessageForwardsAttachmentIds() = runBlocking {
+    fun sendMessageForwardsAttachmentIds() = runTest {
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14232,10 +14470,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun saveMessageCallsThreadApi() = runBlocking {
+    fun saveMessageCallsThreadApi() = runTest {
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14247,10 +14486,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun unsaveMessageCallsThreadApi() = runBlocking {
+    fun unsaveMessageCallsThreadApi() = runTest {
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14262,10 +14502,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadDefersSavedStatusUntilSecondaryRefresh() = runBlocking {
+    fun fetchThreadPayloadDefersSavedStatusUntilSecondaryRefresh() = runTest {
         val savedStatusRepository = FakeSavedStatusRepository(savedIds = setOf(MessageId("m1")))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14284,12 +14525,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun savedStatusCheckNeverSendsLocalSendIds() = runBlocking {
+    fun savedStatusCheckNeverSendsLocalSendIds() = runTest {
         // task #335: local sends have no server row and non-UUID ids; the server's saved/check used to 500
         // on them, dropping the saved markers of the whole screen.
         val savedStatusRepository = FakeSavedStatusRepository(savedIds = setOf(MessageId("m1")))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14313,12 +14555,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun savedStatusCheckRebuildsIdsFromTheCurrentPayloadEachTime() = runBlocking {
+    fun savedStatusCheckRebuildsIdsFromTheCurrentPayloadEachTime() = runTest {
         // Same request size is not the same request: a fixed-size window of fixed-length ids keeps the byte
         // count constant while its content changes (task #335 follow-up).
         val savedStatusRepository = FakeSavedStatusRepository(savedIds = emptySet())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14339,10 +14582,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun savedStatusCheckIsSkippedWhenOnlyLocalSendsAreOnScreen() = runBlocking {
+    fun savedStatusCheckIsSkippedWhenOnlyLocalSendsAreOnScreen() = runTest {
         val savedStatusRepository = FakeSavedStatusRepository(savedIds = emptySet())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14361,7 +14605,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmSavedProjectionSurvivesPrimaryRefreshUntilSavedAuthorityCommits() = runBlocking {
+    fun warmSavedProjectionSurvivesPrimaryRefreshUntilSavedAuthorityCommits() = runTest {
         val savedLookupStarted = CompletableDeferred<Unit>()
         val releaseSavedLookup = CompletableDeferred<DataResult<SavedMessageStatusSnapshot>>()
         val savedStatusRepository =
@@ -14385,6 +14629,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14399,7 +14644,7 @@ class SharedThreadStoreTest {
         // Production runs the store on viewModelScope (one thread); its state reducers are plain
         // read-modify-writes, so a multi-threaded scope lets a concurrent auxiliary commit overwrite
         // the Saved-authority commit and the projection never clears (CI flake on #2784).
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -14428,16 +14673,17 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageSavedPatchesPayloadAndCache() = runBlocking {
+    fun applyMessageSavedPatchesPayloadAndCache() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("saveable body"))
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertFalse(store.state.value.payload.messages.single().isSaved)
@@ -14452,11 +14698,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun setMessageReactionReturnsMutationSummaryWithoutWritingPayload() = runBlocking {
+    fun setMessageReactionReturnsMutationSummaryWithoutWritingPayload() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14473,11 +14720,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun optimisticReactionSelectionDoesNotWriteCanonicalCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun optimisticReactionSelectionDoesNotWriteCanonicalCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14497,11 +14745,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageMutationCachesCanonicalPayloadAndProjectsReadback() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun applyMessageMutationCachesCanonicalPayloadAndProjectsReadback() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14544,11 +14793,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageMutationTrustsCanonicalEmptyReactionPayload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun applyMessageMutationTrustsCanonicalEmptyReactionPayload() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14574,11 +14824,12 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageMutationKeepsVisibleReactionOrder() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun applyMessageMutationKeepsVisibleReactionOrder() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14627,9 +14878,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageReactionsKeepsVisibleReactionOrder() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource = canonicalThreadDataSource()
+    fun applyMessageReactionsKeepsVisibleReactionOrder() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
         val initialMessage =
             contentPayload("reactable body").messages.single().copy(
                 reactions =
@@ -14672,10 +14923,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun setMessageReactionRemovesSelectedReaction() = runBlocking {
+    fun setMessageReactionRemovesSelectedReaction() = runTest {
         val api = FakeThreadApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14690,10 +14942,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun applyMessageReactionsRollsBackOptimisticSelection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun applyMessageReactionsRollsBackOptimisticSelection() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14716,10 +14969,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
+    fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runTest {
         val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11, channelId = "thread-m1"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14741,10 +14995,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun createOrOpenReplyThreadKeepsEmptyPanelForFirstReply() = runBlocking {
+    fun createOrOpenReplyThreadKeepsEmptyPanelForFirstReply() = runTest {
         val api = FakeThreadApi(bodyText = emptyMessagesResponse())
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -14772,7 +15027,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadSnapshotWithOnlyOriginUsesReplyEmptyState() = runBlocking {
+    fun replyThreadSnapshotWithOnlyOriginUsesReplyEmptyState() = runTest {
         val parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
         val repository =
             FakeConversationRepository(
@@ -14799,6 +15054,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -14821,7 +15077,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadPreservesReplyOriginWhenRepositoryReturnsParentAsMessage() = runBlocking {
+    fun fetchThreadPayloadPreservesReplyOriginWhenRepositoryReturnsParentAsMessage() = runTest {
         val parent = contentPayload("parent body").messages.single()
         val repository =
             FakeConversationRepository(
@@ -14850,6 +15106,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14878,7 +15135,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadHydratesOriginWithoutBlockingReplyMessagesWhenRepliesExcludeParent() = runBlocking {
+    fun fetchThreadPayloadHydratesOriginWithoutBlockingReplyMessagesWhenRepliesExcludeParent() = runTest {
         val parent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
         val repository =
             FakeConversationRepository(
@@ -14911,6 +15168,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -14940,7 +15198,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadUsesParentContextRepositoryForReplyOrigin() = runBlocking {
+    fun fetchThreadPayloadUsesParentContextRepositoryForReplyOrigin() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val localParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "local parent body")
         localStore.writeThread(
@@ -14982,6 +15240,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15011,7 +15270,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadHydratesReplyOriginFromParentContextWhenNoReplyMessagesCanRender() = runBlocking {
+    fun fetchThreadPayloadHydratesReplyOriginFromParentContextWhenNoReplyMessagesCanRender() = runTest {
         val parent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
         val repository =
             FakeConversationRepository(
@@ -15044,6 +15303,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15072,10 +15332,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadHydratesReplyOriginInParallelWhenRepliesCanRender() = runBlocking {
+    fun fetchThreadPayloadHydratesReplyOriginInParallelWhenRepliesCanRender() = runTest {
         val sparseParent = message(threadId = "thread-m1", id = "m1", seq = 10, body = "")
         val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
-        val messageStore = SharedThreadMessageStore()
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -15111,6 +15371,8 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -15152,7 +15414,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun retiredOwnerReplyOriginMayWarmOldScopeButCannotReturnProjectableParent() = runBlocking {
+    fun retiredOwnerReplyOriginMayWarmOldScopeButCannotReturnProjectableParent() = runTest {
         val ownerASession = replyResolutionSession("account-a")
         val ownerBSession = replyResolutionSession("account-b")
         var identity =
@@ -15181,9 +15443,11 @@ class SharedThreadStoreTest {
         val release = CompletableDeferred<Unit>()
         repository.messageContextStartedById[MessageId("m1")] = started
         repository.releaseMessageContextById[MessageId("m1")] = release
-        val messageStore = SharedThreadMessageStore()
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 conversationRepository = repository,
@@ -15237,9 +15501,9 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadReusesStoredReplyOriginMessageBeforeNetworkContext() = runBlocking {
+    fun fetchThreadPayloadReusesStoredReplyOriginMessageBeforeNetworkContext() = runTest {
         val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
-        val messageStore = SharedThreadMessageStore()
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -15268,6 +15532,8 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -15306,7 +15572,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndMemoryCache() = runBlocking {
+    fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndMemoryCache() = runTest {
         val localStore = InMemoryComposeLocalDataStore()
         val repository = FakeConversationRepository(
             threadResult =
@@ -15342,6 +15608,7 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
@@ -15369,8 +15636,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadOlderMessagesMergesBeforeVisiblePayloadAndCachesInMemory() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun loadOlderMessagesMergesBeforeVisiblePayloadAndCachesInMemory() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val api =
             FakeThreadApi(
@@ -15379,6 +15646,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15399,8 +15667,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun threadPageSizeDefaultsToThirtyAndReevaluatesRemoteValuePerRequest() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun threadPageSizeDefaultsToThirtyAndReevaluatesRemoteValuePerRequest() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10),
@@ -15409,6 +15677,7 @@ class SharedThreadStoreTest {
         var remotePageSize: Int? = null
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15425,12 +15694,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun repositoryThreadPagingUsesTheSameResolvedRemotePageSize() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun repositoryThreadPagingUsesTheSameResolvedRemotePageSize() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val repository = FakeConversationRepository()
         var remotePageSize: Int? = null
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15462,10 +15732,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun repositoryOlderAndNewerPagesAreOfferedToTheDurableWindowExtender() = runBlocking {
+    fun repositoryOlderAndNewerPagesAreOfferedToTheDurableWindowExtender() = runTest {
         // Task #168: an applied paging page is handed to the extender with the route's channel, the
         // fetching identity's V2 partition, the paging anchor, and the raw server page.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val rawOlder = durableRawPage("m5", limit = 30)
         val rawNewer = durableRawPage("m12", limit = 30)
         val repository =
@@ -15482,6 +15752,7 @@ class SharedThreadStoreTest {
         val extender = RecordingDurablePageExtender()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15514,14 +15785,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun pagesWithoutARawPageOrOnReplyRoutesAreNeverOfferedToTheExtender() = runBlocking {
+    fun pagesWithoutARawPageOrOnReplyRoutesAreNeverOfferedToTheExtender() = runTest {
         // Twin of the test above: identical paging, but the repository page carries no raw page.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val extender = RecordingDurablePageExtender()
         val store =
             SharedThreadStore(
                 dataSource =
                     testSharedThreadDataSource(
+                        storeScope = backgroundScope,
                         networkApi = FakeThreadApi(),
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15542,6 +15814,7 @@ class SharedThreadStoreTest {
         // page (with its parent it is offered as a thread scope: SharedThreadStoreReplyThreadDurableTest).
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15575,7 +15848,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyRouteOpenedBeforeItsStreamIsKnownRequestsTheThreadSnapshotOnceResolved() = runBlocking {
+    fun replyRouteOpenedBeforeItsStreamIsKnownRequestsTheThreadSnapshotOnceResolved() = runTest {
         // Task #168 step 3: `start()` cannot name the thread scope of an unresolved reply route; the
         // enter snapshot is requested once the first refresh resolved the stream.
         suspend fun replyLoadsFor(route: RaftThreadScreenPayload): List<Pair<String, ThreadDurableReplyParent>> {
@@ -15623,6 +15896,7 @@ class SharedThreadStoreTest {
                 SharedThreadStore(
                     dataSource =
                         testSharedThreadDataSource(
+                            storeScope = backgroundScope,
                             networkApi = FakeThreadApi(),
                             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15742,7 +16016,7 @@ class SharedThreadStoreTest {
     }
 
     // ---- Task #168 step 1: gap catch-up = ONE latest page, decided by anchor presence -------------
-    // These stores run on the test's own runBlocking loop (no Dispatchers.Unconfined): the store's
+    // These stores run on the test's own runTest scheduler (no Unconfined dispatcher): the store's
     // launched jobs interleave only at suspension points, as on production's Main confinement.
 
     private class GapCatchUpOutcome(
@@ -15766,6 +16040,7 @@ class SharedThreadStoreTest {
         }
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = scope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -15781,7 +16056,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun gapCatchUpTwinAnchorOnPageMergesAndAnchorAbsentReplacesUnderIdenticalSeqArithmetic() = runBlocking {
+    fun gapCatchUpTwinAnchorOnPageMergesAndAnchorAbsentReplacesUnderIdenticalSeqArithmetic() = runTest {
         // Twin pair: the screen shows m10 (seq 10); both pages have exactly the seqs 10 and 12 and the
         // same size. Only the id at seq 10 differs — page A carries the anchor m10, page B does not.
         // Any decision made from counts or seq comparisons answers both the same way; only the anchor
@@ -15816,7 +16091,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun anchorOnlyOnTheWidePageIsMergedAfterTwoRequests() = runBlocking {
+    fun anchorOnlyOnTheWidePageIsMergedAfterTwoRequests() = runTest {
         // The cheap page (m12..m14) misses the anchor; the 200 page reaches back to it, so the gap is
         // small after all: merged at the newest edge, no replacement.
         val outcome =
@@ -15837,7 +16112,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun aFailedSecondStepChangesNothing() = runBlocking {
+    fun aFailedSecondStepChangesNothing() = runTest {
         // The cheap page misses the anchor and the wide request fails: the cheap page is never
         // committed on its own, the timeline is exactly what it was.
         val outcome = gapCatchUpOutcome(200 to pageRangeResponse(500L..502L), 500 to "{}")
@@ -15850,7 +16125,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun largeGapWhileScrolledUpKeepsTheViewAndJumpToLatestShowsTheNewestPage() = runBlocking {
+    fun largeGapWhileScrolledUpKeepsTheViewAndJumpToLatestShowsTheNewestPage() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val logs = mutableListOf<String>()
@@ -15859,6 +16134,7 @@ class SharedThreadStoreTest {
         api.catchUpBodyTexts.addLast(pageRangeResponse(500L..502L))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -15884,7 +16160,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedCatchUpChangesNothingAndOffersNothingToTheDurableWindow() = runBlocking {
+    fun failedCatchUpChangesNothingAndOffersNothingToTheDurableWindow() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val repository = FakeConversationRepository()
@@ -15892,6 +16168,7 @@ class SharedThreadStoreTest {
         val extender = RecordingDurablePageExtender()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15915,7 +16192,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun catchUpPageThatAddsMessagesIsOfferedToTheDurableWindowAndAnAllKnownOneIsNot() = runBlocking {
+    fun catchUpPageThatAddsMessagesIsOfferedToTheDurableWindowAndAnAllKnownOneIsNot() = runTest {
         suspend fun offered(page: List<Message>): List<Triple<String, List<String?>, Pair<Int, Boolean>>> {
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -15929,6 +16206,7 @@ class SharedThreadStoreTest {
             val extender = RecordingDurablePageExtender()
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = FakeThreadApi(),
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -15954,7 +16232,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun aCatchUpRegistersItsRealtimeBaselineBeforeItsFetchAndHandsItToTheDurableWrite() = runBlocking {
+    fun aCatchUpRegistersItsRealtimeBaselineBeforeItsFetchAndHandsItToTheDurableWrite() = runTest {
         suspend fun run(fail: Boolean): Pair<List<String>, Int> {
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -15979,6 +16257,7 @@ class SharedThreadStoreTest {
             }
             val dataSource =
                 testSharedThreadDataSource(
+                    storeScope = backgroundScope,
                     networkApi = FakeThreadApi(),
                     sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16064,8 +16343,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadNewerMessagesMergesAfterVisiblePayload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun loadNewerMessagesMergesAfterVisiblePayload() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16073,6 +16352,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16093,8 +16373,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeAppendDuringFailedNewerPageDoesNotBecomeAppliedPageOutcome() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeAppendDuringFailedNewerPageDoesNotBecomeAppliedPageOutcome() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16104,6 +16384,7 @@ class SharedThreadStoreTest {
         api.releaseAfterMessages = CompletableDeferred()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16127,8 +16408,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun emptyNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16136,6 +16417,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16150,8 +16432,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun deduplicatedNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun deduplicatedNewerPageReturnsEmptyOutcomeWithoutAppliedIdentities() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val currentResponse = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
         val api =
             FakeThreadApi(
@@ -16160,6 +16442,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16173,8 +16456,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapDuringManualLoadNewerHandsOffToRecoveryWithoutUsingLoadingAsOwner() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapDuringManualLoadNewerHandsOffToRecoveryWithoutUsingLoadingAsOwner() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16185,6 +16468,7 @@ class SharedThreadStoreTest {
         api.catchUpBodyTexts.addLast(pageRangeResponse(11L..100L))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16222,8 +16506,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapRecoverySyncsFromVisiblePayloadSeqWhenPagingGateIsClosed() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapRecoverySyncsFromVisiblePayloadSeqWhenPagingGateIsClosed() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16231,6 +16515,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16251,8 +16536,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun refreshLatestAfterVisibleMaxSeqSyncsFromVisiblePayloadSeq() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun refreshLatestAfterVisibleMaxSeqSyncsFromVisiblePayloadSeq() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16260,6 +16545,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16279,8 +16565,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun channelRealtimeMessageNewGapSyncsFromVisibleTailWhenPagingGateIsClosed() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun channelRealtimeMessageNewGapSyncsFromVisibleTailWhenPagingGateIsClosed() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16288,6 +16574,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -16312,8 +16599,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun currentRealtimeEventDuringGapRecoveryIsAbsorbedWithoutStartingDuplicateSync() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun currentRealtimeEventDuringGapRecoveryIsAbsorbedWithoutStartingDuplicateSync() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16323,6 +16610,7 @@ class SharedThreadStoreTest {
         api.releaseCatchUp = CompletableDeferred()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16382,8 +16670,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapAfterSuccessfulTerminalStartsFreshRecoveryWithoutDuplicateOwner() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapAfterSuccessfulTerminalStartsFreshRecoveryWithoutDuplicateOwner() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16392,6 +16680,7 @@ class SharedThreadStoreTest {
         api.catchUpBodyTexts.addLast(pageRangeResponse(10L..14L))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16428,8 +16717,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun duplicateAndOutOfOrderRealtimeEventsDoNotExtendActiveRecoveryTarget() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun duplicateAndOutOfOrderRealtimeEventsDoNotExtendActiveRecoveryTarget() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16439,6 +16728,7 @@ class SharedThreadStoreTest {
         api.releaseCatchUp = CompletableDeferred()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16493,8 +16783,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun nonGapRealtimeEventSuspendedBeforeLinearizationMergesIntoLatestRecoveryPayload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun nonGapRealtimeEventSuspendedBeforeLinearizationMergesIntoLatestRecoveryPayload() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val sessionStore = ParkableReadSessionStore(sampleSession())
         val api =
             FakeThreadApi(
@@ -16503,7 +16793,7 @@ class SharedThreadStoreTest {
             )
         api.catchUpStarted = CompletableDeferred()
         api.releaseCatchUp = CompletableDeferred()
-        val dataSource = testSharedThreadDataSource(networkApi = api, sessionStore = sessionStore, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
+        val dataSource = testSharedThreadDataSource(storeScope = backgroundScope, networkApi = api, sessionStore = sessionStore, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
@@ -16553,11 +16843,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun futureRealtimeEventDuringCatchUpLandsOnceWithoutASecondRequest() = runBlocking {
+    fun futureRealtimeEventDuringCatchUpLandsOnceWithoutASecondRequest() = runTest {
         // Task #168 step 1: the catch-up is ONE latest-page request. A live event that arrives while
         // it is in flight is folded directly and survives the page merge; it never schedules a
         // follow-up request ("do not loop to fully catch up").
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16567,6 +16857,7 @@ class SharedThreadStoreTest {
         api.releaseCatchUp = CompletableDeferred()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16612,8 +16903,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun newGenerationRecoveryReplacesParkedOldGenerationBeforeOldTerminal() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun newGenerationRecoveryReplacesParkedOldGenerationBeforeOldTerminal() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val oldStarted = CompletableDeferred<Unit>()
         val newStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()
@@ -16630,6 +16921,7 @@ class SharedThreadStoreTest {
         api.catchUpReleases.addLast(releaseNew)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16689,8 +16981,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun newRouteRecoveryReplacesParkedOldRouteBeforeOldTerminal() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun newRouteRecoveryReplacesParkedOldRouteBeforeOldTerminal() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val oldStarted = CompletableDeferred<Unit>()
         val newStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()
@@ -16715,6 +17007,7 @@ class SharedThreadStoreTest {
         api.catchUpReleases.addLast(releaseNew)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16779,8 +17072,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun cancelledRecoveryReleasesOwnershipAndRestoresIdleForSuccessor() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun cancelledRecoveryReleasesOwnershipAndRestoresIdleForSuccessor() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val oldStarted = CompletableDeferred<Unit>()
         val oldRelease = CompletableDeferred<Unit>()
         val api =
@@ -16793,6 +17086,7 @@ class SharedThreadStoreTest {
         api.catchUpReleases.addLast(oldRelease)
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16835,8 +17129,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun clearInvalidatesParkedRecoveryAndRestoresVisibleAndCachedIdle() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun clearInvalidatesParkedRecoveryAndRestoresVisibleAndCachedIdle() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16846,6 +17140,7 @@ class SharedThreadStoreTest {
         api.releaseCatchUp = CompletableDeferred()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16883,8 +17178,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyRecoveryResponseTerminatesIdleAndUpdatesCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun emptyRecoveryResponseTerminatesIdleAndUpdatesCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16892,6 +17187,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16914,8 +17210,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun errorRecoveryResponseReleasesStateForSuccessfulRetry() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun errorRecoveryResponseReleasesStateForSuccessfulRetry() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16925,6 +17221,7 @@ class SharedThreadStoreTest {
         api.catchUpBodyTexts.addLast(pageRangeResponse(10L..13L))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16956,10 +17253,10 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun failedResumeCatchUpIsAskedAgainOnItsOwn() = runBlocking {
+    fun failedResumeCatchUpIsAskedAgainOnItsOwn() = runTest {
         // Feedback 4409cbc5: the resume catch-up failed and nothing asked again, so the thread kept its
         // cached messages until the user left. A retryable failure now schedules a bounded retry.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val logs = mutableListOf<String>()
         val api =
             FakeThreadApi(
@@ -16970,6 +17267,7 @@ class SharedThreadStoreTest {
         api.catchUpBodyTexts.addLast(pageRangeResponse(10L..13L))
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -16996,8 +17294,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun allKnownCatchUpPageTerminatesWithoutLooping() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun allKnownCatchUpPageTerminatesWithoutLooping() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17005,6 +17303,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -17027,14 +17326,14 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun noPermissionRecoveryResponseTerminatesWithoutWritingRetiredOwnerCache() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun noPermissionRecoveryResponseTerminatesWithoutWritingRetiredOwnerCache() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val auth = InMemoryRaftAuthSessionStore(sampleSession())
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
             )
-        val dataSource = testSharedThreadDataSource(networkApi = api, sessionStore = auth, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
+        val dataSource = testSharedThreadDataSource(storeScope = backgroundScope, networkApi = api, sessionStore = auth, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
         val cacheContext = requireNotNull(dataSource.captureReplyCacheProducerContext())
@@ -17061,8 +17360,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadUpdatedReplyCountGapSyncsFromVisiblePayloadTail() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun replyThreadUpdatedReplyCountGapSyncsFromVisiblePayloadTail() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val localStore = InMemoryComposeLocalDataStore()
         val api =
             FakeThreadApi(
@@ -17083,6 +17382,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -17120,8 +17420,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapRecoverySkipsWhenVisiblePayloadAlreadyCaughtUp() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapRecoverySkipsWhenVisiblePayloadAlreadyCaughtUp() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17129,6 +17429,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -17144,8 +17445,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun foregroundRefreshRebaselineDropsInFlightRealtimeGapResult() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun foregroundRefreshRebaselineDropsInFlightRealtimeGapResult() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17156,6 +17457,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -17185,8 +17487,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadNewerMessagesMergesSystemRowsFromChannelAfter() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun loadNewerMessagesMergesSystemRowsFromChannelAfter() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17199,6 +17501,7 @@ class SharedThreadStoreTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
@@ -17220,8 +17523,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapRecoveryWithNewArrivalsBackfillsSecondaryTimeline() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapRecoveryWithNewArrivalsBackfillsSecondaryTimeline() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17285,6 +17588,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -17328,8 +17632,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun resumeWithNoNewTopLevelMessagesStillBackfillsReplySummaries() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun resumeWithNoNewTopLevelMessagesStillBackfillsReplySummaries() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17394,6 +17698,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -17428,8 +17733,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun foregroundGapWithNoNewMessagesDoesNotBackfillReplySummaries() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun foregroundGapWithNoNewMessagesDoesNotBackfillReplySummaries() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17494,6 +17799,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -17525,8 +17831,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeGapRecoveryStaleDropSkipsSecondaryBackfill() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun realtimeGapRecoveryStaleDropSkipsSecondaryBackfill() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -17564,6 +17870,7 @@ class SharedThreadStoreTest {
         val logs = mutableListOf<String>()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = api,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -18665,8 +18972,9 @@ class SharedThreadStoreTest {
             session = sampleSession()
         )
 
-    private fun canonicalThreadDataSource(): SharedThreadDataSource =
+    private fun canonicalThreadDataSource(storeScope: CoroutineScope): SharedThreadDataSource =
         testSharedThreadDataSource(
+            storeScope = storeScope,
             networkApi = FakeThreadApi(failChannelMessages = true),
             sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -19464,11 +19772,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun rememberReplyParentCandidateSucceedsForSlackBridgeExternalRootMessage() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
+    fun rememberReplyParentCandidateSucceedsForSlackBridgeExternalRootMessage() = runTest {
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val environmentId = "https://prod.example.test"
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
@@ -19505,11 +19815,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun rememberReplyParentCandidateFailsClosedForExternalRootMessageMissingExternalAuthor() = runBlocking {
-        val messageStore = SharedThreadMessageStore()
+    fun rememberReplyParentCandidateFailsClosedForExternalRootMessageMissingExternalAuthor() = runTest {
+        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val environmentId = "https://prod.example.test"
         val dataSource =
             SharedThreadDataSource(
+                threadParseDispatcher = backgroundScope.testDispatcher(),
+                payloadStore = SharedThreadPayloadStore(backgroundScope),
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,

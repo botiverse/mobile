@@ -33,7 +33,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
@@ -51,12 +51,12 @@ import kotlin.test.assertTrue
  * The loader / reader / writer are faked here; they are exercised in
  * `CanonicalMessageV2ReplyThreadDurableTest` and on SQLite in the reply-thread round trip.
  *
- * Every store - including the data source's message / payload stores - runs on the test's own `runBlocking`
- * event loop (see `SharedThreadStoreDurableOlderPagingTest` and [dataSource]).
+ * Every store - including the data source's message / payload stores - runs on the test's own `runTest`
+ * scheduler (virtual time) (see `SharedThreadStoreDurableOlderPagingTest` and [dataSource]).
  */
 class SharedThreadStoreReplyThreadDurableTest {
     @Test
-    fun offlineReplyThreadOpenStandsInFromDiskAndPagesOlderFromIt() = runBlocking {
+    fun offlineReplyThreadOpenStandsInFromDiskAndPagesOlderFromIt() = runTest {
         val logs = mutableListOf<String>()
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -84,7 +84,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun offlineReplyThreadOpenWithoutAStoredWindowTakesTheNetworkPath() = runBlocking {
+    fun offlineReplyThreadOpenWithoutAStoredWindowTakesTheNetworkPath() = runTest {
         // Twin of the test above: identical route and failing network, but nothing on disk.
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -104,7 +104,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun replyRouteWithoutItsTypedParentNeverConsultsTheDurableReader() = runBlocking {
+    fun replyRouteWithoutItsTypedParentNeverConsultsTheDurableReader() = runTest {
         // Twin of the offline stand-in: identical stored frame and stream id, but the route lost its
         // parent channel, so it cannot name the thread scope's parent.
         val scopeJob = SupervisorJob()
@@ -123,13 +123,13 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun replyThreadEntryRequestsTheReplyThreadSnapshotWithItsParent() = runBlocking {
+    fun replyThreadEntryRequestsTheReplyThreadSnapshotWithItsParent() = runTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val loader = FakeLoader()
         val store = SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), scope, loader = loader), scope = scope)
         store.accept(SharedThreadIntent.Start(replyRoute()))
-        withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) yield() }
+        withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
         assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loader.replyLoads)
         assertEquals(listOf(true), loader.stillCurrentAtCall)
         assertTrue(loader.topLevelLoads.isEmpty(), "a reply route is never loaded as a top-level window")
@@ -147,7 +147,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun replyThreadPagesAreOfferedToTheExtenderWithTheRoutesParent() = runBlocking {
+    fun replyThreadPagesAreOfferedToTheExtenderWithTheRoutesParent() = runTest {
         val extender = RecordingExtender()
         val dataSource = dataSource(SharedThreadStoreTest.FakeThreadApi(), storeScope = null, extender = extender)
         val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
@@ -219,7 +219,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         extender.confirmations.emit(CanonicalMessageV2ThreadJoinConfirmed(partition(ownerA), confirmedThread, "channel-1", 2L))
         // Bounded: the open page's catch-up ends with `outcome=done|failed`; a closed page never logs one.
         withTimeoutOrNull(if (close || confirmedThread != "thread-1") 1_000L else 10_000L) {
-            while (logs.none { "thread_join_catch_up" in it && ("outcome=done" in it || "outcome=failed" in it) }) yield()
+            while (logs.none { "thread_join_catch_up" in it && ("outcome=done" in it || "outcome=failed" in it) }) delay(10)
         }
         repeat(20) { yield() }
         scopeJob.cancelAndJoin()
@@ -227,7 +227,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun aJoinConfirmationRunsOneCatchUpOnTheOpenThreadPageWithTheThreadsBaseline() = runBlocking {
+    fun aJoinConfirmationRunsOneCatchUpOnTheOpenThreadPageWithTheThreadsBaseline() = runTest {
         val open = joinCatchUpRun()
         assertEquals(1, open.catchUps, open.logs.toString())
         assertEquals(listOf<Pair<SyncScopeId, ThreadDurableReplyParent?>>("thread-1" to parent), open.baselines, "the thread scope, with its parent")
@@ -250,7 +250,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun aFailedJoinCatchUpIsLoggedAndNotRetried() = runBlocking {
+    fun aFailedJoinCatchUpIsLoggedAndNotRetried() = runTest {
         val failed = joinCatchUpRun(catchUpCode = 500)
         assertEquals(1, failed.catchUps, "one request, no retry")
         assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=requested", failed.logs.first())
@@ -314,7 +314,7 @@ class SharedThreadStoreReplyThreadDurableTest {
 
     /**
      * [storeScope] confines the data source's own message / payload stores (parent-context lookups,
-     * reply-access flights) to the test's `runBlocking` event loop. Their defaults launch on
+     * reply-access flights) to the test's `runTest` scheduler. Their defaults launch on
      * `Dispatchers.Default`, where `fetchParent` logs into [logs] - a plain list the test thread
      * iterates - and calls the unsynchronized fake API: a `ConcurrentModificationException` that
      * only shows when the full suite loads the machine. `null` only for tests that start no store.
@@ -329,6 +329,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         payloadStore: SharedThreadPayloadStore? = storeScope?.let { SharedThreadPayloadStore(scope = it) },
     ): SharedThreadDataSource =
         SharedThreadDataSource(
+            threadParseDispatcher = storeScope?.testDispatcher() ?: build.raft.app.data.RaftJsonParseDispatcher,
             networkApi = api,
             messageStore = storeScope?.let { SharedThreadMessageStore(scope = it) },
             payloadStore = payloadStore,
@@ -462,7 +463,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         )
 
     @Test
-    fun ownSendSurvivesAnInboxSummaryAdvanceIntoTheReopenedFirstFrame() = runBlocking {
+    fun ownSendSurvivesAnInboxSummaryAdvanceIntoTheReopenedFirstFrame() = runTest {
         val logs = mutableListOf<String>()
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -476,7 +477,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
         val first = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
         first.accept(SharedThreadIntent.Start(sendableReplyRoute()))
-        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
+        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
         assertEquals(15, first.state.value.payload.messages.size)
 
         // 1. The user's send is confirmed: the visible page and the memory cache hold 16 replies.
@@ -517,7 +518,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     }
 
     @Test
-    fun aSupersededMemoryCopyOlderThanTheDiskStillLoses() = runBlocking {
+    fun aSupersededMemoryCopyOlderThanTheDiskStillLoses() = runTest {
         val logs = mutableListOf<String>()
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
@@ -528,7 +529,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         // Memory learns replies 1..10, then a summary supersedes it while the disk moved on to 1..15.
         val first = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
         first.accept(SharedThreadIntent.Start(sendableReplyRoute()))
-        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
+        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
         assertEquals(10, first.state.value.payload.messages.size)
         first.clear()
         payloadStore.freshnessLedger.acceptSummary("server-1", "thread-1", summary(10))
@@ -559,8 +560,8 @@ class SharedThreadStoreReplyThreadDurableTest {
             val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
             val store = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
             store.accept(SharedThreadIntent.Start(sendableReplyRoute()))
-            withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
-            withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) yield() }
+            withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
+            withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
             loader.replyLoads.clear()
             if (diskHasTheSend) reader.frame = replyFrame(count = 16)
             store.accept(
@@ -578,7 +579,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         }
 
     @Test
-    fun aConfirmedSendMissingFromTheDiskRefetchesTheThreadsEnterSnapshot() = runBlocking {
+    fun aConfirmedSendMissingFromTheDiskRefetchesTheThreadsEnterSnapshot() = runTest {
         val (loads, logs) = ownSendCatchUpRun(diskHasTheSend = false)
         assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loads, logs.toString())
         assertEquals(1, logs.size, logs.toString())

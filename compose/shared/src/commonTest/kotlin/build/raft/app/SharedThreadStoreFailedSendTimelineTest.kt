@@ -61,6 +61,7 @@ class SharedThreadStoreFailedSendTimelineTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
+                storeScope = scope,
                 sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )

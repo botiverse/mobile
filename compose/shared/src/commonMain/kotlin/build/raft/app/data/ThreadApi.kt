@@ -6,6 +6,7 @@ import build.raft.app.model.MessageType
 import build.raft.app.parsedMessageTypeOrNull
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -84,7 +85,11 @@ internal interface RaftThreadApi {
 
 internal class RaftThreadApiClient(
     private val transport: SharedThreadNetworkApi,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    // Response bodies are decoded off the caller's dispatcher. Injectable so a virtual-time test
+    // (kotlinx-coroutines-test) keeps the decode on its scheduler instead of a real thread pool
+    // the scheduler cannot see (task #41).
+    private val parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
 ) : RaftThreadApi {
     override suspend fun channelMessages(
         threadId: String,
@@ -102,7 +107,8 @@ internal class RaftThreadApiClient(
         mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 ThreadMessagesPage(
                     messages = wire.messages,
@@ -116,7 +122,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_sync_contract_mismatch",
                 serializer = ListSerializer(WireMessage.serializer()),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 ThreadMessagesPage(
                     messages = wire,
@@ -163,7 +170,8 @@ internal class RaftThreadApiClient(
             randomId = randomId
         ).mapThreadSendBody(
             contractCode = "thread_send_contract_mismatch",
-            diagnosticsLogger = diagnosticsLogger
+            diagnosticsLogger = diagnosticsLogger,
+            parseDispatcher = parseDispatcher
         )
 
     override suspend fun executePendingMentionActions(
@@ -177,7 +185,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_mention_action_contract_mismatch",
                 serializer = MentionActionExecuteResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 wire.results.map { it.toDomain() }
             }
@@ -191,7 +200,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_attachment_url_contract_mismatch",
                 serializer = ThreadAttachmentUrlResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
@@ -202,7 +212,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_attachment_html_preview_url_contract_mismatch",
                 serializer = ThreadAttachmentUrlResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
@@ -213,7 +224,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_attachment_comments_contract_mismatch",
                 serializer = AttachmentCommentsResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 ThreadAttachmentCommentsPage(
                     comments = wire.comments.mapNotNull { it.toThreadAttachmentCommentItem() },
@@ -242,7 +254,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_reaction_contract_mismatch",
                 serializer = MessageMutationResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 wire.toMessageMutationSummary()
             }
@@ -252,7 +265,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_reaction_contract_mismatch",
                 serializer = MessageMutationResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 wire.toMessageMutationSummary()
             }
@@ -262,7 +276,8 @@ internal class RaftThreadApiClient(
             .mapThreadBody(
                 contractCode = "thread_create_contract_mismatch",
                 serializer = CreateOrOpenThreadResponseDto.serializer(),
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                parseDispatcher = parseDispatcher
             ) { wire ->
                 val tid = wire.threadChannelId.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadActionResult(
@@ -553,6 +568,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
     diagnosticsLogger: (String) -> Unit = {},
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
     crossinline transform: (Wire) -> T?,
 ): ThreadApiResult<T> {
     val source = contractCode.removeSuffix("_contract_mismatch")
@@ -566,7 +582,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
         "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     val result =
-        withContext(RaftJsonParseDispatcher) {
+        withContext(parseDispatcher) {
             mapThreadBodySync(contractCode, serializer, transform)
         }
     val resultLabel =
@@ -587,6 +603,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
 private suspend fun HomeNetworkResponse.mapThreadSendBody(
     contractCode: String,
     diagnosticsLogger: (String) -> Unit = {},
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
 ): ThreadApiResult<ThreadMessagesPage> {
     val source = contractCode.removeSuffix("_contract_mismatch")
     val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
@@ -599,7 +616,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
         "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     val result =
-        withContext(RaftJsonParseDispatcher) {
+        withContext(parseDispatcher) {
             mapThreadSendBodySync(contractCode)
         }
     val resultLabel =

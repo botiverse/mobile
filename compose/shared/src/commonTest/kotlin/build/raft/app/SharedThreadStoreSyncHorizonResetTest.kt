@@ -12,7 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -38,6 +38,7 @@ class SharedThreadStoreSyncHorizonResetTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = api,
+                        storeScope = scope,
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     ),
@@ -54,7 +55,7 @@ class SharedThreadStoreSyncHorizonResetTest {
     }
 
     @Test
-    fun horizonResetReReadsTheLatestPageThroughTheGapCatchUp() = runBlocking {
+    fun horizonResetReReadsTheLatestPageThroughTheGapCatchUp() = runTest {
         val reset = outcomeAfter(RealtimeRefreshRequired(scope = RealtimeRefreshScope.Home, reason = RealtimeSyncHorizon.ResetReason))
         assertEquals(1, reset.catchUpCalls)
         assertEquals(0, reset.messageSyncCalls, "never the per-channel /messages/sync delta")

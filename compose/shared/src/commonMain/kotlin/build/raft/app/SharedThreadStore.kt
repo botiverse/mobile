@@ -6,6 +6,7 @@ import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.rwRetryAfterMillis
 import build.raft.app.data.RaftStaleReadRecovery
+import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
@@ -169,6 +170,7 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -1948,8 +1950,9 @@ internal class SharedThreadDataSource(
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
         activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
+        threadParseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
     ) : this(
-        api = RaftThreadApiClient(networkApi, diagnosticsLogger),
+        api = RaftThreadApiClient(networkApi, diagnosticsLogger, threadParseDispatcher),
         sessionStore = sessionStore,
         pendingSendJournal = pendingSendJournal,
         selectedServerStore = selectedServerStore,
@@ -6973,6 +6976,10 @@ internal class SharedThreadStore(
     private val initialAccessLookupDeadline: suspend () -> Unit = {
         delay(ThreadInitialAccessLookupTimeoutMillis)
     },
+    // task #41: the clock of the visible-read coalesce window. Its deferred retry is a `delay`, so a
+    // virtual-time test hands in the scheduler's time source to keep the window and the retry on
+    // one clock; production keeps the monotonic wall clock.
+    private val readCoalesceTimeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val readStateProjection = ThreadReadStateProjection()
     // task #387: seed the first frame from the in-memory reply cache synchronously, so a warm
@@ -9930,7 +9937,7 @@ internal class SharedThreadStore(
                     (result is DataResult.Content || result is DataResult.Empty)
                 ) {
                     lastCompletedReadMarker = current
-                    lastCompletedReadAt = TimeSource.Monotonic.markNow()
+                    lastCompletedReadAt = readCoalesceTimeSource.markNow()
                 }
                 diagnosticsLogger?.invoke(
                     "thread_read_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
