@@ -571,7 +571,10 @@ data class ForwardMessageBundle(
 @Serializable
 data class ForwardMessageSource(
     val label: String,
-    val thread: Boolean = false
+    val thread: Boolean = false,
+    /** Where the source opens (web `canOpenSourceLabel`): the conversation and message, or null. */
+    val channelId: String? = null,
+    val messageId: String? = null
 )
 
 @Serializable

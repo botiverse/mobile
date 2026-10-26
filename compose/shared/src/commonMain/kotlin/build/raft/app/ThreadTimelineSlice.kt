@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -390,6 +391,10 @@ internal fun ThreadTimelineSlice.findThreadImageAttachmentGroup(attachmentId: St
             return ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex)
         }
     }
+    // web handleOpenForwardedAttachment: a forwarded image opens on its own in the viewer.
+    messageCandidates.firstNotNullOfOrNull { it.forwardedAttachment(attachmentId) }
+        ?.takeIf { (_, snapshot) -> snapshot.isForwardImagePreview() }
+        ?.let { (attachment, _) -> return ThreadImageAttachmentGroup(images = listOf(attachment), currentIndex = 0) }
     return null
 }
 
@@ -398,6 +403,33 @@ internal fun ThreadTimelineSlice.findThreadAttachment(attachmentId: String): Raf
         .asSequence()
         .flatMap { it.attachments.asSequence() }
         .firstOrNull { it.id == attachmentId }
+        ?: (listOfNotNull(originMessage) + messages).firstNotNullOfOrNull { it.forwardedAttachment(attachmentId)?.first }
+
+/**
+ * A file a forwarded bundle carries and may open (web: `attachmentPolicy === "projected"` with a
+ * snapshot id), as the thread opens attachments, with its snapshot.
+ */
+private fun RaftThreadMessageItem.forwardedAttachment(
+    attachmentId: String
+): Pair<RaftThreadAttachmentItem, ForwardMessageAttachment>? {
+    val snapshot =
+        forwardBundle?.messages.orEmpty()
+            .asSequence()
+            .filter { it.attachmentsProjected }
+            .flatMap { it.attachments.asSequence() }
+            .firstOrNull { it.id == attachmentId }
+            ?: return null
+    return snapshot.toThreadAttachmentItem(attachmentId) to snapshot
+}
+
+internal fun ForwardMessageAttachment.toThreadAttachmentItem(attachmentId: String = id.orEmpty()): RaftThreadAttachmentItem =
+    RaftThreadAttachmentItem(
+        id = attachmentId,
+        name = filename,
+        mimeType = mimeType.orEmpty(),
+        width = width,
+        height = height
+    )
 
 internal fun ThreadTimelineSlice.findAttachmentCommentTarget(attachmentId: String): ThreadAttachmentCommentTarget? {
     val cleanAttachmentId = attachmentId.trim()

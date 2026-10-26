@@ -102,7 +102,8 @@ enum class RaftMessageForwardedBundleFooterMode {
  * The header (12 x 8dp, wraps, items 8dp apart): a 14dp `forward` and [label] ("Forwarded",
  * `footnote` bold, `foreground-muted`, 4dp apart), [countLabel] ("3 messages", Space Mono
  * `mono-meta`, `foreground-hint`) and, at the end, [source] ("from #launch-week",
- * `caption`, `foreground-hint`; semibold and a control when [onOpenSource] is set).
+ * `caption`, `foreground-hint`; semibold and a control when [onOpenSource] is set, named by
+ * [onOpenSourceLabel]).
  *
  * [items] ([RaftMessageForwardedBundleItem]s) fold on their own: when their text alone (not the
  * attachments) runs past [foldHeight] (8 lines of the item text,
@@ -119,6 +120,7 @@ fun RaftMessageForwardedBundle(
     modifier: Modifier = Modifier,
     source: String? = null,
     onOpenSource: (() -> Unit)? = null,
+    onOpenSourceLabel: String? = null,
     footerLabel: String? = null,
     onFooterClick: (() -> Unit)? = null,
     footerMode: RaftMessageForwardedBundleFooterMode = RaftMessageForwardedBundleFooterMode.WhenFolded,
@@ -160,7 +162,7 @@ fun RaftMessageForwardedBundle(
             }
             if (source != null) {
                 Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.CenterEnd) {
-                    ForwardedSource(source, onOpenSource)
+                    ForwardedSource(source, onOpenSource, onOpenSourceLabel)
                 }
             }
         }
@@ -181,7 +183,7 @@ fun RaftMessageForwardedBundle(
 }
 
 @Composable
-private fun ForwardedSource(source: String, onOpenSource: (() -> Unit)?) {
+private fun ForwardedSource(source: String, onOpenSource: (() -> Unit)?, onClickLabel: String?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     if (onOpenSource == null) {
@@ -192,7 +194,7 @@ private fun ForwardedSource(source: String, onOpenSource: (() -> Unit)?) {
     val pressed = raftIsPressed(interaction)
     RaftText(
         source,
-        modifier = Modifier.clickable(interaction, indication = null, role = Role.Button, onClick = onOpenSource),
+        modifier = Modifier.clickable(interaction, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onOpenSource),
         style =
             typography.caption.copy(
                 fontWeight = FontWeight.SemiBold,

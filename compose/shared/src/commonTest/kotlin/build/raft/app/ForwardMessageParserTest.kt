@@ -10,6 +10,7 @@ import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class ForwardMessageParserTest {
     @Test
@@ -140,9 +141,78 @@ class ForwardMessageParserTest {
         assertEquals("#general", bundle.sourceTitle)
         assertEquals(2, bundle.totalCount)
         assertEquals("m1", bundle.messages.first().id)
-        assertEquals("jor", bundle.messages.first().authorName)
+        assertEquals("@jor", bundle.messages.first().authorName)
         assertEquals("我不是运维 无所谓了", bundle.messages.first().body)
         assertEquals(1, bundle.messages.first().attachmentCount)
+    }
+
+    @Test
+    fun forwardedBundleOrdersItemsAndOpensTheirSourceLikeTheWeb() {
+        val payload = parseSharedChannelMessages(
+            bodyText = """
+                {
+                  "messages": [
+                    {
+                      "id": "forward-msg-2",
+                      "channelId": "channel-9",
+                      "senderType": "user",
+                      "senderId": "user-1",
+                      "senderName": "Ada",
+                      "messageType": "chat",
+                      "content": "",
+                      "createdAt": "2026-07-06T13:00:00.000Z",
+                      "actionMetadata": {
+                        "kind": "forwarded-bundle",
+                        "version": 1,
+                        "forwardedItems": [
+                          {
+                            "index": 0,
+                            "sourceMessageId": "m-late",
+                            "sourceTargetId": "channel-1",
+                            "sourceAuthorSnapshot": { "type": "user", "id": "user-2", "name": "Jor" },
+                            "sourceCreatedAt": "2026-07-06T12:59:00.000Z",
+                            "sourceTargetSnapshot": { "id": "channel-1", "type": "channel", "label": "#general", "labelVisibility": "public" },
+                            "contentSnapshot": "later",
+                            "provenanceState": "available"
+                          },
+                          {
+                            "index": 1,
+                            "sourceMessageId": "m-early",
+                            "sourceTargetId": "channel-1",
+                            "sourceAuthorSnapshot": { "type": "user", "id": "user-3", "name": "Kim" },
+                            "sourceCreatedAt": "2026-07-06T12:58:00.000Z",
+                            "sourceTargetSnapshot": { "id": "channel-1", "type": "channel", "label": "#general", "labelVisibility": "public" },
+                            "contentSnapshot": "earlier",
+                            "attachmentPolicy": "projected",
+                            "attachmentSnapshots": [
+                              { "id": "att-1", "filename": "shot.png", "mimeType": "image/png", "width": 640, "height": 480 }
+                            ],
+                            "provenanceState": "available"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "historyLimited": false
+                }
+            """.trimIndent(),
+            fallbackThreadId = ThreadId("channel-9")
+        )
+
+        val bundle = assertNotNull(payload.messages.single().forwardBundle)
+        assertEquals(listOf("m-early", "m-late"), bundle.messages.map { it.id })
+        assertEquals("Kim", bundle.messages.first().authorName)
+        assertEquals(true, bundle.messages.first().attachmentsProjected)
+        assertEquals("att-1", bundle.messages.first().attachments.single().id)
+        val source = assertNotNull(bundle.visibleSource)
+        assertEquals("#general", source.label)
+        assertEquals("channel-1", source.channelId)
+        assertEquals("m-early", source.messageId)
+        assertEquals(
+            "https://raft.test/s/acme/channel/channel-1?msg=m-early",
+            source.forwardSourcePermalink(serverSlug = "acme", webBaseUrl = "https://raft.test/")
+        )
+        assertNull(source.forwardSourcePermalink(serverSlug = null, webBaseUrl = "https://raft.test"))
     }
 
     @Test

@@ -807,6 +807,8 @@
     <string name="thread_forward_badge">已转发</string>
     <string name="thread_forward_from_source">来自 %1$s</string>
     <string name="thread_forward_from_thread">来自 %1$s · 消息列</string>
+    <string name="thread_forward_open_source">打开源消息</string>
+    <string name="thread_forward_open_attachment">打开 %1$s</string>
     <string name="thread_forward_selected">已选择 %1$d 条</string>
     <string name="thread_forward_placeholder_one">转发 1 条消息</string>
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>

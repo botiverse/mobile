@@ -809,6 +809,8 @@
     <string name="thread_forward_badge">転送済み</string>
     <string name="thread_forward_from_source">%1$s から</string>
     <string name="thread_forward_from_thread">%1$s のスレッドから</string>
+    <string name="thread_forward_open_source">元のメッセージを開く</string>
+    <string name="thread_forward_open_attachment">%1$s を開く</string>
     <string name="thread_forward_selected">%1$d 件選択中</string>
     <string name="thread_forward_placeholder_one">1 件のメッセージを転送しました</string>
     <string name="thread_forward_placeholder_many">%1$d 件のメッセージを転送しました</string>

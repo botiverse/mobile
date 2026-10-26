@@ -231,6 +231,7 @@ import build.raft.app.model.delegatedGroupKey
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
+import build.raft.app.model.ForwardMessageSource
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.agentAvatarFallbackWireValue
@@ -25683,7 +25684,13 @@ private fun ThreadMessageCardContent(
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 onOpenUrl = onOpenMarkdownUrl,
-                                onOpenAll = { onOpenForwardBundle(message.id) }
+                                onOpenAll = { onOpenForwardBundle(message.id) },
+                                // web handleOpenForwardedSource: the source message's link,
+                                // which opens a reply in its thread.
+                                onOpenSource = { visible ->
+                                    visible.forwardSourcePermalink(currentServerSlug)?.let(onOpenMarkdownUrl)
+                                },
+                                onOpenAttachment = onOpenAttachment
                             )
                         } else if (message.isRetracted) {
                             ThreadMessageRetractedBody(
@@ -31737,9 +31744,14 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 // web ForwardedBundleCard attachments (artin #20 gap 18): projected images as the bundle's
 // gallery (raft-ui MessageForwardedBundleGallery, loaded by snapshot id), then the other files
 // as raft-ui's 22dp chips ("release-notes.md · markdown"). Legacy payloads without snapshots
-// fall back to the muted count label.
+// fall back to the muted count label. Projected files open with [onOpenAttachment] (by snapshot
+// id; web handleOpenForwardedAttachment).
 @Composable
-private fun ThreadForwardAttachments(item: ForwardMessageItem, modifier: Modifier = Modifier) {
+private fun ThreadForwardAttachments(
+    item: ForwardMessageItem,
+    modifier: Modifier = Modifier,
+    onOpenAttachment: ((String) -> Unit)? = null
+) {
     if (item.attachments.isNotEmpty()) {
         // Without the thread's inline-image host (e.g. a page that doesn't provide one) the
         // images could never load, so they stay file chips.
@@ -31753,17 +31765,19 @@ private fun ThreadForwardAttachments(item: ForwardMessageItem, modifier: Modifie
         val files = item.attachments.filterNot { it in images }
         Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (images.isNotEmpty()) {
-                build.raft.designsystem.components.RaftMessageForwardedBundleGallery(count = images.size) { index ->
-                    val image = images[index]
+                val openLabels = images.map { stringResource(MR.strings.thread_forward_open_attachment, it.filename) }
+                build.raft.designsystem.components.RaftMessageForwardedBundleGallery(
+                    count = images.size,
+                    onClick =
+                        if (onOpenAttachment != null) {
+                            { index: Int -> images[index].id?.let { onOpenAttachment(it) } }
+                        } else {
+                            null
+                        },
+                    onClickLabel = { index -> openLabels[index] }
+                ) { index ->
                     ThreadImageAttachmentContent(
-                        attachment =
-                            RaftThreadAttachmentItem(
-                                id = image.id.orEmpty(),
-                                name = image.filename,
-                                mimeType = image.mimeType.orEmpty(),
-                                width = image.width,
-                                height = image.height
-                            ),
+                        attachment = images[index].toThreadAttachmentItem(),
                         fit = RaftMessageImageFit.Cover
                     )
                 }
@@ -31771,9 +31785,17 @@ private fun ThreadForwardAttachments(item: ForwardMessageItem, modifier: Modifie
             if (files.isNotEmpty()) {
                 build.raft.designsystem.components.RaftMessageForwardedBundleAttachments {
                     files.forEach { attachment ->
+                        val attachmentId = attachment.id?.takeIf { item.attachmentsProjected }
                         build.raft.designsystem.components.RaftMessageForwardedBundleAttachment(
                             name = attachment.filename,
-                            meta = "· ${forwardAttachmentKindLabel(attachment.mimeType)}"
+                            meta = "· ${forwardAttachmentKindLabel(attachment.mimeType)}",
+                            onClick =
+                                if (attachmentId != null && onOpenAttachment != null) {
+                                    { onOpenAttachment(attachmentId) }
+                                } else {
+                                    null
+                                },
+                            onClickLabel = stringResource(MR.strings.thread_forward_open_attachment, attachment.filename)
                         )
                     }
                 }
@@ -31809,6 +31831,14 @@ private fun forwardAttachmentKindLabel(mimeType: String?): String {
 
 internal const val ThreadForwardBundleInlinePreviewLimit = 3
 
+/** The link to a forwarded bundle's source message (`/s/<server>/channel/<id>?msg=<message>`). */
+internal fun ForwardMessageSource.forwardSourcePermalink(serverSlug: String?, webBaseUrl: String? = null): String? {
+    val slug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val channel = channelId?.takeIf { it.isNotBlank() } ?: return null
+    val message = messageId?.takeIf { it.isNotBlank() } ?: return null
+    return "${sharedSettingsResolvedWebBaseUrl(webBaseUrl)}/s/$slug/channel/$channel?msg=$message"
+}
+
 /**
  * The forwarded bundle under a message (artin #20 gap 18): raft-ui MessageForwardedBundle as the
  * web's ForwardedBundleCard draws it. A `forward` icon and "Forwarded", the count in Space Mono
@@ -31824,7 +31854,9 @@ internal fun ThreadForwardBundleCard(
     messageBodyTextStyle: TextStyle,
     modifier: Modifier = Modifier,
     onOpenUrl: (String) -> Unit = {},
-    onOpenAll: (() -> Unit)? = null
+    onOpenAll: (() -> Unit)? = null,
+    onOpenSource: ((ForwardMessageSource) -> Unit)? = null,
+    onOpenAttachment: ((String) -> Unit)? = null
 ) {
     val count = bundle.displayCount()
     val lineHeight =
@@ -31842,6 +31874,13 @@ internal fun ThreadForwardBundleCard(
                 stringResource(MR.strings.thread_forward_from_source, visible.label)
             }
         }
+    val openableSource = bundle.visibleSource?.takeIf { it.channelId != null && it.messageId != null }
+    val openSource: (() -> Unit)? =
+        if (openableSource != null && onOpenSource != null) {
+            { onOpenSource(openableSource) }
+        } else {
+            null
+        }
     val liveTimeContext = LocalRaftTimeContextProvider.current?.current
     build.raft.designsystem.components.RaftMessageForwardedBundle(
         label = stringResource(MR.strings.thread_forward_badge),
@@ -31854,6 +31893,9 @@ internal fun ThreadForwardBundleCard(
         // raft-ui `mt-1`: the message column already spaces its parts 4dp apart.
         modifier = modifier,
         source = source,
+        // web `canOpenSourceLabel`: only a source with a conversation and message opens.
+        onOpenSource = openSource,
+        onOpenSourceLabel = stringResource(MR.strings.thread_forward_open_source),
         footerLabel =
             onOpenAll?.let {
                 if (count == 1) {
@@ -31887,7 +31929,8 @@ internal fun ThreadForwardBundleCard(
                     } else {
                         null
                     },
-                attachments = if (hasAttachments) ({ ThreadForwardAttachments(item) }) else null
+                attachments =
+                    if (hasAttachments) ({ ThreadForwardAttachments(item, onOpenAttachment = onOpenAttachment) }) else null
             ) {
                 if (preview.body.isNotBlank()) {
                     // Web's ForwardedBundleCard renders each forwarded body

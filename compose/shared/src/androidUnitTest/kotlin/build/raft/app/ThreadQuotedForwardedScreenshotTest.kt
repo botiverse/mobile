@@ -204,6 +204,12 @@ private fun QuotedRows() {
         memberAvatarResolver = EmptyRaftMemberAvatarResolver,
         onOpen = {},
     )
+    ThreadQuotedPermalinkCard(
+        state = ThreadQuotedPermalinkUiState.Retracted,
+        target = null,
+        memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+        onOpen = {},
+    )
 }
 
 @Composable
@@ -215,7 +221,7 @@ private fun ForwardedRows() {
                 title = "Forwarded",
                 sourceTitle = "launch-week",
                 totalCount = 3,
-                visibleSource = ForwardMessageSource("#launch-week"),
+                visibleSource = ForwardMessageSource("#launch-week", channelId = "c-launch", messageId = "f-1"),
                 messages =
                     listOf(
                         ForwardMessageItem(
@@ -247,6 +253,8 @@ private fun ForwardedRows() {
             ),
         messageBodyTextStyle = bodyStyle,
         onOpenAll = {},
+        onOpenSource = {},
+        onOpenAttachment = {},
     )
     ThreadForwardBundleCard(
         bundle =
@@ -275,5 +283,7 @@ private fun ForwardedRows() {
             ),
         messageBodyTextStyle = bodyStyle,
         onOpenAll = {},
+        onOpenSource = {},
+        onOpenAttachment = {},
     )
 }

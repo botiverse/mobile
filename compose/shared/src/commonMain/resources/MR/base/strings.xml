@@ -807,6 +807,8 @@
     <string name="thread_forward_badge">Forwarded</string>
     <string name="thread_forward_from_source">from %1$s</string>
     <string name="thread_forward_from_thread">from %1$s · thread</string>
+    <string name="thread_forward_open_source">Open source message</string>
+    <string name="thread_forward_open_attachment">Open %1$s</string>
     <string name="thread_forward_selected">%1$d selected</string>
     <string name="thread_forward_placeholder_one">FORWARDED 1 MESSAGE</string>
     <string name="thread_forward_placeholder_many">FORWARDED %1$d MESSAGES</string>
