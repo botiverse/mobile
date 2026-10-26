@@ -48,6 +48,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
@@ -409,7 +410,8 @@ fun RaftMessageActionCardProperties(
  * One row of [RaftMessageActionCardProperties]: the [label] (`text-footnote` medium
  * `foreground-hint`, at most 160dp) and its [value] (`text-callout` `foreground`; the list
  * sets its height and padding). [mono] sets the value in the mono face (an id, a path);
- * [valueColor] greys a hidden value.
+ * [valueColor] greys a hidden value; [valueMaxLines] cuts a long value at that many lines with
+ * an ellipsis (raft-ui `line-clamp-*` on the value).
  */
 @Composable
 fun RaftMessageActionCardProperty(
@@ -417,6 +419,7 @@ fun RaftMessageActionCardProperty(
     value: String,
     mono: Boolean = false,
     valueColor: Color = Color.Unspecified,
+    valueMaxLines: Int = Int.MAX_VALUE,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -427,6 +430,8 @@ fun RaftMessageActionCardProperty(
         value,
         style = valueStyle,
         color = if (valueColor == Color.Unspecified) colors.foreground else valueColor,
+        maxLines = valueMaxLines,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 

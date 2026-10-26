@@ -685,6 +685,7 @@
     <string name="thread_action_card_reconfirm">重新确认</string>
     <string name="thread_action_card_reconfirm_failed">重新确认失败</string>
     <string name="thread_action_card_blocked_target_server">这个操作会在 %1$s 上执行，请切换到 %1$s 后再执行。</string>
+    <string name="thread_action_card_runs_on_server">将在 %1$s 上执行</string>
     <string name="thread_action_card_blocked_source_workspace">这是历史操作卡片，只能在来源工作空间执行。</string>
     <string name="thread_action_card_field_description">描述</string>
     <string name="thread_action_card_field_humans">人类</string>

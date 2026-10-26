@@ -232,6 +232,12 @@ class DisplayComponentScreenshotTest {
                     RaftButton("Send for Review", onClick = {}, size = RaftButtonSize.Lg, trailingIcon = { Glyph(RaftGlyph.ChevronRight) })
                     RaftButton("Continue", onClick = {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Xl, modifier = Modifier.width(240.dp))
                 }
+                Caption("A label that doesn't fit ends in an ellipsis; trailing text (a link's domain) stays whole")
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(132.dp)) { RaftButton("Approve the quarterly release", onClick = {}) }
+                    RaftButton("Open settings", onClick = {}, variant = RaftButtonVariant.Ghost, trailingText = "linear.app")
+                    Box(Modifier.width(180.dp)) { RaftButton("Open integration settings", onClick = {}, trailingText = "linear.app") }
+                }
             }
         }
 
