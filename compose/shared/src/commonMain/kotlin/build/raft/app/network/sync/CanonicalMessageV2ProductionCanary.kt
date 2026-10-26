@@ -1668,6 +1668,10 @@ private data class CanonicalActionMetadataProducer(
     val executedAt: String? = null,
     val executedByUserName: String? = null,
     val result: CanonicalActionCardResultV2? = null,
+    val sourceServerId: String? = null,
+    val targetServerName: String? = null,
+    val confirmationVersion: Int? = null,
+    val presentation: JsonElement? = null,
     val forwardedItems: List<CanonicalForwardedBundleProducerItem> = emptyList(),
 )
 
@@ -1712,6 +1716,10 @@ private fun JsonElement?.toCanonicalActionMetadataV2OrNull(): CanonicalActionMet
                 executedAt = producer.executedAt,
                 executedByUserName = producer.executedByUserName,
                 result = producer.result,
+                sourceServerId = producer.sourceServerId?.takeIf { it.isCanonicalV2Value() },
+                targetServerName = producer.targetServerName?.trim()?.takeIf { it.isNotEmpty() },
+                confirmationVersion = producer.confirmationVersion?.takeIf { it >= 0 },
+                presentation = producer.presentation as? JsonObject,
             )
         }
         "forwarded-bundle" -> CanonicalActionMetadataV2.ForwardedBundle(
@@ -1795,6 +1803,11 @@ private fun JsonElement.hasSupportedCanonicalActionProducerShape(): Boolean {
 
 private val ACTION_CARD_ROOT_KEYS = setOf(
     "kind", "version", "action", "state", "executedAt", "executedByUserName", "result",
+    // Carried into the fact (manifest v8 optional keys).
+    "sourceServerId", "targetServerName", "confirmationVersion", "presentation",
+    // Admitted but never carried: a user pointer id and the conversion bookkeeping. The App reads none of
+    // them (the card's `state` already says frozen / reconfirm_required).
+    "executedByUserId", "conversionJobId", "conversionEpoch", "reconfirmedAt",
 )
 private val ACTION_CARD_ACTION_KEYS = setOf(
     "type", "name", "description", "visibility", "channel", "suggestedComputer", "requiredComputer",
