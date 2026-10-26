@@ -10986,7 +10986,8 @@ internal fun SharedHomeSearchPanel(
         rememberSharedHomeSearchInputFocus(
             focusRequester = searchFocusRequester,
             inputActive = inputActive,
-            focusInputRequest = focusInputRequest
+            focusInputRequest = focusInputRequest,
+            onFocusInputRequest = searchEditor::selectAll
         )
     val returnHighlight = rememberHomeSearchReturnHighlight(pageVisible = inputActive, visibleTick = visibleTick, hoisted = returnHighlightState)
     // The initial autofocus (pushed search pages) runs once, the first time the page shows;

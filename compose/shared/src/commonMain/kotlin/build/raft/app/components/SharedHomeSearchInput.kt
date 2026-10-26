@@ -105,6 +105,17 @@ internal class SharedHomeSearchEditorOwner(initialText: String) {
         value = TextFieldValue(nextText, selection = TextRange(nextText.length))
         onTextChange(nextText)
     }
+
+    /**
+     * Selects the whole query so the next keystroke replaces it (re-tapping the selected Search
+     * tab, artin 2026-10-26). The text is unchanged, so the store gets no projection; an empty
+     * field keeps its value.
+     */
+    fun selectAll() {
+        val text = value.text
+        if (text.isEmpty()) return
+        value = TextFieldValue(text, selection = TextRange(0, text.length))
+    }
 }
 
 private fun submitSharedHomeSearchInput(

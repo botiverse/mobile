@@ -44,6 +44,7 @@ internal fun rememberSharedHomeSearchInputFocus(
     focusRequester: FocusRequester,
     inputActive: Boolean,
     focusInputRequest: Int,
+    onFocusInputRequest: () -> Unit = {},
 ): SharedHomeSearchInputFocus {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -68,11 +69,13 @@ internal fun rememberSharedHomeSearchInputFocus(
         }
         imeWasVisible = imeVisible
     }
-    // Re-tapping the selected Search tab focuses the field; a request made while the page is
-    // hidden is dropped, never replayed when it is shown again.
+    // Re-tapping the selected Search tab focuses the field and selects its text
+    // ([onFocusInputRequest]); a request made while the page is hidden is dropped, never replayed
+    // when it is shown again.
     val focusRequestFence = remember { AppShellScrollToTopRequestFence(focusInputRequest) }
     LaunchedEffect(focusInputRequest) {
         if (focusRequestFence.consume(focusInputRequest) && inputActive) {
+            onFocusInputRequest()
             focusRequester.requestFocus()
             keyboardController?.show()
         }
