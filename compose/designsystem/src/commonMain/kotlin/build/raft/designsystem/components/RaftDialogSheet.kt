@@ -72,8 +72,9 @@ fun RaftDialogSheetSurface(
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
+    closeEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
-) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitVariant, commitIcon, closeLabel, clearNavigationBar = false, content)
+) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, content)
 
 @Composable
 private fun RaftDialogSheetSurfaceImpl(
@@ -86,6 +87,7 @@ private fun RaftDialogSheetSurfaceImpl(
     commitVariant: RaftButtonVariant,
     commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
+    closeEnabled: Boolean,
     clearNavigationBar: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -105,7 +107,7 @@ private fun RaftDialogSheetSurfaceImpl(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X)
+                RaftBackButton(onClick = onClose, label = closeLabel, glyph = RaftGlyph.X, enabled = closeEnabled)
                 RaftText(
                     title,
                     Modifier.weight(1f).semantics { heading() },
@@ -175,7 +177,8 @@ private val RaftDialogSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
  * commit button. It appears without animation.
  *
  * Either way × (and Cancel) and Back call [onDismissRequest]; a tap on the scrim does not, so a
- * stray tap loses nothing. Use it for a dialog with several fields, a long list or steps; a
+ * stray tap loses nothing. [closeEnabled] false disables × and Cancel while the commit is in
+ * flight (web `closeDisabled`); the caller's [onDismissRequest] should ignore Back then too. Use it for a dialog with several fields, a long list or steps; a
  * decision, a single input or content that is only read stays [RaftDialog].
  */
 @Composable
@@ -190,6 +193,7 @@ fun RaftDialogSheet(
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
+    closeEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     RaftWindowDialog(onDismissRequest = onDismissRequest) {
@@ -214,6 +218,7 @@ fun RaftDialogSheet(
                         commitIcon = commitIcon,
                         closeLabel = closeLabel,
                         cancelLabel = cancelLabel,
+                        closeEnabled = closeEnabled,
                         content = content,
                     )
                 }
@@ -228,6 +233,7 @@ fun RaftDialogSheet(
                     commitVariant = commitVariant,
                     commitIcon = commitIcon,
                     closeLabel = closeLabel,
+                    closeEnabled = closeEnabled,
                     content = content,
                 )
             }
@@ -246,6 +252,7 @@ private fun RaftDialogSheetBottom(
     commitVariant: RaftButtonVariant,
     commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
+    closeEnabled: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val slide = remember { Animatable(1f) }
@@ -274,6 +281,7 @@ private fun RaftDialogSheetBottom(
             commitVariant = commitVariant,
             commitIcon = commitIcon,
             closeLabel = closeLabel,
+            closeEnabled = closeEnabled,
             clearNavigationBar = true,
             content = content,
         )
@@ -304,6 +312,7 @@ fun RaftDialogSheetCenteredSurface(
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
+    closeEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -315,7 +324,7 @@ fun RaftDialogSheetCenteredSurface(
                 .heightIn(max = RaftDialogSheetDefaults.CenteredMaxHeight)
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog),
         ) {
-            RaftDialogHeader(title = title, onClose = onClose, closeLabel = closeLabel)
+            RaftDialogHeader(title = title, onClose = onClose, closeLabel = closeLabel, closeEnabled = closeEnabled)
             Column(
                 Modifier.fillMaxWidth().weight(1f, fill = false).padding(top = 6.dp),
                 content = content,
@@ -325,7 +334,7 @@ fun RaftDialogSheetCenteredSurface(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RaftButton(text = cancelLabel, onClick = onClose, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                RaftButton(text = cancelLabel, onClick = onClose, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg, enabled = closeEnabled)
                 if (commitLabel != null) {
                     RaftButton(
                         text = commitLabel,

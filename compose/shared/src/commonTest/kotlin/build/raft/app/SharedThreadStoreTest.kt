@@ -17890,7 +17890,7 @@ class SharedThreadStoreTest {
         override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
     }
 
-    private class RecordingActionCardsApi(
+    internal class RecordingActionCardsApi(
         private val markResponse: HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"messageId":"m-card","metadata":{"kind":"action-card"}}"""),
         private val executeResponse: HomeNetworkResponse =

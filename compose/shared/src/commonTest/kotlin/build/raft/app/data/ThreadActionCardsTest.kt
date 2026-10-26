@@ -172,4 +172,67 @@ class ThreadActionCardsTest {
         assertEquals("Unsafe demo URL override", build.raft.app.humanizeActionCardMetadataKey("unsafeDemoUrlOverride"))
         assertEquals("Recover app owner", build.raft.app.humanizeActionCardType("integration:recover_app_owner"))
     }
+
+    @Test
+    fun installMarketplaceCardKeepsTheBoundSetAndNeverRunsAsAGenericInlineCard() {
+        // packages/shared/src/actionCards.ts integrationInstallMarketplaceAppOperationSchema.
+        val wire =
+            json.decodeFromString<WireActionCardMetadata>(
+                """
+                {
+                  "kind":"action-card",
+                  "state":"prepared",
+                  "confirmationVersion":3,
+                  "action":{
+                    "type":"integration:install_marketplace_app",
+                    "clientId":"5b0c2a51-8f0e-4f6e-9d8a-0f5d7d1e4a11",
+                    "clientKey":"linear",
+                    "clientName":"Linear",
+                    "agentId":"2d9f6c1e-4b7a-4c3e-8a9b-6e5f4d3c2b1a",
+                    "agentName":"lumen",
+                    "scopes":["openid","agent:read"],
+                    "installScopes":["openid","profile","agent:read"],
+                    "installGroups":[],
+                    "installTextRevisionId":"6f1e2d3c-4b5a-4968-8776-655443322110",
+                    "installText":{"name":"Linear","description":"Issues","whenToUse":"Filing release issues"}
+                  },
+                  "presentation":{"title":"Install Linear on this Server","confirmLabel":"Install App","genericApprovalAllowed":true,"displayItems":[]}
+                }
+                """.trimIndent()
+            )
+
+        val card = assertNotNull(wire.toThreadActionCard())
+        assertEquals(listOf("openid", "profile", "agent:read"), card.installScopes)
+        assertEquals(emptyList(), card.installGroups)
+        assertTrue(card.installSetBound)
+        assertTrue(card.isInstallMarketplaceAppAction())
+        // The server allows a generic approval; the app still confirms the bound set first.
+        assertTrue(card.genericApprovalAllowed)
+        assertFalse(card.isGenericInlineCommitAction())
+        assertTrue(card.isSupportedCommitAction())
+
+        // "No groups" ([]) survives the message projection, distinct from "not bound" (absent).
+        val projected = assertNotNull(actionCardFromMessageMetadata(card.toMessageMetadata()))
+        assertEquals(card.installScopes, projected.installScopes)
+        assertEquals(emptyList(), projected.installGroups)
+        assertTrue(projected.installSetBound)
+        assertEquals("6f1e2d3c-4b5a-4968-8776-655443322110", projected.installTextRevisionId)
+        assertEquals(ThreadActionCardInstallText("Linear", "Issues", "Filing release issues"), projected.boundInstallText)
+        val unbound = assertNotNull(actionCardFromMessageMetadata(card.copy(installScopes = null, installGroups = null).toMessageMetadata()))
+        assertEquals(null, unbound.installScopes)
+        assertFalse(unbound.installSetBound)
+    }
+
+    @Test
+    fun recoverOwnerCardKeepsItsTargetAgentId() {
+        val wire =
+            json.decodeFromString<WireActionCardMetadata>(
+                """
+                {"kind":"action-card","state":"prepared","action":{"type":"integration:recover_app_owner","clientKey":"build-monitor","targetAgent":"2d9f6c1e-4b7a-4c3e-8a9b-6e5f4d3c2b1a"}}
+                """.trimIndent()
+            )
+        val card = assertNotNull(wire.toThreadActionCard())
+        assertEquals("2d9f6c1e-4b7a-4c3e-8a9b-6e5f4d3c2b1a", card.targetAgent)
+        assertEquals(card.targetAgent, actionCardFromMessageMetadata(card.toMessageMetadata())?.targetAgent)
+    }
 }

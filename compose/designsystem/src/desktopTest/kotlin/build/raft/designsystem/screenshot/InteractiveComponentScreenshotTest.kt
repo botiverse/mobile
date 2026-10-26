@@ -830,6 +830,18 @@ class InteractiveComponentScreenshotTest {
                         modifier = Modifier.height(320.dp),
                     ) {}
                 }
+                Column(Modifier.width(358.dp)) {
+                    Caption("Committing: × and commit disabled (web closeDisabled)", Modifier.padding(bottom = 12.dp))
+                    RaftDialogSheetSurface(
+                        title = "Install App",
+                        commitLabel = "Install",
+                        onCommit = {},
+                        onClose = {},
+                        commitEnabled = false,
+                        closeEnabled = false,
+                        modifier = Modifier.height(320.dp),
+                    ) {}
+                }
             }
         }
 

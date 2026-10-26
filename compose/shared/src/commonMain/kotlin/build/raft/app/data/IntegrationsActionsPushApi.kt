@@ -5,6 +5,7 @@ import build.raft.app.model.MessageId
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
@@ -264,12 +265,47 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
     return DataResult.Content(value)
 }
 
-private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> =
-    mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
+private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> {
+    if (!isSuccessful) {
+        // routes/actions.ts answers a refusal with `{ error, code }`; keep both so a caller can
+        // name a refusal no retry fixes (an install card's 409 `APP_PERMISSIONS_CHANGED`, ...).
+        val envelope = actionErrorEnvelopeOrNull()
+        val serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
+        if (code == 401) {
+            // An expired session: the route signs out like every other card path.
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session", serverMessage = serverMessage)
+            )
+        }
+        return DataResult.Error(
+            ScreenError(
+                code = contractCode,
+                retryable = code >= 500,
+                serverMessage = serverMessage,
+                serverCode = envelope?.code?.takeIf { it.isNotBlank() },
+                serverFields =
+                    buildMap {
+                        // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
+                        envelope?.currentTextRevisionId?.takeIf { it.isNotBlank() }?.let { put("current_text_revision_id", it) }
+                    },
+            )
+        )
+    }
+    return mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
         val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
         val card = wire.metadata.toThreadActionCard()
         ActionCardResult(messageId = id, metadataPresent = wire.metadata != null, actionCard = card)
     }
+}
+
+private fun HomeNetworkResponse.actionErrorEnvelopeOrNull(): ActionErrorEnvelopeDto? {
+    val payload = errorBodyText?.takeIf { it.isNotBlank() }
+        ?: bodyText?.takeIf { it.isNotBlank() }
+        ?: return null
+    return runCatching {
+        integrationsActionsPushJson.decodeFromString(ActionErrorEnvelopeDto.serializer(), payload)
+    }.getOrNull()
+}
 
 private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult<PushCommandResult> =
     mapApiBody(contractCode, OkResponseDto.serializer()) { wire ->
@@ -356,6 +392,14 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 }
 
 // ── Wire DTOs ──
+
+@Serializable
+private data class ActionErrorEnvelopeDto(
+    val error: String? = null,
+    val code: String? = null,
+    @SerialName("current_text_revision_id")
+    val currentTextRevisionId: String? = null,
+)
 
 @Serializable
 private data class AgentIntegrationsErrorDto(

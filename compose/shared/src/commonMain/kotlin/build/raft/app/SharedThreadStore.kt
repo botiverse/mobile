@@ -72,6 +72,8 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.isGenericInlineCommitAction
+import build.raft.app.data.installSetBound
+import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
@@ -3656,12 +3658,35 @@ internal class SharedThreadDataSource(
                 commitChannelAddMembersActionCard(payload, messageId, card)
             card.type.equals("integration:approve_agent_login", ignoreCase = true) ->
                 executeInlineThreadActionCard(messageId, card)
+            // web InstallAppCardDialog: runs only from the confirmation of the bound set.
+            card.isInstallMarketplaceAppAction() ->
+                DataResult.Error(ScreenError(code = "action_card_install_confirm_required", retryable = false))
             card.isGenericInlineCommitAction() ->
                 executeInlineThreadActionCard(messageId, card)
             else ->
                 DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
         }
     }
+
+    /**
+     * The Install of an `integration:install_marketplace_app` card's confirmation (web
+     * `InstallAppCardDialog`): `POST /actions/:id/execute` with the card's state and
+     * confirmation version and nothing else, so the server installs the set it bound to the
+     * card. A card prepared before that binding is refused here, as the web disables Install.
+     */
+    suspend fun confirmInstallMarketplaceAppActionCard(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> =
+        when {
+            !card.isInstallMarketplaceAppAction() ->
+                DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+            card.isFrozen ->
+                DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+            !card.installSetBound ->
+                DataResult.Error(ScreenError(code = "action_card_install_unbound", retryable = false))
+            else -> executeInlineThreadActionCard(messageId, card)
+        }
 
     /**
      * web ActionCard Reconfirm: POST /actions/:id/reconfirm brings a `reconfirm_required` card

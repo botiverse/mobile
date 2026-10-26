@@ -54,6 +54,24 @@ internal data class ThreadActionCard(
     val clientKey: String? = null,
     val clientName: String? = null,
     val scopes: List<String> = emptyList(),
+    /**
+     * `integration:install_marketplace_app`: the app's login scopes and data groups the server
+     * bound to the card at prepare time (wire `installScopes` / `installGroups`, audit V-85).
+     * Installing approves exactly these. Null (absent on the wire) is a card prepared before the
+     * binding existed, which can't be installed; an empty list is "none".
+     */
+    val installScopes: List<String>? = null,
+    val installGroups: List<String>? = null,
+    /**
+     * `integration:install_marketplace_app` with app prompt-text consent (slock #proj-apps task
+     * #4): the app's prompt-text revision the server bound to the card (wire
+     * `installTextRevisionId`) and its raw text (wire `installText`). Installing confirms exactly
+     * this revision, so the confirmation must show it.
+     */
+    val installTextRevisionId: String? = null,
+    val installText: ThreadActionCardInstallText? = null,
+    /** `integration:recover_app_owner`: the agent id that becomes the app's owner. */
+    val targetAgent: String? = null,
     val metadataItems: List<ThreadActionCardMetadataItem> = emptyList(),
     val presentationTitle: String? = null,
     val presentationConfirmLabel: String? = null,
@@ -83,6 +101,14 @@ internal data class ThreadActionCard(
     val needsReconfirmation: Boolean
         get() = state.equals("reconfirm_required", ignoreCase = true)
 }
+
+/** Wire `installText`: the three fields an app adds to agent prompts. Raw publisher text. */
+@Serializable
+internal data class ThreadActionCardInstallText(
+    val name: String = "",
+    val description: String? = null,
+    val whenToUse: String? = null,
+)
 
 @Serializable
 internal data class ThreadActionCardMetadataItem(
@@ -144,6 +170,11 @@ internal data class WireActionCardAction(
     val clientKey: String? = null,
     val clientName: String? = null,
     val scopes: List<String> = emptyList(),
+    val installScopes: List<String>? = null,
+    val installGroups: List<String>? = null,
+    val installTextRevisionId: String? = null,
+    val installText: ThreadActionCardInstallText? = null,
+    val targetAgent: String? = null,
 )
 
 @Serializable
@@ -200,6 +231,11 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         clientKey = action.clientKey?.takeIf { it.isNotBlank() },
         clientName = action.clientName?.takeIf { it.isNotBlank() },
         scopes = action.scopes,
+        installScopes = action.installScopes,
+        installGroups = action.installGroups,
+        installTextRevisionId = action.installTextRevisionId?.takeIf { it.isNotBlank() },
+        installText = action.installText,
+        targetAgent = action.targetAgent?.takeIf { it.isNotBlank() },
         metadataItems = meta.presentation?.displayItems?.toSafeServerPresentationItems()?.takeIf { it.isNotEmpty() }
             ?: actionObject.toSafeActionCardMetadataItems(),
         presentationTitle = meta.presentation?.title?.takeIf { it.isNotBlank() },
@@ -246,6 +282,13 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("clientKey", clientKey)
         putString("clientName", clientName)
         putList("scopes", scopes)
+        putNullableList("installScopes", installScopes)
+        putNullableList("installGroups", installGroups)
+        putString("installTextRevisionId", installTextRevisionId)
+        installText?.let {
+            put("${ActionCardMetadataPrefix}installText", threadActionCardJson.encodeToString(ThreadActionCardInstallText.serializer(), it))
+        }
+        putString("targetAgent", targetAgent)
         putMetadataItems("metadataItems", metadataItems)
         putString("presentationTitle", presentationTitle)
         putString("presentationConfirmLabel", presentationConfirmLabel)
@@ -292,6 +335,14 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         clientKey = metadata["${ActionCardMetadataPrefix}clientKey"]?.takeIf { it.isNotBlank() },
         clientName = metadata["${ActionCardMetadataPrefix}clientName"]?.takeIf { it.isNotBlank() },
         scopes = metadata.decodeList("scopes"),
+        installScopes = metadata.decodeNullableList("installScopes"),
+        installGroups = metadata.decodeNullableList("installGroups"),
+        installTextRevisionId = metadata["${ActionCardMetadataPrefix}installTextRevisionId"]?.takeIf { it.isNotBlank() },
+        installText =
+            metadata["${ActionCardMetadataPrefix}installText"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ThreadActionCardInstallText.serializer(), raw) }.getOrNull()
+            },
+        targetAgent = metadata["${ActionCardMetadataPrefix}targetAgent"]?.takeIf { it.isNotBlank() },
         metadataItems = metadata.decodeMetadataItems("metadataItems"),
         presentationTitle = metadata["${ActionCardMetadataPrefix}presentationTitle"]?.takeIf { it.isNotBlank() },
         presentationConfirmLabel = metadata["${ActionCardMetadataPrefix}presentationConfirmLabel"]?.takeIf { it.isNotBlank() },
@@ -353,7 +404,28 @@ internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
         type.equals("channel:create", ignoreCase = true) ||
         type.equals("channel:add_member", ignoreCase = true) ||
         type.equals("integration:approve_agent_login", ignoreCase = true) ||
+        isInstallMarketplaceAppAction() ||
         isGenericInlineCommitAction()
+
+internal const val InstallMarketplaceAppActionCardType = "integration:install_marketplace_app"
+
+/**
+ * `integration:install_marketplace_app` (web `InstallAppCardDialog`, audit V-85): installing
+ * approves the app's whole declared set on this Server, not just this login's scopes, so the
+ * card's button opens a confirmation of the set bound to the card; only that dialog's Install
+ * executes it. The server marks it `genericApprovalAllowed`, so it must never fall into the
+ * generic one-tap execute.
+ */
+internal fun ThreadActionCard.isInstallMarketplaceAppAction(): Boolean =
+    type.equals(InstallMarketplaceAppActionCardType, ignoreCase = true)
+
+/** The prompt text bound to an install card (web `readInstallCardPromptText`); null when none. */
+internal val ThreadActionCard.boundInstallText: ThreadActionCardInstallText?
+    get() = installText.takeIf { installTextRevisionId != null }
+
+/** The server bound the install set to the card; a card prepared before that can't be installed (409). */
+internal val ThreadActionCard.installSetBound: Boolean
+    get() = installScopes != null && installGroups != null
 
 /**
  * Server-prepared operation cards are canonical, human-commit requests. A
@@ -369,6 +441,7 @@ internal fun ThreadActionCard.isGenericInlineCommitAction(): Boolean =
         !type.equals("channel:add_member", ignoreCase = true) &&
         !type.equals("integration:approve_agent_login", ignoreCase = true) &&
         !type.equals("integration:update_app_registration", ignoreCase = true) &&
+        !isInstallMarketplaceAppAction() &&
         (
             genericApprovalAllowed ||
                 type.equals("integration:register_app", ignoreCase = true) ||
@@ -382,6 +455,12 @@ private fun MutableMap<String, String>.putString(key: String, value: String?) {
 
 private fun MutableMap<String, String>.putList(key: String, value: List<String>) {
     if (value.isEmpty()) return
+    put("$ActionCardMetadataPrefix$key", threadActionCardJson.encodeToString(ListSerializer(String.serializer()), value))
+}
+
+/** Like [putList], but an empty list is kept ("[]"): absent and empty mean different things. */
+private fun MutableMap<String, String>.putNullableList(key: String, value: List<String>?) {
+    if (value == null) return
     put("$ActionCardMetadataPrefix$key", threadActionCardJson.encodeToString(ListSerializer(String.serializer()), value))
 }
 
@@ -404,6 +483,11 @@ private fun Map<String, String>.decodeList(key: String): List<String> {
     } catch (_: SerializationException) {
         raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
     }
+}
+
+private fun Map<String, String>.decodeNullableList(key: String): List<String>? {
+    if (!containsKey("$ActionCardMetadataPrefix$key")) return null
+    return decodeList(key)
 }
 
 private fun Map<String, String>.decodeMetadataItems(key: String): List<ThreadActionCardMetadataItem> {

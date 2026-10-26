@@ -146,6 +146,7 @@ fun RaftDialogHeader(
     description: String? = null,
     onClose: (() -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
+    closeEnabled: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -168,7 +169,7 @@ fun RaftDialogHeader(
                 // `-my-1.5 -mr-1.5`: the 32dp button doesn't make the header taller and
                 // its glyph lines up with the body's edge.
                 Box(Modifier.raftBleed(end = 6.dp, vertical = 6.dp)) {
-                    RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost) {
+                    RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost, enabled = closeEnabled) {
                         RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
                     }
                 }
