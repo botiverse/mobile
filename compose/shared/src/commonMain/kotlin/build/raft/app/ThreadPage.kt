@@ -217,6 +217,8 @@ import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
+import build.raft.app.data.isInstallMarketplaceAppAction
+import build.raft.app.data.InstallMarketplaceAppActionCardType
 import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -7583,6 +7585,20 @@ private fun SharedThreadRouteContentContent(
     val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val actionCardReconfirmFailedLabel = stringResource(MR.strings.thread_action_card_reconfirm_failed)
+    // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
+    val installAppDialogStore =
+        remember(threadInstanceKey) {
+            ThreadInstallAppActionDialogStore(
+                scope = coroutineScope,
+                install = { messageId, card -> dataSource.confirmInstallMarketplaceAppActionCard(messageId, card) },
+                onInstalled = { messageId, card ->
+                    threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card))
+                    // The card's done line names what was installed.
+                    bridge.toast(genericActionCardSuccessLabel)
+                },
+            )
+        }
+    val installAppDialogState by installAppDialogStore.state.collectAsState()
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
@@ -11314,6 +11330,15 @@ private fun SharedThreadRouteContentContent(
                     )
                 }
             }
+        // Action cards store ids; show the names this server's roster (and channels) already hold.
+        val actionCardNames =
+            rememberThreadActionCardNameLookup(
+                members = threadServerMembersEntry,
+                serverId = currentServerId,
+                jointActors = serverMembersStore?.jointActors,
+                knownEntities = knownEntityResolver,
+                accountId = knownEntityAccountId,
+            )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
@@ -11343,6 +11368,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
+                LocalThreadActionCardNames provides actionCardNames,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -11981,6 +12007,10 @@ private fun SharedThreadRouteContentContent(
                             bridge.log("thread_feedback_card_open messageId=$itemId")
                             pager.openSettingsFeedbackWebViewPage(storeScope, feedbackCardEntry)
                         }
+                        return@ThreadPageContent
+                    }
+                    if (actionCard.isInstallMarketplaceAppAction()) {
+                        installAppDialogStore.dispatch(ThreadInstallAppActionIntent.Open(itemId, actionCard))
                         return@ThreadPageContent
                     }
                     if (!actionCard.isSupportedCommitAction()) {
@@ -13311,6 +13341,9 @@ private fun SharedThreadRouteContentContent(
                             ?.withQuotedAttachmentComment(comment)
                 }
             )
+        }
+        installAppDialogState?.let { dialogState ->
+            ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
         }
         createAgentDialogState?.let { dialogState ->
             ThreadCreateAgentActionDialogHost(
@@ -26574,9 +26607,11 @@ internal fun ThreadActionCardView(
             card.actionCardDraftHint()?.let { hint ->
                 RaftMessageActionCardHint(hint, label = stringResource(MR.strings.thread_action_card_reason))
             }
-            if (card.isIntegrationApproveLoginAction()) {
-                val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
-                RaftMessageActionCardScopeList(
+            if (card.isIntegrationApproveLoginAction() || card.isInstallMarketplaceAppAction()) {
+                val scopes =
+                    card.scopes.takeIf { it.isNotEmpty() }
+                        ?: if (card.isInstallMarketplaceAppAction()) emptyList() else listOf("openid", "profile", "identity")
+                if (scopes.isNotEmpty()) RaftMessageActionCardScopeList(
                     label = stringResource(MR.strings.thread_action_card_permissions, scopes.size),
                     viewportDescription = stringResource(MR.strings.thread_action_card_permissions_label),
                 ) {
@@ -26639,12 +26674,20 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
     val descriptionLabel = stringResource(MR.strings.thread_action_card_field_description)
     val humansLabel = stringResource(MR.strings.thread_action_card_field_humans)
     val agentsLabel = stringResource(MR.strings.thread_action_card_field_agents)
+    // The card stores ids: show names (web useActionCardDetail), never a UUID.
+    val names = LocalThreadActionCardNames.current
+    val unknownMember = stringResource(MR.strings.thread_action_card_unknown_member)
+    val unknownAgent = stringResource(MR.strings.thread_action_card_unknown_agent)
+    fun humanNames(ids: List<String>) =
+        ids.joinToString(", ") { names.displayName(ThreadActionCardEntityKind.Human, it, unknownMember) }
+    fun agentNames(ids: List<String>) =
+        ids.joinToString(", ") { names.displayName(ThreadActionCardEntityKind.Agent, it, unknownAgent) }
     return when (type) {
         "channel:create" ->
             buildList {
                 description?.takeIf { it.isNotBlank() }?.let { add(ThreadActionCardProperty(descriptionLabel, it)) }
-                if (initialHumans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, initialHumans.joinToString(", ")))
-                if (initialAgents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, initialAgents.joinToString(", ")))
+                if (initialHumans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humanNames(initialHumans)))
+                if (initialAgents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agentNames(initialAgents)))
             }
         "agent:create" ->
             buildList {
@@ -26676,13 +26719,15 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
             }
         "channel:add_member" ->
             buildList {
-                channel?.takeIf { it.isNotBlank() }?.let {
-                    add(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_channel), "#${it.removePrefix("#")}"))
+                // web: the row only when the channel is known.
+                actionCardChannelName(names)?.let {
+                    add(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_channel), "#$it"))
                 }
-                if (humans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humans.joinToString(", ")))
-                if (agents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agents.joinToString(", ")))
+                if (humans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humanNames(humans)))
+                if (agents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agentNames(agents)))
             }
-        "integration:approve_agent_login" -> {
+        "integration:approve_agent_login",
+        InstallMarketplaceAppActionCardType -> {
             val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
                 ?: name.takeIf { it.isNotBlank() }
@@ -26692,20 +26737,47 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                 ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_agent), "@${agent.removePrefix("@")}", mono = true),
             )
         }
-        else ->
-            if (metadataItems.isEmpty()) {
-                listOf(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_type), type, mono = true))
+        // web: the client key and the new owner by name, not the stored ids.
+        "integration:recover_app_owner" ->
+            if (clientKey.isNullOrBlank() || targetAgent.isNullOrBlank()) {
+                genericActionCardProperties()
             } else {
-                val hidden = stringResource(MR.strings.thread_action_card_hidden_value)
-                metadataItems.map { item ->
+                listOf(
+                    ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_client_key), clientKey, mono = true),
                     ThreadActionCardProperty(
-                        label = humanizeActionCardMetadataKey(item.key),
-                        value = if (item.redacted) hidden else item.value,
-                        muted = item.redacted,
-                    )
-                }
+                        stringResource(MR.strings.thread_action_card_field_recovery_owner),
+                        "@${names.displayName(ThreadActionCardEntityKind.Agent, targetAgent, unknownAgent).removePrefix("@")}",
+                        mono = true
+                    ),
+                )
             }
+        else -> genericActionCardProperties()
     }
+}
+
+/** A type without its own rows lists the server's display items (or the raw action's fields). */
+@Composable
+private fun ThreadActionCard.genericActionCardProperties(): List<ThreadActionCardProperty> =
+    if (metadataItems.isEmpty()) {
+        listOf(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_type), type, mono = true))
+    } else {
+        val hidden = stringResource(MR.strings.thread_action_card_hidden_value)
+        metadataItems.map { item ->
+            ThreadActionCardProperty(
+                label = humanizeActionCardMetadataKey(item.key),
+                value = if (item.redacted) hidden else item.value,
+                muted = item.redacted,
+            )
+        }
+    }
+
+/**
+ * `channel:add_member`'s channel by name, without "#" (web: `channels.find`); null when this app
+ * doesn't know the channel. A stored name (an older card) is shown as it is, an id never.
+ */
+private fun ThreadActionCard.actionCardChannelName(names: ThreadActionCardNameLookup): String? {
+    val raw = channel?.trim()?.removePrefix("#")?.takeIf { it.isNotBlank() } ?: return null
+    return names.name(ThreadActionCardEntityKind.Channel, raw) ?: raw.takeUnless { looksLikeActionCardUuid(it) }
 }
 
 /** Raft's standing note on the card (web MessageActionCardNotice): an app login's grant, a warning. */
@@ -26714,6 +26786,7 @@ private fun ThreadActionCard.actionCardNotice(): String? =
     when {
         type.equals("integration:update_app_registration", ignoreCase = true) ->
             stringResource(MR.strings.thread_action_card_legacy_unavailable_hint)
+        isInstallMarketplaceAppAction() -> stringResource(MR.strings.thread_action_card_install_owner_only)
         isIntegrationApproveLoginAction() -> {
             val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
@@ -26743,6 +26816,7 @@ private fun ThreadActionCard.localizedActionCardVerb(): String =
         "agent:create" -> stringResource(MR.strings.thread_action_card_create_agent)
         "channel:add_member" -> stringResource(MR.strings.thread_action_card_add_members)
         "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approve_login)
+        InstallMarketplaceAppActionCardType -> stringResource(MR.strings.thread_action_card_install_app)
         "integration:register_app" -> stringResource(MR.strings.thread_action_card_register_app)
         "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_recover_owner)
         "integration:update_app_registration" -> stringResource(MR.strings.thread_action_card_unavailable)
@@ -26756,6 +26830,7 @@ private fun ThreadActionCard.localizedActionCardPendingLabel(): String =
     when (type) {
         "channel:add_member" -> stringResource(MR.strings.thread_action_card_adding)
         "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approving)
+        InstallMarketplaceAppActionCardType -> stringResource(MR.strings.thread_action_card_installing)
         "integration:register_app",
         "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_approving)
         else -> stringResource(MR.strings.thread_action_card_creating)
@@ -26780,7 +26855,7 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
             stringResource(MR.strings.thread_action_card_title_create_agent, name.removePrefix("@"))
         "channel:add_member" -> {
             val count = humans.size + agents.size
-            val target = channel?.let { "#${it.removePrefix("#")}" }
+            val target = actionCardChannelName(LocalThreadActionCardNames.current)?.let { "#$it" }
                 ?: stringResource(MR.strings.thread_action_card_channel)
             if (count == 1) {
                 stringResource(MR.strings.thread_action_card_title_add_member, target)
@@ -26799,6 +26874,13 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
                 service,
                 agent.removePrefix("@")
             )
+        }
+        InstallMarketplaceAppActionCardType -> {
+            val service = clientName?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_app)
+            val agent = agentName?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_agent)
+            stringResource(MR.strings.thread_action_card_title_install_app, service, agent.removePrefix("@"))
         }
         "integration:register_app" -> {
             val appName = name.takeIf { it.isNotBlank() }
@@ -26957,12 +27039,8 @@ private fun integrationScopeDescription(scope: String): String =
 
 @Composable
 private fun localizedIntegrationScopeDescription(scope: String): String =
-    when (scope.trim().lowercase()) {
-        "identity" -> stringResource(MR.strings.thread_action_card_scope_identity)
-        "openid" -> stringResource(MR.strings.thread_action_card_scope_openid)
-        "profile" -> stringResource(MR.strings.thread_action_card_scope_profile)
-        else -> stringResource(MR.strings.thread_action_card_scope_other)
-    }
+    // web ActionCardScopes: the same copy as the install confirmation's permission set.
+    localizedAppPermissionScopeDescription(scope.trim().lowercase())
 
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
     buildString {
@@ -27037,6 +27115,9 @@ private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: Stri
                     ?: clientName?.takeIf { it.isNotBlank() }
             "integration-app-owner-recovery" ->
                 resultName?.takeIf { it.isNotBlank() }
+            "marketplace-app-installation" ->
+                (resultName?.takeIf { it.isNotBlank() } ?: clientName?.takeIf { it.isNotBlank() })
+                    ?.let { stringResource(MR.strings.thread_action_card_installed_on_server, it) }
             else -> null
         }
     val who = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by }

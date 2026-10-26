@@ -65,6 +65,9 @@ new product concept gets a Japanese rendering.
 | Reminder | リマインダー | |
 | Action card | アクションカード | Approve = 承認 |
 | Scope (OAuth) | スコープ | |
+| Install (an app) | インストール | Marketplace app on a Server; button = アプリをインストール |
+| Marketplace | マーケットプレイス | |
+| Login scopes / Data access | ログインのスコープ / データアクセス | An app's permission set (web `appPermissionSet.*`) |
 | Owner / Admin | オーナー / 管理者 | |
 | Role | 役割 | |
 | Permission | 権限 | "No permission" = 権限がありません |
