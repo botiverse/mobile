@@ -157,7 +157,7 @@ class MessageQuotedForwardedScreenshotTest {
                     }
                 }
                 Caption("Images: a row of three, then four as two and two")
-                RaftMessageForwardedBundle(label = "Forwarded", countLabel = "message") {
+                RaftMessageForwardedBundle(label = "Forwarded", countLabel = "1 message") {
                     RaftMessageForwardedBundleItem(
                         author = "@alpha",
                         time = { RaftMessageForwardedBundleItemTime("8:24 AM") },
