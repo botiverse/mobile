@@ -830,7 +830,7 @@ class RaftMarkdownTest {
         assertEquals(expectedTokenIds, annotated.raftMarkdownClickableTags())
         assertEquals(
             listOf(
-                RaftColor.BrandYellow,
+                RaftColor.You,
                 RaftColor.AttentionSoft,
                 RaftColor.InfoSoft,
                 RaftColor.InactiveSoft,
@@ -848,14 +848,14 @@ class RaftMarkdownTest {
         assertEquals(RaftColor.AttentionSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.Channel))
         assertEquals(RaftColor.InfoSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
         assertEquals(RaftColor.InactiveSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.Task))
-        assertEquals(RaftColor.BrandYellow, raftMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
+        assertEquals(RaftColor.You, raftMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
         assertEquals("channel", RaftRichTextChromeKind.Channel.styleToken.id)
         assertEquals(RaftRichTextColorToken.AttentionSoft, RaftRichTextChromeKind.Channel.styleToken.chipFill)
         assertEquals(RaftRichTextColorToken.InfoSoft, RaftRichTextChromeKind.Thread.styleToken.chipFill)
         assertEquals(RaftRichTextColorToken.InactiveSoft, RaftRichTextChromeKind.Task.styleToken.chipFill)
         assertEquals(RAFT_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP, RaftRichTextChromeKind.Channel.styleToken.horizontalChromeSp)
 
-        assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.Channel) == RaftColor.BrandYellow)
+        assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.Channel) == RaftColor.You)
         assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.Channel) == RaftColor.AccentCyan)
         assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread) == RaftColor.AccentPink)
         assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.Task) == RaftColor.AccentLavender)
@@ -957,7 +957,7 @@ class RaftMarkdownTest {
         // CMP switch: the active chip fill is painted by the RaftInlineBoxStyle annotation; the span
         // background stays unspecified so it cannot cover the box border.
         assertEquals(Color.Unspecified, annotated.raftMarkdownClickableTagBackground(channelToken.id))
-        assertEquals(RaftColor.BrandYellow, annotated.raftMarkdownClickableTagInlineBoxBackground(channelToken.id))
+        assertEquals(RaftColor.You, annotated.raftMarkdownClickableTagInlineBoxBackground(channelToken.id))
         // The generic inline box owns the task chip fill; LinkAnnotation.background stays unspecified.
         assertEquals(
             Color.Unspecified,
@@ -1004,7 +1004,7 @@ class RaftMarkdownTest {
         )
         assertEquals(
             listOf(
-                RaftColor.BrandYellow,
+                RaftColor.You,
                 null,
                 RaftColor.AttentionSoft,
                 RaftColor.InfoSoft,
@@ -1086,7 +1086,7 @@ class RaftMarkdownTest {
         assertEquals(expectedActionIds, annotated.raftMarkdownClickableLinkTags())
         assertEquals(
             listOf(
-                RaftColor.BrandYellow,
+                RaftColor.You,
                 RaftColor.InfoSoft,
                 RaftColor.InactiveSoft
             ),
@@ -1161,7 +1161,7 @@ class RaftMarkdownTest {
         assertEquals(
             listOf(
                 RaftColor.AttentionSoft,
-                RaftColor.BrandYellow
+                RaftColor.You
             ),
             listOf("slock:17", "slock:26").map { tag ->
                 annotated.raftMarkdownClickableTagInlineBoxBackground(tag)
@@ -1200,7 +1200,7 @@ class RaftMarkdownTest {
         assertEquals(listOf(true, false, false, false), tokens.map { it.highlighted })
         assertEquals(
             listOf(
-                RaftColor.BrandYellow,
+                RaftColor.You,
                 RaftColor.AttentionSoft,
                 RaftColor.InfoSoft,
                 RaftColor.InactiveSoft
