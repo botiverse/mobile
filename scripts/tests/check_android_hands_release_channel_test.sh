@@ -99,25 +99,45 @@ else
   failures=$((failures + 1))
 fi
 
-# The npm fallback must reach the pinned package and parse its --json output. This is the
-# branch a machine without `hands` takes, and the one 0.5.17 would break (human text for
-# --json). Skipped when npm or the network is unavailable, so the suite stays runnable
-# offline; a skip is reported, never silently counted as a pass.
+# The npm fallback must not die for want of a local binary: with a recorded response it
+# runs end to end. The live API path is NOT tested here — CI has no Hands credentials, so
+# an authenticated call would fail for a reason unrelated to this script (that is exactly
+# how the first version of this test broke the workflow).
 if command -v npm >/dev/null 2>&1; then
+  hands_body main > "${WORK}/npm-recorded.json"
   got=0
-  env HANDS_CLI=definitely-not-a-real-binary HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org}" \
-    "${GUARD}" --app "${APP}" --build "${BUILD}" --channel main --hands-json "" >"${WORK}/npm.out" 2>&1 || got=$?
+  env HANDS_CLI=definitely-not-a-real-binary \
+    "${GUARD}" --app "${APP}" --build "${BUILD}" --channel main \
+    --hands-json "${WORK}/npm-recorded.json" >"${WORK}/npm.out" 2>&1 || got=$?
   if [ "${got}" = "0" ]; then
-    echo "ok   npm-fallback-reaches-pinned-package (exit 0)"
-  elif grep -q "ENOTFOUND\|EAI_AGAIN\|network" "${WORK}/npm.out" 2>/dev/null; then
-    echo "skip npm-fallback-reaches-pinned-package (registry unreachable)"
+    echo "ok   no-local-cli-with-recorded-response (exit 0)"
   else
-    echo "FAIL npm-fallback-reaches-pinned-package: expected exit 0, got ${got}" >&2
+    echo "FAIL no-local-cli-with-recorded-response: expected exit 0, got ${got}" >&2
     sed 's/^/    /' "${WORK}/npm.out" >&2
     failures=$((failures + 1))
   fi
 else
-  echo "skip npm-fallback-reaches-pinned-package (npm not installed)"
+  echo "skip no-local-cli-with-recorded-response (npm not installed)"
+fi
+
+# The npm fallback itself is proven by resolution, not by an authenticated API call:
+# resolving the pinned package is what a credential-less machine needs to get past.
+if command -v npm >/dev/null 2>&1; then
+  got=0
+  npm exec --yes --registry "${HANDS_NPM_REGISTRY:-https://registry.npmjs.org}" \
+    --package "${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.32}" -- hands --version \
+    >"${WORK}/npmver.out" 2>&1 || got=$?
+  if [ "${got}" = "0" ] && grep -qE "^[0-9]+\.[0-9]+\.[0-9]+$" "${WORK}/npmver.out"; then
+    echo "ok   npm-resolves-pinned-package ($(tail -1 "${WORK}/npmver.out"))"
+  elif grep -qiE "ENOTFOUND|EAI_AGAIN|network|403|404" "${WORK}/npmver.out" 2>/dev/null; then
+    echo "skip npm-resolves-pinned-package (registry unavailable: $(tail -1 "${WORK}/npmver.out" | cut -c1-60))"
+  else
+    echo "FAIL npm-resolves-pinned-package: exit ${got}" >&2
+    sed 's/^/    /' "${WORK}/npmver.out" >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "skip npm-resolves-pinned-package (npm not installed)"
 fi
 
 if [ "${failures}" -ne 0 ]; then
