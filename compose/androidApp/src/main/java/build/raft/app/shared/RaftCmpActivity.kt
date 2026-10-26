@@ -112,6 +112,7 @@ import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.RaftHostStrings
 import build.raft.app.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
+import build.raft.app.openUrlUsesBrowserSelector
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidApiServerEnvironment
@@ -6892,6 +6893,17 @@ internal class RaftBridgeModule(
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
+        // HostLinkCapability.openUrlInBrowser: the user's browser itself, by the browser selector;
+        // a device with no app in CATEGORY_APP_BROWSER takes the ordinary path below.
+        if (openUrlUsesBrowserSelector(request.optBoolean("browser", false), mimeType, uri.scheme)) {
+            val opened =
+                    runCatching { appContext.startActivity(browserSelectorIntent(uri)) }
+                            .onFailure { throwable ->
+                                RaftAppLog.record("SlockOpenUrl", "browserSelector=failed type=${throwable::class.java.simpleName}")
+                            }
+                            .isSuccess
+            if (opened) return null
+        }
         val viewIntent = externalUrlIntent(uri, mimeType)
         runCatching {
             appContext.startActivity(viewIntent)
@@ -6929,6 +6941,14 @@ internal class RaftBridgeModule(
             )
         }.isSuccess
     }
+
+    /** VIEW [uri] in the app that is the device's browser (`CATEGORY_APP_BROWSER` selector), never an App Links handler. */
+    private fun browserSelectorIntent(uri: Uri): Intent =
+            Intent(Intent.ACTION_VIEW, uri).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                selector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
 
     /**
      * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this

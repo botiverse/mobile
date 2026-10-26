@@ -388,4 +388,15 @@ class MainActivityLaunchTest {
         assertTrue(pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertTrue(pageData.optString("slockAuthGateInstanceId").isNotBlank())
     }
+
+    @Test
+    fun onlyABrowserRequestForAnUntypedWebUrlUsesTheBrowserSelector() {
+        assertTrue(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "https"))
+        assertTrue(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "HTTP"))
+        // An ordinary openUrl keeps the external-handler path; typed or non-web URLs never take a browser.
+        assertFalse(openUrlUsesBrowserSelector(browser = false, mimeType = null, scheme = "https"))
+        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = "application/pdf", scheme = "https"))
+        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = "mailto"))
+        assertFalse(openUrlUsesBrowserSelector(browser = true, mimeType = null, scheme = null))
+    }
 }

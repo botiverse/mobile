@@ -8590,7 +8590,7 @@ private fun SharedThreadRouteContentContent(
                             bridge.toast(actionCardOpenInWebFailedLabel)
                         } else {
                             bridge.log("thread_action_card_open_in_web messageId=$messageId")
-                            linkNavigator.open(url, RaftLinkOpenIntent.ForceExternal)
+                            bridge.hostCapabilities.openUrlInBrowser(url)
                         }
                     }
                 },
