@@ -57,7 +57,8 @@ import build.raft.designsystem.tokens.RaftStroke
  *   A null [commitLabel] leaves the head without one, for a view of the dialog that commits
  *   nothing (the web drops its `DialogCommit` there too, as Invite's link tab does).
  *   [commitIcon] leads its label, as the web's commit keeps its icon in the head (Invite's
- *   Mail).
+ *   Mail). [commitLoading] shows the button's spinner while the commit runs (the web's
+ *   `loading` Save): it keeps its colour and ignores taps (RaftButton's busy state).
  * - Body: [content] fills the rest of the sheet as given (a lazy list scrolls itself) and
  *   clears the home indicator; keep the phone's 16dp margin inside it.
  */
@@ -69,12 +70,13 @@ fun RaftDialogSheetSurface(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
+    commitLoading: Boolean = false,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     closeEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
-) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, content)
+) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitLoading, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, content)
 
 @Composable
 private fun RaftDialogSheetSurfaceImpl(
@@ -84,6 +86,7 @@ private fun RaftDialogSheetSurfaceImpl(
     onClose: () -> Unit,
     modifier: Modifier,
     commitEnabled: Boolean,
+    commitLoading: Boolean,
     commitVariant: RaftButtonVariant,
     commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
@@ -123,6 +126,7 @@ private fun RaftDialogSheetSurfaceImpl(
                         variant = commitVariant,
                         size = RaftButtonSize.Md,
                         enabled = commitEnabled,
+                        loading = commitLoading,
                         leadingIcon = commitIcon,
                     )
                 }
@@ -189,6 +193,7 @@ fun RaftDialogSheet(
     onCommit: () -> Unit,
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
+    commitLoading: Boolean = false,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
@@ -214,6 +219,7 @@ fun RaftDialogSheet(
                         onClose = onDismissRequest,
                         modifier = modifier.pointerInput(Unit) { detectTapGestures { } },
                         commitEnabled = commitEnabled,
+                        commitLoading = commitLoading,
                         commitVariant = commitVariant,
                         commitIcon = commitIcon,
                         closeLabel = closeLabel,
@@ -230,6 +236,7 @@ fun RaftDialogSheet(
                     onClose = onDismissRequest,
                     modifier = modifier,
                     commitEnabled = commitEnabled,
+                    commitLoading = commitLoading,
                     commitVariant = commitVariant,
                     commitIcon = commitIcon,
                     closeLabel = closeLabel,
@@ -249,6 +256,7 @@ private fun RaftDialogSheetBottom(
     onClose: () -> Unit,
     modifier: Modifier,
     commitEnabled: Boolean,
+    commitLoading: Boolean,
     commitVariant: RaftButtonVariant,
     commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
@@ -278,6 +286,7 @@ private fun RaftDialogSheetBottom(
                         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                     },
             commitEnabled = commitEnabled,
+            commitLoading = commitLoading,
             commitVariant = commitVariant,
             commitIcon = commitIcon,
             closeLabel = closeLabel,
@@ -308,6 +317,7 @@ fun RaftDialogSheetCenteredSurface(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
+    commitLoading: Boolean = false,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
     commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
@@ -342,6 +352,7 @@ fun RaftDialogSheetCenteredSurface(
                         variant = commitVariant,
                         size = RaftButtonSize.Lg,
                         enabled = commitEnabled,
+                        loading = commitLoading,
                         leadingIcon = commitIcon,
                     )
                 }

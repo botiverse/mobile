@@ -24,8 +24,6 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftAnchorPlacement
-import build.raft.app.PixelAvatarActiveDefaultKey
-import build.raft.app.PixelAvatarPickerKeys
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerShape
@@ -221,7 +219,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -5031,9 +5028,8 @@ internal fun MembersAgentDetailVisualContent() {
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },
-        // Without this the avatar picker never expands under capture. MembersAgentProfileTab
-        // gates editing on `agentProfileEditAuthority != null` (canEdit), and the header only
-        // draws MembersAgentAvatarChoiceGrid when canEdit && showAvatarPicker -- so the
+        // Without this the avatar editor never opens under capture: MembersAgentProfileTab
+        // gates editing on `agentProfileEditAuthority != null` (canEdit), so the
         // avatar-management visual case was photographing the *collapsed* state while web
         // photographed the expanded grid. Its 23.83% mismatch was "expanded vs collapsed",
         // not a spacing difference (XiShi, task #264). The values are fixture identity;
@@ -6016,9 +6012,7 @@ private fun MembersDetailContent(
     val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
     val issueReportingUnavailable = stringResource(MR.strings.member_error_issue_unavailable)
     val avatarEditingUnavailable = stringResource(MR.strings.member_error_avatar_edit_unavailable)
-    val avatarUnchanged = stringResource(MR.strings.member_error_avatar_unchanged)
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val avatarSaveErrorTemplate = membersStringTemplate(MR.strings.member_error_avatar_save)
     val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
     val issueReported = stringResource(MR.strings.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -6446,48 +6440,27 @@ private fun MembersDetailContent(
         actionState = null
         restartResetDialogOpen = true
     }
-    fun saveAvatar(avatarUrl: String?) {
+    // The change-avatar dialog's Save (web AgentProfileEditDialog): a picked image goes through
+    // the avatar upload, a pixel avatar or the default through the profile update.
+    suspend fun saveAvatar(draft: MembersAgentAvatarDraft): DataResult<*> {
         val callback = onUpdateAgentProfile
-        if (!canManage || deleted || callback == null) {
+        val upload = onUploadAgentAvatar
+        if (!canManage || deleted || (draft is MembersAgentAvatarDraft.Upload && upload == null) || callback == null) {
             onUnavailableAction(avatarEditingUnavailable)
-            return
+            return DataResult.Error(ScreenError("agent_avatar_edit_unavailable", retryable = false))
         }
-        scope.launch {
-            val result =
-                try {
-                    callback(
-                        AgentProfileUpdateRequest(
-                            agentId = member.id,
-                            displayName = member.displayName,
-                            description = member.description?.takeIf { it.isNotBlank() },
-                            avatarUrl = avatarUrl,
-                            includeAvatarUrl = true
-                        )
-                    )
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("agent_avatar_save_failed"))
-                }
-            when (result) {
-                is DataResult.Content -> {
-                    showAvatarPicker = false
-                }
-                is DataResult.Empty -> {
-                    onUnavailableAction(avatarUnchanged)
-                }
-                is DataResult.NoPermission -> {
-                    onUnavailableAction(
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
-                    )
-                }
-                is DataResult.Error -> {
-                    onUnavailableAction(
-                        membersFormattedScreenError(avatarSaveErrorTemplate, result.error, errorStrings)
-                    )
-                }
-            }
+        if (draft is MembersAgentAvatarDraft.Upload) {
+            return checkNotNull(upload)(member.id, draft.file)
         }
+        return callback(
+            AgentProfileUpdateRequest(
+                agentId = member.id,
+                displayName = member.displayName,
+                description = member.description?.takeIf { it.isNotBlank() },
+                avatarUrl = draft.profileAvatarUrl(),
+                includeAvatarUrl = true
+            )
+        )
     }
     Box(
         modifier = Modifier
@@ -6514,7 +6487,6 @@ private fun MembersDetailContent(
                     deleted = deleted,
                     canManage = canManage,
                     onBack = onBack,
-                    onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
                     onOpenDirectMessage = onOpenDirectMessage,
                     onCopyMemberId = onCopyMemberId,
                     agentStatusIndicatorState = agentStatusIndicatorState,
@@ -6669,31 +6641,7 @@ private fun MembersDetailContent(
                                             agentStatusObservedState = agentStatusObservedState,
                                             agentStatusResolver = agentStatusResolver,
                                             memberAvatarResolver = memberAvatarResolver,
-                                            showAvatarPicker = showAvatarPicker && canManage && !deleted,
-                                            onToggleAvatarPicker = {
-                                                showAvatarPicker = !showAvatarPicker
-                                            },
-                                            onSelectAvatar = { key ->
-                                                saveAvatar("pixel:$key")
-                                            },
-                                            onClearAvatar = {
-                                                saveAvatar(null)
-                                            },
-                                            onUploadAvatar = {
-                                                val uploadCallback = onUploadAgentAvatar
-                                                if (uploadCallback == null) {
-                                                    DataResult.Empty(EmptyReason.NoMembers)
-                                                } else {
-                                                    val picked = onPickAgentAvatarFile()
-                                                    when (picked) {
-                                                        is DataResult.Content ->
-                                                            uploadCallback(member.id, picked.data)
-                                                        is DataResult.Empty -> DataResult.Empty(picked.reason)
-                                                        is DataResult.Error -> DataResult.Error(picked.error)
-                                                        is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                                                    }
-                                                }
-                                            },
+                                            onChangeAvatar = { showAvatarPicker = true },
                                             sharedAgentDetailStore = sharedAgentDetailStore,
                                             storeState = storeState.takeIf { sharedAgentDetailStore != null },
                                             agentDetailActions = agentDetailActions,
@@ -6934,6 +6882,15 @@ private fun MembersDetailContent(
                         actionState = null
                     }
                 }
+            )
+        }
+        if (showAvatarPicker && member.kind == MemberKind.Agent && canManage && !deleted) {
+            MembersAgentAvatarDialog(
+                member = member,
+                currentAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value),
+                onPickFile = onPickAgentAvatarFile,
+                onSave = { draft -> saveAvatar(draft) },
+                onDismiss = { showAvatarPicker = false }
             )
         }
         if (reportIssueDialogOpen && member.kind == MemberKind.Agent) {
@@ -7210,7 +7167,6 @@ private fun MembersDetailHeader(
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onBack: () -> Unit,
-    onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onManagementMenuAnchorResolverReady: (RaftPopoverAnchorResolver) -> Unit,
@@ -7238,7 +7194,6 @@ private fun MembersDetailHeader(
                     ?: member.description?.takeIf { it.isNotBlank() }
             else -> null
         }
-    val avatarClick = onAvatarClick
     val topSafeArea = raftTopSafeAreaPadding()
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -7261,22 +7216,11 @@ private fun MembersDetailHeader(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
+            // The web's panel head shows the avatar only; it is changed from the profile hero.
             MembersRaftAvatar(
                 member = member,
                 size = RaftAvatarSize.Md,
-                memberAvatarResolver = memberAvatarResolver,
-                modifier = if (avatarClick != null) {
-                    val chooseAvatarLabel = stringResource(MR.strings.member_action_choose_avatar)
-                    Modifier
-                        .semantics { contentDescription = chooseAvatarLabel }
-                        .clickable(
-                            onClickLabel = chooseAvatarLabel,
-                            role = Role.Button,
-                            onClick = avatarClick
-                        )
-                } else {
-                    Modifier
-                }
+                memberAvatarResolver = memberAvatarResolver
             )
             Column(
                 modifier = Modifier.weight(1f)
@@ -9215,110 +9159,6 @@ private fun MembersHumanCreatedAgentRow(
     )
 }
 
-// Web AgentProfileEditDialog preset button: size-11 (44), control radius, 1.5 edge.
-private val MembersAgentAvatarPickerCellSize = 44.dp
-private val MembersAgentAvatarPickerAvatarSize = 36.dp
-
-@Composable
-internal fun MembersAgentAvatarChoiceGrid(
-    member: MemberProfile,
-    uploading: Boolean,
-    onUploadClick: () -> Unit,
-    onClear: () -> Unit,
-    onSelect: (String) -> Unit
-) {
-    // Web AgentProfileEditDialog `presetButtonClass`: each cell renders the pixel art (or
-    // the upload icon for the first cell) in a 44dp control-radius cell. The selected cell
-    // is the selected sticker (`bg-selected`, sticker-ink edge); the rest have no edge,
-    // except the upload cell, which keeps a `line-strong` one (web draws it dashed).
-    val activeCustomAvatar = member.avatarUrl != null
-    val activePixelKey = if (activeCustomAvatar) {
-        null
-    } else {
-        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarActiveDefaultKey)
-    }
-    @OptIn(ExperimentalLayoutApi::class)
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(MembersAgentAvatarPickerCellSize)
-                .membersAvatarPickerCellSurface(selected = activeCustomAvatar, restEdge = RaftColor.BorderBlack)
-                .clickable(enabled = !uploading) { onUploadClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            if (activeCustomAvatar) {
-                RaftAppAvatar(
-                    avatarWireValue = member.avatarUrl,
-                    // An upload that fails to load shows the agent placeholder, not initials of "Custom avatar".
-                    label = "",
-                    avatarSize = MembersAgentAvatarPickerAvatarSize,
-                    borderWidth = 0.dp,
-                    cacheSubject = member.raftAvatarCacheSubject(),
-                    cacheServerId = member.serverId?.value,
-                    fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
-                )
-            } else {
-                val ink = if (RaftAppThemeState.isDark) RaftColor.TextMutedGrayArgb else "#99000000"
-                if (uploading) {
-                    RaftIconSpinner(size = 16.dp, color = raftColorFromArgbHex(ink))
-                } else {
-                    RaftLucideIcon(RaftLucideIconName.Upload, modifier = Modifier.size(16.dp), color = ink)
-                }
-            }
-        }
-        MembersAgentAvatarPickerCell(
-            wireValue = "pixel:$PixelAvatarActiveDefaultKey",
-            fallbackLabel = PixelAvatarActiveDefaultKey,
-            active = activePixelKey == PixelAvatarActiveDefaultKey,
-            onClick = onClear
-        )
-        PixelAvatarPickerKeys.filter { it != PixelAvatarActiveDefaultKey }.forEach { key ->
-            MembersAgentAvatarPickerCell(
-                wireValue = "pixel:$key",
-                fallbackLabel = key,
-                active = activePixelKey == key,
-                onClick = { onSelect(key) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembersAgentAvatarPickerCell(
-    wireValue: String,
-    fallbackLabel: String,
-    active: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .size(MembersAgentAvatarPickerCellSize)
-            .membersAvatarPickerCellSurface(selected = active, restEdge = Color.Transparent)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftAppAvatar(
-            avatarWireValue = wireValue,
-            label = fallbackLabel,
-            avatarSize = MembersAgentAvatarPickerAvatarSize,
-            borderWidth = 0.dp
-        )
-    }
-}
-
-private fun Modifier.membersAvatarPickerCellSurface(selected: Boolean, restEdge: Color): Modifier {
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    return this
-        .clip(shape)
-        .background(if (selected) RaftColor.Brand else Color.Transparent, shape)
-        .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else restEdge, shape)
-}
-
 private const val MembersAgentProfileDescriptionMaxLength = 3000
 
 // Web AgentDetailPanel's INFO block uses five different spacings here. They are
@@ -9427,12 +9267,7 @@ private fun MembersAgentProfileHeader(
     agentStatusObservedState: RaftAgentStatusIndicatorState?,
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    showAvatarPicker: Boolean,
-    onToggleAvatarPicker: () -> Unit,
-    onSelectAvatar: (String) -> Unit,
-    onClearAvatar: () -> Unit,
-    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
-    onUnavailableAction: (String) -> Unit
+    onChangeAvatar: () -> Unit
 ) {
     val rawStatusLabel = membersLiveAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
@@ -9444,12 +9279,6 @@ private fun MembersAgentProfileHeader(
     // SSOT audit: the badge words localize like every other live-status caption.
     val statusLabel =
         agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
-    val scope = rememberCoroutineScope()
-    val errorStrings = localizedErrorPresentationStrings()
-    val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
-    val avatarUploadFailed = membersStringTemplate(MR.strings.member_error_avatar_upload)
-    val permissionFailed = membersStringTemplate(MR.strings.member_error_permission)
-    var uploading by remember(member.id.value) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -9467,11 +9296,18 @@ private fun MembersAgentProfileHeader(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
             verticalAlignment = Alignment.Top
         ) {
-            MembersRaftAvatar(
-                member = member,
-                size = RaftAvatarSize.Xl,
-                memberAvatarResolver = memberAvatarResolver
-            )
+            // Web `agent-change-avatar`: the hero sticker is the change-avatar button. An App's
+            // bot wears the App's logo, changed only in the App's config, so it has none.
+            MembersAgentAvatarEditTrigger(
+                enabled = canEdit && member.managedByAppInstallId.isNullOrBlank(),
+                onClick = onChangeAvatar
+            ) {
+                MembersRaftAvatar(
+                    member = member,
+                    size = RaftAvatarSize.Xl,
+                    memberAvatarResolver = memberAvatarResolver
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f).padding(top = RaftAppSpacing.Xs)
             ) {
@@ -9524,54 +9360,6 @@ private fun MembersAgentProfileHeader(
                     } else {
                         null
                     }
-                )
-            }
-        }
-
-        if (canEdit && showAvatarPicker) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = RaftAppSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                MembersDetailSectionDivider()
-                RaftAppSectionEyebrow(
-                    label = stringResource(MR.strings.member_action_choose_avatar),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
-                MembersAgentAvatarChoiceGrid(
-                    member = member,
-                    uploading = uploading,
-                    onUploadClick = {
-                        if (!uploading) {
-                            uploading = true
-                            scope.launch {
-                                when (val result = onUploadAvatar()) {
-                                    is DataResult.Content -> uploading = false
-                                    is DataResult.Empty -> {
-                                        uploading = false
-                                        onUnavailableAction(avatarUploadCancelled)
-                                    }
-                                    is DataResult.Error -> {
-                                        uploading = false
-                                        onUnavailableAction(
-                                            membersFormattedScreenError(avatarUploadFailed, result.error, errorStrings)
-                                        )
-                                    }
-                                    is DataResult.NoPermission -> {
-                                        uploading = false
-                                        onUnavailableAction(
-                                            membersFormattedPermissionError(permissionFailed, result.blocker, errorStrings)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    onClear = onClearAvatar,
-                    onSelect = onSelectAvatar
                 )
             }
         }
@@ -11007,11 +10795,7 @@ private fun MembersAgentProfileTab(
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    showAvatarPicker: Boolean,
-    onToggleAvatarPicker: () -> Unit,
-    onSelectAvatar: (String) -> Unit,
-    onClearAvatar: () -> Unit,
-    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
+    onChangeAvatar: () -> Unit,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     storeState: SharedAgentDetailState? = null,
     agentDetailActions: SharedAgentDetailActions? = null,
@@ -11076,12 +10860,7 @@ private fun MembersAgentProfileTab(
             agentStatusIndicatorState = agentStatusIndicatorState,
             agentStatusObservedState = agentStatusObservedState,
             memberAvatarResolver = memberAvatarResolver,
-            showAvatarPicker = showAvatarPicker,
-            onToggleAvatarPicker = onToggleAvatarPicker,
-            onSelectAvatar = onSelectAvatar,
-            onClearAvatar = onClearAvatar,
-            onUploadAvatar = onUploadAvatar,
-            onUnavailableAction = onUnavailableAction
+            onChangeAvatar = onChangeAvatar
         )
 
         MembersAgentProfileFieldsSection(
