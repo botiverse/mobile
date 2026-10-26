@@ -27,6 +27,8 @@ import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.buildCreateAgentBody
 import build.raft.app.data.buildExecuteActionBody
+import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.buildMarkAgentActionExecutedBody
 import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
@@ -3694,6 +3696,39 @@ internal class SharedThreadDataSource(
                 DataResult.Error(ScreenError(code = "action_card_install_unbound", retryable = false))
             else -> executeInlineThreadActionCard(messageId, card)
         }
+
+    /**
+     * A spec card's execute (`action-card.v1`, web `ActionCardSpecCard`): POST
+     * /actions/:id/execute with the card's state and confirmation version, plus the form and its
+     * values when an `open_form` sheet submits ([form]). The legacy type paths
+     * ([commitThreadActionCard]) are not involved; the server runs the card it stored. An answer
+     * without the card keeps a truthful terminal state, as [executeInlineThreadActionCard] does.
+     */
+    suspend fun executeActionCardSpec(
+        messageId: String,
+        card: ThreadActionCard,
+        form: ExecuteActionFormBody? = null,
+    ): DataResult<ActionCardExecuteOutcome> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        val body =
+            buildExecuteActionBody(expectedState = "prepared", expectedConfirmationVersion = card.confirmationVersion, form = form)
+        return when (val result = actionsApi.executeActionCardSpec(MessageId(messageId), body)) {
+            is DataResult.Content -> {
+                val outcome = result.data
+                if (outcome is ActionCardExecuteOutcome.Executed && outcome.card == null) {
+                    DataResult.Content(ActionCardExecuteOutcome.Executed(card.copy(state = "executed")))
+                } else {
+                    result
+                }
+            }
+            is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_execute_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
 
     /**
      * web ActionCard Reconfirm: POST /actions/:id/reconfirm brings a `reconfirm_required` card

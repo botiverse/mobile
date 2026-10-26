@@ -11,7 +11,14 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 
 private val integrationsActionsPushJson = Json {
     ignoreUnknownKeys = true
@@ -167,6 +174,25 @@ internal class RaftIntegrationsActionsPushApiClient(
     suspend fun executeAction(messageId: MessageId, body: String): DataResult<ActionCardResult> =
         transport.executeAction(messageId, body).mapActionCard("action_execute_contract_mismatch")
 
+    /**
+     * POST /api/actions/:messageId/execute from a spec card (`action-card.v1`): a plain execute,
+     * or with a form (`form.v1`). The form refusals the contract names come back as content so the
+     * sheet can show them: 422 `FORM_INVALID` with its issues, 422 `FORM_REQUIRED`, and 409
+     * `ALREADY_EXECUTED` with the card as it now is. Anything else is an error as [executeAction].
+     */
+    suspend fun executeActionCardSpec(messageId: MessageId, body: String): DataResult<ActionCardExecuteOutcome> {
+        val response = transport.executeAction(messageId, body)
+        if (!response.isSuccessful) {
+            response.actionCardFormRefusalOrNull()?.let { return DataResult.Content(it) }
+        }
+        return when (val result = response.mapActionCard("action_execute_contract_mismatch")) {
+            is DataResult.Content -> DataResult.Content(ActionCardExecuteOutcome.Executed(result.data.actionCard))
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
     suspend fun emitActionEvent(messageId: MessageId, body: String): DataResult<ActionEventResult> =
         transport.emitActionEvent(messageId, body).mapActionEvent("action_event_contract_mismatch")
 
@@ -240,6 +266,21 @@ internal data class ActionCardResult(
     val metadataPresent: Boolean,
     val actionCard: ThreadActionCard? = null
 )
+/** What an execute from a spec card came to ([RaftIntegrationsActionsPushApiClient.executeActionCardSpec]). */
+internal sealed interface ActionCardExecuteOutcome {
+    /** 200: run (or the same person's same values again); [card] is the card the answer carries. */
+    data class Executed(val card: ThreadActionCard?) : ActionCardExecuteOutcome
+
+    /** 422 `FORM_INVALID`: what is wrong, under a field or (field null) for the whole form. */
+    data class FormInvalid(val issues: List<ActionCardFormIssue>, val serverMessage: String?) : ActionCardExecuteOutcome
+
+    /** 422 `FORM_REQUIRED`: the card takes a form this request did not send (the card changed). */
+    data class FormRequired(val serverMessage: String?) : ActionCardExecuteOutcome
+
+    /** 409 `ALREADY_EXECUTED`: someone ran the card first; [card] is the card as it now is. */
+    data class AlreadyExecuted(val card: ThreadActionCard?, val serverMessage: String?) : ActionCardExecuteOutcome
+}
+
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
@@ -296,6 +337,39 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
         val card = wire.metadata.toThreadActionCard()
         ActionCardResult(messageId = id, metadataPresent = wire.metadata != null, actionCard = card)
     }
+}
+
+/** The form refusals of `routes/actions.ts` `handleError` (shared `ActionCardFormInvalidBody` and kin), else null. */
+private fun HomeNetworkResponse.actionCardFormRefusalOrNull(): ActionCardExecuteOutcome? {
+    if (code != 422 && code != 409) return null
+    val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() } ?: return null
+    val envelope =
+        try {
+            integrationsActionsPushJson.decodeFromString(ActionCardFormErrorEnvelopeDto.serializer(), payload)
+        } catch (_: SerializationException) {
+            return null
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+    val message = envelope.error?.takeIf { it.isNotBlank() }
+    return when {
+        code == 422 && envelope.errorCode == "FORM_INVALID" ->
+            ActionCardExecuteOutcome.FormInvalid(envelope.issues.orEmpty().map { it.toActionCardFormIssue() }, message)
+        code == 422 && envelope.errorCode == "FORM_REQUIRED" -> ActionCardExecuteOutcome.FormRequired(message)
+        code == 409 && envelope.errorCode == "ALREADY_EXECUTED" ->
+            ActionCardExecuteOutcome.AlreadyExecuted(envelope.metadata.toThreadActionCard(), message)
+        else -> null
+    }
+}
+
+/**
+ * One issue as the server sent it. A code this build does not know reads as `invalid_format`; a
+ * message it cannot read is the generic one for the code (both keep the issue on its field).
+ */
+private fun ActionCardFormIssueDto.toActionCardFormIssue(): ActionCardFormIssue {
+    val issueCode = ActionCardFormIssueCode.entries.firstOrNull { it.wire == code } ?: ActionCardFormIssueCode.InvalidFormat
+    val msg = message?.let { parseActionCardSpecMsg(it) } ?: ACTION_CARD_FORM_ISSUE_MESSAGES.getValue(issueCode)
+    return ActionCardFormIssue(field = field?.takeIf { it.isNotBlank() }, code = issueCode, message = msg)
 }
 
 private fun HomeNetworkResponse.actionErrorEnvelopeOrNull(): ActionErrorEnvelopeDto? {
@@ -400,6 +474,23 @@ private data class ActionErrorEnvelopeDto(
     val errorCode: String? = null,
     @SerialName("current_text_revision_id")
     val currentTextRevisionId: String? = null,
+)
+
+/** Shared `ActionCardFormInvalidBody` / `ActionCardFormRequiredBody` / `ActionCardAlreadyExecutedBody`. */
+@Serializable
+private data class ActionCardFormErrorEnvelopeDto(
+    val error: String? = null,
+    val errorCode: String? = null,
+    val issues: List<ActionCardFormIssueDto>? = null,
+    val metadata: WireActionCardMetadata? = null,
+)
+
+/** Shared `ActionCardFormIssue`: `{ field: string | null, code, message: Msg }`. */
+@Serializable
+private data class ActionCardFormIssueDto(
+    val field: String? = null,
+    val code: String,
+    val message: JsonElement? = null,
 )
 
 @Serializable
@@ -542,7 +633,46 @@ internal data class ApproveIntegrationRequestBody(val remember: Boolean)
 internal data class ExecuteActionBody(
     val expectedState: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+    /**
+     * `form.v1` (shared `ActionCardFormSubmission`): the form an `open_form` button opened and its
+     * values. Left out of the body when null, so a plain execute sends exactly what it always did.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val form: ExecuteActionFormBody? = null,
 )
+
+/** Shared `ActionCardFormSubmission`: `{ id, values }`, a value per field (string, boolean or ids). */
+@Serializable
+internal data class ExecuteActionFormBody(
+    val id: String,
+    val values: Map<String, @Serializable(with = ActionCardFormValueSerializer::class) ActionCardFormValue>,
+)
+
+/** Shared `ActionCardFormValue = string | boolean | string[]`. */
+internal object ActionCardFormValueSerializer : KSerializer<ActionCardFormValue> {
+    override val descriptor = JsonElement.serializer().descriptor
+
+    override fun serialize(encoder: Encoder, value: ActionCardFormValue) {
+        val element =
+            when (value) {
+                is ActionCardFormValue.Text -> JsonPrimitive(value.value)
+                is ActionCardFormValue.Toggle -> JsonPrimitive(value.value)
+                is ActionCardFormValue.Ids -> JsonArray(value.ids.map(::JsonPrimitive))
+            }
+        encoder.encodeSerializableValue(JsonElement.serializer(), element)
+    }
+
+    override fun deserialize(decoder: Decoder): ActionCardFormValue =
+        when (val element = decoder.decodeSerializableValue(JsonElement.serializer())) {
+            is JsonArray -> ActionCardFormValue.Ids(element.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: throw SerializationException("id") })
+            is JsonPrimitive ->
+                when {
+                    element.isString -> ActionCardFormValue.Text(element.content)
+                    element.booleanOrNull != null -> ActionCardFormValue.Toggle(element.boolean)
+                    else -> throw SerializationException("form value")
+                }
+            else -> throw SerializationException("form value")
+        }
+}
 
 /** Body of POST /api/actions/:messageId/mark-executed (shared `MarkActionExecutedRequestBody`). */
 @OptIn(ExperimentalSerializationApi::class)
@@ -601,9 +731,13 @@ internal fun buildCreateIntegrationClientBody(
 internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
     integrationsActionsPushJson.encodeToString(ApproveIntegrationRequestBody(remember = remember))
 
-internal fun buildExecuteActionBody(expectedState: String? = null, expectedConfirmationVersion: Int? = null): String =
+internal fun buildExecuteActionBody(
+    expectedState: String? = null,
+    expectedConfirmationVersion: Int? = null,
+    form: ExecuteActionFormBody? = null,
+): String =
     integrationsActionsPushJson.encodeToString(
-        ExecuteActionBody(expectedState = expectedState, expectedConfirmationVersion = expectedConfirmationVersion)
+        ExecuteActionBody(expectedState = expectedState, expectedConfirmationVersion = expectedConfirmationVersion, form = form)
     )
 
 internal fun buildMarkAgentActionExecutedBody(agentId: String, agentName: String, expectedConfirmationVersion: Int? = null): String =

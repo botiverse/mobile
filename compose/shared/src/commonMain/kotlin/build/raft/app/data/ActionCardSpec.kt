@@ -60,7 +60,27 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
  * and each `field.*` with the form sheet and that field (A3), each `intent.*` when the button
  * dispatch (A4) opens that native dialog. Anything not listed is "Open in web".
  */
-val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> = listOf("card.v1")
+// A4 (button dispatch): confirm.v1 (the confirm sheet), form.v1 and the seven field.* (A3's sheet,
+// submitted through execute), and the four intents whose native path the App has: create_channel
+// and add_members run the card as the typed card's button does, create_agent opens the create-agent
+// dialog, feedback_form the Feedback page (dropped per viewer when that page is off:
+// [raftAppActionCardCapabilities]). Not intent.upgrade_dialog: the App has no upgrade dialog for a
+// card, so that button is "Open in web".
+val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
+    listOf(
+        "card.v1", "confirm.v1", "form.v1",
+        "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
+        "field.agent_picker",
+        "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
+    )
+
+/**
+ * [RAFT_APP_ACTION_CARD_CAPABILITIES] for one viewer: without `intent.feedback_form` where the
+ * Feedback page a feedback card opens is off for the viewing server (`product_feedback_multi_app`),
+ * so that button is "Open in web" rather than a button that only says it can't.
+ */
+fun raftAppActionCardCapabilities(feedbackFormAvailable: Boolean): List<String> =
+    if (feedbackFormAvailable) RAFT_APP_ACTION_CARD_CAPABILITIES else RAFT_APP_ACTION_CARD_CAPABILITIES - ActionCardSpecIntent.FeedbackForm.capability
 
 /** Tree and size limits (`ACTION_CARD_SPEC_LIMITS`; the root is at depth 0). */
 object ActionCardSpecLimits {

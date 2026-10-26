@@ -95,6 +95,31 @@ internal fun parseRaftMessageLink(url: String, configuredWebUrl: String? = null)
     )
 }
 
+/**
+ * The web link of [link], the inverse of [parseRaftMessageLink]: `{web}/s/{slug}/{channel|dm}/{cid}`
+ * with `?msg={mid}` and/or `thread={cid}%3A{pid}` (the path's channel, as the parser requires).
+ * [webUrl] is the Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule");
+ * blank or null is production. Null when an id is one the parser would refuse, so a link this
+ * builds always parses back to [link] with the same [webUrl].
+ */
+internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): String? {
+    val ids = listOfNotNull(link.serverSlug, link.channelId, link.messageId, link.threadParentMessageId)
+    if (!ids.all(::isRaftLinkIdentifier)) return null
+    val routeKind =
+        when (link.routeKind) {
+            ConversationKind.DirectMessage -> "dm"
+            else -> "channel"
+        }
+    val query =
+        listOfNotNull(
+            link.messageId?.let { "msg=$it" },
+            link.threadParentMessageId?.let { "thread=${link.channelId}%3A$it" },
+        ).joinToString("&")
+    val base = sharedSettingsResolvedWebBaseUrl(webUrl)
+    val path = "$base/s/${link.serverSlug}/$routeKind/${link.channelId}"
+    return if (query.isEmpty()) path else "$path?$query"
+}
+
 private fun isRaftLinkIdentifier(value: String): Boolean =
     value.length in 1..128 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
 

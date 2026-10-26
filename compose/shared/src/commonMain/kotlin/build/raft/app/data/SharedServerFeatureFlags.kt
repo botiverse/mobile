@@ -123,6 +123,13 @@ const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
 
+/**
+ * First-party action cards rendered from their spec (`presentation.card`, `action-card.v1`). The same
+ * key the web reads (slock `ACTION_CARD_SPEC_FEATURE_FLAG_KEY`), evaluated for the card's own server
+ * (`sourceServerId`). Off (or unresolved), every card keeps its typed / legacy rendering.
+ */
+const val ACTION_CARD_SPEC_FEATURE_FLAG_KEY: String = "action_card_spec"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -141,6 +148,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
+    ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
 )
 
 /**

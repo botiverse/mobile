@@ -757,6 +757,10 @@
     <string name="thread_action_card_prompt_text_install_note">Raft adds this to the system prompt of every agent on this Server. Agents get it the next time they start.</string>
     <string name="thread_action_card_prompt_text_empty">Not added to agent prompts: this app has no When to use.</string>
     <string name="thread_action_card_execute_failed">Failed to execute action</string>
+    <string name="thread_action_card_form_required">This card has changed. Refresh the conversation and try again.</string>
+    <string name="thread_action_card_already_executed_by">%1$s already completed this.</string>
+    <string name="thread_action_card_already_executed">Someone already completed this.</string>
+    <string name="thread_action_card_open_in_web_failed">Couldn’t open this message on the web.</string>
     <string name="thread_action_card_permission_set_login_scopes">Login scopes</string>
     <string name="thread_action_card_permission_set_data_access">Data access</string>
     <string name="thread_action_card_permission_set_none">None</string>
