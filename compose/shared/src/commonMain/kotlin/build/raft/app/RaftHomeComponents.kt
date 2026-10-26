@@ -123,7 +123,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import build.raft.designsystem.components.raftDetectDragGesturesAfterHold
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
@@ -1282,12 +1282,15 @@ internal fun HomeNotificationCenterVisualScreen() {
     // Fill the full 390x844 viewport crop with SurfaceWhite so the pager's default
     // surface does not bleed a cream band below/right of the popover. Fixes
     // visual-drift #767.
-    Box(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
+    // The phone popover: 8dp from both screen edges (raft-ui #737).
+    Box(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp)) {
         HomeNotificationPopover(
             notifications = visualHomeNotifications(),
             onView = {},
             onDismiss = {},
-            modifier = Modifier.align(Alignment.TopStart)
+            modifier = Modifier.align(Alignment.TopEnd).homeNotificationPopoverPhoneWidth(),
+            minWidth = 0.dp,
+            maxWidth = HomeNotificationPopoverPhoneMaxWidth
         )
     }
 }
@@ -3088,11 +3091,11 @@ private fun RaftStructuralHomeShellContent(
                             onNotificationDismiss,
                             Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(
-                                    top = homeNotificationPopoverTopOffset(topSafeArea),
-                                    end = RaftAppSpacing.Md
-                                )
-                                .raftFloatingContentClickTarget()
+                                .padding(top = homeNotificationPopoverTopOffset(topSafeArea))
+                                .homeNotificationPopoverPhoneWidth()
+                                .raftFloatingContentClickTarget(),
+                            minWidth = 0.dp,
+                            maxWidth = HomeNotificationPopoverPhoneMaxWidth
                         )
                     }
                 }
@@ -5084,6 +5087,15 @@ private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + Home
 internal val HomeNotificationBellEdgeInset =
     HomeSmallShadowOffset + (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
 private val HomeNotificationPopoverTopGap = 4.dp
+
+// raft-ui 0.24 (#737) NotificationCenterPopup `viewport="mobile"`: on a phone the popup is the
+// screen's width less 8dp on each side, at most 480dp, 8dp from the edge it hangs against
+// (measured from the screen's edge, not the safe area).
+private val HomeNotificationPopoverPhoneEdgeInset = 8.dp
+private val HomeNotificationPopoverPhoneMaxWidth = 480.dp
+
+private fun Modifier.homeNotificationPopoverPhoneWidth(): Modifier =
+    padding(horizontal = HomeNotificationPopoverPhoneEdgeInset).fillMaxWidth()
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + RaftAppSize.PageHeaderHeight + HomeNotificationPopoverTopGap
 
@@ -5144,8 +5156,15 @@ private fun HomeAppUpdateBanner(
     Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
 }
 @Composable
-private fun HomeNotificationPopover(notifications: List<RaftHomeNotificationItem>, onView: (RaftHomeNotificationItem) -> Unit, onDismiss: (RaftHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
-    HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
+private fun HomeNotificationPopover(
+    notifications: List<RaftHomeNotificationItem>,
+    onView: (RaftHomeNotificationItem) -> Unit,
+    onDismiss: (RaftHomeNotificationItem) -> Unit,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = 320.dp,
+    maxWidth: Dp = 320.dp,
+) {
+    HardShadowPanel(modifier = modifier, minWidth = minWidth, maxWidth = maxWidth) {
         androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(MR.strings.home_notification_center_title), style = RaftType.SectionLabel, color = RaftColor.TextMutedGray, maxLines = 1)
             Text(
@@ -6044,7 +6063,8 @@ internal fun ServerSwitcherPanel(
                                     .fillMaxHeight()
                                     .width(HomeServerSwitcherDragHandleWidth)
                                     .pointerInput(order) {
-                                        detectDragGesturesAfterLongPress(
+                                        // raft-ui 0.32.2 (#787): the drag starts after the 500ms touch hold.
+                                        raftDetectDragGesturesAfterHold(
                                             onDragStart = { pos ->
                                                 val target = resolveSortTargetIndex(pos.y, visibleServerRowBounds(), order.lastIndex)
                                                 val id = order.getOrNull(target)
@@ -6926,7 +6946,8 @@ private fun RaftSidebarSortOverlay(
                     Modifier
                         .fillMaxSize()
                         .pointerInput(order) {
-                            detectDragGesturesAfterLongPress(
+                            // raft-ui 0.32.2 (#787): the drag starts after the 500ms touch hold.
+                            raftDetectDragGesturesAfterHold(
                                 onDragStart = { pos ->
                                     val rows = visibleSortRowBounds()
                                     val target = resolveSortTargetIndex(pos.y, rows, order.lastIndex)
