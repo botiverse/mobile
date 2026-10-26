@@ -38,8 +38,8 @@ import org.robolectric.annotation.GraphicsMode
  *  - `thread.system-message-seed`: "@Jasper joined this channel." (sender id `system`) is the muted
  *    centered system line, not a chat message from "system" with an "S" face.
  *  - `thread.activity-seed-truncated` (artin 10-26): a row whose preview the server cut at 140
- *    characters shows that text without its "…", ended by the small muted loading spinner (frozen on
- *    its first step), below a short message that needs none.
+ *    characters shows that text with its "…", and the small muted loading spinner (frozen on its
+ *    first step) below it, below a short message that needs none.
  * Light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)

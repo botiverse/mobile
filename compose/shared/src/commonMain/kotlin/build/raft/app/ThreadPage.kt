@@ -3008,8 +3008,8 @@ internal data class RaftThreadMessageItem(
     val body: String = "",
     /**
      * artin 10-26: this is a stand-in seeded from an Activity row whose server preview was cut
-     * ([activitySeedPreviewIsTruncated]); [body] holds the cut text without its "…", and the card
-     * ends it with a loading indicator until the canonical load replaces the message. Only the
+     * ([activitySeedPreviewIsTruncated]); [body] holds the cut text with its "…", and the card
+     * shows a loading indicator below it until the canonical load replaces the message. Only the
      * Activity open seed sets it; a message read from the server or a cache never does.
      */
     val activityPreviewTruncated: Boolean = false,

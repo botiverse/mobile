@@ -108,11 +108,11 @@ internal fun activitySeedPreviewIsTruncated(preview: String): Boolean =
 
 /**
  * A cut seed message whose full copy did not arrive (the main load failed, or the page is offline):
- * no loading indicator that would spin forever, and the "…" back so the cut text does not read as the
- * whole message. The seed stripped exactly that suffix (and the space before it, which stays gone).
+ * no loading indicator that would spin forever. The body still ends in the server's "…", so the cut
+ * text does not read as the whole message.
  */
 internal fun RaftThreadMessageItem.withActivityPreviewSettled(): RaftThreadMessageItem =
-    if (activityPreviewTruncated) copy(body = body + ActivityPreviewEllipsis, activityPreviewTruncated = false) else this
+    if (activityPreviewTruncated) copy(activityPreviewTruncated = false) else this
 
 internal fun RaftThreadScreenPayload.withActivityPreviewsSettled(): RaftThreadScreenPayload =
     if (messages.none { it.activityPreviewTruncated }) {
@@ -232,14 +232,9 @@ private fun InboxItem.activitySeedMessage(
 ): RaftThreadMessageItem? {
     val messageId = id?.takeIf { it.isNotBlank() } ?: return null
     val preview = body?.takeIf { it.isNotBlank() } ?: return null
-    // artin 10-26: a cut preview shows without its "…" and ends in a loading indicator instead.
+    // artin 10-26: a cut preview keeps its "…" (it says the text is cut) and gets a loading indicator
+    // below it until the full message arrives.
     val truncated = activitySeedPreviewIsTruncated(preview)
-    val text =
-        if (truncated) {
-            preview.removeSuffix(ActivityPreviewEllipsis).trimEnd().takeIf { it.isNotBlank() } ?: return null
-        } else {
-            preview
-        }
     val at = createdAt?.takeIf { it.isNotBlank() } ?: return null
     val author = senderId?.takeIf { it.isNotBlank() } ?: return null
     // Web `isSystemSender`: a membership note is stored as sender type `user` with sender id `system`,
@@ -259,7 +254,7 @@ private fun InboxItem.activitySeedMessage(
         timestampLabel = at,
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(at),
         messageType = if (system) "System" else "Chat",
-        body = text,
+        body = preview,
         activityPreviewTruncated = truncated,
     ).withActivityRetraction(this)
 }
