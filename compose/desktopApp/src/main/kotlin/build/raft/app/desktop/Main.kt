@@ -13,6 +13,8 @@ import build.raft.app.network.installDesktopRaftAppIdentity
 
 /** Desktop entry point: process setup as in RaftApplication (Android), then one window. */
 fun main(args: Array<String>) {
+    // First: a second launch only forwards its sign-in callback to the running app.
+    RaftDesktopLoginCallbacks.install(args)
     val debugBuild = System.getProperty("raft.desktop.debug") == "true"
     RaftCmpRouter.configure(debugBuild = debugBuild)
     RaftPageRegistry.install()
@@ -24,7 +26,6 @@ fun main(args: Array<String>) {
     RaftAppAppearanceRuntime.ensureLoaded()
     raftClearLegacyFontPreference()
     RaftDesktopRealtimeHost.install()
-    RaftDesktopLoginCallbacks.install(args)
 
     application {
         val navigator = RaftDesktopNavigator(onEmpty = ::exitApplication)

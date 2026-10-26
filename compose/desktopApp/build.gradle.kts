@@ -30,6 +30,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.socket.io.client)
+    implementation(libs.gson)
     implementation(libs.okhttp.transport)
 }
 

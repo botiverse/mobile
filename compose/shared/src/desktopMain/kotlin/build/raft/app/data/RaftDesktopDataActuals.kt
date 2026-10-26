@@ -48,3 +48,14 @@ internal actual fun createRaftPlatformEventBus(): RaftEventBus = RaftEnhancedNot
 
 // TODO(desktop): attachment uploads (file picker -> fileRef) are not wired on desktop yet.
 internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver? = null
+
+/**
+ * Posts a host event to the shared app-scope bus on the UI thread (Android:
+ * `postAndroidAppScopeEvent`). [eventDataJson] is a JSON object.
+ */
+fun postDesktopAppScopeEvent(eventName: String, eventDataJson: String, source: String = "desktop") {
+    val data = build.raft.app.parseRaftJsonObject(eventDataJson)
+    javax.swing.SwingUtilities.invokeLater {
+        RaftEventBuses.appScope().post(eventName = eventName, eventData = data, crossProcess = false, source = source)
+    }
+}

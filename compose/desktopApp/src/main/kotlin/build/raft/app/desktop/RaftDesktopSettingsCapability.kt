@@ -53,7 +53,9 @@ object RaftDesktopSettingsCapability {
     }
 
     private fun openAppLogin(authorizationUrl: String): Map<String, String> {
-        if (!authorizationUrl.startsWith("https://")) {
+        // https only, plus plain http to this machine (a local development server).
+        val loopbackHttp = Regex("^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?/").containsMatchIn(authorizationUrl)
+        if (!authorizationUrl.startsWith("https://") && !loopbackHttp) {
             return mapOf("status" to "error", "code" to "settings_mobile_oauth_url_invalid")
         }
         log("app login: opening the browser for $authorizationUrl")

@@ -61,3 +61,7 @@ internal actual fun raftRequiresAppScopeKeyValueStore(namespace: String): Boolea
 
 internal actual fun raftCreatePlatformAppScopeKeyValueStore(namespace: String): RaftKeyValueStore? =
     RaftDesktopFileKeyValueStore.forNamespace(namespace)
+
+/** The desktop host's handle on the app-scope store of [namespace] (Android: its MMKV instance). */
+fun raftDesktopAppScopeKeyValueStore(namespace: String): RaftKeyValueStore =
+    RaftDesktopFileKeyValueStore.forNamespace(namespace)
