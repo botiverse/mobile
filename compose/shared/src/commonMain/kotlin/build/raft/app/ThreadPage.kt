@@ -5,6 +5,7 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.designsystem.components.RaftSpinner
@@ -34332,6 +34333,7 @@ internal fun ThreadSettingsModal(
                     RaftBrutalTextField(
                         label = stringResource(MR.strings.thread_settings_name),
                         value = name,
+                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                         placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
                         onValueChange = { name = it },
                         required = true,

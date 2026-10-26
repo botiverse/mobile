@@ -42,6 +42,7 @@ import build.raft.app.data.AddComputerType
 import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -371,6 +372,7 @@ private fun AddComputerConnectedStep(
     ) {
         RaftTextField(
             value = nameValue,
+            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
             onValueChange = {
                 nameValue = it
                 onIntent(SharedSettingsIntent.SetAddComputerName(it.text))
