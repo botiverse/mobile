@@ -15369,7 +15369,12 @@ private fun ThreadPageContentContent(
         // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
         // recomposition and the relayout it causes land before any bounds are read or pixels
         // taken: one frame recomposes, the next lays out and reports the rows' new bounds.
-        awaitThreadShareCaptureFrames()
+        // Fail closed: without a frame clock the recomposition can't be awaited, so the
+        // screenshot could still hold the viewer-only previews. No capture, export fails.
+        if (!awaitThreadShareCaptureFrames()) {
+            diagnosticsLogger("thread_share_capture_aborted reason=no_frame_clock")
+            return null
+        }
         diagnosticsLogger(
             "thread_share_capture_start selected=${selectedShareMessages.size} " +
                 "ids=${selectedShareMessages.joinToString(separator = ",") { it.id }}"
@@ -24680,10 +24685,14 @@ private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
 
-/** Awaits two frames where the caller's context has a frame clock (a composition's scope does). */
-internal suspend fun awaitThreadShareCaptureFrames(frames: Int = 2) {
-    if (currentCoroutineContext()[MonotonicFrameClock] == null) return
+/**
+ * Waits [frames] frames so capture-mode recomposition and relayout land before pixels are taken.
+ * Returns false when there is no frame clock to wait on; the caller must then not capture.
+ */
+internal suspend fun awaitThreadShareCaptureFrames(frames: Int = 2): Boolean {
+    if (currentCoroutineContext()[MonotonicFrameClock] == null) return false
     repeat(frames) { withFrameNanos { } }
+    return true
 }
 private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
 private const val ThreadShareCaptureGeometryTolerancePx = 2f
