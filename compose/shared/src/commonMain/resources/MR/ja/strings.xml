@@ -550,6 +550,14 @@
     <string name="thread_message_loading_full">メッセージ全文を読み込み中…</string>
     <string name="thread_quoted_permalink_no_content">（内容なし）</string>
     <string name="thread_quoted_permalink_unavailable">メッセージプレビューを利用できません</string>
+    <string name="thread_quoted_permalink_thread">スレッド</string>
+    <string name="thread_quoted_permalink_archived">アーカイブ済み</string>
+    <string name="thread_quoted_permalink_direct_message">ダイレクトメッセージ</string>
+    <string name="thread_quoted_permalink_channel_fallback">チャンネル</string>
+    <string name="thread_quoted_permalink_one_image">画像 1 枚</string>
+    <string name="thread_quoted_permalink_one_file">ファイル 1 件</string>
+    <string name="thread_quoted_permalink_images">画像 %1$d 枚</string>
+    <string name="thread_quoted_permalink_attachments">添付ファイル %1$d 件</string>
 <string name="thread_member_role_member">メンバー</string>
     <string name="thread_member_role_system">システム</string>
     <string name="thread_settings_edit_channel">チャンネルを編集</string>
@@ -798,6 +806,11 @@
     <string name="thread_forward_view_message">メッセージを表示</string>
     <string name="thread_forward_bundle_fallback_title">転送されたメッセージ</string>
     <string name="thread_forward_bundle_unavailable">この転送されたメッセージは利用できません。</string>
+    <string name="thread_forward_badge">転送済み</string>
+    <string name="thread_forward_from_source">%1$s から</string>
+    <string name="thread_forward_from_thread">%1$s のスレッドから</string>
+    <string name="thread_forward_open_source">元のメッセージを開く</string>
+    <string name="thread_forward_open_attachment">%1$s を開く</string>
     <string name="thread_forward_selected">%1$d 件選択中</string>
     <string name="thread_forward_placeholder_one">1 件のメッセージを転送しました</string>
     <string name="thread_forward_placeholder_many">%1$d 件のメッセージを転送しました</string>

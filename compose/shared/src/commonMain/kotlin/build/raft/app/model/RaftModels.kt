@@ -560,7 +560,21 @@ data class ForwardMessageBundle(
     val title: String = "",
     val sourceTitle: String = "",
     val totalCount: Int? = null,
-    val messages: List<ForwardMessageItem> = emptyList()
+    val messages: List<ForwardMessageItem> = emptyList(),
+    /**
+     * The source the card may name (web ForwardedBundleCard `sourceLabel`): set only when the
+     * first item's provenance is available and its target is a public, non-DM conversation.
+     */
+    val visibleSource: ForwardMessageSource? = null
+)
+
+@Serializable
+data class ForwardMessageSource(
+    val label: String,
+    val thread: Boolean = false,
+    /** Where the source opens (web `canOpenSourceLabel`): the conversation and message, or null. */
+    val channelId: String? = null,
+    val messageId: String? = null
 )
 
 @Serializable
@@ -577,13 +591,19 @@ data class ForwardMessageItem(
     // Snapshot metadata (filename + mime) when the wire provides it; the web
     // ForwardedBundleCard renders these as per-file chips. Legacy payloads
     // carry only a count and leave this empty.
-    val attachments: List<ForwardMessageAttachment> = emptyList()
+    val attachments: List<ForwardMessageAttachment> = emptyList(),
+    // web `attachmentPolicy === "projected"`: the files were copied with the forward, so the
+    // card may load them (images as a gallery) by their snapshot ids.
+    val attachmentsProjected: Boolean = false
 )
 
 @Serializable
 data class ForwardMessageAttachment(
     val filename: String = "",
-    val mimeType: String? = null
+    val mimeType: String? = null,
+    val id: String? = null,
+    val width: Int? = null,
+    val height: Int? = null
 )
 
 @Serializable
