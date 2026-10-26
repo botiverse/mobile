@@ -13,7 +13,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.resources.MR
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
@@ -47,6 +55,18 @@ import org.robolectric.shadows.ShadowDialog
 class ThreadMenusAndFormsScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    // The reaction glyphs log through the live page's bridge: give them one.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "thread-menus-and-forms-screenshot"
+            pageData = PageData(JSONObject())
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
     fun messageMenuLight() = capture("thread.message-menu", RaftAppAppearance.Light) { MessageMenuAndToolbar() }
@@ -86,10 +106,17 @@ class ThreadMenusAndFormsScreenshotTest {
             activities = activities,
             root = if (dialog) ({ ShadowDialog.getLatestDialog()?.window?.decorView }) else ({ it.window.decorView }),
         ) {
-            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            // Decoded here, synchronously (see ThreadMessageFooterScreenshotTest).
+            val atlas =
+                remember {
+                    it.assets.open(MR.assets.reactions.reaction_atlas_v1.originalPath).use { stream ->
+                        BitmapFactory.decodeStream(stream).asImageBitmap()
+                    }
+                }
             CompositionLocalProvider(
-                LocalActivity provides RaftPageActivity(pager),
+                LocalActivity provides RaftPageActivity(livePager),
                 LocalRaftTimeContextProvider provides RaftTimeContextProvider(pickerTimeContext),
+                LocalThreadReactionAtlasImage provides atlas,
             ) {
                 RaftDesignSystemTheme { content() }
             }
