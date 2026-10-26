@@ -17,6 +17,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Archive("archive"),
     ArrowLeft("arrow-left"),
     ArrowUpDown("arrow-up-down"),
+    ArrowUpRight("arrow-up-right"),
     AtSign("at-sign"),
     Ban("ban"),
     BadgeInfo("badge-info"),

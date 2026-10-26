@@ -134,7 +134,8 @@ private fun RaftInAppBrowserScreen() {
                         size = 26.dp,
                     )
                     RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ExternalLink,
+                        // raft-ui 0.26 (#758): a control that leaves Raft is marked ↗.
+                        iconName = RaftLucideIconName.ArrowUpRight,
                         onClick = ::openInSystemBrowser,
                         contentDescription = stringResource(MR.strings.in_app_browser_open_system),
                         enabled = launchUrl != null,
@@ -227,7 +228,7 @@ private fun RaftInAppBrowserProgress(progress: Int) {
 }
 
 @Composable
-private fun RaftInAppBrowserError(
+internal fun RaftInAppBrowserError(
     message: String,
     onRetry: (() -> Unit)?,
     onOpenSystem: (() -> Unit)?,
@@ -262,7 +263,8 @@ private fun RaftInAppBrowserError(
             RaftButton(
                 text = stringResource(MR.strings.in_app_browser_open_system),
                 onClick = it,
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
+                // raft-ui 0.26 (#758): leaving Raft ends in ↗, in the trailing icon's place.
+                trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
                 modifier = Modifier.fillMaxWidth(),
                 size = RaftButtonSize.Lg,
             )

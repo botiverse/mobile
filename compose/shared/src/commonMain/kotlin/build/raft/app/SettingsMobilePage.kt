@@ -526,7 +526,7 @@ private fun SettingsLinkOpenModeCard(
     val preference = snapshot.linkOpenMode
     val busy = actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.inProgress
     SettingsFormSectionCard(
-        iconName = RaftLucideIconName.ExternalLink,
+        iconName = RaftLucideIconName.ArrowUpRight,
         title = stringResource(MR.strings.settings_mobile_link_open_mode_title)
     ) {
         SettingsSegmentedControlField(
@@ -977,7 +977,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.linkOpenMode.toMobileSelectionRow(
                                 key = MOBILE_ACTION_LINK_OPEN_MODE,
-                                iconName = RaftLucideIconName.ExternalLink,
+                                iconName = RaftLucideIconName.ArrowUpRight,
                                 title = "Open web links",
                                 fallbackStatus = "Default browser",
                                 actionState = actionState

@@ -13570,7 +13570,8 @@ private fun MembersAgentAppLoginCard(
                 onClick = { onOpenUrl(homepageUrl) },
                 modifier = Modifier.fillMaxWidth(),
                 size = RaftButtonSize.Lg,
-                leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.ExternalLink, size = 18.dp) }
+                // raft-ui 0.26 (#758): an app's homepage leaves Raft: ↗ in the trailing icon's place.
+                trailingIcon = { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
             )
         }
     }

@@ -213,7 +213,7 @@ private fun RaftDownloadCenterTrailing(
                     onClick = { onAction(RaftDownloadCenterAction.Open(entry.id)) },
                     tooltip = stringResource(MR.strings.common_open),
                     variant = RaftButtonVariant.Ghost
-                ) { RaftDownloadIcon(RaftLucideIconName.ExternalLink) }
+                ) { RaftDownloadIcon(RaftLucideIconName.ArrowUpRight) } // raft-ui 0.26 (#758): another app leaves Raft: ↗.
                 RaftDownloadCenterRemoveButton(entry, onAction)
             }
             RaftDownloadStatus.Failed, RaftDownloadStatus.Cancelled -> {

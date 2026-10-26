@@ -90,6 +90,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M7 4v16"),
                     ),
                 )
+            RaftLucideIconName.ArrowUpRight ->
+                RaftLucideIconSpec(
+                    "arrow-up-right",
+                    listOf(
+                        RaftLucidePathSpec("M7 7h10v10"),
+                        RaftLucidePathSpec("M7 17 17 7"),
+                    ),
+                )
             RaftLucideIconName.AtSign ->
                 RaftLucideIconSpec(
                     "at-sign",
