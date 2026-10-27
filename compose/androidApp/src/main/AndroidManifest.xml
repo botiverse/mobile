@@ -231,6 +231,10 @@
         </activity>
 
         <receiver
+            android:name=".shared.RaftUnreadNotificationDismissReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".widget.SlockActivityWidgetProvider"
             android:exported="true"
             android:label="@string/slock_activity_widget_name">

@@ -1523,6 +1523,9 @@ internal open class RaftCmpActivity :
         SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
         SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
         RaftBridgeModule.resumePendingHandsAutoInstall(applicationContext)
+        // A tapped conversation notification auto-cancels and lands here; drop its server's summary
+        // if it was the last one.
+        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(applicationContext)
     }
 
     private fun reportRealtimeVisibility(

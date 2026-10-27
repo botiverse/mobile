@@ -423,6 +423,9 @@
     <string name="notification_unread_channel_channel_description">来自频道和消息列的未读消息。</string>
     <string name="notification_unread_channel_channel_name">频道未读消息</string>
     <string name="notification_unread_default_text">你有一条新的未读消息。</string>
+    <plurals name="notification_unread_message_count">
+        <item quantity="other">%1$d 条新消息</item>
+    </plurals>
     <string name="push_preview_hidden_message">你有一条新消息</string>
     <string name="push_preview_hidden_mention">有人提到了你</string>
     <string name="push_preview_sender_only_message">%1$s 发来一条消息</string>
