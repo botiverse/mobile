@@ -676,6 +676,27 @@ internal class RaftSharedStoreProvider private constructor(
         if (!requested) fallback?.invoke()
     }
 
+    /**
+     * Incremental sync on: machine online status (`machine:status`) is not in the change log
+     * (Scout 10-27), so a reconnect (after the jitter) and a foreground return read the machine
+     * list again: every Computers list open for the server, and Home's machine notifications
+     * (offline-computer alerts; read only for users who manage machines). Home reloads reuse what
+     * this read ([SharedHomeDataSource.loadNotificationsAfterHomeLoad]).
+     */
+    internal suspend fun refreshMachinesForSync(serverId: String, reason: String) {
+        val stores = syncComputersStores(serverId)
+        stores.forEach { store -> runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) } }
+        val activeScopes = scopesForServer(serverId).toSet()
+        val event =
+            RealtimeRefreshRequired(scope = RealtimeRefreshScope.Machines, reason = reason, serverId = ServerId(serverId))
+        homeStores.entries().forEach { (scope, store) ->
+            if (scope in activeScopes) store.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+        }
+        sharedInfoLogger("SlockSync", "sync_changes")(
+            "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
+        )
+    }
+
     /** A full-list refetch standing in for a failed incremental pull: always after the reconnect jitter. */
     internal fun scheduleSyncFallbackRefetch(serverId: String, source: String, refetch: suspend () -> Unit) {
         reconnectRefetchJitter.scheduleDelayed(serverId = serverId, source = source, refetch = refetch)
@@ -711,7 +732,7 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /** Whether [requestSyncChangesPull] would pull [serverId] now (signed in, selected, flag on). */
-    private fun syncChangesPullAllowed(serverId: String): Boolean {
+    internal fun syncChangesPullAllowed(serverId: String): Boolean {
         val scope = currentSyncScope(serverId) ?: return false
         return scopesForServer(scope.serverId).isNotEmpty() && syncChangesEnabled(scope)
     }
@@ -918,6 +939,7 @@ internal class RaftSharedStoreProvider private constructor(
                 }.distinct()
             },
             isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
+            refreshMachines = { serverId -> refreshMachinesForSync(serverId, reason = PresenceTransportRosterRefetch.REASON) },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
             warnLogger = sharedWarnLogger("SlockPresence", "presence_transport_rebaseline"),
         )
@@ -1568,7 +1590,8 @@ internal class RaftSharedStoreProvider private constructor(
                     avatarRefStore = memberAvatarRefStore,
                     durableStore = serverMembersDurableStore,
                     actorResolve = jointActorResolve(networkClient(scope)),
-                    actorResolveScope = RaftStoreThreading.newScope()
+                    actorResolveScope = RaftStoreThreading.newScope(),
+                    incrementalSyncCoversRoster = { serverId -> syncChangesPullAllowed(serverId.value) }
                 )
             }
         }
@@ -2894,6 +2917,7 @@ internal class RaftSharedStoreProvider private constructor(
                     storage = SqlDelightRaftServerMembersDurableStorage(database),
                     logger = sharedInfoLogger("SlockServerMembers", "server_members_durable"),
                 )
+            lateinit var provider: RaftSharedStoreProvider
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository = processServerMembersRepository,
@@ -2918,9 +2942,9 @@ internal class RaftSharedStoreProvider private constructor(
                     avatarRefStore = memberAvatarRefStore,
                     durableStore = serverMembersDurableStore,
                     actorResolve = jointActorResolve(networkClient),
-                    actorResolveScope = RaftStoreThreading.newScope()
+                    actorResolveScope = RaftStoreThreading.newScope(),
+                    incrementalSyncCoversRoster = { serverId -> provider.syncChangesPullAllowed(serverId.value) }
                 )
-            lateinit var provider: RaftSharedStoreProvider
             val foregroundReconciler =
                 SharedForegroundReconciler(
                     authStore = authStore,

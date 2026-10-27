@@ -566,6 +566,56 @@ class HomeDataSourceTest {
         assertEquals(0, memberRepository.getMembersCalls)
     }
 
+    /**
+     * Staging run 10-27 (Tenny / Scout): with incremental sync on, a Home reload reuses the machine
+     * list the last machines refresh read (reconnect / foreground / Machines scope) instead of
+     * reading `/servers/:id/machines` again; sync off reads it on every Home load as before.
+     */
+    @Test
+    fun syncOnHomeReloadReusesTheHeldMachineListAndSyncOffReadsItAgain() = runBlocking {
+        suspend fun machineReads(syncOn: Boolean): Pair<Int, List<String>> {
+            val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
+            val source =
+                SharedHomeDataSource(
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
+                    api = FakeHomeApi(),
+                    computersApi = computersApi,
+                    notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
+                    serverMembersStore =
+                        SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { syncOn }),
+                    parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
+                )
+            // The first Home load reads the list (nothing held yet), then two Home reloads.
+            source.loadNotificationsAfterHomeLoad()
+            source.loadNotificationsAfterHomeLoad()
+            val last = source.loadNotificationsAfterHomeLoad() as DataResult.Content
+            return computersApi.machineCalls to last.data.map { it.id }
+        }
+
+        assertEquals(1 to listOf("machine-offline:machine-1"), machineReads(syncOn = true))
+        assertEquals(3 to listOf("machine-offline:machine-1"), machineReads(syncOn = false))
+    }
+
+    @Test
+    fun syncOnMachinesRefreshStillReadsTheMachineList() = runBlocking {
+        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
+                api = FakeHomeApi(),
+                computersApi = computersApi,
+                serverMembersStore =
+                    SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { true }),
+                parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
+            )
+        source.loadNotificationsAfterHomeLoad()
+        // Machines scope (sync reconnect / foreground machines refresh): always the network.
+        source.loadNotifications()
+        source.loadNotificationsAfterHomeLoad()
+
+        assertEquals(2, computersApi.machineCalls)
+    }
+
     @Test
     fun cachedHomeReadReturnsEmptyWithoutNetwork() = runBlocking {
         // readCachedHome always reports Empty(NoChannels) since the home snapshot
@@ -1042,8 +1092,10 @@ class HomeDataSourceTest {
             """.trimIndent(),
     ) : RaftComputersApi {
         val machinesStarted = CompletableDeferred<Unit>()
+        var machineCalls: Int = 0
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            machineCalls += 1
             machinesStarted.complete(Unit)
             announcementsStarted.await()
             return HomeNetworkResponse(

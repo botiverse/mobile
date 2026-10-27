@@ -152,10 +152,9 @@ class SharedHomeDataSource(
         val serverId = snapshot.server.id
         when (
             val result =
-                store.refreshMembers(
+                store.refreshMembersForHomeProjection(
                     serverId,
                     priority = priority,
-                    force = false,
                     reason = "home_agent_status_projection"
                 )
         ) {
@@ -186,9 +185,21 @@ class SharedHomeDataSource(
         DataResult.Empty(EmptyReason.NoChannels)
 
     suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> =
-        loadNotificationsFromSources()
+        loadNotificationsFromSources(homeReload = false)
 
-    private suspend fun loadNotificationsFromSources(): DataResult<List<SharedHomeNotification>> {
+    /**
+     * The notifications refresh that follows every Home load. With incremental sync on for the
+     * server, the machine list already read (by a machines refresh: reconnect / foreground / the
+     * Machines scope) is reused instead of reading `/servers/:id/machines` on each Home reload
+     * (Tenny / Scout 10-27); the first one, or sync off, reads it as before.
+     */
+    internal suspend fun loadNotificationsAfterHomeLoad(): DataResult<List<SharedHomeNotification>> =
+        loadNotificationsFromSources(homeReload = true)
+
+    /** The last machine list read, per account + server (sync-on Home reloads reuse it). */
+    private var lastMachines: Pair<String, ComputerListSummary>? = null
+
+    private suspend fun loadNotificationsFromSources(homeReload: Boolean): DataResult<List<SharedHomeNotification>> {
         val appUpdateNotifications =
             when (val appUpdateResult = loadAppUpdateNotification()) {
                 is DataResult.Content -> listOfNotNull(appUpdateResult.data)
@@ -196,7 +207,7 @@ class SharedHomeDataSource(
                 is DataResult.Error,
                 is DataResult.NoPermission -> emptyList()
             }
-        return when (val machineResult = loadMachineNotifications()) {
+        return when (val machineResult = loadMachineNotifications(homeReload)) {
             is DataResult.Content -> DataResult.Content(appUpdateNotifications + machineResult.data)
             is DataResult.Empty -> DataResult.Content(appUpdateNotifications)
             is DataResult.Error ->
@@ -216,7 +227,7 @@ class SharedHomeDataSource(
         }
     }
 
-    private suspend fun loadMachineNotifications(): DataResult<List<SharedHomeNotification>> {
+    private suspend fun loadMachineNotifications(homeReload: Boolean): DataResult<List<SharedHomeNotification>> {
         val client = typedComputersApi
             ?: return DataResult.Content(emptyList())
         val session = sessionStore.readSession()
@@ -235,13 +246,26 @@ class SharedHomeDataSource(
             notificationPreferenceRepository
                 ?.getNotificationPreference()
                 ?.offlineComputerAlertsEnabled == true
+        val cacheKey = "${session.user.id}|${serverId.value}"
+        val reusable =
+            lastMachines?.takeIf { (key, _) ->
+                homeReload && key == cacheKey && serverMembersStore?.incrementalSyncCovers(serverId) == true
+            }?.second
+        if (reusable != null) {
+            diagnosticsLogger("home_machine_notifications serverId=${serverId.value} source=held network=false reason=incremental_sync")
+            return DataResult.Content(
+                reusable.toSharedHomeMachineNotifications(offlineComputerAlertsEnabled = offlineComputerAlertsEnabled)
+            )
+        }
         return when (val result = client.machines(serverId)) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
+                lastMachines = cacheKey to result.data
                 DataResult.Content(
                     result.data.toSharedHomeMachineNotifications(
                         offlineComputerAlertsEnabled = offlineComputerAlertsEnabled
                     )
                 )
+            }
             is DataResult.Empty -> DataResult.Content(emptyList())
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
