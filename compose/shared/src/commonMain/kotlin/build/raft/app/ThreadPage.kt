@@ -21620,9 +21620,10 @@ private fun ThreadMessagesListContent(
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
             }
-            if (offlineLastKnownChrome.tipVisible) {
+            if (offlineLastKnownChrome.tipVisible && !shareSelectionCaptureActive) {
                 // Absolute overlay, out of the list's flow (artin, task #1125); the list reserves an
                 // equal top inset below so the tip never hides the first row when scrolled to the top.
+                // Not while "Generate image" captures the list: the export reads the window's pixels.
                 ThreadOfflineLastKnownTip(
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
                 )
@@ -22445,13 +22446,18 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
-        val agentTypingLineShown = agentTyping != null && !inlineSearchVisible
+        val agentTypingLineShown = agentTyping != null && !inlineSearchVisible && !shareSelectionCaptureActive
         // The list's end fade (raft-ui MessageListEndFade), always on; while the typing line shows it
         // grows by the line's height, solid under the line (web ChatPanel / ThreadPanel).
-        ThreadMessageListEndFade(
-            typingLineShown = agentTypingLineShown,
-            modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
-        )
+        // Except while "Generate image" captures the list: the export reads the window's pixels
+        // slice by slice, so an overlay on the list would be baked into every slice that reaches
+        // the list's end (artin: a washed-out band mid-image). Same rule as the jump pills above.
+        if (!shareSelectionCaptureActive) {
+            ThreadMessageListEndFade(
+                typingLineShown = agentTypingLineShown,
+                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
+            )
+        }
         if (agentTyping != null && agentTypingLineShown) {
             ThreadAgentTypingLine(
                 typing = agentTyping,
