@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.SelectionState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -52,8 +54,14 @@ actual fun RaftNativeSelectableText(
     text: String,
     style: TextStyle,
     modifier: Modifier,
+    selection: RaftNativeTextSelection?,
 ) {
-    SelectionContainer(modifier) { BasicText(text, style = style) }
+    val selectionState = remember { SelectionState() }
+    DisposableEffect(selection, selectionState) {
+        selection?.reader = { selectionState.selectedTexts.joinToString("\n") { it.text } }
+        onDispose { selection?.reader = null }
+    }
+    SelectionContainer(selectionState, modifier) { BasicText(text, style = style) }
 }
 
 // TODO(desktop): no PDF renderer yet; the preview reports the file as unreadable.
