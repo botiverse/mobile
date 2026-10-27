@@ -967,7 +967,7 @@ internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
  * [ActivityConversationPreviewMaxLines] lines tall, top-aligned, so every row has the same height.
  */
 @Composable
-private fun ActivityExcerptBesideMarks(
+internal fun ActivityExcerptBesideMarks(
     text: AnnotatedString,
     /** Non-null: what the excerpt reads as instead of its visible text (one node, all of it). */
     accessibilityText: String? = null,
@@ -977,6 +977,11 @@ private fun ActivityExcerptBesideMarks(
     lineHeight: Dp,
     marks: @Composable () -> Unit,
 ) {
+    // Where line 1 ends, from the first line's last text layout. Kept across measures: a text only
+    // reports its layout when the layout changes, so a re-measure with the same text and width (the
+    // unread count or the mention mark appearing) does not report it again, and a fresh local here
+    // would read as "all of it on line 1" and drop line 2 (artin, dm 37e8b6e9).
+    val firstLineEnd = remember { IntArray(1) { Int.MAX_VALUE } }
     SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
         val width = constraints.maxWidth
         val gap = 8.dp.roundToPx()
@@ -1010,7 +1015,6 @@ private fun ActivityExcerptBesideMarks(
                 body.place(0, 0)
             }
         }
-        var firstLineEnd = text.length
         val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
         val first =
             subcompose("first") {
@@ -1022,12 +1026,12 @@ private fun ActivityExcerptBesideMarks(
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         inlineContent = inlineContent,
-                        onTextLayout = { layout -> firstLineEnd = layout.getLineEnd(0, visibleEnd = false) },
+                        onTextLayout = { layout -> firstLineEnd[0] = layout.getLineEnd(0, visibleEnd = false) },
                     )
                 }
             }.first().measure(Constraints(maxWidth = firstWidth))
         val firstRow = maxOf(first.height, minLine)
-        val rest = text.subSequence(firstLineEnd.coerceIn(0, text.length), text.length)
+        val rest = text.subSequence(firstLineEnd[0].coerceIn(0, text.length), text.length)
         val second =
             if (rest.text.isBlank()) {
                 null
