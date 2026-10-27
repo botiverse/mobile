@@ -243,6 +243,12 @@ fun RaftDialog(
  *   no `verticalScroll` of its own (a weighted child of the scroll is measured 0dp tall).
  * - [actions]: stacked full width 8dp apart at the bottom (pass the buttons
  *   `Modifier.fillMaxWidth()`, size `Lg`), one action in Title Case ("Got It").
+ * - [rowActions] instead of [actions]: two short actions side by side, 8dp apart (pass each
+ *   `Modifier.weight(1f)`, size `Lg`), as the web Select Text sheet's Copy and Quote
+ *   (`DrawerActions className="flex-row *:flex-1"`). Not for a ghost action: side by side
+ *   it has no frame.
+ * - [onClose]: raft-ui DrawerClose, the ghost × named [closeLabel] at the end of the title
+ *   row, pulled into the corner so it doesn't make the header taller (as [RaftDialogHeader]).
  */
 @Composable
 fun RaftSheetSurface(
@@ -250,8 +256,21 @@ fun RaftSheetSurface(
     modifier: Modifier = Modifier,
     description: String? = null,
     actions: (@Composable ColumnScope.() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
+    closeLabel: String = LocalRaftStrings.current.close,
+    rowActions: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
-) = RaftSheetSurfaceImpl(title, modifier, description, clearNavigationBar = false, actions, content)
+) = RaftSheetSurfaceImpl(
+    title,
+    modifier,
+    description,
+    clearNavigationBar = false,
+    actions,
+    content,
+    onClose = onClose,
+    closeLabel = closeLabel,
+    rowActions = rowActions,
+)
 
 /**
  * The sheet surface behind [RaftSheetSurface] and [RaftSheet], with the parts the
@@ -274,6 +293,9 @@ internal fun RaftSheetSurfaceImpl(
     headerAction: (@Composable () -> Unit)? = null,
     pinned: (@Composable () -> Unit)? = null,
     fillContent: Boolean = false,
+    onClose: (() -> Unit)? = null,
+    closeLabel: String = "",
+    rowActions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -292,7 +314,7 @@ internal fun RaftSheetSurfaceImpl(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (headerAction != null) {
+                if (headerAction != null || onClose != null) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -300,7 +322,15 @@ internal fun RaftSheetSurfaceImpl(
                     ) {
                         RaftText(title, Modifier.weight(1f).semantics { heading() }, style = typography.headline, color = colors.foreground)
                         // A 28dp text button beside a 22dp title line: `-my-[3px] -mr-2`.
-                        Box(Modifier.raftBleed(end = 8.dp, vertical = 3.dp)) { headerAction() }
+                        if (headerAction != null) Box(Modifier.raftBleed(end = 8.dp, vertical = 3.dp)) { headerAction() }
+                        if (onClose != null) {
+                            // The 32dp ghost × beside the 22dp title line, its glyph on the body's edge.
+                            Box(Modifier.raftBleed(end = 6.dp, vertical = 5.dp)) {
+                                RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost) {
+                                    RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
+                                }
+                            }
+                        }
                     }
                 } else {
                     RaftText(title, Modifier.semantics { heading() }, style = typography.headline, color = colors.foreground)
@@ -321,9 +351,19 @@ internal fun RaftSheetSurfaceImpl(
                     )
                 }
             }
-            if (actions != null) {
-                // Pushes the actions to the bottom of a short sheet; filling content already does.
-                if (!fillContent) Box(Modifier.weight(1f, fill = false))
+            // No weighted spacer above the actions: an empty `weight(fill = false)` box measures 0dp
+            // tall, so it never pushed them down, and it took half of the height a long body could
+            // scroll in (the body showed its first lines only).
+            if (rowActions != null) {
+                CompositionLocalProvider(LocalRaftButtonsStacked provides false) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = rowActions,
+                    )
+                }
+            } else if (actions != null) {
                 // raft-ui DrawerActions in a bottom sheet: always stacked, so a ghost is framed (#727).
                 CompositionLocalProvider(LocalRaftButtonsStacked provides true) {
                     Column(
@@ -345,8 +385,8 @@ private val RaftSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
  * the scrim, at most 82% of the window tall; its content clears the home indicator and
  * the keyboard (the fill runs under them), and it never goes under the status bar. It slides up
  * from the bottom (240ms, `ease-slide`), the one overlay that moves; it closes without
- * the slide. Back and a tap on the scrim call [onDismissRequest]; keep a button in the
- * sheet too, never only the gesture. Swipe to dismiss and snap points are not ported.
+ * the slide. Back, a tap on the scrim and, with [showClose], the header's × call
+ * [onDismissRequest]; keep a button in the sheet too, never only the gesture. Swipe to dismiss and snap points are not ported.
  */
 @Composable
 fun RaftSheet(
@@ -355,6 +395,9 @@ fun RaftSheet(
     modifier: Modifier = Modifier,
     description: String? = null,
     actions: (@Composable ColumnScope.() -> Unit)? = null,
+    showClose: Boolean = false,
+    closeLabel: String = LocalRaftStrings.current.close,
+    rowActions: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     RaftSheetWindow(onDismissRequest, modifier) { surfaceModifier ->
@@ -365,6 +408,9 @@ fun RaftSheet(
             clearNavigationBar = true,
             actions = actions,
             content = content,
+            onClose = if (showClose) onDismissRequest else null,
+            closeLabel = closeLabel,
+            rowActions = rowActions,
         )
     }
 }
