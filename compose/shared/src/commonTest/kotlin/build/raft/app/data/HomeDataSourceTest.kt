@@ -616,6 +616,50 @@ class HomeDataSourceTest {
         assertEquals(2, computersApi.machineCalls)
     }
 
+    /** Tenny 10-27: a machine change drops the held list; the next Home reload reads it again. */
+    @Test
+    fun syncOnDroppedMachineListIsReadAgainByTheNextHomeReload() = runBlocking {
+        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
+        val source = syncOnMachinesSource(computersApi)
+        source.loadNotificationsAfterHomeLoad()
+        source.loadNotificationsAfterHomeLoad()
+        assertEquals(1, computersApi.machineCalls)
+
+        source.dropHeldMachines()
+        computersApi.bodyText = ONLINE_MACHINE_BODY
+        val afterChange = source.loadNotificationsAfterHomeLoad() as DataResult.Content
+
+        assertEquals(2, computersApi.machineCalls)
+        assertEquals(emptyList(), afterChange.data.map { it.id }, "the offline alert left with the fresh list")
+    }
+
+    /** Tenny 10-27: the sync machines refresh (Machines scope) reads fresh and is what later reloads reuse. */
+    @Test
+    fun syncOnMachinesRefreshOverwritesTheHeldListForLaterHomeReloads() = runBlocking {
+        val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
+        val source = syncOnMachinesSource(computersApi)
+        val first = source.loadNotificationsAfterHomeLoad() as DataResult.Content
+        assertEquals(listOf("machine-offline:machine-1"), first.data.map { it.id })
+
+        computersApi.bodyText = ONLINE_MACHINE_BODY
+        val refreshed = source.loadNotifications() as DataResult.Content
+        val reused = source.loadNotificationsAfterHomeLoad() as DataResult.Content
+
+        assertEquals(2, computersApi.machineCalls)
+        assertEquals(emptyList(), refreshed.data.map { it.id })
+        assertEquals(emptyList(), reused.data.map { it.id }, "the reload reuses the refreshed list, not the first")
+    }
+
+    private fun syncOnMachinesSource(computersApi: ConcurrentComputersApi) =
+        SharedHomeDataSource(
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
+            api = FakeHomeApi(),
+            computersApi = computersApi,
+            notificationPreferenceRepository = notificationPreferences(offlineComputerAlertsEnabled = true),
+            serverMembersStore = SharedServerMembersStore(FakeMemberRepository(emptyList()), incrementalSyncCoversRoster = { true }),
+            parseHome = { _, session -> DataResult.Content(sampleHome(ServerId(session.currentServerId!!))) },
+        )
+
     @Test
     fun cachedHomeReadReturnsEmptyWithoutNetwork() = runBlocking {
         // readCachedHome always reports Empty(NoChannels) since the home snapshot
@@ -1077,7 +1121,7 @@ class HomeDataSourceTest {
 
     private class ConcurrentComputersApi(
         private val announcementsStarted: CompletableDeferred<Unit>,
-        private val bodyText: String =
+        var bodyText: String =
             """
             {
               "machines": [
@@ -1331,3 +1375,17 @@ class HomeDataSourceTest {
             unreadTotal = 0
         )
 }
+
+private val ONLINE_MACHINE_BODY =
+    """
+    {
+      "machines": [
+        {
+          "id": "machine-1",
+          "name": "OranixSlockTest",
+          "status": "online",
+          "statusVersion": 2
+        }
+      ]
+    }
+    """.trimIndent()

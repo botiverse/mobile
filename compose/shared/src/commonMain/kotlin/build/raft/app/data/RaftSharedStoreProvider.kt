@@ -686,15 +686,24 @@ internal class RaftSharedStoreProvider private constructor(
     internal suspend fun refreshMachinesForSync(serverId: String, reason: String) {
         val stores = syncComputersStores(serverId)
         stores.forEach { store -> runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) } }
+        refreshHomeMachineNotifications(serverId, reason)
+        sharedInfoLogger("SlockSync", "sync_changes")(
+            "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
+        )
+    }
+
+    /**
+     * Home's machine notifications of every shell showing [serverId]: a Machines-scope refresh, which
+     * drops the machine list Home holds and (Home visible) reads it again; a hidden Home reads it on
+     * its return reload.
+     */
+    private fun refreshHomeMachineNotifications(serverId: String, reason: String) {
         val activeScopes = scopesForServer(serverId).toSet()
         val event =
             RealtimeRefreshRequired(scope = RealtimeRefreshScope.Machines, reason = reason, serverId = ServerId(serverId))
         homeStores.entries().forEach { (scope, store) ->
             if (scope in activeScopes) store.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
         }
-        sharedInfoLogger("SlockSync", "sync_changes")(
-            "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
-        )
     }
 
     /** A full-list refetch standing in for a failed incremental pull: always after the reconnect jitter. */
@@ -850,6 +859,9 @@ internal class RaftSharedStoreProvider private constructor(
 
             override suspend fun applyMachineRows(serverId: String, upserts: List<ComputerSummary>, deletes: Set<String>) {
                 syncComputersStores(serverId).forEach { store -> store.applySyncedMachineRows(serverId, upserts, deletes) }
+                // Home's machine notifications are built from the machine list: read it again (and
+                // drop the copy sync-on Home reloads reuse).
+                refreshHomeMachineNotifications(serverId, reason = "sync_changes")
             }
 
             override fun refreshHome(serverId: String, reason: String) {

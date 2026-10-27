@@ -937,6 +937,11 @@ internal class SharedHomeStore(
                 event.homeRealtimeMessages().ownRepliedConversationIds(MemberId(content.session.user.id))
             if (ownRepliedDmIds.isNotEmpty()) unhideDirectMessagesWithOwnReply(serverId, ownRepliedDmIds)
         }
+        if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Machines) {
+            // Visible: the Machines refresh below reads the list again. Hidden: the reload on
+            // return must read it too, not reuse the held one (sync on, Tenny 10-27).
+            dataSource.dropHeldMachines()
+        }
         if (!homeSurfaceVisible) {
             applyRealtimeEventWhileHomeHidden(serverId, event)
             return
