@@ -122,6 +122,18 @@ internal object RaftHostWindowInsets {
     }
 
     /**
+     * Forgets the window: its snapshot and its live-event mark. The iOS host keys snapshots per
+     * page controller (`ios:page:<uuid>`) and calls this when the controller goes away, so the
+     * map does not grow for the whole session. A page still composed for that id falls back to
+     * its pageData, as before its first publish. Main thread only.
+     */
+    fun remove(windowId: String) {
+        val key = windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
+        liveSeen.remove(key)
+        snapshots.remove(key)
+    }
+
+    /**
      * Current authoritative snapshot for the window, or null when nothing has
      * been published. Reading the map (not just a pre-created state) keeps the
      * lookup observable for readers composed before the first publish.

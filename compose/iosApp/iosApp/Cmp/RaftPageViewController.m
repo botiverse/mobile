@@ -4,6 +4,7 @@
 #import "HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
+#import <shared/shared.h>
 #import <math.h>
 
 static const NSTimeInterval RaftPageMillisPerDay = 86400000.0;
@@ -64,11 +65,19 @@ static UIWindow *RaftPageCurrentKeyWindow(void) {
 }
 
 /**
- * Inset key for the shared window-inset snapshots (RaftAppSafeArea.kt): one per page controller.
- * The page's pageData is fixed at init, before the page has a window, so a scene id resolved then
- * (from the key window) could name another Raft scene and two scenes would share one entry. The
- * controller only ever publishes its own view's insets, and embedded child pages inherit the id,
- * so a per-page key is always the right window.
+ * Inset key for the shared window-inset snapshots (RaftAppSafeArea.kt): one per page controller,
+ * because the controller publishes its own view's safeAreaInsets. The page's pageData is fixed at
+ * init, before the page has a window, so a scene id resolved then (from the key window) could name
+ * another Raft scene and two scenes would share one entry.
+ *
+ * Who uses which key:
+ * - A page with its own RaftPageViewController (pushed, presented, a tab root) always gets this
+ *   controller's key; p_mergeHostContextIntoPageData overwrites any id copied in through pageData,
+ *   which would name the page it was copied from.
+ * - A child page embedded inline (shared RaftChildPage) has no controller and no view publishing
+ *   insets; it draws in this controller's view, so the shared side copies this key into the child's
+ *   pageData and the child reads this controller's snapshot.
+ * The snapshot is removed when the controller is deallocated (-dealloc).
  */
 static NSString *RaftPageWindowId(NSString *controllerToken) {
     return [@"ios:page:" stringByAppendingString:controllerToken ?: @"default"];
@@ -473,6 +482,15 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    // The shared inset map is keyed per controller; drop this page's entry so it does not live for
+    // the whole session. The shared registry is main-thread only.
+    NSString *windowId = [_pageData[RaftHostWindowIdKey] isKindOfClass:NSString.class]
+        ? [_pageData[RaftHostWindowIdKey] copy] : nil;
+    if (windowId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [SharedRaftIosHostHooks.shared forgetPageWindowInsetsWindowId:windowId];
+        });
+    }
 }
 
 @end

@@ -209,6 +209,26 @@ class RaftHostWindowInsetsTest {
     }
 
     @Test
+    fun removeForgetsTheWindowAndItsLiveMark() {
+        val w = freshWindow()
+        val other = freshWindow()
+        RaftHostWindowInsets.publish(w, topPx = 48f, bottomPx = 96f, statusBarHidden = false)
+        RaftHostWindowInsets.publish(other, topPx = 12f, bottomPx = 0f, statusBarHidden = false)
+        RaftHostWindowInsets.remove(w)
+        assertNull(RaftHostWindowInsets.current(w))
+        // Other windows are untouched.
+        assertEquals(RaftHostWindowInsetValues(12f, 0f, false), RaftHostWindowInsets.current(other))
+        // The live mark went too: a later seed for a reused id fills again.
+        RaftHostWindowInsets.seedFromPageDataIfPresent(
+            JSONObject("""{"slockWindowId":"$w","safeAreaTop":"10","safeAreaBottom":"20"}""")
+        )
+        assertEquals(RaftHostWindowInsetValues(10f, 20f, null), RaftHostWindowInsets.current(w))
+        // Removing an unknown id is a no-op.
+        RaftHostWindowInsets.remove("never-published-window")
+        assertNull(RaftHostWindowInsets.current("never-published-window"))
+    }
+
+    @Test
     fun nestedShellsPadOnlyWhatIsLeft() {
         val window = RaftHorizontalSafeArea(left = 0.dp, right = 59.dp)
         // The page shell pads the whole inset; an embedded child page inside it pads nothing more.
