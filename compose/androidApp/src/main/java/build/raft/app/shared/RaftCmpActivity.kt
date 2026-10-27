@@ -5950,34 +5950,35 @@ internal class RaftBridgeModule(
     private suspend fun setApiEnvironment(request: JSONObject): Map<String, Any> {
         val environmentKey = request.optString("environmentKey")
         val store = AndroidApiServerEnvironmentStore(appContext)
-        val before = store.current()
-        val after =
-                if (environmentKey == AndroidApiServerEnvironmentStore.CustomKey) {
-                    store.save(
-                            AndroidApiServerEnvironment(
-                                    key = environmentKey,
-                                    label = request.optString("environmentLabel").ifBlank { "Custom" },
-                                    apiBaseUrl = request.optString("apiBaseUrl"),
-                                    socketBaseUrl = request.optString("socketBaseUrl"),
-                                    webUrl = request.optString("webUrl")
-                            )
+        val switch =
+                switchApiEnvironment(
+                        current = store.current(),
+                        persist = {
+                            if (environmentKey == AndroidApiServerEnvironmentStore.CustomKey) {
+                                store.save(
+                                        AndroidApiServerEnvironment(
+                                                key = environmentKey,
+                                                label = request.optString("environmentLabel").ifBlank { "Custom" },
+                                                apiBaseUrl = request.optString("apiBaseUrl"),
+                                                socketBaseUrl = request.optString("socketBaseUrl"),
+                                                webUrl = request.optString("webUrl")
+                                        )
+                                )
+                            } else {
+                                store.select(environmentKey)
+                            }
+                        },
+                        authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+                ) { before, after ->
+                    AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
+                    RaftAppLog.record(
+                            "SlockDeveloper",
+                            "api_environment_changed from=${before.key} to=${after.key}"
                     )
-                } else {
-                    store.select(environmentKey)
                 }
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
-        val changed = before != after
-        if (changed) {
-            clearSessionForApiEnvironmentChange(
-                    authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
-            ) {
-                AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
-                RaftAppLog.record(
-                        "SlockDeveloper",
-                        "api_environment_changed from=${before.key} to=${after.key}"
-                )
-            }
-        }
+        val after = switch.after
+        val changed = switch.changed
         return loadSettingsDeveloper(
                 feedback =
                         if (changed) {

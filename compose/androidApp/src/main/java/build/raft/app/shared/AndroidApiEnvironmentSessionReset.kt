@@ -57,3 +57,26 @@ internal fun CoroutineScope.launchSettingsBridgeAction(
         callback?.invoke(result)
     }
 }
+
+/** The outcome of [switchApiEnvironment]: the environment now selected, and whether it changed. */
+internal data class ApiEnvironmentSwitch<E>(val after: E, val changed: Boolean)
+
+/**
+ * Settings > Developer API-server switch: [persist] saves/selects the new environment (null =
+ * unknown key, nothing changes); when it differs from [current], the old server's session is
+ * cleared and then [afterClear] runs (realtime disconnect, log). The caller answers after this
+ * returns, so the order is persist → clear → afterClear → answer.
+ */
+internal suspend fun <E : Any> switchApiEnvironment(
+    current: E,
+    persist: () -> E?,
+    authStore: RaftAuthSessionStore,
+    afterClear: (before: E, after: E) -> Unit,
+): ApiEnvironmentSwitch<E>? {
+    val after = persist() ?: return null
+    val changed = current != after
+    if (changed) {
+        clearSessionForApiEnvironmentChange(authStore) { afterClear(current, after) }
+    }
+    return ApiEnvironmentSwitch(after = after, changed = changed)
+}
