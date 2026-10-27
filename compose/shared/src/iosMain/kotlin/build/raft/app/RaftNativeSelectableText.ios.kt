@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.app.compat.ui.RaftIosFallbackFontName
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftTheme
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
@@ -49,6 +51,17 @@ actual fun RaftNativeSelectableText(
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
     // One UITextView instance serves as both the rendered view and the height measurer.
     val textView = remember { raftSelectableUITextView() }
+    // CMP's UIKitView interop punches a hole in the Metal canvas behind the native view,
+    // so a transparent background lets whatever is behind the sheet (the message list's
+    // own copy of this same text!) bleed through and look like the text drew twice.
+    // The view must paint an opaque background matching the surface it sits on.
+    val surfaceColor = LocalRaftSurfaceColor.current
+    val themeCanvas = RaftTheme.colors.layerCanvas
+    val backgroundColor =
+        remember(surfaceColor, themeCanvas) {
+            val fill = if (surfaceColor != Color.Unspecified) surfaceColor else themeCanvas
+            fill.toUIColor()
+        }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
     val handleColor = LocalTextSelectionColors.current.handleColor
@@ -80,6 +93,7 @@ actual fun RaftNativeSelectableText(
             update = { view ->
                 if (view.attributedText != attributed) view.attributedText = attributed
                 view.tintColor = handleColor.toUIColor()
+                view.backgroundColor = backgroundColor
             },
         )
     }
@@ -96,7 +110,8 @@ private fun raftSelectableUITextView(): UITextView =
         setScrollEnabled(false)
         textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
         textContainer.lineFragmentPadding = 0.0
-        backgroundColor = UIColor.clearColor
+        // The opaque surface colour is applied in UIKitView's update (see the caller);
+        // clearColor here would let whatever is behind the interop hole bleed through.
     }
 
 private fun raftAttributedText(
