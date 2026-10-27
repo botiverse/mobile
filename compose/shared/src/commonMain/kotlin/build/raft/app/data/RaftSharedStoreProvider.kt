@@ -4169,7 +4169,10 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
         // accept_skip reason=duplicate key=refresh:…:Agents:agent:session:…),
         // so a second state change for the same agent never re-fetched. No key
         // → every hint processed; the downstream refetch already dedupes
-        // in-flight loads, so bursts stay cheap.
+        // in-flight loads, so bursts stay cheap. The unread store coalesces the
+        // two subscribers' copies of one hint per round (mobile #3650); telling a
+        // duplicate delivery from a genuinely repeated hint needs a server frame
+        // id (#proj-mobile task #23).
         is RealtimeRefreshRequired -> null
         is ServerPlanUpdated ->
             "server:plan:$serverId:${this.serverId.value}:$plan"
