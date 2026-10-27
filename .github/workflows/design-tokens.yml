@@ -35,6 +35,9 @@ jobs:
       - name: Check sources, generated Kotlin and oracle
         run: python3 tools/design-tokens/gen_tokens.py --check
 
+      - name: Check generated theme decor art
+        run: python3 tools/design-tokens/gen_theme_decor.py --check
+
   # The committed Lucide Kotlin outputs (RaftLucideIconPaths.kt, RaftLucideIconCatalog.kt) must
   # match the generator run against the pinned Lucide tag. test_generate_lucide_icons.py only
   # compares them when the pinned checkout is cached, and skips otherwise; nothing ran it before

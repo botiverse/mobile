@@ -61,7 +61,8 @@ class RaftThemeState(
 
     /**
      * Whether the theme's decor (the Web's `--theme-decor-top` / `--theme-decor-rail` art) is
-     * drawn; the Web's `data-theme-decor` on/off. Off by default; nothing draws decor yet.
+     * drawn; the Web's `data-theme-decor` on/off. Off by default. The top bar and the rail
+     * draw it (see [raftThemeDecor]).
      */
     var decor: Boolean by mutableStateOf(decor)
         private set
@@ -130,7 +131,7 @@ val LocalRaftThemeId = staticCompositionLocalOf { RaftThemeId.Raft }
 
 /**
  * Whether the enclosing [RaftTheme] draws its theme's decor ([RaftThemeState.decor]); read by
- * the top bar and rail once they draw it. False by default.
+ * [raftThemeDecor] (the top bar's and the rail's pixel art). False by default.
  */
 val LocalRaftThemeDecor = staticCompositionLocalOf { false }
 

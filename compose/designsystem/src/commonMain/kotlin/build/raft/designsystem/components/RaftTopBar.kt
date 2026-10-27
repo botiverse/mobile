@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftThemeDecorDefaults
+import build.raft.designsystem.theme.RaftThemeDecorSlot
+import build.raft.designsystem.theme.raftThemeDecor
 import build.raft.designsystem.tokens.RaftStroke
 
 // The web's top bar at desktop width (packages/web/src/components/topbar/AppTopBar.tsx): one row
@@ -52,6 +55,8 @@ object RaftTopBarDefaults {
  * The web top bar: a [RaftTopBarDefaults.Height] row on `layer-frame` (the brand yellow in light
  * mode, the dark frame in dark) with a 1dp `line-seam` underneath, content in
  * `foreground-on-frame`. [topInset] (the status bar) is added above the row, on the frame.
+ * A decorated theme paints its pixel art on the row's end from a 1024dp window
+ * ([RaftThemeDecorSlot.Top], web AppTopBar `frame-decor-top`).
  *
  * [leading] and [trailing] each take half of the room the [center] leaves (`flex-1`), so the
  * centre stays centred on the bar; [leading] lays out from the start, [trailing] from the end.
@@ -74,6 +79,12 @@ fun RaftTopBar(
      * move toward the end together and [center] narrows from its start, its end staying put.
      */
     leadingMinWidth: Dp = 0.dp,
+    /**
+     * The window's width, for the theme decor's gate (raft-ui `frame-decor-top` shows from a
+     * 1024px window, [RaftThemeDecorDefaults.TopMinWindowWidth]). Unspecified takes the bar's
+     * own width.
+     */
+    windowWidth: Dp = Dp.Unspecified,
 ) {
     val colors = RaftTheme.colors
     // The frame runs up under the status bar when the bar pads for it: the host's icons follow it.
@@ -87,7 +98,9 @@ fun RaftTopBar(
                         .padding(top = topInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
-                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline),
+                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
+                        // The theme's pixel art on the bar's end, over the frame, under the items.
+                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth),
                     leading = leading,
                     centerLeading = centerLeading,
                     center = center,
@@ -101,7 +114,8 @@ fun RaftTopBar(
                         .padding(top = topInset)
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
-                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline),
+                        .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
+                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(

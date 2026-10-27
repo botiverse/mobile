@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftThemeDecorSlot
+import build.raft.designsystem.theme.raftThemeDecor
+import build.raft.designsystem.theme.raftThemeDecorShown
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -74,7 +77,8 @@ object RaftAppRailDefaults {
  * 56dp square under [topInset] with its own seam) is left out when something above the rail
  * holds the workspace. [content] is the destinations ([RaftAppRailItem]s, 6dp apart, 8dp under
  * the header's seam); [footer] pins the tools (settings, help) to the bottom, 8dp above
- * [bottomInset].
+ * [bottomInset]. A decorated theme paints its pixel art under the destinations, just above the
+ * footer ([RaftThemeDecorSlot.Rail], raft-ui `frame-decor-rail`).
  */
 @Composable
 fun RaftAppRail(
@@ -115,8 +119,10 @@ fun RaftAppRail(
                         .padding(top = RaftAppRailDefaults.Inset + if (header == null) topInset else 0.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(RaftAppRailDefaults.ItemGap),
-                    content = content,
-                )
+                ) {
+                    content()
+                    RaftAppRailDecor()
+                }
                 if (footer != null) {
                     Column(
                         Modifier
@@ -131,6 +137,18 @@ fun RaftAppRail(
         }
         Box(Modifier.width(RaftStroke.Hairline).fillMaxHeight().background(colors.lineSeam))
     }
+}
+
+/**
+ * raft-ui AppRail nav's `after:` strip (`mt-auto h-28 min-h-0 w-12 shrink frame-decor-rail`): the
+ * theme's 48x112 pixel art as the nav's last item, at its foot, in whatever room the
+ * destinations leave (one item gap after the last), cut from the top when that is less than the
+ * art. Nothing at all (no item, no gap) without decor to draw.
+ */
+@Composable
+private fun ColumnScope.RaftAppRailDecor() {
+    if (!raftThemeDecorShown(RaftTheme.themeId, RaftTheme.isDark, RaftTheme.decor, RaftThemeDecorSlot.Rail)) return
+    Box(Modifier.fillMaxWidth().weight(1f).raftThemeDecor(RaftThemeDecorSlot.Rail))
 }
 
 /**

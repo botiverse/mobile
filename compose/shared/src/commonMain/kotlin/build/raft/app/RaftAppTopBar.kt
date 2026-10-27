@@ -139,6 +139,8 @@ internal fun RaftAppShellTopBar(
             // the search stays centred; on a short bar they move with it, never over the workspace.
             centerLeading = history?.let { { RaftAppShellTopBarHistoryButtons(it) } },
             leadingMinWidth = if (currentServer != null) RaftWorkspaceButtonDefaults.MinWidth else 0.dp,
+            // The theme's pixel art on the bar's end shows from a 1024dp window, as on the web.
+            windowWidth = windowWidth,
             trailing = {
                 if (bell != null) {
                     RaftAppTopBarNotificationBell(
