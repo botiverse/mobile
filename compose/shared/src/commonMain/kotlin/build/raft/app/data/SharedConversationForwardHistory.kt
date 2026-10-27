@@ -245,7 +245,8 @@ private fun SharedConversationDirectoryProjection.matchesForwardKind(
         ConversationKind.Channel,
         ConversationKind.Joint ->
             surfaceKind == RaftThreadSurfaceKind.Channel && conversationKind == expectedKind
-        ConversationKind.Inbox -> false
+        ConversationKind.Inbox,
+        ConversationKind.Task -> false
         ConversationKind.System -> conversationKind == ConversationKind.System
         null -> false
     }

@@ -665,5 +665,6 @@ private fun ConversationKind?.toInboxItemKind(): InboxItemKind? =
         ConversationKind.Joint -> InboxItemKind.Channel
         ConversationKind.System,
         ConversationKind.Inbox,
+        ConversationKind.Task,
         null -> null
     }

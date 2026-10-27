@@ -82,7 +82,10 @@ internal data class WireThreadLaunchPayload(
         val resolvedParentChannelKind = routeKinds.parentChannelKind
         // Joint channels have task surfaces like any channel: the server maps each
         // participant's local joint channel id to the canonical task surface.
-        val supportsChannelTasks = true
+        // Task v2: a task's conversation is a sub-conversation (like a thread): no channel tabs,
+        // members/settings or "as task" sends; its write authority is the task's channel.
+        val isTaskConversation = routeKinds.kind == ConversationKind.Task
+        val supportsChannelTasks = !isTaskConversation
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =
@@ -145,7 +148,7 @@ internal data class WireThreadLaunchPayload(
             focusedMessageRequestNonce = focusedMessageRequestNonce,
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
-            showModeTabs = !isReplyThread,
+            showModeTabs = !isReplyThread && !isTaskConversation,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
             showReactionActions = showReactionActions,
@@ -154,8 +157,10 @@ internal data class WireThreadLaunchPayload(
             nowEpochMillis = nowEpochMillis,
             timeFormat = timeFormat,
             composer = resolvedComposer,
-            showMembersAction = !isReplyThread && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
-            showSettingsAction = !isReplyThread && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+            showMembersAction =
+                !isReplyThread && !isTaskConversation && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+            showSettingsAction =
+                !isReplyThread && !isTaskConversation && routeKinds.surfaceKind != RaftThreadSurfaceKind.DirectMessage,
             showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null && resolvedParentSurfaceKind != null,
             showTaskOpenActions = supportsChannelTasks,
             showTaskStatusActions = supportsChannelTasks,
@@ -489,6 +494,7 @@ private fun ConversationKind.toLaunchChannelKind(rawKind: String?): String? =
         ConversationKind.Channel -> rawKind.normalizedLaunchChannelKindOrNull() ?: RaftThreadSurfaceKind.Channel
         ConversationKind.Joint -> "joint"
         ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         else -> null
     }
 

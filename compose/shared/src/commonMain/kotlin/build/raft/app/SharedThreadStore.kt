@@ -3311,7 +3311,8 @@ internal class SharedThreadDataSource(
                                 .orEmpty()
                         ConversationKind.Thread,
                         ConversationKind.Inbox,
-                        ConversationKind.System -> emptyList()
+                        ConversationKind.System,
+                        ConversationKind.Task -> emptyList()
                     }
                 } catch (cancellation: CancellationException) {
                     throw cancellation

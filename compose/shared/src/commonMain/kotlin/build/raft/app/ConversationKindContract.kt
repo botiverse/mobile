@@ -41,6 +41,13 @@ import build.raft.app.model.ConversationKind
  * cutovers migrate their call sites onto these functions;
  * ConversationKindContractTest pins parity with them until they are deleted.
  */
+/**
+ * Wire channel type of a task v2 conversation (slock `channels.type = 'task'`,
+ * `conversationContext.channelType = "task"`). On the bridge it is the channel surface with this
+ * channel kind (rule 5: the surface projection is lossy, the channel kind keeps it).
+ */
+internal const val RaftTaskConversationChannelKind = "task"
+
 internal fun parseConversationKindOrNull(raw: String?): ConversationKind? =
     when (raw?.trim()?.lowercase()) {
         RaftThreadSurfaceKind.DirectMessage,
@@ -56,6 +63,7 @@ internal fun parseConversationKindOrNull(raw: String?): ConversationKind? =
         "group" -> ConversationKind.Channel
         "system" -> ConversationKind.System
         "inbox" -> ConversationKind.Inbox
+        RaftTaskConversationChannelKind -> ConversationKind.Task
         else -> null
     }
 
@@ -66,7 +74,8 @@ internal fun ConversationKind.toRaftSurfaceKind(): String =
         ConversationKind.Channel,
         ConversationKind.Joint,
         ConversationKind.Inbox,
-        ConversationKind.System -> RaftThreadSurfaceKind.Channel
+        ConversationKind.System,
+        ConversationKind.Task -> RaftThreadSurfaceKind.Channel
     }
 
 internal fun ConversationKind.toWireChannelKindOrNull(): String? =
@@ -74,6 +83,7 @@ internal fun ConversationKind.toWireChannelKindOrNull(): String? =
         ConversationKind.Channel -> RaftThreadSurfaceKind.Channel
         ConversationKind.Joint -> "joint"
         ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         ConversationKind.Thread,
         ConversationKind.Inbox,
         ConversationKind.System -> null

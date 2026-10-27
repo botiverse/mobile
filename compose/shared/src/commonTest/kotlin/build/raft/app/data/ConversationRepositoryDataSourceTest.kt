@@ -1364,28 +1364,7 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(listOf("limit" to "200"), request.query)
     }
 
-    private fun sampleStore(): RaftAuthSessionStore =
-        InMemoryRaftAuthSessionStore(
-            StoredAuthSession(
-                user =
-                    StoredAuthUser(
-                        id = "user-1",
-                        email = "artin@slock.ai",
-                        displayName = "Artin"
-                    ),
-                accessToken = "token-a",
-                refreshToken = "token-r",
-                selectedServerId = "server-1",
-                servers =
-                    listOf(
-                        StoredAuthServer(
-                            id = "server-1",
-                            name = "Slock Android",
-                            slug = "android"
-                        )
-                    )
-            )
-        )
+    private fun sampleStore(): RaftAuthSessionStore = conversationRepositoryTestSessionStore()
 
     private fun routeScopedAuthStore(): InMemoryRaftAuthSessionStore =
         InMemoryRaftAuthSessionStore(
@@ -1411,62 +1390,6 @@ class ConversationRepositoryDataSourceTest {
             networkClient = network,
             routeServerIdProvider = { "server-b" },
         )
-
-    private class FakeConversationNetworkClient(
-        private val responses: Map<String, String> = emptyMap(),
-        private val failures: Map<String, String> = emptyMap(),
-        private val uploadBody: String = """{"attachments":[]}""",
-        private val uploadResponse: HomeNetworkResponse? = null,
-        private val requestStarted: Map<String, CompletableDeferred<Unit>> = emptyMap(),
-        private val requestRelease: Map<String, CompletableDeferred<Unit>> = emptyMap(),
-        private val responseForRequest: (RecordedConversationRequest) -> String? = { null },
-    ) : RaftNetworkClient {
-        val requests = mutableListOf<RecordedConversationRequest>()
-        val serverOverrides = mutableListOf<String?>()
-        val bodies = mutableListOf<String>()
-        val uploadedFileNames = mutableListOf<String>()
-
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?
-        ): HomeNetworkResponse {
-            val normalized = path.trim('/')
-            val requestKey = "$method $normalized"
-            requests += RecordedConversationRequest(priority, method, normalized, query)
-            serverOverrides += serverIdOverride?.value
-            bodyText?.let { bodies += it }
-            requestStarted[requestKey]?.complete(Unit)
-            requestRelease[requestKey]?.await()
-            failures[requestKey]?.let { message ->
-                return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
-            }
-            return HomeNetworkResponse(
-                code = 200,
-                bodyText = responseForRequest(requests.last()) ?: responses[requestKey] ?: """{"threads":[]}""",
-            )
-        }
-
-        override suspend fun uploadAttachments(
-            priority: DataRequestPriority,
-            channelId: ChannelId,
-            files: List<MultipartFile>
-        ): HomeNetworkResponse {
-            requests += RecordedConversationRequest(priority, "POST", "messages/channels/${channelId.value}/attachments", emptyList())
-            uploadedFileNames += files.map { it.fileName }
-            return uploadResponse ?: HomeNetworkResponse(code = 200, bodyText = uploadBody)
-        }
-    }
-
-    private data class RecordedConversationRequest(
-        val priority: DataRequestPriority,
-        val method: String,
-        val path: String,
-        val query: List<Pair<String, String>> = emptyList()
-    )
 
     private companion object {
         fun messageJson(

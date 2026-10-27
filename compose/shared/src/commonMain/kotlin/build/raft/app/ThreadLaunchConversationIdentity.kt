@@ -263,5 +263,6 @@ internal fun ThreadLaunchConversationIdentity.threadRouteChannelKind(): String? 
         // blank channelType (product default, not a parent-kind parse fallback — C-group).
         ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
         ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         else -> channelType.normalizedThreadChannelKind()
     }

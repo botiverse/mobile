@@ -831,8 +831,59 @@ class RealConversationRepository private constructor(
         val detail = parseRaftChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
         if (detail == null) {
             warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
+            return null
         }
-        return detail
+        val taskConversation = parseTaskConversationChannelDetail(response.bodyText.orEmpty())
+            ?: return detail
+        return loadTaskConversationDetail(detail, taskConversation, priority, serverId)
+    }
+
+    /**
+     * Task v2: a task conversation's header and write authority come from its task and the task's
+     * channel (the conversation has no member rows): the parent channel detail and the task row
+     * from `GET /api/tasks/channel/:parentChannelId`. Either may fail; see
+     * [withTaskConversationContext] for the fail-closed defaults.
+     */
+    private suspend fun loadTaskConversationDetail(
+        detail: ConversationSummary,
+        taskConversation: TaskConversationChannelRef,
+        priority: DataRequestPriority,
+        serverId: ServerId,
+    ): ConversationSummary = coroutineScope {
+        val parentDeferred =
+            async {
+                loadConversationDetail(taskConversation.parentChannelId, priority, serverId)
+                    ?.takeUnless { it.kind == ConversationKind.Task }
+            }
+        val taskDeferred =
+            async {
+                val response =
+                    try {
+                        networkClient.request(
+                            priority = priority,
+                            path = "tasks/channel/${taskConversation.parentChannelId.value}",
+                            serverIdOverride = serverId,
+                        )
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        null
+                    }
+                response
+                    ?.takeIf { it.isSuccessful }
+                    ?.bodyText
+                    ?.let { body -> parseSharedServerTasksPayload(body, warningLogger) }
+                    ?.tasks
+                    ?.firstOrNull { it.id == taskConversation.taskId }
+            }
+        val parent = parentDeferred.await()
+        val task = taskDeferred.await()
+        warningLogger(
+            "task_conversation_detail channelId=${taskConversation.conversationChannelId.value} " +
+                "parentChannelId=${taskConversation.parentChannelId.value} taskId=${taskConversation.taskId.value} " +
+                "parent=${parent != null} task=${task != null}"
+        )
+        detail.withTaskConversationContext(parent = parent, task = task)
     }
 
     override suspend fun loadOlderMessages(

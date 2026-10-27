@@ -149,6 +149,21 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
         }
 
+    /**
+     * Task v2 `POST /api/tasks/:taskId/conversation` (slock `routes/tasks.ts`): idempotently ensures the
+     * task's conversation and answers this server's LOCAL conversation id (a joint surface's
+     * projection, else the canonical one). 409 `task_v2_not_enabled` / `task_without_conversation`
+     * means the task has no conversation to open.
+     */
+    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+        try {
+            api.openTaskConversation(serverId, taskId).toTaskConversationOpenResult(diagnosticsLogger)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_conversation_network", retryable = true))
+        }
+
     suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> =
         try {
             typedApi.convertMessage(serverId, messageId)
@@ -408,6 +423,14 @@ internal class NetworkRaftTasksApi(
     override suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}/unclaim", method = "PATCH")
 
+    override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/${taskId.value}/conversation",
+            method = "POST",
+            serverIdOverride = serverId
+        )
+
     override suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
         networkClient.request(
             DataRequestPriority.Foreground,
@@ -569,6 +592,8 @@ interface RaftTasksApi {
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -587,6 +612,57 @@ interface RaftTasksApi {
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun deleteTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+}
+
+/** Result of `POST /api/tasks/:taskId/conversation`: the local conversation to open. */
+data class TaskConversationOpenResult(
+    val conversationChannelId: ChannelId,
+    val canonicalConversationChannelId: ChannelId,
+    val created: Boolean,
+)
+
+/** `{ conversationChannelId, canonicalConversationChannelId, created }` (slock `routes/tasks.ts`). */
+@Serializable
+internal data class TaskConversationOpenWireDto(
+    val conversationChannelId: String,
+    val canonicalConversationChannelId: String,
+    val created: Boolean = false,
+)
+
+internal fun HomeNetworkResponse.toTaskConversationOpenResult(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): DataResult<TaskConversationOpenResult> {
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(
+            PermissionBlocker(code = "tasks_conversation_$code", serverMessage = tasksServerErrorTextOrNull())
+        )
+    }
+    if (!isSuccessful) {
+        return DataResult.Error(
+            ScreenError(
+                code = "tasks_conversation_$code",
+                retryable = code >= 500,
+                serverMessage = tasksServerErrorTextOrNull()
+            )
+        )
+    }
+    val wire =
+        bodyText?.takeIf { it.isNotBlank() }?.let { body ->
+            runCatching { tasksJson.decodeFromString(TaskConversationOpenWireDto.serializer(), body) }.getOrNull()
+        }
+    val local = wire?.conversationChannelId?.trim()?.takeIf { it.isNotBlank() }
+    val canonical = wire?.canonicalConversationChannelId?.trim()?.takeIf { it.isNotBlank() }
+    if (wire == null || local == null || canonical == null) {
+        diagnostics("tasks_conversation_contract_mismatch code=$code")
+        return DataResult.Error(ScreenError(code = "tasks_conversation_contract_mismatch", retryable = false))
+    }
+    return DataResult.Content(
+        TaskConversationOpenResult(
+            conversationChannelId = ChannelId(local),
+            canonicalConversationChannelId = ChannelId(canonical),
+            created = wire.created,
+        )
+    )
 }
 
 @Serializable
@@ -1206,14 +1282,39 @@ internal data class TaskWireDto(
     val completedAt: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
-    val readOnlyReason: String? = null
+    val readOnlyReason: String? = null,
+    // Task v2 conversations (slock `taskService.ts` task projection). `hostMessageId` is the real
+    // `tasks.message_id` (null for a v2 task, whose `messageId` is only the task id as a pre-v2
+    // compatibility fallback); `conversationChannelId` is the CANONICAL conversation (a joint
+    // surface resolves its local one via POST /tasks/:id/conversation); `conversationAnchored`
+    // says the discussion is the task's own conversation (existing or created on first use).
+    val hostMessageId: String? = null,
+    val conversationChannelId: String? = null,
+    val conversationAnchored: Boolean? = null,
+    val conversationReplyCount: Int? = null,
+    val isLegacy: Boolean? = null,
 )
+
+/**
+ * Task v2, per task (web `isTaskV2Task`): the discussion is the task's own conversation rather
+ * than a host message's thread. A DTO without the v2 fields (older server) is pre-v2.
+ */
+internal fun TaskWireDto.isTaskV2Conversation(): Boolean =
+    isLegacy != true && (conversationAnchored == true || !conversationChannelId.isNullOrBlank())
 
 internal fun TaskWireDto.toTaskSummary(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): TaskSummary? {
     val displayTitle = title?.trim().orEmpty().ifBlank { taskNumber?.let { "#$it" }.orEmpty() }
-    val resolvedMessageId = (messageId ?: id).let(::MessageId)
+    val taskV2 = isTaskV2Conversation()
+    // A v2 task's `messageId` is the task id (compatibility fallback), never a message: only the
+    // real host message (pre-v2 discussion) may be opened as a message / thread parent.
+    val resolvedMessageId =
+        if (taskV2) {
+            hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+        } else {
+            (messageId ?: id).let(::MessageId)
+        }
     val resolvedThreadId = threadId?.let(::ThreadId)
     val resolvedStatus = status.strictTaskStatusOrNull("task_wire", diagnostics) ?: return null
     return TaskSummary(
@@ -1233,7 +1334,13 @@ internal fun TaskWireDto.toTaskSummary(
         updatedAtLabel = (updatedAt ?: createdAt ?: claimedAt ?: completedAt).orEmpty(),
         canClaim = readOnlyReason.isNullOrBlank(),
         description = description?.trim()?.takeIf { it.isNotBlank() },
-        readOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() }
+        readOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() },
+        channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        conversationAnchored = taskV2,
+        conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
+        isLegacy = isLegacy == true,
     )
 }
 

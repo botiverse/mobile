@@ -65,6 +65,8 @@ class SharedThreadStoreTest {
         var messageSyncCalls: Int = 0
         val channelIds: MutableList<String> = mutableListOf()
         var sendMessageCalls: Int = 0
+        /** The `channelId` of every POST /messages, in order. */
+        val sentChannelIds: MutableList<String> = mutableListOf()
         /** Optional canonical POST /messages body for tests that exercise the send parser. */
         var sendResponseBody: String? = null
         var lastAttachmentIds: List<String> = emptyList()
@@ -149,6 +151,7 @@ class SharedThreadStoreTest {
             randomId: String?
         ): HomeNetworkResponse {
             sendMessageCalls += 1
+            sentChannelIds += channelId
             lastAttachmentIds = attachmentIds
             lastRandomId = randomId
             return HomeNetworkResponse(code = 200, bodyText = sendResponseBody ?: messagesResponse(body))

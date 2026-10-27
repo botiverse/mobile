@@ -62,7 +62,13 @@ enum class ConversationKind {
     Thread,
     DirectMessage,
     Inbox,
-    System
+    System,
+    /**
+     * Task v2: a task's own conversation (slock `channels.type = 'task'`). A flat stream with no
+     * root message whose parent is the task (and the task's channel); it renders on the channel
+     * surface with route channel kind `task`.
+     */
+    Task
 }
 
 @Serializable
@@ -719,7 +725,18 @@ data class TaskSummary(
      * task seen from a joint participant). Non-null means read-only: no claim, status or assignee
      * changes, matching web's authorizeTaskAction / canChangeTaskStatus.
      */
-    val readOnlyReason: String? = null
+    val readOnlyReason: String? = null,
+    /** Raw wire kind of the task's channel (`channel` / `private` / `dm` / `joint`). */
+    val channelType: String? = null,
+    /** Task v2: the pre-v2 host message (its thread is the earlier discussion); null for a v2 task. */
+    val hostMessageId: MessageId? = null,
+    /** Task v2: the task's CANONICAL conversation channel (`channels.type = 'task'`), when it exists. */
+    val conversationChannelId: ChannelId? = null,
+    /** Task v2: the discussion is the task's own conversation (exists, or is created on first use). */
+    val conversationAnchored: Boolean = false,
+    val conversationReplyCount: Int = 0,
+    /** A pre-message orphan task: neither a host message nor a conversation. */
+    val isLegacy: Boolean = false,
 )
 
 // Inbox Models
