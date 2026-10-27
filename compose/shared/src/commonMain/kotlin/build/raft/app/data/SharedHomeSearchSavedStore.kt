@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,15 +21,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
 
 private const val HomeSavedPageSize = 100
 private const val HomeSearchPageSize = 30
 private const val SearchDebounceMillis = 250L
-private const val SearchPersonalizationPrewarmTimeoutMillis = 250L
 
 internal class SharedHomeSearchSavedStore(
     private val authStore: RaftAuthSessionStore,
@@ -69,6 +67,7 @@ internal class SharedHomeSearchSavedStore(
     private var searchServerOwner: SearchServerOwner? = null
     private var searchOpened = false
     private var authEventsJob: Job? = null
+    private var initialServerOwnerJob: Job? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
     // The Saved list's first page through the offline resource (stored copy first, then the network).
     private val savedListStore: RaftOfflineResourceStore<Unit, SavedListRecord>? by lazy {
@@ -98,18 +97,29 @@ internal class SharedHomeSearchSavedStore(
                 }
             }
         }
-        runCatching {
-            runBlocking {
-                withTimeout(SearchPersonalizationPrewarmTimeoutMillis) {
-                    adoptSearchServerOwner(SearchServerOwner.from(authStore.readSession()), reload = false)
-                }
+        // The store is built lazily during composition on the main thread, so nothing here may
+        // block (Hands ANR fa8f14bb / 0c46a9d0 / 736be855: `runBlocking` on `readSession()` parked
+        // the main thread). UNDISPATCHED still finishes inline when the session lock is free, so
+        // the first frame keeps the server owner; a contended lock suspends instead of blocking.
+        initialServerOwnerJob =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                val session =
+                    try {
+                        authStore.readSession()
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        return@launch
+                    }
+                adoptSearchServerOwner(SearchServerOwner.from(session), reload = false)
             }
-        }
         (authStore as? RaftAuthSessionEventSource)?.let { authEvents ->
             authEventsJob =
                 scope.launch {
                     authEvents.authSessionEvents.collect { event ->
                         if (event !is AuthSessionEvent.TokensRotated) {
+                            // A later session read owns the server from here on.
+                            initialServerOwnerJob?.cancel()
                             reconcileSearchServerOwner()
                             refreshSearchPersonalization()
                         }
@@ -352,6 +362,8 @@ internal class SharedHomeSearchSavedStore(
         personalizationWriteJob?.cancel()
         authEventsJob?.cancel()
         authEventsJob = null
+        initialServerOwnerJob?.cancel()
+        initialServerOwnerJob = null
         savedJob = null
         searchJob = null
         searchDebounceJob = null
@@ -797,26 +809,35 @@ internal class SharedHomeSearchSavedStore(
     }
 
     /**
-     * Loads persisted search personalization synchronously so the first visible
+     * Loads persisted search personalization at construction so the first visible
      * Search frame already projects history and frequent rows instead of
      * flashing an empty state until the async refresh lands. Both reads are
-     * local (MMKV-backed on Android) and fast; the async refresh triggered by
+     * local (MMKV-backed on Android), so the UNDISPATCHED start normally finishes
+     * inline; when the session or storage lock is held it suspends rather than
+     * blocking the constructing (main) thread. A refresh that starts first
+     * (OpenSearch, auth change) supersedes it. The async refresh triggered by
      * [SharedHomeSearchSavedIntent.OpenSearch] still reconciles afterwards and
      * must not clear the prewarmed rows.
      */
     private fun prewarmSearchPersonalization() {
         val repository = personalizationRepository ?: return
-        runCatching {
-            runBlocking {
-                val owner = currentSearchPersonalizationOwner() ?: return@runBlocking
-                val snapshot =
-                    withTimeout(SearchPersonalizationPrewarmTimeoutMillis) {
-                        repository.read(owner, nowMillis())
-                    }
-                personalizationOwner = owner
-                personalizationPrewarmedOwner = owner
-                applySearchPersonalizationSnapshot(snapshot)
-            }
+        val requestToken = personalizationRequestToken
+        // Tracked as the personalization job so a refresh or clear() cancels it.
+        personalizationJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val prewarmed =
+                try {
+                    val owner = currentSearchPersonalizationOwner() ?: return@launch
+                    owner to repository.read(owner, nowMillis())
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    return@launch
+                }
+            val (owner, snapshot) = prewarmed
+            if (requestToken != personalizationRequestToken) return@launch
+            personalizationOwner = owner
+            personalizationPrewarmedOwner = owner
+            applySearchPersonalizationSnapshot(snapshot)
         }
     }
 
