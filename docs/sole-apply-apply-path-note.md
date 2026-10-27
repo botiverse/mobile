@@ -1,5 +1,11 @@
 # Sole-apply apply-path + fallback canary — design note
 
+> **Superseded (2026-10-27).** Replaced by the message storage design
+> (`notes/message-storage-design-2026-10-27.md`, HanXin; artin #wg-mobile 2c500bfc / 0e405b6c): every
+> fetched or received message is stored, display is never held for a commit, and the dormant
+> MessageSoleApplyEngine / MessageSoleApplyLane / `CANONICAL_FACT_SOLE_APPLY_ELIGIBLE` were deleted in
+> Phase 0c. Kept for history only.
+
 > Origin (artin 2026-07-12): the sole-apply rollout does NOT need HAR capture or a passive shadow-collection
 > pass — the server already has the producer wire, and #2/#3 edge states are dead code. The real-traffic
 > validation is the **canary itself**: flip sync-core to authoritative on ONE server, new pipeline live but

@@ -41,22 +41,10 @@ import kotlinx.serialization.json.JsonElement
  * FULL reactor roster ([CanonicalReactionV1.reactorIds]/`reactorNames`), so a 5000-reactor × 30-emoji
  * message rewrites thousands of ids on every reaction change. That debt does NOT convert to the sole-apply
  * canonical shape. V2 normalizes it out (roster leaves the node fact → paged read port + viewer overlay;
- * `commentRef`/replies fold into the same typed discussion graph) via a `version` bump + fresh reload. To
- * keep the debt from being silently promoted, [CANONICAL_FACT_SOLE_APPLY_ELIGIBLE] is a MECHANICAL gate
- * (not a doc note): any future sole-apply switch MUST require it, and it stays `false` until the envelope
- * is the V2 normalized shape.
+ * `commentRef`/replies fold into the same typed discussion graph) via a `version` bump + fresh reload.
  */
 
 private const val CANONICAL_FACT_VERSION_V1 = 1
-
-/**
- * Mechanical V1→V2 upgrade gate (RFC 043). `false` = this envelope version is wire-faithful shadow-only and
- * carries transitional producer-DTO debt (e.g. full reaction roster in the node fact); it must NOT be fed to
- * a sole-apply path. A sole-apply switch is required to check this and refuse a non-eligible envelope, so V1
- * cannot be mistaken for the V2 normalized-canonical terminal contract. Flips to `true` only WITH the V2
- * normalized envelope (roster/children out of the node fact) — never by editing this line alone.
- */
-const val CANONICAL_FACT_SOLE_APPLY_ELIGIBLE: Boolean = false
 
 /** The byte-stable codec Json. Do NOT change without re-pinning the golden fixture. */
 @RaftCoreInternalApi

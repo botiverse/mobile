@@ -11,7 +11,6 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 
 /**
@@ -292,8 +291,7 @@ class CanonicalMessageV2ContractRedTest {
         )
 
     @Test
-    fun r36_eligibilityAndProductionBindingRemainUnchanged() {
-        assertFalse(CANONICAL_FACT_SOLE_APPLY_ELIGIBLE)
+    fun r36_v1AndV2DurableConsumersStayDistinct() {
         assertEquals("sync-core.messages.v1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID)
         assertNotEquals(SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
     }
