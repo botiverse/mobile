@@ -57,7 +57,11 @@ fun Window.applyRaftTransparentSystemBars() {
  * ([raftSystemBarsAppearance]): the host activity and every [RaftWindowDialog] window.
  */
 fun Window.applyRaftSystemBarsAppearance(isDark: Boolean) {
-    val appearance = raftSystemBarsAppearance(isDark)
+    applyRaftSystemBarsAppearance(raftSystemBarsAppearance(isDark))
+}
+
+/** The system bar icons [appearance] asks for (the host activity: from what its page paints there). */
+fun Window.applyRaftSystemBarsAppearance(appearance: RaftSystemBarsAppearance) {
     WindowCompat.getInsetsController(this, decorView).apply {
         isAppearanceLightStatusBars = appearance.lightStatusBars
         isAppearanceLightNavigationBars = appearance.lightNavigationBars

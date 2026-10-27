@@ -21,7 +21,7 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 /**
  * Nothing to do: a CMP dialog on iOS is a layer in the host's UIWindow, whose
  * `overrideUserInterfaceStyle` (and so the status bar) already follows the theme
- * (RaftIosSceneDelegate, through RaftCmpRoot's onDarkThemeResolved).
+ * (RaftIosSceneDelegate; the status bar style through RaftCmpRoot's onSystemBarsResolved).
  */
 @Composable
 internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit

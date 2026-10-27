@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
@@ -4798,6 +4799,8 @@ private fun HomeTitlebar(
     // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam. The seam is
     // flattened onto the canvas like RaftTopPageHeader's, so it reads the same grey on every tab
     // (an alpha seam over the yellow frame came out yellow-brown).
+    // The frame runs up under the status bar: the host's status bar icons follow it.
+    RaftStatusBarBackdropClaim(RaftColor.Frame, enabled = topSafeArea > 0.dp)
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(RaftColor.Frame)) {
         Box(
             modifier = Modifier

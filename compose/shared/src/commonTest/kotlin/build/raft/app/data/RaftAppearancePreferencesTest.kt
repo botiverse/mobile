@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftAppThemeState
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,9 +20,16 @@ class RaftAppearancePreferencesTest {
         }
     }
 
+    // ensureLoaded also seeds the server theme from the committed session: never the real store.
+    @BeforeTest
+    fun noPersistedSession() {
+        RaftAppAppearanceRuntime.installSessionSnapshotReaderForTests { null }
+    }
+
     @AfterTest
     fun restore() {
         RaftAppAppearanceRuntime.installRepositoryForTests(null)
+        RaftAppAppearanceRuntime.installSessionSnapshotReaderForTests(null)
         RaftAppThemeState.apply(RaftAppAppearance.Light)
         RaftAppThemeState.onSystemDarkChanged(false)
     }

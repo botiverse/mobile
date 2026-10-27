@@ -58,7 +58,11 @@ NS_ASSUME_NONNULL_BEGIN
 /** Host -> page event (a pager event on the CMP page). No-op before content is attached. */
 - (void)raftSendEvent:(NSString *)event data:(NSDictionary *)data;
 
-/** Page -> host: the page's resolved appearance (drives the status bar style). */
+/**
+ * Page -> host: whether the page paints a dark colour under the status bar (light status bar
+ * content when YES). Judged by luminance, not the dark-mode flag: a themed frame can be dark in
+ * light mode (Space, Quest) and Raft Yellow / Bots light blue are light frames.
+ */
 - (void)raftSetDarkTheme:(BOOL)dark;
 
 /** Dormant A4 bridge: prepare/commit/cancel. Only this page's own bridge module may call it. */

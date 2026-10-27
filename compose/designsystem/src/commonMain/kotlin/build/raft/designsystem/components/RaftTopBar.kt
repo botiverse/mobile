@@ -76,6 +76,8 @@ fun RaftTopBar(
     leadingMinWidth: Dp = 0.dp,
 ) {
     val colors = RaftTheme.colors
+    // The frame runs up under the status bar when the bar pads for it: the host's icons follow it.
+    RaftStatusBarBackdropClaim(colors.layerFrame, enabled = topInset > 0.dp)
     Column(modifier.fillMaxWidth().background(colors.layerFrame)) {
         CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundOnFrame) {
             if (centerLeading != null && center != null) {

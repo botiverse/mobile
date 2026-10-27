@@ -1346,15 +1346,16 @@ private object RaftMarkdownTextProvider : TextProvider {
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
         val permalinkCoroutineScope = rememberCoroutineScope()
-        // The permalink chip box and link styles carry theme colours, so the theme is a key.
-        val permalinkDark = RaftAppThemeState.isDark
+        // The permalink chip box and link styles carry theme colours, so the theme (the resolved
+        // colours: mode and server theme) is a key.
+        val permalinkThemeColors = RaftAppThemeState.colors
         val permalinkContent =
             remember(
                 text,
                 permalinkLabelResolver,
                 permalinkUriHandler,
                 renderMessagePermalinksAsTag,
-                permalinkDark,
+                permalinkThemeColors,
             ) {
                 text.withRaftMessagePermalinkRenderConfig(
                     config =
@@ -1369,12 +1370,12 @@ private object RaftMarkdownTextProvider : TextProvider {
         // App links the message's previews turned into chips (artin #20 lane L).
         val appLinkChips = LocalRaftAppLinkChips.current
         val appLinkContent =
-            remember(permalinkContent.text, appLinkChips, permalinkUriHandler, permalinkDark) {
+            remember(permalinkContent.text, appLinkChips, permalinkUriHandler, permalinkThemeColors) {
                 permalinkContent.text.withRaftAppLinkChipContent(appLinkChips) { url ->
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
             }
-        val styledText = remember(appLinkContent.text, resolvedStyle, permalinkDark) {
+        val styledText = remember(appLinkContent.text, resolvedStyle, permalinkThemeColors) {
             appLinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
         val resolvedText =
@@ -2295,9 +2296,11 @@ fun RaftMarkdownBody(
     val mentionReadStates = LocalRaftMarkdownMentionReadStates.current
     val currentMentionReadStates by rememberUpdatedState(mentionReadStates)
     val colors = RaftMarkdownColorsDefault
-    // The typography carries theme colours (h6, quotes); the theme is part of its key.
+    // The typography carries theme colours (h6, quotes); the theme (mode and server theme) is
+    // part of its key.
     val markdownDark = RaftAppThemeState.isDark
-    val typography = remember(markdownTextStyle, markdownDark, minInlineLineHeight) {
+    val markdownThemeColors = RaftAppThemeState.colors
+    val typography = remember(markdownTextStyle, markdownThemeColors, minInlineLineHeight) {
         raftMarkdownTypography(markdownTextStyle, minInlineLineHeight)
     }
     val markdownParserContent = remember(content) {
@@ -2434,6 +2437,7 @@ fun RaftMarkdownBody(
         buildList {
             // Link and task-chip spans resolve theme colours at annotation time.
             add(if (markdownDark) "theme:dark" else "theme:light")
+            add("raftTheme:${RaftAppThemeState.raftTheme.wire}")
             if (bodyActiveActionId != null) add("activeAction:$bodyActiveActionId")
             if (bodyActiveTagKey != null) add("activeTag:$bodyActiveTagKey")
             if (activeActionIndicator.isNotEmpty()) add("indicator:$activeActionIndicator")
