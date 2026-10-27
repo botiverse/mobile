@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import java.awt.Image
 import java.awt.Toolkit
+import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.image.BufferedImage
 import java.io.File
@@ -10,6 +11,7 @@ import java.io.InputStream
 import java.net.URLConnection
 import java.util.UUID
 import javax.imageio.ImageIO
+import build.raft.app.ThreadComposerClipboardImageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -75,41 +77,58 @@ private fun InputStream.toChunkSource(): RaftPlatformFileChunkSource {
     }
 }
 
+/** What a composer paste takes from the clipboard. */
+enum class RaftDesktopClipboardPasteKind { Files, Image, Text, None }
+
+/**
+ * A Finder file list wins (Finder also offers the file names as text and the icon as an image).
+ * Otherwise text wins over an image: Excel / Numbers / Word copies carry both, and the user means
+ * the text. A clipboard with only an image (a screenshot, "Copy Image") attaches the image.
+ */
+fun raftDesktopClipboardPasteKind(hasFileList: Boolean, hasImage: Boolean, hasText: Boolean): RaftDesktopClipboardPasteKind =
+    when {
+        hasFileList -> RaftDesktopClipboardPasteKind.Files
+        hasText -> RaftDesktopClipboardPasteKind.Text
+        hasImage -> RaftDesktopClipboardPasteKind.Image
+        else -> RaftDesktopClipboardPasteKind.None
+    }
+
 /**
  * The system clipboard as composer attachments, like the web composer's paste: files copied in
- * Finder (a file list), else a copied image (written as a PNG under the cache). Text is left to
- * the text field's own paste.
+ * Finder (a file list), else a copied image with no text (written as a PNG under the clipboard
+ * cache, owned and retired by the composer). Text is left to the text field's own paste.
  */
 internal object RaftDesktopClipboardAttachments {
-    private val clipboardDir: File get() = File(RaftDesktopPaths.cacheDir, "clipboard").apply { mkdirs() }
+    internal val clipboardDir: File get() = File(RaftDesktopPaths.cacheDir, "clipboard").apply { mkdirs() }
+
+    private fun currentKind(clipboard: Clipboard): RaftDesktopClipboardPasteKind =
+        raftDesktopClipboardPasteKind(
+            hasFileList = runCatching { clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor) }.getOrDefault(false),
+            hasImage = runCatching { clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor) }.getOrDefault(false),
+            hasText = runCatching { clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor) }.getOrDefault(false),
+        )
 
     fun available(): Boolean =
-        runCatching {
-            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor) ||
-                clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)
-        }.getOrDefault(false)
+        runCatching { currentKind(Toolkit.getDefaultToolkit().systemClipboard) }
+            .getOrDefault(RaftDesktopClipboardPasteKind.None)
+            .let { it == RaftDesktopClipboardPasteKind.Files || it == RaftDesktopClipboardPasteKind.Image }
 
     fun read(): List<PlatformFile> {
         val clipboard = runCatching { Toolkit.getDefaultToolkit().systemClipboard }.getOrNull() ?: return emptyList()
-        val files =
-            runCatching {
-                if (clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor)) {
-                    (clipboard.getData(DataFlavor.javaFileListFlavor) as? List<*>)?.filterIsInstance<File>()
-                } else {
-                    null
-                }
-            }.getOrNull()
-        if (files != null) return pastedFiles(files)
-        val image =
-            runCatching {
-                if (clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) {
-                    clipboard.getData(DataFlavor.imageFlavor) as? Image
-                } else {
-                    null
-                }
-            }.getOrNull() ?: return emptyList()
-        return listOfNotNull(pastedImage(image))
+        return when (currentKind(clipboard)) {
+            RaftDesktopClipboardPasteKind.Files ->
+                runCatching { (clipboard.getData(DataFlavor.javaFileListFlavor) as? List<*>)?.filterIsInstance<File>() }
+                    .getOrNull()
+                    ?.let(::pastedFiles)
+                    .orEmpty()
+            RaftDesktopClipboardPasteKind.Image ->
+                runCatching { clipboard.getData(DataFlavor.imageFlavor) as? Image }
+                    .getOrNull()
+                    ?.let(::pastedImage)
+                    ?.let(::listOf)
+                    .orEmpty()
+            RaftDesktopClipboardPasteKind.Text, RaftDesktopClipboardPasteKind.None -> emptyList()
+        }
     }
 
     /** Readable regular files only (a copied folder is skipped). */
@@ -121,7 +140,7 @@ internal object RaftDesktopClipboardAttachments {
                 mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream",
                 sizeBytes = file.length(),
                 fileRef = file.absolutePath,
-                source = PASTE_SOURCE,
+                source = PASTED_FILE_SOURCE,
             )
         }
 
@@ -136,7 +155,7 @@ internal object RaftDesktopClipboardAttachments {
                     graphics.drawImage(image, 0, 0, null)
                     graphics.dispose()
                 }
-        val file = File(dir, "pasted-${UUID.randomUUID()}.png")
+        val file = File(dir, "$PASTED_IMAGE_PREFIX${UUID.randomUUID()}.png")
         if (!runCatching { ImageIO.write(buffered, "png", file) }.getOrDefault(false) || file.length() <= 0L) {
             file.delete()
             return null
@@ -147,9 +166,11 @@ internal object RaftDesktopClipboardAttachments {
             mimeType = "image/png",
             sizeBytes = file.length(),
             fileRef = file.absolutePath,
-            source = PASTE_SOURCE,
+            source = ThreadComposerClipboardImageSource,
         )
     }
 
-    private const val PASTE_SOURCE = "paste"
+    /** The user's own files (Finder): never retired by the composer. */
+    private const val PASTED_FILE_SOURCE = "paste"
+    internal const val PASTED_IMAGE_PREFIX = "pasted-"
 }
