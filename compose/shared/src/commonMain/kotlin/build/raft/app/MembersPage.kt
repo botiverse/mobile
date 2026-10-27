@@ -236,6 +236,7 @@ import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftRuntimeChip
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -9302,7 +9303,7 @@ private fun AgentStatus?.membersStatusBadgeVariant(): RaftBadgeVariant =
     }
 
 @Composable
-private fun MembersAgentProfileHeader(
+internal fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     canEdit: Boolean,
@@ -9332,8 +9333,9 @@ private fun MembersAgentProfileHeader(
             .padding(bottom = RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
     ) {
-        // raft-ui agent page hero: the 99dp sticker avatar with the hard shadow, the name, the
-        // handle in Space Mono, the `Agent` tag and the runtime chip, then the status chip.
+        // raft-ui agent page hero: the 99dp sticker avatar with the hard shadow, the name
+        // (PanelTitle: `text-headline` bold), the handle (`font-mono text-mono-meta
+        // text-foreground-hint`), the `Agent` tag and the runtime chip, then the status chip.
         val colors = RaftTheme.colors
         val typography = RaftTheme.typography
         val runtimeId = summary?.runtime?.takeIf { it.isNotBlank() }
@@ -9357,9 +9359,10 @@ private fun MembersAgentProfileHeader(
             Column(
                 modifier = Modifier.weight(1f).padding(top = RaftAppSpacing.Xs)
             ) {
+                // Web PanelTitle (cindyz 10-10): the name reads the same here as in the head.
                 RaftText(
                     text = member.displayName,
-                    style = typography.title.copy(fontSize = 20.sp, lineHeight = 28.sp),
+                    style = typography.headline,
                     color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -9368,7 +9371,7 @@ private fun MembersAgentProfileHeader(
                 RaftText(
                     text = member.detailHandle,
                     style = typography.monoMeta,
-                    color = colors.foregroundMuted,
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.raftCopyable(member.detailHandle)
@@ -9396,11 +9399,11 @@ private fun MembersAgentProfileHeader(
                         MemberKindBadge(member.kind)
                     }
                     if (runtimeId != null && appBot == null) {
-                        RaftBadge(
+                        // Web `agent-profile-runtime-chip`: the DS runtime chip led by Lucide `cpu`.
+                        RaftRuntimeChip(
                             text = getRuntimeDisplayName(runtimeId),
-                            appearance = RaftBadgeAppearance.Soft,
-                            variant = RaftBadgeVariant.Information,
-                            modifier = Modifier.raftCopyable(getRuntimeDisplayName(runtimeId))
+                            modifier = Modifier.raftCopyable(getRuntimeDisplayName(runtimeId)),
+                            icon = { RaftContentLucideIcon(RaftLucideIconName.Cpu, size = 14.dp) }
                         )
                     }
                 }
@@ -9418,8 +9421,8 @@ private fun MembersAgentProfileHeader(
                     modifier = Modifier.padding(top = 6.dp),
                     icon = if (agentStatusObservedState != null) {
                         {
-                            // raft-ui Status: a still light, never an animation.
-                            RaftStatusIndicator(color = agentStatusObservedState.color, size = 8.dp, pulsing = false)
+                            // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
+                            RaftStatusIndicator(color = agentStatusObservedState.color, pulsing = false)
                         }
                     } else {
                         null

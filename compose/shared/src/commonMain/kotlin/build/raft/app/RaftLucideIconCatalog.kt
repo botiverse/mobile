@@ -55,6 +55,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Code("code"),
     Columns3("columns-3"),
     Copy("copy"),
+    Cpu("cpu"),
     CreditCard("credit-card"),
     Crop("crop"),
     Dices("dices"),

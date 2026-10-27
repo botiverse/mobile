@@ -172,6 +172,31 @@ fun RaftAgentTag(modifier: Modifier = Modifier, text: String = "agent") {
     RaftBadge(text = text, modifier = modifier, appearance = RaftBadgeAppearance.Outline)
 }
 
+/**
+ * The runtime chip (raft-ui `.rf-runtime`, web AgentDetailPanel `RUNTIME_CHIP_CLASS`): the
+ * soft `information` Badge in machine type, `font-mono text-mono-meta font-normal`, so a
+ * runtime name ("Claude Code", "Built-in Pi") reads as what a machine runs, not as a word.
+ * The agent profile hero leads it with Lucide `cpu` in [icon] (14dp, badge ink); the Runtime
+ * row of the config section leaves it out. [trailing] is the account-usage light.
+ */
+@Composable
+fun RaftRuntimeChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    RaftBadgeFrame(
+        text = text,
+        look =
+            raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
+                .copy(mono = true, weight = FontWeight.Normal),
+        modifier = modifier,
+        icon = icon,
+        trailing = trailing,
+    )
+}
+
 /** The soft tint of each presence light (Status > Agent state chips). */
 internal fun raftPresenceChipVariant(presence: RaftPresence): RaftBadgeVariant =
     when (presence) {

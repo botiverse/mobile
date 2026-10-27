@@ -182,12 +182,31 @@ fun RaftBadge(
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors)
+    RaftBadgeFrame(
+        text = text,
+        look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
+        modifier = modifier,
+        tabularFigures = appearance == RaftBadgeAppearance.Solid,
+        icon = icon,
+        trailing = trailing,
+    )
+}
+
+/** The badge chrome around a resolved [look]; presets that adjust the look draw through it. */
+@Composable
+internal fun RaftBadgeFrame(
+    text: String,
+    look: RaftBadgeLook,
+    modifier: Modifier = Modifier,
+    tabularFigures: Boolean = false,
+    icon: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     val typography = RaftTheme.typography
     val textStyle: TextStyle =
         (if (look.mono) typography.monoMeta else typography.caption).copy(
             fontWeight = look.weight,
-            fontFeatureSettings = if (appearance == RaftBadgeAppearance.Solid) "tnum" else null,
+            fontFeatureSettings = if (tabularFigures) "tnum" else null,
         )
     val shape = RoundedCornerShape(look.radius)
     Row(
