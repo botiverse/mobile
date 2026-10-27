@@ -103,6 +103,75 @@ class SyncChangesEngineTest {
     }
 
     @Test
+    fun `a request past five seconds fails the pull with the cursor kept and asks for the fallback`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        val api = RaftSyncChangesApi { _, _, _ -> kotlinx.coroutines.awaitCancellation() }
+        val engine = RaftSyncChangesEngine(api = api, cursors = cursors, sink = RecordingSyncChangesSink())
+
+        val result = assertIs<RaftSyncPullResult.Failed>(engine.pull(syncTestScope, trigger = "reconnect"))
+
+        assertEquals("timeout", result.code)
+        assertTrue(result.needsFullRefetchFallback)
+        assertEquals(SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS, testScheduler.currentTime)
+        assertEquals("c1.1.1", cursors.read(syncTestScope))
+        // A pull whose scope is gone (signed out or server switched) has nothing to fall back to.
+        assertTrue(!RaftSyncPullResult.Failed(RaftSyncPullResult.Failed.SCOPE_RETIRED).needsFullRefetchFallback)
+    }
+
+    @Test
+    fun `reset snapshots wait the jitter whatever the trigger and a first sync only on reconnect`() = runTest {
+        val log = mutableListOf<String>()
+        val engine =
+            RaftSyncChangesEngine(
+                api =
+                    ScriptedSyncChangesApi(
+                        syncPage(syncChangesBody("c1.10.100")),
+                        syncPage(syncChangesBody("c1.11.100")),
+                        syncPage(syncChangesBody("c1.90.500", reset = """{"reason":"forced","snapshots":["agents"]}""")),
+                    ),
+                cursors = cursors,
+                sink = RecordingSyncChangesSink(calls = log),
+                snapshotJitterDelay = { log += "jitter" },
+            )
+
+        engine.pull(syncTestScope, trigger = "server_selected")
+        assertEquals(listOf("snapshots:first_sync"), log)
+
+        log.clear()
+        engine.pull(syncTestScope, trigger = "foreground")
+        assertEquals(listOf("jitter", "snapshots:reset_forced"), log)
+    }
+
+    @Test
+    fun `switching the selected server stops the previous server pull between pages`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        var selectedServer = syncTestScope.serverId
+        val sink =
+            object : RaftSyncChangesSink {
+                val applied = mutableListOf<RaftSyncApplyPlan>()
+
+                override suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String) = true
+
+                override suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan) {
+                    applied += plan
+                    selectedServer = "server-2" // the user switched while page 1 was applied
+                }
+            }
+        val api =
+            ScriptedSyncChangesApi(
+                syncPage(syncChangesBody("c1.2.1", hasMore = true, changes = listOf(syncDelete(2, "agent", "a-1")))),
+                syncPage(syncChangesBody("c1.3.1", changes = listOf(syncDelete(3, "agent", "a-2")))),
+            )
+        val engine =
+            RaftSyncChangesEngine(api = api, cursors = cursors, sink = sink, isCurrent = { it.serverId == selectedServer })
+
+        assertEquals(RaftSyncPullResult.Failed("scope_retired"), engine.pull(syncTestScope, trigger = "reconnect"))
+        assertEquals(1, sink.applied.size)
+        assertEquals(listOf<String?>("c1.1.1"), api.sinces)
+        assertEquals("c1.1.1", cursors.read(syncTestScope))
+    }
+
+    @Test
     fun `a failed first snapshot keeps no cursor so the next pull starts over`() = runTest {
         val api = ScriptedSyncChangesApi(syncPage(syncChangesBody("c1.10.100")))
         val sink = RecordingSyncChangesSink(snapshotsSucceed = false)

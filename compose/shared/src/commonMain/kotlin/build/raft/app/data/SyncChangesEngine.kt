@@ -4,6 +4,7 @@ import build.raft.app.model.ServerId
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
@@ -11,6 +12,12 @@ import kotlin.time.TimeSource
 
 /** The most pages one pull reads before it stops (the cursor is kept; the next trigger goes on). */
 internal const val SYNC_CHANGES_MAX_PAGES_PER_PULL: Int = 40
+
+/**
+ * The longest one `sync/changes` request may take. Past it the pull fails (`timeout`, the cursor is
+ * kept) and a reconnect / foreground caller falls back to its full-list refetch (web client, Scout 10-27).
+ */
+internal const val SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS: Long = 5_000L
 
 /** The most a pull triggered by a socket RE-connect waits before its first request (Ray 10-27). */
 internal const val SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS: Long = 2_000L
@@ -137,7 +144,18 @@ internal sealed interface RaftSyncPullResult {
         val truncated: Boolean,
     ) : RaftSyncPullResult
 
-    data class Failed(val code: String) : RaftSyncPullResult
+    data class Failed(val code: String) : RaftSyncPullResult {
+        /**
+         * The caller's full-list refetch must stand in for this pull (network, 5xx, timeout, a
+         * snapshot that failed). Not when the scope itself is gone (signed out, server switched).
+         */
+        val needsFullRefetchFallback: Boolean
+            get() = code != SCOPE_RETIRED
+
+        companion object {
+            const val SCOPE_RETIRED: String = "scope_retired"
+        }
+    }
 }
 
 /**
@@ -148,17 +166,21 @@ internal sealed interface RaftSyncPullResult {
  *   idempotent.
  * - Cursor: pull pages and apply each one; store the page's cursor after it is applied; while
  *   `hasMore`, pull again at once (at most [maxPagesPerPull] pages per pull).
- * - `reset`: retake `reset.snapshots`, then store the returned cursor.
+ * - `reset`: retake `reset.snapshots` (always after [snapshotJitterDelay], whatever the trigger: a
+ *   reset reaches every client at once), then store the returned cursor.
+ * - A request past [requestTimeoutMillis] or failing fails the pull with the cursor kept.
  * - 400 `invalid_cursor`: forget the cursor and start over as a first sync (once per pull).
  *
  * Pulls of one scope run one at a time; a trigger during a pull waits and pulls again (cheap: no
- * changes). A pull stops as soon as [isCurrent] says the scope is no longer the signed-in binding.
+ * changes). A pull stops as soon as [isCurrent] says the scope is no longer the signed-in binding
+ * or its server is no longer the selected one (`scope_retired`).
  *
  * The pull itself is cheap. A pull with `jitterPull` (a socket RE-connect: every client reconnects
  * together after a deploy) first waits [pullJitterDelay] (0–2 s), so the pulls do not land on the
  * server in one burst; foreground and server-select pulls run at once. Its snapshot reloads (first
- * sync, reset) are full-list reads: a pull with `jitterSnapshots` (the same RE-connect) waits
- * [snapshotJitterDelay] before them (web #11453, mobile #3756).
+ * sync, reset) are full-list reads: a first sync waits [snapshotJitterDelay] before them when the
+ * pull has `jitterSnapshots` (the same RE-connect; sign-in and server select take it at once), a
+ * reset always does (web #11453, mobile #3756, Tenny 10-27).
  */
 internal class RaftSyncChangesEngine(
     private val api: RaftSyncChangesApi,
@@ -169,6 +191,7 @@ internal class RaftSyncChangesEngine(
     private val maxPagesPerPull: Int = SYNC_CHANGES_MAX_PAGES_PER_PULL,
     private val snapshotJitterDelay: suspend () -> Unit = {},
     private val pullJitterDelay: suspend () -> Unit = {},
+    private val requestTimeoutMillis: Long = SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS,
     private val logger: (String) -> Unit = {},
 ) {
     private val lock = SynchronizedObject()
@@ -205,6 +228,10 @@ internal class RaftSyncChangesEngine(
         }
     }
 
+    private suspend fun fetch(serverId: ServerId, since: String?): RaftSyncChangesFetch =
+        withTimeoutOrNull(requestTimeoutMillis) { api.changes(serverId, since = since, limit = pageLimit) }
+            ?: RaftSyncChangesFetch.Failed("timeout")
+
     private suspend fun pullLocked(scope: RaftSyncScope, jitterSnapshots: Boolean): RaftSyncPullResult {
         val serverId = ServerId(scope.serverId)
         var firstSync = false
@@ -218,7 +245,7 @@ internal class RaftSyncChangesEngine(
             if (cursor == null) {
                 firstSync = true
                 val start =
-                    when (val fetch = api.changes(serverId, since = null, limit = pageLimit)) {
+                    when (val fetch = fetch(serverId, since = null)) {
                         is RaftSyncChangesFetch.Page -> fetch.page
                         RaftSyncChangesFetch.InvalidCursor -> return RaftSyncPullResult.Failed("invalid_cursor")
                         is RaftSyncChangesFetch.Failed -> return RaftSyncPullResult.Failed(fetch.code)
@@ -237,7 +264,7 @@ internal class RaftSyncChangesEngine(
                 return RaftSyncPullResult.Synced(pages, changes, firstSync, resetReason, truncated = true)
             }
             val page =
-                when (val fetch = api.changes(serverId, since = cursor, limit = pageLimit)) {
+                when (val fetch = fetch(serverId, since = cursor)) {
                     is RaftSyncChangesFetch.Page -> fetch.page
                     RaftSyncChangesFetch.InvalidCursor -> {
                         cursors.clear(scope)
@@ -253,7 +280,7 @@ internal class RaftSyncChangesEngine(
             val reset = page.reset
             if (reset != null) {
                 resetReason = reset.reason
-                if (jitterSnapshots) snapshotJitterDelay()
+                snapshotJitterDelay()
                 if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, reset.snapshots, reason = "reset_${reset.reason}")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
