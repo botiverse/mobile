@@ -3,7 +3,7 @@ type: improved
 area: notifications
 platforms:
   - android
-pull_request: null
+pull_request: 3820
 rollout: full
 ---
 

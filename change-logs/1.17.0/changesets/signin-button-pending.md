@@ -4,7 +4,7 @@ area: auth
 platforms:
   - android
   - ios
-pull_request: null
+pull_request: 3820
 rollout: full
 ---
 
