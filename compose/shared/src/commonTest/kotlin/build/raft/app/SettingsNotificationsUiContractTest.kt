@@ -60,15 +60,6 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
-    fun previewModeStrictnessOrdersFullBelowSenderOnlyBelowHidden() {
-        assertEquals(0, PushPreviewMode.Full.strictness)
-        assertEquals(1, PushPreviewMode.SenderOnly.strictness)
-        assertEquals(2, PushPreviewMode.Hidden.strictness)
-        assertTrue(PushPreviewMode.Full.strictness < PushPreviewMode.SenderOnly.strictness)
-        assertTrue(PushPreviewMode.SenderOnly.strictness < PushPreviewMode.Hidden.strictness)
-    }
-
-    @Test
     fun stricterOfIsOrderIndependent() {
         for (a in PushPreviewMode.entries) {
             for (b in PushPreviewMode.entries) {

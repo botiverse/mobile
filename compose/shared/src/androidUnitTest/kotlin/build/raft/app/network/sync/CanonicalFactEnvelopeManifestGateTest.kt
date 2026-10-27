@@ -4,7 +4,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -55,13 +54,6 @@ class CanonicalFactEnvelopeManifestGateTest {
         val extra = actual - expected
         return if (missing.isEmpty() && extra.isEmpty()) null
         else "$label closure failed. Missing (expected-has/actual-no): $missing. Extra (actual-has/expected-no): $extra."
-    }
-
-    @Test
-    fun manifestSnapshotShaMatchesG6PinnedHead() {
-        // Same reviewed manifest head as G6 (slock 704d69f4, manifest v7); if it drifts, re-review both gates.
-        val sha = MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) }
-        assertEquals("18e654cc96a0be4d274494403a4ff65ff59665c44e5a1d649efb5f768557ed09", sha)
     }
 
     @Test

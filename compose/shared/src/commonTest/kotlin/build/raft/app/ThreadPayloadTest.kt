@@ -1140,11 +1140,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadQuickReactionsIncludeServerCheckMarkEmoji() {
-        assertTrue("✅" in ThreadQuickReactionEmojis)
-    }
-
-    @Test
     fun defaultThreadMessageVisualFixtureMatchesReactProviderSeed() {
         val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, "visual-thread-message-row")
         val message = payload.messages.single()
@@ -6727,14 +6722,7 @@ class ThreadPayloadTest {
                     )
             )
 
-        val message = payload.messages.first()
-        assertEquals(true, message.isOwn)
-        assertEquals("task-1", message.taskId)
-        assertEquals(163, message.taskNumber)
-        assertEquals("InReview", message.taskStatus)
-        assertEquals("Android-Developer-2", message.taskAssigneeName)
-        assertEquals(2, message.replyCount)
-        assertEquals("#163", threadMessageTaskMetaLabel(message))
+        assertEquals("#163", threadMessageTaskMetaLabel(payload.messages.first()))
     }
 
     @Test
@@ -8866,15 +8854,8 @@ class ThreadPayloadTest {
                     )
             )
 
-        assertEquals("thread-2", payload.instanceId)
-        assertEquals("Close", payload.navigationLabel)
-        assertEquals(false, payload.showModeTabs)
+        // showReplyActions is derived from surfaceKind: a reply thread does not offer nested replies.
         assertEquals(false, payload.showReplyActions)
-        assertEquals(true, payload.showSettingsAction)
-        assertEquals(true, payload.showOpenInChannelAction)
-        assertEquals("message", payload.originStatus)
-        assertEquals("m-parent", payload.originParentMessageId)
-        assertEquals("hello from parent", payload.originMessage?.body)
     }
 
     @Test

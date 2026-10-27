@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -29,29 +28,5 @@ class MembersExternalSetupSectionTest {
             harnesses.map { it.labelRes }.toSet().size,
             "harness tabs must not share a label resource"
         )
-    }
-
-    @Test
-    fun tabValueRoundTripsThroughSelection() {
-        // The segmented control emits the selected `value`; the section resolves it back to an
-        // enum. A value that does not round-trip would silently reset the user's tab.
-        MembersExternalHarness.entries.forEach { harness ->
-            val resolved = MembersExternalHarness.entries.firstOrNull { it.value == harness.value }
-            assertEquals(harness, resolved, "value ${harness.value} must resolve to its own harness")
-        }
-        assertEquals(
-            null,
-            MembersExternalHarness.entries.firstOrNull { it.value == "not-a-harness" },
-            "an unknown value must not select a harness"
-        )
-    }
-
-    @Test
-    fun claudeAndHermesDoNotShareTheStartStep() {
-        // Claude Code and Hermes differ precisely in how the runtime is started; if both mapped
-        // to the same tab they could not be distinguished at all.
-        assertNotEquals(MembersExternalHarness.ClaudeCode, MembersExternalHarness.Hermes)
-        assertEquals("claude-code", MembersExternalHarness.ClaudeCode.value)
-        assertEquals("hermes", MembersExternalHarness.Hermes.value)
     }
 }

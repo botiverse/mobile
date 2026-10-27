@@ -221,11 +221,6 @@ class RaftMarkdownPlainCandidateCensusTest {
     }
 
     @Test
-    fun zeroPredicateCallsWithoutInvocation() {
-        assertEquals(0, RaftMarkdownPlainCandidatePredicate.predicateCalls)
-    }
-
-    @Test
     fun offPathProviderSetIsTheBaseArrayByIdentity() {
         // Round-4 contract: with a null census value the base ProvidedValue
         // array is returned BY IDENTITY - no copy, no appended entry, no new

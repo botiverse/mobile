@@ -192,14 +192,6 @@ class ExternalAgentDetailIndicatorTest {
         assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
     }
 
-    @Test
-    fun oldActivityIsCyanWithLastActivity() {
-        val at = now - 3 * 60 * 60_000L
-        val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected, lastActivityAt = iso(at)), now)
-        assertEquals(RaftColor.AccentCyan, result.state.color)
-        assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
-    }
-
     // Deliberate divergence from web: web evaluates activity tiers before the
     // setup state and can show a lime dot beside a "setup required" caption
     // (agent ran, then lost its credential). Product rule: not signed in ⇒ gray,

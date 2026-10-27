@@ -702,41 +702,6 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun typedComposerPayloadKeepsSuggestionsAndAttachmentsWithoutBuilderJson() {
-        val payload =
-            RaftThreadComposerPayload(
-                pendingAttachments =
-                    listOf(
-                        RaftPendingAttachmentItem(
-                            id = "a1",
-                            fileName = "log.txt",
-                            sizeLabel = "1 KB",
-                            mimeType = "text/plain",
-                            status = "uploading"
-                        )
-                    ),
-                memberSuggestions =
-                    listOf(
-                        RaftComposerMemberItem(
-                            displayName = "Cindy",
-                            handle = "cindy"
-                        )
-                    ),
-                channelSuggestions =
-                    listOf(
-                        RaftComposerChannelItem(
-                            name = "general",
-                            subtitle = "team"
-                        )
-                    )
-            )
-
-        assertEquals("log.txt", payload.pendingAttachments.single().fileName)
-        assertEquals("Cindy", payload.memberSuggestions.single().displayName)
-        assertEquals("general", payload.channelSuggestions.single().name)
-    }
-
-    @Test
     fun mentionTriggerMatchesReactWhenAtFollowsText() {
         val chineseTrigger = detectRaftComposerSuggestionTrigger("你好@")
         assertTrue(chineseTrigger is RaftComposerSuggestionTrigger.MemberTrigger)

@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
  * singular/many and past/future wiring per unit. Deleting a key or mis-wiring a
  * case (e.g. routing past to the future resource, or one to many) turns RED.
  *
- * The locale-resolved text itself is covered by RelativeTimeSpacingResourceTest
+ * The locale-resolved placeholder parity is covered by ComposeResourcesCatalogParityTest
  * (zh catalog values + placeholder parity + de-spacing mutation).
  */
 class RaftRelativeTimeResourceSelectionTest {
