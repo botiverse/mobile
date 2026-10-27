@@ -47,6 +47,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
+import build.raft.app.model.ServerAppearanceUpdated
+import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
@@ -1533,6 +1535,18 @@ internal class RaftSharedStoreProvider private constructor(
             serverId = serverId,
         ).normalizedOrNull()
     }
+
+    /**
+     * The member's look (theme + decorations) on this shell's selected server, from the stored
+     * session: the persisted value at once on a cold start, then every change (server list
+     * refresh, appearance-settings save, `appearance:updated`, server switch). Raft Yellow while
+     * signed out. Not applied to the UI here.
+     */
+    fun serverThemeLookFlow(scope: RaftShellStoreScope): Flow<RaftServerThemeLook> =
+        raftServerThemeLookFlow(
+            sessions = raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() },
+            selectedServerId = selectedServerStore(scope).selectedServerId,
+        )
 
     internal fun authenticatedRouteOwnerFlow(
         scope: RaftShellStoreScope,
@@ -3180,6 +3194,9 @@ internal class RaftSharedStoreProvider private constructor(
                         // processMemberPresenceRealtimeSink).
                         owner.installMemberPresenceSink(memberPresenceRealtimeSink)
                         owner.installActivityUnreadSink(activityUnreadRealtimeSink)
+                        owner.installServerAppearanceSink { principalId, event ->
+                            authStore.applyRealtimeServerAppearance(principalId, event)
+                        }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -3491,6 +3508,15 @@ internal class SharedRealtimeDomainEventOwner(
         activityUnreadSink = sink
     }
 
+    // `appearance:updated` writes the member's theme onto the stored server of the account the
+    // event's grant belongs to (never the live session's account). Process entry only: it runs
+    // once per accepted frame, under the current grant, whether or not a shell is mounted.
+    private var serverAppearanceSink: (suspend (principalId: String, event: ServerAppearanceUpdated) -> Unit)? = null
+
+    fun installServerAppearanceSink(sink: suspend (principalId: String, event: ServerAppearanceUpdated) -> Unit) {
+        serverAppearanceSink = sink
+    }
+
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
     }
@@ -3595,6 +3621,9 @@ internal class SharedRealtimeDomainEventOwner(
                 acceptedSource,
                 grant.presenceAdmission(presenceTransportEpoch)
             )
+            if (acceptedEvent is ServerAppearanceUpdated && acceptedEvent.serverId.value == serverId) {
+                serverAppearanceSink?.invoke(grant.principalId, acceptedEvent)
+            }
         }
 
     suspend fun acceptTerminalProcessMutation(
