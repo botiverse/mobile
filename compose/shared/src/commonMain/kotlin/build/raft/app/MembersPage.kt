@@ -142,6 +142,7 @@ import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
 import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
 import build.raft.app.data.buildBuiltInRuntimeConfig
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
@@ -4549,10 +4550,12 @@ internal fun MemberDetailPageContent(
                                 )
                         },
                         canManageAgent = { _, detail ->
-                            current.accessMode.allowsPrivateAgentSurfaces &&
-                                (current.server.permissions.canManageSettings ||
-                                detail?.summary?.creatorId == current.currentUserId
-                                )
+                            membersRouteCanManageAgent(
+                                allowsPrivateAgentSurfaces = current.accessMode.allowsPrivateAgentSurfaces,
+                                canManageSettings = current.server.permissions.canManageSettings,
+                                currentUserId = current.currentUserId,
+                                detail = detail
+                            )
                         },
                         machineStatusRow = machineStatusRow,
                         actions = MembersDetailActions(
@@ -6059,6 +6062,20 @@ private fun MembersDetailContent(
         if (isExternalAgent) agentStatusIndicatorState else managedAgentStatusObservedState
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
+    // An open runtime editor reads permission from the last loaded detail while a refresh is in
+    // flight or failed: `detail` is null then, which would read a creator's right as revoked.
+    val lastContentDetailHolder = remember(member.id.value) { arrayOfNulls<AgentDetailSnapshot>(1) }
+    if (detail != null) lastContentDetailHolder[0] = detail
+    val runtimeEditorCanManage =
+        member.kind == MemberKind.Agent &&
+            membersRuntimeEditorCanManage(
+                currentDetail = detail,
+                lastContentDetail = lastContentDetailHolder[0],
+                refreshTransient =
+                    agentDetailState is MembersAgentDetailLoadState.Loading ||
+                        agentDetailState is MembersAgentDetailLoadState.Error,
+                canManageAgent = { snapshot -> canManageAgent(member, snapshot) }
+            )
     val turnStopStore = remoteControls?.turnStopStore
     val fallbackTurnStopState = remember { MutableStateFlow(AgentTurnStopState()) }
     val turnStopState by (turnStopStore?.state ?: fallbackTurnStopState).collectAsState()
@@ -6634,6 +6651,7 @@ private fun MembersDetailContent(
                                             createAgentFormStore = createAgentFormStore,
                                             agentProfileEditAuthority = agentProfileEditAuthority,
                                             canManage = canManage,
+                                            runtimeEditorCanManage = runtimeEditorCanManage,
                                             agentStatusIndicatorState = agentStatusIndicatorState,
                                             agentStatusObservedState = agentStatusObservedState,
                                             agentStatusResolver = agentStatusResolver,
@@ -9443,6 +9461,8 @@ private class MembersAgentLifecycleInputs(
  */
 private class MembersAgentProfileEditInputs(
     val canEdit: Boolean,
+    /** Permission alone (no load-state terms): an open editor closes only when this is lost. */
+    val canManage: Boolean = canEdit,
     val agentProfileEditAuthority: MembersAgentProfileEditAuthority?,
     val agentDetailActions: SharedAgentDetailActions?,
     val onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
@@ -10357,6 +10377,13 @@ private fun MembersAgentRuntimeConfigSection(
     var runtimeEditorAuthority by remember(member.id.value) {
         mutableStateOf<MembersAgentProfileEditAuthority?>(null)
     }
+    // Inputs latched when the editor opens (artin 612602c0): a background/foreground cycle
+    // reconnects presence, which publishes status=null until the roster refresh lands, and
+    // re-reads detail/flags. Gating the dialog on those live values unmounted it and lost the
+    // user's typing; the dialog now composes from this snapshot instead.
+    var runtimeEditorSession by remember(member.id.value) {
+        mutableStateOf<MembersRuntimeEditorSession?>(null)
+    }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
     // Runtime form v2 edit (flag `runtime_form_v2_web`); any v2 load failure or a runtime
@@ -10370,6 +10397,13 @@ private fun MembersAgentRuntimeConfigSection(
 
     LaunchedEffect(canonicalRuntimeId) {
         canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
+    }
+
+    // The one way an editing session ends: explicit close, save success, or a real close condition.
+    fun closeRuntimeEditor() {
+        editingRuntimeConfig = false
+        runtimeEditorAuthority = null
+        runtimeEditorSession = null
     }
 
 
@@ -10461,7 +10495,7 @@ private fun MembersAgentRuntimeConfigSection(
                         authority != null &&
                         onApplyAgentRuntimeConfigProjection(authority, nextConfig)
                     ) {
-                        editingRuntimeConfig = false
+                        closeRuntimeEditor()
                     } else {
                         runtimeConfigError = "agent_runtime_editor_stale"
                         onUnavailableAction(runtimeEditingUnavailable)
@@ -10473,7 +10507,7 @@ private fun MembersAgentRuntimeConfigSection(
                         authority != null &&
                         onApplyAgentRuntimeConfigProjection(authority, nextConfig)
                     ) {
-                        editingRuntimeConfig = false
+                        closeRuntimeEditor()
                     } else {
                         runtimeConfigError = "agent_runtime_editor_stale"
                         onUnavailableAction(runtimeEditingUnavailable)
@@ -10491,7 +10525,9 @@ private fun MembersAgentRuntimeConfigSection(
 
     fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody) {
         val callback = onUpdateAgentProfile
-        val access = runtimeFormV2Access
+        // The access the form was loaded through; the authority check below still fences
+        // account/server/profile changes.
+        val access = runtimeEditorSession?.formV2Access ?: runtimeFormV2Access
         if (
             !canEdit ||
                 !runtimeStatusResolved ||
@@ -10552,7 +10588,7 @@ private fun MembersAgentRuntimeConfigSection(
                     val authority = runtimeEditorAuthority
                     val projected =
                         config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
-                    editingRuntimeConfig = false
+                    closeRuntimeEditor()
                     // The save landed; only the read-back failed, so the rows may lag until a refresh.
                     if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
                 }
@@ -10588,9 +10624,20 @@ private fun MembersAgentRuntimeConfigSection(
                 title = stringResource(Res.string.member_section_runtime_config),
                 showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                 onEditClick = {
-                    runtimeConfigError = null
-                    runtimeEditorAuthority = agentProfileEditAuthority
-                    editingRuntimeConfig = true
+                    val authority = agentProfileEditAuthority
+                    val config = canonicalRuntimeConfig
+                    if (authority != null && config != null) {
+                        runtimeConfigError = null
+                        runtimeEditorAuthority = authority
+                        runtimeEditorSession =
+                            MembersRuntimeEditorSession(
+                                authority = authority,
+                                config = config,
+                                machineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() },
+                                formV2Access = runtimeFormV2Access
+                            )
+                        editingRuntimeConfig = true
+                    }
                 }
             )
         }
@@ -10603,24 +10650,42 @@ private fun MembersAgentRuntimeConfigSection(
         MembersAgentRuntimeEnvVars(summary)
     }
 
-    val runtimeFormV2MachineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() }
-    if (
-        editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved &&
-            runtimeFormV2Access != null && !runtimeFormV2Declined && runtimeFormV2MachineId != null
-    ) {
+    val session = runtimeEditorSession
+    val runtimeEditorDialog =
+        membersRuntimeEditorDialog(
+            editing = editingRuntimeConfig,
+            opened = session?.authority,
+            openedFormV2 = session?.formV2Access != null && session.machineId != null,
+            formV2Declined = runtimeFormV2Declined,
+            live = MembersRuntimeEditorLiveFacts(
+                authority = agentProfileEditAuthority,
+                canManage = edit.canManage,
+                deleted = summary?.deletedAt?.isNotBlank() == true,
+                runtimeStatusResolved = runtimeStatusResolved,
+                config = canonicalRuntimeConfig,
+                formV2Available = runtimeFormV2Access != null
+            )
+        )
+    // A real close condition (deleted / permission lost) ends the session, so the editor does not
+    // pop back up if that condition later clears.
+    LaunchedEffect(editingRuntimeConfig, runtimeEditorDialog) {
+        if (editingRuntimeConfig && runtimeEditorDialog == MembersRuntimeEditorDialog.None) {
+            closeRuntimeEditor()
+        }
+    }
+    if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.FormV2) {
         MembersAgentRuntimeFormV2Dialog(
-            access = runtimeFormV2Access,
+            access = checkNotNull(session.formV2Access),
             agentId = member.id,
-            machineId = runtimeFormV2MachineId,
-            runtimeId = canonicalRuntimeConfig.runtime,
+            machineId = checkNotNull(session.machineId),
+            runtimeId = session.config.runtime,
             machineRuntimeIds = agentMachineRuntimes,
             saving = savingRuntimeConfig,
             error = runtimeConfigError,
             errorFieldKeys = runtimeFormV2ErrorFields,
             onDismiss = {
                 if (!savingRuntimeConfig) {
-                    editingRuntimeConfig = false
-                    runtimeEditorAuthority = null
+                    closeRuntimeEditor()
                     runtimeConfigError = null
                 }
             },
@@ -10632,9 +10697,9 @@ private fun MembersAgentRuntimeConfigSection(
             },
             onSave = ::saveRuntimeConfigV2
         )
-    } else if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
+    } else if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.Legacy) {
         MembersAgentRuntimeConfigDialog(
-            initialConfig = canonicalRuntimeConfig,
+            initialConfig = session.config,
             initialRuntime = runtimeFormV2SwitchRuntime,
             memberId = member.id,
             activeAgent = activeAgent,
@@ -10644,8 +10709,8 @@ private fun MembersAgentRuntimeConfigSection(
             runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
             runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
             createAgentFormStore = createAgentFormStore,
-            currentServerId = agentProfileEditAuthority?.serverId?.value,
-            machineId = summary?.machineId ?: member.membersComputerId,
+            currentServerId = session.authority.serverId.value,
+            machineId = session.machineId,
             openedProfileAuthority = runtimeEditorAuthority,
             currentProfileAuthority = agentProfileEditAuthority,
             onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
@@ -10653,8 +10718,7 @@ private fun MembersAgentRuntimeConfigSection(
             error = runtimeConfigError,
             onDismiss = {
                 if (!savingRuntimeConfig) {
-                    editingRuntimeConfig = false
-                    runtimeEditorAuthority = null
+                    closeRuntimeEditor()
                     runtimeConfigError = null
                 }
             },
@@ -10806,6 +10870,8 @@ private fun MembersAgentProfileTab(
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     canManage: Boolean,
+    /** Permission signal for an already open runtime editor; survives a failed/in-flight refresh. */
+    runtimeEditorCanManage: Boolean = canManage,
     agentStatusObservedState: RaftAgentStatusIndicatorState?,
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
@@ -10845,6 +10911,7 @@ private fun MembersAgentProfileTab(
     val edit =
         MembersAgentProfileEditInputs(
             canEdit = canEdit,
+            canManage = runtimeEditorCanManage,
             agentProfileEditAuthority = agentProfileEditAuthority,
             agentDetailActions = agentDetailActions,
             onUpdateAgentProfile = onUpdateAgentProfile,
@@ -12107,6 +12174,85 @@ internal fun membersAgentRuntimeActive(status: AgentStatus?): Boolean =
     status != null && status.presence != Presence.Offline
 
 internal fun membersAgentRuntimeStatusResolved(status: AgentStatus?): Boolean = status != null
+
+/** What the runtime editor captured when the user opened it; the dialog composes from this. */
+internal data class MembersRuntimeEditorSession(
+    val authority: MembersAgentProfileEditAuthority,
+    val config: RuntimeConfig,
+    val machineId: String?,
+    val formV2Access: RuntimeFormV2Access?
+)
+
+/**
+ * The page's live facts on this frame. [runtimeStatusResolved], [config] and [formV2Available]
+ * go null/false transiently on a background/foreground reconnect (presence publishes status=null
+ * until the forced roster refresh lands); they gate opening and saving, never an open editor.
+ */
+internal data class MembersRuntimeEditorLiveFacts(
+    val authority: MembersAgentProfileEditAuthority?,
+    val canManage: Boolean,
+    val deleted: Boolean,
+    val runtimeStatusResolved: Boolean,
+    val config: RuntimeConfig?,
+    val formV2Available: Boolean
+)
+
+internal enum class MembersRuntimeEditorDialog { None, FormV2, Legacy }
+
+/** The agent-detail route's manage right: private surfaces plus server admin or agent creator. */
+internal fun membersRouteCanManageAgent(
+    allowsPrivateAgentSurfaces: Boolean,
+    canManageSettings: Boolean,
+    currentUserId: String?,
+    detail: AgentDetailSnapshot?
+): Boolean =
+    allowsPrivateAgentSurfaces &&
+        (canManageSettings || detail?.summary?.creatorId == currentUserId)
+
+/**
+ * Manage right for an already open runtime editor. While a detail refresh is in flight or failed
+ * the page has no [currentDetail] (the store still holds the last one), and a creator's right is
+ * read from the detail, so fall back to [lastContentDetail]. A fresh detail always wins, so a
+ * changed creator / revoked role / deletion still closes the editor.
+ */
+internal fun membersRuntimeEditorCanManage(
+    currentDetail: AgentDetailSnapshot?,
+    lastContentDetail: AgentDetailSnapshot?,
+    refreshTransient: Boolean,
+    canManageAgent: (AgentDetailSnapshot?) -> Boolean
+): Boolean {
+    val basis = currentDetail ?: lastContentDetail.takeIf { refreshTransient }
+    return basis?.summary?.deletedAt?.isNotBlank() != true && canManageAgent(basis)
+}
+
+/**
+ * Which runtime editor dialog is on screen. Once opened, only an explicit close, a real agent
+ * deletion, or lost manage permission closes it. A null live authority (detail reloading, or an
+ * account/server switch, which nulls it rather than replacing it) keeps it open; the save path's
+ * authority checks are what fence a switch. The different-owner branch below is defensive only:
+ * production does not hand this a non-null authority for another owner.
+ */
+internal fun membersRuntimeEditorDialog(
+    editing: Boolean,
+    opened: MembersAgentProfileEditAuthority?,
+    openedFormV2: Boolean,
+    formV2Declined: Boolean,
+    live: MembersRuntimeEditorLiveFacts
+): MembersRuntimeEditorDialog {
+    if (!editing || opened == null) return MembersRuntimeEditorDialog.None
+    if (live.deleted || !live.canManage) return MembersRuntimeEditorDialog.None
+    val current = live.authority
+    if (
+        current != null &&
+        (current.memberId != opened.memberId ||
+            current.environmentId != opened.environmentId ||
+            current.accountId != opened.accountId ||
+            current.serverId != opened.serverId)
+    ) {
+        return MembersRuntimeEditorDialog.None
+    }
+    return if (openedFormV2 && !formV2Declined) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.Legacy
+}
 
 internal fun membersRuntimeConfigResetMode(
     currentConfig: RuntimeConfig,
