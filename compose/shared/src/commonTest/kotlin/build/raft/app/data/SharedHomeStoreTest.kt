@@ -2175,6 +2175,59 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    /**
+     * Sync on, Home reloads reuse the held machine list. A machine change (`machine:status`, a sync
+     * `machine` row, the sync machines refresh: all a Machines-scope refresh) arriving while Home is
+     * hidden must make the reload on return read the list again, not reuse the old one.
+     */
+    @Test
+    fun syncOnMachineChangeWhileHomeHiddenMakesTheReturnReloadReadMachines() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val computersApi = RecordingComputersApi()
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = api,
+                    computersApi = computersApi,
+                    serverMembersStore = SharedServerMembersStore(EmptyMemberRepository, incrementalSyncCoversRoster = { true }),
+                ),
+            scope = scope,
+        )
+        store.accept(SharedHomeIntent.Start)
+        awaitCondition { computersApi.calls == listOf("GET machines:server-1") }
+        // A Home reload with nothing changed reuses the held list.
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, reason = "sync_changes", serverId = ServerId("server-1"))
+            )
+        )
+        awaitCondition { api.calls.count { it == "channels:server-1" } == 2 }
+        assertEquals(listOf("GET machines:server-1"), computersApi.calls)
+
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Machines,
+                        reason = "machine:status",
+                        serverId = ServerId("server-1"),
+                        subjectId = "machine-1"
+                    )
+            )
+        )
+        assertEquals(1, computersApi.calls.size, "hidden: nothing read yet")
+        store.accept(SharedHomeIntent.SetSurfaceVisible(true))
+
+        awaitCondition { computersApi.calls.size == 2 }
+        assertEquals(listOf("GET machines:server-1", "GET machines:server-1"), computersApi.calls)
+        scope.cancel()
+    }
+
     @Test
     fun duplicatePresenceDoesNotReloadVisibleHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -4202,6 +4255,7 @@ class SharedHomeStoreTest {
         sessionStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
         offlineComputerAlertsEnabled: Boolean = true,
+        serverMembersStore: SharedServerMembersStore? = null,
     ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
@@ -4209,6 +4263,7 @@ class SharedHomeStoreTest {
             announcementsApi = announcementsApi,
             computersApi = computersApi,
             appUpdateStatusProvider = appUpdateStatusProvider,
+            serverMembersStore = serverMembersStore,
             notificationPreferenceRepository =
                 object : NotificationPreferenceRepository {
                     override suspend fun getNotificationPreference(): NotificationPreferenceSnapshot =

@@ -196,8 +196,20 @@ class SharedHomeDataSource(
     internal suspend fun loadNotificationsAfterHomeLoad(): DataResult<List<SharedHomeNotification>> =
         loadNotificationsFromSources(homeReload = true)
 
-    /** The last machine list read, per account + server (sync-on Home reloads reuse it). */
+    /**
+     * The last machine list read, per account + server (sync-on Home reloads reuse it). Overwritten
+     * by every network read; dropped by [dropHeldMachines] on any machine change, so a reuse never
+     * outlives a change it did not read.
+     */
     private var lastMachines: Pair<String, ComputerListSummary>? = null
+
+    /**
+     * A machine changed (`machine:status` and the other Machines-scope pushes, sync `machine` rows,
+     * the sync machines refresh): the next Home reload reads `/servers/:id/machines` again.
+     */
+    internal fun dropHeldMachines() {
+        lastMachines = null
+    }
 
     private suspend fun loadNotificationsFromSources(homeReload: Boolean): DataResult<List<SharedHomeNotification>> {
         val appUpdateNotifications =
