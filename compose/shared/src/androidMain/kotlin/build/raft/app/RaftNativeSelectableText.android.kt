@@ -1,11 +1,14 @@
 package build.raft.app
 
 import android.graphics.Typeface
+import android.os.Build
 import android.util.TypedValue
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -56,6 +59,9 @@ actual fun RaftNativeSelectableText(
     val fontSizePx = style.fontSize.toPxOrNull(density)
     val lineHeightPx = style.lineHeight.toPxOrNull(density, fontSizePx)
     val textColor = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
+    // The design system's selection (RaftTheme: `selection` behind the text, `foreground` handles),
+    // not the platform accent (Artea: pink on the emulator, whatever the OEM theme is on a phone).
+    val selectionColors = LocalTextSelectionColors.current
     AndroidView(
         factory = { context ->
             TextView(context).apply {
@@ -84,8 +90,22 @@ actual fun RaftNativeSelectableText(
             if (fontSizePx != null) view.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSizePx)
             if (typeface != null) view.typeface = typeface
             if (lineHeightPx != null) TextViewCompat.setLineHeight(view, lineHeightPx.roundToInt().coerceAtLeast(1))
+            view.applyRaftSelectionColors(selectionColors)
         },
     )
+}
+
+/** The highlight, and on API 29+ the three selection handles, in the design system's colours. */
+private fun TextView.applyRaftSelectionColors(colors: TextSelectionColors) {
+    val background = colors.backgroundColor.toArgb()
+    if (highlightColor != background) highlightColor = background
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val handle = colors.handleColor.toArgb()
+    if (getTag(R.id.thread_message_selection_text) == handle) return
+    textSelectHandle?.mutate()?.let { it.setTint(handle); setTextSelectHandle(it) }
+    textSelectHandleLeft?.mutate()?.let { it.setTint(handle); setTextSelectHandleLeft(it) }
+    textSelectHandleRight?.mutate()?.let { it.setTint(handle); setTextSelectHandleRight(it) }
+    setTag(R.id.thread_message_selection_text, handle)
 }
 
 private fun TextUnit.toPxOrNull(density: androidx.compose.ui.unit.Density, fontSizePx: Float? = null): Float? =
