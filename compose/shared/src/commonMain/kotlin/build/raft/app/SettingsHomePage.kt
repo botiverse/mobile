@@ -13837,7 +13837,7 @@ private fun SharedHomeSearchSortSegmentButton(
         enabled = true,
         onClick = onClick,
         modifier = modifier.heightIn(min = 28.dp),
-        background = if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite,
+        background = if (selected) RaftColor.Selected else RaftColor.SurfaceWhite,
         borderColor = RaftColor.BorderBlack,
         shadowColor = if (selected) RaftColor.ShadowBlack else Color.Transparent
     ) {
@@ -13887,16 +13887,17 @@ private fun SharedHomeSearchShadowSurface(
     contentPaddingVertical: Dp = 0.dp,
     content: @Composable () -> Unit
 ) {
-    // raft-ui: a selected (yellow) control is the brand sticker (1.5dp sticker-ink edge);
-    // every other one is a ghost control. Control radius, no ink frame, no offset shadow.
+    // raft-ui: a selected (yellow) control is the `selected` sticker (1.5dp sticker-ink edge;
+    // yellow in every theme, raft-ui #791); every other one is a ghost control. Control radius,
+    // no ink frame, no offset shadow.
     val shape = RoundedCornerShape(RaftAppRadius.Control)
-    val sticker = background == RaftColor.BrandYellow || background == RaftColor.Brand
+    val sticker = background == RaftColor.BrandYellow || background == RaftColor.Brand || background == RaftColor.Selected
     Box(modifier = modifier) {
         val surfaceModifier =
             Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .background(if (sticker) RaftColor.Brand else Color.Transparent, shape)
+                .background(if (sticker) RaftColor.Selected else Color.Transparent, shape)
                 .border(RaftAppStroke.Control, if (sticker) RaftColor.StickerInk else Color.Transparent, shape)
                 .padding(horizontal = contentPaddingHorizontal, vertical = contentPaddingVertical)
         Box(

@@ -31659,11 +31659,7 @@ internal fun ThreadMessageAttachments(
             // a lone image in its own reserved box, multi-image rows in the phone grid.
             CompositionLocalProvider(
                 LocalRaftColors provides
-                    if (RaftAppThemeState.isDark) {
-                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftDark
-                    } else {
-                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftLight // raft-color: light branch of the theme switch
-                    }
+                    build.raft.designsystem.tokens.RaftUiThemeColors.of(RaftAppThemeState.raftTheme, RaftAppThemeState.isDark)
             ) {
                 RaftMessageImageGallery(
                     images = imageDimensions,

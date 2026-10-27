@@ -1334,7 +1334,7 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
 /** Hosts the raft-ui design system on the app's resolved light/dark appearance. */
 @Composable
 internal fun RaftComputersTheme(content: @Composable () -> Unit) {
-    RaftTheme(appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light, content = content)
+    RaftTheme(appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light, raftTheme = RaftAppThemeState.raftTheme, content = content)
 }
 
 /** A Lucide icon in the enclosing design-system slot's ink. */

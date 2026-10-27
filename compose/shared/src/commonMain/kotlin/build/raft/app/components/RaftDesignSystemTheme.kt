@@ -21,7 +21,9 @@ import build.raft.designsystem.theme.RaftTheme
 
 /**
  * Hosts compose/designsystem (raft-ui 0.8.0) components and type tokens inside an app
- * screen: the designsystem [RaftTheme] on the app's resolved light/dark appearance, with
+ * screen: the designsystem [RaftTheme] on the app's resolved light/dark appearance and raft-ui
+ * theme ([RaftAppThemeState.raftTheme], so designsystem components and app tokens always wear
+ * the same theme), with
  * its type scale (raft-design Typography: body 16/24, subhead 15/20, callout 14/20,
  * footnote 13/18, caption 12/16, mono-meta 12/16) set in the app's bundled Space Grotesk /
  * Space Mono faces, so designsystem text matches the `RaftType` text around it. The app
@@ -55,7 +57,13 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
             )
         }
     val strings = raftAppDesignSystemStrings()
-    RaftTheme(appearance = appearance, fonts = fonts, localeList = RaftUiTextLocaleState.localeList) {
+    RaftTheme(
+        appearance = appearance,
+        fonts = fonts,
+        localeList = RaftUiTextLocaleState.localeList,
+        raftTheme = RaftAppThemeState.raftTheme,
+        decor = RaftAppThemeState.decor,
+    ) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
             LocalRaftStrings provides strings,

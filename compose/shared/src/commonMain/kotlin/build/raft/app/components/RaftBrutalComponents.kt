@@ -1397,7 +1397,8 @@ internal fun SegmentedControl(
 /**
  * One raft-ui segmented / tab item (`segmented-control` item, `tabs` default tab): 32dp,
  * control radius, 1.5dp edge that is transparent at rest and sticker ink when checked,
- * checked fill = the yellow `--brand` sticker with bold ink type, pressed = fill wash.
+ * checked fill = the yellow `--selected` sticker (yellow in every theme, raft-ui #791) with bold
+ * ink type, pressed = fill wash.
  */
 @Composable
 internal fun RaftSegmentedItem(
@@ -1413,7 +1414,7 @@ internal fun RaftSegmentedItem(
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     val fill =
         when {
-            selected -> if (pressed) raftOverlay(RaftColor.StickerPressed, RaftColor.Brand) else RaftColor.Brand
+            selected -> if (pressed) raftOverlay(RaftColor.StickerPressed, RaftColor.Selected) else RaftColor.Selected
             pressed && enabled -> RaftColor.FillPressed
             else -> Color.Transparent
         }
