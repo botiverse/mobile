@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.foundation.lazy.LazyListState
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -61,6 +62,25 @@ internal fun activityShouldAnchorTopOnCanonicalSnapshot(
     followParkedTop: Boolean = false,
 ): Boolean =
     genuineTopUpdate && parkedAtTop && !scrollInProgress && (entryOwnerArmed || pullRefreshOwnsTop || followParkedTop)
+
+/**
+ * The root rule for the Activity list's top edge (artin, Hands b205bd89: "tap back to the top,
+ * then it jumps to the second screen"): a list parked at its very top stays there across a
+ * change that moves its head row. LazyList keeps the first visible row by key, so without this a
+ * new or bumped row above a reader at the top carries the list down with the old head. The web
+ * gets this for free (browsers don't scroll-anchor at scrollTop 0).
+ *
+ * Call it in the same snapshot as the list change, before the next measure (the state still holds
+ * the previous layout): a same-snapshot `requestScrollToItem(0)`, no animation, no delayed job.
+ * Never while a scroll is in progress (a drag, a fling, an animation owns the viewport); a reader
+ * scrolled away keeps their row. Returns whether it pinned.
+ */
+internal fun LazyListState.keepTopIfParked(previousHeadKey: Any?, nextHeadKey: Any?): Boolean {
+    if (previousHeadKey == nextHeadKey || isScrollInProgress) return false
+    if (!activityListParkedAtTop(firstVisibleItemIndex, firstVisibleItemScrollOffset)) return false
+    requestScrollToItem(0)
+    return true
+}
 
 /** The list is at its very top edge (first row fully at the top). */
 internal fun activityListParkedAtTop(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int): Boolean =
