@@ -78,6 +78,43 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
         }
     }
 
+    @Test
+    fun anchorContextPageJoinsTheStoredThreadUnderItsParent() = withFreshDatabase { database ->
+        // Task #14 part C: a reply's context page that overlaps the stored thread window joins it.
+        val rig = Rig(database)
+        runBlocking {
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            rig.writer.persistContextPage(partition, "thread-1", "r40", replyPageArray(30, 40, 50), true, true, parent) { true }
+            assertEquals(
+                listOf(30L, 40L, 50L, 60L, 70L),
+                assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq },
+            )
+            assertEquals(
+                "canonical_v2_context_page server=server-1 scope=thread-1 scopeKind=thread anchor=r40 outcome=committed " +
+                    "reason=window_extended_older facts=2",
+                rig.logs.last(),
+            )
+        }
+    }
+
+    @Test
+    fun anchorContextPageUnderAnotherParentIsRefused() = withFreshDatabase { database ->
+        // Twin of the test above: identical stored thread and page, the route names another root message.
+        val rig = Rig(database)
+        runBlocking {
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            rig.writer.persistContextPage(
+                partition, "thread-1", "r40", replyPageArray(30, 40, 50), true, true,
+                ThreadDurableReplyParent("channel-1", "m20"),
+            ) { true }
+            assertEquals(
+                listOf(50L, 60L, 70L),
+                assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq },
+            )
+            assertTrue(rig.logs.last().endsWith("anchor=r40 outcome=skipped reason=parent_mismatch facts=0"), rig.logs.last())
+        }
+    }
+
     private class Rig(database: RaftSqlDatabase) {
         val logs = mutableListOf<String>()
         private val network = PathNetworkClient(
