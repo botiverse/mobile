@@ -13,11 +13,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -142,6 +144,51 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(listOf("release"), readerStore.state.value.search.history)
         assertEquals(1, readerStore.state.value.search.frequentEntityRanks.size)
         readerStore.clear()
+    }
+
+    /**
+     * Hands ANR fa8f14bb / 0c46a9d0 / 736be855 (1.15.4): the store is built lazily inside
+     * composition on the main thread, and its constructor ran `runBlocking { readSession() }`.
+     * When the session lock was not free the main thread parked (Input dispatching timed out).
+     * Construction must return while the session read is still pending, read the session in the
+     * store's own scope (never a private blocking loop), and project the rows once it resolves.
+     */
+    @Test
+    fun storeConstructionDoesNotBlockOnAHeldSessionLock() = runBlocking {
+        val now = 1_800_000_000_000L
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
+        repository.recordSuccessfulOpen(
+            owner = SearchPersonalizationOwner("server-1", "user-1"),
+            rawQuery = "release",
+            entityKey = null,
+            openedAtMillis = now,
+        )
+        val auth = HeldLockSessionStore(sampleSession(), storeDispatcher = Dispatchers.Unconfined)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = auth,
+                savedRepository = FakeSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                scope = scope,
+                personalizationRepository = repository,
+                nowMillis = { now },
+            )
+
+        // The constructor returned with both session reads (server owner + personalization
+        // prewarm) still waiting for the lock, and neither ran inside a blocking event loop.
+        assertEquals(0, auth.readsOnForeignDispatcher)
+        assertEquals(2, auth.waitingReads)
+        assertEquals(false, store.state.value.search.personalizationLoaded)
+
+        auth.releaseLock()
+
+        assertEquals("server-1", store.state.value.search.serverId)
+        assertEquals(true, store.state.value.search.personalizationLoaded)
+        assertEquals(listOf("release"), store.state.value.search.history)
+        store.clear()
+        scope.cancel()
     }
 
     @Test
@@ -1157,6 +1204,45 @@ class SharedHomeSearchSavedStoreTest {
             calls += SearchInvocation(query = query, offset = offset, limit = limit, options = options)
             return DataResult.Content(SearchSnapshot(server = testServer(serverId), query = query, items = items))
         }
+    }
+
+    /**
+     * A session store whose lock is held by someone else until [releaseLock]. A read issued from
+     * a dispatcher other than the store scope's (e.g. a nested `runBlocking` loop) is counted and
+     * answered at once, so a regression fails the assertions instead of hanging the test.
+     */
+    private class HeldLockSessionStore(
+        private val session: StoredAuthSession,
+        private val storeDispatcher: ContinuationInterceptor,
+    ) : RaftAuthSessionStore {
+        private val lock = CompletableDeferred<Unit>()
+        var readsOnForeignDispatcher = 0
+            private set
+        var waitingReads = 0
+            private set
+
+        fun releaseLock() {
+            lock.complete(Unit)
+        }
+
+        override suspend fun readSession(): StoredAuthSession? {
+            if (currentCoroutineContext()[ContinuationInterceptor] !== storeDispatcher) {
+                readsOnForeignDispatcher++
+                return session
+            }
+            waitingReads++
+            lock.await()
+            waitingReads--
+            return session
+        }
+
+        override suspend fun saveSession(session: StoredAuthSession) = error("not used")
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) = error("not used")
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = error("not used")
+
+        override suspend fun clearSession(reason: String, source: String) = error("not used")
     }
 
     private class DeferredSearchPersonalizationRepository : SearchPersonalizationRepository {
