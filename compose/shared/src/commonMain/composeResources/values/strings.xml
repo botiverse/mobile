@@ -2485,6 +2485,7 @@
     <string name="settings_about_action_copy_environment">Copy environment info</string>
     <string name="settings_about_copy_environment_detail">Copy the same sanitized environment used for diagnostics and feedback.</string>
     <string name="settings_about_action_copy">Copy</string>
+    <string name="settings_about_source_code">Source code</string>
     <string name="settings_about_action_open_raft">Open Raft</string>
     <string name="settings_about_open_web_detail">Open %1$s in the system browser.</string>
     <string name="settings_developer_title">Developer</string>
