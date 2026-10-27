@@ -242,6 +242,25 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
+    fun syncChangesPullSendsItsServerAsXServerIdNotTheSelectedOne() = runBlocking {
+        // The server's requireServer (middleware/auth.ts) scopes `GET /api/sync/changes` by X-Server-Id.
+        val executor = RecordingExecutor { ok("""{"cursor":"c1.2.1","hasMore":false,"changes":[],"reset":null}""") }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = executor
+            )
+
+        val fetch = RaftSyncChangesNetworkApi(client).changes(ServerId("server-2"), since = "c1.1.1", limit = 500)
+
+        assertTrue(fetch is RaftSyncChangesFetch.Page)
+        val request = executor.requests.single()
+        assertEquals("https://api.slock.test/api/sync/changes?since=c1.1.1&limit=500", request.url)
+        assertEquals("server-2", request.headers[HEADER_SERVER_ID])
+    }
+
+    @Test
     fun requestPreservesSearchQueryThroughUrlEncoding() = runBlocking {
         val logs = mutableListOf<String>()
         val executor = RecordingExecutor { ok("""{"results":[],"hasMore":false}""") }
