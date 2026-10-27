@@ -53,6 +53,12 @@ internal expect fun raftPlatformClipboardHasAttachments(): Boolean
 /** Blocking clipboard read (an image is written to a PNG); call off the UI thread. */
 internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
 
+/**
+ * Least space under the conversation composer. Phones: 0 (their padding follows the safe area /
+ * keyboard). Desktop has neither, so it keeps the web composer's 16dp (`safe-bottom`, 1rem).
+ */
+internal expect fun raftPlatformComposerMinimumBottomPaddingDp(): Float
+
 /** Sign in with Apple is a product capability of the iOS host only. */
 internal expect fun raftPlatformSupportsAppleSignIn(): Boolean
 

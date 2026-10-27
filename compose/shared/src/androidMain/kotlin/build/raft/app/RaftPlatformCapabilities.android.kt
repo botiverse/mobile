@@ -34,6 +34,8 @@ internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()
 
+internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
+
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false
 
 internal actual fun raftPlatformSupportsBackgroundRealtime(): Boolean = true

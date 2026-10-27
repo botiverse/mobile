@@ -1983,7 +1983,9 @@ private object ThreadReactionGlyphDiagnostics {
 internal fun threadComposerBottomPadding(
     keyboardInsetDp: Float,
     bottomSafeArea: Dp,
-    keyboardInsetExcludesBottomSafeArea: Boolean = false
+    keyboardInsetExcludesBottomSafeArea: Boolean = false,
+    // Desktop (no safe area, no keyboard): the web composer's `safe-bottom` 1rem under the card.
+    minimumBottomPadding: Dp = raftPlatformComposerMinimumBottomPaddingDp().dp
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
     // When the keyboard height already contains the bottom safe area (iOS keyboard frame), the
@@ -1997,7 +1999,7 @@ internal fun threadComposerBottomPadding(
         } else {
             maxOf(keyboardInset, bottomSafeArea)
         }
-    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset
+    return maxOf(ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset, minimumBottomPadding)
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
