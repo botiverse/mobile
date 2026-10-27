@@ -203,11 +203,20 @@ internal class UnreadRecentPosts(
     /**
      * Drops every conversation not in [notificationIds] (the ones the tray no longer shows), except one
      * posted in the last [graceMillis]: `notify` may not have reached the tray yet, and dropping it would
-     * restart its count.
+     * restart its count. Returns the servers of the conversations kept only by that grace: the caller
+     * must check them again once it is over, or a conversation tapped open (auto-cancel, no delete
+     * intent) right after its post would keep its summary forever.
      */
-    fun retainOnly(notificationIds: Set<Int>, graceMillis: Long = RETAIN_GRACE_MILLIS) {
+    fun retainOnly(notificationIds: Set<Int>, graceMillis: Long = RETAIN_GRACE_MILLIS): Set<String> {
         val now = clock()
-        posts.entries.removeAll { it.key !in notificationIds && now - it.value.atMillis > graceMillis }
+        val keptByGrace = mutableSetOf<String>()
+        posts.entries.removeAll { (id, post) ->
+            if (id in notificationIds) return@removeAll false
+            val young = now - post.atMillis <= graceMillis
+            if (young) keptByGrace += post.serverId
+            !young
+        }
+        return keptByGrace
     }
 
     /** Forgets everything (tests: one test's posts are not the next one's). */

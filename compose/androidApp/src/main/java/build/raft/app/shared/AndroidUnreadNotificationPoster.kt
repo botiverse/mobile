@@ -32,6 +32,7 @@ import build.raft.app.data.systemUnreadNotificationServerGate
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
@@ -87,7 +88,18 @@ internal object AndroidUnreadNotificationPoster {
     }
 
     private val groupingLock = Any()
-    private val recentPosts = UnreadRecentPosts()
+
+    /** Monotonic time of the grouping state; tests replace it with a clock they advance. */
+    @Volatile
+    internal var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+
+    private val recentPosts = UnreadRecentPosts(clock = { clock() })
+
+    /** Orders posts against reads: every conversation post takes the next value. */
+    private val postCounter = AtomicLong()
+
+    /** The [postCounter] value of each conversation's last post; must hold [groupingLock]. */
+    private val lastPostMarks = mutableMapOf<Int, Long>()
 
     /** The conversations each server's posted summary counted; must hold [groupingLock]. */
     private val postedSummaryConversations = mutableMapOf<String, Set<Int>>()
@@ -108,6 +120,7 @@ internal object AndroidUnreadNotificationPoster {
     }
 
     /** Runs a deferred summary update; tests replace it to run the update when they choose. */
+    @Volatile
     internal var summaryScheduler: (delayMillis: Long, task: () -> Unit) -> Unit = { delayMillis, task ->
         backgroundExecutor.schedule({ runCatching(task) }, delayMillis, TimeUnit.MILLISECONDS)
     }
@@ -122,17 +135,30 @@ internal object AndroidUnreadNotificationPoster {
         val appContext = context.applicationContext
         RaftConversationReadHost.listener =
             RaftConversationReadListener { serverId, channelId ->
-                backgroundExecutor.execute { clearConversation(appContext, serverId, channelId) }
+                // Taken now, on the reader's thread: a message posted after this read, while the clear
+                // waits for the background thread and the lock, stays.
+                val readMark = postCounter.get()
+                backgroundRunner { clearConversation(appContext, serverId, channelId, readMark) }
             }
+    }
+
+    /** Runs the clear of a read conversation off the reader's thread; tests run it when they choose. */
+    @Volatile
+    internal var backgroundRunner: (task: () -> Unit) -> Unit = { task ->
+        backgroundExecutor.execute { runCatching(task) }
     }
 
     /**
      * Cancels the notification of conversation [channelId] of [serverId] and forgets its messages, so
      * the next message there starts from one; its server's summary is recounted, or removed with the
      * last conversation. A conversation without a notification costs only a tray read.
+     *
+     * [readMark] is [postCounter] when the user read it: a conversation posted to after that has a
+     * message the read did not cover, and is left alone. The read position itself (a seq) cannot be
+     * compared: neither the FCM data nor the realtime notification event carries the message's seq.
      */
     @SuppressLint("MissingPermission") // Only cancels, or re-posts a summary over posted conversations.
-    fun clearConversation(context: Context, serverId: String, channelId: String) {
+    fun clearConversation(context: Context, serverId: String, channelId: String, readMark: Long = Long.MAX_VALUE) {
         val appContext = context.applicationContext
         val conversationKey =
             AndroidUnreadNotificationGrouping.conversationKey(
@@ -142,6 +168,7 @@ internal object AndroidUnreadNotificationPoster {
         runCatching {
             synchronized(groupingLock) {
                 if (recentPosts.isCleared(notificationId)) return@synchronized
+                if ((lastPostMarks[notificationId] ?: 0L) > readMark) return@synchronized
                 val shown =
                     recentPosts.has(notificationId) ||
                         activeUnreadNotifications(appContext).any {
@@ -171,6 +198,7 @@ internal object AndroidUnreadNotificationPoster {
     internal fun resetGroupingState() {
         synchronized(groupingLock) {
             recentPosts.reset()
+            lastPostMarks.clear()
             postedSummaryConversations.clear()
             pendingSummaryServers.clear()
         }
@@ -227,6 +255,7 @@ internal object AndroidUnreadNotificationPoster {
             )
         NotificationManagerCompat.from(appContext)
             .notify(AndroidUnreadNotificationGrouping.CONVERSATION_TAG, notificationId, notification)
+        lastPostMarks[notificationId] = postCounter.incrementAndGet()
         val history = UnreadConversationHistory.readFrom(notification.extras)
         recentPosts.record(
             notificationId = notificationId,
@@ -266,14 +295,15 @@ internal object AndroidUnreadNotificationPoster {
             synchronized(groupingLock) {
                 val active = activeUnreadNotifications(appContext)
                 // Whatever is not in the tray by now was dismissed, unless it was posted a moment ago.
-                recentPosts.retainOnly(
-                    active.filter { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG }.map { it.id }.toSet()
-                )
+                val keptByGrace = recentPosts.retainOnly(trayConversationIds(active))
                 val serverIds =
                     active
                         .mapNotNull { it.notification.extras?.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID) }
                         .toSet() + postedSummaryConversations.keys
                 for (serverId in serverIds) refreshServerSummary(appContext, serverId, SummaryRefresh.IfChanged)
+                // A conversation the tray does not list only because it was posted a moment ago, or
+                // because it was tapped open right after: look again once the grace is over.
+                for (serverId in keptByGrace) deferSummary(appContext, serverId)
             }
         }
     }
@@ -303,9 +333,7 @@ internal object AndroidUnreadNotificationPoster {
         when (refresh) {
             SummaryRefresh.AfterPost ->
                 if (postedSummaryConversations[serverId] == conversations) {
-                    if (pendingSummaryServers.add(serverId)) {
-                        summaryScheduler(SUMMARY_COALESCE_MILLIS) { flushPendingSummary(context, serverId) }
-                    }
+                    deferSummary(context, serverId)
                     return
                 }
             SummaryRefresh.IfChanged -> {
@@ -334,13 +362,42 @@ internal object AndroidUnreadNotificationPoster {
         pendingSummaryServers.remove(serverId)
     }
 
-    private fun flushPendingSummary(context: Context, serverId: String) {
-        synchronized(groupingLock) {
-            // Already posted by a later membership change, or cancelled with the last conversation.
-            if (serverId !in pendingSummaryServers) return
-            refreshServerSummary(context, serverId, SummaryRefresh.Now)
+    /** Must hold [groupingLock]. One deferred update per server, however many ask for it. */
+    private fun deferSummary(context: Context, serverId: String) {
+        if (pendingSummaryServers.add(serverId)) {
+            summaryScheduler(SUMMARY_COALESCE_MILLIS) { flushPendingSummary(context, serverId) }
         }
     }
+
+    /**
+     * The deferred update. Every post it covers is at least a moment old by now, so the tray has it:
+     * a conversation the tray does not list was tapped open or dismissed, and the post records must not
+     * bring it back into a summary without children.
+     */
+    internal fun flushPendingSummary(context: Context, serverId: String) {
+        runCatching {
+            synchronized(groupingLock) {
+                // Already posted by a later membership change, or cancelled with the last conversation.
+                if (serverId !in pendingSummaryServers) return@synchronized
+                pendingSummaryServers.remove(serverId)
+                val conversationsInTray = trayConversationIds(activeUnreadNotifications(context))
+                val keptByGrace = recentPosts.retainOnly(conversationsInTray, graceMillis = FLUSH_RETAIN_GRACE_MILLIS)
+                refreshServerSummary(context, serverId, SummaryRefresh.Now)
+                // A post too young to judge yet (or shed by the rate limit): one more look later.
+                for (pendingServerId in keptByGrace) deferSummary(context, pendingServerId)
+            }
+        }
+    }
+
+    /**
+     * How young a post absent from the tray may be and still count in a deferred update. A deferred
+     * update covers posts already in the tray (same conversations), and a new conversation posts its
+     * summary at once, so only a post that has not reached the tray in that short time is spared.
+     */
+    private const val FLUSH_RETAIN_GRACE_MILLIS = 250L
+
+    private fun trayConversationIds(active: List<StatusBarNotification>): Set<Int> =
+        active.filter { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG }.map { it.id }.toSet()
 
     /**
      * The channel a server's summary is posted on: the channel of its newest conversation that is not

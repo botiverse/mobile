@@ -6,6 +6,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
 import build.raft.app.toRaftSurfaceKind
+import kotlin.concurrent.Volatile
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean,
@@ -325,6 +326,7 @@ fun interface RaftConversationReadListener {
 
 /** Installed by the platform host (androidApp); while null, nothing is told about reads. */
 object RaftConversationReadHost {
+    @Volatile
     var listener: RaftConversationReadListener? = null
 
     internal fun conversationRead(serverId: String, channelId: String) {

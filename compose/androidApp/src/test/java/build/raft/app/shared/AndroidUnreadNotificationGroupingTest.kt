@@ -9,6 +9,7 @@ import android.content.Context
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.RaftConversationReadHost
 import build.raft.app.push.raftFcmUnreadNotificationRequest
 import org.json.JSONObject
 import org.junit.After
@@ -40,6 +41,14 @@ class AndroidUnreadNotificationGroupingTest {
     /** Deferred summary updates, run when a test chooses ([runDeferredSummaries]). */
     private val deferredSummaries = mutableListOf<Pair<Long, () -> Unit>>()
     private val productionSummaryScheduler = AndroidUnreadNotificationPoster.summaryScheduler
+    private val productionClock = AndroidUnreadNotificationPoster.clock
+    private val productionBackgroundRunner = AndroidUnreadNotificationPoster.backgroundRunner
+
+    /** The grouping state's clock: only the test moves it. */
+    private var now = 1_000_000L
+
+    /** Clears of read conversations queued for the background thread, run when a test chooses. */
+    private val backgroundTasks = mutableListOf<() -> Unit>()
 
     @Before
     fun clearTray() {
@@ -49,11 +58,16 @@ class AndroidUnreadNotificationGroupingTest {
         // Forgets the previous test's recent posts and summaries: none of them is in the tray any more.
         AndroidUnreadNotificationPoster.resetGroupingState()
         AndroidUnreadNotificationPoster.summaryScheduler = { delayMillis, task -> deferredSummaries += delayMillis to task }
+        AndroidUnreadNotificationPoster.clock = { now }
+        AndroidUnreadNotificationPoster.backgroundRunner = { task -> backgroundTasks += task }
     }
 
     @After
-    fun restoreSummaryScheduler() {
+    fun restoreProductionHooks() {
         AndroidUnreadNotificationPoster.summaryScheduler = productionSummaryScheduler
+        AndroidUnreadNotificationPoster.clock = productionClock
+        AndroidUnreadNotificationPoster.backgroundRunner = productionBackgroundRunner
+        RaftConversationReadHost.listener = null
     }
 
     @Test
@@ -172,10 +186,11 @@ class AndroidUnreadNotificationGroupingTest {
         AndroidUnreadNotificationPoster.onConversationDismissed(context, dismissed.single().id)
         assertEquals(1, summaryOf("server-1")!!.notification.number)
 
-        // The last one is tapped (auto-cancel), which opens and reads it: no summary is left behind on its own.
+        // The last one is tapped later (auto-cancel: no delete intent, no read event); the refresh on
+        // return removes the summary instead of leaving it on its own.
+        now += UnreadRecentPosts.RETAIN_GRACE_MILLIS + 1
         manager.cancel(kept.single().tag, kept.single().id)
         AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
-        AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "channel-1")
         assertNull(summaryOf("server-1"))
         assertTrue(manager.activeNotifications.isEmpty())
 
@@ -275,13 +290,14 @@ class AndroidUnreadNotificationGroupingTest {
         fun entry(id: Int) = UnreadSummaryEntry(id, "c", "t", "two", 2, 0L)
         posts.record(1, "server-1", history, entry(1))
 
-        // A summary refresh right after the post: the tray does not list it yet, the count survives.
+        // A summary refresh right after the post: the tray does not list it yet, the count survives,
+        // and the caller is told to look at its server again.
         now += UnreadRecentPosts.RETAIN_GRACE_MILLIS
-        posts.retainOnly(emptySet())
+        assertEquals(setOf("server-1"), posts.retainOnly(emptySet()))
         assertEquals(history, posts.history(1))
         // Later, still absent from the tray: dismissed, forgotten.
         now += 1
-        posts.retainOnly(emptySet())
+        assertEquals(emptySet<String>(), posts.retainOnly(emptySet()))
         assertNull(posts.history(1))
 
         // Cleared (read in the app): empty whatever the tray still lists, until a new post or the window ends.
@@ -296,6 +312,95 @@ class AndroidUnreadNotificationGroupingTest {
         posts.record(3, "server-1", history, entry(3))
         assertEquals(history, posts.history(3))
         assertEquals(setOf(3), posts.entries("server-1").keys)
+    }
+
+    @Test
+    fun aConversationTappedOpenRightAfterItsPostLeavesNoSummaryBehind() {
+        // #general gets two messages: the second defers the summary update.
+        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
+        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
+        assertEquals(1, deferredSummaries.size)
+
+        // Half a second later the user taps it: auto-cancel, no delete intent, no read event. The
+        // refresh on return is inside the grace and cannot tell a tap from a post still on its way.
+        now += 500
+        val general = conversations().single()
+        manager.cancel(general.tag, general.id)
+        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
+
+        // The deferred update looks at the tray again: no conversation, no summary.
+        now += 500
+        runDeferredSummaries()
+        assertNull(summaryOf("server-1"))
+        assertTrue(manager.activeNotifications.isEmpty())
+
+        // Same with a single message, where nothing was deferred: the refresh itself asks for another look.
+        post(fcm(channelId = "dm-1", messageId = "m-3", body = "yo", title = "Bob"))
+        assertTrue(deferredSummaries.isEmpty())
+        now += 300
+        val dm = conversations().single()
+        manager.cancel(dm.tag, dm.id)
+        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
+        assertNotNull(summaryOf("server-1"))
+        assertEquals(1, deferredSummaries.size)
+        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
+        runDeferredSummaries()
+        assertTrue(manager.activeNotifications.isEmpty())
+        assertTrue(deferredSummaries.isEmpty())
+    }
+
+    @Test
+    fun aReadEventClearsItsConversationOnTheBackgroundThreadUnlessAMessageArrivedAfterIt() {
+        AndroidUnreadNotificationPoster.installConversationReadListener(context)
+        val listener = RaftConversationReadHost.listener!!
+        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
+        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
+
+        // The read is queued, not run on the reader's thread.
+        listener.onConversationRead("server-1", "channel-1")
+        assertEquals(2, conversations().single().notification.number)
+        assertEquals(1, backgroundTasks.size)
+
+        // Message 3 arrives and posts before the queued clear runs: the read did not cover it, so
+        // the conversation stays, with every message.
+        post(fcm(channelId = "channel-1", messageId = "m-3", body = "Alice: three"))
+        runBackgroundTasks()
+        assertEquals(3, conversations().single().notification.number)
+        assertNotNull(summaryOf("server-1"))
+
+        // A read after message 3 clears it.
+        listener.onConversationRead("server-1", "channel-1")
+        runBackgroundTasks()
+        assertTrue(manager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun aDeferredSummaryUpdateAfterAClearCountsOnlyWhatIsLeft() {
+        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
+        post(fcm(channelId = "dm-1", messageId = "m-2", body = "yo", title = "Bob"))
+        post(fcm(channelId = "channel-1", messageId = "m-3", body = "Alice: two"))
+        assertEquals(1, deferredSummaries.size)
+
+        // #general is read while its summary update waits.
+        AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "channel-1")
+        assertEquals(1, summaryOf("server-1")!!.notification.number)
+        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
+        runDeferredSummaries()
+        assertEquals(1, summaryOf("server-1")!!.notification.number)
+
+        // The last one is read with another update pending: the update does not bring the summary back.
+        post(fcm(channelId = "dm-1", messageId = "m-4", body = "again", title = "Bob"))
+        assertEquals(1, deferredSummaries.size)
+        AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "dm-1")
+        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
+        runDeferredSummaries()
+        assertTrue(manager.activeNotifications.isEmpty())
+    }
+
+    private fun runBackgroundTasks() {
+        val tasks = backgroundTasks.toList()
+        backgroundTasks.clear()
+        tasks.forEach { it() }
     }
 
     private fun runDeferredSummaries() {
