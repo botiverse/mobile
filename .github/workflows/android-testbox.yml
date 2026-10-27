@@ -27,13 +27,13 @@ jobs:
           testbox_id: ${{ inputs.testbox_id }}
 
       - name: Checkout workflow base
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -51,7 +51,7 @@ jobs:
         uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run Testbox
         uses: useblacksmith/run-testbox@5ca05834db1d3813554d1dd109e5f2087a8d7cbc # v2

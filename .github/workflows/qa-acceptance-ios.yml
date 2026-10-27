@@ -110,7 +110,7 @@ jobs:
         run: sleep 5
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
@@ -132,7 +132,7 @@ jobs:
         run: node scripts/qa/validate_frozen_inputs.mjs
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -141,7 +141,7 @@ jobs:
         uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
       # Reused blacksmith macOS runners can carry a stale KSP incremental cache in
@@ -342,7 +342,7 @@ jobs:
 
       - name: Upload installable simulator app
         if: ${{ inputs.app_run_id == '' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ios-simulator-app-${{ github.run_id }}
           path: ios-app-export
@@ -352,7 +352,7 @@ jobs:
 
       - name: Download frozen iOS Simulator app
         if: ${{ inputs.app_run_id != '' }}
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ios-simulator-app-${{ inputs.app_run_id }}
           path: pinned-ios-app
@@ -754,7 +754,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qa-acceptance-ios-evidence
           path: qa-evidence

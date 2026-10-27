@@ -45,7 +45,7 @@ jobs:
       target_build: ${{ steps.inputs.outputs.target_build }}
     steps:
       - name: Checkout version formula
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/ci
           sparse-checkout-cone-mode: false
@@ -207,7 +207,7 @@ jobs:
           sha256sum android-app-update-build-pair.json > android-app-update-build-pair.json.sha256
 
       - name: Upload build-pair manifest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: android-update-qa-fixture
           path: |
