@@ -10,10 +10,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * server + channel id. The effective value is `override ?: global`.
  *
  * The global switch keeps its historical storage key
- * ((`chatLayout:long_message_collapse_enabled`)); only its default
- * changed to ON, so a user who explicitly turned it off keeps it off.
+ * ((`chatLayout:long_message_collapse_enabled`)); only its default changes, so an explicit
+ * stored choice is kept either way. Default OFF since web botiverse/slock #10275 (long messages
+ * show in full unless a person turns collapsing on; artin 2026-10-27: follow the web).
  */
-internal const val RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED: Boolean = true
+internal const val RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED: Boolean = false
 
 /** English fallback detail of the global switch (the Settings card renders the localized MR string). */
 internal const val RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL =
