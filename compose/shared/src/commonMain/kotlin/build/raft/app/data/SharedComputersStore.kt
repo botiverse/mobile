@@ -464,11 +464,14 @@ class SharedComputersStore internal constructor(
                     (kept.map { incoming[it.id] ?: it } + incoming.values.filter { new -> kept.none { it.id == new.id } })
                         .inComputerListOrder()
                 if (nextMachines == current.machines) return@withLock null
+                // A load already in flight read the list without these rows: its answer is dropped.
+                val superseded = supersedeLoadLocked(key)
                 val next =
                     current.copy(
                         machines = nextMachines,
                         machineCount = nextMachines.size,
-                        onlineCount = nextMachines.count { it.status == ComputerStatus.Online }
+                        onlineCount = nextMachines.count { it.status == ComputerStatus.Online },
+                        refreshing = if (superseded) false else current.refreshing
                     )
                 setServerSliceLocked(key, next)
                 logger("shared_computers_sync_apply serverId=$key upserts=${incoming.size} deletes=${deletes.size}")
@@ -477,6 +480,26 @@ class SharedComputersStore internal constructor(
         val store = durableStore
         val durableKey = owner.durableKey(key)
         if (store != null && durableKey != null) store.write(durableKey, record, durableEpoch)
+        return true
+    }
+
+    /**
+     * Incremental sync's forced reload of [serverId]'s machine list. A plain forced load joins a load
+     * already in flight, which may have been read before the change that asked for this one and would
+     * then publish without it, the change never coming again (Tenny 10-27). The in-flight load's
+     * generation is retired first (its answer is dropped), so this one reads the server again.
+     */
+    internal suspend fun reloadMachinesForSync(serverId: String): DataResult<SettingsComputersSnapshot> {
+        val key = serverId.normalizedComputerServerId() ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        mutex.withLock { supersedeLoadLocked(key) }
+        return loadSettingsComputersForServer(key, force = true)
+    }
+
+    /** Retires [serverId]'s in-flight load, if any: true when there was one. */
+    private fun supersedeLoadLocked(serverId: String): Boolean {
+        loads.remove(serverId) ?: return false
+        generations[serverId] = ++nextGeneration
+        logger("shared_computers_supersede serverId=$serverId reason=sync_changes generation=${generations[serverId]}")
         return true
     }
 

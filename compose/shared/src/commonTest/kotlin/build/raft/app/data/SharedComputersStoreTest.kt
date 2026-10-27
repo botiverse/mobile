@@ -381,6 +381,54 @@ class SharedComputersStoreTest {
         assertNull(parseSyncedComputerRow(kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("m")) }))
     }
 
+    @Test
+    fun aSyncReloadDoesNotJoinALoadReadBeforeTheChangeAndTheOlderAnswerIsDropped() = runBlocking {
+        val api = ControlledComputersApi()
+        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+        // R0: a forced load read before the change; R1: the reload the change asks for.
+        val olderResponse = api.enqueuePending()
+        val newerResponse = api.enqueuePending()
+        val older = async(start = CoroutineStart.UNDISPATCHED) {
+            store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
+        }
+        yield()
+        val newer = async(start = CoroutineStart.UNDISPATCHED) { store.reloadMachinesForSync("server-1") }
+        yield()
+        assertEquals(3, api.serverIds.size, "the sync reload reads the server again instead of joining")
+
+        newerResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-1", "Renamed")))
+        newer.await()
+        olderResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-1", "Stale")))
+        older.await()
+
+        val slice = store.state.value.selectComputerServerSlice("server-1")
+        assertEquals(listOf("Renamed"), slice.machines.map { it.name })
+        assertFalse(slice.refreshing)
+    }
+
+    @Test
+    fun syncedMachineRowsDropTheAnswerOfALoadAlreadyInFlight() = runBlocking {
+        val api = ControlledComputersApi()
+        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
+        val store = controlledStore(api, this@runBlocking)
+        store.ensureComputerPickerForServer("server-1")
+        val olderResponse = api.enqueuePending()
+        val older = async(start = CoroutineStart.UNDISPATCHED) {
+            store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
+        }
+        yield()
+        val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
+
+        assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
+        assertFalse(store.state.value.selectComputerServerSlice("server-1").refreshing)
+        olderResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBody))
+        older.await()
+
+        assertEquals(listOf("Maria Desktop"), store.state.value.selectComputerServerSlice("server-1").machines.map { it.name })
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),

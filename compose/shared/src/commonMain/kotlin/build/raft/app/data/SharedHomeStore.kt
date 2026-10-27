@@ -1499,7 +1499,16 @@ internal class SharedHomeStore(
 
     private fun launchCoalescedRealtimeHomeReload(event: RealtimeRefreshRequired) {
         val activeLoad = loadJob?.takeIf { it.isActive }
-        if (activeLoad != null) {
+        if (activeLoad != null && event.supersedesInFlightLoad) {
+            // Sync change: the active load may have been read before it; cancel it (its answer is
+            // never published) and read again, as for DirectMessageCreated.
+            diagnosticsLogger(
+                "home_realtime_refresh_supersede scope=${event.scope} reason=${event.reason} active=load"
+            )
+            activeLoad.cancel()
+            agentDirectMessageStatusJob?.cancel()
+            agentDirectMessageStatusJob = null
+        } else if (activeLoad != null) {
             diagnosticsLogger(
                 "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
                     "active=load"
