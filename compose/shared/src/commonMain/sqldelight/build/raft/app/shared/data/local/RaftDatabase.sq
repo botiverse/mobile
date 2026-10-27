@@ -1106,6 +1106,20 @@ WHERE environmentId = ?
   AND principalId = ?
   AND consumerId = ?;
 
+-- Retired-consumer purge (message storage Phase 0a): every partition's rows of one consumer that no
+-- longer has a writer or reader (sync-core.messages.v1).
+purgeCanonicalFactsForConsumer:
+DELETE FROM messageEntity
+WHERE consumerId = ?;
+
+purgeSyncCursorsForConsumer:
+DELETE FROM syncCursorEntity
+WHERE consumerId = ?;
+
+purgeMessageViewerOverlaysForConsumer:
+DELETE FROM messageViewerOverlayEntity
+WHERE consumerId = ?;
+
 selectCanonicalScopeRetentionStats:
 SELECT
   cursor.scopeKind,

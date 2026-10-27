@@ -62,6 +62,7 @@ import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
 import build.raft.app.network.sync.RaftThreadReplyWindowCache
+import build.raft.app.network.sync.CanonicalFinalPreparedCommitStep
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
@@ -75,15 +76,11 @@ import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
-import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
-import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.LegacyRealtimeDedupKey
 import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
-import build.raft.app.network.sync.SqlDelightFoldPersistStore
-import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
+import build.raft.app.network.sync.purgeSyncCoreMessagesV1Rows
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
-import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
@@ -204,7 +201,6 @@ internal fun createSharedRealtimeDomainEventOwner(
     tasksDataStore: SharedTasksDataStore?,
     cursorStore: RealtimeAppliedSeqCursorStore?,
     authorityProvider: RealtimeAuthorityProvider,
-    currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
 ): SharedRealtimeDomainEventOwner =
     SharedRealtimeDomainEventOwner(
         tasksDataStore = tasksDataStore,
@@ -212,9 +208,7 @@ internal fun createSharedRealtimeDomainEventOwner(
         runIfCurrentGrant = authorityProvider::runIfCurrentGrant,
         runWithCurrentMessageGrant = authorityProvider::runWithCurrentMessageGrant,
         canonicalFinalOwnerGateway = authorityProvider.canonicalFinalOwnerGatewayOrNull(),
-    ).also { owner ->
-        owner.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
-    }
+    )
 
 internal fun interface RaftSharedCanonicalFinalIntegrationFactory {
     fun create(
@@ -378,7 +372,6 @@ internal class RaftSharedStoreProvider private constructor(
     private val scopedNetworkClientFactory: (RaftAuthSessionStore) -> RaftNetworkClient,
     private val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
-    private val currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
     val localDataStore: ComposeLocalDataStore,
     internal val avatarCacheMetadataStore: RaftAvatarCacheMetadataStore,
@@ -1093,12 +1086,17 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
-    /**
-     * One provider-central current-grant shadow lane shared by every realtime owner backed by this database.
-     * The server flag defaults OFF; when enabled, guarded canonical frames synchronously fold, commit, strict
-     * read back, and atomically publish before the unchanged legacy continuation runs.
-     */
     init {
+        // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
+        // every surviving `sync-core.messages.v1` row once per start (idempotent; V2 and read-state untouched).
+        threadSendScope.launch {
+            runCatchingPreservingCancellation { purgeSyncCoreMessagesV1Rows(sqlDatabase) }
+                .onFailure { throwable ->
+                    sharedErrorLogger("SyncCoreV1Purge", "sync_core_v1_purge")(
+                        "sync_core_v1_purge_failed error=${throwable::class.simpleName ?: "unknown"}",
+                    )
+                }
+        }
         val processAuthTerminalGate = AuthSessionTerminalRouteGate()
         val processAuthTerminalSource =
             requireNotNull(authStore.authSessionTerminalSourceOrNull()) {
@@ -1305,11 +1303,8 @@ internal class RaftSharedStoreProvider private constructor(
 
     /** Legacy/unowned shadow lane retained on the process owner. */
     private fun buildMessageShadowFoldLane(): SyncCoreMessageShadowFoldLane =
-        SyncCoreMessageShadowFoldLane.create(
+        SyncCoreMessageShadowFoldLane(
             featureFlags = serverFeatureFlags,
-            sqlDatabase = sqlDatabase,
-            now = ::defaultNowMillis,
-            scope = CoroutineScope(SupervisorJob()),
             logger = sharedInfoLogger("SyncCoreT0Shadow", "sync_core_t0_shadow"),
         )
 
@@ -1669,7 +1664,6 @@ internal class RaftSharedStoreProvider private constructor(
                 tasksDataStore = null,
                 cursorStore = null,
                 authorityProvider = realtimeAuthorityProvider,
-                currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
             ).also {
                 // Canonical V2 admission remains shell/session bound, while
                 // process-global task/cursor/presence mutation is owned only
@@ -2776,21 +2770,6 @@ internal class RaftSharedStoreProvider private constructor(
                     },
                     lastKnown = serverFeatureFlagLastKnown,
                 )
-            val currentGrantMessageShadowCommitLane =
-                CurrentGrantMessageShadowCommitLane(
-                    strictReader = SqlDelightStrictMessageScopeSnapshotReader(database),
-                    persistence =
-                        DefaultFoldPersistenceAdapter(
-                            runner = SqlDelightFoldPersistTransactionRunner(database),
-                            store = SqlDelightFoldPersistStore(database, now = ::defaultNowMillis),
-                        ),
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
-                )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
             val canonicalMessageV2Store =
                 SqlDelightCanonicalMessageV2Store(
@@ -3127,7 +3106,6 @@ internal class RaftSharedStoreProvider private constructor(
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,
-                currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 canonicalMessageV2Canary = canonicalMessageV2Canary,
                 localDataStore = localDataStore,
                 avatarCacheMetadataStore = avatarCacheMetadataStore,
@@ -3184,7 +3162,6 @@ internal class RaftSharedStoreProvider private constructor(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
-                        currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                     ).also { owner ->
                         // task #136: agent presence flows straight into the
                         // process registry's owner partition for the realtime
@@ -3461,9 +3438,9 @@ internal class SharedRealtimeDomainEventOwner(
     // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
     // bounded partition-denial diagnostic and never persists.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
-    // Provider-central T3 lane. Guarded canonical entries invoke it before acceptedKeys/recovery/sinks;
-    // every owner sharing this database installs the same instance.
-    private var currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane? = null
+    // T4 canonical-final commit step. Production installs none (the canonical-final gateway is unbound), so a
+    // prepared frame falls back to the legacy path; Phase 4a binds the V2 store here.
+    private var canonicalFinalCommitStep: CanonicalFinalPreparedCommitStep? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
     private var canonicalMessageV2OwnerGateway: CanonicalMessageV2OwnerGateway? = null
 
@@ -3471,8 +3448,8 @@ internal class SharedRealtimeDomainEventOwner(
         messageShadowFoldLane = lane
     }
 
-    fun installCurrentGrantMessageShadowCommitLane(lane: CurrentGrantMessageShadowCommitLane) {
-        currentGrantMessageShadowCommitLane = lane
+    fun installCanonicalFinalCommitStep(step: CanonicalFinalPreparedCommitStep) {
+        canonicalFinalCommitStep = step
     }
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
@@ -3691,17 +3668,10 @@ internal class SharedRealtimeDomainEventOwner(
                     legacyContinuation(context.partition.serverId, event, source)
                 },
                 legacyWithCurrentT3 = { context ->
-                    runCurrentGrantMessageShadowThenLegacy(
-                        context = context,
-                        event = event,
-                        source = source,
-                        foldInput = foldInput,
-                        legacyKey = legacyKey,
-                        legacyContinuation = legacyContinuation,
-                    )
+                    runCurrentGrantMessageSlotThenLegacy(context, event, source, legacyContinuation)
                 },
                 commitPrepared = { context ->
-                    currentGrantMessageShadowCommitLane?.commitPrepared(
+                    canonicalFinalCommitStep?.commitPrepared(
                         partition = context.partition,
                         legacyKey = legacyKey,
                         foldInput = foldInput,
@@ -3712,49 +3682,22 @@ internal class SharedRealtimeDomainEventOwner(
             )
         }
         return currentMessageRunner(grant) { context ->
-            runCurrentGrantMessageShadowThenLegacy(
-                context = context,
-                event = event,
-                source = source,
-                foldInput = foldInput,
-                legacyKey = legacyKey,
-                legacyContinuation = legacyContinuation,
-            )
+            runCurrentGrantMessageSlotThenLegacy(context, event, source, legacyContinuation)
         }
     }
 
-    private suspend fun runCurrentGrantMessageShadowThenLegacy(
+    /**
+     * The exact-grant message slot: runs inside [runWithCurrentMessageGrant], so the frame is still under the
+     * grant it arrived with. The V1 shadow commit that used to run here first was deleted (message storage
+     * design 2026-10-27, Phase 0a; its rows were never read). Phase 3a puts the V2 ingest here; display is the
+     * unchanged legacy continuation.
+     */
+    private suspend fun runCurrentGrantMessageSlotThenLegacy(
         context: CurrentMessageCommitContext,
         event: RealtimeEvent,
         source: String,
-        foldInput: CanonicalMessageFoldInput,
-        legacyKey: LegacyRealtimeDedupKey?,
         legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
     ) {
-        val lane = currentGrantMessageShadowCommitLane
-        if (lane != null && legacyKey != null) {
-            try {
-                lane.commit(
-                    partition = context.partition,
-                    legacyKey = legacyKey,
-                    foldInput = foldInput,
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                try {
-                    guardedSinks?.log?.invoke(
-                        "current_grant_message_shadow_failed source=$source " +
-                            "serverId=${context.partition.serverId} " +
-                            "error=${throwable::class.simpleName ?: "unknown"}"
-                    )
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    // Diagnostics are best-effort; a logger failure must not block legacy fail-open.
-                }
-            }
-        }
         legacyContinuation(context.partition.serverId, event, source)
     }
 
