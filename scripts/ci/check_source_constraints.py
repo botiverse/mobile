@@ -277,27 +277,120 @@ def _is_production_kotlin(rel: str) -> bool:
     return "test" not in source_set.lower()
 
 
+def _kotlin_code_only(text: str) -> str:
+    """[text] with comments and string/char literal contents blanked (newlines kept).
+
+    A small Kotlin lexer, so `"*/*"`, `"https://x"` or a raw string holding `/*` is not
+    mistaken for a comment. Handles "..." strings with escapes, raw triple-quoted strings,
+    `${...}` templates (their code is kept and scanned), char literals, line comments and
+    nested block comments (Kotlin allows nesting).
+    """
+    out = list(text)
+    n = len(text)
+
+    def blank(start: int, stop: int) -> None:
+        for k in range(start, min(stop, n)):
+            if out[k] != "\n":
+                out[k] = " "
+
+    # Each frame: [mode, open-brace depth]; mode is "code", "str" or "raw".
+    stack: list[list] = [["code", 0]]
+    i = 0
+    while i < n:
+        frame = stack[-1]
+        mode = frame[0]
+        if mode == "code":
+            if text.startswith("//", i):
+                stop = text.find("\n", i)
+                stop = n if stop < 0 else stop
+                blank(i, stop)
+                i = stop
+            elif text.startswith("/*", i):
+                depth = 0
+                j = i
+                while j < n:
+                    if text.startswith("/*", j):
+                        depth += 1
+                        j += 2
+                    elif text.startswith("*/", j):
+                        depth -= 1
+                        j += 2
+                        if depth == 0:
+                            break
+                    else:
+                        j += 1
+                blank(i, j)
+                i = j
+            elif text.startswith('"""', i):
+                stack.append(["raw", 0])
+                i += 3
+            elif text[i] == '"':
+                stack.append(["str", 0])
+                i += 1
+            elif text[i] == "'":
+                j = i + 1
+                if j < n and text[j] == "\\":
+                    j += 2
+                    while j < n and text[j] not in "'\n":
+                        j += 1
+                else:
+                    j += 1
+                if j < n and text[j] == "'":
+                    blank(i + 1, j)
+                    i = j + 1
+                else:
+                    i += 1  # not a char literal (stray quote); move on
+            elif text[i] == "{":
+                frame[1] += 1
+                i += 1
+            elif text[i] == "}":
+                if frame[1] == 0 and len(stack) > 1:
+                    stack.pop()  # end of a ${...} template
+                else:
+                    frame[1] -= 1
+                i += 1
+            else:
+                i += 1
+        elif mode == "str":
+            if text[i] == "\\":
+                blank(i, i + 2)
+                i += 2
+            elif text[i] == '"':
+                stack.pop()
+                i += 1
+            elif text.startswith("${", i):
+                stack.append(["code", 0])
+                i += 2
+            elif text[i] == "\n":
+                stack.pop()  # unterminated; recover at the line end
+                i += 1
+            else:
+                blank(i, i + 1)
+                i += 1
+        else:  # raw string
+            if text.startswith('"""', i):
+                j = i + 3
+                while j < n and text[j] == '"':
+                    j += 1
+                stack.pop()
+                i = j
+            elif text.startswith("${", i):
+                stack.append(["code", 0])
+                i += 2
+            else:
+                blank(i, i + 1)
+                i += 1
+    return "".join(out)
+
+
 def _run_blocking_call_sites(text: str) -> list[tuple[int, str]]:
     sites: list[tuple[int, str]] = []
-    in_block_comment = False
-    for number, raw in enumerate(text.split("\n"), start=1):
-        line = raw
-        if in_block_comment:
-            end = line.find("*/")
-            if end < 0:
-                continue
-            line = line[end + 2 :]
-            in_block_comment = False
-        start = line.find("/*")
-        if start >= 0 and "*/" not in line[start:]:
-            in_block_comment = True
-            line = line[:start]
-        line = re.sub(r"/\*.*?\*/", "", line)
-        line = line.split("//", 1)[0]
+    raw_lines = text.split("\n")
+    for number, line in enumerate(_kotlin_code_only(text).split("\n"), start=1):
         if line.lstrip().startswith("import "):
             continue
         if RUN_BLOCKING_CALL.search(line):
-            sites.append((number, raw.strip()))
+            sites.append((number, raw_lines[number - 1].strip()))
     return sites
 
 
@@ -550,6 +643,10 @@ com.apple.SignInWithApple = {
             "/**\n * Never call runBlocking { } here.\n */\n"
             "/* runBlocking(Dispatchers.IO) { } */ val y = 1\n"
             "val z = \"no runBlocking call\"\n"
+            # Comments nest in Kotlin: the first */ does not end this one.
+            "/* outer /* inner */ runBlocking { still a comment } */ val n = 1\n"
+            "val raw = \"\"\"\n  runBlocking { in a raw string } /* not a comment\n\"\"\"\n"
+            "val esc = \"quote \\\" runBlocking { still in the string }\"\n"
         ),
     }
     check_no_production_run_blocking(good_run_blocking, allow)
@@ -557,6 +654,15 @@ com.apple.SignInWithApple = {
         ({**good_run_blocking, "c.kt": "val s = runBlocking { store.readSession() }"}, allow),
         ({**good_run_blocking, "c.kt": "runBlocking(Dispatchers.IO) {\n    work()\n}"}, allow),
         ({**good_run_blocking, "c.kt": "val v = runBlocking<Int> { 1 }"}, allow),
+        # #3824 review (sindresorhus): string literals that look like comment delimiters.
+        ({**good_run_blocking, "c.kt": 'val types = arrayOf("*/*")\nval s = runBlocking { x() }\n'}, allow),
+        ({**good_run_blocking, "c.kt": 'val types = arrayOf("image/*")\nfun f() {}\nval s = runBlocking { x() }\n'}, allow),
+        ({**good_run_blocking, "c.kt": 'val u = "https://x"; val s = runBlocking { x() }\n'}, allow),
+        ({**good_run_blocking, "c.kt": 'val r = """ /* """\nval s = runBlocking { x() }\n'}, allow),
+        ({**good_run_blocking, "c.kt": "/* a /* b */ c */ val s = runBlocking { x() }\n"}, allow),
+        ({**good_run_blocking, "c.kt": "val q = '\"'\nval s = runBlocking { x() }\n"}, allow),
+        ({**good_run_blocking, "c.kt": "val q = '\\''; val s = runBlocking { x() }\n"}, allow),
+        ({**good_run_blocking, "c.kt": 'val t = "${runBlocking { x() }}"\n'}, allow),
         # Allowlisted file, second call site: still a violation.
         ({"a.kt": good_run_blocking["a.kt"] + "val w = runBlocking { other() }\n"}, allow),
         # Same pattern twice in the allowlisted file: the entry no longer pins one site.
