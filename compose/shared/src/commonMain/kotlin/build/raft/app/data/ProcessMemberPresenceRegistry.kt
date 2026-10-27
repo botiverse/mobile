@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.parseExternalAgentTimestampOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -448,7 +449,13 @@ internal class ProcessMemberPresenceRegistry {
             val hasCurrentProjection =
                 !transportAdvanced &&
                     current.currentProjectionStamps[owner]?.containsKey(memberId) == true
+            val isSeenEvent = event.isAgentSeenFact()
+            if (isSeenEvent && previous != null && !event.advancesLastSeenAtOf(previous)) return
             if (
+                // agent:seen carries no seq, so the seq gate below would drop every one that
+                // follows an agent:activity. It is ordered by its own timestamp instead (web
+                // `applyAgentSeen`: forward only) and keeps the previous fact's serverSeq.
+                !isSeenEvent &&
                 !event.shouldReplaceRegisteredPresenceFact(
                     previous = previous,
                     requiresStrictlyNewerSequence = hasCurrentProjection
@@ -464,8 +471,11 @@ internal class ProcessMemberPresenceRegistry {
             // current-state mutation fence advances in the same CAS, making
             // an in-flight REST response stale.
             val mergedEvent =
-                if (event.serverSeq == null && event.lastSeenAt != null && previous != null) {
+                if (isSeenEvent && previous != null) {
                     event.copy(
+                        // The previous fact's seq watermark survives, so an older agent:activity
+                        // still cannot roll its status back after this merge.
+                        serverSeq = previous.serverSeq,
                         agentStatus = event.agentStatus ?: previous.agentStatus,
                         statusLabel = event.statusLabel ?: previous.statusLabel,
                         detailKind = if (event.statusLabel != null) event.detailKind else previous.detailKind,
@@ -929,6 +939,21 @@ private fun <T> Map<ProcessServerMembersOwner, Map<String, T>>.withoutPresenceMe
 ): Map<ProcessServerMembersOwner, Map<String, T>> {
     val nextOwnerEntries = this[owner].orEmpty() - memberId
     return if (nextOwnerEntries.isEmpty()) this - owner else this + (owner to nextOwnerEntries)
+}
+
+/** An `agent:seen` fact (see `AgentSeenDto.toDomain`): seq-less, carrying only `lastSeenAt`. */
+internal fun MemberPresenceUpdated.isAgentSeenFact(): Boolean =
+    serverSeq == null && !lastSeenAt.isNullOrBlank() && statusLabel == null && agentStatus == null
+
+/**
+ * Whether this `agent:seen` moves [previous]'s `lastSeenAt` forward. An unparseable timestamp
+ * never displaces a parseable one; with no previous timestamp any value advances.
+ */
+internal fun MemberPresenceUpdated.advancesLastSeenAtOf(previous: MemberPresenceUpdated): Boolean {
+    val known = previous.lastSeenAt?.takeIf { it.isNotBlank() } ?: return true
+    val incoming = parseExternalAgentTimestampOrNull(lastSeenAt) ?: return false
+    val knownMillis = parseExternalAgentTimestampOrNull(known) ?: return true
+    return incoming > knownMillis
 }
 
 internal fun MemberPresenceUpdated.shouldReplaceRegisteredPresenceFact(
