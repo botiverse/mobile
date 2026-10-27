@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|full]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|full] [xcode-app-path]" >&2
   echo "       plan_test_tier.sh --self-test" >&2
   exit 2
 }
@@ -153,6 +153,7 @@ emit_plan() {
   local full_ci="$3"
   local ref_name="$4"
   local dispatch_scope="${5:-}"
+  local xcode_app_path="${6:-}"
   run_android=false
   run_ios=false
   local run_device_suite=false
@@ -299,6 +300,12 @@ emit_plan() {
     echo "invalid CI plan: attachment legs require Android" >&2
     return 1
   fi
+  # xcode_app_path (workflow_dispatch) only reaches the iOS compile job. A plan that skips iOS
+  # (scope=pr) would go green without ever compiling with that Xcode, so refuse it.
+  if test -n "$xcode_app_path" && test "$run_ios" != true; then
+    echo "::error::xcode_app_path=${xcode_app_path} is set but this plan skips the iOS compile (run_ios=${run_ios}, reason=${reason}). Re-dispatch with scope=full, or clear xcode_app_path." >&2
+    return 1
+  fi
 
   printf 'run_android=%s\n' "$run_android"
   printf 'run_ios=%s\n' "$run_ios"
@@ -407,6 +414,20 @@ self_test() {
     echo "invalid dispatch scope unexpectedly passed" >&2
     return 1
   fi
+  # An opt-in Xcode lane must compile iOS: scope=full plans pass, scope=pr is refused.
+  if ! emit_plan workflow_dispatch "$work/paths" false main full /Applications/Xcode_27.1.app >/dev/null 2>&1; then
+    echo "xcode_app_path with scope=full unexpectedly failed" >&2
+    return 1
+  fi
+  local lane_error
+  if lane_error="$(emit_plan workflow_dispatch "$work/paths" false main pr /Applications/Xcode_27.1.app 2>&1 >/dev/null)"; then
+    echo "xcode_app_path with scope=pr (no iOS compile) unexpectedly passed" >&2
+    return 1
+  fi
+  case "$lane_error" in
+    *"xcode_app_path=/Applications/Xcode_27.1.app is set but this plan skips the iOS compile"*"scope=full"*) ;;
+    *) echo "xcode_app_path refusal message missing, got: $lane_error" >&2; return 1 ;;
+  esac
   if emit_plan pull_request "$work/paths" maybe feature >/dev/null 2>&1; then
     echo "invalid full-ci flag unexpectedly passed" >&2
     return 1
@@ -428,5 +449,5 @@ if test "${1:-}" = --self-test; then
   exit 0
 fi
 
-test "$#" -ge 4 && test "$#" -le 5 || usage
-emit_plan "$1" "$2" "$3" "$4" "${5:-}"
+test "$#" -ge 4 && test "$#" -le 6 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}"

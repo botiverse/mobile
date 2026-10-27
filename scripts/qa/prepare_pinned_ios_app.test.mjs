@@ -21,6 +21,7 @@ function fixture({ metadataOverrides = {}, plistOverrides = {} } = {}) {
     platform: "ios-simulator", artifact_sha256: sha, artifact_size: fs.statSync(zip).size,
     source_commit: "4".repeat(40), bundle_id: "build.raft.app", version: "1.0",
     version_code: "1", github_run_id: "29700366778",
+    xcode_lane: "default", xcode_version: "26.6", xcode_app: "Xcode_26.6.app", ios_sdk_version: "26.5",
     ...metadataOverrides,
   }));
   const dittoLog = path.join(root, "ditto.log");
@@ -129,7 +130,7 @@ test("refuses an app from the opt-in Xcode lane before extraction", () => {
 test("accepts an opt-in lane app only when explicitly allowed, with a warning", () => {
   const f = fixture({ metadataOverrides: optInLane });
   const out = runPinned(f, { ALLOW_NON_DEFAULT_XCODE_LANE: "true" });
-  assert.match(out, /::warning::accepting a pinned iOS app from the 'opt-in' Xcode lane/);
+  assert.match(out, /::warning::accepting a pinned iOS app that was built on the 'opt-in' Xcode lane/);
   assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "pinned-marker"), "utf8"), "pinned");
 });
 
@@ -140,8 +141,19 @@ test("accepts a default lane app and logs its toolchain", () => {
   assert.doesNotMatch(out, /::warning::/);
 });
 
-test("accepts a carrier without xcode_lane (predates stamping) with a warning", () => {
-  const f = fixture();
-  const out = runPinned(f);
-  assert.match(out, /::warning::pinned iOS app metadata has no xcode_lane/);
+test("refuses a carrier without xcode_lane (unknown toolchain) unless explicitly allowed", () => {
+  // JSON.stringify drops undefined: this is a metadata.json from before lane stamping.
+  const f = fixture({ metadataOverrides: { xcode_lane: undefined, xcode_version: undefined, xcode_app: undefined, ios_sdk_version: undefined } });
+  assert.ok(!("xcode_lane" in JSON.parse(fs.readFileSync(f.metadata, "utf8"))));
+  assert.throws(() => runPinned(f), (error) => {
+    assert.equal(error.status, 3);
+    assert.match(error.stderr, /has no xcode_lane in its metadata\.json/);
+    assert.match(error.stderr, /allow_non_default_xcode_lane=true/);
+    return true;
+  });
+  assert.equal(fs.existsSync(f.dittoLog), false);
+  assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "old-marker"), "utf8"), "old");
+  const out = runPinned(f, { ALLOW_NON_DEFAULT_XCODE_LANE: "true" });
+  assert.match(out, /::warning::accepting a pinned iOS app that has no xcode_lane/);
+  assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "pinned-marker"), "utf8"), "pinned");
 });

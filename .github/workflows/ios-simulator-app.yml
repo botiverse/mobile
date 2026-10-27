@@ -65,6 +65,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .workflow-ci-tools
+          # Read-only copy of one script; nothing here talks to the remote again.
+          persist-credentials: false
           sparse-checkout: scripts/ci/stamp_ios_xcode_lane.py
           sparse-checkout-cone-mode: false
 

@@ -114,6 +114,8 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
           DISPATCH_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || '' }}
+          # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
+          XCODE_APP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path || '' }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -155,23 +157,7 @@ jobs:
               ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            | tee -a "$GITHUB_OUTPUT"
-
-      # xcode_app_path only reaches the `ios` job. A dispatch that sets it while the plan skips
-      # iOS (scope=pr) would go green without ever compiling with that Xcode, so refuse it here.
-      - name: Refuse an Xcode lane that would not compile iOS
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path != '' }}
-        shell: bash
-        env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path }}
-          RUN_IOS: ${{ steps.plan.outputs.run_ios }}
-        run: |
-          set -euo pipefail
-          if [ "$RUN_IOS" != "true" ]; then
-            echo "::error::xcode_app_path=$XCODE_APP_PATH is set but this run's plan skips the iOS compile (run_ios=$RUN_IOS). Re-dispatch with scope=full, or clear xcode_app_path."
-            exit 1
-          fi
-          echo "xcode_app_path=$XCODE_APP_PATH; the iOS compile job runs with it."
+            "$XCODE_APP_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test gitlink carry-in gate
         run: python3 scripts/ci/test_gitlink_carry_in_gate.py
