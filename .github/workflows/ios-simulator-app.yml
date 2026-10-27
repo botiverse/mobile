@@ -58,6 +58,18 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.sha }}
 
+      # The workflow's own copy of the metadata lane stamper: source_sha can predate it, and an
+      # opt-in-lane carrier must never be published without xcode_lane in its metadata.json.
+      - name: Checkout workflow CI tools
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-ci-tools
+          # Read-only copy of one script; nothing here talks to the remote again.
+          persist-credentials: false
+          sparse-checkout: scripts/ci/stamp_ios_xcode_lane.py
+          sparse-checkout-cone-mode: false
+
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
@@ -234,14 +246,21 @@ jobs:
       # PROVENANCE.txt fails closed there. One script owns that shape and its
       # fail-closed identity checks (Simulator slice, real HandsBuildCommit);
       # PROVENANCE.txt stays as the human-readable twin.
+      # metadata.json also records the Xcode, iPhoneSimulator SDK and xcode_lane
+      # (default | opt-in): qa-acceptance-ios.yml refuses an opt-in-lane carrier unless
+      # allow_non_default_xcode_lane is set, so a 27.1-SDK build cannot pass as the release one.
       - name: Package app with source identity
         shell: bash
+        env:
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
         run: |
           set -euo pipefail
           staging="$RUNNER_TEMP/ios-simulator-app"
           bash scripts/qa/export_ios_simulator_app.sh \
             "compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator" \
             "$staging" "$RAFT_GIT_COMMIT" "$GITHUB_RUN_ID"
+          python3 .workflow-ci-tools/scripts/ci/stamp_ios_xcode_lane.py "$staging/metadata.json"
           {
             echo "source_commit=$RAFT_GIT_COMMIT"
             echo "workflow_commit=$GITHUB_SHA"
@@ -250,6 +269,7 @@ jobs:
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "xcode=$(xcodebuild -version | head -1)"
             echo "iphonesimulator_sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)"
+            echo "xcode_lane=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["xcode_lane"])' "$staging/metadata.json")"
           } | tee "$staging/PROVENANCE.txt"
           sha=$(awk '{print $1}' "$staging/raft-ios-simulator.app.zip.sha256")
           {
@@ -261,6 +281,10 @@ jobs:
             echo ""
             echo "artifact_sha256/artifact_size describe the EXTRACTED raft-ios-simulator.app.zip,"
             echo "not the outer archive GitHub shows for the artifact."
+            if [ "$XCODE_APP_PATH" != "$RAFT_DEFAULT_XCODE_APP" ]; then
+              echo ""
+              echo "**Opt-in Xcode lane (${XCODE_APP_PATH##*/}): not the release build.** qa-acceptance-ios.yml refuses this carrier unless allow_non_default_xcode_lane=true."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "STAGING=$staging" >> "$GITHUB_ENV"
 

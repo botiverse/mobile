@@ -74,6 +74,11 @@ on:
         description: "Frozen CFBundleIdentifier"
         required: false
         default: ""
+      allow_non_default_xcode_lane:
+        description: "Accept an app_run_id carrier built on an opt-in Xcode lane (metadata xcode_lane != default, e.g. the iOS 27.1 SDK). Off: such a carrier is refused, it is not the release build."
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [xishi/qa-ios-executor]
 
@@ -101,6 +106,9 @@ jobs:
       SIM_DEVICE: iPhone 14
       # Default inspect/act path. qa-loop keeps QaAcceptanceLoopTests.
       IOS_QA_DRIVER: agent-device
+      # The one pinned Xcode for this job: Pin Xcode selects it, and the exported carrier's
+      # metadata.json is stamped as built on it (xcode_lane=default).
+      RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job.
       # Give it a bounded readiness window before any action can use artifact
@@ -117,7 +125,7 @@ jobs:
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
         env:
-          XCODE_APP_PATH: /Applications/Xcode_26.6.app
+          XCODE_APP_PATH: ${{ env.RAFT_DEFAULT_XCODE_APP }}
         run: bash scripts/ci/select_ios_xcode.sh
 
       - name: Validate frozen artifact inputs
@@ -325,6 +333,10 @@ jobs:
           # looks fine here and only explodes inside the consumer's JSON.parse one run later.
           # Parse it now, next to its cause.
           python3 -c 'import json,sys; json.load(open(sys.argv[1]))' ios-app-export/metadata.json
+          # Xcode, iOS SDK and lane (always the pinned default here), so a later app_run_id pin
+          # can tell this carrier from an opt-in-lane one (prepare_pinned_ios_app.sh).
+          XCODE_APP_PATH="$RAFT_DEFAULT_XCODE_APP" \
+            python3 scripts/ci/stamp_ios_xcode_lane.py ios-app-export/metadata.json
           cat ios-app-export/metadata.json
           {
             echo "## Installable iOS Simulator carrier"
@@ -371,6 +383,8 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.artifact_version }}
           EXPECTED_VERSION_CODE: ${{ inputs.artifact_version_code }}
           EXPECTED_PACKAGE_ID: ${{ inputs.artifact_package_id }}
+          # Refuses a carrier from a non-default Xcode lane unless this input is true.
+          ALLOW_NON_DEFAULT_XCODE_LANE: ${{ inputs.allow_non_default_xcode_lane && 'true' || 'false' }}
         run: |
           bash scripts/qa/prepare_pinned_ios_app.sh \
             "$PINNED_ZIP" "$PINNED_METADATA" "$PRODUCTS_DIR" "$APP_RUN_ID" \

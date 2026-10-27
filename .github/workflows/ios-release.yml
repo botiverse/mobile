@@ -193,6 +193,9 @@ jobs:
 
       - name: Record Xcode and iOS SDK
         # The "Raft iOS SDK tier" of this build in the release summary (iPhone Duo audit §7).
+        # Log-only: the script never exits non-zero, and continue-on-error keeps it that way
+        # if it ever regresses. An odd version string must not stop a release.
+        continue-on-error: true
         env:
           XCODE_APP_PATH: /Applications/Xcode_26.6.app
           RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app

@@ -30,7 +30,7 @@ on:
         type: string
         default: ci
       xcode_app_path:
-        description: "Opt-in Xcode for the iOS compile job (with scope=full), e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). Empty = the pinned Xcode_26.6. Must be an installed /Applications/Xcode*.app."
+        description: "Opt-in Xcode for the iOS compile job; requires scope=full (the plan fails otherwise), e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). Empty = the pinned Xcode_26.6. Must be an installed /Applications/Xcode*.app."
         required: false
         type: string
         default: ""
@@ -114,6 +114,8 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
           DISPATCH_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || '' }}
+          # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
+          XCODE_APP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path || '' }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -155,7 +157,7 @@ jobs:
               ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            | tee -a "$GITHUB_OUTPUT"
+            "$XCODE_APP_PATH" | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test gitlink carry-in gate
         run: python3 scripts/ci/test_gitlink_carry_in_gate.py

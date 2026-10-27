@@ -53,6 +53,9 @@ jobs:
       - name: Test iOS toolchain record
         run: python3 scripts/ci/test_record_ios_toolchain.py
 
+      - name: Test iOS Xcode lane metadata stamp
+        run: python3 scripts/ci/test_stamp_ios_xcode_lane.py
+
       - name: Test iOS bootstrap dependency decisions
         run: python3 scripts/ci/test_bootstrap_ios_runner.py
 
