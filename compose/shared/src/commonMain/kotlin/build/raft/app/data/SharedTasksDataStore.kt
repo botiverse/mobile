@@ -209,13 +209,17 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
             outcome = SharedTaskFactFoldOutcome.Conflict
         )
     }
-    val selectedFact = if (acceptsIncoming) incomingFact else currentFact
-    val nextFacts = if (acceptsIncoming) canonicalTaskFacts + (incoming.id to selectedFact) else canonicalTaskFacts
+    val selectedFact =
+        (if (acceptsIncoming) incomingFact else currentFact).withViewerConversationFollow(incomingFact, currentFact)
+    // A viewer-local follow value from the incoming copy updates the fact even when its revision
+    // does not win (the channel list after a `task:created` of the same revision).
+    val factChanged = acceptsIncoming || selectedFact != currentFact
+    val nextFacts = if (factChanged) canonicalTaskFacts + (incoming.id to selectedFact) else canonicalTaskFacts
     val nextConflicts = if (acceptsIncoming) canonicalConflicts - incoming.id else canonicalConflicts
     val reprojectedServerSnapshots =
-        if (acceptsIncoming) serverSnapshots.reprojectServerTask(selectedFact, nextRoutes) else serverSnapshots
+        if (factChanged) serverSnapshots.reprojectServerTask(selectedFact, nextRoutes) else serverSnapshots
     val reprojectedChannelSnapshots =
-        if (acceptsIncoming) channelSnapshots.reprojectChannelTask(selectedFact, nextRoutes) else channelSnapshots
+        if (factChanged) channelSnapshots.reprojectChannelTask(selectedFact, nextRoutes) else channelSnapshots
     val nextState =
         copy(
             canonicalTaskFacts = nextFacts,
@@ -229,6 +233,17 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
         projectedTask = selectedFact.withTaskProjectionRoute(route),
         outcome = if (acceptsIncoming) SharedTaskFactFoldOutcome.Accepted else SharedTaskFactFoldOutcome.StaleIgnored
     )
+}
+
+/**
+ * `conversationFollowed` is the reader's own follow state, not a revision-owned task fact: only the
+ * channel task list (`GET /tasks/channel/:id`, `withConversationFollowed`) sends it. `task:created`
+ * / `task:updated` frames go to the whole audience and the server board and the status / assign
+ * answers omit it, so a copy without it keeps the value already known instead of erasing it.
+ */
+private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, current: TaskSummary?): TaskSummary {
+    val followed = incoming.conversationFollowed ?: current?.conversationFollowed
+    return if (conversationFollowed == followed) this else copy(conversationFollowed = followed)
 }
 
 private fun Long?.compareTaskRevision(existing: Long?): Int =
@@ -467,7 +482,8 @@ private fun SharedTasksDataStoreState.commitStatusMutationResponse(
         } else {
             task.revision
         }
-    val committedFact = task.copy(revision = committedRevision).withoutTaskProjectionRoute()
+    val committedFact =
+        task.copy(revision = committedRevision).withoutTaskProjectionRoute().withViewerConversationFollow(task, currentFact)
     val canonicalState =
         copy(
             canonicalTaskFacts = canonicalTaskFacts + (permit.taskId to committedFact),

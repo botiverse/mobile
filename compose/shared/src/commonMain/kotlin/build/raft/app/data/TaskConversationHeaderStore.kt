@@ -153,7 +153,9 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
             val seen = intent.task
             val previous = lastSeenTask
             val older = previous?.revision != null && seen.revision != null && seen.revision < previous.revision
-            if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = seen)
+            // A `task:updated` copy has no `conversationFollowed` (the reader's own): keep the known one.
+            val kept = if (seen.conversationFollowed == null) seen.copy(conversationFollowed = previous?.conversationFollowed) else seen
+            if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = kept)
         }
     }
 

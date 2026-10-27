@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.taskConversationHeaderBarModel
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskDeleted
@@ -264,6 +265,47 @@ class TaskConversationHeaderStoreTest {
             unfollow = unfollow,
             scopeOverride = this,
         )
+
+    @Test
+    fun theListsFollowStateSurvivesTaskFramesThatDoNotCarryIt() = runTest {
+        // Server (botiverse/slock staging 57e717700): only `GET /tasks/channel/:id` adds the reader's
+        // `conversationFollowed`; `task:created` / `task:updated` go to the whole audience without it.
+        // (frames before the list, list copy, later frames) -> the bar's follow button.
+        val store = SharedTasksDataStore()
+        val scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+        fun parsed(json: String): TaskSummary =
+            parseSharedServerTasksPayload("""{"tasks":[$json]}""")?.tasks?.single() ?: error("task dropped")
+        val listed = parsed(taskDtoJson(conversationFollowed = "true"))
+        // `task:created` first (same revision as the list), then the list, then `task:updated`s without the field.
+        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTaskForCurrentServer("server-1", parsed(taskDtoJson(conversationFollowed = null))))
+        store.loadSnapshot("server-1", scope, forceRefresh = true) {
+            DataResult.Content(TaskSnapshot(tasks = listOf(listed), summaryCounts = emptyMap()))
+        }
+        fun projected() = store.projection("server-1", scope).tasks.single()
+        assertEquals(true, projected().conversationFollowed, "the list's value wins over the earlier frame's absence")
+        listOf(TaskStatus.Done to 4L, TaskStatus.Closed to 5L).forEach { (status, revision) ->
+            val frame = parsed(taskDtoJson(conversationFollowed = null)).copy(status = status, revision = revision)
+            assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTaskForCurrentServer("server-1", frame))
+            assertEquals(status, projected().status)
+            assertEquals(true, projected().conversationFollowed, "after task:updated to $status")
+        }
+        // The bar reads it: the button is there and says Unfollow (followed = true).
+        val ref = TaskConversationChannelRef(ChannelId("conv-1"), ChannelId("channel-1"), TaskId("task-1"))
+        val header =
+            TaskConversationHeaderState(ChannelId("conv-1"))
+                .reduce(TaskConversationHeaderIntent.RefLoaded(DataResult.Content(ref)))
+                .reduce(TaskConversationHeaderIntent.TaskSeen(projected()))
+        val model = projected().taskConversationHeaderBarModel(header, serverRole = "member", statusUpdating = false)
+        assertEquals(true, model.followed)
+        // The page's last copy keeps it too when a frame without it comes in.
+        val afterFrame = header.reduce(TaskConversationHeaderIntent.TaskSeen(parsed(taskDtoJson(conversationFollowed = null)).copy(revision = 6L)))
+        assertEquals(true, afterFrame.barTask(listed = null)?.conversationFollowed)
+        // A list that says "not followed" still overrides.
+        store.loadSnapshot("server-1", scope, forceRefresh = true) {
+            DataResult.Content(TaskSnapshot(tasks = listOf(listed.copy(revision = 5L, status = TaskStatus.Closed, conversationFollowed = false)), summaryCounts = emptyMap()))
+        }
+        assertEquals(false, projected().conversationFollowed)
+    }
 
     private fun task(status: TaskStatus): TaskSummary =
         parseSharedServerTasksPayload("""{"tasks":[${taskDtoJson(conversationFollowed = null)}]}""")
