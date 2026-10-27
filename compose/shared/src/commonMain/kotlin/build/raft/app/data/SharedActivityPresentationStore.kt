@@ -123,6 +123,8 @@ internal fun InboxItem.activityUpdateRevisionMessageId(): String? =
         InboxItemKind.DirectMessage -> lastMessageId?.value ?: latestActivityMessageId?.value
         InboxItemKind.MentionAction,
         InboxItemKind.System -> latestActivityMessageId?.value ?: lastMessageId?.value
+        // An object row's newest event (its Done frontier) moves with every new event.
+        InboxItemKind.Object -> activityObject?.doneFrontierSeq?.let { "object-event:$it" }
     }
 
 internal data class SharedActivityPresentationCheckpoint(

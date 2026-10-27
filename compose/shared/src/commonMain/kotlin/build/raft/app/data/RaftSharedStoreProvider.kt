@@ -929,6 +929,10 @@ internal class RaftSharedStoreProvider private constructor(
                 if (event is ServerFeaturesChanged && event.serverId.value == grant.serverId) {
                     serverFeatureFlagChangeRefresher.onFeaturesChanged(event.serverId, event.keys)
                 }
+                // web: `activity:changed` drops that server's kept object summaries (invalidateObjectSummaries).
+                if (event is build.raft.app.model.ActivityChanged && artifactSummaryStoreLazy.isInitialized()) {
+                    artifactSummaryStore.invalidateServer(event.serverId.value)
+                }
             },
             // Task #14c: the server's answer to a `join:channel` (a reply thread's room): the canary may make a
             // later enter of that thread continuous. Only a current grant may record it.
@@ -1746,6 +1750,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
+                activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()

@@ -3271,4 +3271,15 @@
     <string name="artifacts_scope_server">Whole server</string>
     <string name="artifacts_scope_public">Public</string>
     <string name="artifacts_home_dm">Direct message with %1$s</string>
+    <string name="artifacts_activity_mentioned_you">%1$s mentioned you</string>
+    <string name="artifacts_activity_commented">%1$s commented</string>
+    <string name="artifacts_activity_edited_comment">%1$s edited a comment</string>
+    <string name="artifacts_activity_published_version">%1$s published v%2$d</string>
+    <string name="artifacts_activity_published">%1$s published a new version</string>
+    <string name="artifacts_activity_updated">%1$s updated it</string>
+    <string name="artifacts_activity_someone">Someone</string>
+    <string name="artifacts_activity_untitled">Untitled Artifact</string>
+    <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_action_unfollow_artifact">Unfollow</string>
+    <string name="activity_unfollowed_artifact">Unfollowed %1$s</string>
 </resources>

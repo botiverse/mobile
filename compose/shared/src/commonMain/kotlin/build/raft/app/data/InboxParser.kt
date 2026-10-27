@@ -144,6 +144,10 @@ private data class WireInboxResponse(
     val totalCount: Int? = null,
     val totalUnreadCount: Int? = null,
     val activeUnreadCount: Int? = null,
+    // Workspace Artifacts (activityObjectsContract.ts ObjectInboxFields): absent with every object app off.
+    val objectUnreadCount: Int? = null,
+    val objectMentionUnreadCount: Int? = null,
+    val objectCount: Int? = null,
 )
 
 @Serializable
@@ -243,6 +247,8 @@ data class SharedInboxSnapshot(
     val rawItemCount: Int = items.size,
     /** Wire `activeUnreadCount` (web rail dot); null on servers that omit it. */
     val activeUnreadCount: Int? = null,
+    /** The object rows' counts (workspace Artifacts); null when the server sent none. */
+    val objectCounts: ActivityObjectCounts? = null,
 )
 
 fun parseSharedInboxSnapshot(
@@ -255,21 +261,34 @@ fun parseSharedInboxSnapshot(
     val rawItems =
         decoded.items
             .mapIndexedNotNull { index, wire ->
-                val doneFrontierPresent =
-                    (rawItemObjects?.getOrNull(index) as? JsonObject)?.containsKey("doneFrontierSeq") == true
+                val raw = rawItemObjects?.getOrNull(index) as? JsonObject
+                // Workspace Artifacts: an object row is read by its own contract.
+                if (wire.kind == "object") return@mapIndexedNotNull raw?.let(::parseActivityObjectInboxItem)
+                val doneFrontierPresent = raw?.containsKey("doneFrontierSeq") == true
                 wire.toDomain(diagnostics)?.copy(doneFrontierSeqPresent = doneFrontierPresent)
             }
             .distinctBy { it.key }
     val items = rawItems.map(InboxItem::withActivityFollowStateProjection)
+    val conversationItems = items.filterNot { it.kind == InboxItemKind.Object }
     // The server's aggregates are authoritative (it already zeroes unfollowed
     // rows); derive them from the page only when an older server omits them.
     SharedInboxSnapshot(
         items = items,
         hasMore = decoded.hasMore,
-        totalCount = decoded.totalCount ?: items.size,
-        totalUnreadCount = decoded.totalUnreadCount ?: items.sumOf { it.unreadCount },
+        totalCount = decoded.totalCount ?: conversationItems.size,
+        totalUnreadCount = decoded.totalUnreadCount ?: conversationItems.sumOf { it.unreadCount },
         rawItemCount = decoded.items.size,
         activeUnreadCount = decoded.activeUnreadCount,
+        objectCounts =
+            if (decoded.objectUnreadCount == null && decoded.objectCount == null && decoded.objectMentionUnreadCount == null) {
+                null
+            } else {
+                ActivityObjectCounts(
+                    objectUnreadCount = decoded.objectUnreadCount?.coerceAtLeast(0) ?: 0,
+                    objectMentionUnreadCount = decoded.objectMentionUnreadCount?.coerceAtLeast(0) ?: 0,
+                    objectCount = decoded.objectCount?.coerceAtLeast(0) ?: 0,
+                )
+            },
     )
 }.getOrNull()
 

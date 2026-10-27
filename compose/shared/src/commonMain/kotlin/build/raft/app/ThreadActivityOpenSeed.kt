@@ -175,7 +175,7 @@ private fun InboxItem.activitySeedStreamId(routeIdentity: ThreadRouteIdentity): 
         InboxItemKind.Channel,
         InboxItemKind.DirectMessage,
         InboxItemKind.MentionAction -> channelId.value
-        InboxItemKind.System -> null
+        InboxItemKind.System, InboxItemKind.Object -> null
     }?.takeIf { it.isNotBlank() }
 
 private fun InboxItem.activitySeedMessages(
@@ -216,7 +216,7 @@ private fun InboxItem.activitySeedMessages(
                     names = names,
                 )
             )
-        InboxItemKind.System -> emptyList()
+        InboxItemKind.System, InboxItemKind.Object -> emptyList()
     }
 
 private fun InboxItem.activitySeedMessage(

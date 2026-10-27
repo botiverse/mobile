@@ -83,6 +83,7 @@ internal fun activityStore(
     channelRepository: ChannelRepository? = null,
     persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     filterPreferences: ActivityFilterPreferenceRepository? = null,
+    activityObjectsRepository: ActivityObjectsRepository? = null,
     tasksDataStore: SharedTasksDataStore? = null,
     perReceiverStateVersionStore: PerReceiverStateVersionStore =
         PerReceiverStateVersionStore(InMemoryRaftKeyValueStore()),
@@ -121,6 +122,7 @@ internal fun activityStore(
         perReceiverStateVersionStore = perReceiverStateVersionStore,
         persistSlices = persistSlices,
         filterPreferences = filterPreferences,
+        activityObjectsRepository = activityObjectsRepository,
         prewarmReplyThread = prewarmReplyThread,
         replyThreadFreshnessLedger = replyThreadFreshnessLedger,
         foregroundLoadGate = foregroundLoadGate,

@@ -279,6 +279,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ComputerRestartDone -> false
         // A flag-refetch hint: the feature-flag refresher handles it; Home's rows do not change.
         is build.raft.app.model.ServerFeaturesChanged -> false
+        // Object rows live in Activity only; the Activity store and the unread summary refetch on it.
+        is build.raft.app.model.ActivityChanged -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

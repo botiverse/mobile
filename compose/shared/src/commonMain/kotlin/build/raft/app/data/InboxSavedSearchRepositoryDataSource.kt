@@ -238,8 +238,9 @@ class RealInboxRepository(
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Inbox response missing items")
-                if ((parsed.totalCount != parsed.items.size) ||
-                    (parsed.totalUnreadCount != parsed.items.sumOf { it.unreadCount })
+                val conversationItems = parsed.items.filterNot { it.kind == build.raft.app.model.InboxItemKind.Object }
+                if ((parsed.totalCount != conversationItems.size) ||
+                    (parsed.totalUnreadCount != conversationItems.sumOf { it.unreadCount })
                 ) {
                     logger(
                         "inbox_count_override serverId=${serverId.value} filter=${filter.wireValue} offset=$offset wireTotal=${parsed.totalCount} wireUnread=${parsed.totalUnreadCount} itemCount=${parsed.items.size} itemUnread=${parsed.items.sumOf { it.unreadCount }}"
@@ -252,6 +253,7 @@ class RealInboxRepository(
                     totalUnreadCount = parsed.totalUnreadCount,
                     hasMore = parsed.hasMore,
                     activeUnreadCount = parsed.activeUnreadCount,
+                    objectCounts = parsed.objectCounts,
                     // Keep page advancement based on raw server rows. The
                     // client may project every row out of an attention filter
                     // when a lagging/older server includes an unfollowed
@@ -299,9 +301,11 @@ internal class ProcessActivityUnreadRepository(
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Activity unread response missing summary")
+                // The badge adds the object rows' unread itself (activityObjectsContract.ts): the
+                // conversation counts never include them.
                 ActivityUnreadSummarySnapshot(
-                    totalUnreadCount = parsed.totalUnreadCount,
-                    totalCount = parsed.totalCount
+                    totalUnreadCount = parsed.totalUnreadCount + (parsed.objectCounts?.objectUnreadCount ?: 0),
+                    totalCount = parsed.totalCount + (parsed.objectCounts?.objectCount ?: 0)
                 )
             }
         )

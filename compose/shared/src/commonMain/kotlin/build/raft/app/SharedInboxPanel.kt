@@ -1,5 +1,8 @@
 package build.raft.app
 
+import androidx.compose.ui.platform.LocalUriHandler
+import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.artifactWebUrl
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalBadge
@@ -751,11 +754,14 @@ internal fun projectActivityStateWithProcessSummary(
     ) {
         return state
     }
+    // The process summary includes the object rows (workspace Artifacts); the snapshot's totals are
+    // the conversations' alone, as the server sends them.
+    val objectCounts = snapshot.objectCounts
     return state.copy(
         snapshot =
             snapshot.copy(
-                totalUnreadCount = activitySummary.totalUnreadCount,
-                totalCount = activitySummary.totalCount
+                totalUnreadCount = (activitySummary.totalUnreadCount - (objectCounts?.objectUnreadCount ?: 0)).coerceAtLeast(0),
+                totalCount = (activitySummary.totalCount - (objectCounts?.objectCount ?: 0)).coerceAtLeast(0)
             )
     )
 }
@@ -960,8 +966,9 @@ private fun SharedActivityPanelContent(
         modifier = modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
     ) {
         SharedActivityHeader(
-            totalCount = state.totalCount,
-            totalUnreadCount = state.totalUnreadCount,
+            // Object rows (workspace Artifacts) count apart from the conversations' (web ThreadsInbox).
+            totalCount = state.totalCount + (state.snapshot?.objectCounts?.objectCount ?: 0),
+            totalUnreadCount = state.totalUnreadCount + (state.snapshot?.objectCounts?.unreadFor(state.selectedFilter) ?: 0),
             onClose = onClose,
             mainTab = mainTab,
             topSafeAreaPadding = topSafeAreaPadding,
@@ -1725,6 +1732,10 @@ private fun SharedActivityList(
     // Rule L swipe-to-Done: the swiped row is hidden while its undo toast is up; the Done itself is
     // committed when the window ends (ActivityConversationSwipe.kt).
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
+    var objectUndo by remember { mutableStateOf(ActivityObjectUndoState()) }
+    val activityObjectUriHandler = LocalUriHandler.current
+    val activityObjectWebBaseUrl =
+        remember { RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl.orEmpty() }
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
     // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
@@ -1775,6 +1786,17 @@ private fun SharedActivityList(
         )
     fun openRow(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        // Workspace Artifacts (v1): an object row opens its page on the web (environment web URL),
+        // and reading it is the row's Read, as opening it in Raft would be.
+        val objectRow = currentItem.activityObject
+        if (currentItem.kind == InboxItemKind.Object && objectRow != null) {
+            selectedItemKey = currentItem.key
+            currentItem.activityOpenReadIntent()?.let(onIntent)
+            activityObjectUriHandler.openUri(
+                artifactWebUrl(activityObjectWebBaseUrl, ArtifactLinkTarget(objectRow.objectId, objectRow.openVersion)),
+            )
+            return
+        }
         RaftProductEvents.activityItemOpen(currentItem.kind.productActivityItemKind())
         selectedItemKey = currentItem.key
         onIntent(
@@ -1807,8 +1829,28 @@ private fun SharedActivityList(
         swipeDoneUndo = transition.state
         transition.commit?.let(::commitSwipeDone)
     }
+    // Workspace Artifacts: an object row's Done goes out at once (web `markObjectRowDone`); its
+    // toast's Undo sends `undone`. Its Unfollow waits for its toast to end and is only sent then.
+    fun objectRowDone(item: InboxItem) {
+        swipeEndUndo = swipeEndUndo.dismiss()
+        applySwipeDone(swipeDoneUndo.flush())
+        objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+        RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
+        latestOnIntent(SharedActivityIntent.MarkDone(item))
+        objectUndo = objectUndo.done(item)
+    }
+    fun objectRowUnfollow(item: InboxItem) {
+        swipeEndUndo = swipeEndUndo.dismiss()
+        applySwipeDone(swipeDoneUndo.flush())
+        objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+        objectUndo = objectUndo.unfollow(item)
+    }
     fun swipeRowDone(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        if (currentItem.kind == InboxItemKind.Object) {
+            objectRowDone(currentItem)
+            return
+        }
         // One toast at a time: an end swipe's toast gives way (its action stands).
         swipeEndUndo = swipeEndUndo.dismiss()
         applySwipeDone(swipeDoneUndo.swipe(currentItem))
@@ -1842,6 +1884,8 @@ private fun SharedActivityList(
     // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
     // with the menu's analytics.
     fun runRowAction(item: InboxItem, actionId: String) {
+        if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
+        if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
         val write = activityRowActionWrite(item, actionId)
         write.markAction?.let(RaftProductEvents::activityMark)
         runSwipeEndCommand(write.command)
@@ -1873,8 +1917,16 @@ private fun SharedActivityList(
     }
     // A new account, server or filter (or leaving Activity) commits a waiting Done instead of losing it,
     // drops an Unfollow / Mute toast (its write already stands) and closes an open row.
+    val objectUndoToken = objectUndo.pending?.token
+    LaunchedEffect(objectUndoToken) {
+        val token = objectUndoToken ?: return@LaunchedEffect
+        delay(ActivitySwipeDoneUndoWindowMillis)
+        objectUndo = objectUndo.expire(token) { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+    }
     DisposableEffect(presentationOwnerIdentity) {
         onDispose {
+            // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
+            objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
             applySwipeDone(swipeDoneUndo.flush())
             swipeEndUndo = swipeEndUndo.dismiss()
             swipeOpenRow = swipeOpenRow.close()
@@ -2059,6 +2111,24 @@ private fun SharedActivityList(
                         .padding(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 8.dp),
             )
         }
+        objectUndo.pending?.let { pending ->
+            val title = pending.item.activityObject?.title?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.artifacts_activity_untitled)
+            RaftToast(
+                title =
+                    when (pending.action) {
+                        ActivityObjectUndoAction.Done -> stringResource(Res.string.activity_list_marked_done)
+                        ActivityObjectUndoAction.Unfollow -> stringResource(Res.string.activity_unfollowed_artifact, title)
+                    },
+                actionLabel = stringResource(Res.string.common_undo),
+                onAction = {
+                    objectUndo = objectUndo.undo(pending.token) { latestOnIntent(SharedActivityIntent.UndoObjectDone(it)) }
+                },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 8.dp),
+            )
+        }
         swipeEndUndo.pending?.let { pending ->
             // raft-design responsive.md › Touch screens: the toast says what the button did, naming the conversation.
             val conversation = pending.item.activitySwipeConversationLabel()
@@ -2179,6 +2249,13 @@ internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: S
 
 internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map<String, Boolean> = emptyMap()): List<String> =
     buildList {
+        if (item.kind == InboxItemKind.Object) {
+            // web InboxContextMenu: an object row has no Mark as unread (the contract has no such route).
+            if (item.unreadCount > 0) add("toggle-read")
+            add("done")
+            if (item.activityObject?.isFollowing == true) add("unfollow-object")
+            return@buildList
+        }
         if (item.isUnfollowedActivityThread) {
             // Web InboxContextMenu: an unfollowed row has no read/unread toggle
             // (the server zeroes its attention) but keeps Done, then Follow.
@@ -2219,6 +2296,7 @@ internal fun activityRowActionWrite(item: InboxItem, actionId: String): Activity
         "unfollow-thread" -> ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.UnfollowThread(item)))
         "mute-activity" -> ActivityRowActionWrite(ActivitySwipeEndCommand.ChannelMute(item.channelId.value, muted = true))
         "unmute-activity" -> ActivityRowActionWrite(ActivitySwipeEndCommand.ChannelMute(item.channelId.value, muted = false))
+        "unfollow-object" -> ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.UnfollowObject(item)))
         else -> error("unknown Activity row action: $actionId")
     }
 
@@ -2237,6 +2315,7 @@ internal fun activityRowActionLabel(item: InboxItem, actionId: String): String =
         "unfollow-thread" -> stringResource(Res.string.thread_action_unfollow_thread)
         "mute-activity" -> stringResource(Res.string.activity_action_mute_activity)
         "unmute-activity" -> stringResource(Res.string.activity_action_unmute_activity)
+        "unfollow-object" -> stringResource(Res.string.activity_action_unfollow_artifact)
         else -> error("unknown Activity row action: $actionId")
     }
 
@@ -2246,7 +2325,7 @@ internal fun activityRowActionIcon(item: InboxItem, actionId: String): RaftLucid
         "toggle-read" -> if (item.unreadCount > 0) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
         "done" -> RaftLucideIconName.Check
         "follow-thread", "unmute-activity" -> RaftLucideIconName.Bell
-        "unfollow-thread", "mute-activity" -> RaftLucideIconName.BellOff
+        "unfollow-thread", "mute-activity", "unfollow-object" -> RaftLucideIconName.BellOff
         else -> error("unknown Activity row action: $actionId")
     }
 
@@ -2314,6 +2393,7 @@ internal fun InboxItem.activitySenderAvatarIdentity(
         }
         InboxItemKind.Channel,
         InboxItemKind.DirectMessage,
+        InboxItemKind.Object,
         InboxItemKind.System -> {
             senderKind = lastMessageSenderKind ?: latestActivitySenderKind
             senderId = lastMessageSenderId ?: latestActivitySenderId
@@ -2598,10 +2678,12 @@ internal fun InboxItem.displayTitle(dmPeerNames: Map<String, String> = emptyMap(
                 parentChannelName ?: channelName
             }
         InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.MentionAction, InboxItemKind.System -> channelName
+        InboxItemKind.Object -> activityObject?.title.orEmpty()
     }.ifBlank { channelId.value }
 
 internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap()): String =
     when (kind) {
+        InboxItemKind.Object -> activityObject?.homeText.orEmpty()
         InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
         InboxItemKind.Thread ->
             if (parentChannelKind == ConversationKind.DirectMessage) {
@@ -2969,7 +3051,7 @@ internal data class HomeMessageOpenRequest(
 internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
     when (kind) {
         InboxItemKind.Thread -> threadChannelId
-        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.MentionAction, InboxItemKind.System -> null
+        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.MentionAction, InboxItemKind.System, InboxItemKind.Object -> null
     }
 
 /**
@@ -2981,6 +3063,7 @@ internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
  */
 internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
     when (kind) {
+        InboxItemKind.Object -> null
         InboxItemKind.Thread ->
             if (unreadCount > 0) {
                 firstUnreadMessageId ?: latestActivityMessageId
@@ -3025,6 +3108,6 @@ private fun InboxItem.launchConversationKind(): ConversationKind =
         // Product default: user-initiated MentionAction opens the target as a channel,
         // this is not a parser fallback for unknown route kind strings.
         InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
-        InboxItemKind.System -> ConversationKind.System
+        InboxItemKind.System, InboxItemKind.Object -> ConversationKind.System
         InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
     }

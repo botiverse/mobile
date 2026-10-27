@@ -122,6 +122,8 @@ class SharedActivityStore internal constructor(
      * (every server starts on All, as before).
      */
     private val filterPreferences: ActivityFilterPreferenceRepository? = null,
+    /** Workspace Artifacts: Done / Undo / Read / Unfollow on object rows. Null: those writes refresh instead. */
+    private val activityObjectsRepository: ActivityObjectsRepository? = null,
     onUnreadCountsChanged: () -> Unit = {},
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
@@ -314,11 +316,16 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
-            is SharedActivityIntent.MarkDone -> markDone(intent.item)
+            is SharedActivityIntent.MarkDone ->
+                if (intent.item.kind == InboxItemKind.Object) markObjectDone(intent.item) else markDone(intent.item)
             is SharedActivityIntent.UnfollowThread -> unfollowThread(intent.item)
             is SharedActivityIntent.FollowThread -> followThread(intent.item)
-            is SharedActivityIntent.MarkRead -> markRead(intent.item)
-            is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
+            is SharedActivityIntent.MarkRead ->
+                if (intent.item.kind == InboxItemKind.Object) markObjectRead(intent.item) else markRead(intent.item)
+            // An object row has no Mark as unread (the contract has no such route).
+            is SharedActivityIntent.MarkUnread -> if (intent.item.kind != InboxItemKind.Object) markUnread(intent.item)
+            is SharedActivityIntent.UndoObjectDone -> undoObjectDone(intent.item)
+            is SharedActivityIntent.UnfollowObject -> unfollowObject(intent.item)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.ApplyReadReceiptResult ->
@@ -2668,6 +2675,158 @@ class SharedActivityStore internal constructor(
     }
 
     /**
+     * Done on an object row (web `markObjectRowDone`): out of the list at once, through its newest
+     * event (`doneFrontierSeq`), held against a lagging list by the Done overlay; a failure brings it
+     * back with a refresh. The object counts move with it.
+     */
+    private fun markObjectDone(requestedItem: InboxItem) {
+        val previous = _state.value
+        val item = previous.items.firstOrNull { it.key == requestedItem.key } ?: requestedItem
+        val row = item.activityObject ?: return
+        val serverId = previous.ownerServerId ?: previous.snapshot?.server?.id?.value ?: return
+        val overlayOwner = overlayOwner(previous)
+        val doneGenerations =
+            overlayOwner
+                ?.let { owner -> doneOverlay.remember(owner, item) }
+                ?.let { generation -> mapOf(item.key to generation) }
+                .orEmpty()
+        removeObjectRowOptimistically(item)
+        scope.launch {
+            withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
+                val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Done, row)
+                if (result !is DataResult.Content) {
+                    doneOverlay.forgetAll(overlayOwner, doneGenerations)
+                    refreshAfterFailure(previous, "activity_object_done_failed")
+                } else {
+                    doneOverlay.confirmAll(overlayOwner, doneGenerations)
+                    onUnreadCountsChanged()
+                }
+            }
+        }
+    }
+
+    /** Undo an object row's Done (its toast): the row shows again from the server. */
+    private fun undoObjectDone(item: InboxItem) {
+        val row = item.activityObject ?: return
+        val current = _state.value
+        val serverId = current.ownerServerId ?: current.snapshot?.server?.id?.value ?: return
+        overlayOwner(current)?.let { owner -> doneOverlay.forget(owner, item.key) }
+        scope.launch {
+            val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Undone, row)
+            if (result !is DataResult.Content) diagnosticsLogger("activity_object_undone result=failed key=${item.key}")
+            onUnreadCountsChanged()
+            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+        }
+    }
+
+    /** Read on an object row (opening it, or the menu): unread clears at once; a failure refreshes. */
+    private fun markObjectRead(item: InboxItem) {
+        if (item.unreadCount <= 0) return
+        val row = item.activityObject ?: return
+        val previous = _state.value
+        val snapshot = previous.snapshot ?: return
+        val serverId = previous.ownerServerId ?: snapshot.server.id.value
+        synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item), item) }
+        val retained = _state.value
+        val retainedSnapshot = retained.snapshot ?: return
+        val overlayOwner = overlayOwner(retained)
+        val readGenerations = rememberUnreadCleared(overlayOwner, listOf(item))
+        val keepsRow = retained.keepsReadRow(item.key)
+        reduceState(
+            SharedActivityIntent.MarkRead(item),
+            retained.copy(
+                snapshot =
+                    retainedSnapshot.copy(
+                        items =
+                            if (keepsRow) {
+                                retainedSnapshot.items.map { existing ->
+                                    if (existing.key == item.key) existing.copy(unreadCount = 0, hasMention = false) else existing
+                                }
+                            } else {
+                                retainedSnapshot.items.filterNot { it.key == item.key }
+                            },
+                        objectCounts = retainedSnapshot.objectCounts?.withoutUnreadRow(item, retained.selectedFilter),
+                    ),
+                errorCode = null,
+            ),
+        )
+        scope.launch {
+            withOverlaySettlement(readOverlay, overlayOwner, readGenerations) {
+                val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Read, row)
+                if (result !is DataResult.Content) {
+                    readOverlay.forgetAll(overlayOwner, readGenerations)
+                    onUnreadCountsChanged()
+                    refreshAfterFailure(previous, "activity_object_read_failed")
+                } else {
+                    readOverlay.confirmAll(overlayOwner, readGenerations)
+                    onUnreadCountsChanged()
+                }
+            }
+        }
+    }
+
+    /**
+     * Unfollow an object (Artifacts `DELETE /api/artifacts/:id/subscription`). The panel sends it only
+     * once its Undo toast has ended; the row then says it is no longer followed.
+     */
+    private fun unfollowObject(item: InboxItem) {
+        val row = item.activityObject ?: return
+        val current = _state.value
+        val serverId = current.ownerServerId ?: current.snapshot?.server?.id?.value ?: return
+        scope.launch {
+            val result = activityObjectsRepository?.unfollow(serverId, row)
+            if (result !is DataResult.Content) {
+                diagnosticsLogger("activity_object_unfollow result=failed key=${item.key}")
+                return@launch
+            }
+            val latest = _state.value
+            val snapshot = latest.snapshot ?: return@launch
+            reduceState(
+                SharedActivityIntent.UnfollowObject(item),
+                latest.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items =
+                                snapshot.items.map { existing ->
+                                    if (existing.key != item.key) {
+                                        existing
+                                    } else {
+                                        existing.copy(isFollowing = false, activityObject = existing.activityObject?.copy(isFollowing = false))
+                                    }
+                                },
+                        ),
+                ),
+            )
+        }
+    }
+
+    private fun removeObjectRowOptimistically(item: InboxItem) {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        reduceState(
+            SharedActivityIntent.MarkDone(item),
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = snapshot.items.filterNot { it.key == item.key },
+                        objectCounts =
+                            snapshot.objectCounts?.let { counts ->
+                                val unread = item.unreadCount > 0
+                                counts.copy(
+                                    objectUnreadCount = (counts.objectUnreadCount - if (unread) 1 else 0).coerceAtLeast(0),
+                                    objectMentionUnreadCount =
+                                        (counts.objectMentionUnreadCount - if (unread && item.hasMention) 1 else 0).coerceAtLeast(0),
+                                    objectCount = (counts.objectCount - 1).coerceAtLeast(0),
+                                )
+                            },
+                    ),
+                errorCode = null,
+                retainedReadRowKeys = current.retainedReadRowKeys - item.key,
+            ),
+        )
+    }
+
+    /**
      * Apply an Activity thread follow mutation through the existing shared
      * thread transport.  The optimistic projection is intentionally limited
      * to the server-owned boolean and attention clearing; it never invents
@@ -3490,6 +3649,18 @@ private data class ActivityReconcileResult(
     val removedDoneRows: Int = 0
 )
 
+/** The counts once [item], unread, is read: it leaves every unread count (all filters list it under `objectCount` when unread-only). */
+internal fun ActivityObjectCounts.withoutUnreadRow(item: InboxItem, filter: InboxFilter): ActivityObjectCounts =
+    if (item.unreadCount <= 0) {
+        this
+    } else {
+        copy(
+            objectUnreadCount = (objectUnreadCount - 1).coerceAtLeast(0),
+            objectMentionUnreadCount = (objectMentionUnreadCount - if (item.hasMention) 1 else 0).coerceAtLeast(0),
+            objectCount = if (filter == InboxFilter.Unread) (objectCount - 1).coerceAtLeast(0) else objectCount,
+        )
+    }
+
 internal fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
     if (size <= 1) {
         this
@@ -3679,6 +3850,10 @@ sealed interface SharedActivityIntent {
      * Retained rows of those channels, their threads, or threads under them leave at once.
      */
     data class ChannelAccessLost(val channelIds: Set<String>) : SharedActivityIntent
+    /** Workspace Artifacts: undo an object row's Done (`POST /api/objects/activity/undone`). */
+    data class UndoObjectDone(val item: InboxItem) : SharedActivityIntent
+    /** Workspace Artifacts: stop following the row's object (sent after its Undo toast ends). */
+    data class UnfollowObject(val item: InboxItem) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -3712,6 +3887,8 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.SurfaceHidden -> "surface_hidden"
         is SharedActivityIntent.RowOpened -> "row_opened"
         is SharedActivityIntent.ChannelAccessLost -> "channel_access_lost"
+        is SharedActivityIntent.UndoObjectDone -> "undo_object_done"
+        is SharedActivityIntent.UnfollowObject -> "unfollow_object"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -3727,7 +3904,9 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptPrediction,
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
+        is SharedActivityIntent.UndoObjectDone,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
+        is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ServerSelected,
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,

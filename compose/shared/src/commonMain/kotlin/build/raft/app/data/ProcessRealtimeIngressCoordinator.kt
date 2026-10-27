@@ -11,6 +11,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
+import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.optLong
@@ -255,5 +256,6 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerDeleted -> serverId
         is ServerPlanUpdated -> serverId
         is ServerFeaturesChanged -> serverId
+        is ActivityChanged -> serverId
         else -> null
     }

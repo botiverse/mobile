@@ -110,6 +110,18 @@ class SharedArtifactSummaryStore internal constructor(
         }
     }
 
+    /**
+     * Expires [serverId]'s answers (`activity:changed`): still shown, but the next [request] for them
+     * asks again.
+     */
+    fun invalidateServer(serverId: String) {
+        mutableState.update { state ->
+            val prefix = "$serverId\u0000"
+            if (state.entries.keys.none { it.startsWith(prefix) }) return@update state
+            state.copy(entries = state.entries.mapValues { (key, entry) -> if (key.startsWith(prefix)) entry.copy(expiresAtMillis = Long.MIN_VALUE) else entry })
+        }
+    }
+
     /** Drops every answer (sign-out, account or environment switch). An answer on its way is not kept. */
     fun clearAll() {
         synchronized(lock) {

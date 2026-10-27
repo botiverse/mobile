@@ -3271,4 +3271,15 @@
     <string name="artifacts_scope_server">サーバー全体</string>
     <string name="artifacts_scope_public">公開</string>
     <string name="artifacts_home_dm">%1$s さんとのダイレクトメッセージ</string>
+    <string name="artifacts_activity_mentioned_you">%1$s があなたをメンションしました</string>
+    <string name="artifacts_activity_commented">%1$s がコメントしました</string>
+    <string name="artifacts_activity_edited_comment">%1$s がコメントを編集しました</string>
+    <string name="artifacts_activity_published_version">%1$s が v%2$d を公開しました</string>
+    <string name="artifacts_activity_published">%1$s が新しいバージョンを公開しました</string>
+    <string name="artifacts_activity_updated">%1$s が更新しました</string>
+    <string name="artifacts_activity_someone">誰か</string>
+    <string name="artifacts_activity_untitled">無題の Artifact</string>
+    <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_action_unfollow_artifact">フォロー解除</string>
+    <string name="activity_unfollowed_artifact">%1$s のフォローを解除しました</string>
 </resources>

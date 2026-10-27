@@ -3271,4 +3271,15 @@
     <string name="artifacts_scope_server">整个 server</string>
     <string name="artifacts_scope_public">公开</string>
     <string name="artifacts_home_dm">与 %1$s 的私信</string>
+    <string name="artifacts_activity_mentioned_you">%1$s 提到了你</string>
+    <string name="artifacts_activity_commented">%1$s 发表了评论</string>
+    <string name="artifacts_activity_edited_comment">%1$s 编辑了评论</string>
+    <string name="artifacts_activity_published_version">%1$s 发布了 v%2$d</string>
+    <string name="artifacts_activity_published">%1$s 发布了新版本</string>
+    <string name="artifacts_activity_updated">%1$s 有更新</string>
+    <string name="artifacts_activity_someone">有人</string>
+    <string name="artifacts_activity_untitled">未命名的 Artifact</string>
+    <string name="activity_list_object_home">· %1$s</string>
+    <string name="activity_action_unfollow_artifact">取消关注</string>
+    <string name="activity_unfollowed_artifact">已取消关注 %1$s</string>
 </resources>
