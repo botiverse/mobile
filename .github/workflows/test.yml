@@ -712,7 +712,6 @@ jobs:
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
-            local-image-sampled-decode-instrumentation.txt
             adaptive-pane-host-instrumentation.txt
             qa-session-bootstrap-inbox-instrumentation.txt
             composed-character-boundary-instrumentation.txt
