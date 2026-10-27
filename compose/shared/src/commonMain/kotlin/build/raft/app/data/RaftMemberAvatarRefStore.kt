@@ -19,7 +19,8 @@ import kotlinx.serialization.json.Json
  *
  * Only references are stored, never image bytes or profile details. Entries are replaced by every
  * authoritative load (a member whose authoritative avatar resolves to nothing is removed), and the
- * whole family is wiped with the auth session ([clearAll]).
+ * whole family is still wiped on sign-out ([clearAll], from [AccountLocalData.onSignOut]): unlike the
+ * other per-account copies its key is the server only, so it is not kept across accounts.
  *
  * Reads are synchronous (the resolver is consulted during composition); each server's map is read
  * from the preference store once per process and kept in memory.
@@ -35,7 +36,7 @@ internal class RaftMemberAvatarRefStore(
      * The stored reference, or null. [currentOwnerKey] is the current `environment|account` owner of
      * [serverId] when known: a page written by a different owner is never read. While the owner is
      * not resolved yet (cold start before the auth context is published) the page of the last
-     * owner is used; it is wiped with the auth session, so it is never another account's.
+     * owner is used; sign-out wipes it ([AccountLocalData.onSignOut]), so it is never another account's.
      */
     fun avatarWireValue(serverId: String?, memberId: String?, currentOwnerKey: String?): String? {
         val serverKey = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null

@@ -185,7 +185,7 @@ internal class PersistentSearchPersonalizationRepository(
 
     /**
      * Every scope of every account. Sign-out keeps them: scopes are keyed by (server, principal)
-     * (owner decision 2026-10-27, see AuthTerminalLocalDataReset).
+     * (owner decision 2026-10-27, see AccountLocalData).
      */
     suspend fun clearAll() {
         searchPersonalizationStorageMutex.withLock {

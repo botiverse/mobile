@@ -30,7 +30,7 @@ import kotlin.concurrent.Volatile
  *    older epoch is dropped.
  * 2. Lost access evicts: [evictServer] (removed from the server / server deleted), member removal
  *    rewrites the row without the member ([removeMember]), [clearAll] clears every row (sign-out keeps them: rows are keyed by
- *    environment + account (owner decision 2026-10-27, see AuthTerminalLocalDataReset)).
+ *    environment + account (owner decision 2026-10-27, see AccountLocalData)).
  * 3. Capped: at most [maxMembersPerServer] members per roster, [maxServersPerAccount] rosters per
  *    environment + account and [maxServers] in total, least recently written first.
  */

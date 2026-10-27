@@ -376,6 +376,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
     private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
+    private val canonicalMessageV2GenerationEngine: CanonicalMessageV2GenerationEngine,
     val localDataStore: ComposeLocalDataStore,
     internal val avatarCacheMetadataStore: RaftAvatarCacheMetadataStore,
     internal val avatarCacheCoordinator: RaftAvatarCacheCoordinator,
@@ -428,7 +429,7 @@ internal class RaftSharedStoreProvider private constructor(
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
-    /** Last-known workspace notification preference per (user, server); cleared with the other copies. */
+    /** Last-known workspace notification preference per (user, server); kept on sign-out, dropped with the server. */
     val settingsServerNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(sharedPreferenceStore)
     private val searchPersonalizationRepository = PersistentSearchPersonalizationRepository(sharedPreferenceStore)
     private val homeRowHintPersistSlice =
@@ -528,11 +529,15 @@ internal class RaftSharedStoreProvider private constructor(
     /** Agent detail pages (data-layer plan step 5): memory-only, per-server LRU. */
     internal val agentDetailCache: RaftAgentDetailCache = RaftKeyedSnapshotCache()
 
-    /** Sign-out: in-memory state resets, the account's stored data stays (see the class). */
-    private val authTerminalLocalDataReset =
-        AuthTerminalLocalDataReset(
+    /** The account's local data on sign-out and on server-access loss (see the class). */
+    private val accountLocalData =
+        AccountLocalData(
             homeSavedStateCache = homeSavedStateCache,
             offlineResourceCache = offlineResourceCache,
+            homeRowHints = homeRowHintPersistStorage,
+            activityFirstPages = SharedActivityPersistStorage(sharedPreferenceStore),
+            notificationPreferences = settingsServerNotificationLastKnownStore,
+            messageEngine = canonicalMessageV2GenerationEngine,
             memberAvatarRefStore = memberAvatarRefStore,
             jointConnectionsCache = { jointConnectionsCache },
             agentDetailCache = agentDetailCache,
@@ -543,6 +548,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
             },
+            logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
         )
 
     /**
@@ -1132,8 +1138,8 @@ internal class RaftSharedStoreProvider private constructor(
             val committed =
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     // Sign-out keeps the account's stored data (keyed by account; owner decision
-                    // 2026-10-27) and resets every in-memory copy: see AuthTerminalLocalDataReset.
-                    authTerminalLocalDataReset.run()
+                    // 2026-10-27) and resets every in-memory copy: see AccountLocalData.
+                    accountLocalData.onSignOut()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -1198,12 +1204,15 @@ internal class RaftSharedStoreProvider private constructor(
                 if (allComputersStores().isEmpty()) computersDurableStore.evictServer(grant.serverId, lostAccountId)
                 jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
-                offlineResourceCache.wipeServer(grant.serverId, lostAccountId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
-                threadDurableAccessEvictor.evictServerPartition(
-                    grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                // Offline resources, Home hints, Activity pages, notification preferences, reply windows
+                // and the stored messages of that server (they outlive sign-out, so they must go here).
+                accountLocalData.onServerAccessLost(
+                    serverId = grant.serverId,
+                    accountId = lostAccountId,
+                    messagePartition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
                 )
             },
             // Task #168: the durable message canary records which connection has its member rooms joined;
@@ -3123,6 +3132,7 @@ internal class RaftSharedStoreProvider private constructor(
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,
                 canonicalMessageV2Canary = canonicalMessageV2Canary,
+                canonicalMessageV2GenerationEngine = canonicalMessageV2GenerationEngine,
                 localDataStore = localDataStore,
                 avatarCacheMetadataStore = avatarCacheMetadataStore,
                 avatarCacheCoordinator = avatarCacheCoordinator,

@@ -102,7 +102,7 @@ class SharedHomeSavedListOfflineTest {
         cache.clear()
         assertEquals(listOf("saved:message-1"), device.storedKeys())
 
-        // wipeAll (sign-out no longer calls it: AuthTerminalLocalDataResetTest) takes the Saved list with it.
+        // wipeAll (sign-out no longer calls it: AccountLocalDataTest) takes the Saved list with it.
         device.offline.wipeAllAsync()
         runCurrent()
         assertNull(device.storedKeys())

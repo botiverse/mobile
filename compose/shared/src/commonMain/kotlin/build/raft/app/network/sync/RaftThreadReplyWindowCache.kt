@@ -17,6 +17,10 @@ internal interface RaftThreadReplyWindowStorage {
     suspend fun write(pageKey: String, value: String)
 
     suspend fun clearAll()
+
+    suspend fun pageKeys(): List<String>
+
+    suspend fun delete(pageKeys: List<String>)
 }
 
 /** One cached latest-replies window of a parent message. */
@@ -52,7 +56,7 @@ private data class RaftStoredThreadReplyWindow(
  * Reads are memoized per page for the process; writes are write-behind on [scope] and always
  * persist the merged (disk + memory) page so a partial in-memory view never clobbers older
  * entries. The principal is part of the page key, so on sign-out only the memory
- * is dropped ([clearMemory]) and the same account reads its pages again (owner decision 2026-10-27, see AuthTerminalLocalDataReset).
+ * is dropped ([clearMemory]) and the same account reads its pages again (owner decision 2026-10-27, see AccountLocalData).
  */
 internal class RaftThreadReplyWindowCache(
     private val storage: RaftThreadReplyWindowStorage,
@@ -141,6 +145,28 @@ internal class RaftThreadReplyWindowCache(
         }
     }
 
+    /**
+     * Lost access to [serverId]: drops that server's pages ([principalId] null = of every principal) from
+     * memory and disk; the other servers' pages stay. Page keys start with `server␟principal␟`.
+     */
+    suspend fun dropServer(serverId: String, principalId: String? = null) {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        val principal = principalId?.trim()?.takeIf { it.isNotEmpty() }
+        fun matches(pageKey: String): Boolean {
+            val parts = pageKey.split(PageKeySeparator)
+            return parts.size >= 2 && parts[0] == server && (principal == null || parts[1] == principal)
+        }
+        synchronized(lock) {
+            pages.keys.filter(::matches).forEach { pages.remove(it) }
+            loadedPageKeys.removeAll(::matches)
+            dirtyPageKeys.removeAll(::matches)
+        }
+        ioMutex.withLock {
+            wipeDiskIfPendingLocked()
+            runCatchingStorage("drop_server") { storage.delete(storage.pageKeys().filter(::matches)) }
+        }
+    }
+
     /** Must run under [ioMutex]: every disk read or write first completes a pending wipe. */
     private suspend fun wipeDiskIfPendingLocked() {
         val pending = synchronized(lock) { diskWipePending.also { diskWipePending = false } }
@@ -218,6 +244,9 @@ internal class RaftThreadReplyWindowCache(
 
     internal companion object {
         const val DefaultMaxParentsPerPage = 64
+
+        /** [ThreadRepliesPageIdentity.key]'s separator. */
+        const val PageKeySeparator = "\u001f"
         private val StorageJson = Json { ignoreUnknownKeys = true }
     }
 }

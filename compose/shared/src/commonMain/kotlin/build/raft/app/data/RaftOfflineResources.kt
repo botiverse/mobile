@@ -28,7 +28,7 @@ import kotlin.concurrent.Volatile
  * One process-wide [RaftOfflineResourceCache] owns every resource's durable rows, in ONE
  * `localSnapshotEntity` scope, so:
  * - sign-out / account switch keeps every row (rows are keyed by account, so only the same account
- *   reads them again) and only fences in-flight writes ([fenceInFlightWrites]) (owner decision 2026-10-27, see AuthTerminalLocalDataReset);
+ *   reads them again) and only fences in-flight writes ([fenceInFlightWrites]) (owner decision 2026-10-27, see AccountLocalData);
  *   [wipeAll] removes every resource with one call, rows of a resource this process never
  *   instantiated included;
  * - lost access to a server wipes that server's rows of every resource ([wipeServer]).

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
  *
  * Lives in the last-known copy family ([RaftLastCountsPersistStorage]): keys carry `:user:<id>:server:<id>`,
  * other users' copies are never touched, and sign-out keeps them so the same user sees the value
- * again (owner decision 2026-10-27, see AuthTerminalLocalDataReset). Unlike the Home/Activity copies the value is a
+ * again (owner decision 2026-10-27, see AccountLocalData). Unlike the Home/Activity copies the value is a
  * setting, not a feed, so it does not age out; only the servers bound is kept.
  */
 class SettingsServerNotificationLastKnownStore(
@@ -51,6 +51,11 @@ class SettingsServerNotificationLastKnownStore(
                 )
             )
         )
+    }
+
+    /** Lost access to [serverId]: that server's copies ([userId] null = of every user). */
+    fun dropServer(serverId: String, userId: String? = null) {
+        storage.dropServer(serverId, userId)
     }
 
     /** Removes every copy written on this device. */
