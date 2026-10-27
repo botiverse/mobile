@@ -5,9 +5,11 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Two constraints remain: check_no_conditional_interaction_state, born from the
-1.15.0 release crash on launch, and check_native_apple_authentication_services
-(task #82: Swift-side Sign in with Apple, which no Android or JVM test covers).
+Three constraints remain: check_no_conditional_interaction_state, born from the
+1.15.0 release crash on launch, check_native_apple_authentication_services
+(task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
+and check_no_production_run_blocking (#3823: a main-thread runBlocking on the
+auth-session lock deadlocked the app; a hang no unit test can catch reliably).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -205,6 +207,153 @@ def check_native_apple_authentication_services(
         )
 
 
+# #3823: `runBlocking { authStore.readSession() }` on the main thread parked it forever.
+# kotlinx Mutex hands the lock to the next queued waiter and resumes it on that waiter's
+# dispatcher; when the waiter is a Main coroutine, the blocked main thread can never run it,
+# so the lock is never released. Any runBlocking on a thread that also runs coroutines is the
+# same trap, so production source sets may not call it except at the reviewed sites below.
+RUN_BLOCKING_SCAN_ROOT = "compose"
+# Gradle build logic (buildSrc) runs at build time, not in the app.
+RUN_BLOCKING_EXCLUDED_PREFIXES = ("compose/buildSrc/",)
+RUN_BLOCKING_CALL = re.compile(r"\brunBlocking\b\s*(?:<[^>]*>\s*)?[({]")
+
+# (file, text of the calling line, reason). Each entry must match exactly one call site, so a
+# second runBlocking in an allowlisted file is still a violation, and a stale entry fails too.
+RUN_BLOCKING_ALLOWLIST = (
+    (
+        "compose/androidApp/src/main/java/build/raft/app/RaftApplication.kt",
+        "runBlocking {",
+        "Application.onCreate before the main looper runs any message: no Main coroutine can be "
+        "queued on the auth-session lock yet (see the comment at the call site)",
+    ),
+    (
+        "compose/androidApp/src/main/java/build/raft/app/core/data/realtime/SessionRealtimeRepository.kt",
+        "runBlocking {",
+        "Socket.IO auth-refresh provider; runs only on the dedicated slock-realtime-auth-refresh thread",
+    ),
+    (
+        "compose/desktopApp/src/main/kotlin/build/raft/app/desktop/realtime/SessionRealtimeRepository.kt",
+        "runBlocking {",
+        "Socket.IO auth-refresh provider; runs only on the dedicated slock-realtime-auth-refresh thread",
+    ),
+    (
+        "compose/androidApp/src/main/java/build/raft/app/shared/RaftReleaseNotesDocumentCache.kt",
+        "runBlocking {",
+        "release-notes download; runs on WebView's shouldInterceptRequest thread or Dispatchers.IO, "
+        "never main, and takes no app lock",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftSqlDatabase.kt",
+        "runBlocking {",
+        "inside SQLDelight's thread-confined transaction callback, entered via runOffStoreDispatcher; "
+        "the block is synchronous SQL",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "runBlocking { getString(environment, stringRes) }",
+        "Compose resources string lookup, as CMP's own stringResource does; cached catalog read, "
+        "no app lock",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/resources/RaftStringDesc.kt",
+        "runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }",
+        "Compose resources formatted string lookup, as CMP's own stringResource does; cached "
+        "catalog read, no app lock",
+    ),
+)
+
+
+def _is_production_kotlin(rel: str) -> bool:
+    # Only */src trees are scanned, so Gradle build/ outputs never reach here (and the package
+    # path build/raft/... must not be mistaken for one).
+    if not rel.endswith(".kt"):
+        return False
+    if any(rel.startswith(prefix) for prefix in RUN_BLOCKING_EXCLUDED_PREFIXES):
+        return False
+    parts = rel.split("/")
+    if "src" not in parts:
+        return False
+    source_set = parts[parts.index("src") + 1] if parts.index("src") + 1 < len(parts) else ""
+    return "test" not in source_set.lower()
+
+
+def _run_blocking_call_sites(text: str) -> list[tuple[int, str]]:
+    sites: list[tuple[int, str]] = []
+    in_block_comment = False
+    for number, raw in enumerate(text.split("\n"), start=1):
+        line = raw
+        if in_block_comment:
+            end = line.find("*/")
+            if end < 0:
+                continue
+            line = line[end + 2 :]
+            in_block_comment = False
+        start = line.find("/*")
+        if start >= 0 and "*/" not in line[start:]:
+            in_block_comment = True
+            line = line[:start]
+        line = re.sub(r"/\*.*?\*/", "", line)
+        line = line.split("//", 1)[0]
+        if line.lstrip().startswith("import "):
+            continue
+        if RUN_BLOCKING_CALL.search(line):
+            sites.append((number, raw.strip()))
+    return sites
+
+
+def check_no_production_run_blocking(
+    sources: dict[str, str],
+    allowlist: tuple[tuple[str, str, str], ...] = RUN_BLOCKING_ALLOWLIST,
+) -> None:
+    """Incident #3823 (ANR, 1.15.4): runBlocking on the main thread waiting on the auth lock."""
+    for path, _pattern, reason in allowlist:
+        if not reason.strip():
+            raise Violation(f"runBlocking allowlist entry for {path} has no reason")
+    matched = [0] * len(allowlist)
+    for name in sorted(sources):
+        for line, code in _run_blocking_call_sites(sources[name]):
+            hits = [
+                index
+                for index, (path, pattern, _reason) in enumerate(allowlist)
+                if path == name and pattern in code
+            ]
+            if not hits:
+                raise Violation(
+                    f"runBlocking in production code: {name}:{line} `{code}`. Use a coroutine "
+                    "scope (lifecycleScope / viewModelScope / a provided scope) or suspend through "
+                    "to the caller; runBlocking on the main thread can deadlock on the "
+                    "auth-session lock, see #3823. A read of the session from synchronous host "
+                    "code can use KeyValueAuthSessionStore.readCommittedSessionSnapshot(). Only if "
+                    "this provably never runs on a thread that runs coroutines, add it to "
+                    "RUN_BLOCKING_ALLOWLIST in scripts/ci/check_source_constraints.py with the reason."
+                )
+            for index in hits:
+                matched[index] += 1
+    for (path, pattern, _reason), count in zip(allowlist, matched):
+        if count != 1:
+            raise Violation(
+                f"runBlocking allowlist entry {path} `{pattern}` matches {count} call sites; "
+                "each entry must match exactly one (remove a stale entry, or make it specific)"
+            )
+
+
+def _production_kotlin_sources(root: Path) -> dict[str, str]:
+    base = root / RUN_BLOCKING_SCAN_ROOT
+    if not base.is_dir():
+        raise Violation(f"runBlocking scan: missing source root {RUN_BLOCKING_SCAN_ROOT}")
+    sources: dict[str, str] = {}
+    for module_src in sorted(base.glob("*/src")) + sorted(base.glob("*/*/src")):
+        for path in sorted(module_src.rglob("*.kt")):
+            rel = str(path.relative_to(root))
+            if _is_production_kotlin(rel):
+                sources[rel] = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    if not any("/src/commonMain/" in name for name in sources) or not any(
+        "/androidApp/src/main/" in name for name in sources
+    ):
+        raise Violation("runBlocking scan never reached commonMain and androidApp/src/main")
+    return sources
+
+
 # task #256: a null agent-status resolution means Unknown, but the label-facing
 # resolver substitutes a placeholder built with Presence.Offline, whose colour maps
 # to StatusNeutralGray. Feeding that to a dot makes an unknown agent look offline.
@@ -241,6 +390,7 @@ def run(root: Path) -> None:
         entitlements=read(IOS_ENTITLEMENTS),
         xcode_project=read(IOS_XCODE_PROJECT),
     )
+    check_no_production_run_blocking(_production_kotlin_sources(root))
 
 
 def self_test() -> None:
@@ -380,6 +530,49 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit("self-test: task #82 native Apple checker accepted a violation")
 
+    if not _is_production_kotlin("compose/shared/src/commonMain/kotlin/A.kt") or not _is_production_kotlin(
+        "compose/androidApp/src/main/java/A.kt"
+    ):
+        raise SystemExit("self-test: runBlocking scan skipped a production source set")
+    for test_path in (
+        "compose/shared/src/commonTest/kotlin/A.kt",
+        "compose/androidApp/src/test/java/A.kt",
+        "compose/shared/src/androidUnitTest/kotlin/A.kt",
+        "compose/buildSrc/src/main/kotlin/A.kt",
+    ):
+        if _is_production_kotlin(test_path):
+            raise SystemExit(f"self-test: runBlocking scan included {test_path}")
+    allow = (("a.kt", "runBlocking { allowed() }", "dedicated background thread"),)
+    good_run_blocking = {
+        "a.kt": "import kotlinx.coroutines.runBlocking\nval x = runBlocking { allowed() }\n",
+        "b.kt": (
+            "// runBlocking { readSession() } deadlocked (#3823)\n"
+            "/**\n * Never call runBlocking { } here.\n */\n"
+            "/* runBlocking(Dispatchers.IO) { } */ val y = 1\n"
+            "val z = \"no runBlocking call\"\n"
+        ),
+    }
+    check_no_production_run_blocking(good_run_blocking, allow)
+    for bad_sources, bad_allow in (
+        ({**good_run_blocking, "c.kt": "val s = runBlocking { store.readSession() }"}, allow),
+        ({**good_run_blocking, "c.kt": "runBlocking(Dispatchers.IO) {\n    work()\n}"}, allow),
+        ({**good_run_blocking, "c.kt": "val v = runBlocking<Int> { 1 }"}, allow),
+        # Allowlisted file, second call site: still a violation.
+        ({"a.kt": good_run_blocking["a.kt"] + "val w = runBlocking { other() }\n"}, allow),
+        # Same pattern twice in the allowlisted file: the entry no longer pins one site.
+        ({"a.kt": good_run_blocking["a.kt"] + "val w = runBlocking { allowed() }\n"}, allow),
+        # Stale entry: the allowlisted call is gone.
+        ({"a.kt": "val x = 1\n"}, allow),
+        # An entry without a reason.
+        (good_run_blocking, (("a.kt", "runBlocking { allowed() }", " "),)),
+    ):
+        try:
+            check_no_production_run_blocking(bad_sources, bad_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: runBlocking checker accepted {bad_sources!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -395,7 +588,10 @@ def main(argv: list[str]) -> int:
     except Violation as violation:
         print(f"source-constraint violation: {violation}", file=sys.stderr)
         return 1
-    print("source constraints hold (1.15.0 conditional interaction state, task #82 native Apple)")
+    print(
+        "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
+        "#3823 no production runBlocking)"
+    )
     return 0
 
 

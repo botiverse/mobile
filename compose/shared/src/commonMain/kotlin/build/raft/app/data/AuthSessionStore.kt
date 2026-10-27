@@ -23,6 +23,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
+import kotlin.concurrent.Volatile
 
 const val RAFT_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
 const val RAFT_AUTH_SESSION_RECORD_KEY = "session"
@@ -939,7 +940,7 @@ class KeyValueAuthSessionStore(
                 encodedLength = encoded?.length,
                 decodeFailure = decodeFailure
             )
-        cachedSessionRecords[store] = record
+        publishSessionRecordLocked(record)
         return record to false
     }
 
@@ -949,22 +950,46 @@ class KeyValueAuthSessionStore(
     private fun writeSessionRecordLocked(session: StoredAuthSession) {
         val encoded = authSessionStoreJson.encodeToString(session)
         store.putString(RAFT_AUTH_SESSION_RECORD_KEY, encoded)
-        cachedSessionRecords[store] =
+        publishSessionRecordLocked(
             CachedAuthSessionRecord(
                 session = session,
                 encodedLength = encoded.length,
                 decodeFailure = null
             )
+        )
     }
 
     private fun clearSessionRecordLocked() {
         store.putString(RAFT_AUTH_SESSION_RECORD_KEY, null)
-        cachedSessionRecords[store] =
+        publishSessionRecordLocked(
             CachedAuthSessionRecord(
                 session = null,
                 encodedLength = null,
                 decodeFailure = null
             )
+        )
+    }
+
+    // Copy-on-write so [readCommittedSessionSnapshot] can read the map without the lock.
+    private fun publishSessionRecordLocked(record: CachedAuthSessionRecord) {
+        cachedSessionRecords = cachedSessionRecords + (store to record)
+    }
+
+    /**
+     * The last committed session, read WITHOUT the process-wide session lock.
+     *
+     * For synchronous host callers that may run on the main thread (Activity/BroadcastReceiver/
+     * Service callbacks, settings bridge, notification posting). `runBlocking { readSession() }`
+     * there can deadlock: kotlinx `Mutex` hands the lock to the next queued waiter and resumes it
+     * on that waiter's dispatcher, so when the waiter is a Main coroutine the blocked main thread
+     * never runs it and the lock is never released (#3823). This never suspends or waits: it
+     * returns the session as of the last completed write (a write in flight is not waited for).
+     * Anything that read-modify-writes the session must keep using the locked [readSession].
+     */
+    fun readCommittedSessionSnapshot(): StoredAuthSession? {
+        cachedSessionRecords[store]?.let { return it.session }
+        // Not loaded in this process yet: the store holds the last committed record.
+        return store.getString(RAFT_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
     }
 
     override suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot =
@@ -1494,7 +1519,10 @@ class KeyValueAuthSessionStore(
         // backs the same MMKV session record). This is the single serialization domain for all
         // session read-modify-writes — the fix for the #466 cross-subsystem lost-update.
         private val storeMutex = Mutex()
-        private val cachedSessionRecords = mutableMapOf<RaftKeyValueStore, CachedAuthSessionRecord>()
+        // Replaced (never mutated) under storeMutex and published @Volatile, so
+        // readCommittedSessionSnapshot can read it lock-free.
+        @Volatile
+        private var cachedSessionRecords: Map<RaftKeyValueStore, CachedAuthSessionRecord> = emptyMap()
 
         // Process-wide shared event bus + generation counter (#466 gate: cross-instance
         // notification). generation is assigned INSIDE storeMutex; events emit AFTER the lock,

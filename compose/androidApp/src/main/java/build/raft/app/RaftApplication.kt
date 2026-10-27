@@ -81,6 +81,14 @@ class RaftApplication : Application() {
         AndroidAppScopeRealtimeOwner.install(this)
         AndroidPushRegistration.start(this)
         AndroidRealtimeKeepAliveController.installNoPlayServicesFallback(this)
+        // The one main-thread `runBlocking` on the auth-session lock that stays (allowlisted in
+        // scripts/ci/check_source_constraints.py). The #3823 deadlock needs a Main-dispatched
+        // coroutine already queued on the lock; here the main looper has not run a single message
+        // yet (no Activity, Service, receiver or composition exists), and nothing installed above
+        // starts a Main.immediate coroutine that reads the session, so a holder on another thread
+        // releases to this caller's event loop. It stays synchronous on purpose: the cloned-install
+        // id must be discarded and the diagnostics user context set before HandsCrash and any
+        // Activity start. Do not add Main/Main.immediate session readers above this line.
         runCatching {
             runBlocking {
                 val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@RaftApplication))
