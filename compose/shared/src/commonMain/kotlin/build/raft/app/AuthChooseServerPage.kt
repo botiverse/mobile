@@ -11,14 +11,12 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.BridgeRaftAvatarNativeCache
-import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
@@ -142,10 +140,7 @@ private fun AuthChooseServerPageContent() {
                 authDataSource = authDataSource,
                 skipInitialLoad = skipInitialLoad,
                 onReady = { readySession ->
-                    val multiShellHostEnabled =
-                        raftPlatformSupportsMultiShellHost() &&
-                            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                                .readMultiShellHostEnabledSync()
+                    val multiShellHostEnabled = raftMultiShellHostEnabled()
                     val opensDocumentShell =
                         isMultiShellCrossServerSelection(
                             sourceStoreScope = sourceStoreScope,
