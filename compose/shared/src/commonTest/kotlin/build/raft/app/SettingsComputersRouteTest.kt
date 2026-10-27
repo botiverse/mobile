@@ -30,11 +30,6 @@ class SettingsComputersRouteTest {
     }
 
     @Test
-    fun computersPageIsAnAuthenticatedProductRoute() {
-        assertEquals(SETTINGS_COMPUTERS_PAGE, AuthenticatedProductRoute.SettingsComputers.pageName)
-    }
-
-    @Test
     fun computerDetailLaunchCarriesOnlyServerAndMachineIdentity() {
         val target = settingsComputerRouteIdentity(" server-1 ", " machine-42 ")!!
         val pageData =

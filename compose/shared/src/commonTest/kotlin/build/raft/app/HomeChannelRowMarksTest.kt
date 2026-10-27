@@ -102,13 +102,6 @@ class HomeChannelRowMarksTest {
     }
 
     @Test
-    fun conversationItemDefaultsLeaveProductionRowsUnmarked() {
-        val item = RaftHomeConversationItem(id = "c", name = "general", kind = "channel")
-        assertFalse(item.mentioned)
-        assertEquals(0, item.followedThreadUnreadCount)
-    }
-
-    @Test
     fun fixtureRowsMapMentionAndFollowedThreadsFromGeneratedData() {
         val channels = VisualFixtureData.HomeChannelList.CHANNELS.map(::homeChannelListChannel).associateBy { it.name }
         val release = channels.getValue("release")

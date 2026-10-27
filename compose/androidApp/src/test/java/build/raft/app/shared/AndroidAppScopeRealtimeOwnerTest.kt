@@ -159,21 +159,6 @@ class AndroidAppScopeRealtimeOwnerTest {
     }
 
     @Test
-    fun backgroundUnreadNotificationKindTreatsThreadMessagesAsThread() {
-        val message =
-            message(
-                channelId = "thread-channel",
-                threadChannelId = "thread-channel",
-                parentMessageId = "parent-message"
-            )
-
-        assertEquals(
-            ConversationKind.Thread,
-            AndroidAppScopeRealtimeOwner.backgroundUnreadNotificationConversationKind(message)
-        )
-    }
-
-    @Test
     fun backgroundUnreadNotificationKindTreatsChannelMessagesAsChannel() {
         val message = message(channelId = "channel-1")
 

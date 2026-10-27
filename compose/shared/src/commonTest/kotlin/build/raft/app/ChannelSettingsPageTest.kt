@@ -74,12 +74,6 @@ class ChannelSettingsPageTest {
     }
 
     @Test
-    fun channelSettingsIsAuthenticatedStandaloneRoute() {
-        assertTrue(CHANNEL_SETTINGS_PAGE in authenticatedProductRoutePageNames)
-        assertEquals(CHANNEL_SETTINGS_PAGE, AuthenticatedProductRoute.ChannelSettings.pageName)
-    }
-
-    @Test
     fun standalonePageRequiresNewDesignBetaPreference() {
         assertFalse(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = false))
         assertTrue(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = true))

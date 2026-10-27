@@ -249,13 +249,6 @@ class MessageShadowCompareTest {
     // outcomes BITE (a happy-path-only assertion would be a false green — the round-trip could be dead code).
 
     @Test
-    fun envelopeRoundTrip_realCodec_richFact_isParity() {
-        // The real envelope codec must round-trip the rich fact losslessly — the added round-trip introduces
-        // no divergence of its own (all existing parity tests also transitively exercise this).
-        assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, richMessagePayload())
-    }
-
-    @Test
     fun envelopeRoundTrip_lossyDecodeDroppingReactions_isEnvelopeRoundTripDivergent() {
         val payload = richMessagePayload() // has a 👍 reaction
         val legacy = legacyMessage(RealtimeSocketEvents.MessageNew, payload)

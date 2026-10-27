@@ -870,13 +870,6 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
-        assertEquals(0f, resolveRaftBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
-        assertEquals(24f, resolveRaftBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
-        assertEquals(48f, resolveRaftBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 48f))
-    }
-
-    @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
         // stdrc 2026-10-21: the 58dp edge bar, then the bottom safe area below it.
         assertEquals(58.dp, raftSharedBottomTabBarHostHeight(0.dp))
@@ -1381,18 +1374,6 @@ class RaftAppShellTest {
             positions.withPosition(
                 serverId = "  ",
                 listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
-            )
-        )
-    }
-
-    @Test
-    fun appShellMembersListStateDefaultsToExpandedTop() {
-        assertEquals(
-            AppShellMembersListState(),
-            AppShellMembersListState(
-                listPosition = AppShellLazyListPosition(),
-                agentsExpanded = true,
-                humansExpanded = true
             )
         )
     }

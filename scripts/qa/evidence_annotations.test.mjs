@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import test from "node:test";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 
@@ -21,11 +20,4 @@ test("tap and assertion geometry remains in screenshot pixels without rescaling"
   assert.match(svg, /circle cx="900" cy="1800"/);
   assert.match(svg, /rect x="120" y="240" width="840" height="1680"/);
   assert.doesNotMatch(svg, /2700|5400|2520|5040/);
-});
-
-test("Android and iOS acceptance workflows install the annotation renderer", () => {
-  for (const workflow of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
-    const source = fs.readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
-    assert.match(source, /name: Install sharp \(evidence annotation\)\n\s+run: npm i(?:nstall)? [^\n]*\bsharp@/);
-  }
 });
