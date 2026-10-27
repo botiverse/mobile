@@ -103,8 +103,37 @@ class TaskConversationHeaderStoreTest {
         assertTrue(resolved.reduce(TaskConversationHeaderIntent.TaskDeleted(TaskId("task-1"), null)).removed)
         // Before the task is known, the deleted conversation id still names this page.
         assertTrue(start.reduce(TaskConversationHeaderIntent.TaskDeleted(TaskId("task-9"), ChannelId("conv-1"))).removed)
-        assertTrue(resolved.reduce(TaskConversationHeaderIntent.TaskMissing).removed)
-        assertFalse(start.reduce(TaskConversationHeaderIntent.TaskMissing).removed)
+    }
+
+    @Test
+    fun aTaskThatLeavesAStatusFilteredListIsNotDeleted() {
+        // Tenny #3786: the channel list may show open tasks only; moving the task to Done or Closed
+        // drops it from that list. The page keeps the last copy and is not "deleted".
+        val ref = TaskConversationChannelRef(ChannelId("conv-1"), ChannelId("channel-1"), TaskId("task-1"))
+        val seen =
+            TaskConversationHeaderState(ChannelId("conv-1"))
+                .reduce(TaskConversationHeaderIntent.RefLoaded(DataResult.Content(ref)))
+                .reduce(TaskConversationHeaderIntent.TaskSeen(task(TaskStatus.InProgress)))
+        assertEquals(TaskStatus.InProgress, seen.barTask(listed = task(TaskStatus.InProgress))?.status)
+        listOf(TaskStatus.Done, TaskStatus.Closed).forEach { status ->
+            // `task:updated` (or the write's answer) carries the new status; the filtered list no longer has it.
+            val moved = seen.reduce(TaskConversationHeaderIntent.TaskSeen(task(status)))
+            assertFalse(moved.removed, "status=$status")
+            assertEquals(status, moved.barTask(listed = null)?.status, "status=$status")
+            // Even with no update seen, a list without the task is not a deletion.
+            assertFalse(seen.removed)
+            assertEquals(TaskStatus.InProgress, seen.barTask(listed = null)?.status)
+        }
+        // Another task's copy is not this page's; only `task:deleted` removes the bar.
+        assertNull(
+            TaskConversationHeaderState(ChannelId("conv-1"))
+                .reduce(TaskConversationHeaderIntent.RefLoaded(DataResult.Content(ref.copy(taskId = TaskId("task-2")))))
+                .reduce(TaskConversationHeaderIntent.TaskSeen(task(TaskStatus.Done)))
+                .lastSeenTask,
+        )
+        val deleted = seen.reduce(TaskConversationHeaderIntent.TaskDeleted(TaskId("task-1"), null))
+        assertTrue(deleted.removed)
+        assertNull(deleted.barTask(listed = task(TaskStatus.InProgress)))
     }
 
     @Test

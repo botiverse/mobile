@@ -90,11 +90,24 @@ internal data class TaskConversationHeaderState(
      */
     val followOverride: Boolean? = null,
     val followPending: Boolean = false,
-    /** The task was deleted (`task:deleted`, or it left its channel's loaded task list). */
+    /**
+     * The task as this page last saw it (its channel's projection or a `task:updated`). The channel
+     * list can be status-filtered (the board's open tasks), so a task moved to Done or Closed may
+     * drop out of it; the bar keeps showing this copy instead.
+     */
+    val lastSeenTask: TaskSummary? = null,
+    /**
+     * The task was deleted: only a `task:deleted` for it says so. Leaving the channel's (possibly
+     * filtered) task list is not a deletion.
+     */
     val removed: Boolean = false,
 ) {
     /** The reader follows the conversation: this page's override, else the DTO's value (null = unknown). */
     fun followed(taskFollowed: Boolean?): Boolean? = followOverride ?: taskFollowed
+
+    /** What the bar shows: the task from its channel's list, else the last copy seen; none once deleted. */
+    fun barTask(listed: TaskSummary?): TaskSummary? =
+        if (removed) null else listed?.takeIf { it.id == ref?.taskId } ?: lastSeenTask
 }
 
 internal sealed interface TaskConversationHeaderIntent {
@@ -107,8 +120,8 @@ internal sealed interface TaskConversationHeaderIntent {
     /** `task:deleted` for [taskId] (and, from a v2 server, the conversation it deleted). */
     data class TaskDeleted(val taskId: TaskId, val conversationChannelId: ChannelId?) : TaskConversationHeaderIntent
 
-    /** The task's channel list loaded without the task: it is gone. */
-    data object TaskMissing : TaskConversationHeaderIntent
+    /** This page's task as its channel's list or a `task:updated` has it now. */
+    data class TaskSeen(val task: TaskSummary) : TaskConversationHeaderIntent
 }
 
 internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIntent): TaskConversationHeaderState =
@@ -136,7 +149,12 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
                 ref?.taskId == intent.taskId || intent.conversationChannelId == conversationChannelId
             if (matches) copy(removed = true) else this
         }
-        TaskConversationHeaderIntent.TaskMissing -> if (ref != null) copy(removed = true) else this
+        is TaskConversationHeaderIntent.TaskSeen -> {
+            val seen = intent.task
+            val previous = lastSeenTask
+            val older = previous?.revision != null && seen.revision != null && seen.revision < previous.revision
+            if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = seen)
+        }
     }
 
 internal sealed interface TaskConversationHeaderEvent {
@@ -221,8 +239,8 @@ internal class TaskConversationHeaderViewModel(
         dispatch(TaskConversationHeaderIntent.TaskDeleted(taskId, conversationChannelId))
     }
 
-    fun onTaskMissing() {
-        dispatch(TaskConversationHeaderIntent.TaskMissing)
+    fun onTaskSeen(task: TaskSummary) {
+        dispatch(TaskConversationHeaderIntent.TaskSeen(task))
     }
 }
 

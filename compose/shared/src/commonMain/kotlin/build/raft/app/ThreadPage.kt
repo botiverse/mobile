@@ -8031,23 +8031,19 @@ private fun SharedThreadRouteContentContent(
         taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
     }
     val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
-    val taskConversationTask =
+    val taskConversationListedTask =
         taskConversationHeaderState?.ref?.taskId?.let { taskId ->
             (taskConversationTasksState?.loadState as? ScreenLoadState.Content)
                 ?.data
                 ?.tasks
                 ?.firstOrNull { it.id == taskId }
         }
-    // A task seen on this page that then leaves its channel's list was deleted (the shared projection
-    // drops it on `task:deleted`); one never seen (a stale list) is not.
-    var taskConversationTaskSeen by remember(taskConversationId?.value) { mutableStateOf(false) }
-    LaunchedEffect(taskConversationTask != null, taskConversationTasksState?.loadState) {
-        if (taskConversationTask != null) {
-            taskConversationTaskSeen = true
-        } else if (taskConversationTaskSeen && taskConversationTasksState?.loadState is ScreenLoadState.Content) {
-            taskConversationHeaderViewModel?.onTaskMissing()
-        }
+    // The channel list can be status-filtered, so a task moved to Done / Closed may leave it: the
+    // bar keeps the last copy seen, and only `task:deleted` marks the task deleted.
+    LaunchedEffect(taskConversationListedTask) {
+        taskConversationListedTask?.let { taskConversationHeaderViewModel?.onTaskSeen(it) }
     }
+    val taskConversationTask = taskConversationHeaderState?.barTask(taskConversationListedTask)
     val taskConversationDeletedLabel = stringResource(Res.string.task_conversation_deleted)
     val taskConversationFollowFailedLabel = stringResource(Res.string.task_conversation_follow_failed)
     LaunchedEffect(taskConversationHeaderState?.removed == true) {
@@ -8780,6 +8776,7 @@ private fun SharedThreadRouteContentContent(
             if (event is TaskUpdated) {
                 tasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
                 taskConversationTasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
+                taskConversationHeaderViewModel?.onTaskSeen(event.task)
             }
             if (event is TaskDeleted) {
                 taskConversationHeaderViewModel?.onTaskDeleted(event.taskId, event.conversationChannelId)

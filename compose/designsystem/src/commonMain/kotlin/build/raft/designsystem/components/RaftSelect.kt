@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,7 +35,9 @@ import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
@@ -269,6 +272,11 @@ internal fun raftPickerTriggerLook(
  * rings it; [invalid] draws a `danger-strong` inset ring; disabled is `fill-muted`. It
  * draws 32dp but takes touches 44dp tall ([raftTouchTarget]); keep 6dp free above and below.
  * Given less width than its label needs, the label ends in an ellipsis (web `truncate`).
+ *
+ * [size] [RaftPickerTriggerSize.Chip] is the same trigger at the editable chip's metrics
+ * ([RaftTaskStatusBadge] `Md`: 22dp, chip radius, 7dp ends, 6dp gap, 12/16 semibold, 12dp
+ * chevron and icon), for a value picker that sits beside a status badge (web
+ * InlineBadgeEditor: task Status and Assignee are both 22px chips).
  */
 @Composable
 fun RaftPickerTriggerButton(
@@ -280,6 +288,7 @@ fun RaftPickerTriggerButton(
     enabled: Boolean = true,
     showIndicator: Boolean = true,
     leadingIcon: (@Composable () -> Unit)? = null,
+    size: RaftPickerTriggerSize = RaftPickerTriggerSize.Default,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val colors = RaftTheme.colors
@@ -289,23 +298,24 @@ fun RaftPickerTriggerButton(
     val pressed = enabled && isPressed
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    val radius = size.radius
+    val shape = RoundedCornerShape(radius)
     Row(
         modifier
-            .heightIn(min = 32.dp)
+            .then(if (size == RaftPickerTriggerSize.Chip) Modifier.height(size.height) else Modifier.heightIn(min = size.height))
             .raftTouchTarget(enabled, source, onClick)
-            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftFocusRing(focused, radius, colors)
             .background(look.fill, shape)
-            .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
+            .raftPressOverlay(pressed, look.pressOverlay, radius)
             .border(RaftStroke.Hairline, look.ring, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = size.horizontalPadding, vertical = size.verticalPadding),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingIcon != null) {
             CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
-                Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) { leadingIcon() }
+                Box(Modifier.size(size.iconSize), contentAlignment = Alignment.Center) { leadingIcon() }
             }
         }
         // A trigger narrower than its label (a long assignee name) ends in an ellipsis before the
@@ -313,14 +323,42 @@ fun RaftPickerTriggerButton(
         RaftText(
             text,
             modifier = Modifier.weight(1f, fill = false),
-            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            style =
+                if (size == RaftPickerTriggerSize.Chip) {
+                    RaftTheme.typography.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
+                } else {
+                    RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold)
+                },
             color = look.ink,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,
         )
-        if (showIndicator) RaftGlyphIcon(RaftGlyph.ChevronDown, size = 14.dp, color = look.indicator)
+        if (showIndicator) RaftGlyphIcon(RaftGlyph.ChevronDown, size = size.iconSize, color = look.indicator)
     }
+}
+
+/**
+ * [RaftPickerTriggerButton]'s metrics: [Default] is raft-ui PickerTriggerButton (32dp
+ * minimum, control radius, 10dp ends, footnote, 14dp marks); [Chip] the editable chip's
+ * (22dp, chip radius, 7dp ends, 12/16, 12dp marks), the same box as [RaftTaskStatusBadge]
+ * [RaftTaskStatusBadgeSize.Md] so the two read as one kind of control in a row.
+ */
+enum class RaftPickerTriggerSize(
+    internal val height: Dp,
+    internal val radius: Dp,
+    internal val horizontalPadding: Dp,
+    internal val verticalPadding: Dp,
+    internal val iconSize: Dp,
+) {
+    Default(height = 32.dp, radius = RaftRadius.Control, horizontalPadding = 10.dp, verticalPadding = 4.dp, iconSize = 14.dp),
+    Chip(
+        height = RaftTaskStatusBadgeSize.Md.height,
+        radius = RaftRadius.Chip,
+        horizontalPadding = RaftTaskStatusBadgeSize.Md.horizontalPadding,
+        verticalPadding = 0.dp,
+        iconSize = 12.dp,
+    ),
 }
 
 /**

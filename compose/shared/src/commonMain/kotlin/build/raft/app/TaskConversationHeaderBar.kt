@@ -38,6 +38,7 @@ import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftPickerTriggerSize
 import build.raft.designsystem.components.RaftTaskStatus
 import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusPixel
@@ -174,6 +175,9 @@ internal fun TaskConversationHeaderBar(
                     enabled = model.assigneeEditable,
                     showIndicator = model.assigneeEditable,
                     modifier = Modifier.widthIn(max = 200.dp),
+                    // The status badge's box (22dp chip): both are "tap to choose a value" (web
+                    // InlineBadgeEditor draws Status and Assignee as the same 22px chip).
+                    size = RaftPickerTriggerSize.Chip,
                 )
             }
             model.followed?.let { followed ->
