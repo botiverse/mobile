@@ -200,8 +200,11 @@ class RaftOfflineResourcesTest {
 
         assertFalse(notes.update(key) { Note("ignored") })
         assertNull(notes.read(key))
+        // A value produced before that (no-op) confirmed mutation is older than it: not stored.
+        assertFalse(notes.write(key, Note("older")))
 
-        notes.write(key, Note("v1"))
+        val key2 = notes.key("user-1", "server-1", "a")!!
+        assertTrue(notes.write(key2, Note("v1")))
         assertTrue(notes.update(key) { it.copy(text = it.text + "+") })
         assertEquals(Note("v1+"), notes.read(key))
         assertTrue(notes.update(key) { null })

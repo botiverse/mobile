@@ -3,13 +3,16 @@ package build.raft.app.data
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import org.mobilenativefoundation.store.store5.Fetcher
@@ -20,7 +23,6 @@ import org.mobilenativefoundation.store.store5.StoreBuilder
 import org.mobilenativefoundation.store.store5.StoreReadRequest
 import org.mobilenativefoundation.store.store5.StoreReadResponse
 import org.mobilenativefoundation.store.store5.StoreReadResponseOrigin
-import kotlin.concurrent.Volatile
 
 /**
  * Offline-first resources (artin: everything fetched is stored locally; persistence audit item 4).
@@ -28,9 +30,9 @@ import kotlin.concurrent.Volatile
  * One process-wide [RaftOfflineResourceCache] owns every resource's durable rows, in ONE
  * `localSnapshotEntity` scope, so:
  * - sign-out / account switch keeps every row (rows are keyed by account, so only the same account
- *   reads them again) and only fences in-flight writes ([fenceInFlightWrites]) (owner decision 2026-10-27, see AccountLocalData);
- *   [wipeAll] removes every resource with one call, rows of a resource this process never
- *   instantiated included;
+ *   reads them again) and only fences in-flight writes ([fenceInFlightWrites]) (owner decision 2026-10-27,
+ *   see AccountLocalData); [wipeAll] / [wipeAllAsync] remove every resource with one call, rows of a
+ *   resource this process never instantiated included;
  * - lost access to a server wipes that server's rows of every resource ([wipeServer]).
  *
  * A resource ([resource]) is keyed by environment + account + server + resource name + params
@@ -39,11 +41,19 @@ import kotlin.concurrent.Volatile
  *
  * Reads go through MobileNativeFoundation Store5 ([RaftOfflineResource.store]): the rows are Store5's
  * source of truth and the consumer's request is its fetcher; [RaftOfflineResourceStore.revalidate] is the
- * stale-while-revalidate read (stored value first as a stand-in, then exactly one network answer). Store5's
- * memory cache is off: the rows are the single source of truth.
+ * stale-while-revalidate read (stored value first as a stand-in, then exactly one network answer).
+ * Concurrent revalidations of one key share one request. Store5's memory cache is off: the rows are the
+ * single source of truth.
  *
- * Writes are fenced by a generation: [wipeAll] / [wipeServer] advance it, and a key minted before
- * (an in-flight request of the signed-out account) can no longer write.
+ * Ordering, on one logical clock ([tick]); every row operation runs under one mutex:
+ * - a key remembers when it was minted; a wipe fences only the keys it covers (every account, one server,
+ *   or one account's server) minted before it, so a request of a wiped account (or of a lost server)
+ *   cannot write, and other servers' requests are unaffected;
+ * - a fetch remembers when it started; a confirmed mutation ([RaftOfflineResource.update] /
+ *   [RaftOfflineResource.remove]) stamps its row, and a fetch that started before that stamp does not write
+ *   its older answer over the mutation;
+ * - a wipe is queued synchronously and runs before any later read or write (also [wipeAllAsync], which
+ *   is called from a non-suspending cleanup), so it never deletes a later write.
  */
 internal class RaftOfflineResourceCache(
     private val rows: RaftOfflineResourceRows,
@@ -54,11 +64,15 @@ internal class RaftOfflineResourceCache(
 ) {
     private val mutex = Mutex()
 
-    @Volatile
-    private var generationValue = 0L
-
-    internal val generation: Long
-        get() = generationValue
+    // Guards the clock, the fences and the wipe queue (non-suspending: wipeAllAsync and key minting).
+    private val fenceLock = SynchronizedObject()
+    private var clock = 0L
+    private var wipedAllAt = NeverTick
+    private var fencedAllAt = NeverTick
+    private val serverWipedAt = mutableMapOf<String, Long>()
+    private val accountServerWipedAt = mutableMapOf<Pair<String, String>, Long>()
+    private val rowChangedAt = mutableMapOf<String, Long>()
+    private val pendingWipes = ArrayDeque<Wipe>()
 
     internal val storeScope: CoroutineScope
         get() = scope
@@ -66,46 +80,47 @@ internal class RaftOfflineResourceCache(
     fun <P : Any, T : Any> resource(spec: RaftOfflineResourceSpec<P, T>): RaftOfflineResource<P, T> =
         RaftOfflineResource(this, spec)
 
-    /** Sign-out / account switch: every row of every resource; in-flight writes are fenced. */
+    /** Every row of every resource; in-flight writes are fenced. */
     suspend fun wipeAll() {
-        generationValue += 1L
-        mutex.withLock { runLogged("wipe_all") { rows.deleteAll() } }
+        enqueueWipe(Wipe.All)
+        mutex.withLock { drainWipes() }
     }
 
-    /** Synchronous fence, asynchronous delete: for the non-suspending auth-terminal cleanup. */
+    /**
+     * For a non-suspending caller: fences and queues the wipe now (every later read and
+     * write runs after it), deletes in the background.
+     */
     fun wipeAllAsync() {
-        generationValue += 1L
-        scope.launch { mutex.withLock { runLogged("wipe_all") { rows.deleteAll() } } }
+        enqueueWipe(Wipe.All)
+        scope.launch { mutex.withLock { drainWipes() } }
     }
 
     /**
      * Sign-out keeps every row (they are keyed by account; owner decision 2026-10-27): only writes of keys
-     * minted before this call (an in-flight request of the signed-out session) are fenced.
+     * minted before this call (an in-flight request of the signed-out session) are fenced. Non-suspending.
      */
     fun fenceInFlightWrites() {
-        generationValue += 1L
+        synchronized(fenceLock) { fencedAllAt = ++clock }
     }
 
-    /** Lost access to [serverId] ([accountId] null = every account): that server's rows of every resource. */
+    /**
+     * Lost access to [serverId] ([accountId] null = every account): that server's rows of every resource.
+     * Fences only that server's (and account's) in-flight writes.
+     */
     suspend fun wipeServer(serverId: String, accountId: String? = null) {
-        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        val account = accountId?.trim()?.takeIf { it.isNotEmpty() }
-        generationValue += 1L
-        mutex.withLock {
-            runLogged("wipe_server") {
-                val victims =
-                    rows.ids().filter { id ->
-                        val parts = RaftOfflineRowId.parts(id) ?: return@filter false
-                        parts.serverId == server && (account == null || parts.accountId == account)
-                    }
-                rows.delete(victims)
-            }
-        }
+        val wipe = serverWipe(serverId, accountId) ?: return
+        enqueueWipe(wipe)
+        mutex.withLock { drainWipes() }
     }
 
     fun wipeServerAsync(serverId: String, accountId: String? = null) {
-        scope.launch { wipeServer(serverId, accountId) }
+        val wipe = serverWipe(serverId, accountId) ?: return
+        enqueueWipe(wipe)
+        scope.launch { mutex.withLock { drainWipes() } }
     }
+
+    /** The next instant of the cache's logical clock. */
+    internal fun tick(): Long = synchronized(fenceLock) { ++clock }
 
     internal fun mintKey(accountId: String, serverId: String): Triple<String, String, String>? {
         val environment = environmentId()?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
@@ -114,7 +129,87 @@ internal class RaftOfflineResourceCache(
         return Triple(environment, account, server)
     }
 
-    internal suspend fun read(rowId: String, maxAgeMillis: Long?): String? {
+    internal suspend fun read(rowId: String, maxAgeMillis: Long?): String? =
+        mutex.withLock {
+            drainWipes()
+            readLocked(rowId, maxAgeMillis)
+        }
+
+    /**
+     * Writes [encoded] for [rowId] unless a wipe covering it happened after [mintedAt] or a confirmed mutation
+     * of the row happened after [startedAt]; drops the oldest rows of the same resource + environment +
+     * account past [maxEntriesPerAccount] in the same transaction.
+     */
+    internal suspend fun write(
+        rowId: String,
+        encoded: String?,
+        mintedAt: Long,
+        startedAt: Long,
+        maxEntriesPerAccount: Int,
+    ): RaftOfflineWriteOutcome =
+        mutex.withLock {
+            drainWipes()
+            val parts = RaftOfflineRowId.parts(rowId) ?: return@withLock RaftOfflineWriteOutcome.Failed
+            if (wipedSince(parts, mintedAt)) {
+                logger("offline_resource_write result=fenced")
+                return@withLock RaftOfflineWriteOutcome.Fenced
+            }
+            if (changedSince(rowId, startedAt)) {
+                logger("offline_resource_write result=superseded")
+                return@withLock RaftOfflineWriteOutcome.Superseded
+            }
+            when {
+                // Too large to store: the stale copy goes (under the same fences as a write).
+                encoded == null -> {
+                    runLogged("delete") { rows.delete(listOf(rowId)) }
+                    RaftOfflineWriteOutcome.Failed
+                }
+                writeLocked(rowId, parts, encoded, maxEntriesPerAccount) -> RaftOfflineWriteOutcome.Written
+                else -> RaftOfflineWriteOutcome.Failed
+            }
+        }
+
+    /**
+     * A confirmed mutation of [rowId]: [change] maps the stored encoding (absent / expired: not called, false)
+     * to its replacement, all under the lock, and stamps the row so an older in-flight fetch cannot overwrite
+     * it. Fenced (false) when a wipe covering the row happened after [mintedAt].
+     */
+    internal suspend fun update(
+        rowId: String,
+        mintedAt: Long,
+        maxAgeMillis: Long?,
+        maxEntriesPerAccount: Int,
+        change: (String) -> RaftOfflineChange,
+    ): Boolean =
+        mutex.withLock {
+            drainWipes()
+            val parts = RaftOfflineRowId.parts(rowId) ?: return@withLock false
+            if (wipedSince(parts, mintedAt)) {
+                logger("offline_resource_update result=fenced")
+                return@withLock false
+            }
+            // Stamped even with nothing stored: an older in-flight fetch must not write a pre-mutation value.
+            markChanged(rowId)
+            val current = readLocked(rowId, maxAgeMillis) ?: return@withLock false
+            when (val next = change(current)) {
+                is RaftOfflineChange.Write -> writeLocked(rowId, parts, next.encoded, maxEntriesPerAccount)
+                RaftOfflineChange.Remove -> {
+                    runLogged("delete") { rows.delete(listOf(rowId)) }
+                    true
+                }
+            }
+        }
+
+    /** Deletes [rowId]; [confirmed]: a confirmed change (an older in-flight fetch cannot write it back). */
+    internal suspend fun delete(rowId: String, confirmed: Boolean) {
+        mutex.withLock {
+            drainWipes()
+            if (confirmed) markChanged(rowId)
+            runLogged("delete") { rows.delete(listOf(rowId)) }
+        }
+    }
+
+    private suspend fun readLocked(rowId: String, maxAgeMillis: Long?): String? {
         val row =
             try {
                 rows.read(rowId)
@@ -125,44 +220,102 @@ internal class RaftOfflineResourceCache(
                 null
             } ?: return null
         if (maxAgeMillis != null && nowMillis() - row.updatedAtMs > maxAgeMillis) {
-            mutex.withLock { runLogged("expire") { rows.delete(listOf(rowId)) } }
+            runLogged("expire") { rows.delete(listOf(rowId)) }
             return null
         }
         return row.value
     }
 
-    /**
-     * Writes [encoded] for [rowId] unless the key's [generation] is stale; drops the oldest rows of the same
-     * resource + environment + account past [maxEntriesPerAccount] in the same transaction.
-     */
-    internal suspend fun write(rowId: String, encoded: String, generation: Long, maxEntriesPerAccount: Int): Boolean =
-        mutex.withLock {
-            if (generation != generationValue) {
-                logger("offline_resource_write result=fenced")
-                return@withLock false
+    private suspend fun writeLocked(
+        rowId: String,
+        parts: RaftOfflineRowId.Parts,
+        encoded: String,
+        maxEntriesPerAccount: Int,
+    ): Boolean {
+        val group = parts.accountGroup
+        val cap = maxEntriesPerAccount.coerceAtLeast(1)
+        return try {
+            rows.writeAndEvict(rowId, encoded, nowMillis()) { metas ->
+                metas
+                    .filter { RaftOfflineRowId.parts(it.id)?.accountGroup == group }
+                    .sortedByDescending { it.updatedAtMs }
+                    .drop(cap)
+                    .map { it.id }
+                    .filterNot { it == rowId }
             }
-            val group = RaftOfflineRowId.parts(rowId)?.accountGroup ?: return@withLock false
-            val cap = maxEntriesPerAccount.coerceAtLeast(1)
-            try {
-                rows.writeAndEvict(rowId, encoded, nowMillis()) { metas ->
-                    metas
-                        .filter { RaftOfflineRowId.parts(it.id)?.accountGroup == group }
-                        .sortedByDescending { it.updatedAtMs }
-                        .drop(cap)
-                        .map { it.id }
-                        .filterNot { it == rowId }
+            true
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
+            logger("offline_resource_write result=failure type=${error::class.simpleName}")
+            false
+        }
+    }
+
+    private fun serverWipe(serverId: String, accountId: String?): Wipe.Server? {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return Wipe.Server(server, accountId?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    /** Fences the wipe's keys and queues its delete, synchronously. */
+    private fun enqueueWipe(wipe: Wipe) {
+        synchronized(fenceLock) {
+            val at = ++clock
+            when (wipe) {
+                Wipe.All -> {
+                    wipedAllAt = at
+                    serverWipedAt.clear()
+                    accountServerWipedAt.clear()
+                    rowChangedAt.clear()
                 }
-                true
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Throwable) {
-                logger("offline_resource_write result=failure type=${error::class.simpleName}")
-                false
+                is Wipe.Server ->
+                    if (wipe.accountId == null) {
+                        serverWipedAt[wipe.serverId] = at
+                    } else {
+                        accountServerWipedAt[wipe.accountId to wipe.serverId] = at
+                    }
             }
+            pendingWipes.addLast(wipe)
+        }
+    }
+
+    /** Runs every queued wipe, in order; called under [mutex] before any other row operation. */
+    private suspend fun drainWipes() {
+        while (true) {
+            val wipe = synchronized(fenceLock) { pendingWipes.removeFirstOrNull() } ?: return
+            // Whoever drains (often a UI read that may be cancelled) finishes the wipe: once dequeued it must run.
+            withContext(NonCancellable) { runWipe(wipe) }
+        }
+    }
+
+    private suspend fun runWipe(wipe: Wipe) {
+        when (wipe) {
+            Wipe.All -> runLogged("wipe_all") { rows.deleteAll() }
+            is Wipe.Server ->
+                runLogged("wipe_server") {
+                    val victims =
+                        rows.ids().filter { id ->
+                            val parts = RaftOfflineRowId.parts(id) ?: return@filter false
+                            parts.serverId == wipe.serverId && (wipe.accountId == null || parts.accountId == wipe.accountId)
+                        }
+                    rows.delete(victims)
+                }
+        }
+    }
+
+    private fun wipedSince(parts: RaftOfflineRowId.Parts, mintedAt: Long): Boolean =
+        synchronized(fenceLock) {
+            wipedAllAt > mintedAt ||
+                fencedAllAt > mintedAt ||
+                (serverWipedAt[parts.serverId] ?: NeverTick) > mintedAt ||
+                (accountServerWipedAt[parts.accountId to parts.serverId] ?: NeverTick) > mintedAt
         }
 
-    internal suspend fun delete(rowId: String) {
-        mutex.withLock { runLogged("delete") { rows.delete(listOf(rowId)) } }
+    private fun changedSince(rowId: String, startedAt: Long): Boolean =
+        synchronized(fenceLock) { (rowChangedAt[rowId] ?: NeverTick) > startedAt }
+
+    private fun markChanged(rowId: String) {
+        synchronized(fenceLock) { rowChangedAt[rowId] = ++clock }
     }
 
     private suspend fun runLogged(operation: String, block: suspend () -> Unit) {
@@ -174,6 +327,37 @@ internal class RaftOfflineResourceCache(
             logger("offline_resource_$operation result=failure type=${error::class.simpleName}")
         }
     }
+
+    private sealed interface Wipe {
+        data object All : Wipe
+
+        data class Server(val serverId: String, val accountId: String?) : Wipe
+    }
+
+    private companion object {
+        // Before every instant of the clock (which starts at 1).
+        const val NeverTick = 0L
+    }
+}
+
+internal enum class RaftOfflineWriteOutcome {
+    Written,
+
+    /** A wipe covering the row happened after the key was minted. */
+    Fenced,
+
+    /** A confirmed mutation of the row happened after the request started: the stored value is newer. */
+    Superseded,
+
+    /** Too large, or the write failed. */
+    Failed,
+}
+
+/** What a confirmed mutation does to the stored encoding ([RaftOfflineResourceCache.update]). */
+internal sealed interface RaftOfflineChange {
+    data class Write(val encoded: String) : RaftOfflineChange
+
+    data object Remove : RaftOfflineChange
 }
 
 /**
@@ -197,66 +381,95 @@ internal class RaftOfflineResourceSpec<P : Any, T : Any>(
     val fit: (T) -> T = { it },
 )
 
-/** Environment + account + server + params of one stored value; minted by [RaftOfflineResource.key]. */
+/**
+ * Environment + account + server + params of one stored value; minted by [RaftOfflineResource.key].
+ * [mintedAt] (when it was minted, on the cache's clock) is not part of equality: keys minted for the same
+ * value at different times share one Store5 request.
+ */
 internal data class RaftOfflineResourceKey<P : Any>(
     val environmentId: String,
     val accountId: String,
     val serverId: String,
     val params: P,
-    val generation: Long,
-)
+) {
+    internal var mintedAt: Long = 0L
+        private set
+
+    internal constructor(
+        environmentId: String,
+        accountId: String,
+        serverId: String,
+        params: P,
+        mintedAt: Long,
+    ) : this(environmentId, accountId, serverId, params) {
+        this.mintedAt = mintedAt
+    }
+}
 
 internal class RaftOfflineResource<P : Any, T : Any>(
     private val cache: RaftOfflineResourceCache,
     private val spec: RaftOfflineResourceSpec<P, T>,
 ) {
-    /** The key of ([accountId], [serverId], [params]) under the current environment and generation. */
+    /** The key of ([accountId], [serverId], [params]) under the current environment, minted now. */
     fun key(accountId: String, serverId: String, params: P): RaftOfflineResourceKey<P>? {
         val (environment, account, server) = cache.mintKey(accountId, serverId) ?: return null
-        return RaftOfflineResourceKey(environment, account, server, params, cache.generation)
+        return RaftOfflineResourceKey(environment, account, server, params, mintedAt = cache.tick())
     }
 
     suspend fun read(key: RaftOfflineResourceKey<P>): T? {
         val rowId = rowId(key) ?: return null
         val encoded = cache.read(rowId, spec.maxAgeMillis) ?: return null
-        val decoded = runCatching { ResourceJson.decodeFromString(spec.serializer, encoded) }.getOrNull()
-        if (decoded == null) cache.delete(rowId)
+        val decoded = decodeOrNull(encoded)
+        if (decoded == null) cache.delete(rowId, confirmed = false)
         return decoded
     }
 
-    /** Stores [value] (after [RaftOfflineResourceSpec.fit]); false when fenced, too large or failed. */
-    suspend fun write(key: RaftOfflineResourceKey<P>, value: T): Boolean {
-        val rowId = rowId(key) ?: return false
-        val encoded = ResourceJson.encodeToString(spec.serializer, spec.fit(value))
-        if (encoded.encodeToByteArray().size > spec.maxBytesPerEntry) {
-            cache.delete(rowId)
-            return false
-        }
-        return cache.write(rowId, encoded, key.generation, spec.maxEntriesPerAccount)
+    /**
+     * Stores [value] (after [RaftOfflineResourceSpec.fit]); false when fenced (wiped since [key] was minted,
+     * or a confirmed mutation since [startedAt]), too large or failed. [startedAt]: when the request that
+     * produced [value] started (default: when [key] was minted).
+     */
+    suspend fun write(key: RaftOfflineResourceKey<P>, value: T, startedAt: Long = key.mintedAt): Boolean =
+        writeOutcome(key, value, startedAt) == RaftOfflineWriteOutcome.Written
+
+    internal suspend fun writeOutcome(key: RaftOfflineResourceKey<P>, value: T, startedAt: Long): RaftOfflineWriteOutcome {
+        val rowId = rowId(key) ?: return RaftOfflineWriteOutcome.Failed
+        return cache.write(rowId, encode(value), key.mintedAt, startedAt, spec.maxEntriesPerAccount)
     }
 
     /**
-     * Write-through for a confirmed mutation: [transform] the stored value (null removes it). Call only after
-     * the server confirmed the change; a failed mutation leaves the stored value alone. No stored value: no-op.
+     * Write-through for a confirmed mutation: [transform] the stored value (null removes it), as one
+     * read-modify-write under the cache's lock; an in-flight fetch that started before it cannot overwrite it.
+     * Call only after the server confirmed the change; a failed mutation leaves the stored value alone. No
+     * stored value: no-op (false).
      */
     suspend fun update(key: RaftOfflineResourceKey<P>, transform: (T) -> T?): Boolean {
-        val current = read(key) ?: return false
-        val next = transform(current)
-        if (next == null) {
-            remove(key)
-            return true
+        val rowId = rowId(key) ?: return false
+        return cache.update(rowId, key.mintedAt, spec.maxAgeMillis, spec.maxEntriesPerAccount) { encoded ->
+            val next = decodeOrNull(encoded)?.let(transform)
+            next?.let(::encode)?.let { RaftOfflineChange.Write(it) } ?: RaftOfflineChange.Remove
         }
-        return write(key, next)
     }
 
+    /** Drops the stored value (a confirmed removal: an in-flight fetch that started before cannot restore it). */
     suspend fun remove(key: RaftOfflineResourceKey<P>) {
         val rowId = rowId(key) ?: return
-        cache.delete(rowId)
+        cache.delete(rowId, confirmed = true)
     }
 
     /** A Store5 store whose fetcher is [fetch] and whose source of truth is this resource's rows. */
     fun store(fetch: suspend (RaftOfflineResourceKey<P>) -> DataResult<T>): RaftOfflineResourceStore<P, T> =
         RaftOfflineResourceStore(this, cache.storeScope, fetch)
+
+    internal fun fetchStarted(): Long = cache.tick()
+
+    private fun decodeOrNull(encoded: String): T? =
+        runCatching { ResourceJson.decodeFromString(spec.serializer, encoded) }.getOrNull()
+
+    /** The stored encoding of [value], or null when it is larger than the resource's cap. */
+    private fun encode(value: T): String? =
+        ResourceJson.encodeToString(spec.serializer, spec.fit(value))
+            .takeIf { it.encodeToByteArray().size <= spec.maxBytesPerEntry }
 
     private fun rowId(key: RaftOfflineResourceKey<P>): String? =
         RaftOfflineRowId.of(
@@ -298,14 +511,25 @@ internal class RaftOfflineResourceStore<P : Any, T : Any>(
     // could not be stored (fenced / too large / write failure).
     private val answers = mutableMapOf<RaftOfflineResourceKey<P>, T>()
 
+    // When the request behind each key's pending answer started: the writer's fence against a confirmed
+    // mutation that happened meanwhile. Store5 shares one request per key, so one entry per key suffices.
+    private val fetchStarts = mutableMapOf<RaftOfflineResourceKey<P>, Long>()
+
+    // Keys whose last network answer was older than a confirmed mutation of the stored value.
+    private val superseded = mutableSetOf<RaftOfflineResourceKey<P>>()
+
     val store: Store<RaftOfflineResourceKey<P>, T> =
         StoreBuilder.from(
             fetcher =
                 Fetcher.ofResult<RaftOfflineResourceKey<P>, T> { key ->
+                    val startedAt = resource.fetchStarted()
                     try {
                         when (val result = fetch(key)) {
                             is DataResult.Content -> {
-                                synchronized(lock) { answers[key] = result.data }
+                                synchronized(lock) {
+                                    answers[key] = result.data
+                                    fetchStarts[key] = startedAt
+                                }
                                 FetcherResult.Data(result.data)
                             }
                             else -> FetcherResult.Error.Custom(FetchFailure(result))
@@ -319,22 +543,56 @@ internal class RaftOfflineResourceStore<P : Any, T : Any>(
             sourceOfTruth =
                 SourceOfTruth.of<RaftOfflineResourceKey<P>, T, T>(
                     nonFlowReader = { key -> resource.read(key) },
-                    writer = { key, value -> resource.write(key, value) },
+                    writer = { key, value ->
+                        val startedAt = synchronized(lock) { fetchStarts.remove(key) } ?: key.mintedAt
+                        val outcome = resource.writeOutcome(key, value, startedAt)
+                        synchronized(lock) {
+                            if (outcome == RaftOfflineWriteOutcome.Superseded) superseded += key else superseded -= key
+                        }
+                    },
                     delete = { key -> resource.remove(key) },
                 ),
         ).scope(scope).disableCache().build()
 
     /**
      * Stale-while-revalidate: the stored value (if any) as [RaftOfflineEmission.StandIn], then the network
-     * answer as [RaftOfflineEmission.Fresh] (stored first) or [RaftOfflineEmission.Failed]; then completes.
+     * answer as [RaftOfflineEmission.Fresh] (stored first; the stored value instead when a confirmed mutation
+     * superseded the answer while it was in flight, or a second answer when nothing is stored then) or
+     * [RaftOfflineEmission.Failed]; then completes.
      * A fetch that threw rethrows to the collector.
      */
     fun revalidate(key: RaftOfflineResourceKey<P>): Flow<RaftOfflineEmission<T>> =
-        store.stream(StoreReadRequest.cached(key, refresh = true)).transformWhile { response ->
+        flow {
+            var superseded = false
+            revalidateOnce(key, StoreReadRequest.cached(key, refresh = true)).collect { emission ->
+                if (emission == null) superseded = true else emit(emission)
+            }
+            if (!superseded) return@flow
+            // The answer predates a confirmed mutation and nothing newer is stored to show instead: ask once
+            // more (that request starts after the mutation).
+            var again = false
+            revalidateOnce(key, StoreReadRequest.fresh(key)).collect { emission ->
+                if (emission == null) again = true else if (emission !is RaftOfflineEmission.StandIn) emit(emission)
+            }
+            if (again) {
+                emit(
+                    RaftOfflineEmission.Failed(
+                        DataResult.Error(ScreenError(code = "offline_resource_superseded", retryable = true))
+                    )
+                )
+            }
+        }
+
+    /** One Store5 round of [revalidate]; null: the network answer was superseded and nothing is stored. */
+    private fun revalidateOnce(
+        key: RaftOfflineResourceKey<P>,
+        request: StoreReadRequest<RaftOfflineResourceKey<P>>,
+    ): Flow<RaftOfflineEmission<T>?> =
+        store.stream(request).transformWhile { response ->
             when (response) {
                 is StoreReadResponse.Data -> {
                     if (response.origin is StoreReadResponseOrigin.Fetcher) {
-                        emit(RaftOfflineEmission.Fresh(takeAnswer(key) ?: response.value))
+                        emit(freshEmission(key, takeAnswer(key) ?: response.value))
                         false
                     } else {
                         @Suppress("SENSELESS_COMPARISON")
@@ -394,6 +652,17 @@ internal class RaftOfflineResourceStore<P : Any, T : Any>(
         }
 
     private fun takeAnswer(key: RaftOfflineResourceKey<P>): T? = synchronized(lock) { answers.remove(key) }
+
+    /**
+     * The answer to show: the network's, unless a confirmed mutation made the stored value newer while the
+     * request was in flight: then the stored value (so the UI does not resurrect what the mutation changed),
+     * or null when nothing is stored (the caller asks again).
+     */
+    private suspend fun freshEmission(key: RaftOfflineResourceKey<P>, answer: T): RaftOfflineEmission<T>? {
+        val stale = synchronized(lock) { key in superseded }
+        if (!stale) return RaftOfflineEmission.Fresh(answer)
+        return resource.read(key)?.let { RaftOfflineEmission.Fresh(it) }
+    }
 
     private class FetchFailure<T>(val result: DataResult<T>)
 }
