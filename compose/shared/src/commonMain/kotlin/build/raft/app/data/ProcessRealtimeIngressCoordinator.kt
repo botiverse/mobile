@@ -14,6 +14,7 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
+import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.optLong
 import build.raft.app.optString
 import kotlinx.coroutines.CoroutineScope
@@ -257,5 +258,6 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerPlanUpdated -> serverId
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
+        is ServerAppearanceUpdated -> serverId
         else -> null
     }

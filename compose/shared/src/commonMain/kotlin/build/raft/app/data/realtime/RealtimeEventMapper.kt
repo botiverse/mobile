@@ -64,6 +64,7 @@ import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
+import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.SyncResumeResponse
@@ -284,6 +285,10 @@ class RealtimeEventMapper(
                 val dto = decodeOrNull(ServerPlanUpdatedDto.serializer(), element)
                 dto?.let { ServerPlanUpdated(ServerId(it.serverId), it.plan) }
             }
+            RealtimeSocketEvents.AppearanceUpdated ->
+                decodeOrNull(ServerAppearanceUpdatedDto.serializer(), element)
+                    ?.takeIf { it.serverId.isNotBlank() }
+                    ?.let { ServerAppearanceUpdated(ServerId(it.serverId), it.theme, it.themeDecor) }
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -749,6 +754,17 @@ private data class ActivityChangedDto(
 private data class ServerFeaturesChangedDto(
     val serverId: String,
     val keys: List<String> = emptyList(),
+)
+
+/**
+ * `appearance:updated` `{ serverId, theme, themeDecor }` (botiverse/slock@aed2ba714
+ * routes/servers.ts:2012, spreading services/serverService.ts `MemberAppearance`).
+ */
+@Serializable
+private data class ServerAppearanceUpdatedDto(
+    val serverId: String,
+    val theme: String? = null,
+    val themeDecor: Boolean? = null,
 )
 
 @Serializable

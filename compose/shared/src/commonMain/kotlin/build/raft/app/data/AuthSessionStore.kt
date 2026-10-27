@@ -10,6 +10,10 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SessionSnapshot
 import build.raft.app.model.serverPermissionsForRole
+import build.raft.app.model.RaftServerThemeLook
+import build.raft.app.model.raftServerThemeLook
+import build.raft.app.model.raftThemeChoiceFromWire
+import build.raft.designsystem.tokens.RaftThemeId
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -575,8 +579,28 @@ data class StoredAuthServer(
      * defaults to false. There is no socket event for it; members see changes on the
      * next server-list refresh.
      */
-    val publicPageLive: Boolean = false
+    val publicPageLive: Boolean = false,
+    /**
+     * The member's own theme on this server, as its wire id (design/foundations/themes.md: one
+     * choice per member per server, stored on the membership). Sent per server by
+     * `GET /api/servers` (botiverse/slock@aed2ba714 services/serverService.ts:305-307,
+     * routes/servers.ts:785) and kept up to date by `GET`/`PATCH .../appearance-settings` and
+     * the `appearance:updated` event. `null` is the default, Raft Yellow, and is what older
+     * servers and other server payloads (create) give. Kept as the raw wire id so a theme this
+     * build does not know survives on disk; [raftTheme] reads it ([RaftThemeId.Raft] for unknown).
+     * Persisted with the session, so a cold start knows the theme before the network answers.
+     */
+    val theme: String? = null,
+    /** Whether the theme's decorations are on (slock `server_members.theme_decor`, default true). */
+    val themeDecor: Boolean = true
 ) {
+    /** The stored theme choice; null for the default (Raft Yellow) or an id this build does not know. */
+    val raftTheme: RaftThemeId?
+        get() = raftThemeChoiceFromWire(theme)
+
+    /** What the member sees on this server: Pro themes show as Raft Yellow on a Free plan. */
+    fun themeLook(): RaftServerThemeLook = raftServerThemeLook(raftTheme, themeDecor, plan)
+
     fun toServerSummary(): ServerSummary =
         ServerSummary(
             id = ServerId(id),
@@ -589,7 +613,9 @@ data class StoredAuthServer(
             avatarUrl = avatarUrl,
             hideHumansFromMembers = hideHumansFromMembers,
             permissions = serverPermissionsForRole(role),
-            publicPageLive = publicPageLive
+            publicPageLive = publicPageLive,
+            theme = raftTheme,
+            themeDecor = themeDecor
         )
 }
 

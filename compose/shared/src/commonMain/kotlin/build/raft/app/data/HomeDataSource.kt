@@ -317,6 +317,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ServerFeaturesChanged -> false
         // Object rows live in Activity only; the Activity store and the unread summary refetch on it.
         is build.raft.app.model.ActivityChanged -> false
+        // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
+        is build.raft.app.model.ServerAppearanceUpdated -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

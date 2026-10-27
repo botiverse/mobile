@@ -4,6 +4,7 @@ import build.raft.app.toRaftAvatarLabel
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.designsystem.tokens.RaftThemeId
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -30,7 +31,16 @@ data class ServerSummary(
     val permissions: ServerPermissions = ServerPermissions(),
     val hideHumansFromMembers: Boolean = false,
     /** See [build.raft.app.data.StoredAuthServer.publicPageLive]. */
-    val publicPageLive: Boolean = false
+    val publicPageLive: Boolean = false,
+    /**
+     * The member's own theme choice on this server; null is the default, Raft Yellow. This is
+     * the stored choice, not what is shown: a Pro theme on a Free server shows as Raft Yellow
+     * (see [themeLook]). From [build.raft.app.data.StoredAuthServer.theme].
+     */
+    @Serializable(with = RaftThemeIdWireSerializer::class)
+    val theme: RaftThemeId? = null,
+    /** Whether the member keeps the theme's decorations on; on by default. */
+    val themeDecor: Boolean = true
 )
 
 @Serializable
@@ -1010,6 +1020,20 @@ data class ComputerRestartDone(
 data class ServerPlanUpdated(
     val serverId: ServerId,
     val plan: String
+) : RealtimeEvent
+
+/**
+ * `appearance:updated` (botiverse/slock@aed2ba714 packages/server/src/routes/servers.ts:2010-2012):
+ * the member changed their own theme or decorations on [serverId] on another tab or device.
+ * Sent to the member's `user:<id>` room only (themes are per member per server), with the
+ * saved `{ theme, themeDecor }` of `PATCH /api/servers/:id/appearance-settings`.
+ * [theme] is the wire id (`null` = Raft Yellow); [themeDecor] null keeps the stored value.
+ */
+@Serializable
+data class ServerAppearanceUpdated(
+    val serverId: ServerId,
+    val theme: String?,
+    val themeDecor: Boolean?
 ) : RealtimeEvent
 
 /**
