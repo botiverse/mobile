@@ -336,6 +336,59 @@ class ThreadActionCardSpecStoreTest {
         assertEquals(ThreadActionCardSpecEffect.AlreadyExecuted("Ada"), h.store.effects.first())
     }
 
+    /** botiverse/slock 7799cc436: the feedback limit's 429 keeps the sheet, its values and a prepared card. */
+    @Test
+    fun aFeedbackRateLimitKeepsTheSheetAndItsValuesAndLetsTheSubmitRunAgain() = runTest {
+        val h = Harness(this)
+        val spec = spec("fill" to form)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "fill", card(type = "feedback:submit"), spec))
+        val values = mapOf("title" to ActionCardFormValue.Text("The export button does nothing"), "urgent" to ActionCardFormValue.Toggle(true))
+        h.answer(
+            DataResult.Error(
+                ScreenError(
+                    code = "action_execute_contract_mismatch",
+                    retryable = false,
+                    serverMessage = "Too many feedback submissions. Please try again later.",
+                    serverCode = "feedback_rate_limited",
+                    retryAfterSeconds = 1800,
+                ),
+            ),
+        )
+        h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(values))
+        runCurrent()
+        val limited = assertNotNull(h.store.state.value.form)
+        assertEquals(values, limited.values)
+        assertEquals(false, limited.submitting)
+        assertEquals(ThreadActionCardSpecError.FeedbackRateLimited(1800), limited.error)
+        assertEquals("prepared", limited.card.state)
+        assertTrue(h.applied.isEmpty())
+
+        // Any other refusal keeps the sheet and values too, with the server's words.
+        h.answer(DataResult.Error(ScreenError(code = "x", serverMessage = "Hands is down")))
+        h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(values))
+        runCurrent()
+        val failed = assertNotNull(h.store.state.value.form)
+        assertEquals(Triple(values, false, ThreadActionCardSpecError.Failed("Hands is down")), Triple(failed.values, failed.submitting, failed.error))
+
+        // The same Submit runs again once the wait is over.
+        val executed = card(type = "feedback:submit", state = "executed")
+        h.answer(DataResult.Content(ActionCardExecuteOutcome.Executed(executed)))
+        h.store.dispatch(ThreadActionCardSpecIntent.SubmitForm(values))
+        runCurrent()
+        assertEquals(3, h.calls.size)
+        assertNull(h.store.state.value.form)
+        assertEquals(listOf("m-1" to executed), h.applied)
+    }
+
+    @Test
+    fun aFeedbackRateLimitOnAPlainExecuteSaysSoUnderItsCard() = runTest {
+        val h = Harness(this)
+        h.answer(DataResult.Error(ScreenError(code = "x", serverMessage = "Too many", serverCode = "feedback_rate_limited")))
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "go", card(), spec("go" to execute)))
+        runCurrent()
+        assertEquals(ThreadActionCardSpecError.FeedbackRateLimited(null), h.store.state.value.errors["m-1"])
+    }
+
     @Test
     fun aMessageLinkBuildsBackToTheSameMessage() {
         val links =

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.ScreenError
 import build.raft.app.data.ActionCardFormIssue
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecAction
@@ -318,7 +319,24 @@ internal sealed interface ThreadActionCardSpecError {
 
     /** 422 `FORM_REQUIRED`: the card changed under this view; refresh to get its form. */
     data object FormRequired : ThreadActionCardSpecError
+
+    /**
+     * 429 `feedback_rate_limited`: a feedback card's form over the per-person feedback limit it
+     * shares with the feedback dialog. The card stays prepared; [retryAfterSeconds] is the
+     * `Retry-After` wait when the answer named one.
+     */
+    data class FeedbackRateLimited(val retryAfterSeconds: Long? = null) : ThreadActionCardSpecError
 }
+
+internal const val ACTION_CARD_FEEDBACK_RATE_LIMITED_CODE = "feedback_rate_limited"
+
+/** A non-form execute refusal as the frame or sheet says it: the localized words for known codes, else the server's. */
+internal fun ScreenError.toThreadActionCardSpecError(): ThreadActionCardSpecError =
+    if (serverCode == ACTION_CARD_FEEDBACK_RATE_LIMITED_CODE) {
+        ThreadActionCardSpecError.FeedbackRateLimited(retryAfterSeconds)
+    } else {
+        ThreadActionCardSpecError.Failed(serverMessage?.takeIf { it.isNotBlank() })
+    }
 
 /** The generic confirm before an execute (`confirm.v1`), over the card it confirms. */
 internal data class ThreadActionCardSpecConfirmState(
@@ -554,7 +572,7 @@ internal class ThreadActionCardSpecStore(
                             is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
                         }
                     is DataResult.Empty -> ThreadActionCardSpecError.Failed()
-                    is DataResult.Error -> ThreadActionCardSpecError.Failed(result.error.serverMessage?.takeIf { it.isNotBlank() })
+                    is DataResult.Error -> result.error.toThreadActionCardSpecError()
                     is DataResult.NoPermission ->
                         if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
                 }
@@ -616,7 +634,7 @@ internal class ThreadActionCardSpecStore(
                     is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
                 }
             is DataResult.Empty -> ThreadActionCardSpecError.Failed()
-            is DataResult.Error -> ThreadActionCardSpecError.Failed(result.error.serverMessage?.takeIf { it.isNotBlank() })
+            is DataResult.Error -> result.error.toThreadActionCardSpecError()
             is DataResult.NoPermission ->
                 if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
         }

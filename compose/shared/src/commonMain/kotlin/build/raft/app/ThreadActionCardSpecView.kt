@@ -27,6 +27,7 @@ import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.jointInviteRateLimitMinutes
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -97,11 +98,21 @@ internal fun actionCardAppMsg(key: String, text: String, displayLocale: String):
     ActionCardSpecMsg(key = key, text = mapOf("en" to text, displayLocale to text))
 
 @Composable
-internal fun threadActionCardSpecErrorText(error: ThreadActionCardSpecError?): String? =
+internal fun threadActionCardSpecErrorText(error: ThreadActionCardSpecError?): String? = threadActionCardSpecErrorDesc(error)?.localized()
+
+/** What the frame or a sheet says for [error]: the server's words for a generic refusal, app copy otherwise. */
+internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): StringDesc? =
     when (error) {
         null -> null
-        ThreadActionCardSpecError.FormRequired -> stringResource(Res.string.thread_action_card_form_required)
-        is ThreadActionCardSpecError.Failed -> error.serverMessage ?: stringResource(Res.string.thread_action_card_execute_failed)
+        ThreadActionCardSpecError.FormRequired -> Res.string.thread_action_card_form_required.desc()
+        is ThreadActionCardSpecError.Failed -> error.serverMessage?.desc() ?: Res.string.thread_action_card_execute_failed.desc()
+        // Web `settings.about.feedbackError.rateLimited` in substance; the minutes as the joint invite's 429.
+        is ThreadActionCardSpecError.FeedbackRateLimited ->
+            when (val minutes = jointInviteRateLimitMinutes(error.retryAfterSeconds)) {
+                null -> Res.string.thread_action_card_feedback_rate_limited_later.desc()
+                1 -> Res.string.thread_action_card_feedback_rate_limited_one.desc()
+                else -> Res.string.thread_action_card_feedback_rate_limited_other.format(minutes)
+            }
     }
 
 /** An entity's name from the thread's lookup; only for the viewer's own server, else the card's fallback. */
