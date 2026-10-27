@@ -254,7 +254,7 @@ class MobileNavServerScreenshotTest {
             RaftText(
                 initial.uppercase(),
                 style = RaftTheme.typography.callout.copy(fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold),
-                color = RaftUiPalette.brand,
+                color = RaftUiPalette.selected,
                 maxLines = 1,
             )
         }

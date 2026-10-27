@@ -33,7 +33,7 @@ Sources of truth:
 
 | Kind | Where | How |
 | --- | --- | --- |
-| Colours | `tokens/RaftUiColorTokens.g.kt` | Generated. `RaftUiPalette` (mode-invariant) and `RaftUiThemeColors.RaftLight` / `.RaftDark` |
+| Colours | `tokens/RaftUiColorTokens.g.kt` | Generated. `RaftUiPalette` (the same in every mode and theme), `RaftUiThemeColors` per raft-ui theme and mode (`RaftLight` / `RaftDark` for the default theme, `BoringLight`, `BotsDark`... from raft-ui `themes.css`; `RaftUiThemeColors.of(RaftThemeId, dark)`), and `RaftThemeId` (the 11 theme ids, `isPro`) |
 | Radii, strokes, spacing, sizes, elevation | `tokens/RaftDimensions.kt` | Hand-written, ported from compose/shared `RaftDesignTokens.kt` |
 | Type scale | `theme/RaftTypography.kt` | raft-ui `--text-*` and `--field-*` / `--card-title-*`, 1:1 with the Typography page (see Typography below) |
 
@@ -47,6 +47,13 @@ python3 tools/design-tokens/gen_tokens.py --self-test
 ```
 
 See `tools/design-tokens/README.md` for bumping raft-ui.
+
+A colour some theme changes lives in `RaftUiThemeColors`, never in `RaftUiPalette`: read it
+from `RaftTheme.colors`. That includes `brand` / `brand-400` / `primary-*` (Boring Gray grays
+them), `line-frame-active` and `foreground-on-frame-active`. For a yellow that must stay yellow
+in every theme use the unthemed tokens: `RaftUiPalette.selected` (where you are, what is on),
+`RaftUiPalette.you` (addressed to you); status lights (`RaftStatusVariant.Primary`) use
+`selected` too.
 
 ### Typography
 

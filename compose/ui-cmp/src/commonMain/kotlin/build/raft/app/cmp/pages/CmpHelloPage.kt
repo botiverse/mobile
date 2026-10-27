@@ -34,7 +34,6 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSize
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.designsystem.tokens.RaftUiPalette
 
 /**
  * Debug-only end-to-end check of a CMP host (`compose_cmp_hello`, see RaftCmpPages.debugOnly):
@@ -62,7 +61,7 @@ internal fun CmpHelloPage() {
             color = colors.foregroundMuted,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm)) {
-            Swatch(RaftUiPalette.primary)
+            Swatch(colors.primary)
             Swatch(colors.ink)
             Swatch(colors.infoSoft)
             Swatch(colors.successSoft)
@@ -100,7 +99,7 @@ private fun HelloButton(label: String, primary: Boolean = false, onClick: () -> 
         Modifier
             .fillMaxWidth()
             .heightIn(min = RaftSize.MinTouchTarget)
-            .background(if (primary) RaftUiPalette.primary else colors.layerCard, shape)
+            .background(if (primary) colors.primary else colors.layerCard, shape)
             .border(RaftStroke.Control, colors.ink, shape)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,

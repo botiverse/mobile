@@ -611,7 +611,7 @@ private fun MembersAgentAvatarPresetTile(
 
 /**
  * A 44dp tile with the control radius and a 1.5dp edge. Chosen: "you chose this" is yellow, the
- * `selected` sticker (`brand`) with the `sticker-ink` edge behind the sprite; else no edge.
+ * `selected` sticker (Web `bg-selected`, yellow in every theme) with the `sticker-ink` edge behind the sprite; else no edge.
  */
 @Composable
 private fun MembersAgentAvatarTileFrame(
@@ -628,7 +628,7 @@ private fun MembersAgentAvatarTileFrame(
             modifier
                 .size(MembersAgentAvatarTileSize)
                 .clip(shape)
-                .background(if (selected) RaftUiPalette.brand else Color.Transparent, shape)
+                .background(if (selected) RaftUiPalette.selected else Color.Transparent, shape)
                 .border(RaftStroke.Control, if (selected) RaftUiPalette.stickerInk else Color.Transparent, shape)
                 .semantics {
                     contentDescription = label

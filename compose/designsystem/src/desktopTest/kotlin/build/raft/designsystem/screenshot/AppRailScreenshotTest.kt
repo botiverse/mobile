@@ -53,7 +53,7 @@ class AppRailScreenshotTest {
                                     .size(RaftAppRailDefaults.ItemSize)
                                     .background(RaftUiPalette.stickerInk, RoundedCornerShape(RaftRadius.Control)),
                                 contentAlignment = Alignment.Center,
-                            ) { RaftText("B", style = RaftTheme.typography.callout, color = RaftUiPalette.brand) }
+                            ) { RaftText("B", style = RaftTheme.typography.callout, color = RaftUiPalette.selected) }
                         }
                     } else {
                         null

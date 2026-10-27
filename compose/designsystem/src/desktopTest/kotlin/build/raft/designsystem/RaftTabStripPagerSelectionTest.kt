@@ -83,7 +83,7 @@ class RaftTabStripPagerSelectionTest {
                     val x = (bounds.left + 5 * density.density).toInt()
                     val y = bounds.center.y.toInt()
                     val pixel = image[x, y]
-                    val brand = RaftUiPalette.brand
+                    val brand = RaftUiPalette.selected
                     val isYellow = kotlin.math.abs(pixel.red - brand.red) < 0.02f && kotlin.math.abs(pixel.green - brand.green) < 0.02f && kotlin.math.abs(pixel.blue - brand.blue) < 0.02f
                     assertEquals(index == expected, isYellow, "$step: $label paints the yellow sticker")
                 }

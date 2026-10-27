@@ -114,7 +114,8 @@ internal object RaftColor {
     val DangerStrong: Color get() = RaftAppThemeState.colors.dangerStrong
     val InactiveSoft: Color get() = RaftAppThemeState.colors.inactiveSoft
     // Sticker solids (`bg-brand`, `bg-attention`, ...): ink type on colour in both modes.
-    val Brand = RaftUiPalette.brand
+    // `brand` follows the server theme (Boring Gray grays it), so it reads the current colours.
+    val Brand: Color get() = RaftAppThemeState.colors.brand
     // raft-ui 0.33 #791: their own values, not `brand`, so a theme that grays the brand keeps
     // them yellow. `Selected`: where you are and what is on (a selected row, a switch).
     // `You`: what is addressed to you (a mention of you, a search hit).

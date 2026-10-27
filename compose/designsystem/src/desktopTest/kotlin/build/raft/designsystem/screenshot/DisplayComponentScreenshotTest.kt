@@ -519,7 +519,7 @@ class DisplayComponentScreenshotTest {
     @Test
     fun messageDelegatedAvatar() =
         capture("message_delegated_avatar") {
-            val pixelFace: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(RaftUiPalette.brand400)) }
+            val pixelFace: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(RaftUiPalette.selected)) }
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online)
@@ -1215,7 +1215,7 @@ class DisplayComponentScreenshotTest {
                         RaftIconTileVariant.entries.forEach { variant ->
                             RaftIconTile(variant = variant) { Glyph(RaftGlyph.Info, 18.dp) }
                         }
-                        RaftStickerTile(RaftUiPalette.brand) { Glyph(RaftGlyph.CircleCheck, 18.dp) }
+                        RaftStickerTile(RaftUiPalette.selected) { Glyph(RaftGlyph.CircleCheck, 18.dp) }
                         RaftStickerTile(RaftUiPalette.attention400, size = RaftIconTileSize.Lg) { Glyph(RaftGlyph.Plus, 22.dp) }
                     }
                 }

@@ -163,7 +163,7 @@ fun RaftAppRailItem(
     val ink =
         when {
             !enabled -> colors.foregroundDisabled
-            selected -> RaftUiPalette.foregroundOnFrameActive
+            selected -> colors.foregroundOnFrameActive
             else -> colors.foregroundOnFrame
         }
     val showsAttention = attention && !selected
@@ -198,7 +198,7 @@ fun RaftAppRailItem(
                 },
                 shape,
             )
-            .border(RaftStroke.Control, if (selected) RaftUiPalette.lineFrameActive else Color.Transparent, shape)
+            .border(RaftStroke.Control, if (selected) colors.lineFrameActive else Color.Transparent, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics {
                 this.selected = selected
