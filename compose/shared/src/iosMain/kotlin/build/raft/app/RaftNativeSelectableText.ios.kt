@@ -5,6 +5,7 @@ package build.raft.app
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -48,6 +49,9 @@ actual fun RaftNativeSelectableText(
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
     // One UITextView instance serves as both the rendered view and the height measurer.
     val textView = remember { raftSelectableUITextView() }
+    // UIKit draws the handles and the highlight from one tint: the design system's handle colour
+    // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
+    val handleColor = LocalTextSelectionColors.current.handleColor
     DisposableEffect(selection, textView) {
         selection?.reader = {
             val current = textView.text.orEmpty()
@@ -75,10 +79,14 @@ actual fun RaftNativeSelectableText(
             modifier = Modifier.fillMaxWidth().height(heightPt.dp),
             update = { view ->
                 if (view.attributedText != attributed) view.attributedText = attributed
+                view.tintColor = handleColor.toUIColor()
             },
         )
     }
 }
+
+private fun Color.toUIColor(): UIColor =
+    UIColor.colorWithRed(red = red.toDouble(), green = green.toDouble(), blue = blue.toDouble(), alpha = alpha.toDouble())
 
 /** Non-editable, selectable, non-scrolling text view: the system edit menu owns Copy/Look Up/Translate/Share. */
 private fun raftSelectableUITextView(): UITextView =
@@ -105,13 +113,7 @@ private fun raftAttributedText(
             ?: UIFont.systemFontOfSize(fontSizePt)
     val attributes = mutableMapOf<Any?, Any?>(
         NSFontAttributeName to font,
-        NSForegroundColorAttributeName to
-            UIColor.colorWithRed(
-                red = color.red.toDouble(),
-                green = color.green.toDouble(),
-                blue = color.blue.toDouble(),
-                alpha = color.alpha.toDouble(),
-            ),
+        NSForegroundColorAttributeName to color.toUIColor(),
     )
     if (lineHeightPt != null) {
         attributes[NSParagraphStyleAttributeName] =
