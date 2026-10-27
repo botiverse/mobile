@@ -1,12 +1,11 @@
 package build.raft.app
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.raftCopyable
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -363,7 +362,7 @@ private fun SharedSettingsRow(
         // A row's copyValue copies on a long press on every settings page: the page's own
         // handler when it passes one, else the design-system copy (host pasteboard + "Copied").
         val copyAction = onCopyValue ?: rememberRaftCopyAction()
-        val haptics = LocalHapticFeedback.current
+        val haptics = rememberRaftHaptics()
         val copyable = row.copyValue.isNotBlank()
         val gestureOwner =
             rememberRaftGestureOwner(
@@ -373,7 +372,7 @@ private fun SharedSettingsRow(
                     SharedSettingsRowGestureCallbacks(
                         row = row,
                         onCopyValue = { value ->
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.longPress()
                             copyAction(value)
                         },
                         onAction = onAction

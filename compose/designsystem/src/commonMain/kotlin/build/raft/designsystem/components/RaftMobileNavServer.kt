@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +48,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,7 +55,6 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -318,7 +317,7 @@ fun RaftMobileNavServerPopoverItem(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val washed = pressed || LocalRaftPressedPreview.current
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberRaftHaptics()
     val currentOnHoldRelease by rememberUpdatedState(onHoldRelease)
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val clickSource = remember { MutableInteractionSource() }
@@ -387,7 +386,7 @@ fun RaftMobileNavServerPopoverItem(
                                 return@awaitEachGesture
                             }
                     }
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.longPress()
                     state.beginHold()
                     while (true) {
                         val event = awaitPointerEvent()

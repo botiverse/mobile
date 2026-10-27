@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -13,10 +14,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.debugInspectorInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -84,11 +83,11 @@ fun Modifier.raftCopyable(
             },
     ) {
         val copy = rememberRaftCopyAction()
-        val haptics = LocalHapticFeedback.current
+        val haptics = rememberRaftHaptics()
         val copyLabel = LocalRaftStrings.current.copy
         val currentText by rememberUpdatedState(text)
         val longPressCopy: () -> Unit = {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptics.longPress()
             copy(currentText)
         }
         val currentLongPress by rememberUpdatedState(longPressCopy)

@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -240,7 +241,8 @@ internal fun raftPullToRefreshGeometry(style: RaftPullToRefreshStyle, density: D
 @Composable
 private fun RaftCupertinoRefreshIndicator(controller: RaftPullToRefreshController, modifier: Modifier) {
     val color = RaftTheme.colors.foregroundMuted
-    val haptic = rememberRaftCupertinoRefreshHaptic()
+    // The iOS-style pull plays a threshold buzz where UIRefreshControl does (RaftHaptics: light impact).
+    val haptic = rememberRaftHaptics()
     val committed by remember(controller) {
         derivedStateOf { controller.armed || controller.showsRefreshing }
     }
@@ -257,7 +259,7 @@ private fun RaftCupertinoRefreshIndicator(controller: RaftPullToRefreshControlle
         snapshotFlow { controller.phase == RaftPullToRefreshPhase.Pulling }.collect { if (it) haptic.prepare() }
     }
     LaunchedEffect(controller) {
-        snapshotFlow { controller.armed }.collect { if (it) haptic.trigger() }
+        snapshotFlow { controller.armed }.collect { if (it) haptic.threshold() }
     }
     val layer =
         modifier.graphicsLayer {
