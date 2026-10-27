@@ -17,13 +17,20 @@ Data (key-value stores, database, caches) lives in `~/Library/Application Suppor
 ## Sign-in
 
 "Sign in to Raft" uses the same browser handoff as the mobile apps: the server's app-login
-request with `returnUri = raft://login/callback`, approved in the browser. The packaged macOS
-app declares the `raft` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
-open-URI handler. The bundle identifier is `build.raft.app.desktop` (not the iOS app's
-`build.raft.app`), but both apps register the `raft` scheme: on an Apple Silicon Mac that also
-has the iOS Raft app installed, macOS may hand the callback to either app (the first launched /
-registered wins), and sign-in in the other one then never completes. Elsewhere (and for `./gradlew :desktopApp:run`) start the app again with the
-callback URL as its argument: the second launch hands it to the running app and exits.
+request with `returnUri = raft-mac://login/callback`, approved in the browser. The packaged macOS
+app declares its own `raft-mac` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
+open-URI handler. It does not use `raft`: the Electron "Raft Desktop" app registers that scheme
+(its sign-in and `raft://v1/...` notification links) and macOS hands a scheme to only one app, so
+`raft://` callbacks went to Raft Desktop. The server must allow `raft-mac://login/callback`
+(slock `appLoginService.ts`, or `APP_LOGIN_RETURN_URIS` where that is set). Elsewhere (and for
+`./gradlew :desktopApp:run`) start the app again with the callback URL as its argument: the second
+launch hands it to the running app and exits.
+
+## Layout
+
+The host publishes the window size with a `flat` posture (`slockAdaptivePaneChanged`, as the
+Android and iOS hosts do) on start and on every resize, so a window at least 840dp wide gets the
+wide layout (navigation rail, split panes) and a narrower one the phone layout.
 
 ## Realtime
 
