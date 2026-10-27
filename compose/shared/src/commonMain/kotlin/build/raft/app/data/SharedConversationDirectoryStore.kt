@@ -268,13 +268,27 @@ internal class SharedConversationIdentityHub(
         applied
     }
 
-    /** Publish destination-owned canonical detail; it always merges after candidates. */
+    /**
+     * Publish destination-owned canonical detail; it always merges after candidates. [onlyIfAbsent]: a stored
+     * (offline) copy, published only while the hub knows nothing of that channel (no network detail and no
+     * live candidate such as a Home row): a stale stored copy never outranks live data.
+     */
     fun publishCanonical(
         authority: SharedConversationIdentityAuthority,
         projection: SharedConversationDirectoryProjection,
+        onlyIfAbsent: Boolean = false,
     ): Boolean = synchronized(lock) {
         val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
         if (projection.serverId != serverId) return@synchronized false
+        if (
+            onlyIfAbsent &&
+            (
+                canonicalByServer[serverId]?.containsKey(projection.canonicalChannelId) == true ||
+                    state.value[serverId]?.resolve(projection.canonicalChannelId) != null
+            )
+        ) {
+            return@synchronized false
+        }
         if (!admitBinding(authority)) return@synchronized false
         val rows = canonicalByServer.getOrPut(serverId) { linkedMapOf() }
         val existing = rows[projection.canonicalChannelId]

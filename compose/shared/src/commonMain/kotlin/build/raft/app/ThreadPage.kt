@@ -4512,6 +4512,7 @@ private fun ThreadPageScreen(
                 canonicalConversationIdentityPublisher = { provenance, detail ->
                     sharedStores.publishCanonicalConversationIdentity(storeScope, provenance, detail)
                 },
+                storedConversationDetails = sharedStores.storedConversationDetails,
                 payloadStore = sharedStores.threadPayloadStore,
                 durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
@@ -6646,6 +6647,19 @@ private fun SharedThreadRouteContentContent(
                 input = headerProjectionInput
             )
         }
+    // Offline-first header: the stored channel detail (offline resource) stands in on a cold start or an
+    // offline open until the network's detail arrives; it never replaces a detail already there.
+    LaunchedEffect(sharedStores, storeScope, headerProjectionServerId, conversationDirectoryLookupIds) {
+        val serverId = headerProjectionServerId?.value ?: return@LaunchedEffect
+        if (conversationDirectoryLookupIds.isEmpty()) return@LaunchedEffect
+        try {
+            sharedStores.restoreStoredConversationIdentities(storeScope, serverId, conversationDirectoryLookupIds)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // Best effort: the header falls back to its candidates.
+        }
+    }
     val directoryConversationProjectionFlow = remember(
         conversationIdentityProvider,
         headerProjectionServerId,

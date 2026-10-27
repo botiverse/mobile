@@ -9,6 +9,7 @@ import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
 import build.raft.app.ChannelSettingsSnapshotCache
+import build.raft.app.ChannelSettingsResourceSpec
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.ReplyCacheProvenance
@@ -422,6 +423,8 @@ internal class RaftSharedStoreProvider private constructor(
     internal val threadDurableAccessEvictor: ThreadDurableAccessEvictor,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
+    /** The header's `GET channels/{id}` detail as an offline resource (stand-in on a cold / offline open). */
+    internal val storedConversationDetails: StoredConversationDetails,
     val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
@@ -1371,17 +1374,52 @@ internal class RaftSharedStoreProvider private constructor(
         }
         val serverId = ServerId(provenance.serverId)
         val projection = detail.toCanonicalConversationDirectoryProjection(serverId) ?: return false
-        return conversationIdentityHub(scope).publishCanonical(
-            authority =
-                SharedConversationIdentityAuthority(
-                    environmentId = provenance.environmentId,
-                    accountId = provenance.principalId,
-                    serverId = provenance.serverId,
-                    authGeneration = provenance.authGeneration,
-                    selectionGeneration = provenance.selectionGeneration,
-                ),
-            projection = projection,
-        )
+        val published =
+            conversationIdentityHub(scope).publishCanonical(
+                authority =
+                    SharedConversationIdentityAuthority(
+                        environmentId = provenance.environmentId,
+                        accountId = provenance.principalId,
+                        serverId = provenance.serverId,
+                        authGeneration = provenance.authGeneration,
+                        selectionGeneration = provenance.selectionGeneration,
+                    ),
+                projection = projection,
+            )
+        // The thread data source stores the accepted detail (fenced from its request's start).
+        return published
+    }
+
+    /**
+     * The stored header detail of [channelIds] (offline resource) into this shell's identity hub, for a page
+     * opened on a cold start or offline; the network's detail (when it arrives) replaces it, and a detail
+     * already there is never overwritten. Returns how many were published.
+     */
+    internal suspend fun restoreStoredConversationIdentities(
+        scope: RaftShellStoreScope,
+        serverId: String,
+        channelIds: Collection<String>,
+    ): Int {
+        val identity = captureThreadReplyCacheIdentity(scope) ?: return 0
+        if (identity.serverId != serverId.trim()) return 0
+        val owner =
+            StoredConversationDetailOwner(
+                environmentId = identity.environmentId,
+                accountId = identity.principalId,
+                serverId = identity.serverId,
+                authGeneration = identity.authGeneration,
+                selectionGeneration = identity.selectionGeneration,
+            )
+        var published = 0
+        for (channelId in channelIds.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
+            val detail = storedConversationDetails.read(owner, channelId) ?: continue
+            // The account / selection may have moved while the row was read.
+            if (captureThreadReplyCacheIdentity(scope) != identity) return published
+            if (storedConversationDetails.restore(owner, channelId, conversationIdentityHub(scope), detail)) {
+                published += 1
+            }
+        }
+        return published
     }
 
     fun sharedHomeStore(scope: RaftShellStoreScope): SharedHomeStore? =
@@ -3139,6 +3177,8 @@ internal class RaftSharedStoreProvider private constructor(
                     environmentId = { apiEnvironmentStore.current().apiBaseUrl },
                     logger = sharedInfoLogger("SlockOfflineResources", "offline_resources"),
                 )
+            val storedConversationDetails =
+                StoredConversationDetails(offlineResourceCache.resource(ConversationDetailResourceSpec))
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -3258,7 +3298,12 @@ internal class RaftSharedStoreProvider private constructor(
                         logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
                     ),
                 threadPendingSendJournal = threadPendingSendJournal,
-                channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
+                channelSettingsSnapshotCache =
+                    ChannelSettingsSnapshotCache(
+                        stored = offlineResourceCache.resource(ChannelSettingsResourceSpec),
+                        storedDetails = storedConversationDetails,
+                    ),
+                storedConversationDetails = storedConversationDetails,
                 foregroundReconciler = foregroundReconciler,
                 homeStoreScope = RaftStoreThreading.newScope(),
                 homeActivityStoreScope = RaftStoreThreading.newScope(),

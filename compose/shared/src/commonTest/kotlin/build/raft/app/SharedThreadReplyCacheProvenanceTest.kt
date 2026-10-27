@@ -3,6 +3,12 @@ package build.raft.app
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.ConversationDetailResourceSpec
+import build.raft.app.data.InMemoryRaftOfflineResourceRows
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RaftOfflineResourceCache
+import build.raft.app.data.StoredConversationDetailOwner
+import build.raft.app.data.StoredConversationDetails
 import build.raft.app.data.SharedMessagesPayload
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemoryRaftAuthSessionStore
@@ -41,6 +47,7 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
@@ -427,6 +434,82 @@ class SharedThreadReplyCacheProvenanceTest {
         assertEquals("Cindy", published.single().second.name)
         assertEquals("pixel:cindy", published.single().second.directMessagePeerAvatarWireValue)
     }
+
+    // Offline-first header: the stored detail is fenced from when its request STARTED, so an answer in
+    // flight across a lost server (wipeServer) cannot store that server's detail again.
+    @Test
+    fun canonicalDetailInFlightAcrossALostServerIsNotStored() = runBlocking {
+        val details = storedDetails(this)
+        val release = CompletableDeferred<Unit>()
+        val repository =
+            canonicalConversationRepository(directMessageDetail("Cindy", "pixel:cindy"))
+                .also { it.releaseThread = release }
+        val dataSource =
+            dataSource(
+                authStore = InMemoryRaftAuthSessionStore(session("account-a")),
+                messageStore = SharedThreadMessageStore(),
+                conversationRepository = repository,
+                canonicalConversationIdentityPublisher = { _, _ -> true },
+                storedConversationDetails = details.first,
+            )
+
+        val request = async { dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false) }
+        repository.threadStarted.await()
+        details.second.wipeServer("server-1", accountId = "account-a")
+        release.complete(Unit)
+        request.await()
+
+        assertNull(details.first.read(detailOwner("account-a"), "dm-1"))
+
+        // Positive control: a request that starts after the wipe is stored.
+        dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+        assertEquals("Cindy", details.first.read(detailOwner("account-a"), "dm-1")?.name)
+    }
+
+    // A conversation that is gone (404 / lost permission) loses its stored header detail; a transient
+    // failure keeps it.
+    @Test
+    fun goneConversationDropsItsStoredHeaderDetailAndTransientFailureKeepsIt() = runBlocking {
+        val details = storedDetails(this)
+        val owner = detailOwner("account-a")
+        val repository = canonicalConversationRepository(directMessageDetail("Cindy", "pixel:cindy"))
+        val dataSource =
+            dataSource(
+                authStore = InMemoryRaftAuthSessionStore(session("account-a")),
+                messageStore = SharedThreadMessageStore(),
+                conversationRepository = repository,
+                canonicalConversationIdentityPublisher = { _, _ -> true },
+                storedConversationDetails = details.first,
+            )
+        details.first.record(owner, "dm-1", directMessageDetail("Cindy", "pixel:cindy"))
+
+        repository.threadResult = DataResult.Error(ScreenError("network_request_failed", retryable = true))
+        dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+        assertEquals("Cindy", details.first.read(owner, "dm-1")?.name)
+
+        repository.threadResult = DataResult.Error(ScreenError("http_404", retryable = false))
+        dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+        assertNull(details.first.read(owner, "dm-1"))
+
+        details.first.record(owner, "dm-1", directMessageDetail("Cindy", "pixel:cindy"))
+        repository.threadResult =
+            DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
+        assertNull(details.first.read(owner, "dm-1"))
+    }
+
+    private fun storedDetails(scope: CoroutineScope): Pair<StoredConversationDetails, RaftOfflineResourceCache> {
+        val cache =
+            RaftOfflineResourceCache(
+                InMemoryRaftOfflineResourceRows(),
+                environmentId = { "https://prod.example.test" },
+                scope = scope,
+            )
+        return StoredConversationDetails(cache.resource(ConversationDetailResourceSpec)) to cache
+    }
+
+    private fun detailOwner(accountId: String): StoredConversationDetailOwner =
+        StoredConversationDetailOwner("https://prod.example.test", accountId, "server-1")
 
     @Test
     fun lateCanonicalConversationDetailFromRetiredReplyCacheScopeFailsClosedAndIsNotPublished() = runBlocking {
@@ -861,6 +944,7 @@ class SharedThreadReplyCacheProvenanceTest {
         conversationRepository: ConversationRepository? = null,
         canonicalConversationIdentityPublisher:
             suspend (ReplyCacheProvenance, ConversationSummary) -> Boolean = { _, _ -> false },
+        storedConversationDetails: StoredConversationDetails? = null,
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             api = UnusedThreadApi,
@@ -883,6 +967,7 @@ class SharedThreadReplyCacheProvenanceTest {
             },
             replyCacheIdentityTransitionWaiter = transitionWaiter,
             canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
+            storedConversationDetails = storedConversationDetails,
             homeSnapshotProvider = { homeSnapshot() }
         )
 

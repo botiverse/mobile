@@ -1866,6 +1866,11 @@ internal class SharedThreadDataSource(
     private val replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
     private val canonicalConversationIdentityPublisher:
         suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
+    /**
+     * The header's stored channel detail (offline resource): the accepted canonical detail is stored, fenced
+     * from when its request started; a conversation that is gone (404 / lost permission) loses its copy.
+     */
+    private val storedConversationDetails: build.raft.app.data.StoredConversationDetails? = null,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
@@ -1972,6 +1977,7 @@ internal class SharedThreadDataSource(
         replyOriginHydrationGraceMillis: Long = SharedThreadZeroReplyOriginHydrationGraceMillis,
         canonicalConversationIdentityPublisher:
             suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
+        storedConversationDetails: build.raft.app.data.StoredConversationDetails? = null,
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
         activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
@@ -2005,6 +2011,7 @@ internal class SharedThreadDataSource(
         threadPageSizeProvider = threadPageSizeProvider,
         replyOriginHydrationGraceMillis = replyOriginHydrationGraceMillis,
         canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
+        storedConversationDetails = storedConversationDetails,
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator,
         activityOpenSeedSource = activityOpenSeedSource,
@@ -5970,7 +5977,8 @@ internal class SharedThreadDataSource(
         val initialResult =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = "thread_network",
-                expectedProvenance = replyResolutionScope.provenance
+                expectedProvenance = replyResolutionScope.provenance,
+                loadedConversationId = threadId.value,
             ) { repository ->
                 val pageSize = threadPageSize(session.currentServerId)
                 diagnosticsLogger?.invoke(
@@ -6613,11 +6621,15 @@ internal class SharedThreadDataSource(
         fallbackCode: String,
         expectedProvenance: ReplyCacheProvenance,
         allowCapturedScopeResultAfterProvenanceChange: Boolean = false,
+        /** The conversation this request loads: gone (404 / lost permission) = its stored header detail goes. */
+        loadedConversationId: String? = null,
         call: suspend (ConversationRepository) -> DataResult<ThreadSnapshot>
     ): DataResult<ThreadSnapshot> {
         val repository =
             conversationRepository
                 ?: return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
+        // Offline-first header: the stored detail is fenced from now (the request's start), not its answer.
+        val detailFetchStartedAt = storedConversationDetails?.fetchStarted()
         val result =
             try {
                 call(repository)
@@ -6636,6 +6648,13 @@ internal class SharedThreadDataSource(
             } else {
                 try {
                     val published = canonicalConversationIdentityPublisher(expectedProvenance, detail)
+                    if (published) {
+                        storedConversationDetails?.recordCanonical(
+                            owner = expectedProvenance.storedConversationDetailOwner(),
+                            detail = detail,
+                            startedAt = detailFetchStartedAt,
+                        )
+                    }
                     diagnosticsLogger(
                         "conversation_directory_canonical_publish " +
                             "serverId=${expectedProvenance.serverId} channelId=${detail.channelId?.value.orEmpty()} " +
@@ -6650,6 +6669,11 @@ internal class SharedThreadDataSource(
                     )
                 }
             }
+        }
+        val goneConversationId = loadedConversationId?.trim()?.takeIf { it.isNotEmpty() && result.isConversationGone() }
+        if (goneConversationId != null && storedConversationDetails != null && isCurrentReplyCacheProvenance(expectedProvenance)) {
+            // Deleted / no longer visible: its name and topic must not come back on a cold open.
+            storedConversationDetails.remove(expectedProvenance.storedConversationDetailOwner(), goneConversationId)
         }
         if (
             !allowCapturedScopeResultAfterProvenanceChange &&
@@ -15672,3 +15696,18 @@ private fun Throwable.safeThreadDiagnosticsType(): String =
 internal const val RESUME_CATCH_UP_MAX_RETRIES = 3
 
 internal fun resumeCatchUpRetryDelayMs(attempt: Int): Long = 2_000L shl attempt.coerceIn(0, 2)
+
+private fun ReplyCacheProvenance.storedConversationDetailOwner(): build.raft.app.data.StoredConversationDetailOwner =
+    build.raft.app.data.StoredConversationDetailOwner(
+        environmentId = environmentId,
+        accountId = principalId,
+        serverId = serverId,
+    )
+
+/** The conversation itself is gone for this account: not found, or a (non-session) permission loss. */
+private fun DataResult<*>.isConversationGone(): Boolean =
+    when (this) {
+        is DataResult.NoPermission -> !blocker.isAuthSessionBlocker() && !blocker.serverMessage.isEdgeBlockedMarker()
+        is DataResult.Error -> error.code == "http_404"
+        else -> false
+    }
