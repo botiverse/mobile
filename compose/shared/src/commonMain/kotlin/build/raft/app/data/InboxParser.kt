@@ -11,6 +11,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskId
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -92,6 +93,9 @@ private data class WireInboxItem(
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
     val taskClaimedByName: String? = null,
+    // task v2 conversation rows (kind "task", channelService.ts TaskConversationInboxItem)
+    val taskId: String? = null,
+    val taskTitle: String? = null,
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
     val unfollowedAt: String? = null,
@@ -180,8 +184,14 @@ fun parseFollowedThreadListResponse(
     if ("threads" !in root) return@runCatching null
     val decoded = inboxJson.decodeFromJsonElement(WireThreadListResponse.serializer(), root)
     val items = decoded.threads
-        .map { it.copy(kind = "thread") }
-        .mapNotNull { it.toThreadDomain(diagnostics) }
+        .mapNotNull { wire ->
+            // Task v2: a followed task conversation keeps its own arm (no parent message).
+            if (wire.kind == "task") {
+                wire.toTaskConversationDomain(diagnostics)
+            } else {
+                wire.copy(kind = "thread").toThreadDomain(diagnostics)
+            }
+        }
         .map { item -> item.withActivityFollowStateProjection() }
         .distinctBy { it.key }
     SharedThreadListItems(
@@ -295,7 +305,37 @@ fun parseSharedInboxSnapshot(
 private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
     "channel", "dm" -> toChannelOrDmDomain(diagnostics)
     "thread" -> toThreadDomain(diagnostics)
+    "task" -> toTaskConversationDomain(diagnostics)
     else -> null
+}
+
+/**
+ * Task v2 (slock `TaskConversationInboxItem`): the thread arm's fields with no parent message,
+ * folded into a thread-shaped row like web `normalizeTaskConversationRow` so the thread-keyed
+ * paths (key, follow, Done by `threadChannelId`) apply unchanged. The row title is the task
+ * address `#channel:#7 title` (web `formatTaskConversationTitle`).
+ */
+private fun WireInboxItem.toTaskConversationDomain(diagnostics: (String) -> Unit): InboxItem? {
+    val base = copy(kind = "thread", parentMessageId = null).toThreadDomain(diagnostics) ?: return null
+    val title = taskTitle?.trim()?.takeIf { it.isNotBlank() } ?: parentMessagePreview?.trim()?.takeIf { it.isNotBlank() }
+    val displayTitle =
+        taskNumber?.let { number ->
+            formatTaskConversationTitle(
+                ref = formatTaskConversationRef(number, parentChannelName, base.parentChannelKind),
+                title = title,
+            )
+        } ?: title
+    return base.copy(
+        parentMessageId = null,
+        parentMessagePreview = displayTitle,
+        parentMessageSenderId = null,
+        parentMessageSenderKind = null,
+        taskConversation =
+            InboxTaskConversation(
+                taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
+                taskTitle = title,
+            ),
+    )
 }
 
 /** The row's `senderAvatarUrl`, as ThreadPage takes a reply's `senderAvatarUrl`: trimmed, blank → none. */

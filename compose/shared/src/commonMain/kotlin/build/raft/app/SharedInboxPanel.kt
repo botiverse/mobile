@@ -15,6 +15,7 @@ import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SharedHomeIntent
@@ -2256,6 +2257,13 @@ internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map
             if (item.activityObject?.isFollowing == true) add("unfollow-object")
             return@buildList
         }
+        if (item.isTaskConversation) {
+            // Task v2 (P0): only Done, keyed by the conversation's `threadChannelId` like a thread's.
+            // Follow is keyed by a parent message (a task conversation has none) and read/unread are
+            // not wired for task rows yet, so they are not offered.
+            add("done")
+            return@buildList
+        }
         if (item.isUnfollowedActivityThread) {
             // Web InboxContextMenu: an unfollowed row has no read/unread toggle
             // (the server zeroes its attention) but keeps Done, then Follow.
@@ -3094,12 +3102,27 @@ internal fun InboxItem.toHomeMessageOpenRequest(
     conversationDirectory: SharedConversationDirectoryState,
     diagnosticsLogger: (String) -> Unit = {}
 ): ConversationOpenResolution =
-    resolveOpenRequest(
-        serverId = serverId,
-        sourceMessageIdentity = toConversationOpenSourceMessageIdentity(),
-        conversationDirectory = conversationDirectory,
-        diagnosticsLogger = diagnosticsLogger
+    toTaskConversationOpenRequestOrNull()?.let(ConversationOpenResolution::Resolved)
+        ?: resolveOpenRequest(
+            serverId = serverId,
+            sourceMessageIdentity = toConversationOpenSourceMessageIdentity(),
+            conversationDirectory = conversationDirectory,
+            diagnosticsLogger = diagnosticsLogger
+        )
+
+/**
+ * Task v2: a task-conversation Activity row opens its conversation directly. Its
+ * `threadChannelId` is already the reader's LOCAL conversation (the server resolves joint
+ * projections), so no `POST /tasks/:id/conversation` is needed; the anchor is the thread rule's.
+ */
+internal fun InboxItem.toTaskConversationOpenRequestOrNull(): HomeMessageOpenRequest? {
+    if (!isTaskConversation) return null
+    val conversationId = threadChannelId?.takeIf { it.value.isNotBlank() } ?: return null
+    return HomeMessageOpenRequest(
+        conversationIdentity = taskConversationLaunchIdentity(conversationId),
+        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
     )
+}
 
 private fun InboxItem.launchConversationKind(): ConversationKind =
     when (kind) {

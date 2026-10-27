@@ -2121,8 +2121,8 @@ class SharedActivityStore internal constructor(
         // own conversation as `channelId` (web skips channelType thread/task before
         // noteInboxCatchUpTarget, inboxStore.ts:2117-2122); as a target it would name no served
         // channel row, read as "not behind" and end the catch-up of the channel just before it.
-        // A `task` conversation context parses to no kind here, so the row match is the guard.
-        if (message.conversationContext?.channelKind == ConversationKind.Thread) return
+        val contextKind = message.conversationContext?.channelKind
+        if (contextKind == ConversationKind.Thread || contextKind == ConversationKind.Task) return
         if (message.conversationContext?.parentMessageId != null || message.parentMessageId != null) return
         val channelId = message.channelId ?: return
         val shown = _state.value.snapshot?.items.orEmpty()

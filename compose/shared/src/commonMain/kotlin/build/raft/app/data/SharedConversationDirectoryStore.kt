@@ -638,6 +638,9 @@ private fun InboxItem.toSharedConversationDirectoryProjections(
         } else {
             null
         }
+    // Task v2: a task conversation row proves its parent channel only; it is not a reply-thread
+    // projection (no parent message) and is opened by its own typed identity.
+    if (isTaskConversation) return listOfNotNull(parentProjection)
     val itemProjection = toSharedConversationDirectoryProjection(serverId, dmPeerNames)
     return listOfNotNull(parentProjection, itemProjection)
 }
