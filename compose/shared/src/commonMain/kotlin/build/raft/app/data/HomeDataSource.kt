@@ -277,6 +277,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.AgentTypingUpdated -> false
         // A web restart's result only concerns the open computer detail page (settings store).
         is build.raft.app.model.ComputerRestartDone -> false
+        // A flag-refetch hint: the feature-flag refresher handles it; Home's rows do not change.
+        is build.raft.app.model.ServerFeaturesChanged -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

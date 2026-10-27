@@ -5687,6 +5687,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ComputerRestartDone -> "computer_restart_done"
         is build.raft.app.model.ScopeReadUpdated -> "scope_read_updated"
         is build.raft.app.model.AgentTypingUpdated -> "agent_typing"
+        is build.raft.app.model.ServerFeaturesChanged -> "server_features_changed"
         else -> "realtime"
     }
 

@@ -933,6 +933,18 @@ data class ServerPlanUpdated(
     val plan: String
 ) : RealtimeEvent
 
+/**
+ * `server:features-changed` (botiverse/slock `packages/shared/src/featuresChanged.ts`
+ * `ServerFeaturesChangedEvent`, sent by `services/featureFlagChangeNotifier.ts`): this Server's
+ * feature flags may have changed. A refetch signal, not values: [keys] is only a hint (never
+ * treat a key missing from it as unchanged), and a missed one is never replayed.
+ */
+@Serializable
+data class ServerFeaturesChanged(
+    val serverId: ServerId,
+    val keys: List<String>,
+) : RealtimeEvent
+
 @Serializable
 data class AgentCreated(
     val agent: AgentProfile

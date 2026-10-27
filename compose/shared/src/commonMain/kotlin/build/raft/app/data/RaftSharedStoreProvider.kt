@@ -41,6 +41,7 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
@@ -726,6 +727,24 @@ internal class RaftSharedStoreProvider private constructor(
     private val processRealtimeAuthorityFlow =
         realtimeAuthorityProvider.authorityFlow(ProcessRealtimeAuthorityScopeKey)
 
+    /**
+     * `server:features-changed` and every socket (re)connect refetch that Server's whole flag set
+     * after a random 0-10 s ([ServerFeatureFlagChangeRefresher]); a failed refetch keeps the values.
+     */
+    private val serverFeatureFlagChangeRefresher: ServerFeatureFlagChangeRefresher by lazy {
+        ServerFeatureFlagChangeRefresher(
+            scope = threadSendScope,
+            refetch = { serverId ->
+                serverFeatureFlags.prefetch(
+                    serverId = serverId,
+                    evaluationContext = updateNetworkKmmRecoveryEnvironment(),
+                    forceRefresh = true,
+                )
+            },
+            logger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
+    }
+
     /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
@@ -867,6 +886,13 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                     // Task #164: realtime is back; a stale unread / Activity read tries again now.
                     RaftStaleReadRecoverySignals.onRealtimeRoomsJoined()
+                    // Missed `server:features-changed` notices are not replayed: refetch on every (re)connect.
+                    serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
+                }
+            },
+            onAccepted = { grant, event ->
+                if (event is ServerFeaturesChanged && event.serverId.value == grant.serverId) {
+                    serverFeatureFlagChangeRefresher.onFeaturesChanged(event.serverId, event.keys)
                 }
             },
             // Task #14c: the server's answer to a `join:channel` (a reply thread's room): the canary may make a
