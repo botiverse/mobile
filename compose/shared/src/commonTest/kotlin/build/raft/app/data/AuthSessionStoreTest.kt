@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -772,6 +773,58 @@ class AuthSessionStoreTest {
         override fun putString(key: String, value: String?) {
             delegate.putString(key, value)
         }
+    }
+
+    /**
+     * #3823: synchronous host code on the main thread must never wait on the process-wide
+     * session lock. The committed snapshot is read while a writer holds that lock (inside
+     * [KeyValueAuthSessionStore.replaceAuthenticatedSessionIfCurrent]'s guard) and returns the
+     * last committed session, not the write in flight.
+     */
+    @Test
+    fun committedSessionSnapshotNeverWaitsForTheSessionLock() = runBlocking {
+        val keyValue = InMemoryRaftKeyValueStore()
+        val writer = KeyValueAuthSessionStore(keyValue)
+        val hostReader = KeyValueAuthSessionStore(keyValue)
+        val committed = sampleSession()
+        writer.replaceAuthenticatedSession(committed)
+        val successor = committed.copy(accessToken = "token-successor")
+
+        var readUnderLock: StoredAuthSession? = null
+        writer.replaceAuthenticatedSessionIfCurrent(successor) {
+            readUnderLock = hostReader.readCommittedSessionSnapshot()
+            true
+        }
+
+        assertEquals(committed, readUnderLock)
+        assertEquals(successor, hostReader.readCommittedSessionSnapshot())
+    }
+
+    @Test
+    fun committedSessionSnapshotTracksSavesAndClears() = runBlocking {
+        val keyValue = InMemoryRaftKeyValueStore()
+        // Written by an earlier process: nothing cached yet, so the snapshot decodes the record.
+        keyValue.putString(
+            RAFT_AUTH_SESSION_RECORD_KEY,
+            Json { ignoreUnknownKeys = true }.encodeToString(StoredAuthSession.serializer(), sampleSession()),
+        )
+        val store = KeyValueAuthSessionStore(keyValue)
+        assertEquals("token-a", store.readCommittedSessionSnapshot()?.accessToken)
+
+        store.updateTokens(accessToken = "token-b", refreshToken = "token-r2")
+        assertEquals("token-b", store.readCommittedSessionSnapshot()?.accessToken)
+
+        store.clearSession(reason = "test", source = "test")
+        assertNull(store.readCommittedSessionSnapshot())
+        assertNull(KeyValueAuthSessionStore(keyValue).readCommittedSessionSnapshot())
+    }
+
+    @Test
+    fun committedSessionSnapshotOfAnUndecodableRecordIsSignedOut() {
+        val keyValue = InMemoryRaftKeyValueStore()
+        keyValue.putString(RAFT_AUTH_SESSION_RECORD_KEY, "{not json")
+
+        assertNull(KeyValueAuthSessionStore(keyValue).readCommittedSessionSnapshot())
     }
 
     private fun sampleSession(): StoredAuthSession =

@@ -10,7 +10,6 @@ import android.util.Log
 import build.raft.app.BuildConfig
 import build.raft.app.data.KeyValueAuthSessionStore
 import java.security.MessageDigest
-import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 class QaCaptureBoundaryReceiver : BroadcastReceiver() {
@@ -26,9 +25,10 @@ class QaCaptureBoundaryReceiver : BroadcastReceiver() {
         try {
             if ("sha256:${sha256(bytes)}" != requestDigest) return
             val request = JSONObject(bytes.decodeToString())
-            val session = runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context)).readSession()
-            } ?: return
+            // onReceive runs on the main thread: never wait on the session lock there (#3823).
+            val session =
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context)).readCommittedSessionSnapshot()
+                    ?: return
             val metadata = session.qaBootstrap ?: return
             val envelope = metadata.runtimeEnvelope ?: return
             val proofRequest =

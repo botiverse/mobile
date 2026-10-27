@@ -33,7 +33,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 internal object AndroidUnreadNotificationPoster {
@@ -598,13 +597,13 @@ internal object AndroidUnreadNotificationPoster {
             )
         }.getOrNull() ?: PushPreviewMode.fromWire(PUSH_PREVIEW_MODE_UNREADABLE) ?: PushPreviewMode.Hidden
 
+    // Lock-free: posting can run on the main thread, where waiting on the session lock can
+    // deadlock (#3823).
     private fun currentSelectedServerId(context: Context): String? =
         runCatching {
-            runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
-                    .readSession()
-                    ?.currentServerId
-            }
+            KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
+                .readCommittedSessionSnapshot()
+                ?.currentServerId
         }.getOrNull()
 
     fun hasNotificationPermission(context: Context): Boolean =

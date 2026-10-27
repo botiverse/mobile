@@ -210,7 +210,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -4804,6 +4803,12 @@ internal class RaftBridgeModule(
             }
             return
         }
+        if (action == "setApiEnvironment") {
+            // Clearing the old server's session takes the auth-session lock: suspend, never block.
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launchSettingsBridgeAction(callback) { setApiEnvironment(request) }
+            return
+        }
         if (action == "prefetchReleaseNotes") {
             val url = request.optString("url")
             if (!RaftReleaseNotesDocumentCache.isReleaseNotesUrl(url)) {
@@ -4831,7 +4836,6 @@ internal class RaftBridgeModule(
                         "loadAbout" -> loadSettingsAbout()
                         "loadOpenSourceLicenses" -> loadOpenSourceLicenses()
                         "loadDeveloper" -> loadSettingsDeveloper()
-                        "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setDiagnosticFeatureFlagOverride" -> setDiagnosticFeatureFlagOverride(request)
@@ -5285,10 +5289,10 @@ internal class RaftBridgeModule(
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
                         .apply { timeZone = TimeZone.getTimeZone("UTC") }
                         .format(Date(packageInfo.firstInstallTime))
+        // Lock-free: the settings bridge runs on the main thread, where waiting on the session
+        // lock can deadlock (#3823).
         val session =
-                runBlocking {
-                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
-                }
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readCommittedSessionSnapshot()
         val selectedServer =
                 session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
                         ?: session?.servers?.firstOrNull()
@@ -5943,7 +5947,7 @@ internal class RaftBridgeModule(
                     patchSizeLabel = displaySizes.patchSizeBytes?.hostSizeLabel()
             )
 
-    private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
+    private suspend fun setApiEnvironment(request: JSONObject): Map<String, Any> {
         val environmentKey = request.optString("environmentKey")
         val store = AndroidApiServerEnvironmentStore(appContext)
         val before = store.current()
@@ -5964,17 +5968,15 @@ internal class RaftBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val changed = before != after
         if (changed) {
-            runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession(
-                    reason = "api_environment_changed",
-                    source = "android_activity"
+            clearSessionForApiEnvironmentChange(
+                    authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+            ) {
+                AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
+                RaftAppLog.record(
+                        "SlockDeveloper",
+                        "api_environment_changed from=${before.key} to=${after.key}"
                 )
             }
-            AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
-            RaftAppLog.record(
-                    "SlockDeveloper",
-                    "api_environment_changed from=${before.key} to=${after.key}"
-            )
         }
         return loadSettingsDeveloper(
                 feedback =

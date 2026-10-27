@@ -2,8 +2,8 @@ name: Source constraints lint
 
 # Incident-born static constraints as an explicit gate (test-discipline
 # announcement, #all 2026-07-25). check_source_constraints.py now holds the
-# 1.15.0 conditional-interaction-state crash guard and the task #82 native
-# Sign in with Apple contract; the other steps below
+# 1.15.0 conditional-interaction-state crash guard, the task #82 native
+# Sign in with Apple contract and the #3823 no-production-runBlocking gate; the other steps below
 # are the visual fixture census, string edge spaces and no-production-visual-pages.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
@@ -18,6 +18,8 @@ on:
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
       - "compose/shared/src/commonMain/composeResources/values*/strings.xml"
       - "scripts/ci/check_source_constraints.py"
+      # check_no_production_run_blocking (#3823) scans every non-test Kotlin source set.
+      - "compose/**/src/**/*.kt"
       # check_native_apple_authentication_services (task #82) reads these iOS files.
       - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
       - "compose/iosApp/iosApp/iosApp.entitlements"

@@ -9,7 +9,6 @@ import build.raft.app.RAFT_ROUTE_SERVER_ID
 import build.raft.app.data.KeyValueAuthSessionStore
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 internal const val ANDROID_SHELL_INSTANCE_ID_KEY = "slockShellInstanceId"
@@ -189,10 +188,11 @@ internal fun JSONObject.withAndroidShellRouteOwner(owner: AndroidShellRouteOwner
 internal fun currentAndroidShellRouteOwner(context: Context): AndroidShellRouteOwner? =
     runCatching {
         val appContext = context.applicationContext
+        // Lock-free: host launches run on the main thread, where waiting on the session lock can
+        // deadlock (#3823).
         val session =
-            runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
-            } ?: return@runCatching null
+            KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readCommittedSessionSnapshot()
+                ?: return@runCatching null
         val serverId = session.currentServerId ?: return@runCatching null
         val accountId = session.user.id
         AndroidShellRouteOwner(
