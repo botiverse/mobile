@@ -627,6 +627,22 @@
   display: none;
 }
 
+/* A side section's head (task #165): its buttons stand above the grip's
+   96x24 target where the two meet (a narrow thread's followers button), so a
+   press on a button is the button's, never a drag. */
+[data-side-head] [data-slot="panel-actions"] {
+  position: relative;
+  z-index: 40;
+}
+
+/* A press on the head that misses the grip moves nothing, and it doesn't
+   select the head's title either (Kirby): the head is the section's chrome.
+   The section's content below it stays selectable. */
+[data-side-head] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Sections stacked in the thread's column (task #165): the thread shares the
    column's height with them by its share (ChannelSideArea useStack), and
    folds to its head like they do. */
@@ -639,6 +655,13 @@
 }
 
 .thread-side-column[data-side-stacked="true"] {
+  border-left: 1px solid var(--line-seam);
+}
+
+/* A section dragged into the thread's column opens a gap beside its panel
+   (sideSectionDrag): alone, the panel draws the column's left seam, so the
+   gap draws it too. */
+.thread-side-column:not([data-side-stacked="true"]) > [data-testid="side-section-drop-slot"] {
   border-left: 1px solid var(--line-seam);
 }
 
@@ -661,6 +684,14 @@
 .thread-layout-container > :not(.thread-main-column):not(.thread-side-column):not([data-testid="channel-side-slot"]),
 .thread-layout-container > .thread-profile-side-column > * {
   order: 50;
+}
+
+/* While a side section is dragged (sideSectionDrag), nothing in the row
+   answers the pointer: no hover highlight, toolbar or tooltip under the hand
+   (the cursor is still raft-ui's grabbing). The drag reads the pointer from
+   the document, so the places still follow it. */
+.thread-layout-container[data-side-dragging] * {
+  pointer-events: none !important;
 }
 
 /* Task v2's Tasks and Files column in the row (task #165): it gives way
@@ -750,7 +781,50 @@
       display: flex;
     }
 
+    /* The thread's column covering the channel (task #165; stdrc and Kirby,
+       2026-10-26): the row has no room for the channel's 360px beside the
+       side columns at their minimums (ChannelSideArea placeSections). The
+       column takes the channel's place, the sections stacked in it with it,
+       and fills what the other columns leave; it covers the channel, so Back
+       instead of × (DS Navigation, Closing). The channel keeps its box at its
+       360px, hidden and inert under the column, so its scroll position and
+       drafts are as they were when it comes back. */
+    .thread-layout-container:has(> .thread-side-column[data-covers]) > .thread-main-column {
+      position: absolute;
+      inset-block: 0;
+      left: 0;
+      width: 360px;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .thread-side-column[data-covers] {
+      flex: 1 1 0px;
+      width: auto;
+      min-width: 360px;
+      max-width: none;
+    }
+
+    .thread-side-column[data-covers] > .thread-side-column-resizer {
+      display: none;
+    }
+
+    .thread-side-column[data-covers] [data-testid="thread-mobile-back"] {
+      display: flex;
+    }
+
+    .thread-side-column[data-covers] [data-testid="thread-close"] {
+      display: none;
+    }
   }
+}
+
+/* Covering and first in the row, the thread's column draws no left edge: the
+   sidebar already has it. Behind a column the person put left of it, it keeps
+   its seam, as beside the channel. */
+.thread-side-column[data-covers="first"],
+.thread-side-column[data-covers="first"] > [data-slot="thread-panel-root"] {
+  border-left-width: 0;
 }
 
 /* ProfilePanel switches from an absolute mobile surface to an inline desktop
@@ -956,7 +1030,7 @@
     .thread-layout-container[data-thread-maximized="true"] { position: relative; }
     .thread-layout-container[data-thread-maximized="true"] > .thread-main-column,
     .thread-layout-container[data-thread-maximized="true"] > [data-testid="channel-side-slot"] > *,
-    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > :is([data-card], [data-side-seam], [data-side-companion]) {
+    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > :is([data-card], [data-side-seam]) {
       visibility: hidden;
       pointer-events: none;
     }
