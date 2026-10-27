@@ -641,52 +641,51 @@ internal class RaftSharedStoreProvider private constructor(
             return
         }
         val owner = rebaselineOwner ?: return
-
-        // A force caller otherwise joins any already-active pre-connect
-        // roster flight. Retire that flight/cache once, before every shell
-        // joins the new current-transport request.
-        processServerMembersCore.invalidate(
+        // Epoch + rebaseline above and the roster flight/cache retirement stay immediate; only the
+        // roster refetch takes the reconnect jitter (Tenny 10-27, web #11453).
+        presenceTransportRosterRefetch.onTransportRebaselined(
             owner = owner,
-            reason = "presence_transport_connected"
+            transport =
+                ProcessPresenceTransportEpoch(
+                    connectionFamilyId = grant.connectionFamilyId,
+                    epoch = transportEpoch
+                ),
+            rebaselineResult = result,
         )
-        val activeScopes = scopesForServer(grant.serverId).toSet()
-        val stores =
-            buildList {
-                add(serverMembersStore)
-                shellServerMembersStores.entries().forEach { (scope, store) ->
-                    if (scope in activeScopes) add(store)
-                }
-            }.distinct()
-        sharedInfoLogger("SlockPresence", "presence_transport_rebaseline")(
-            "serverId=${grant.serverId} epoch=$transportEpoch result=${result.name} stores=${stores.size}"
-        )
-        val connectedTransport =
-            ProcessPresenceTransportEpoch(
-                connectionFamilyId = grant.connectionFamilyId,
-                epoch = transportEpoch
-            )
-        coroutineScope {
-            stores.forEach { store ->
-                launch {
-                    try {
-                        // Roster refill first, then peer-server agents of joint channels (not on
-                        // this roster; their facts come back from the channel-members refetch).
-                        store.refreshAfterPresenceTransportConnected(
-                            serverId = ServerId(grant.serverId),
-                            transport = connectedTransport,
-                            reason = "presence_transport_connected"
-                        )
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (error: Throwable) {
-                        sharedWarnLogger("SlockPresence", "presence_transport_rebaseline")(
-                            "serverId=${grant.serverId} refresh_failed=${error::class.simpleName ?: "unknown"}"
-                        )
-                    }
-                }
-            }
-        }
     }
+
+    /**
+     * Full-list refetches after a socket RE-connect wait one uniform 0–20 s delay per client
+     * ([RaftReconnectRefetchJitter]); first connects, sign-in and a server switch fetch at once.
+     */
+    private val reconnectRefetchJitter: RaftReconnectRefetchJitter by lazy {
+        RaftReconnectRefetchJitter(
+            scope = threadSendScope,
+            logger = sharedInfoLogger("SlockRealtime", "reconnect_refetch_jitter"),
+        )
+    }
+
+    private val presenceTransportRosterRefetch: PresenceTransportRosterRefetch by lazy {
+        PresenceTransportRosterRefetch(
+            jitter = reconnectRefetchJitter,
+            // A force caller otherwise joins any already-active pre-connect roster flight. Retire
+            // that flight/cache once, before every shell joins the new current-transport request.
+            invalidate = { owner, reason -> processServerMembersCore.invalidate(owner = owner, reason = reason) },
+            storesForServer = { serverId ->
+                val activeScopes = scopesForServer(serverId).toSet()
+                buildList {
+                    add(serverMembersStore)
+                    shellServerMembersStores.entries().forEach { (scope, store) ->
+                        if (scope in activeScopes) add(store)
+                    }
+                }.distinct()
+            },
+            isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
+            logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
+            warnLogger = sharedWarnLogger("SlockPresence", "presence_transport_rebaseline"),
+        )
+    }
+
     private fun allServerMembersStores(): List<SharedServerMembersStore> =
         buildList {
             add(serverMembersStore)
@@ -720,6 +719,9 @@ internal class RaftSharedStoreProvider private constructor(
                         before.writeGeneration == context.writeGeneration
                 if (sameBinding) return@collect
                 if (before != null) {
+                    // Sign-out, account or environment switch: nothing waiting may run for the old
+                    // binding, and the successor's first connects fetch at once.
+                    reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
                     allServerMembersStores().forEach { store ->
                         store.retireAccountData(
                             successorEnvironmentId = context?.environmentId,
@@ -895,6 +897,7 @@ internal class RaftSharedStoreProvider private constructor(
             // timeline partition, in memory and on disk. Called only after the terminal mutation was
             // accepted under the then-current grant (the grant itself is revoked by that mutation).
             onServerAccessLost = { grant ->
+                reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
                 threadPayloadStore.dropServer(grant.serverId)
                 // Step 3: the server's members (memory in every shell, durable row, avatar refs).
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
@@ -1129,6 +1132,9 @@ internal class RaftSharedStoreProvider private constructor(
                     val prefetching = launch {
                         selectionStore.currentServerId.collectLatest { serverId ->
                             if (!serverId.isNullOrBlank()) {
+                                // A server switch fetches at once: a roster refetch still waiting for
+                                // the reconnect jitter of this server runs now.
+                                reconnectRefetchJitter.flushServer(serverId, reason = "server_selected")
                                 refreshSelectedServerFeatureFlags {
                                     try {
                                         val environmentId = updateNetworkKmmRecoveryEnvironment()
