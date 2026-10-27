@@ -575,8 +575,14 @@ internal fun SharedHomeActivityScreen(
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
+    // botiverse/slock #11273: a DM row with an App Bot shows the Bot badge after the name.
+    val activityAppBotResolver =
+        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
+            raftMemberAppBotResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
+        }
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
+        LocalRaftMemberAppBotResolver provides activityAppBotResolver,
     ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,

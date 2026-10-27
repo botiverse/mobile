@@ -7,7 +7,6 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -123,18 +122,6 @@ class RaftAppBotTest {
     }
 
     @Test
-    fun removedBotComposerIsDisabledWithTheUnavailablePlaceholder() {
-        val composer =
-            RaftThreadComposerPayload(instanceId = "dm", placeholder = "Message @stamp", seedText = "draft kept")
-                .removedAppBotReadOnly("Chat is unavailable")
-        val state = composer.toThreadComposerUiState()
-        assertFalse(state.enabled)
-        assertFalse(state.attachmentActionsEnabled)
-        assertEquals("Chat is unavailable", state.placeholder)
-        assertEquals("draft kept", state.seedText)
-    }
-
-    @Test
     fun composerChecksTheDmPeerAndAThreadsParentDmPeer() {
         val botPeer =
             MemberDetailIdentity(MemberId("agent-removed"), MemberKind.Agent)
@@ -155,5 +142,35 @@ class RaftAppBotTest {
         assertNull(display(RaftThreadSurfaceKind.Channel, dm = botPeer).composerDmAgentPeerId())
         assertNull(display(RaftThreadSurfaceKind.ReplyThread).composerDmAgentPeerId())
         assertTrue(display(RaftThreadSurfaceKind.ReplyThread, dm = botPeer).composerDmAgentPeerId() == null)
+    }
+
+    @Test
+    fun activityBadgesOnlyADmRowWithAnAgentPeer() {
+        fun peer(id: String, agent: Boolean) =
+            ActivityConversationDmPeer(peerId = id, peerIsAgent = agent, avatarWireValue = null, displayName = id, activityMuted = false)
+        val context =
+            ActivityConversationListContext(
+                dmPeersByChannelId = mapOf("dm-bot" to peer("agent-stamp", true), "dm-human" to peer("user-1", false)),
+            )
+        fun dm(channelId: String) =
+            build.raft.app.data.InboxItem(
+                key = "dm:$channelId",
+                kind = build.raft.app.model.InboxItemKind.DirectMessage,
+                channelId = build.raft.app.model.ChannelId(channelId),
+                channelName = channelId,
+            )
+        val thread =
+            build.raft.app.data.InboxItem(
+                key = "thread:t",
+                kind = build.raft.app.model.InboxItemKind.Thread,
+                channelId = build.raft.app.model.ChannelId("t"),
+                channelName = "thread",
+                parentChannelId = build.raft.app.model.ChannelId("dm-bot"),
+                parentChannelKind = build.raft.app.model.ConversationKind.DirectMessage,
+            )
+        val all = build.raft.app.data.InboxFilter.All
+        assertEquals("agent-stamp", dm("dm-bot").activityConversationRowModel(context, all).activityDmAppBotPeerId())
+        assertNull(dm("dm-human").activityConversationRowModel(context, all).activityDmAppBotPeerId())
+        assertNull(thread.activityConversationRowModel(context, all).activityDmAppBotPeerId())
     }
 }

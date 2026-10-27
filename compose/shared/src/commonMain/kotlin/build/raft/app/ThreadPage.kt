@@ -28,6 +28,7 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
@@ -16952,6 +16953,11 @@ private fun ThreadComposerRoute(
     /** A removed App Bot's DM (or a thread in it): notice above a disabled composer. */
     removedAppBot: RaftAppBotIdentity? = null,
 ) {
+    if (removedAppBot != null) {
+        // The editor never mounts, so the saved draft stays in the store untouched.
+        ThreadRemovedAppBotReadOnlyComposer(handle = removedAppBot.handle)
+        return
+    }
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
     val restingHeightKey = surface.threadComposerRestingHeightKey()
@@ -16976,16 +16982,8 @@ private fun ThreadComposerRoute(
                 resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
             )
         }
-    val chatUnavailable = stringResource(Res.string.thread_composer_chat_unavailable)
-    val composerUiState =
-        composerState
-            .let { state -> if (removedAppBot != null) state.removedAppBotReadOnly(chatUnavailable) else state }
-            .toThreadComposerUiState()
-    val composerAtRest = composerUiState.isThreadComposerAtRest() && removedAppBot == null
-    Column(modifier = Modifier.fillMaxWidth()) {
-    if (removedAppBot != null) {
-        ThreadRemovedAppBotNotice(handle = removedAppBot.handle)
-    }
+    val composerUiState = composerState.toThreadComposerUiState()
+    val composerAtRest = composerUiState.isThreadComposerAtRest()
     Box(
         modifier =
             Modifier.fillMaxWidth().onSizeChangedDp { size ->
@@ -17013,35 +17011,25 @@ private fun ThreadComposerRoute(
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
     }
-    }
 }
 
 /**
- * The DM with an App Bot removed from this server (botiverse/slock #11303 `RemovedAppBotDmNotice`):
- * a raft-ui warning Banner above the read-only composer that says why and where an admin adds the
- * Bot back. Web links "Settings › Applications" for people who can manage Apps; the phone has no
- * server Apps settings, so everyone reads the plain text.
+ * The DM with an App Bot removed from this server, and threads in it (botiverse/slock #11303
+ * `RemovedAppBotDmNotice` over #11321 `ReadOnlyComposer`): a raft-ui warning Banner that says why
+ * and where an admin adds the Bot back, 8dp above the one-line read-only composer ("Chat is
+ * unavailable"; no typing, attachments, As Task or send). Web links "Settings › Applications" for
+ * people who can manage Apps; the phone has no server Apps settings, so everyone reads plain text.
  */
 @Composable
-internal fun ThreadRemovedAppBotNotice(handle: String, modifier: Modifier = Modifier) {
-    RaftBanner(
-        description = stringResource(Res.string.thread_app_bot_removed_notice, handle.removePrefix("@")),
-        status = RaftBannerStatus.Warning,
-        modifier = modifier.fillMaxWidth().padding(bottom = RaftAppSpacing.Sm),
-    )
+internal fun ThreadRemovedAppBotReadOnlyComposer(handle: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftBanner(
+            description = stringResource(Res.string.thread_app_bot_removed_notice, handle.removePrefix("@")),
+            status = RaftBannerStatus.Warning,
+        )
+        RaftReadOnlyComposer(text = stringResource(Res.string.thread_composer_chat_unavailable))
+    }
 }
-
-/**
- * Web `ReadOnlyComposer` ("Chat is unavailable") as the phone composer's own disabled state: no
- * typing, attachments or send; the placeholder says why. A saved draft is kept, not cleared, so
- * it is still there if an admin adds the Bot back.
- */
-internal fun RaftThreadComposerPayload.removedAppBotReadOnly(unavailablePlaceholder: String): RaftThreadComposerPayload =
-    copy(
-        enabled = false,
-        attachmentActionsEnabled = false,
-        placeholder = unavailablePlaceholder,
-    )
 
 /**
  * The composer's measured height at rest (empty draft, no attachments/actions/suggestions), per

@@ -100,6 +100,12 @@ import build.raft.designsystem.theme.RaftTheme
  * are in ActivityConversationSwipe.kt.
  */
 
+/** The agent peer of a DM row (not a thread in a DM): whose App Bot badge the title carries. */
+internal fun ActivityConversationRowModel.activityDmAppBotPeerId(): String? =
+    dmPeer
+        ?.takeIf { leadingKind == ActivityConversationLeadingKind.DirectMessage && it.peerIsAgent }
+        ?.peerId
+
 /** The Home sidebar facts a conversation row needs: who a DM is with, and whether the place is muted. */
 @Immutable
 internal data class ActivityConversationDmPeer(
@@ -836,6 +842,11 @@ internal fun ActivityConversationListRow(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            // botiverse/slock #11273: the DM with an App Bot names it a Bot.
+                            val appBot = rememberRaftMemberAppBot(model.activityDmAppBotPeerId())
+                            if (appBot != null) {
+                                RaftAppBotBadge(identity = appBot, botName = model.title?.toAnnotatedString()?.text)
+                            }
                             if (model.taskNumber != null && model.taskStatus != null) {
                                 SharedActivityFooterBadge(
                                     label = "#${model.taskNumber}",

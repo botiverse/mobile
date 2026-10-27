@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +34,8 @@ import org.robolectric.annotation.GraphicsMode
  *  - author line: an App Bot named after its App reads "Stamp [Bot]"; one shown under another
  *    name reads "Release helper [Bot · Listing Bot App]"; neither shows a model.
  *  - DM header: the Bot badge replaces the presence line ("Offline").
- *  - removed bot DM: the warning notice above the disabled composer ("Chat is unavailable").
+ *  - Activity: a DM row with an App Bot carries the badge after the name; an ordinary agent's does not.
+ *  - removed bot DM: the warning notice above the one-line read-only composer ("Chat is unavailable").
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -56,6 +56,10 @@ class ThreadAppBotScreenshotTest {
     @Test fun removedDmComposerLight() = capture("thread.app-bot.removed-dm", RaftAppAppearance.Light) { RemovedDmComposer() }
 
     @Test fun removedDmComposerDark() = capture("thread.app-bot.removed-dm.dark", RaftAppAppearance.Dark) { RemovedDmComposer() }
+
+    @Test fun activityDmRowsLight() = capture("activity.app-bot.dm-rows", RaftAppAppearance.Light) { ActivityBotDmRows() }
+
+    @Test fun activityDmRowsDark() = capture("activity.app-bot.dm-rows.dark", RaftAppAppearance.Dark) { ActivityBotDmRows() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -152,16 +156,61 @@ private fun RemovedDmComposer() {
             modifier = Modifier.padding(bottom = 8.dp),
         )
     }
-    ThreadComposerDock {
-        Column(Modifier.fillMaxWidth()) {
-            ThreadRemovedAppBotNotice(handle = "listing-bot")
-            ThreadComposerContent(
-                payload =
-                    RaftThreadComposerPayload(instanceId = "dm", placeholder = "Message @listing-bot")
-                        .removedAppBotReadOnly(stringResource(Res.string.thread_composer_chat_unavailable)),
-                onEvent = { _, _, _, _ -> },
-                attachmentPreviewEnabled = false,
-            )
-        }
+    ThreadComposerDock { ThreadRemovedAppBotReadOnlyComposer(handle = "listing-bot") }
+}
+
+private fun dmItem(channelId: String, name: String, preview: String, at: String, unread: Int = 0) =
+    build.raft.app.data.InboxItem(
+        key = "dm:$channelId",
+        kind = build.raft.app.model.InboxItemKind.DirectMessage,
+        channelId = build.raft.app.model.ChannelId(channelId),
+        channelName = name,
+        unreadCount = unread,
+        lastMessageSenderName = name,
+        lastMessageSenderKind = MemberKind.Agent,
+        lastMessagePreview = preview,
+        lastMessageAt = at,
+    )
+
+@Composable
+private fun ActivityBotDmRows() {
+    val timeContext =
+        build.raft.app.model.RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = build.raft.app.model.raftEpochDayForDate(2026, 10, 26),
+            nowEpochMillis = 1_793_000_000_000L,
+        )
+    fun peer(id: String, name: String) =
+        ActivityConversationDmPeer(peerId = id, peerIsAgent = true, avatarWireValue = null, displayName = name, activityMuted = false)
+    val context =
+        ActivityConversationListContext(
+            dmPeersByChannelId =
+                mapOf(
+                    "dm-stamp" to peer("agent-stamp", "Stamp"),
+                    "dm-helper" to peer("agent-helper", "Release helper"),
+                    "dm-volta" to peer("agent-volta", "Volta"),
+                ),
+        )
+    val rows =
+        listOf(
+            dmItem("dm-stamp", "Stamp", "PR #3753 is approved and ready to merge.", "2026-10-26T01:20:00Z", unread = 1),
+            dmItem("dm-helper", "Release helper", "Release notes for 1.21.35 are drafted.", "2026-10-26T01:10:00Z"),
+            dmItem("dm-volta", "Volta", "Deployed and checked again.", "2026-10-26T01:00:00Z"),
+        )
+    rows.forEachIndexed { index, item ->
+        ActivityConversationListRow(
+            item = item,
+            model = item.activityConversationRowModel(context, build.raft.app.data.InboxFilter.All),
+            divider = index > 0,
+            selected = false,
+            timeContext = timeContext,
+            agentStatusResolver = EmptyRaftAgentStatusResolver,
+            canMarkDone = true,
+            openGestureKey = item.key,
+            captureMenuAnchor = false,
+            onOpen = {},
+            onOpenMenu = {},
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
