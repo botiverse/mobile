@@ -104,6 +104,14 @@ object RaftAppAppearanceRuntime {
     val canvasArgb: Int
         get() = RaftAppThemeState.colors.layerCanvas.toArgb()
 
+    /**
+     * `layer-frame` of the resolved theme as ARGB: the frame the top bar and rail sit on (Raft
+     * Yellow in light), which the system status / navigation bars will follow once a server theme
+     * is applied. Hosts do not read it yet.
+     */
+    val frameArgb: Int
+        get() = RaftAppThemeState.colors.layerFrame.toArgb()
+
     /** `foreground` / `foreground-muted` of the resolved theme, for native host text. */
     val foregroundArgb: Int
         get() = RaftAppThemeState.colors.foreground.toArgb()

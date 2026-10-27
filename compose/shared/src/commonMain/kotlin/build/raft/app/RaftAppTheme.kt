@@ -7,6 +7,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.designtokens.RaftUiThemeColors
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftThemeState
+import build.raft.designsystem.tokens.RaftThemeId
+import build.raft.app.designtokens.RaftThemeId as RaftAppThemeId
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -166,6 +168,28 @@ val raftDarkTheme: RaftAppTheme =
         veil = RaftUiThemeColors.RaftDark.layerBackdrop,
     )
 
+/**
+ * The raft look in [colors] (any raft-ui theme, either mode): the same shapes as
+ * [raftLightTheme], the surfaces, ink, lines and frame of the given colours. Equal to
+ * [raftLightTheme] / [raftDarkTheme] for the default theme's colours.
+ */
+internal fun raftAppThemeOf(colors: RaftUiThemeColors): RaftAppTheme =
+    when (colors) {
+        RaftUiThemeColors.RaftLight -> raftLightTheme
+        RaftUiThemeColors.RaftDark -> raftDarkTheme
+        else ->
+            raftLightTheme.copy(
+                ink = colors.foreground,
+                inkMuted = colors.foregroundMuted,
+                surface = colors.layerCanvas,
+                surfaceMuted = colors.fillMuted,
+                line = colors.lineStrong,
+                lineSubtle = colors.lineHairline,
+                accent = colors.layerFrame,
+                veil = colors.layerBackdrop,
+            )
+    }
+
 /** The user's appearance choice. [System] follows the OS light/dark setting. */
 enum class RaftAppAppearance {
     Light,
@@ -177,8 +201,8 @@ enum class RaftAppAppearance {
  * Process-scoped, OBSERVABLE current theme, the colour counterpart of
  * the type tokens. [RaftColor]'s themed tokens and [LocalRaftTheme] resolve
  * through it, so flipping [appearance] (or the OS setting under
- * [RaftAppAppearance.System]) repaints everything composed from those tokens without
- * threading a theme through ~thousands of callsites.
+ * [RaftAppAppearance.System]) or the server theme ([raftTheme]) repaints everything composed
+ * from those tokens without threading a theme through ~thousands of callsites.
  *
  * It is a view of the designsystem's process-wide [RaftThemeState.App], the state the page
  * root (`RaftCmpRoot` -> `RaftTheme`) resolves and reports the OS setting into, so app tokens
@@ -197,14 +221,32 @@ internal object RaftAppThemeState {
     val isDark: Boolean
         get() = state.isDark
 
+    /**
+     * The raft-ui theme the app wears (the current server's, the Web's `data-theme`);
+     * [RaftThemeId.Raft] until [setRaftTheme] picks another. Set it only through [setRaftTheme].
+     */
+    val raftTheme: RaftThemeId
+        get() = state.raftTheme
+
+    /** Whether the theme's decor is drawn (the server's `themeDecor`); off until [setRaftTheme] turns it on. */
+    val decor: Boolean
+        get() = state.decor
+
     val colors: RaftUiThemeColors
-        get() = if (isDark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
+        get() = RaftUiThemeColors.of(state.raftTheme.toAppThemeId(), isDark)
 
     val theme: RaftAppTheme
-        get() = if (isDark) raftDarkTheme else raftLightTheme
+        get() = raftAppThemeOf(colors)
 
     /** @return true when the resolved theme changed. */
     fun apply(next: RaftAppAppearance): Boolean = state.apply(next.toDesignSystemAppearance())
+
+    /**
+     * The one place the app sets its raft-ui theme (and decor): app tokens ([colors], [theme],
+     * [RaftColor]) and every designsystem [build.raft.designsystem.theme.RaftTheme] the app
+     * hosts follow it. @return true when the theme or decor changed.
+     */
+    fun setRaftTheme(next: RaftThemeId, decor: Boolean = this.decor): Boolean = state.applyRaftTheme(next, decor)
 
     /** Hosts report the OS light/dark setting here; @return true when the resolved theme changed. */
     fun onSystemDarkChanged(dark: Boolean): Boolean = state.onSystemDarkChanged(dark)
@@ -216,6 +258,12 @@ internal fun RaftAppAppearance.toDesignSystemAppearance(): RaftAppearance =
         RaftAppAppearance.Dark -> RaftAppearance.Dark
         RaftAppAppearance.System -> RaftAppearance.System
     }
+
+/**
+ * The app's generated copy of a designsystem theme id (compose/shared keeps its own token
+ * file); both come from the same raft-ui theme list, so the wire ids match one to one.
+ */
+internal fun RaftThemeId.toAppThemeId(): RaftAppThemeId = RaftAppThemeId.fromWire(wire)
 
 internal fun RaftAppearance.toAppAppearance(): RaftAppAppearance =
     when (this) {

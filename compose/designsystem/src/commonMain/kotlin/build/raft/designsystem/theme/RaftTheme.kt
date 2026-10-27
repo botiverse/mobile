@@ -22,6 +22,7 @@ import androidx.compose.ui.text.intl.LocaleList
 import build.raft.designsystem.components.LocalRaftPulseClock
 import build.raft.designsystem.components.rememberRaftPulseClock
 import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftThemeId
 import build.raft.designsystem.tokens.RaftUiThemeColors
 
 /** The user's appearance choice. [System] follows the OS light/dark setting. */
@@ -33,8 +34,8 @@ enum class RaftAppearance {
 
 /**
  * Observable appearance, modelled on compose/shared `RaftAppThemeState`: a Compose state
- * holder, so changing [appearance] (or the OS setting under [RaftAppearance.System])
- * recomposes every [RaftTheme] that reads it.
+ * holder, so changing [appearance] (or the OS setting under [RaftAppearance.System]) or the
+ * server theme ([raftTheme], the Web's `data-theme`) recomposes every [RaftTheme] that reads it.
  *
  * A new state defaults to [RaftAppearance.Light] (fixtures and tests create their own);
  * [App], the process-wide instance app screens share, starts on [RaftAppearance.System]
@@ -43,8 +44,26 @@ enum class RaftAppearance {
  * composition seed it too, so token reads outside [RaftTheme] resolve right on frame one.
  */
 @Stable
-class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
+class RaftThemeState(
+    appearance: RaftAppearance = RaftAppearance.Light,
+    raftTheme: RaftThemeId = RaftThemeId.Raft,
+    decor: Boolean = false,
+) {
     var appearance: RaftAppearance by mutableStateOf(appearance)
+        private set
+
+    /**
+     * The raft-ui theme (the Web's `data-theme`, chosen per server): which [RaftUiThemeColors]
+     * variant the mode resolves to. [RaftThemeId.Raft] (the default) is the look without a theme.
+     */
+    var raftTheme: RaftThemeId by mutableStateOf(raftTheme)
+        private set
+
+    /**
+     * Whether the theme's decor (the Web's `--theme-decor-top` / `--theme-decor-rail` art) is
+     * drawn; the Web's `data-theme-decor` on/off. Off by default; nothing draws decor yet.
+     */
+    var decor: Boolean by mutableStateOf(decor)
         private set
 
     /** The OS light/dark setting, used under [RaftAppearance.System]. */
@@ -60,11 +79,23 @@ class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
                 RaftAppearance.System -> systemDark
             }
 
+    /** The colours of the resolved mode in [raftTheme], what [RaftTheme] provides for this state. */
+    val colors: RaftUiThemeColors
+        get() = RaftUiThemeColors.of(raftTheme, isDark)
+
     /** @return true when the resolved theme changed, as `RaftAppThemeState.apply` does. */
     fun apply(next: RaftAppearance): Boolean {
         val wasDark = isDark
         appearance = next
         return wasDark != isDark
+    }
+
+    /** Sets the raft-ui theme (and its decor); @return true when either changed. */
+    fun applyRaftTheme(next: RaftThemeId, decor: Boolean = this.decor): Boolean {
+        val changed = next != raftTheme || decor != this.decor
+        raftTheme = next
+        this.decor = decor
+        return changed
     }
 
     /** Records the OS setting; @return true when the resolved theme changed. */
@@ -91,8 +122,17 @@ data class RaftShapes(
     val dialog: Shape = RoundedCornerShape(RaftRadius.Dialog),
 )
 
-/** Themed colours of the active appearance (generated from raft-ui foundation.css). */
+/** Themed colours of the active appearance and theme (generated from raft-ui foundation.css, themes.css). */
 val LocalRaftColors = staticCompositionLocalOf<RaftUiThemeColors> { RaftUiThemeColors.RaftLight }
+
+/** The raft-ui theme of the enclosing [RaftTheme] ([RaftThemeState.raftTheme]). */
+val LocalRaftThemeId = staticCompositionLocalOf { RaftThemeId.Raft }
+
+/**
+ * Whether the enclosing [RaftTheme] draws its theme's decor ([RaftThemeState.decor]); read by
+ * the top bar and rail once they draw it. False by default.
+ */
+val LocalRaftThemeDecor = staticCompositionLocalOf { false }
 
 val LocalRaftTypography =
     staticCompositionLocalOf<RaftTypography> {
@@ -124,8 +164,8 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
 
 /**
  * Root of every Raft CMP surface. Resolves light/dark from [state] (and the OS setting
- * under [RaftAppearance.System]), loads the bundled fonts (unless the host passes its own
- * [fonts]) and provides colours, typography, shapes, the content colour and the text
+ * under [RaftAppearance.System]) in the state's [RaftThemeState.raftTheme], loads the
+ * bundled fonts (unless the host passes its own [fonts]) and provides colours, typography, shapes, the content colour and the text
  * selection colours (`brand-soft`).
  *
  * [localeList] is the app's UI language for every [RaftTypography] style (`LocaleList("ja")`,
@@ -145,7 +185,8 @@ fun RaftTheme(
 ) {
     SideEffect { state.onSystemDarkChanged(systemDark) }
     val dark = if (state.appearance == RaftAppearance.System) systemDark else state.isDark
-    val colors = if (dark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
+    val raftTheme = state.raftTheme
+    val colors = RaftUiThemeColors.of(raftTheme, dark)
     // A host with its own faces (the app's Settings > Appearance face) passes them in, so the
     // bundled Space Grotesk / Space Mono are never loaded just to be replaced.
     val resolvedFonts = fonts ?: rememberRaftFonts()
@@ -155,6 +196,8 @@ fun RaftTheme(
         LocalRaftTypography provides typography,
         LocalRaftShapes provides RaftShapes(),
         LocalRaftIsDark provides dark,
+        LocalRaftThemeId provides raftTheme,
+        LocalRaftThemeDecor provides state.decor,
         LocalRaftContentColor provides colors.foreground,
         LocalRaftSurfaceColor provides colors.layerCanvas,
         LocalRaftPulseClock provides rememberRaftPulseClock(),
@@ -169,6 +212,7 @@ fun RaftTheme(
  * Pins an [appearance] for a subtree (previews, fixtures, screenshot tests, an app screen
  * hosting designsystem components). [fonts] replaces the bundled faces when given;
  * [localeList] is the UI language of the type styles, as in the state overload.
+ * [raftTheme] and [decor] pin the raft-ui theme ([RaftThemeId.Raft], no decor, by default).
  */
 @Composable
 fun RaftTheme(
@@ -176,9 +220,11 @@ fun RaftTheme(
     systemDark: Boolean = isSystemInDarkTheme(),
     fonts: RaftFonts? = null,
     localeList: LocaleList? = null,
+    raftTheme: RaftThemeId = RaftThemeId.Raft,
+    decor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val state = remember(appearance) { RaftThemeState(appearance) }
+    val state = remember(appearance, raftTheme, decor) { RaftThemeState(appearance, raftTheme, decor) }
     RaftTheme(state = state, systemDark = systemDark, fonts = fonts, localeList = localeList, content = content)
 }
 
@@ -199,6 +245,16 @@ object RaftTheme {
     val isDark: Boolean
         @Composable @ReadOnlyComposable
         get() = LocalRaftIsDark.current
+
+    /** [LocalRaftThemeId]: the raft-ui theme the colours come from. */
+    val themeId: RaftThemeId
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftThemeId.current
+
+    /** [LocalRaftThemeDecor]: whether the theme's decor is drawn. */
+    val decor: Boolean
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftThemeDecor.current
 
     /**
      * The one scrim behind every modal window (raft `layer-backdrop`: black 65% in light, 60%

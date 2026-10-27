@@ -106,6 +106,13 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
 - `RaftTheme { }` provides `LocalRaftColors`, `LocalRaftTypography`, `LocalRaftShapes`,
   `LocalRaftIsDark` and `LocalRaftContentColor` (CSS `currentColor`, `--foreground` at the
   root). Read them through `RaftTheme.colors` / `.typography` / `.shapes` / `.isDark`.
+- **raft-ui themes.** `RaftThemeState.raftTheme` (`RaftThemeId`, the Web's per-server
+  `data-theme`; default `Raft`) and `decor` (default off) are observable too; set them with
+  `applyRaftTheme(id, decor)`. Colours resolve through `RaftUiThemeColors.of(theme, dark)`.
+  `RaftTheme(appearance = ..., raftTheme = RaftThemeId.Boring)` pins one for a subtree;
+  `RaftTheme.themeId` / `RaftTheme.decor` (`LocalRaftThemeId` / `LocalRaftThemeDecor`) read
+  it. A theme changes only the frame, sidebar, surfaces and (Boring) brand; `selected` and
+  `you` stay yellow in every theme.
 - **Strings.** The module has no string resources. The few words the components write
   themselves (the "(optional)" label marker, the dialog's "Close", a text field's "Clear",
   a busy button's and spinner's "Loading") come from `LocalRaftStrings` (`RaftStrings`,

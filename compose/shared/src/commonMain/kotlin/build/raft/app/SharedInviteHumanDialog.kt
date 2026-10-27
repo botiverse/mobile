@@ -353,7 +353,7 @@ internal fun SharedServerInviteHumanDialogHost(
         }
     }
 
-    RaftTheme(appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light) {
+    RaftTheme(appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light, raftTheme = RaftAppThemeState.raftTheme) {
         InviteHumanDialogContent(
             tab = tab,
             onTabChange = { tab = it },
