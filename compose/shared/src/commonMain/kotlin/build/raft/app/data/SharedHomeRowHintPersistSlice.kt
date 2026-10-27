@@ -106,6 +106,7 @@ private object SharedHomeRowHintPersistSpec :
                     intent is SharedHomeIntent.SelectServer ||
                     intent is SharedHomeIntent.CloseDirectMessage ||
                     intent is SharedHomeIntent.ArchiveChannel ||
+                    intent is SharedHomeIntent.LeaveChannel ||
                     // Reading a conversation must not resurrect its old count on the next cold start.
                     intent is SharedHomeIntent.ApplyReadReceiptPrediction
                 )

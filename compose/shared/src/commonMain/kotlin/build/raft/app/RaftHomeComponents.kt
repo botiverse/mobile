@@ -586,6 +586,7 @@ data class RaftHomeShellLabels(
     val unmute: String = "Unmute",
     val closeChat: String = "Close Chat",
     val archive: String = "Archive",
+    val leaveChannel: String = "Leave Channel",
     val sortChannels: String = "Sort",
     val saveSort: String = "Save",
     val sortManual: String = "Manual",
@@ -640,6 +641,7 @@ data class RaftHomeShellLabels(
             unmute = stringResource(Res.string.home_action_unmute),
             closeChat = stringResource(Res.string.home_action_close_chat),
             archive = stringResource(Res.string.home_action_archive),
+            leaveChannel = stringResource(Res.string.channel_settings_leave),
             sortChannels = stringResource(Res.string.home_action_sort),
             saveSort = stringResource(Res.string.common_save),
             sortManual = stringResource(Res.string.home_sort_manual),
@@ -916,6 +918,9 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         },
         onArchiveChannel = { conversationId ->
             unsupportedStandaloneHomeAction("archiveChannel", conversationId)
+        },
+        onLeaveChannel = { conversationId ->
+            unsupportedStandaloneHomeAction("leaveChannel", conversationId)
         },
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
@@ -1571,6 +1576,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
     val onCloseDirectMessage: (String) -> Unit = {},
     val onArchiveChannel: (String) -> Unit = {},
+    /** Row menu "Leave Channel": the host confirms, then leaves (botiverse/slock #11289). */
+    val onLeaveChannel: (String) -> Unit = {},
     val agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     val memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? = { null },
@@ -1682,6 +1689,7 @@ internal fun RaftStructuralHomeShell(
     onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
     onCloseDirectMessage: (String) -> Unit = {},
     onArchiveChannel: (String) -> Unit = {},
+    onLeaveChannel: (String) -> Unit = {},
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? = { null },
@@ -1796,6 +1804,7 @@ internal fun RaftStructuralHomeShell(
                 onChannelActivityMuteToggle = onChannelActivityMuteToggle,
                 onCloseDirectMessage = onCloseDirectMessage,
                 onArchiveChannel = onArchiveChannel,
+                onLeaveChannel = onLeaveChannel,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
@@ -1911,6 +1920,7 @@ private fun RaftStructuralHomeShellContent(
     val onChannelActivityMuteToggle = callbacks.onChannelActivityMuteToggle
     val onCloseDirectMessage = callbacks.onCloseDirectMessage
     val onArchiveChannel = callbacks.onArchiveChannel
+    val onLeaveChannel = callbacks.onLeaveChannel
     val agentStatusResolver = callbacks.agentStatusResolver
     val memberAvatarResolver = callbacks.memberAvatarResolver
     val pinnedMemberProfileResolver = callbacks.pinnedMemberProfileResolver
@@ -3154,6 +3164,14 @@ private fun RaftStructuralHomeShellContent(
                     activeConversation.name != "all" &&
                     !activeConversation.archived &&
                     canArchiveChannels
+            val activeCanLeave =
+                activeConversation != null &&
+                    homeConversationCanLeave(
+                        joined = activeConversation.joined,
+                        archived = activeConversation.archived,
+                        isDirectMessage = activeIsDirectMessage,
+                        name = activeConversation.name
+                    )
             val pinTargetIsPinned = activeConversationId != null && activeConversationId in pinnedIdSet
             val sortableFromMenu =
                 when (activeMenuSection) {
@@ -3171,6 +3189,7 @@ private fun RaftStructuralHomeShellContent(
                     sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
                     activeIsDirectMessage = activeIsDirectMessage,
                     activeCanArchive = activeCanArchive,
+                    activeCanLeave = activeCanLeave,
                     markAllReadEnabled = onMarkConversationReadAll != null
                 )
             }
@@ -3195,6 +3214,7 @@ private fun RaftStructuralHomeShellContent(
                             "toggle-pin" -> onPinToggle(activeConversationId)
                             "close-dm" -> onCloseDirectMessage(activeConversationId)
                             "archive-channel" -> onArchiveChannel(activeConversationId)
+                            "leave-channel" -> onLeaveChannel(activeConversationId)
                             // task #512: opens the move-to-section submenu on the
                             // same anchor (pinMenuAnchor survives menu close).
                             "move-to-section" -> moveToSectionConversationId = activeConversationId
@@ -3657,13 +3677,15 @@ internal fun raftHomeConversationMenuItems(
     sortableFromMenu: Boolean,
     activeIsDirectMessage: Boolean,
     activeCanArchive: Boolean,
+    /** Web Sidebar `canLeaveChannel`: see [homeConversationCanLeave]. */
+    activeCanLeave: Boolean = false,
     canMoveToSection: Boolean = true,
     /** Both `thread_unread_badge_v0` and `sidebar_mark_all_read_v0` are on for this server. */
     markAllReadEnabled: Boolean = false
 ): List<RaftBaseMenuItem> =
     buildList {
         // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
-        // then read / pin / mute, then close (DMs) or archive (channels).
+        // then read / pin / mute, then close (DMs) or archive / leave (channels).
         if (canMoveToSection) {
             add(
                 RaftBaseMenuItem(
@@ -3733,6 +3755,17 @@ internal fun raftHomeConversationMenuItems(
                     label = labels.archive,
                     icon = RaftLucideIconName.Archive,
                     dividerBefore = true
+                )
+            )
+        }
+        // botiverse/slock #11289: Leave sits under Archive, sharing its divider.
+        if (!activeIsDirectMessage && activeCanLeave) {
+            add(
+                RaftBaseMenuItem(
+                    id = "leave-channel",
+                    label = labels.leaveChannel,
+                    icon = RaftLucideIconName.LogOut,
+                    dividerBefore = !activeCanArchive
                 )
             )
         }

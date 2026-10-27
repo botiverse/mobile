@@ -526,6 +526,7 @@ private fun ChannelSettingsPageScreen() {
             ChannelSettingsConfirmDialog(
                 confirm = activeConfirm,
                 channelName = channel.name.removePrefix("#"),
+                leaveVariant = leaveChannelConfirmVariant(channel, memberSlice),
                 busy = settingsState.actionInFlight == activeConfirm.action,
                 onDismiss = { if (settingsState.actionInFlight != activeConfirm.action) confirm = null },
                 onConfirm = { settingsStore.dispatch(activeConfirm.intent) },
@@ -1425,10 +1426,15 @@ private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
 private fun ChannelSettingsConfirmDialog(
     confirm: ChannelSettingsConfirm,
     channelName: String,
+    leaveVariant: LeaveChannelConfirmVariant,
     busy: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    if (confirm == ChannelSettingsConfirm.Leave) {
+        LeaveChannelConfirmDialog(leaveVariant, channelName, busy, onDismiss, onConfirm)
+        return
+    }
     val title: String
     val description: String
     val confirmLabel: String
@@ -1456,13 +1462,8 @@ private fun ChannelSettingsConfirmDialog(
             loadingLabel = stringResource(Res.string.channel_settings_archiving)
             variant = RaftButtonVariant.Warning
         }
-        ChannelSettingsConfirm.Leave -> {
-            title = stringResource(Res.string.channel_settings_leave)
-            description = stringResource(Res.string.channel_settings_leave_confirm, channelName)
-            confirmLabel = stringResource(Res.string.channel_settings_leave_action)
-            loadingLabel = stringResource(Res.string.channel_settings_leaving)
-            variant = RaftButtonVariant.Warning
-        }
+        // Shown by LeaveChannelConfirmDialog above (web shares it with the sidebar menu).
+        ChannelSettingsConfirm.Leave -> return
         ChannelSettingsConfirm.Delete -> {
             title = stringResource(Res.string.thread_settings_delete_title)
             description = stringResource(Res.string.channel_settings_delete_confirm, channelName)

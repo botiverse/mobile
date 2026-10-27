@@ -136,6 +136,10 @@ internal class SharedHomeStore(
     private var archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
         DataResult.Empty(EmptyReason.NoChannels)
     },
+    /** Row menu Leave: `POST channels/:id/leave`, the call channel settings' Leave makes. */
+    private var leaveChannel: suspend (ChannelId) -> DataResult<ChannelLeaveResult> = {
+        DataResult.Empty(EmptyReason.NoChannels)
+    },
     private var setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
         DataResult.Empty(EmptyReason.NoChannels)
     },
@@ -317,6 +321,9 @@ internal class SharedHomeStore(
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
+        leaveChannel: suspend (ChannelId) -> DataResult<ChannelLeaveResult> = {
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
         setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
             DataResult.Empty(EmptyReason.NoChannels)
         },
@@ -345,6 +352,7 @@ internal class SharedHomeStore(
         this.markChannelUnread = markChannelUnread
         this.markConversationReadAll = markConversationReadAll
         this.archiveChannel = archiveChannel
+        this.leaveChannel = leaveChannel
         this.setChannelActivityMuted = setChannelActivityMuted
         this.readReceiptCoordinator = readReceiptCoordinator
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
@@ -789,6 +797,8 @@ internal class SharedHomeStore(
                 unhideDirectMessagesWithOwnReply(ServerId(intent.serverId), intent.channelIds)
             is SharedHomeIntent.ArchiveChannel ->
                 archiveConversationChannel(intent.conversationId)
+            is SharedHomeIntent.LeaveChannel ->
+                leaveConversationChannel(intent.conversationId)
             is SharedHomeIntent.SetChannelActivityMuted ->
                 setConversationActivityMuted(intent.conversationId, intent.muted)
             is SharedHomeIntent.ApplyPerReceiverReadState ->
@@ -3886,6 +3896,39 @@ internal class SharedHomeStore(
         }
     }
 
+    /**
+     * Row menu "Leave Channel" (web Sidebar -> channelStore.leaveChannel, botiverse/slock #11289),
+     * after the confirmation. Optimistic like Archive: a public channel stays listed as not joined
+     * (web `setLocalChannelMembership(false)`); a private or joint one leaves the list, since
+     * coming back needs an invite. A failed leave restores the list and reports it.
+     */
+    private suspend fun leaveConversationChannel(conversationId: String) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId) as? HomeChannelRow
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to leave channel: home not loaded")
+            return
+        }
+        val channelId = target.messageStreamChannelId()
+        val previousState = _state.value
+        val keepsListed = !target.leaveRevokesAccess()
+        applyHomeSnapshotLocally {
+            if (keepsListed) it.withHomeChannelLeft(conversationId) else it.withoutHomeConversation(conversationId)
+        }
+        if (!keepsListed && _state.value.selectedConversationId == conversationId) {
+            reduceState(_state.value.copy(selectedConversationId = null))
+        }
+        when (leaveChannel(channelId)) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                reduceState(previousState)
+                pinUpdateFailureCallback("Unable to leave channel")
+            }
+        }
+    }
+
     private suspend fun setConversationActivityMuted(conversationId: String, muted: Boolean) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
@@ -4588,6 +4631,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
         is SharedHomeIntent.OwnMessagesSent -> "${SharedHomeChannelFoldEvent.Patch.wireName}:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
+        is SharedHomeIntent.LeaveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:leave:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "${SharedHomeChannelFoldEvent.Mute.wireName}:$conversationId:$muted"
         is SharedHomeIntent.ApplyPerReceiverReadState -> "read_state:${update.serverId.value}:${update.channelId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverNotificationPrefs -> "notification_prefs:${update.serverId.value}:${update.channelId.value}:${update.version}"
@@ -5101,6 +5145,15 @@ private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSn
     )
 }
 
+/** A private or joint channel left is gone until someone invites you back; a public one is still readable. */
+private fun HomeChannelRow.leaveRevokesAccess(): Boolean =
+    kind == ConversationKind.Joint ||
+        channelType.equals("private", ignoreCase = true) ||
+        channelType.equals("joint", ignoreCase = true)
+
+private fun HomeSnapshot.withHomeChannelLeft(conversationId: String): HomeSnapshot =
+    copy(channels = channels.map { if (it.matchesHomeConversation(conversationId)) it.copy(joined = false) else it })
+
 private fun HomeConversationRow.matchesHomeConversation(conversationId: String): Boolean =
     threadId.value == conversationId ||
         channelId?.value == conversationId ||
@@ -5457,6 +5510,8 @@ sealed interface SharedHomeIntent {
      */
     data class OwnMessagesSent(val serverId: String, val channelIds: Set<String>) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
+    /** Row menu "Leave Channel", confirmed: `POST channels/:id/leave` (see channel settings' Leave). */
+    data class LeaveChannel(val conversationId: String) : SharedHomeIntent
     data class SetChannelActivityMuted(val conversationId: String, val muted: Boolean) : SharedHomeIntent
     data class ApplyPerReceiverReadState(val update: PerReceiverReadStateUpdate) : SharedHomeIntent
     data class ApplyPerReceiverNotificationPrefs(val update: PerReceiverNotificationPrefsUpdate) : SharedHomeIntent
@@ -5514,6 +5569,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.LeaveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
@@ -5563,6 +5619,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.LeaveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
@@ -5612,6 +5669,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.LeaveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,

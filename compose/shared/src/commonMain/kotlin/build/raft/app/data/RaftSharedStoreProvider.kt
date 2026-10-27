@@ -1883,6 +1883,9 @@ internal class RaftSharedStoreProvider private constructor(
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
+        leaveChannel: suspend (ChannelId) -> DataResult<ChannelLeaveResult> = {
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
         setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
             DataResult.Empty(EmptyReason.NoChannels)
         },
@@ -1901,6 +1904,7 @@ internal class RaftSharedStoreProvider private constructor(
                 markChannelUnread = markChannelUnread,
                 markConversationReadAll = markConversationReadAll,
                 archiveChannel = archiveChannel,
+                leaveChannel = leaveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
@@ -1927,6 +1931,7 @@ internal class RaftSharedStoreProvider private constructor(
                 markChannelUnread = markChannelUnread,
                 markConversationReadAll = markConversationReadAll,
                 archiveChannel = archiveChannel,
+                leaveChannel = leaveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 readReceiptCoordinator = processReadReceiptCoordinator(),

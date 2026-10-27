@@ -635,7 +635,12 @@
     <string name="channel_settings_leave">离开频道</string>
     <string name="channel_settings_leave_action">离开</string>
     <string name="channel_settings_leaving">正在退出…</string>
-    <string name="channel_settings_leave_confirm">你将停止接收 #%1$s 的常规消息，并且在重新加入前无法发送消息。已关注的消息列不会自动取消关注；在你取消关注或另行处理这些消息列之前，已关注的公开消息列仍可能通知你。私密内容仍受当前访问权限限制。</string>
+    <string name="channel_settings_leave_confirm">你将不再收到 #%1$s 的消息，也不能在里面发言，随时可以重新加入。你关注的消息列仍会通知你，直到你取消关注。</string>
+    <string name="channel_settings_leave_confirm_private">你将不再收到 #%1$s 的消息，也不能在里面发言。之后需要成员重新邀请你才能回来。</string>
+    <string name="channel_settings_leave_confirm_joint">你将不再收到 #%1$s 的消息，也不能在里面发言。之后需要管理员重新邀请你才能回来。</string>
+    <string name="channel_settings_leave_delete_title">离开并删除频道？</string>
+    <string name="channel_settings_leave_delete_message">你是这个私有频道的最后一位成员。离开后，频道和里面的消息会被删除，无法恢复。</string>
+    <string name="channel_settings_leave_delete_action">离开并删除</string>
     <string name="channel_settings_guest_title">访客访问</string>
     <string name="channel_settings_guest_detail">设置访客是否能发现此频道，以及是否能自行加入。</string>
     <string name="channel_settings_guest_visible">对访客可见</string>
