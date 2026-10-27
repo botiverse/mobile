@@ -8,9 +8,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /** The most a full-list refetch waits after a socket reconnect (web: botiverse/slock #11453). */
 internal const val RECONNECT_REFETCH_JITTER_MAX_MILLIS: Long = 20_000L
+
+/**
+ * How long after the user selects a server its next socket connect still counts as "the switch"
+ * ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]): the socket connects after the selection.
+ */
+internal val SERVER_SWITCH_CONNECT_WINDOW: Duration = 15.seconds
 
 /** A uniformly random wait in `0..maxMillis` (both ends included). */
 internal fun reconnectRefetchJitterMillis(random: Random, maxMillis: Long = RECONNECT_REFETCH_JITTER_MAX_MILLIS): Long =
@@ -32,6 +42,12 @@ internal enum class RaftReconnectRefetchDecision {
 
     /** A reconnect while a delay is already running: joins it (the newest refetch per source and server wins). */
     Coalesced,
+
+    /**
+     * A reconnect of the server the user just switched (back) to (Hands 81ad5dae): the caller
+     * fetches now, keeping a reconnect's scope. A switch is one user, not a deploy storm.
+     */
+    ImmediateAfterSwitch,
 }
 
 /**
@@ -47,7 +63,10 @@ internal enum class RaftReconnectRefetchDecision {
  *   0–[maxMillis] delay. There is one delay per client: reconnects of other servers or sources,
  *   and further reconnects while it runs, join the same wait (no stacking, one refetch per
  *   source and server, the newest one).
- * - [flushServer]: the user switched to that server, so its waiting refetches run now.
+ * - [onServerSelected]: the user switched to that server, so its waiting refetches run now
+ *   ([flushServer]), and its next connect within [switchConnectWindow] fetches at once
+ *   ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]): the switch happens before the socket
+ *   connects, so on a switch back to a server visited before, the flush alone finds nothing.
  * - [dropServer]: the server is gone (access lost); its waiting refetches are dropped.
  * - [reset] cancels everything waiting and forgets the sessions.
  *
@@ -60,6 +79,8 @@ internal class RaftReconnectRefetchJitter(
     private val random: Random = Random.Default,
     private val maxMillis: Long = RECONNECT_REFETCH_JITTER_MAX_MILLIS,
     private val logger: (String) -> Unit = {},
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val switchConnectWindow: Duration = SERVER_SWITCH_CONNECT_WINDOW,
 ) {
     private class Entry(val serverId: String, val source: String, val refetch: suspend () -> Unit)
 
@@ -71,6 +92,8 @@ internal class RaftReconnectRefetchJitter(
     private val lock = SynchronizedObject()
     private val connectedSessions = mutableSetOf<RaftReconnectSession>()
     private var batch: Batch? = null
+    /** Servers the user selected, and when; consumed by that server's next connect. */
+    private val selectedAt = mutableMapOf<String, TimeMark>()
 
     /**
      * A socket of [session] connected. On [RaftReconnectRefetchDecision.Immediate] the caller runs
@@ -86,9 +109,22 @@ internal class RaftReconnectRefetchJitter(
         var started: Batch? = null
         var delayMillis = 0L
         var sources = source
+        var emptied: Batch? = null
         val decision =
             synchronized(lock) {
+                val selection = selectedAt.remove(serverId)
                 if (connectedSessions.add(session)) return@synchronized RaftReconnectRefetchDecision.Immediate
+                if (selection != null && selection.elapsedNow() <= switchConnectWindow) {
+                    // The caller fetches now: an older reconnect's refetch for this server is superseded.
+                    batch?.let { current ->
+                        current.entries.remove(entryKey)
+                        if (current.entries.isEmpty()) {
+                            batch = null
+                            emptied = current
+                        }
+                    }
+                    return@synchronized RaftReconnectRefetchDecision.ImmediateAfterSwitch
+                }
                 val existing = batch
                 val target = existing ?: Batch(reconnectRefetchJitterMillis(random, maxMillis))
                 target.entries[entryKey] = Entry(serverId, source, refetch)
@@ -104,8 +140,19 @@ internal class RaftReconnectRefetchJitter(
             "reconnect_refetch_jitter decision=${decision.name.lowercase()} serverId=$serverId " +
                 "delayMs=$delayMillis sources=$sources"
         )
+        emptied?.timer?.cancel()
         started?.let(::startTimer)
         return decision
+    }
+
+    /**
+     * The user selected [serverId] (a server switch, or the first selection at launch): what waits
+     * for it runs now, and its next connect within [switchConnectWindow] fetches at once.
+     */
+    fun onServerSelected(serverId: String, reason: String) {
+        val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        synchronized(lock) { selectedAt[id] = timeSource.markNow() }
+        flushServer(id, reason)
     }
 
     /**
@@ -150,7 +197,10 @@ internal class RaftReconnectRefetchJitter(
     /** [serverId] is gone for this account: nothing waiting for it may run. */
     fun dropServer(serverId: String, reason: String) {
         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        synchronized(lock) { connectedSessions.removeAll { it.serverId.trim() == id } }
+        synchronized(lock) {
+            connectedSessions.removeAll { it.serverId.trim() == id }
+            selectedAt.remove(id)
+        }
         val dropped = takeServerEntries(id) ?: return
         logger("reconnect_refetch_jitter_drop serverId=$id reason=$reason sources=${dropped.joinToString(",") { it.source }}")
     }
@@ -160,6 +210,7 @@ internal class RaftReconnectRefetchJitter(
         val cancelled =
             synchronized(lock) {
                 connectedSessions.clear()
+                selectedAt.clear()
                 batch.also { batch = null }
             }
         cancelled?.timer?.cancel()

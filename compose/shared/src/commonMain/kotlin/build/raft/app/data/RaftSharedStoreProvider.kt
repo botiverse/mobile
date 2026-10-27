@@ -662,14 +662,16 @@ internal class RaftSharedStoreProvider private constructor(
         // Incremental sync (mobile_sync_changes_v0): what changed during the outage. A RE-connect
         // pull waits 0–2 s and its snapshot reloads (first sync, reset) take the roster's 0–20 s.
         val reconnect = rosterDecision != RaftReconnectRefetchDecision.Immediate
+        // The connect right after a server switch is a reconnect (agents-only refetch) but not jittered.
+        val jittered = reconnect && rosterDecision != RaftReconnectRefetchDecision.ImmediateAfterSwitch
         val fallback: (() -> Unit)? =
             if (reconnect) ({ presenceTransportRosterRefetch.onSyncPullFailed(owner, transport) }) else null
         val requested =
             requestSyncChangesPull(
                 serverId = owner.serverId,
                 trigger = "reconnect",
-                jitterSnapshots = reconnect,
-                jitterPull = reconnect,
+                jitterSnapshots = jittered,
+                jitterPull = jittered,
                 // A RE-connect refetched only agents: a failed pull gets the full roster refetch back.
                 onFailed = fallback,
             )
@@ -942,6 +944,7 @@ internal class RaftSharedStoreProvider private constructor(
             refreshMachines = { serverId -> refreshMachinesForSync(serverId, reason = PresenceTransportRosterRefetch.REASON) },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
             warnLogger = sharedWarnLogger("SlockPresence", "presence_transport_rebaseline"),
+            retryScope = threadSendScope,
         )
     }
 
@@ -1401,8 +1404,9 @@ internal class RaftSharedStoreProvider private constructor(
                         selectionStore.currentServerId.collectLatest { serverId ->
                             if (!serverId.isNullOrBlank()) {
                                 // A server switch fetches at once: a roster refetch still waiting for
-                                // the reconnect jitter of this server runs now.
-                                reconnectRefetchJitter.flushServer(serverId, reason = "server_selected")
+                                // the reconnect jitter of this server runs now, and the socket connect
+                                // that follows the switch is not jittered (Hands 81ad5dae).
+                                reconnectRefetchJitter.onServerSelected(serverId, reason = "server_selected")
                                 cancelUnselectedSyncPulls()
                                 var syncPullRequested = false
                                 refreshSelectedServerFeatureFlags {

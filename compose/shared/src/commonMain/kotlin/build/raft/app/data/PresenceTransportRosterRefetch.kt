@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -16,7 +17,10 @@ import kotlinx.coroutines.launch
  *
  * Through [jitter]: the roster refetch itself (`/servers/:id/members` + `/agents` +
  * `/servers/:id/machines`, then peer-agent channel slices) in every store showing the server.
- * A first connect fetches at once; a reconnect waits the client's 0–20 s delay. While it waits,
+ * A first connect fetches at once; a reconnect waits the client's 0–20 s delay, except the connect
+ * that follows a server switch ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]: a switch back to
+ * a server visited before is a reconnect, and its agents showed offline until the delay ended,
+ * Hands 81ad5dae); that one fetches at once with a reconnect's scope. While it waits,
  * presence shows the last roster plus every live presence push of the new socket; a member whose
  * state changed during the outage and who sends no push stays stale until the refetch.
  *
@@ -31,6 +35,11 @@ import kotlinx.coroutines.launch
  * `home=true`) reuses it instead of reading `/members` + `/agents` + `/machines` at once, outside
  * the jitter (staging run 10-27, Tenny). A failed pull still gets the full refetch
  * ([onSyncPullFailed]).
+ *
+ * A failed refetch (not Content) is logged and retried once per store on [retryScope], after a
+ * short wait and only while the connect's transport is still current
+ * ([SharedServerMembersStore.retryPresenceTransportRefill]). Past that, the next successful roster
+ * load of any kind writes agent status back ([ProcessMemberPresenceRegistry.needsRosterRefill]).
  */
 internal class PresenceTransportRosterRefetch(
     private val jitter: RaftReconnectRefetchJitter,
@@ -43,6 +52,8 @@ internal class PresenceTransportRosterRefetch(
     private val refreshMachines: suspend (serverId: String) -> Unit = {},
     private val logger: (String) -> Unit = {},
     private val warnLogger: (String) -> Unit = {},
+    /** Where a failed refetch's one retry waits and runs; null runs it inline (tests). */
+    private val retryScope: CoroutineScope? = null,
 ) {
     suspend fun onTransportRebaselined(
         owner: ProcessServerMembersOwner,
@@ -62,6 +73,10 @@ internal class PresenceTransportRosterRefetch(
             // Sync on, first connect: the full forced refetch, so retire what the old transport read.
             if (agentsOnlyOnReconnect) invalidate(owner, REASON)
             refetch(owner, transport, rebaselineResult, agentsOnly = false)
+        } else if (decision == RaftReconnectRefetchDecision.ImmediateAfterSwitch) {
+            // The user is looking at this server: no jitter, but a reconnect's scope (sync on: agents
+            // and machines only, the roster stays valid; sync off: the invalidate above + full refetch).
+            refetch(owner, transport, rebaselineResult, agentsOnly = agentsOnlyOnReconnect)
         } else if (agentsOnlyOnReconnect) {
             logger(
                 "presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} " +
@@ -112,17 +127,25 @@ internal class PresenceTransportRosterRefetch(
             stores.forEach { store ->
                 launch {
                     try {
-                        if (agentsOnly) {
-                            store.refreshAgents(serverId = ServerId(owner.serverId), reason = REASON)
-                            return@launch
+                        val result =
+                            if (agentsOnly) {
+                                store.refreshAgents(serverId = ServerId(owner.serverId), reason = REASON)
+                            } else {
+                                // Roster refill first, then peer-server agents of joint channels (not on
+                                // this roster; their facts come back from the channel-members refetch).
+                                store.refreshAfterPresenceTransportConnected(
+                                    serverId = ServerId(owner.serverId),
+                                    transport = transport,
+                                    reason = REASON
+                                )
+                            }
+                        if (result is DataResult.Error) {
+                            warnLogger(
+                                "serverId=${owner.serverId} epoch=${transport.epoch} refresh_failed=${result.error.code} " +
+                                    "refetch=${if (agentsOnly) "agents" else "roster"} retry=scheduled"
+                            )
+                            scheduleRetry(store, owner, transport, agentsOnly)
                         }
-                        // Roster refill first, then peer-server agents of joint channels (not on
-                        // this roster; their facts come back from the channel-members refetch).
-                        store.refreshAfterPresenceTransportConnected(
-                            serverId = ServerId(owner.serverId),
-                            transport = transport,
-                            reason = REASON
-                        )
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (error: Throwable) {
@@ -133,6 +156,32 @@ internal class PresenceTransportRosterRefetch(
                 }
             }
         }
+    }
+
+    private suspend fun scheduleRetry(
+        store: SharedServerMembersStore,
+        owner: ProcessServerMembersOwner,
+        transport: ProcessPresenceTransportEpoch,
+        agentsOnly: Boolean,
+    ) {
+        val retry: suspend () -> Unit = {
+            try {
+                if (isCurrentOwner(owner)) {
+                    store.retryPresenceTransportRefill(
+                        serverId = ServerId(owner.serverId),
+                        transport = transport,
+                        reason = REASON,
+                        agentsOnly = agentsOnly,
+                    )
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                warnLogger("serverId=${owner.serverId} refresh_retry_failed=${error::class.simpleName ?: "unknown"}")
+            }
+        }
+        val scope = retryScope
+        if (scope == null) retry() else scope.launch { retry() }
     }
 
     companion object {
