@@ -152,7 +152,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 // Common platform-safe monitor used by the synchronous shell-store cache.
                 implementation(libs.atomicfu)
-                implementation("app.cash.sqldelight:runtime:2.1.0")
+                implementation(libs.sqldelight.runtime)
                 implementation(libs.cmp.components.resources)
                 // Time zone offsets (RaftDatetimeFoundation); the clock is kotlin.time.Clock.
                 implementation(libs.kotlinx.datetime)
@@ -199,7 +199,7 @@ kotlin {
         val androidMain by getting {
             dependsOn(jvmCommonMain)
             dependencies {
-                implementation("app.cash.sqldelight:android-driver:2.1.0")
+                implementation(libs.sqldelight.android.driver)
                 // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
                 // VideoView adapter that lived in androidApp).
                 implementation(libs.androidx.media3.exoplayer)
@@ -219,14 +219,14 @@ kotlin {
             // Bundled `assets://` files (lucide, raft logos) on the classpath root.
             resources.srcDir("src/commonMain/assets")
             dependencies {
-                implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+                implementation(libs.sqldelight.sqlite.driver)
                 implementation(libs.kotlinx.coroutines.swing)
             }
         }
         val androidUnitTest by getting {
             dependencies {
                 implementation(libs.okhttp.mockwebserver3)
-                implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+                implementation(libs.sqldelight.sqlite.driver)
                 implementation(libs.robolectric)
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
                 implementation(libs.androidx.recyclerview)
@@ -251,7 +251,7 @@ kotlin {
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
-                implementation("app.cash.sqldelight:native-driver:2.1.0")
+                implementation(libs.sqldelight.native.driver)
                 implementation(libs.ktor.client.darwin)
             }
         }
