@@ -60,6 +60,20 @@ class RaftDesktopNavigator(private val onEmpty: () -> Unit) {
         return true
     }
 
+    /**
+     * A history step from the keyboard or mouse ([RaftDesktopHistoryInput]): the app shell, alone on
+     * the stack, gets it (it owns the wide layout's history); a page pushed over the shell takes
+     * Back as closing itself and ignores Forward. True when something took it.
+     */
+    fun history(direction: RaftDesktopHistoryDirection): Boolean {
+        val top = pages.lastOrNull() ?: return false
+        if (pages.size > 1) return direction == RaftDesktopHistoryDirection.Back && back()
+        if (top.args.pageName != RaftDesktopPages.APP_SHELL) return false
+        log("history ${direction.wireName}")
+        top.events.send(RaftDesktopHistoryInput.EVENT_NAME, RaftDesktopHistoryInput.eventData(direction))
+        return true
+    }
+
     private fun page(pageName: String, pageData: JsonObject) =
         RaftDesktopPage(nextId++, RaftCmpPageArgs(pageName, pageData))
 

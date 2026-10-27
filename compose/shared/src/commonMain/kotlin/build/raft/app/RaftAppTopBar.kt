@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -17,6 +19,8 @@ import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSearchTrigger
 import build.raft.designsystem.components.RaftTopBar
 import build.raft.designsystem.components.RaftTopBarDefaults
@@ -29,7 +33,8 @@ import build.raft.designsystem.theme.RaftTheme
 /**
  * The wide layout's top bar (artin task #8; web AppTopBar, raft-design page-structure.md), above
  * the rail and the content:
- * - leading: the current server's [RaftWorkspaceButton], which opens the server panel
+ * - leading: Back and Forward through what the layout showed ([history], Slack desktop's history
+ *   arrows; disabled at either end), then the current server's [RaftWorkspaceButton], which opens the server panel
  *   ([onWorkspaceClick]; [serverMenuOpen] keeps its press fill), then the workspace strip of
  *   every server's avatar, where a tap on another server switches to it ([onServerPick]);
  * - centre: the search field ([RaftSearchTrigger]), which opens search ([onSearchClick]);
@@ -54,6 +59,8 @@ internal fun RaftAppShellTopBar(
     bell: RaftAppShellTopBarState? = null,
     /** A tap on the bell, before it toggles (the shell closes the server panel). */
     onBellToggle: () -> Unit = {},
+    /** The Back / Forward arrows at the leading edge; null draws none. */
+    history: RaftAppShellTopBarHistory? = null,
 ) {
     val unreadDescription = stringResource(Res.string.tab_activity_unread_dot)
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
@@ -62,6 +69,10 @@ internal fun RaftAppShellTopBar(
             modifier = modifier,
             topInset = topSafeArea,
             leading = {
+                if (history != null) {
+                    RaftAppShellTopBarHistoryButtons(history)
+                    Spacer(Modifier.width(RaftAppSpacing.Xs))
+                }
                 if (currentServer != null) {
                     var stripShown by remember { mutableStateOf(true) }
                     val otherUnread = homeServerSwitcherHasOtherUnread(currentServer.id, servers)
@@ -143,6 +154,40 @@ internal fun RaftAppShellTopBar(
         )
     }
 }
+
+/**
+ * The top bar's history arrows (see [RaftWideNavHistory]): what they can do now and what a click
+ * does. Both are on-frame icon buttons (the bar's 36dp items), greyed when there is nothing that way.
+ */
+internal data class RaftAppShellTopBarHistory(
+    val canGoBack: Boolean,
+    val canGoForward: Boolean,
+    val onBack: () -> Unit,
+    val onForward: () -> Unit,
+)
+
+@Composable
+private fun RaftAppShellTopBarHistoryButtons(history: RaftAppShellTopBarHistory) {
+    RaftIconButton(
+        onClick = history.onBack,
+        tooltip = stringResource(Res.string.app_top_bar_history_back),
+        variant = RaftButtonVariant.OnFrame,
+        enabled = history.canGoBack,
+    ) {
+        RaftContentLucideIcon(RaftLucideIconName.ChevronLeft, size = RaftAppShellTopBarHistoryGlyph)
+    }
+    RaftIconButton(
+        onClick = history.onForward,
+        tooltip = stringResource(Res.string.app_top_bar_history_forward),
+        variant = RaftButtonVariant.OnFrame,
+        enabled = history.canGoForward,
+    ) {
+        RaftContentLucideIcon(RaftLucideIconName.ChevronRight, size = RaftAppShellTopBarHistoryGlyph)
+    }
+}
+
+/** An on-frame icon button's glyph (raft-ui: 20dp in the 36dp frame button). */
+private val RaftAppShellTopBarHistoryGlyph = 20.dp
 
 /**
  * Where the server panel under the top bar starts: 8dp (the popover's gap) under the bottom of the

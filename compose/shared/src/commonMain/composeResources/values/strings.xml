@@ -3254,6 +3254,8 @@
     <string name="file_preview_download_background_hint">You can leave this page: the download keeps going. Find it in Settings › Storage › Downloads.</string>
     <string name="file_preview_download_completed_hint">Saved. You can find it in Settings › Storage › Downloads.</string>
     <string name="home_server_switcher_other_unread">Other servers have unread messages</string>
+    <string name="app_top_bar_history_back">Back</string>
+    <string name="app_top_bar_history_forward">Forward</string>
     <string name="thread_link_preview_prompt_title">%1$s wants to show link previews here</string>
     <string name="thread_link_preview_prompt_disclosure">After you allow, %1$s will know which of its links you view.</string>
     <string name="thread_link_preview_prompt_allow">Allow</string>

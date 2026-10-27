@@ -3254,6 +3254,8 @@
     <string name="file_preview_download_background_hint">このページを離れてもダウンロードは続きます。設定 › ストレージ › ダウンロード で確認できます。</string>
     <string name="file_preview_download_completed_hint">保存しました。設定 › ストレージ › ダウンロード で確認できます。</string>
     <string name="home_server_switcher_other_unread">他のサーバーに未読メッセージがあります</string>
+    <string name="app_top_bar_history_back">戻る</string>
+    <string name="app_top_bar_history_forward">進む</string>
     <string name="thread_link_preview_prompt_title">%1$s がここにリンクのプレビューを表示しようとしています</string>
     <string name="thread_link_preview_prompt_disclosure">許可すると、%1$s はあなたがどのリンクを表示したかを知ることができます。</string>
     <string name="thread_link_preview_prompt_allow">許可</string>
