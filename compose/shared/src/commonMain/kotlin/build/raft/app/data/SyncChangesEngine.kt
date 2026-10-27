@@ -15,7 +15,8 @@ internal const val SYNC_CHANGES_MAX_PAGES_PER_PULL: Int = 40
 
 /**
  * The longest one `sync/changes` request may take. Past it the pull fails (`timeout`, the cursor is
- * kept) and a reconnect / foreground caller falls back to its full-list refetch (web client, Scout 10-27).
+ * dropped like on any failure) and a reconnect / foreground caller falls back to its full-list
+ * refetch (web client, Scout 10-27).
  */
 internal const val SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS: Long = 5_000L
 
@@ -168,8 +169,12 @@ internal sealed interface RaftSyncPullResult {
  *   `hasMore`, pull again at once (at most [maxPagesPerPull] pages per pull).
  * - `reset`: retake `reset.snapshots` (always after [snapshotJitterDelay], whatever the trigger: a
  *   reset reaches every client at once), then store the returned cursor.
- * - A request past [requestTimeoutMillis] or failing fails the pull with the cursor kept.
- * - 400 `invalid_cursor`: forget the cursor and start over as a first sync (once per pull).
+ * - A failed pull (network, 5xx, a request past [requestTimeoutMillis], a snapshot that failed)
+ *   forgets the cursor (contract, Tenny 10-27): a cursor that keeps failing must not fail forever,
+ *   the next pull re-bootstraps as a first sync, after [snapshotJitterDelay] (every client fails
+ *   together during a server incident). A pull whose scope was retired keeps it.
+ * - 400 `invalid_cursor`: forget the cursor and start over as a first sync (once per pull); its
+ *   snapshots take [snapshotJitterDelay] (the server may have invalidated every cursor at once).
  *
  * Pulls of one scope run one at a time; a trigger during a pull waits and pulls again (cheap: no
  * changes). A pull stops as soon as [isCurrent] says the scope is no longer the signed-in binding
@@ -197,6 +202,9 @@ internal class RaftSyncChangesEngine(
     private val lock = SynchronizedObject()
     private val mutexes = mutableMapOf<RaftSyncScope, Mutex>()
 
+    /** Scopes whose cursor a failed pull dropped: their re-bootstrap snapshots wait the jitter. */
+    private val droppedAfterFailure = mutableSetOf<RaftSyncScope>()
+
     suspend fun pull(
         scope: RaftSyncScope,
         trigger: String,
@@ -216,6 +224,13 @@ internal class RaftSyncChangesEngine(
                 } catch (error: Throwable) {
                     RaftSyncPullResult.Failed("exception_${error::class.simpleName ?: "unknown"}")
                 }
+            when {
+                result is RaftSyncPullResult.Failed && result.needsFullRefetchFallback -> {
+                    cursors.clear(scope)
+                    synchronized(lock) { droppedAfterFailure += scope }
+                }
+                result is RaftSyncPullResult.Synced -> synchronized(lock) { droppedAfterFailure -= scope }
+            }
             logger(
                 "sync_changes_pull serverId=${scope.serverId} trigger=$trigger " + when (result) {
                     is RaftSyncPullResult.Synced ->
@@ -240,6 +255,7 @@ internal class RaftSyncChangesEngine(
         var pages = 0
         var changes = 0
         var cursor = cursors.read(scope)
+        val rebootstrap = synchronized(lock) { scope in droppedAfterFailure }
         while (true) {
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
             if (cursor == null) {
@@ -251,7 +267,9 @@ internal class RaftSyncChangesEngine(
                         is RaftSyncChangesFetch.Failed -> return RaftSyncPullResult.Failed(fetch.code)
                     }
                 // Snapshots after the cursor was read: whatever changes during them comes again.
-                if (jitterSnapshots) snapshotJitterDelay()
+                // A RE-connect, an invalid_cursor restart or a re-bootstrap after a failure: full lists
+                // every client may ask at once. Sign-in / server select take them at once.
+                if (jitterSnapshots || restarted || rebootstrap) snapshotJitterDelay()
                 if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, RaftSyncSnapshot.All, reason = "first_sync")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
