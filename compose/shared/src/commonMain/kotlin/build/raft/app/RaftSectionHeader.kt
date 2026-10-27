@@ -587,14 +587,3 @@ internal fun RaftHeaderIconAction(
         }
     }
 }
-
-/** Count treatment shared by member-page headers. */
-@Composable
-internal fun RaftMemberCountBadge(count: Int) {
-    Box(Modifier.background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
-        .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Chip))
-        .padding(horizontal = 6.dp, vertical = 2.dp), contentAlignment = Alignment.Center) {
-        Text(count.toString(), style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp),
-            color = RaftColor.TextMuted)
-    }
-}

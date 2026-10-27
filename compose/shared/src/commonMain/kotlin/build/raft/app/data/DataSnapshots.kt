@@ -591,11 +591,6 @@ data class HomeSnapshot(
     val unreadRetryAfterMillis: Long? = null
 )
 
-data class ServerListSnapshot(
-    val servers: List<ServerSummary>,
-    val selectedServer: ServerSummary?
-)
-
 @Serializable
 data class ThreadSnapshot(
     val conversation: ConversationSummary,
@@ -1104,12 +1099,6 @@ data class ChannelMemberSnapshot(
     val liveActivityAgentIds: Set<String> = emptySet()
 )
 
-data class AgentSnapshot(
-    val server: ServerSummary,
-    val agents: List<AgentProfile>,
-    val members: List<MemberProfile> = agents.map { it.toMemberProfile() }
-)
-
 @Serializable
 data class InboxSnapshot(
     val server: ServerSummary,
@@ -1277,10 +1266,6 @@ data class SearchSnapshot(
     val nextOffset: Int? = null,
     /** Server walk cursor for the next page; when set it is used instead of [nextOffset]. */
     val nextCursor: String? = null
-)
-
-data class SettingsSnapshot(
-    val settings: SettingsSummary
 )
 
 data class SettingsConnectedAppsSnapshot(

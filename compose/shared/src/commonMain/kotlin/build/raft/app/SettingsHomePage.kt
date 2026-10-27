@@ -17,7 +17,6 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
-import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -46,7 +45,6 @@ import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.components.RaftBrutalSearchField
@@ -363,8 +361,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -434,7 +430,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -571,7 +566,6 @@ private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
-private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.62f)
 
 // xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
 // Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
@@ -12495,89 +12489,6 @@ private fun SharedHomeSavedHeader(
 }
 
 @Composable
-private fun SharedHomePanelHeader(
-    title: String,
-    subtitle: String,
-    iconName: RaftLucideIconName,
-    actionLabel: String,
-    actionEnabled: Boolean,
-    onAction: () -> Unit,
-    includeTopSafeArea: Boolean = true
-) {
-    val topPadding = if (includeTopSafeArea) raftTopSafeAreaPadding() else 0.dp
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 18.dp, top = topPadding + 18.dp, end = 18.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftLucideIcon(name = iconName, color = RaftColor.TextBlackArgb, modifier = Modifier.size(30.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                title,
-                style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                subtitle,
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        SharedHomePanelButton(
-            label = actionLabel,
-            enabled = actionEnabled,
-            selected = true,
-            onClick = onAction
-        )
-    }
-}
-
-@Composable
-private fun SharedHomePanelSearchField(
-    query: String,
-    loading: Boolean,
-    onQueryChange: (String) -> Unit,
-    onSubmit: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .padding(horizontal = SearchControlsHorizontalPadding)
-                .fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftBrutalInputField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = "Search messages",
-            autoFocus = true,
-            maxLines = 1,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
-            textStyle = RaftType.Input.copy(color = RaftColor.TextBlack),
-            fieldMinHeight = 42.dp,
-            showShadow = false,
-            showClearWhenNotEmpty = true,
-            modifier = Modifier.weight(1f)
-        )
-        SharedHomePanelButton(
-            label = "Go",
-            enabled = query.isNotBlank() && !loading,
-            selected = true,
-            onClick = onSubmit
-        )
-    }
-}
-
-@Composable
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
@@ -13815,137 +13726,6 @@ private fun SharedHomeLoadMoreRow(
             textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold),
             onClick = onClick
         )
-    }
-}
-
-@Composable
-private fun SharedHomeFilterChip(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    dense: Boolean = false,
-    onClick: () -> Unit
-) {
-    SharedHomePanelButton(
-        label = label,
-        enabled = enabled,
-        selected = selected,
-        modifier = modifier,
-        dense = dense,
-        onClick = onClick
-    )
-}
-
-@Composable
-private fun SharedHomeSearchSortSegmentedControl(
-    sort: SearchSort,
-    modifier: Modifier = Modifier,
-    onSortChange: (SearchSort) -> Unit
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SharedHomeSearchSortSegmentButton(
-            label = stringResource(Res.string.search_sort_relevant),
-            selected = sort == SearchSort.Relevance,
-            onClick = { onSortChange(SearchSort.Relevance) }
-        )
-        SharedHomeSearchSortSegmentButton(
-            label = stringResource(Res.string.search_sort_recent),
-            selected = sort == SearchSort.Recent,
-            onClick = { onSortChange(SearchSort.Recent) }
-        )
-    }
-}
-
-@Composable
-private fun SharedHomeSearchSortSegmentButton(
-    label: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    SharedHomeSearchControlSurface(
-        enabled = true,
-        onClick = onClick,
-        modifier = modifier.heightIn(min = 28.dp),
-        background = if (selected) RaftColor.Selected else RaftColor.SurfaceWhite,
-        borderColor = RaftColor.BorderBlack,
-        shadowColor = if (selected) RaftColor.ShadowBlack else Color.Transparent
-    ) {
-        Text(
-            text = label,
-            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = if (selected) RaftColor.StickerInk else SearchMutedTextColor,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun SharedHomeSearchControlSurface(
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    background: Color,
-    borderColor: Color = RaftColor.BorderBlack,
-    shadowColor: Color = RaftColor.ShadowBlack,
-    content: @Composable () -> Unit
-) {
-    SharedHomeSearchShadowSurface(
-        modifier = modifier,
-        background = background,
-        borderColor = borderColor,
-        shadowColor = shadowColor,
-        enabled = enabled,
-        onClick = onClick,
-        contentPaddingHorizontal = 11.dp,
-        contentPaddingVertical = 8.dp,
-        content = content
-    )
-}
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-private fun SharedHomeSearchShadowSurface(
-    modifier: Modifier = Modifier,
-    background: Color,
-    borderColor: Color = RaftColor.BorderBlack,
-    borderWidth: Dp = RaftAppStroke.Default,
-    shadowColor: Color = RaftColor.ShadowBlack,
-    enabled: Boolean = true,
-    onClick: (() -> Unit)? = null,
-    contentPaddingHorizontal: Dp = 0.dp,
-    contentPaddingVertical: Dp = 0.dp,
-    content: @Composable () -> Unit
-) {
-    // raft-ui: a selected (yellow) control is the `selected` sticker (1.5dp sticker-ink edge;
-    // yellow in every theme, raft-ui #791); every other one is a ghost control. Control radius,
-    // no ink frame, no offset shadow.
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    val sticker = background == RaftColor.BrandYellow || background == RaftColor.Brand || background == RaftColor.Selected
-    Box(modifier = modifier) {
-        val surfaceModifier =
-            Modifier
-                .fillMaxSize()
-                .clip(shape)
-                .background(if (sticker) RaftColor.Selected else Color.Transparent, shape)
-                .border(RaftAppStroke.Control, if (sticker) RaftColor.StickerInk else Color.Transparent, shape)
-                .padding(horizontal = contentPaddingHorizontal, vertical = contentPaddingVertical)
-        Box(
-            modifier =
-                if (onClick != null) {
-                    surfaceModifier.clickable(enabled = enabled, onClick = onClick)
-                } else {
-                    surfaceModifier
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            content()
-        }
     }
 }
 

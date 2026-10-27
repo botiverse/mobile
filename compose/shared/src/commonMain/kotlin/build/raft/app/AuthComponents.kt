@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,7 +58,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -69,12 +67,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-
-internal enum class AuthProvider {
-    Google,
-    GitHub,
-    Apple
-}
 
 internal enum class AuthButtonTone {
     Pink,
@@ -346,29 +338,6 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier, imagePadding: Dp = 8.d
             contentDescription = null,
             modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding),
             contentScale = ContentScale.Fit
-        )
-    }
-}
-
-@Composable
-internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalAlignment = Alignment.Start
-    ) {
-        AuthLogoBadge("RAFT")
-        Text(
-            text = stringResource(Res.string.auth_restore_tagline),
-            style = RaftType.SectionLabel.copy(
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                letterSpacing = 1.4.sp,
-                color = RaftColor.TextBlack.copy(alpha = 0.52f)
-            ),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.authStaticTextFocus()
         )
     }
 }
@@ -663,24 +632,6 @@ internal fun authActionButtonTextStyle(
     }
 
 @Composable
-internal fun AuthDivider() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-        Text(
-            text = stringResource(Res.string.auth_social_divider_or),
-            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            modifier = Modifier.authStaticTextFocus()
-        )
-        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-    }
-}
-
-@Composable
 internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     RaftLinkButton(
         text = text,
@@ -691,34 +642,6 @@ internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = 
         color = RaftColor.TextMutedGray,
         disabledColor = RaftColor.TextMutedGray.copy(alpha = 0.55f)
     )
-}
-
-@Composable
-internal fun AuthInlineAction(leading: String, action: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = leading,
-            style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authStaticTextFocus()
-        )
-        Spacer(Modifier.width(RaftAppSpacing.Xs))
-        Text(
-            text = action,
-            style = RaftType.Body.copy(
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                color = RaftColor.AccentPink,
-                textDecoration = TextDecoration.Underline
-            ).withRaftFontWeight(FontWeight.SemiBold),
-            color = RaftColor.AccentPink,
-            modifier = Modifier.clickable(onClick = onClick)
-        )
-    }
 }
 
 @Composable
@@ -755,38 +678,5 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
             color = RaftColor.TextBlack,
             modifier = Modifier.authStaticTextFocus()
         )
-    }
-}
-
-@Composable
-internal fun AuthProviderIcon(provider: AuthProvider) {
-    // task #60: every platform loads the bundled SVG file (see ProviderIconAsset.kt).
-    val source =
-        when (provider) {
-            AuthProvider.Google -> providerIconAssetSource(ProviderIconKey.GoogleColor)
-            AuthProvider.GitHub -> providerIconAssetSource(ProviderIconKey.GitHubWhite)
-            AuthProvider.Apple -> providerIconAssetSource(ProviderIconKey.AppleWhite)
-        }
-    RaftCachedImage(
-        source = source,
-        contentDescription = null,
-        modifier = Modifier.size(18.dp)
-    )
-}
-
-@Composable
-private fun AuthComponentPreview() {
-    AuthScaffold {
-        AuthBrandBlock()
-        Text(
-            text = "Sign In",
-            style = RaftType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack
-        )
-        AuthTextField(value = TextFieldValue(""), onValueChange = {}, label = stringResource(Res.string.auth_label_email), required = true, forceFocused = true)
-        AuthTextField(value = TextFieldValue("not-an-email"), onValueChange = {}, label = stringResource(Res.string.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
-        AuthActionButton(text = "Sign In", onClick = {}, tone = AuthButtonTone.Pink)
-        AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
-        AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")
     }
 }

@@ -923,13 +923,6 @@
     <string name="thread_forward_chat_history_named">%1$s chat history</string>
     <string name="thread_forward_attachment_one">[1 attachment]</string>
     <string name="thread_forward_attachment_many">[%1$d attachments]</string>
-    <string name="thread_forward_join_channel_first">Join channel before forwarding</string>
-    <string name="thread_forward_start_dm_first">Start DM before forwarding</string>
-    <string name="thread_forward_recent_channel">Recent channel</string>
-    <string name="thread_forward_recent_dm">Recent DM</string>
-    <string name="thread_forward_public_channel">Public channel</string>
-    <string name="thread_forward_member">Member</string>
-    <string name="thread_forward_agent">Agent</string>
     <string name="external_share_title">Share to Raft</string>
     <string name="external_share_preparing">Preparing shared content…</string>
     <string name="external_share_opening_target">Opening %1$s…</string>
@@ -1610,7 +1603,6 @@
     <string name="task_conversation_follow_failed">Couldn't update following for this task</string>
     <string name="tasks_label_title">Task title</string>
     <string name="tasks_action_add_another">Add another</string>
-    <string name="auth_label_email">Email</string>
     <string name="auth_label_name">Name</string>
     <string name="auth_password_pattern">Letters, numbers, hyphens, underscores</string>
     <string name="auth_validation_username_min_length">Username must be at least %1$s characters.</string>
@@ -2339,7 +2331,6 @@
     <string name="settings_connected_apps_loading">Loading integrations, marketplace apps, and OAuth clients.</string>
     <string name="settings_connected_apps_empty">No Connected Apps</string>
     <string name="settings_connected_apps_error">Connected Apps Error</string>
-    <string name="settings_connected_apps_no_install_prompt">No install prompt is available inside this native Settings surface.</string>
     <string name="settings_common_no_description">No description provided.</string>
     <string name="settings_connected_apps_no_built_in">No built-in apps are available.</string>
     <string name="settings_connected_apps_no_marketplace">No marketplace apps are available.</string>

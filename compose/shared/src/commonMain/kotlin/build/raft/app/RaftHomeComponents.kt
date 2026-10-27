@@ -165,14 +165,12 @@ import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
@@ -204,11 +202,7 @@ import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import kotlin.time.TimeSource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -257,7 +251,6 @@ private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
-private const val HomeServerBadgeTiltDegrees = -2f
 internal val HomeServerPublicPageGlobeGap = 4.dp
 internal val HomeServerPublicPageGlobeSize = 13.dp
 private val RaftSortEdgeScrollZone = 56.dp
@@ -4929,106 +4922,6 @@ private fun HomeServerIdentityCluster(
     )
     }
 }
-
-@Composable
-internal fun RaftTiltedBadgeSurface(
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit
-) {
-    // Draw the chrome as final vector geometry. Only the foreground is
-    // transformed, so chrome and text are never resampled as one bitmap.
-    Box(modifier = modifier) {
-        TiltedBadgeChrome(modifier = Modifier.matchParentSize())
-        Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
-                content()
-            }
-        }
-    }
-}
-
-@Composable
-private fun TiltedBadgeChrome(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val layers = homeServerBadgeChromeLayers(
-            widthPx = size.width,
-            heightPx = size.height,
-            shadowOffsetPx = HomeSmallShadowOffset.toPx()
-        )
-        drawPath(path = homeServerBadgePath(layers.shadowCorners), color = RaftColor.ShadowBlack)
-        drawPath(path = homeServerBadgePath(layers.mainCorners), color = RaftColor.StickerInk)
-    }
-}
-
-private fun homeServerBadgePath(corners: List<Offset>): Path =
-    Path().apply {
-        moveTo(corners[0].x, corners[0].y)
-        lineTo(corners[1].x, corners[1].y)
-        lineTo(corners[2].x, corners[2].y)
-        lineTo(corners[3].x, corners[3].y)
-        close()
-    }
-
-internal data class HomeServerBadgeChromeLayers(
-    val mainCorners: List<Offset>,
-    val shadowCorners: List<Offset>
-)
-
-internal fun homeServerBadgeChromeLayers(
-    widthPx: Float,
-    heightPx: Float,
-    shadowOffsetPx: Float
-): HomeServerBadgeChromeLayers {
-    val safeOffset = shadowOffsetPx.coerceAtLeast(0f)
-    val chromeWidth = (widthPx - safeOffset).coerceAtLeast(1f)
-    val chromeHeight = (heightPx - safeOffset).coerceAtLeast(1f)
-    val mainCorners = homeServerBadgeTiltCorners(chromeWidth, chromeHeight)
-    return HomeServerBadgeChromeLayers(
-        mainCorners = mainCorners,
-        shadowCorners = mainCorners.map { corner ->
-            Offset(x = corner.x + safeOffset, y = corner.y + safeOffset)
-        }
-    )
-}
-
-internal fun homeServerBadgeTiltCorners(
-    widthPx: Float,
-    heightPx: Float,
-    tiltDegrees: Float = HomeServerBadgeTiltDegrees
-): List<Offset> {
-    val safeWidth = widthPx.coerceAtLeast(1f)
-    val safeHeight = heightPx.coerceAtLeast(1f)
-    val angle = (tiltDegrees * PI / 180.0).toFloat()
-    val cosAngle = cos(angle)
-    val sinAngle = sin(angle)
-    val sinMagnitude = abs(sinAngle)
-    val denominator = (cosAngle * cosAngle - sinMagnitude * sinMagnitude).coerceAtLeast(0.01f)
-    val rectWidth = ((safeWidth * cosAngle - safeHeight * sinMagnitude) / denominator).coerceAtLeast(1f)
-    val rectHeight = ((safeHeight * cosAngle - safeWidth * sinMagnitude) / denominator).coerceAtLeast(1f)
-    val centerX = safeWidth / 2f
-    val centerY = safeHeight / 2f
-    val halfWidth = rectWidth / 2f
-    val halfHeight = rectHeight / 2f
-    return listOf(
-        rotateHomeBadgePoint(-halfWidth, -halfHeight, cosAngle, sinAngle, centerX, centerY),
-        rotateHomeBadgePoint(halfWidth, -halfHeight, cosAngle, sinAngle, centerX, centerY),
-        rotateHomeBadgePoint(halfWidth, halfHeight, cosAngle, sinAngle, centerX, centerY),
-        rotateHomeBadgePoint(-halfWidth, halfHeight, cosAngle, sinAngle, centerX, centerY)
-    )
-}
-
-private fun rotateHomeBadgePoint(
-    x: Float,
-    y: Float,
-    cosAngle: Float,
-    sinAngle: Float,
-    centerX: Float,
-    centerY: Float
-): Offset =
-    Offset(
-        x = centerX + x * cosAngle - y * sinAngle,
-        y = centerY + x * sinAngle + y * cosAngle
-    )
 
 @Composable
 private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
