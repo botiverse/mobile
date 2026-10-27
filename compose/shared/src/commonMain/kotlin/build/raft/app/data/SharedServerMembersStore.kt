@@ -24,6 +24,7 @@ import build.raft.app.raftAvatarDiagnosticsHash
 import build.raft.app.raftAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,8 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 enum class SharedServerMembersLoadStatus {
@@ -560,6 +563,8 @@ class SharedServerMembersStore internal constructor(
      * The provider answers with the same decision a (re)connect takes; tests and fixtures keep it off.
      */
     private val incrementalSyncCoversRoster: (ServerId) -> Boolean = { false },
+    /** Wait before the one retry of a failed reconnect roster refill ([refreshAfterPresenceTransportConnected]). */
+    private val presenceRefillRetryDelay: Duration = SharedServerMembersPresenceRefillRetryDelay,
 ) {
     private val mutex = Mutex()
 
@@ -1532,7 +1537,12 @@ class SharedServerMembersStore internal constructor(
                                 .filterDeletedAgents(key)
                                 .resolveComputerLabels(entry.members.knownComputerNames())
                     )
-                applyAuthoritativeRosterPresence(request = presenceRequest, serverId = key, profiles = fetched)
+                applyAuthoritativeRosterPresence(
+                    request = presenceRequest,
+                    serverId = key,
+                    profiles = fetched,
+                    completesRosterRefill = true
+                )
                 var current = false
                 val snapshot =
                     processCore.commitAgentsIfCurrent(loadResult) {
@@ -2088,12 +2098,17 @@ class SharedServerMembersStore internal constructor(
             if (serverRecency.remove(key)) serverRecency.add(key)
         }
         hydrateFromDurable(ServerId(key))
+        // The forced reconnect refill writes agent status back; so does any later load while a
+        // transport advance's refill is still pending (that refill failed, e.g. cancelled in the
+        // background: Hands 81ad5dae), or agents stay "offline" until their next realtime event.
+        val presenceWriteBinding = presenceWrite(ServerId(key))?.takeIf { it.owner == owner }
+        val rosterRefillPending =
+            presenceWriteBinding?.let { presenceRegistry.needsRosterRefill(it.owner) } == true
         val rosterPresenceRequest =
-            if (!force) {
+            if (!force && !rosterRefillPending) {
                 null
             } else {
-                presenceWrite(ServerId(key))
-                    ?.takeIf { it.owner == owner }
+                presenceWriteBinding
                     ?.let { write ->
                         presenceRegistry.captureRosterProjectionRequest(
                             owner = write.owner,
@@ -2194,6 +2209,16 @@ class SharedServerMembersStore internal constructor(
             )
             return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
         }
+        // A non-forced load may be answered from the process cache (or a durable seed) read before the
+        // transport advance: that is not the server's current status, so it refills nothing.
+        val rosterPresenceRequestForResult =
+            rosterPresenceRequest?.takeIf { force || !processResult.cacheHit }
+        if (rosterPresenceRequest != null && rosterPresenceRequestForResult == null) {
+            logger(
+                "store_load domain=server_members serverId=$key presence_refill=skipped cause=cache_hit " +
+                    "force=$force reason=$reason"
+            )
+        }
         beforeProcessPublication()
         val publishStartedAt = TimeSource.Monotonic.markNow()
         var durableSnapshot: MemberSnapshot? = null
@@ -2222,15 +2247,16 @@ class SharedServerMembersStore internal constructor(
                     // caller must still project the roster's current status, or every agent stays
                     // "offline" until its next realtime event (Hands f75b5d1c, server switch).
                     val unchanged = processResult.result
-                    if (rosterPresenceRequest != null && unchanged is DataResult.Content) {
+                    if (rosterPresenceRequestForResult != null && unchanged is DataResult.Content) {
                         val normalizedKey = unchanged.data.server.id.value.trim().ifBlank { key }
                         applyAuthoritativeRosterPresence(
-                            request = rosterPresenceRequest,
+                            request = rosterPresenceRequestForResult,
                             serverId = normalizedKey,
                             profiles =
                                 unchanged.data.members
                                     .filterServerRosterMembers(normalizedKey)
-                                    .filterDeletedAgents(normalizedKey)
+                                    .filterDeletedAgents(normalizedKey),
+                            completesRosterRefill = true
                         )
                     }
                     processResult.result.map { Unit }
@@ -2254,9 +2280,10 @@ class SharedServerMembersStore internal constructor(
 
                                 )
                             applyAuthoritativeRosterPresence(
-                                request = rosterPresenceRequest,
+                                request = rosterPresenceRequestForResult,
                                 serverId = normalizedKey,
-                                profiles = snapshot.members
+                                profiles = snapshot.members,
+                                completesRosterRefill = true
                             )
                             cacheProfiles(normalizedKey, snapshot.members)
                             // task #344 evidence lane: if this roster refresh replaced a member's
@@ -2388,7 +2415,8 @@ class SharedServerMembersStore internal constructor(
     /**
      * Reconnect repair for one store: the forced roster refill first (current-server presence is
      * not held behind peer slice reloads, which each hold [mutex] across their request), then the
-     * peer-agent channel slices. A roster failure still lets the peer refresh run.
+     * peer-agent channel slices. A roster failure still lets the peer refresh run; the caller then
+     * schedules [retryPresenceTransportRefill].
      */
     internal suspend fun refreshAfterPresenceTransportConnected(
         serverId: ServerId,
@@ -2400,7 +2428,57 @@ class SharedServerMembersStore internal constructor(
                 refreshMembers(serverId, DataRequestPriority.Background, force = true, reason = reason)
             }
         refreshPeerAgentChannelPresence(serverId, transport, reason)
-        return roster.getOrThrow()
+        val result = roster.getOrThrow()
+        if (result is DataResult.Error) {
+            logger(
+                "presence_transport_refill serverId=${serverId.value.trim()} epoch=${transport.epoch} " +
+                    "result=refresh_failed attempt=1 code=${result.error.code} reason=$reason"
+            )
+        }
+        return result
+    }
+
+    /**
+     * The one retry of a failed reconnect roster refill (Hands 81ad5dae: the refill was cancelled
+     * while the app went to the background, `http_0`, and agents stayed "offline"). Waits
+     * [presenceRefillRetryDelay], then refetches only while [transport] is still the server's
+     * current one (a newer connect owns its own refill) and the refill is still pending. Past that,
+     * the next successful roster load of any kind writes the status back
+     * ([ProcessMemberPresenceRegistry.needsRosterRefill]).
+     */
+    internal suspend fun retryPresenceTransportRefill(
+        serverId: ServerId,
+        transport: ProcessPresenceTransportEpoch,
+        reason: String,
+        /** Sync-on reconnect: the refill was the `/agents` read ([refreshAgents]). */
+        agentsOnly: Boolean = false
+    ): DataResult<Unit>? {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return null
+        val requested = transport.normalizedOrNull() ?: return null
+        delay(presenceRefillRetryDelay)
+        if (currentPresenceTransport(ServerId(serverKey)) != requested) {
+            logger(
+                "presence_transport_refill serverId=$serverKey epoch=${requested.epoch} result=retry_skipped " +
+                    "cause=transport_changed reason=$reason"
+            )
+            return null
+        }
+        if (presenceOwner(ServerId(serverKey))?.let(presenceRegistry::needsRosterRefill) != true) {
+            logger(
+                "presence_transport_refill serverId=$serverKey epoch=${requested.epoch} result=retry_skipped " +
+                    "cause=not_pending reason=$reason"
+            )
+            return null
+        }
+        val retried =
+            if (agentsOnly) refreshAgents(ServerId(serverKey), reason = reason)
+            else refreshMembers(ServerId(serverKey), DataRequestPriority.Background, force = true, reason = reason)
+        logger(
+            "presence_transport_refill serverId=$serverKey epoch=${requested.epoch} attempt=2 " +
+                (if (retried is DataResult.Error) "result=refresh_failed code=${retried.error.code}" else "result=refilled") +
+                " reason=$reason"
+        )
+        return retried
     }
 
     /**
@@ -2476,12 +2554,19 @@ class SharedServerMembersStore internal constructor(
         }
     }
 
+    /**
+     * [completesRosterRefill]: [profiles] are the server's whole agent roster (`/members` or
+     * `/agents`), so applying them ends a pending transport-advance refill. Peer-agent channel
+     * slices carry other servers' agents only and leave it pending.
+     */
     private fun applyAuthoritativeRosterPresence(
         request: ProcessPresenceRosterProjectionRequest?,
         serverId: String,
-        profiles: List<MemberProfile>
+        profiles: List<MemberProfile>,
+        completesRosterRefill: Boolean = false
     ) {
         if (request == null || request.owner.serverId != serverId) return
+        if (completesRosterRefill) presenceRegistry.completeRosterRefill(request)
         profiles.forEach { profile ->
             val status =
                 profile.agentStatus
@@ -4012,3 +4097,6 @@ internal const val SharedServerMembersMaxCachedServers = 16
  * retired the flight it joined, before reporting members_owner_stale.
  */
 internal const val SharedServerMembersSupersededFlightRetries = 2
+
+/** Wait before the one retry of a failed reconnect roster refill (Hands 81ad5dae). */
+internal val SharedServerMembersPresenceRefillRetryDelay: Duration = 3.seconds

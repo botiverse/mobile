@@ -365,7 +365,14 @@ internal class ProcessMemberPresenceRegistry {
          * request version. Request tokens compare it atomically so a response
          * captured before a realtime/delete mutation can never publish.
          */
-        val memberMutationVersions: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap()
+        val memberMutationVersions: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap(),
+        /**
+         * Owners whose facts a transport advance wiped and that no authoritative roster read has
+         * refilled since (Hands 81ad5dae). While set, any successful network roster load writes
+         * agent status back, not only the forced reconnect refill (which can fail and is then
+         * retried at most once).
+         */
+        val rosterRefillPending: Set<ProcessServerMembersOwner> = emptySet()
     )
 
     private val snapshot = MutableStateFlow(Snapshot(writeGeneration = 0L, partitions = emptyMap()))
@@ -491,7 +498,10 @@ internal class ProcessMemberPresenceRegistry {
                         partitions = nextPartitions,
                         transportEpochs = nextTransportEpochs,
                         currentProjectionStamps = nextCurrentProjectionStamps,
-                        memberMutationVersions = nextMutationVersions
+                        memberMutationVersions = nextMutationVersions,
+                        rosterRefillPending =
+                            if (transportAdvanced) current.rosterRefillPending + owner
+                            else current.rosterRefillPending
                     )
                 )
             ) {
@@ -532,10 +542,37 @@ internal class ProcessMemberPresenceRegistry {
                 current.copy(
                     partitions = current.partitions - owner,
                     transportEpochs = current.transportEpochs + (owner to normalizedTransport),
-                    currentProjectionStamps = current.currentProjectionStamps - owner
+                    currentProjectionStamps = current.currentProjectionStamps - owner,
+                    rosterRefillPending = current.rosterRefillPending + owner
                 )
             if (snapshot.compareAndSet(current, next)) {
                 return ProcessPresenceTransportRebaselineResult.Applied
+            }
+        }
+    }
+
+    /** A transport advance wiped [owner]'s facts and no authoritative roster read refilled them yet. */
+    fun needsRosterRefill(owner: ProcessServerMembersOwner): Boolean =
+        owner in snapshot.value.rosterRefillPending
+
+    /**
+     * An authoritative roster read captured by [request] was applied. Clears the pending refill
+     * only when the request was captured on the owner's current transport and auth generation:
+     * a read that started before a newer advance does not refill that newer one.
+     */
+    fun completeRosterRefill(request: ProcessPresenceRosterProjectionRequest) {
+        while (true) {
+            val current = snapshot.value
+            if (request.owner !in current.rosterRefillPending) return
+            if (request.writeGeneration != current.writeGeneration) return
+            if (current.transportEpochs[request.owner] != request.transport) return
+            if (
+                snapshot.compareAndSet(
+                    current,
+                    current.copy(rosterRefillPending = current.rosterRefillPending - request.owner)
+                )
+            ) {
+                return
             }
         }
     }

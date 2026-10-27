@@ -38,7 +38,9 @@ internal data class ProcessServerMembersLoadResult(
     val reduceMs: Long,
     val terminalRevision: Long,
     internal val owner: ProcessServerMembersDirectoryOwner,
-    internal val generation: ProcessServerMembersGeneration
+    internal val generation: ProcessServerMembersGeneration,
+    /** Answered from the process cache (possibly a durable seed), not by a network flight. */
+    val cacheHit: Boolean = false
 )
 
 /**
@@ -229,7 +231,8 @@ internal class ProcessServerMembersCore(
                     reduceMs = 0L,
                     terminalRevision = decision.entry.terminalRevision,
                     owner = directoryOwner,
-                    generation = decision.generation
+                    generation = decision.generation,
+                    cacheHit = true
                 )
             is LoadDecision.Flight -> {
                 try {

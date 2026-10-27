@@ -12,6 +12,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -284,7 +285,9 @@ class SharedServerMembersPresenceReconciliationTest {
         release.complete(Unit)
         runCurrent()
         assertEquals(DataResult.Content(Unit), membersPage.await())
-        assertNull(registry.factFor(owner, agentId.value), "the non-forced publication projects nothing")
+        // The non-forced caller joined a network flight while the reconnect refill is pending, so it
+        // writes the roster's status too (Hands 81ad5dae); the forced caller's later write agrees.
+        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
 
         forcedPublication.complete(Unit)
         assertEquals(DataResult.Content(Unit), reconnect.await())
@@ -655,6 +658,163 @@ class SharedServerMembersPresenceReconciliationTest {
         )
 
         assertNull(registry.factFor(owner, agentId.value))
+    }
+
+    /** `/members` answers: an `http_0` error while [failures] > 0, then the agent at [status]. */
+    private class FlakyRosterRepository(
+        private val serverId: ServerId,
+        private val agentId: MemberId,
+        var failures: Int,
+        var status: AgentStatus = AgentStatus.Online,
+    ) : MemberRepository by PresenceNoopMemberRepository {
+        var calls = 0
+
+        override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
+            calls += 1
+            if (failures > 0) {
+                failures -= 1
+                return DataResult.Error(ScreenError(code = "http_0", retryable = true))
+            }
+            return DataResult.Content(
+                MemberSnapshot(
+                    server = ServerSummary(id = serverId, name = "Raft"),
+                    members =
+                        listOf(
+                            MemberProfile(
+                                id = agentId,
+                                displayName = "Agent One",
+                                handle = "agent-one",
+                                kind = MemberKind.Agent,
+                                presence = status.presence,
+                                agentStatus = status,
+                                serverId = serverId
+                            )
+                        )
+                )
+            )
+        }
+    }
+
+    @Test
+    fun failedReconnectRefillIsRepairedByTheNextNonForcedLoad() = runBlocking {
+        // Hands 81ad5dae: the forced refill after the rebaseline failed (cancelled in the background,
+        // http_0); a later ordinary load succeeded but wrote no status, so every agent stayed offline.
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = FlakyRosterRepository(serverId, agentId, failures = 1)
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        assertTrue(registry.needsRosterRefill(owner))
+
+        val refill = store.refreshAfterPresenceTransportConnected(serverId, transport, reason = "presence_transport_connected")
+        assertEquals("http_0", (refill as DataResult.Error).error.code)
+        assertNull(registry.factFor(owner, agentId.value))
+        assertTrue(registry.needsRosterRefill(owner), "a failed refill leaves it pending")
+
+        assertEquals(DataResult.Content(Unit), store.refreshMembers(serverId, force = false, reason = "members_page"))
+
+        assertEquals(AgentStatus.Online, registry.factFor(owner, agentId.value)?.agentStatus)
+        assertEquals(AgentStatus.Online, store.memberStatusFlow(serverId, agentId.value).first()?.status)
+        assertFalse(registry.needsRosterRefill(owner))
+    }
+
+    @Test
+    fun nonForcedLoadWithoutAPendingRefillWritesNoStatus() = runBlocking {
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = FlakyRosterRepository(serverId, agentId, failures = 0)
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+
+        store.refreshMembers(serverId, force = false, reason = "members_page")
+
+        assertFalse(registry.needsRosterRefill(owner))
+        assertNull(registry.factFor(owner, agentId.value), "no rebaseline: realtime owns presence, as before")
+    }
+
+    @Test
+    fun cachedRosterReadBeforeTheRebaselineDoesNotCountAsTheRefill() = runBlocking {
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = FlakyRosterRepository(serverId, agentId, failures = 0, status = AgentStatus.Working)
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+        store.refreshMembers(serverId, force = false, reason = "initial")
+        // Sync-on reconnect: the rebaseline does not retire the process roster cache.
+        registry.rebaselineTransport(owner, registry.writeGeneration, ProcessPresenceTransportEpoch("family-1", 1L))
+        repository.status = AgentStatus.Online
+
+        store.refreshMembers(serverId, force = false, reason = "home")
+
+        assertEquals(1, repository.calls, "answered from the process cache")
+        assertNull(registry.factFor(owner, agentId.value), "a pre-rebaseline read is not the current status")
+        assertTrue(registry.needsRosterRefill(owner))
+    }
+
+    @Test
+    fun failedReconnectRefillIsRetriedOnceOnTheSameTransport() = runTest {
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = FlakyRosterRepository(serverId, agentId, failures = 1)
+        val store =
+            SharedServerMembersStore(
+                memberRepository = repository,
+                processCore = ProcessServerMembersCore(fetchMembers = repository::getMembers, scope = backgroundScope),
+                presenceRegistry = registry
+            )
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        val logs = mutableListOf<String>()
+        val refetch =
+            PresenceTransportRosterRefetch(
+                jitter = RaftReconnectRefetchJitter(scope = backgroundScope),
+                invalidate = { _, _ -> },
+                storesForServer = { listOf(store) },
+                warnLogger = { logs += it },
+                retryScope = backgroundScope
+            )
+
+        val decision = refetch.onTransportRebaselined(owner, transport, ProcessPresenceTransportRebaselineResult.Applied)
+
+        assertEquals(RaftReconnectRefetchDecision.Immediate, decision)
+        assertEquals(1, repository.calls)
+        assertNull(registry.factFor(owner, agentId.value))
+        assertTrue(logs.any { "refresh_failed=http_0" in it && "retry=scheduled" in it }, "$logs")
+
+        advanceTimeBy(SharedServerMembersPresenceRefillRetryDelay.inWholeMilliseconds - 1L)
+        runCurrent()
+        assertEquals(1, repository.calls, "the retry waits its backoff")
+        advanceTimeBy(2L)
+        runCurrent()
+
+        assertEquals(2, repository.calls)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, agentId.value)?.agentStatus)
+        assertFalse(registry.needsRosterRefill(owner))
+    }
+
+    @Test
+    fun failedRefillIsNotRetriedOnceANewerConnectOwnsTheRepair() = runTest {
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = FlakyRosterRepository(serverId, agentId, failures = 1)
+        val store =
+            SharedServerMembersStore(
+                memberRepository = repository,
+                processCore = ProcessServerMembersCore(fetchMembers = repository::getMembers, scope = backgroundScope),
+                presenceRegistry = registry
+            )
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        val refetch =
+            PresenceTransportRosterRefetch(
+                jitter = RaftReconnectRefetchJitter(scope = backgroundScope),
+                invalidate = { _, _ -> },
+                storesForServer = { listOf(store) },
+                retryScope = backgroundScope
+            )
+        refetch.onTransportRebaselined(owner, transport, ProcessPresenceTransportRebaselineResult.Applied)
+        assertEquals(1, repository.calls)
+
+        registry.rebaselineTransport(owner, registry.writeGeneration, ProcessPresenceTransportEpoch("family-1", 2L))
+        advanceTimeBy(SharedServerMembersPresenceRefillRetryDelay.inWholeMilliseconds + 1L)
+        runCurrent()
+
+        assertEquals(1, repository.calls, "the epoch moved: the retry is skipped")
+        assertTrue(registry.needsRosterRefill(owner))
     }
 
     private fun presence(
