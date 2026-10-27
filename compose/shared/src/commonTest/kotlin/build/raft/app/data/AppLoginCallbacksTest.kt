@@ -19,6 +19,14 @@ class AppLoginCallbacksTest {
         }
     }
 
+    @Test fun parsesTheMacAppCallback() {
+        assertEquals(
+            AppLoginCallback("raft-mac://login/callback", "req-1", "abc", ""),
+            parseAppLoginCallback("raft-mac://login/callback?requestId=req-1&code=abc"),
+        )
+        assertNull(parseAppLoginCallback("raft-mac://oauth/callback?requestId=req-1&code=abc"))
+    }
+
     @Test fun decodesPercentEscapesAndKeepsPlusLiteral() {
         val callback = parseAppLoginCallback("raft://login/callback?requestId=a%2Fb&code=x+y%E4%BD%A0")
         assertEquals("a/b", callback?.requestId)

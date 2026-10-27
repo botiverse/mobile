@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.socket.io.client)
     implementation(libs.gson)
     implementation(libs.okhttp.transport)
+    testImplementation(kotlin("test"))
 }
 
 // macOS requires MAJOR.MINOR.PATCH with MAJOR > 0 for the bundle version.
@@ -54,8 +55,11 @@ compose.desktop {
                 // Not the iOS app's build.raft.app: on Apple Silicon the iOS app can be installed too.
                 bundleID = "build.raft.app.desktop"
                 appCategory = "public.app-category.productivity"
-                // Browser sign-in returns to raft://login/callback (an app-login return URI the
-                // server allows); macOS hands it to the app's open-URI handler.
+                // Browser sign-in returns to raft-mac://login/callback (an app-login return URI the
+                // server allows); macOS hands it to the app's open-URI handler. Not `raft`: the
+                // Electron "Raft Desktop" app registers it (sign-in and raft://v1/... notification
+                // links) and macOS gives each scheme to one app. Keep in sync with
+                // RaftDesktopLoginCallbacks.SCHEME.
                 infoPlist {
                     extraKeysRawXml =
                         """
@@ -63,9 +67,9 @@ compose.desktop {
                         <array>
                           <dict>
                             <key>CFBundleURLName</key>
-                            <string>build.raft.app.login</string>
+                            <string>build.raft.app.desktop.login</string>
                             <key>CFBundleURLSchemes</key>
-                            <array><string>raft</string></array>
+                            <array><string>raft-mac</string></array>
                           </dict>
                         </array>
                         """.trimIndent()

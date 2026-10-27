@@ -14,13 +14,17 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * `settingsCapability`: the action-multiplexed settings host. M1 serves the browser sign-in
  * (`appLoginPrepare` / `appLoginOpen`, the Android host's contract); the callback comes back as
- * `raft://login/callback` (see [RaftDesktopLoginCallbacks]). TODO(desktop): every other action
+ * [APP_LOGIN_RETURN_URI] (see [RaftDesktopLoginCallbacks]). TODO(desktop): every other action
  * (storage, about, developer environment, diagnostics, notifications, account linking) answers
  * "not implemented" and the shared pages fall back as for an unsupported host action.
  */
 object RaftDesktopSettingsCapability {
-    /** One of the server's allowed app-login return URIs (exact match). */
-    const val APP_LOGIN_RETURN_URI = "raft://login/callback"
+    /**
+     * One of the server's allowed app-login return URIs (exact match). The Mac app's own scheme:
+     * the Electron "Raft Desktop" app also registers `raft://`, and macOS handed `raft://` sign-in
+     * callbacks to it instead of this app.
+     */
+    const val APP_LOGIN_RETURN_URI = "${RaftDesktopLoginCallbacks.SCHEME}://login/callback"
 
     private val random = SecureRandom()
 
