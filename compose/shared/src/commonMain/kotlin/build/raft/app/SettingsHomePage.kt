@@ -348,6 +348,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -2830,6 +2831,7 @@ private fun RaftAppShellReadyContent(
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
                 markConversationReadAll = { channelId -> homeReadReceiptRepository.markConversationReadAll(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
+                leaveChannel = { channelId -> channelRepository.leaveChannel(channelId) },
                 setChannelActivityMuted = { channelId, muted -> channelRepository.setChannelActivityMuted(channelId, muted) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
             )
@@ -10101,6 +10103,42 @@ private fun rememberProjectedDirectMessageItems(
     }
 }
 
+/**
+ * The Home row menu's Leave confirmation (web Sidebar -> `LeaveChannelConfirmDialog`): a private
+ * channel reads its roster first, since its last member's leave deletes it; until the roster
+ * arrives (or if it fails) the dialog warns that it deletes, as web does. Confirm hands back
+ * [SharedHomeIntent.LeaveChannel].
+ */
+@Composable
+private fun HomeLeaveChannelConfirm(
+    target: HomeChannelRow,
+    serverId: ServerId,
+    serverMembersStore: SharedServerMembersStore?,
+    onDismiss: () -> Unit,
+    onConfirm: (SharedHomeIntent) -> Unit,
+) {
+    val isJoint = channelSettingsIsJoint(target)
+    val isPrivate = channelSettingsIsPrivate(target)
+    val memberCount by produceState<Int?>(null, target.channelId, serverId, serverMembersStore) {
+        value = null
+        if (isPrivate && !isJoint && serverMembersStore != null) {
+            val roster = serverMembersStore.loadChannelMembers(serverId, target.channelId, force = true)
+            value = (roster as? DataResult.Content)?.data?.members?.size
+        }
+    }
+    LeaveChannelConfirmDialog(
+        variant = leaveChannelConfirmVariant(isJoint = isJoint, isPrivate = isPrivate, memberCount = memberCount),
+        channelName = target.name.removePrefix("#"),
+        busy = false,
+        onDismiss = onDismiss,
+        onConfirm = { onConfirm(homeLeaveChannelIntent(target)) },
+    )
+}
+
+/** The intent a confirmed Home row Leave dispatches: the row's conversation id, as the menu passes it. */
+internal fun homeLeaveChannelIntent(target: HomeChannelRow): SharedHomeIntent =
+    SharedHomeIntent.LeaveChannel(target.threadId.value)
+
 @Composable
 private fun SharedHomeScreen(
     bridge: build.raft.app.base.BridgeModule,
@@ -10482,6 +10520,8 @@ private fun SharedHomeScreen(
                 activityUnreadCount = activityUnreadCount
             )
             val homeShellLabels = RaftHomeShellLabels.localized()
+            // Row menu "Leave Channel" awaiting its confirmation (web Sidebar `leaveConfirm`).
+            var leaveConfirmChannel by remember(snapshot.server.id) { mutableStateOf<HomeChannelRow?>(null) }
             // Web "Hide Empty Sections": a device-local display preference.
             val hideEmptySectionsStore = remember {
                 runCatching {
@@ -10711,6 +10751,9 @@ private fun SharedHomeScreen(
                 onArchiveChannel = { conversationId ->
                     onIntent(SharedHomeIntent.ArchiveChannel(conversationId))
                 },
+                onLeaveChannel = { conversationId ->
+                    leaveConfirmChannel = conversationsByThreadId[conversationId] as? HomeChannelRow
+                },
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
@@ -10724,6 +10767,18 @@ private fun SharedHomeScreen(
                     }
                 }
             )
+            leaveConfirmChannel?.let { target ->
+                HomeLeaveChannelConfirm(
+                    target = target,
+                    serverId = snapshot.server.id,
+                    serverMembersStore = serverMembersStore,
+                    onDismiss = { leaveConfirmChannel = null },
+                    onConfirm = { intent ->
+                        leaveConfirmChannel = null
+                        onIntent(intent)
+                    },
+                )
+            }
         }
     }
 }

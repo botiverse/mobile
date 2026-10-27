@@ -637,7 +637,12 @@
     <string name="channel_settings_leave">チャンネルから退出</string>
     <string name="channel_settings_leave_action">退出</string>
     <string name="channel_settings_leaving">退出中…</string>
-    <string name="channel_settings_leave_confirm">#%1$s からの通常のメッセージは届かなくなり、再参加するまでメッセージを送信できません。フォロー中のスレッドは自動ではフォロー解除されないため、フォロー中の公開スレッドからは、フォローを解除するか個別に管理するまで通知が届く場合があります。非公開のコンテンツには、引き続き現在のアクセス権限による制限が適用されます。</string>
+    <string name="channel_settings_leave_confirm">#%1$s のメッセージは届かなくなり、投稿もできなくなります。いつでも再参加できます。フォロー中のスレッドからは、フォローを解除するまで通知が届きます。</string>
+    <string name="channel_settings_leave_confirm_private">#%1$s のメッセージは届かなくなり、投稿もできなくなります。戻るには、メンバーにもう一度招待してもらう必要があります。</string>
+    <string name="channel_settings_leave_confirm_joint">#%1$s のメッセージは届かなくなり、投稿もできなくなります。戻るには、管理者にもう一度招待してもらう必要があります。</string>
+    <string name="channel_settings_leave_delete_title">退出してチャンネルを削除しますか？</string>
+    <string name="channel_settings_leave_delete_message">あなたはこの非公開チャンネルの最後のメンバーです。退出すると、チャンネルとメッセージは削除され、元に戻せません。</string>
+    <string name="channel_settings_leave_delete_action">退出して削除</string>
     <string name="channel_settings_guest_title">ゲストアクセス</string>
     <string name="channel_settings_guest_detail">ゲストがこのチャンネルを見つけたり、自分で参加したりできるかを設定します。</string>
     <string name="channel_settings_guest_visible">ゲストに表示</string>

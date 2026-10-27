@@ -408,6 +408,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"
         is SharedHomeIntent.OwnMessagesSent -> "patch:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "remove:archive:$conversationId"
+        is SharedHomeIntent.LeaveChannel -> "remove:leave:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "mute:$conversationId:$muted"
         is SharedHomeIntent.ApplyPerReceiverReadState -> "read_state:${update.serverId.value}:${update.channelId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverNotificationPrefs -> "notification_prefs:${update.serverId.value}:${update.channelId.value}:${update.version}"

@@ -635,7 +635,12 @@
     <string name="channel_settings_leave">Leave Channel</string>
     <string name="channel_settings_leave_action">Leave</string>
     <string name="channel_settings_leaving">Leaving…</string>
-    <string name="channel_settings_leave_confirm">You will stop receiving ordinary delivery from #%1$s and cannot send messages until you rejoin. Existing followed threads are not automatically unfollowed; followed public threads can still notify you until you unfollow or manage those threads. Private content remains gated by current access.</string>
+    <string name="channel_settings_leave_confirm">You'll stop getting messages from #%1$s and can't post there. You can rejoin any time. Threads you follow will still notify you until you unfollow them.</string>
+    <string name="channel_settings_leave_confirm_private">You'll stop getting messages from #%1$s and can't post there. To come back, a member has to invite you again.</string>
+    <string name="channel_settings_leave_confirm_joint">You'll stop getting messages from #%1$s and can't post there. To come back, an admin has to invite you again.</string>
+    <string name="channel_settings_leave_delete_title">Leave and Delete Channel?</string>
+    <string name="channel_settings_leave_delete_message">You are the last member of this private channel. When you leave, the channel and its messages are deleted and cannot be recovered.</string>
+    <string name="channel_settings_leave_delete_action">Leave and Delete</string>
     <string name="channel_settings_guest_title">Guest access</string>
     <string name="channel_settings_guest_detail">Choose whether Guests can discover this channel and join it themselves.</string>
     <string name="channel_settings_guest_visible">Visible to Guests</string>

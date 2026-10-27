@@ -89,7 +89,8 @@ private object SharedHomeIdentityPersistSpec :
                     intent is SharedHomeIntent.ReorderSidebar ||
                     intent is SharedHomeIntent.ReorderServers ||
                     intent is SharedHomeIntent.CloseDirectMessage ||
-                    intent is SharedHomeIntent.ArchiveChannel
+                    intent is SharedHomeIntent.ArchiveChannel ||
+                    intent is SharedHomeIntent.LeaveChannel
                 )
 
     override fun shouldRemove(previous: SharedHomeState, intent: SharedHomeIntent, next: SharedHomeState): Boolean =
