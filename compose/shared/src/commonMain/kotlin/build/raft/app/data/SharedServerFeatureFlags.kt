@@ -137,6 +137,15 @@ const val ACTION_CARD_SPEC_FEATURE_FLAG_KEY: String = "action_card_spec"
  */
 const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
 
+/**
+ * Incremental sync (`GET /api/sync/changes`, botiverse/slock #11459) for the current server: on
+ * reconnect, foreground and server select the client pulls what changed since its cursor and patches
+ * the stores row by row. Mobile-only key, default OFF (server-unresolved evaluates false) so it is
+ * turned on per server on staging first; local A/B through the diagnostics "Local Feature
+ * Overrides" ForceOn/ForceOff latch.
+ */
+const val MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY: String = "mobile_sync_changes_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -157,6 +166,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
+    MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
 )
 
 /**

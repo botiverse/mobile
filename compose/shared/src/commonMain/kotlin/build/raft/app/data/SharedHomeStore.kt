@@ -243,6 +243,12 @@ internal class SharedHomeStore(
         linkedMapOf<BackgroundUnreadScopeKey, BackgroundUnreadScopeProjection>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
+
+    /**
+     * A sync change ([RealtimeRefreshRequired.supersedesInFlightLoad]) marked the hidden Home dirty:
+     * becoming visible must read fresh, not join a load sent before the change (Tenny 10-27).
+     */
+    private var hiddenHomeSnapshotDirtyBySync: Boolean = false
     /** Task #164: the one pending recovery read while Home's unread is stale. */
     private val unreadStaleRecovery =
         RaftStaleReadRecovery(
@@ -439,6 +445,7 @@ internal class SharedHomeStore(
         serverDrawerLoadJobs.clear()
         serverDrawerRequestGenerations.clear()
         sidebarOrderByServer.clear()
+        hiddenHomeSnapshotDirtyBySync = false
         contentByServer.clear()
         backgroundUnreadByScope.clear()
         homeConversationIdentityStates.clear()
@@ -1281,6 +1288,7 @@ internal class SharedHomeStore(
                     Unit
                 } else if (event.updatesHomeSnapshot()) {
                     hiddenHomeSnapshotDirty = true
+                    if (event.supersedesInFlightLoad) hiddenHomeSnapshotDirtyBySync = true
                     markHomeRealtimeDirty(serverId, "refresh:${event.scope}")
                 }
             }
@@ -1311,7 +1319,15 @@ internal class SharedHomeStore(
             val currentContent = current.content as? SharedHomeContentState.Content
             if (hiddenHomeSnapshotDirty) {
                 hiddenHomeSnapshotDirty = false
-                if (coalesceIntoInFlightHomeLoad("visible_dirty_reconcile")) {
+                val dirtyBySync = hiddenHomeSnapshotDirtyBySync
+                hiddenHomeSnapshotDirtyBySync = false
+                if (dirtyBySync && loadJob?.isActive == true) {
+                    // The in-flight load may predate the sync change: replace it, never join it.
+                    diagnosticsLogger("home_realtime_refresh_supersede scope=Home reason=visible_dirty_sync active=load")
+                    loadJob?.cancel()
+                    agentDirectMessageStatusJob?.cancel()
+                    agentDirectMessageStatusJob = null
+                } else if (coalesceIntoInFlightHomeLoad("visible_dirty_reconcile")) {
                     reduceState(
                         current.copy(
                             homeRealtimeDirty = false
@@ -1499,7 +1515,16 @@ internal class SharedHomeStore(
 
     private fun launchCoalescedRealtimeHomeReload(event: RealtimeRefreshRequired) {
         val activeLoad = loadJob?.takeIf { it.isActive }
-        if (activeLoad != null) {
+        if (activeLoad != null && event.supersedesInFlightLoad) {
+            // Sync change: the active load may have been read before it; cancel it (its answer is
+            // never published) and read again, as for DirectMessageCreated.
+            diagnosticsLogger(
+                "home_realtime_refresh_supersede scope=${event.scope} reason=${event.reason} active=load"
+            )
+            activeLoad.cancel()
+            agentDirectMessageStatusJob?.cancel()
+            agentDirectMessageStatusJob = null
+        } else if (activeLoad != null) {
             diagnosticsLogger(
                 "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
                     "active=load"

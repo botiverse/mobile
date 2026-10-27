@@ -286,6 +286,14 @@ internal class RaftComputersNetworkApi(
         )
 }
 
+/**
+ * One item of `machines` in `GET /api/servers/:id/machines`, as an incremental-sync `machine` row
+ * carries it (botiverse/slock 0d030e341 routes/sync.ts buildMachineRows). The list-level
+ * `latestComputerVersion` / release notes are not on the row; the caller keeps the list's.
+ */
+internal fun parseSyncedComputerRow(row: kotlinx.serialization.json.JsonObject): ComputerSummary? =
+    runCatching { computersApiJson.decodeFromJsonElement(ComputerDto.serializer(), row).toSummary() }.getOrNull()
+
 internal class RaftComputersApiClient(
     private val transport: RaftComputersApi
 ) {

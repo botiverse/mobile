@@ -474,6 +474,7 @@ class SharedServerMembersStore internal constructor(
     private val processCore: ProcessServerMembersCore =
         ProcessServerMembersCore(
             fetchMembers = memberRepository::getMembers,
+            fetchAgents = memberRepository::getServerAgents,
             logger = logger
         ),
     private val processOwner: suspend (ServerId) -> ProcessServerMembersOwner? = { serverId ->
@@ -1402,6 +1403,156 @@ class SharedServerMembersStore internal constructor(
             current + (serverKey to (current[serverKey].orEmpty() + agentKey))
         }
         return removeMember(serverId = ServerId(serverKey), memberId = MemberId(agentKey), memberKind = MemberKind.Agent)
+    }
+
+    /**
+     * Incremental sync (`GET /api/sync/changes` `server_member` / `agent` rows, each the item of its
+     * list endpoint): patch the roster of [serverId] row by row instead of reloading it. [upserts]
+     * replace the member of the same kind and id, or join the roster; [deletes] leave it as
+     * [removeMember] does (memory, durable row, presence fact). A roster that is not loaded for the
+     * current owner is left alone: its next load reads the server anyway.
+     *
+     * Presence is not touched: agent status travels on the presence push, not in the change log.
+     * Returns whether the roster changed.
+     */
+    internal suspend fun applySyncedRosterRows(
+        serverId: ServerId,
+        upserts: List<MemberProfile>,
+        deletes: List<Pair<MemberId, MemberKind>>
+    ): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val binding = currentDirectoryOwnerBinding(ServerId(key)) ?: return false
+        if (upserts.isEmpty() && deletes.isEmpty()) return false
+        // Before the rows land (Tenny 10-27): a roster or `/agents` read already in flight answers for
+        // the list without them and would publish over them later; this retires it (its rejoin
+        // reads again) and drops the process cache that still holds the pre-sync list.
+        processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "sync_changes") }
+        var changed = false
+        deletes.forEach { (memberId, kind) ->
+            if (removeMember(serverId = ServerId(key), memberId = memberId, memberKind = kind)) changed = true
+        }
+        val accepted = upserts.filterServerRosterMembers(key).filterDeletedAgents(key)
+        val durableEpoch = durableStore?.epoch
+        val persisted =
+            if (accepted.isEmpty()) {
+                null
+            } else {
+                mutex.withLock {
+                    val entry =
+                        _state.value.entriesByServerId[key]
+                            ?.takeIf { it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
+                            ?: return@withLock null
+                    val incoming = accepted.associateBy { it.kind to it.id.value.trim() }
+                    val replaced = mutableSetOf<Pair<MemberKind, String>>()
+                    val nextMembers =
+                        entry.members.map { member ->
+                            val memberKey = member.kind to member.id.value.trim()
+                            incoming[memberKey]?.also { replaced += memberKey } ?: member
+                        } + accepted.filter { (it.kind to it.id.value.trim()) !in replaced }
+                    if (nextMembers == entry.members) return@withLock null
+                    putEntry(key, entry.copy(members = nextMembers))
+                    changed = true
+                    entry.server?.let { server -> MemberSnapshot(server = server, members = nextMembers) }
+                }
+            }
+        if (persisted != null && durableEpoch != null) {
+            durableStore?.write(binding.durableKey(), persisted, durableEpoch)
+        }
+        if (changed) {
+            logger(
+                "shared_server_members_sync_apply serverId=$key upserts=${accepted.size} deletes=${deletes.size}"
+            )
+        }
+        return changed
+    }
+
+    /**
+     * Incremental sync on (`mobile_sync_changes_v0`), socket RE-connect or foreground return: agent
+     * online state is not in the change log, so only `/agents` is read again (Ray / Tenny 10-27);
+     * humans, machines and lists come from the pull. The fetched agents replace the loaded roster's
+     * agents (humans keep their rows) and project their status through the same request-fenced
+     * roster presence path as the forced roster refill.
+     *
+     * A roster change applied or a forced reload started after this read began moves the agents
+     * generation: the late rows are then dropped (the presence projection, fenced on its own,
+     * still applies). A roster not loaded (or only durable-seeded) takes the full forced load.
+     */
+    internal suspend fun refreshAgents(serverId: ServerId, reason: String): DataResult<Unit> {
+        val key = serverId.value.normalizedServerMembersId()
+            ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
+        val owner = processOwner(ServerId(key)) ?: return authSessionRequiredResult()
+        val binding =
+            currentDirectoryOwnerBinding(ServerId(key))?.takeIf { it.matches(owner) } ?: return authSessionRequiredResult()
+        val loaded =
+            _state.value.entriesByServerId[key]?.takeIf {
+                it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded && !it.seededFromDurable
+            }
+        if (loaded == null) {
+            logger("shared_server_members_agents_refresh serverId=$key result=roster_not_loaded fallback=roster reason=$reason")
+            return refreshMembers(ServerId(key), DataRequestPriority.Background, force = true, reason = reason)
+        }
+        val presenceRequest =
+            presenceWrite(ServerId(key))
+                ?.takeIf { it.owner == owner }
+                ?.let { write -> presenceRegistry.captureRosterProjectionRequest(write.owner, write.writeGeneration) }
+        val loadResult = processCore.loadAgents(owner, DataRequestPriority.Background, reason)
+        val agents =
+            (loadResult.result as? DataResult.Content)?.data ?: run {
+                logger("shared_server_members_agents_refresh serverId=$key result=not_content reason=$reason")
+                return loadResult.result.map { Unit }
+            }
+        val durableEpoch = durableStore?.epoch
+        var outcome = "unchanged"
+        val persisted =
+            mutex.withLock {
+                if (currentDirectoryOwnerBinding(ServerId(key)) != binding) {
+                    outcome = "owner_stale"
+                    return@withLock null
+                }
+                val entry =
+                    _state.value.entriesByServerId[key]
+                        ?.takeIf { it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded }
+                        ?: run {
+                            outcome = "not_loaded"
+                            return@withLock null
+                        }
+                val fetched =
+                    authoritativeProfilesForPublication(
+                        key = key,
+                        profiles =
+                            agents
+                                .filter { it.kind == MemberKind.Agent }
+                                .filterServerRosterMembers(key)
+                                .filterDeletedAgents(key)
+                                .resolveComputerLabels(entry.members.knownComputerNames())
+                    )
+                applyAuthoritativeRosterPresence(request = presenceRequest, serverId = key, profiles = fetched)
+                var current = false
+                val snapshot =
+                    processCore.commitAgentsIfCurrent(loadResult) {
+                        current = true
+                        val byId = fetched.associateBy { it.id.value.trim() }
+                        // Agents keep their roster position; gone ones leave, new ones join at the end.
+                        val kept =
+                            entry.members.mapNotNull { member ->
+                                if (member.kind != MemberKind.Agent) member else byId[member.id.value.trim()]
+                            }
+                        val keptAgentIds = kept.filter { it.kind == MemberKind.Agent }.mapTo(mutableSetOf()) { it.id.value.trim() }
+                        val nextMembers = kept + fetched.filter { it.id.value.trim() !in keptAgentIds }
+                        if (nextMembers == entry.members) return@commitAgentsIfCurrent null
+                        putEntry(key, entry.copy(members = nextMembers))
+                        cacheProfiles(key, fetched)
+                        outcome = "changed"
+                        entry.server?.let { server -> MemberSnapshot(server = server, members = nextMembers) }
+                    }
+                if (!current) outcome = "stale_generation"
+                snapshot
+            }
+        if (persisted != null && durableEpoch != null) {
+            durableStore?.write(binding.durableKey(), persisted, durableEpoch)
+        }
+        logger("shared_server_members_agents_refresh serverId=$key result=$outcome agents=${agents.size} reason=$reason")
+        return DataResult.Content(Unit)
     }
 
     suspend fun deleteAgent(
@@ -2874,6 +3025,27 @@ class SharedServerMembersStore internal constructor(
             is DataResult.NoPermission ->
                 logger("shared_server_members_refresh_after_mutation reason=$reason serverId=$serverKey result=no_permission code=${result.blocker.code}")
         }
+    }
+
+    /**
+     * Incremental sync (`channel_member` rows / the `channel_members` snapshot): refetch the current
+     * owner's LOADED channel rosters of [serverId], only [channelIds] when given. A channel nobody
+     * opened has no roster here and is not fetched.
+     */
+    internal suspend fun refreshLoadedChannelMembers(
+        serverId: ServerId,
+        channelIds: Set<String>?,
+        reason: String
+    ): Int {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return 0
+        val loaded =
+            currentOwnerChannelMemberSlices(ServerId(serverKey))
+                .filter { it.status == SharedServerMembersLoadStatus.Loaded }
+                .map { it.channelId }
+                .filter { channelIds == null || it in channelIds }
+                .distinct()
+        loaded.forEach { channelId -> refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason) }
+        return loaded.size
     }
 
     private suspend fun refreshChannelMembersBestEffort(

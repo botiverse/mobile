@@ -375,6 +375,16 @@ interface MemberRepository {
      * for the (potentially very large) server member list, e.g. the forward pickers' empty query.
      */
     fun cachedMembers(serverId: ServerId): List<MemberProfile> = emptyList()
+
+    /**
+     * The agents of [serverId] alone (`GET /agents`, computer labels unresolved): the presence
+     * refetch of incremental sync (`mobile_sync_changes_v0`), where humans and machines come from
+     * the change log. Empty: nothing to apply.
+     */
+    suspend fun getServerAgents(
+        priority: DataRequestPriority,
+        serverId: ServerId
+    ): DataResult<List<MemberProfile>> = DataResult.Empty(EmptyReason.NoMembers)
     suspend fun getMemberProfile(
         priority: DataRequestPriority,
         memberId: MemberId,

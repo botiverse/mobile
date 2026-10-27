@@ -226,6 +226,35 @@ fun parseSharedSettingsAgentsAsMembers(bodyText: String): List<MemberProfile>? =
         .distinctBy { it.id.value }
 }.getOrNull()
 
+/**
+ * One `GET /api/servers/:id/members` item, as an incremental-sync `server_member` row carries it
+ * (botiverse/slock 0d030e341 routes/sync.ts: the list builder's own item). Null when the row does
+ * not decode or names another server's roster.
+ */
+fun parseSharedServerMemberRow(row: JsonObject, server: ServerSummary): MemberProfile? = runCatching {
+    memberAgentJson.decodeFromJsonElement(WireServerMember.serializer(), row).toMemberProfile()
+}.getOrNull()
+    ?.takeIf { it.belongsToServerRoster(server.id) }
+    ?.withSourceServer(server.id, server.name, server.slug)
+
+/** The outcome of one incremental-sync `agent` row (a `GET /api/agents` item). */
+sealed interface SharedSyncedAgentRow {
+    data class Member(val profile: MemberProfile) : SharedSyncedAgentRow
+
+    /** The list filters deleted agents out; a row of one is a delete. */
+    data object Deleted : SharedSyncedAgentRow
+
+    data object Malformed : SharedSyncedAgentRow
+}
+
+fun parseSharedAgentRow(row: JsonObject): SharedSyncedAgentRow {
+    val wire =
+        runCatching { memberAgentJson.decodeFromJsonElement(WireAgent.serializer(), row) }.getOrNull()
+            ?: return SharedSyncedAgentRow.Malformed
+    if (wire.isDeletedAgent) return SharedSyncedAgentRow.Deleted
+    return runCatching { SharedSyncedAgentRow.Member(wire.toMemberProfile()) }.getOrDefault(SharedSyncedAgentRow.Malformed)
+}
+
 fun parseSharedSettingsAgentMachineNames(bodyText: String): Map<String, String>? =
     parseSharedSettingsComputers(bodyText)?.computers?.associate { it.id to it.name }
 

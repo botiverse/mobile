@@ -1412,6 +1412,7 @@ private fun String.networkDiagnosticsCategory(): String {
         normalized.startsWith("messages/channel/") -> "messages_channel"
         normalized.startsWith("messages/context/") -> "messages_context"
         normalized.startsWith("messages/sync") -> "messages_sync"
+        normalized.startsWith("sync/changes") -> "sync_changes"
         normalized.startsWith("channels") -> "channels"
         normalized.startsWith("servers/unread-summary") -> "server_unread_summary"
         normalized.startsWith("servers") -> "servers"

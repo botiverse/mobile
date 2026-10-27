@@ -584,6 +584,19 @@ class RealMemberRepository(
 
     override fun cachedMembers(serverId: ServerId): List<MemberProfile> = cachedMembersProvider(serverId)
 
+    override suspend fun getServerAgents(priority: DataRequestPriority, serverId: ServerId): DataResult<List<MemberProfile>> {
+        sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.settingsAgents(priority, serverId) },
+            source = "server_agents_only",
+            mapper = { bodyText ->
+                parseSharedSettingsAgentsAsMembers(bodyText)
+                    ?: throw IllegalStateException("Agents response missing agent array")
+            }
+        )
+    }
+
     override suspend fun getMemberProfile(
         priority: DataRequestPriority,
         memberId: MemberId,
@@ -1487,7 +1500,17 @@ private fun logAgentsWithoutComputer(logger: (String) -> Unit, serverId: ServerI
     )
 }
 
-private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, String>): List<MemberProfile> =
+/** Machine id -> name as the roster's agents already show it (their `computer-id:` + `computer:` badges). */
+internal fun List<MemberProfile>.knownComputerNames(): Map<String, String> =
+    buildMap {
+        this@knownComputerNames.forEach { member ->
+            val machineId = member.permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return@forEach
+            val name = member.permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() } ?: return@forEach
+            put(machineId, name)
+        }
+    }
+
+internal fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, String>): List<MemberProfile> =
     map { it.resolveComputerLabel(machineNames) }
 
 private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {

@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -37,6 +38,17 @@ internal data class ProcessServerMembersLoadResult(
     val reduceMs: Long,
     val terminalRevision: Long,
     internal val owner: ProcessServerMembersDirectoryOwner,
+    internal val generation: ProcessServerMembersGeneration
+)
+
+/**
+ * One `/agents` read ([ProcessServerMembersCore.loadAgents]). [generation] is the owner's agents
+ * generation when the read started: [ProcessServerMembersCore.invalidate] (a roster change applied,
+ * a forced reload, a reconnect) moves it, and an older result's rows are then dropped.
+ */
+internal data class ProcessServerAgentsLoadResult(
+    val result: DataResult<List<MemberProfile>>,
+    internal val owner: ProcessServerMembersOwner,
     internal val generation: ProcessServerMembersGeneration
 )
 
@@ -70,6 +82,9 @@ internal data class ProcessServerMembersDirectoryOwner(
  */
 internal class ProcessServerMembersCore(
     private val fetchMembers: suspend (DataRequestPriority, ServerId) -> DataResult<MemberSnapshot>,
+    private val fetchAgents: suspend (DataRequestPriority, ServerId) -> DataResult<List<MemberProfile>> = { _, _ ->
+        DataResult.Empty(EmptyReason.NoMembers)
+    },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val maxEntries: Int = 16,
     private val logger: (String) -> Unit = {},
@@ -87,6 +102,65 @@ internal class ProcessServerMembersCore(
     private var nextVersion = 0L
     private var nextTerminalRevision = 0L
     private val terminalRevisions = linkedMapOf<ProcessServerMembersDirectoryOwner, Long>()
+    private val agentFlights = mutableMapOf<ProcessServerMembersOwner, AgentsFlight>()
+    private val agentGenerations = mutableMapOf<ProcessServerMembersOwner, Long>()
+
+    /**
+     * Incremental sync's presence refetch: `/agents` of [owner] alone, one read shared by every
+     * shell store asking meanwhile. Not cached (presence is the point of the read).
+     */
+    suspend fun loadAgents(
+        owner: ProcessServerMembersOwner,
+        priority: DataRequestPriority,
+        reason: String
+    ): ProcessServerAgentsLoadResult {
+        val (flight, started) =
+            mutex.withLock {
+                agentFlights[owner]?.let { active ->
+                    logger("process_agents_flight result=join ${owner.diagnosticsKey} reason=$reason")
+                    return@withLock active to false
+                }
+                val token = Any()
+                val generation = agentsGeneration(owner)
+                val deferred =
+                    scope.async(start = CoroutineStart.LAZY) {
+                        try {
+                            val fetched =
+                                try {
+                                    fetchAgents(priority, ServerId(owner.serverId))
+                                } catch (cancellation: CancellationException) {
+                                    throw cancellation
+                                } catch (error: Throwable) {
+                                    logger(
+                                        "process_agents_load result=exception ${owner.diagnosticsKey} " +
+                                            "type=${error::class.simpleName} reason=$reason"
+                                    )
+                                    DataResult.Error(ScreenError(code = "members_exception", retryable = true))
+                                }
+                            logger("process_agents_load result=${fetched.resultLabel()} ${owner.diagnosticsKey} reason=$reason")
+                            ProcessServerAgentsLoadResult(fetched, owner, generation)
+                        } finally {
+                            mutex.withLock { if (agentFlights[owner]?.token === token) agentFlights.remove(owner) }
+                        }
+                    }
+                val flight = AgentsFlight(token, deferred)
+                agentFlights[owner] = flight
+                logger("process_agents_flight result=start ${owner.diagnosticsKey} reason=$reason")
+                flight to true
+            }
+        if (started) flight.result.start()
+        return flight.result.await()
+    }
+
+    /** Runs [publish] when no roster change or reload moved [loadResult]'s owner since its read started. */
+    suspend fun <T> commitAgentsIfCurrent(
+        loadResult: ProcessServerAgentsLoadResult,
+        publish: () -> T
+    ): T? =
+        mutex.withLock {
+            if (loadResult.generation != agentsGeneration(loadResult.owner)) return@withLock null
+            publish()
+        }
 
     suspend fun load(
         owner: ProcessServerMembersOwner,
@@ -229,6 +303,8 @@ internal class ProcessServerMembersCore(
             activeFlights.clear()
             ownerGenerations.clear()
             terminalRevisions.clear()
+            agentFlights.clear()
+            agentGenerations.clear()
             logger("process_members_invalidate scope=all generation=$processGeneration reason=$reason")
         }
     }
@@ -238,6 +314,9 @@ internal class ProcessServerMembersCore(
             val ownedKeys =
                 (ownerGenerations.keys + cache.keys + activeFlights.keys + terminalRevisions.keys)
                     .filterTo(mutableSetOf()) { it.processOwner == owner }
+            // An `/agents` read started before this point answers for an older roster.
+            agentFlights.remove(owner)
+            agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
             ownedKeys.forEach { key ->
                 val hadActiveFlight = activeFlights.remove(key) != null
                 cache.remove(key)
@@ -339,6 +418,9 @@ internal class ProcessServerMembersCore(
     private fun ownerGeneration(owner: ProcessServerMembersDirectoryOwner): ProcessServerMembersGeneration =
         ProcessServerMembersGeneration(processGeneration, ownerGenerations[owner] ?: 0L)
 
+    private fun agentsGeneration(owner: ProcessServerMembersOwner): ProcessServerMembersGeneration =
+        ProcessServerMembersGeneration(processGeneration, agentGenerations[owner] ?: 0L)
+
     private fun nextSnapshotVersion(): Long {
         nextVersion += 1L
         return nextVersion
@@ -389,6 +471,11 @@ internal class ProcessServerMembersCore(
         val startedAt: TimeMark = TimeSource.Monotonic.markNow()
     )
 
+    private class AgentsFlight(
+        val token: Any,
+        val result: Deferred<ProcessServerAgentsLoadResult>
+    )
+
     private sealed interface LoadDecision {
         data class Cached(
             val entry: CacheEntry,
@@ -404,7 +491,7 @@ internal class ProcessServerMembersCore(
     }
 }
 
-private fun DataResult<MemberSnapshot>.resultLabel(): String =
+private fun DataResult<*>.resultLabel(): String =
     when (this) {
         is DataResult.Content -> "content"
         is DataResult.Empty -> "empty"

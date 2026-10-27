@@ -934,7 +934,13 @@ data class RealtimeRefreshRequired(
     val serverId: ServerId? = null,
     val channelId: ChannelId? = null,
     val memberId: MemberId? = null,
-    val subjectId: String? = null
+    val subjectId: String? = null,
+    /**
+     * Incremental sync (`mobile_sync_changes_v0`): the change behind this refresh may be newer than
+     * a reload already in flight, and it will not come again, so that reload is replaced instead of
+     * joined (latest request wins, Tenny 10-27). Realtime socket refreshes keep coalescing.
+     */
+    val supersedesInFlightLoad: Boolean = false
 ) : RealtimeEvent
 
 @Serializable
