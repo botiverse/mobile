@@ -1301,6 +1301,31 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun messageContextCarriesItsRawServerPageWithoutALimit() = runBlocking {
+        // Task #14 part C: the anchor context page is persisted into the durable window too, so its raw
+        // `messages` array rides along; the endpoint takes no limit (requestedLimit = 0).
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/context/m8" to
+                            """{"channelId":"channel-1","targetMessageId":"m8","hasOlder":true,"hasNewer":false,"messages":[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}]}""",
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val context = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getMessageContext(MessageId("m8"), ChannelId("channel-1")),
+        ).data
+        val page = assertNotNull(context.rawMessagePage.page)
+        assertEquals(listOf("m7", "m8"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
+        assertEquals(0, page.requestedLimit)
+        assertTrue("senderName" in page.messages.first().jsonObject, "the raw node, not the domain projection")
+        assertTrue(context.canLoadMoreBefore)
+        assertFalse(context.canLoadMoreAfter)
+    }
+
+    @Test
     fun onlyOlderAndNewerPagesCarryTheirRawServerPage() = runBlocking {
         // Task #168: the raw `messages` array (and the limit actually sent) rides along for the
         // durable window extender — on the two paging fetches only.

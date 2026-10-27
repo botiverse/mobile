@@ -1790,6 +1790,22 @@ internal data class SharedThreadDurablePage(
 private val processAttachmentUploadCapabilitiesCache =
     AttachmentUploadCapabilitiesCache(nowMillis = ::defaultNowMillis)
 
+/**
+ * Task #14 part C: the `messages/context/{anchor}` page an anchored open fetched, as the durable writer needs
+ * it: the identity that fetched it, the route it was fetched for (resolved by the data source, so a reply
+ * route resolved by its parent pair names its thread channel), the anchor, the raw page and the server's own
+ * edge facts (`hasOlder` / `hasNewer`). Never read for rendering.
+ */
+internal data class SharedThreadDurableContextPage(
+    val context: ReplyCacheProducerContext,
+    val routeIdentity: ThreadRouteIdentity,
+    val replyParent: ThreadDurableReplyParent?,
+    val anchorMessageId: String,
+    val rawPage: RawMessagePage,
+    val hasOlder: Boolean,
+    val hasNewer: Boolean,
+)
+
 internal class SharedThreadDataSource(
     private val api: RaftThreadApi,
     private val sessionStore: RaftAuthSessionStore,
@@ -2655,6 +2671,46 @@ internal class SharedThreadDataSource(
             requestedLimit = rawPage.requestedLimit,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
+        return true
+    }
+
+    /**
+     * Task #14 part C ("every fact source must not be wasted"): hand the anchor context page an anchored open
+     * fetched to the durable writer, which joins it to the stored window when it provably can (see
+     * [ThreadDurablePageExtender.persistContextPage]). Same admission as [extendDurableWindowIfCurrent]; a
+     * refusal on this side logs one `canonical_v2_context_page outcome=skipped` line, the writer logs its own.
+     * Returns whether the writer was asked at all (diagnostics only).
+     */
+    internal suspend fun persistDurableContextPageIfCurrent(page: SharedThreadDurableContextPage): Boolean {
+        val extender = durablePageExtender ?: return false
+        val routeIdentity = page.routeIdentity
+        val channelId = routeIdentity.timelineChannelId
+        fun skip(reason: String): Boolean {
+            diagnosticsLogger(
+                "canonical_v2_context_page server=${page.context.provenance.serverId} scope=${channelId.orEmpty()} " +
+                    "anchor=${page.anchorMessageId} outcome=skipped reason=$reason facts=0"
+            )
+            return false
+        }
+        if (!routeIdentity.canRenderTimelineCandidates || channelId == null) return skip("not_renderable")
+        val admission =
+            durableScopeAdmission(routeIdentity, page.replyParent)
+                ?: return skip(
+                    if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
+                )
+        val partition =
+            page.context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return skip("no_partition")
+        if (!isCurrentReplyCacheProvenance(page.context.provenance)) return skip("identity_changed")
+        extender.persistContextPage(
+            partition = partition,
+            channelId = channelId,
+            anchorMessageId = page.anchorMessageId,
+            rawMessages = page.rawPage.messages,
+            hasOlder = page.hasOlder,
+            hasNewer = page.hasNewer,
+            replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+        ) { isCurrentReplyCacheProvenance(page.context.provenance) }
         return true
     }
 
@@ -4017,6 +4073,8 @@ internal class SharedThreadDataSource(
         persistResult: Boolean = true,
         reusePrewarm: Boolean = false,
         replaceReplyAccessFailure: Boolean = false,
+        /** Task #14 part C: receives the anchor context page of a focused open, for the durable writer. */
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
     ): DataResult<RaftThreadScreenPayload> {
         if (!isCurrentReplyCacheProvenanceForLocalSend(expectedContext.provenance)) {
             return staleReplyCacheProvenanceResult()
@@ -4032,6 +4090,7 @@ internal class SharedThreadDataSource(
                     sharedMessageStore = messageStore != null,
                 ),
             replaceReplyAccessFailure = replaceReplyAccessFailure,
+            onFocusedContextPage = onFocusedContextPage,
         )
     }
 
@@ -4040,7 +4099,8 @@ internal class SharedThreadDataSource(
         persistResult: Boolean,
         reusePrewarm: Boolean,
         replyResolutionScope: ReplyResolutionScope?,
-        replaceReplyAccessFailure: Boolean = false
+        replaceReplyAccessFailure: Boolean = false,
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload> {
         val resolutionScope = replyResolutionScope ?: readReplyResolutionScope() ?: return authSessionRequiredResult()
         val session = resolutionScope.session
@@ -4109,7 +4169,8 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = resolvedBasePayload,
                         replyResolutionScope = resolutionScope,
-                        replaceReplyAccessFailure = replaceReplyAccessFailure
+                        replaceReplyAccessFailure = replaceReplyAccessFailure,
+                        onFocusedContextPage = onFocusedContextPage
                     )
                 } else {
                     val resolvedThreadId =
@@ -4119,7 +4180,8 @@ internal class SharedThreadDataSource(
                         session = session,
                         basePayload = resolvedBasePayload,
                         threadId = ThreadId(resolvedThreadId),
-                        replyResolutionScope = resolutionScope
+                        replyResolutionScope = resolutionScope,
+                        onFocusedContextPage = onFocusedContextPage
                     )
                 }
             } else {
@@ -5831,7 +5893,8 @@ internal class SharedThreadDataSource(
         basePayload: RaftThreadScreenPayload,
         threadId: ThreadId,
         replyResolutionScope: ReplyResolutionScope,
-        includeFollowedSummaries: Boolean = false
+        includeFollowedSummaries: Boolean = false,
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload> {
         val focusedContext =
             if (includeFollowedSummaries) {
@@ -5842,7 +5905,8 @@ internal class SharedThreadDataSource(
                     basePayload = basePayload,
                     routeThreadId = threadId,
                     accessFallback = null,
-                    replyResolutionScope = replyResolutionScope
+                    replyResolutionScope = replyResolutionScope,
+                    onFocusedContextPage = onFocusedContextPage
                 )
             }
         if (focusedContext != null) {
@@ -5900,7 +5964,8 @@ internal class SharedThreadDataSource(
         basePayload: RaftThreadScreenPayload,
         routeThreadId: ThreadId,
         accessFallback: ConversationAccessCandidate?,
-        replyResolutionScope: ReplyResolutionScope
+        replyResolutionScope: ReplyResolutionScope,
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
@@ -5914,6 +5979,29 @@ internal class SharedThreadDataSource(
         val context = (contextResult as? DataResult.Content)?.data ?: return null
         if (!context.matchesFocusedThreadRoute(routeThreadId, focusedMessageId)) {
             return null
+        }
+        // Task #14 part C: the context page is a fact source too — hand it to the durable writer (the
+        // caller decides when; the writer decides whether it joins the stored window).
+        onFocusedContextPage?.let { sink ->
+            val rawPage = context.rawMessagePage.page
+            if (rawPage == null) {
+                diagnosticsLogger(
+                    "canonical_v2_context_page server=${replyResolutionScope.provenance.serverId} " +
+                        "scope=${routeThreadId.value} anchor=$focusedMessageId outcome=skipped reason=no_raw_page facts=0"
+                )
+            } else {
+                sink(
+                    SharedThreadDurableContextPage(
+                        context = ReplyCacheProducerContext(session, replyResolutionScope.provenance),
+                        routeIdentity = basePayload.resolveThreadRouteIdentity(),
+                        replyParent = basePayload.durableReplyParentOrNull(),
+                        anchorMessageId = focusedMessageId,
+                        rawPage = rawPage,
+                        hasOlder = context.canLoadMoreBefore,
+                        hasNewer = context.canLoadMoreAfter,
+                    )
+                )
+            }
         }
         return DataResult.Content(
             context
@@ -6025,7 +6113,9 @@ internal class SharedThreadDataSource(
          * the thread channel id the server resolved (both `null`-able: a joined access flight that did not
          * capture it, or a snapshot without its stream id), before the payload is built.
          */
-        onRawReplyPage: ((threadChannelId: String?, page: RawMessagePage?) -> Unit)? = null
+        onRawReplyPage: ((threadChannelId: String?, page: RawMessagePage?) -> Unit)? = null,
+        /** Task #14 part C: receives the anchor context page of a focused open (see [SharedThreadDurableContextPage]). */
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null
     ): DataResult<RaftThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -6044,7 +6134,8 @@ internal class SharedThreadDataSource(
                     basePayload = basePayload,
                     routeThreadId = routeThreadId,
                     accessFallback = null,
-                    replyResolutionScope = replyResolutionScope
+                    replyResolutionScope = replyResolutionScope,
+                    onFocusedContextPage = onFocusedContextPage
                 )
             }
         if (focusedContext != null) {
@@ -8085,7 +8176,8 @@ internal class SharedThreadStore(
                 expectedContext = refreshProducerContext,
                 persistResult = true,
                 reusePrewarm = reusePrewarm,
-                replaceReplyAccessFailure = explicitRetry
+                replaceReplyAccessFailure = explicitRetry,
+                onFocusedContextPage = ::launchDurableContextPagePersist,
             )
         val latest = _state.value.payload
         if (
@@ -10078,6 +10170,31 @@ internal class SharedThreadStore(
         ) {
             launchSecondaryTimelineRefresh(applied, staleToken)
             launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
+        }
+    }
+
+    /**
+     * Task #14 part C: persist the anchor context page a focused refresh (anchored open, [jumpToMessage])
+     * fetched. Fire-and-forget on the store scope like [launchDurableWindowExtension]; it never touches the
+     * visible payload. It first waits for this entry's enter snapshot: the enter commits a whole-page
+     * snapshot, which would drop a context page written before it, and the context page can only join a
+     * window that exists. Persisting does not depend on the route still being shown (the facts are the
+     * identity's, re-checked by the writer); the identity gates are the writer's.
+     */
+    private fun launchDurableContextPagePersist(page: SharedThreadDurableContextPage) {
+        val enterJob = enteredScopeSnapshotJob
+        scope.launch {
+            try {
+                enterJob?.join()
+                dataSource.persistDurableContextPageIfCurrent(page)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger?.invoke(
+                    "thread_durable_context_page_failed anchor=${page.anchorMessageId} " +
+                        "reason=${throwable::class.simpleName ?: "unknown"}"
+                )
+            }
         }
     }
 
