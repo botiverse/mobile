@@ -1202,7 +1202,7 @@ internal class RaftSharedStoreProvider private constructor(
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 // #45: that server's recent searches and frequent people / channels.
-                searchPersonalizationRepository.dropServer(grant.serverId, nowMillis = defaultNowMillis())
+                searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 )
