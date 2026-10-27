@@ -91,6 +91,18 @@ class RaftBadgeLookTest {
         assertEquals(light.lineHairline, outline.edge)
     }
 
+    /**
+     * The App Bot badge (web `AppBotBadge`: soft muted) reads in the sans `text-caption`, whatever its
+     * label: only the unread count (solid accent) and outline labels are Space Mono.
+     */
+    @Test
+    fun softBadgesAreNeverMono() {
+        RaftBadgeVariant.entries.forEach { variant ->
+            assertFalse(raftBadgeLook(RaftBadgeAppearance.Soft, variant, true, light).mono, "soft $variant")
+        }
+        assertTrue(raftBadgeLook(RaftBadgeAppearance.Outline, RaftBadgeVariant.Muted, true, light).mono)
+    }
+
     @Test
     fun disabledDropsTheInsetEdgeOnFillMuted() {
         val look = raftBadgeLook(RaftBadgeAppearance.Solid, RaftBadgeVariant.Danger, enabled = false, colors = light)
