@@ -167,8 +167,13 @@ private fun raftAttributedText(
     if (lineHeightPt != null) {
         attributes[NSParagraphStyleAttributeName] =
             NSMutableParagraphStyle().apply {
-                setMinimumLineHeight(lineHeightPt)
-                setMaximumLineHeight(lineHeightPt)
+                // min/maxLineHeight *shrinks* the line box when the style's line height is
+                // smaller than the font's natural height — every line then draws on top of
+                // the previous one, which is what the "two overlaid copies" in the sheet
+                // actually were. lineSpacing only adds space between lines: it honours the
+                // design when lineHeight is looser and can never make lines overlap.
+                val extra = lineHeightPt - font.lineHeight
+                if (extra > 0.0) lineSpacing = extra
             }
     }
     return NSAttributedString.create(string = text, attributes = attributes)
