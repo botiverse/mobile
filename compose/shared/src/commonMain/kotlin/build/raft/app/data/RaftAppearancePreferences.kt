@@ -103,6 +103,17 @@ object RaftAppAppearanceRuntime {
         notifyHost()
     }
 
+    val appearance: RaftAppAppearance
+        get() = RaftAppThemeState.appearance
+
+    /** Applies [next] at once (every screen repaints) and saves it on this device. */
+    fun select(next: RaftAppAppearance) {
+        loaded = true
+        RaftAppThemeState.apply(next)
+        runCatching { repository().saveAppearanceSync(next) }
+        notifyHost()
+    }
+
     private fun seedServerThemeLook() {
         if (serverThemeSettled) return
         // An unreadable store (not installed yet) leaves it for the next call or the session flow.
