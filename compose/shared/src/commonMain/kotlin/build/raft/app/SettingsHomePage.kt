@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
@@ -6392,6 +6393,40 @@ private fun RaftAppShellReadyContent(
 
     val appShellHomeLabels = RaftHomeShellLabels.localized()
     val serverDrawerUserHeader = rememberRaftServerDrawerUserHeader(readySession)
+    // "Open workspaces in separate app windows": another server opens in (or brings to front) its
+    // own window, the way the Choose workspace page does; false means switch in place.
+    fun openServerInSeparateWindowIfEnabled(serverId: String, source: String): Boolean {
+        val session = readySession ?: return false
+        // The server this window shows now (the shell's selected server, else what Home renders,
+        // else the session's) — never the launch-time scope server.
+        val currentServerId =
+            appShellNavigationServerId(
+                selectedServerId = selectedServerId,
+                renderedHomeServerId = renderedHomeServerId,
+                scopeInitialServerId = session.currentServerId
+            )
+        val pageData =
+            appShellServerSwitchNewWindowPageDataOrNull(
+                sourceStoreScope = navigationStoreScope,
+                currentServerId = currentServerId,
+                sourceDocumentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false),
+                selectedServerId = serverId,
+                multiShellHostEnabled = raftMultiShellHostEnabled(),
+                routeOwner =
+                    AuthenticatedRouteOwner(
+                        environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                        accountId = session.user.id,
+                        serverId = serverId
+                    ).normalizedOrNull()
+            ) ?: return false
+        bridge.log(
+            "app_shell_server_switch_new_window source=$source " +
+                "from=${currentServerId.orEmpty()} to=${serverId.trim()}"
+        )
+        pager.openAppShellReplacingCurrentPage(pageData)
+        return true
+    }
+
     fun openServerDrawerHome(serverIdValue: String) {
         val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
         val session = latestReadySession
@@ -6399,6 +6434,11 @@ private fun RaftAppShellReadyContent(
             bridge.logWarn(
                 "server_drawer_home_open_rejected serverId=$normalizedServerId reason=stale_projection"
             )
+            return
+        }
+        if (openServerInSeparateWindowIfEnabled(normalizedServerId, source = "server_drawer")) {
+            serverDrawerProgrammaticCloseFence?.invoke("server_drawer_new_window")
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return
         }
         selectAppShellTab("home")
@@ -6604,6 +6644,7 @@ private fun RaftAppShellReadyContent(
         serverMenuState.dismiss()
         val current = serverMenuModel?.currentServer?.id.orEmpty()
         val plan = appShellServerMenuSwitchPlan(current, serverId, selectedTab) ?: return
+        if (openServerInSeparateWindowIfEnabled(plan.serverId, source = "server_menu")) return
         val homeServerId = appShellHomeListServerId(renderedServerId = renderedHomeServerId, readyServerId = readyServerId)
         pendingHomeServerSwitchId = plan.serverId.takeIf { it != homeServerId }
         observedHomeServerSwitchId = null
@@ -7380,6 +7421,9 @@ private fun RaftAppShellReadyContent(
                                     ),
                                 onSelectedConversationCleared = {
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                                },
+                                onOpenServerInSeparateWindow = { serverId ->
+                                    openServerInSeparateWindowIfEnabled(serverId, source = "home_switcher")
                                 },
                                 onOpenSearch = {
                                     openSearchTab(source = "home_head")
@@ -8690,7 +8734,10 @@ internal fun appShellPageDataForServerSelection(
     selectedServerId: String?,
     multiShellHostEnabled: Boolean = false,
     suppressRestoreLanding: Boolean = false,
-    routeOwner: AuthenticatedRouteOwner? = null
+    routeOwner: AuthenticatedRouteOwner? = null,
+    // The chooser page replaces itself with the shell; a shell that opens another server's window
+    // stays where it is (replacing it would close the source window).
+    replaceCurrent: Boolean = true
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
     val opensDocumentShell =
@@ -8700,7 +8747,7 @@ internal fun appShellPageDataForServerSelection(
             multiShellHostEnabled = multiShellHostEnabled
         )
     return appShellPageData(
-        replaceCurrent = true,
+        replaceCurrent = replaceCurrent,
         suppressRestoreLanding = suppressRestoreLanding
     ).apply {
         normalizedServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
@@ -8712,6 +8759,47 @@ internal fun appShellPageDataForServerSelection(
             put(RAFT_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
         }
     }
+}
+
+/**
+ * The "open workspaces in separate app windows" setting as it applies here: only where the
+ * platform hosts several shell windows (Android, multi-scene iPad), read from the chat layout
+ * preference store. Every server switch entry reads it through this one function.
+ */
+internal fun raftMultiShellHostEnabled(): Boolean =
+    raftPlatformSupportsMultiShellHost() &&
+        KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readMultiShellHostEnabledSync()
+
+/**
+ * A server picked inside a shell (server menu, wide top bar strip, Home switcher, drawer header):
+ * with the multi-window setting on and a server other than the one this window shows NOW
+ * ([currentServerId] — not the scope's launch-time server, which is null for a launcher-started
+ * window and stale after in-place switches), the page data that opens (or brings to front) that
+ * server's own window — the launch the Choose workspace page uses, minus replacing the source page.
+ * Null means switch in place; so does an unknown current server.
+ */
+internal fun appShellServerSwitchNewWindowPageDataOrNull(
+    sourceStoreScope: RaftShellStoreScope,
+    currentServerId: String?,
+    sourceDocumentShell: Boolean,
+    selectedServerId: String,
+    multiShellHostEnabled: Boolean,
+    routeOwner: AuthenticatedRouteOwner?
+): JSONObject? {
+    if (routeOwner == null) return null
+    val current = currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    // Decide against the server on screen: the source scope as it is now.
+    val currentScope = RaftShellStoreScope.create(sourceStoreScope.shellInstanceId, current)
+    if (!isMultiShellCrossServerSelection(currentScope, selectedServerId, multiShellHostEnabled)) return null
+    return appShellPageDataForServerSelection(
+        sourceStoreScope = currentScope,
+        sourceDocumentShell = sourceDocumentShell,
+        selectedServerId = selectedServerId,
+        multiShellHostEnabled = multiShellHostEnabled,
+        suppressRestoreLanding = true,
+        routeOwner = routeOwner,
+        replaceCurrent = false
+    )
 }
 
 internal fun isMultiShellCrossServerSelection(
@@ -10043,6 +10131,8 @@ private fun SharedHomeScreen(
     externalFocusLossDismissEpoch: Int = 0,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
+    /** A picked server opens in its own window (multi-window setting); true = handled, no in-place switch. */
+    onOpenServerInSeparateWindow: (serverId: String) -> Boolean = { false },
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
@@ -10070,6 +10160,16 @@ private fun SharedHomeScreen(
     // off-screen. Gate through rememberUpdatedState so the check reads the
     // current `active` flag, not the one captured at callback creation.
     val latestActive = rememberUpdatedState(active)
+    // The Home switcher pick: a server that opens in its own window leaves this one (and its open
+    // conversation) as it is; otherwise switch in place.
+    val selectServerFromSwitcher: (String) -> Unit = { serverId ->
+        if (onOpenServerInSeparateWindow(serverId)) {
+            onIntent(SharedHomeIntent.DismissServerSwitcher)
+        } else {
+            onSelectedConversationCleared()
+            onIntent(SharedHomeIntent.SelectServer(serverId))
+        }
+    }
     val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
     val directMessageUnavailableMessage = stringResource(Res.string.home_error_direct_message_unavailable)
     val openDirectMessageFailedMessage = stringResource(Res.string.home_error_open_direct_message)
@@ -10159,10 +10259,7 @@ private fun SharedHomeScreen(
                     onServerDrawerRetry = { serverId ->
                         onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
                     },
-                    onServerSelected = { serverId ->
-                        onSelectedConversationCleared()
-                        onIntent(SharedHomeIntent.SelectServer(serverId))
-                    },
+                    onServerSelected = selectServerFromSwitcher,
                     onServerOrderChange = { order ->
                         onIntent(SharedHomeIntent.ReorderServers(order))
                     },
@@ -10198,10 +10295,7 @@ private fun SharedHomeScreen(
                 onServerDrawerRetry = { serverId ->
                     onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
                 },
-                onServerSelected = { serverId ->
-                    onSelectedConversationCleared()
-                    onIntent(SharedHomeIntent.SelectServer(serverId))
-                },
+                onServerSelected = selectServerFromSwitcher,
                 onServerOrderChange = { order ->
                     onIntent(SharedHomeIntent.ReorderServers(order))
                 },
@@ -10237,10 +10331,7 @@ private fun SharedHomeScreen(
                     onServerDrawerRetry = { serverId ->
                         onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
                     },
-                    onServerSelected = { serverId ->
-                        onSelectedConversationCleared()
-                        onIntent(SharedHomeIntent.SelectServer(serverId))
-                    },
+                    onServerSelected = selectServerFromSwitcher,
                     onServerOrderChange = { order ->
                         onIntent(SharedHomeIntent.ReorderServers(order))
                     },
@@ -10472,10 +10563,7 @@ private fun SharedHomeScreen(
                 onServerDrawerRetry = { serverId ->
                     onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
                 },
-                onServerSelected = { serverId ->
-                    onSelectedConversationCleared()
-                    onIntent(SharedHomeIntent.SelectServer(serverId))
-                },
+                onServerSelected = selectServerFromSwitcher,
                 onServerOrderChange = { order ->
                     onIntent(SharedHomeIntent.ReorderServers(order))
                 },
