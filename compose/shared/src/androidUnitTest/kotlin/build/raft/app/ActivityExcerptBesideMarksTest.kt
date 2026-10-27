@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * artin (dm 37e8b6e9): when a row's unread count or mention mark appeared, its excerpt kept line 1
@@ -32,6 +33,7 @@ import org.robolectric.annotation.Config
  * where line 1 ends again, and the excerpt read as all on line 1.
  */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h560dp-xxhdpi")
 class ActivityExcerptBesideMarksTest {
     @get:Rule
