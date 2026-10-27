@@ -1,6 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -102,6 +106,64 @@ class SharedActivityStoreServerSwitchTest {
         store.dispatch(SharedActivityIntent.ServerSelected("server-1"))
         runCurrent()
         assertEquals(3, inbox.initialLoadCount)
+    }
+
+    /**
+     * Hands b91f94e5: after a switch the new server's inbox answered in 6s but its rows waited
+     * another 6s for the server member list, so the old cached rows stayed up and the feed
+     * looked never reloaded. The rows show when the inbox answers; profiles join when members land.
+     */
+    @Test
+    fun aSwitchShowsTheNewServersRowsWithoutWaitingForItsMemberList() = runTest {
+        val auth = InMemoryRaftAuthSessionStore(twoServerSession(selected = "server-1"))
+        val server2Members = CompletableDeferred<Unit>()
+        val members =
+            object : MemberRepository by PresenceNoopMemberRepository {
+                override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
+                    if (serverId.value == "server-2") server2Members.await()
+                    return DataResult.Content(
+                        MemberSnapshot(
+                            server = ServerSummary(id = serverId, name = serverId.value),
+                            members =
+                                listOf(
+                                    MemberProfile(
+                                        id = MemberId("agent-${serverId.value}"),
+                                        displayName = "Agent ${serverId.value}",
+                                        handle = "agent",
+                                        kind = MemberKind.Agent
+                                    )
+                                )
+                        )
+                    )
+                }
+            }
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("a-row")), serverId = "server-1"),
+                        snapshot(listOf(activityItem("b-row")), serverId = "server-2")
+                    )
+            )
+        val store = activityStore(backgroundScope, inbox, authStore = auth, memberRepository = members)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        assertEquals("Agent server-1", store.state.value.senderProfiles["agent-server-1"]?.displayName)
+
+        auth.saveSession(twoServerSession(selected = "server-2"))
+        store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
+        runCurrent()
+
+        val beforeMembers = store.state.value
+        assertEquals("server-2", beforeMembers.ownerServerId)
+        assertEquals(listOf("channel:b-row"), beforeMembers.items.map { it.key }, "rows while members load")
+        assertFalse(beforeMembers.loading || beforeMembers.refreshing, "the switch load finished")
+        assertTrue(beforeMembers.senderProfiles.isEmpty(), "no server-1 profiles carried over: ${beforeMembers.senderProfiles}")
+
+        server2Members.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("channel:b-row"), store.state.value.items.map { it.key })
+        assertEquals("Agent server-2", store.state.value.senderProfiles["agent-server-2"]?.displayName)
     }
 
     @Test
