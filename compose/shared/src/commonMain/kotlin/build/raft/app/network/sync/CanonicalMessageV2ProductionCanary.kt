@@ -1480,6 +1480,12 @@ private fun CanonicalMessageFoldInput.v2ScopeOrNull(partition: DurablePartitionK
         ) return null
         return SyncScopeKey(partition = partition, scopeId = row.channelId, scopeKind = REPLY_THREAD_SCOPE_KIND)
     }
+    if (kind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+        // Task v2: a task conversation is written under its own channel id; the normalizer checks the
+        // parent context (parent channel, no parent message).
+        if (context.parentChannelId.isNullOrBlank() || context.parentMessageId != null) return null
+        return SyncScopeKey(partition = partition, scopeId = row.channelId, scopeKind = CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND)
+    }
     if (kind !in setOf("channel", "private", "dm", "joint")) return null
     if (
         context.parentChannelId != null ||

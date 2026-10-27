@@ -21,6 +21,8 @@ internal class RecordingNetworkClient(
     private val channelType: String = "channel",
     /** Body for `channels/{id}/threads`; `null` makes that endpoint fail (500). */
     private val threadSummariesBody: String? = "{}",
+    /** Task v2: the `parentChannelId` a `type: "task"` channel detail names (omitted when null). */
+    private val parentChannelId: String? = null,
 ) : RaftNetworkClient {
     val paths = mutableListOf<String>()
 
@@ -44,7 +46,12 @@ internal class RecordingNetworkClient(
         } ?: return HomeNetworkResponse(404, null)
         return when (path) {
             "channels/$channelId" ->
-                HomeNetworkResponse(200, """{"id":"$channelId","type":"$channelType"}""")
+                HomeNetworkResponse(
+                    200,
+                    parentChannelId
+                        ?.let { parent -> """{"id":"$channelId","type":"$channelType","parentChannelId":"$parent"}""" }
+                        ?: """{"id":"$channelId","type":"$channelType"}""",
+                )
             "channels/$channelId/threads" ->
                 threadSummariesBody?.let { HomeNetworkResponse(200, it) } ?: HomeNetworkResponse(500, null)
             else -> {

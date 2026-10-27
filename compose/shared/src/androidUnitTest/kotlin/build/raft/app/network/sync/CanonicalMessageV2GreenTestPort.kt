@@ -380,6 +380,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
                 is TopLevelScopeRefV2.Private -> "private"
                 is TopLevelScopeRefV2.DirectMessage -> "dm"
                 is TopLevelScopeRefV2.Joint -> "joint"
+                is TopLevelScopeRefV2.Task -> error("a task conversation is never a reply parent")
             },
             parentScopeId = context.parentTopLevelScope.scopeId,
             rootMessageId = context.rootMessageRef.messageId,
@@ -689,4 +690,5 @@ private val TopLevelScopeRefV2.kindName: String
         is TopLevelScopeRefV2.Private -> "private"
         is TopLevelScopeRefV2.DirectMessage -> "dm"
         is TopLevelScopeRefV2.Joint -> "joint"
+        is TopLevelScopeRefV2.Task -> "task"
     }

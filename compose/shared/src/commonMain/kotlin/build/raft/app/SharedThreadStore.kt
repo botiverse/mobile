@@ -138,6 +138,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.DurablePartitionKey
@@ -13494,7 +13495,8 @@ internal fun RaftThreadScreenPayload.durableReplyParentOrNull(): ThreadDurableRe
 /** The durable V2 scope kinds a route's surface may be shown from (task #168 step 3 adds `thread`). */
 private fun ThreadRouteIdentity.durableScopeKinds(): Set<String> =
     when (surfaceKind) {
-        RaftThreadSurfaceKind.Channel -> setOf("channel", "private", "joint")
+        // Task v2: a task conversation renders on the channel surface (route channel kind `task`).
+        RaftThreadSurfaceKind.Channel -> setOf("channel", "private", "joint", CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND)
         RaftThreadSurfaceKind.DirectMessage -> setOf("dm")
         RaftThreadSurfaceKind.ReplyThread -> setOf("thread")
         else -> emptySet()

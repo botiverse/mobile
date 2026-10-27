@@ -4,6 +4,8 @@ import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.model.ServerId
 import build.raft.app.raftLogInfo
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
+import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS
+import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
@@ -108,7 +110,7 @@ internal data class CanonicalMessageV2ReplyParentScope(
     val rootMessageId: String,
 ) {
     init {
-        require(parentScopeKind in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS)
+        require(parentScopeKind in CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS)
     }
 }
 
@@ -154,8 +156,17 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
         val channelType = (detail["type"] as? JsonPrimitive)
             ?.takeIf { it.isString }
             ?.content
-            ?.takeIf { it in setOf("channel", "private", "dm", "joint") }
+            ?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS }
             ?: return unavailable("canonical_v2_scope_not_top_level")
+        // Task v2: a task conversation's page converts under its parent channel (`channels/{id}`
+        // names it; slock `schema.ts` `channels.parent_channel_id`).
+        val taskParentChannelId =
+            if (channelType == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+                detail.stringOrNull("parentChannelId")?.takeIf { it.isNotBlank() && it == it.trim() }
+                    ?: return unavailable("canonical_v2_task_parent_missing")
+            } else {
+                null
+            }
         if (expectedScopeKind != null && channelType != expectedScopeKind) {
             return unavailable("canonical_v2_scope_kind_changed")
         }
@@ -190,7 +201,9 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
                 ),
             )
         }
-        val envelopes = when (val converted = convertPage(partition, scopeId, channelType, rawMessages)) {
+        val envelopes = when (
+            val converted = convertPage(partition, scopeId, channelType, rawMessages, taskParentChannelId = taskParentChannelId)
+        ) {
             is CanonicalMessageV2PageConversion.Converted -> converted.envelopes
             is CanonicalMessageV2PageConversion.Refused -> return unavailable(converted.diagnostic)
         }
@@ -258,7 +271,7 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
             serverId = partition.serverId,
         ) ?: return refused("canonical_v2_parent_detail_unavailable")
         val parentKind = parentDetail.stringOrNull("type")
-            ?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS }
+            ?.takeIf { it in CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS }
             ?: return refused("canonical_v2_parent_not_top_level")
         return CanonicalMessageV2ReplyParentConfirmation.Confirmed(
             CanonicalMessageV2ReplyParentScope(
@@ -343,9 +356,14 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
         channelType: String,
         rawMessages: JsonArray,
         replyParent: CanonicalMessageV2ReplyParentScope? = null,
+        /** Task v2: the task's channel, required for, and only for, a `task` page. */
+        taskParentChannelId: SyncScopeId? = null,
     ): CanonicalMessageV2PageConversion {
         require((channelType == REPLY_THREAD_SCOPE_KIND) == (replyParent != null)) {
             "a reply parent is required for, and only for, a thread page"
+        }
+        require((channelType == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) == (taskParentChannelId != null)) {
+            "a task parent channel is required for, and only for, a task page"
         }
         // The messages page never carries replyCount/threadSummary (server emits those only via
         // `channels/{id}/threads` and the internal agent API). Messages without `threadId` have
@@ -362,7 +380,7 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
         }
         val context = CanonicalConversationContextWire(
             channelType = channelType,
-            parentChannelId = replyParent?.parentScopeId,
+            parentChannelId = replyParent?.parentScopeId ?: taskParentChannelId,
             parentChannelType = replyParent?.parentScopeKind,
             parentMessageId = replyParent?.rootMessageId,
         )
@@ -876,6 +894,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             1 -> kinds.single()
             else -> return log("ambiguous_scope_kind")
         }
+        // Task v2: a task window is written by its enter snapshot and live frames only; paging pages
+        // carry no parent context to convert under (TODO(task-v2 P1): extend task windows too).
+        if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return log("task_window_extend_unsupported")
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
 
         // A reply page is converted under the parent its stored cursor names, and only when that is
@@ -1081,6 +1102,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             1 -> kinds.single()
             else -> return log("ambiguous_scope_kind")
         }
+        // Task v2: a task window is written by its enter snapshot and live frames only; paging pages
+        // carry no parent context to convert under (TODO(task-v2 P1): extend task windows too).
+        if (scopeKind == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) return log("task_window_extend_unsupported")
         val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
         val storedParent = if (replyParent == null) {
             null
@@ -1232,7 +1256,7 @@ private fun storedReplyParentOrNull(
     replyParent: ThreadDurableReplyParent,
 ): CanonicalMessageV2ReplyParentScope? {
     val stored = cursor ?: return null
-    val kind = stored.parentScopeKind?.takeIf { it in CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS } ?: return null
+    val kind = stored.parentScopeKind?.takeIf { it in CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS } ?: return null
     if (stored.parentScopeId != replyParent.parentChannelId || stored.rootMessageId != replyParent.rootMessageId) {
         return null
     }

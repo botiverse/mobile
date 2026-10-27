@@ -51,7 +51,7 @@ data class ReplyMembershipV2(
     val parentScope: ReplyScopeRefV2,
 )
 
-/** Lossless typed replacement for the producer's top-level channel/private/dm/joint union. */
+/** Lossless typed replacement for the producer's top-level channel/private/dm/joint (+ task v2 `task`) union. */
 @Serializable
 @JsonClassDiscriminator("kind")
 sealed interface TopLevelScopeRefV2 {
@@ -84,6 +84,20 @@ sealed interface TopLevelScopeRefV2 {
     data class Joint(
         override val serverId: String,
         override val scopeId: String,
+    ) : TopLevelScopeRefV2
+
+    /**
+     * Task v2: a task's own conversation (slock `channels.type = 'task'`). A flat stream like a
+     * top-level channel (no root message, never a reply-thread parent) keyed by the conversation
+     * channel id; [parentScopeId] is the channel holding the task (producer
+     * `conversationContext.parentChannelId`).
+     */
+    @Serializable
+    @SerialName("task")
+    data class Task(
+        override val serverId: String,
+        override val scopeId: String,
+        val parentScopeId: String,
     ) : TopLevelScopeRefV2
 }
 

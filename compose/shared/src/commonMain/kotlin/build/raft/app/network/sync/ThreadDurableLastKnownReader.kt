@@ -111,8 +111,21 @@ internal fun ThreadDurableLastKnownFrame.windowEnvelopes(): List<CanonicalMessag
     return envelopes.filter { it.fact.seq >= oldest }
 }
 
-/** Top-level scope kinds the V2 writer persists. Reply threads are the separate `thread` kind. */
-internal val CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS: Set<String> = setOf("channel", "private", "dm", "joint")
+/** Task v2: the scope kind of a task's own conversation (a flat, root-less window like a channel's). */
+const val CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND: String = "task"
+
+/**
+ * The kinds a reply thread's parent may have (and a `thread` cursor stores): the four producer
+ * top-level kinds. A task conversation is never a reply parent.
+ */
+internal val CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS: Set<String> = setOf("channel", "private", "dm", "joint")
+
+/**
+ * Top-level (flat window) scope kinds the V2 writer persists: the reply-parent kinds plus a task v2
+ * conversation. Reply threads are the separate `thread` kind.
+ */
+internal val CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS: Set<String> =
+    CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS + CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND
 
 /** The one reply-thread scope kind (task #168 step 3); its cursor carries the parent scope and root. */
 internal val CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS: Set<String> = setOf("thread")

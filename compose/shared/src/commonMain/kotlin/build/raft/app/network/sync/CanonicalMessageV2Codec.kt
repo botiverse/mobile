@@ -137,8 +137,20 @@ fun validateCanonicalMessageV2(
         is CanonicalConversationContextV2.TopLevel -> {
             if (envelope.replyMembership != null) return CANONICAL_MESSAGE_V2_ILLEGAL_DISCUSSION_RELATION
             if (context.scope.scopeId.isNotCanonicalString()) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+            val scope = context.scope
+            if (scope is TopLevelScopeRefV2.Task) {
+                // A task conversation is a sub-conversation: it never hosts a reply thread, and its
+                // parent is another (top-level) channel.
+                if (envelope.childReplyScope != null) return CANONICAL_MESSAGE_V2_ILLEGAL_DISCUSSION_RELATION
+                if (scope.parentScopeId.isNotCanonicalString() || scope.parentScopeId == scope.scopeId) {
+                    return CANONICAL_MESSAGE_V2_EXACT_KEYS
+                }
+            }
         }
         is CanonicalConversationContextV2.Thread -> {
+            if (context.parentTopLevelScope is TopLevelScopeRefV2.Task) {
+                return CANONICAL_MESSAGE_V2_ILLEGAL_DISCUSSION_RELATION
+            }
             val membership = envelope.replyMembership
                 ?: return CANONICAL_MESSAGE_V2_ILLEGAL_DISCUSSION_RELATION
             if (context.replyScope != membership.parentScope || context.rootMessageRef != membership.root) {
@@ -242,14 +254,14 @@ private fun validateContextShape(element: JsonElement?): String? {
     return when ((context["kind"] as? JsonPrimitive)?.canonicalStringOrNull()) {
         "top-level" -> {
             if (!context.hasExactKeys("kind", "scope")) CANONICAL_MESSAGE_V2_EXACT_KEYS
-            else validateTopLevelScope(context["scope"])
+            else validateTopLevelScope(context["scope"], allowTaskConversation = true)
         }
         "thread" -> {
             if (!context.hasExactKeys("kind", "replyScope", "parentTopLevelScope", "rootMessageRef")) {
                 CANONICAL_MESSAGE_V2_EXACT_KEYS
             } else {
                 validateReplyScope(context["replyScope"])
-                    ?: validateTopLevelScope(context["parentTopLevelScope"])
+                    ?: validateTopLevelScope(context["parentTopLevelScope"], allowTaskConversation = false)
                     ?: validateMessageRef(context["rootMessageRef"])
             }
         }
@@ -257,8 +269,16 @@ private fun validateContextShape(element: JsonElement?): String? {
     }
 }
 
-private fun validateTopLevelScope(element: JsonElement?): String? {
+private fun validateTopLevelScope(element: JsonElement?, allowTaskConversation: Boolean): String? {
     val scope = element as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    if ((scope["kind"] as? JsonPrimitive)?.canonicalStringOrNull() == CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND) {
+        // Task v2: only as a message's own top-level scope, never as a reply thread's parent.
+        return if (allowTaskConversation && scope.hasExactKeys("kind", "serverId", "scopeId", "parentScopeId")) {
+            null
+        } else {
+            CANONICAL_MESSAGE_V2_EXACT_KEYS
+        }
+    }
     if (!scope.hasExactKeys("kind", "serverId", "scopeId")) return CANONICAL_MESSAGE_V2_EXACT_KEYS
     return if ((scope["kind"] as? JsonPrimitive)?.canonicalStringOrNull() in setOf("channel", "private", "dm", "joint")) {
         null
