@@ -91,6 +91,11 @@ internal data class TaskConversationHeaderState(
     val followOverride: Boolean? = null,
     val followPending: Boolean = false,
     /**
+     * Bumped by every follow / unfollow started on this page: a follow-state refetch that started
+     * before it answers with what the server had then, so it must not undo this page's write.
+     */
+    val followWriteGeneration: Long = 0L,
+    /**
      * The task as this page last saw it (its channel's projection or a `task:updated`). The channel
      * list can be status-filtered (the board's open tasks), so a task moved to Done or Closed may
      * drop out of it; the bar keeps showing this copy instead.
@@ -122,6 +127,13 @@ internal sealed interface TaskConversationHeaderIntent {
 
     /** This page's task as its channel's list or a `task:updated` has it now. */
     data class TaskSeen(val task: TaskSummary) : TaskConversationHeaderIntent
+
+    /**
+     * The reader's follow state as `GET /tasks/channel/:id/number/:n` answered after a
+     * `thread:followers-updated` for this conversation; [writeGeneration] is
+     * [TaskConversationHeaderState.followWriteGeneration] when the request started.
+     */
+    data class FollowRefetched(val followed: Boolean, val writeGeneration: Long) : TaskConversationHeaderIntent
 }
 
 internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIntent): TaskConversationHeaderState =
@@ -138,7 +150,7 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
                 is DataResult.Error,
                 is DataResult.NoPermission -> copy(refStatus = TaskConversationRefStatus.Failed)
             }
-        is TaskConversationHeaderIntent.FollowStarted -> copy(followPending = true)
+        is TaskConversationHeaderIntent.FollowStarted -> copy(followPending = true, followWriteGeneration = followWriteGeneration + 1)
         is TaskConversationHeaderIntent.FollowSettled ->
             copy(
                 followPending = false,
@@ -157,6 +169,17 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
             val kept = if (seen.conversationFollowed == null) seen.copy(conversationFollowed = previous?.conversationFollowed) else seen
             if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = kept)
         }
+        is TaskConversationHeaderIntent.FollowRefetched ->
+            // The server's answer is newer than the DTO the bar reads and than an earlier write of this
+            // page, so it becomes the override; a write started since then wins (its own event refetches).
+            if (followPending || removed || intent.writeGeneration != followWriteGeneration) {
+                this
+            } else {
+                copy(
+                    followOverride = intent.followed,
+                    lastSeenTask = lastSeenTask?.copy(conversationFollowed = intent.followed),
+                )
+            }
     }
 
 internal sealed interface TaskConversationHeaderEvent {
@@ -175,6 +198,12 @@ internal class TaskConversationHeaderViewModel(
     private val follow: suspend (ChannelId) -> DataResult<ThreadActionResult>,
     private val unfollow: suspend (ChannelId) -> DataResult<ThreadActionResult>,
     private val log: (String) -> Unit = {},
+    /**
+     * `GET /tasks/channel/:parentChannelId/number/:taskNumber` (Background): the task as the
+     * reader's channel sees it, with `conversationFollowed` (routes/tasks.ts withConversationFollowed).
+     */
+    private val loadTask: suspend (serverId: String, parentChannelId: ChannelId, taskNumber: Int) -> DataResult<TaskSummary> =
+        { _, _, _ -> DataResult.Empty(EmptyReason.NoTasks) },
     private val scopeOverride: CoroutineScope? = null,
 ) : ViewModel() {
     private val scope: CoroutineScope
@@ -187,6 +216,8 @@ internal class TaskConversationHeaderViewModel(
     val events: Flow<TaskConversationHeaderEvent> = effects.effects
 
     private var refJob: Job? = null
+    private var followRefetchJob: Job? = null
+    private var followRefetchDirty = false
 
     private fun dispatch(intent: TaskConversationHeaderIntent) {
         _state.update { it.reduce(intent) }
@@ -243,6 +274,49 @@ internal class TaskConversationHeaderViewModel(
 
     fun onTaskSeen(task: TaskSummary) {
         dispatch(TaskConversationHeaderIntent.TaskSeen(task))
+    }
+
+    /**
+     * `thread:followers-updated { threadChannelId }` (slock threadFollowerRealtimeService, sent to the
+     * conversation's room): someone's follow of the conversation changed — maybe the reader's, on
+     * another device or by a server auto-follow (reply, assignment, mention). The frame does not say
+     * whose, so re-read the task's `conversationFollowed`. Single-flight: events during a fetch
+     * coalesce into one more fetch after it, so the last answer is never older than the last event.
+     * Before the task is known the page's first load carries the current value; nothing to do.
+     */
+    fun onFollowersUpdated(serverId: String, threadChannelId: ChannelId) {
+        if (threadChannelId != _state.value.conversationChannelId) return
+        scope.launch {
+            followRefetchDirty = true
+            if (followRefetchJob?.isActive == true) return@launch
+            followRefetchJob = coroutineContext[Job]
+            while (followRefetchDirty) {
+                followRefetchDirty = false
+                refetchFollow(serverId)
+            }
+        }
+    }
+
+    private suspend fun refetchFollow(serverId: String) {
+        val current = _state.value
+        if (current.removed) return
+        val ref = current.ref ?: return
+        val taskNumber = current.lastSeenTask?.takeIf { it.id == ref.taskId }?.taskNumber ?: return
+        val writeGeneration = current.followWriteGeneration
+        val result =
+            try {
+                loadTask(serverId, ref.parentChannelId, taskNumber)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError(code = "task_conversation_follow_refetch_network", retryable = true))
+            }
+        val followed = (result as? DataResult.Content)?.data?.takeIf { it.id == ref.taskId }?.conversationFollowed
+        log(
+            "task_conversation_follow_refetch conversationId=${current.conversationChannelId.value} " +
+                "result=${result::class.simpleName} followed=${followed ?: "unknown"}"
+        )
+        if (followed != null) dispatch(TaskConversationHeaderIntent.FollowRefetched(followed, writeGeneration))
     }
 }
 

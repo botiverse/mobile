@@ -130,6 +130,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.map
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
@@ -283,6 +284,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.TaskStatus
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.TaskId
@@ -8009,6 +8011,11 @@ private fun SharedThreadRouteContentContent(
                     follow = dataSource::followTaskConversation,
                     unfollow = dataSource::unfollowThread,
                     log = { bridge.log(it) },
+                    loadTask = { serverId, parentChannelId, taskNumber ->
+                        tasksDataSource
+                            .loadChannelTaskByNumber(ServerId(serverId), parentChannelId, taskNumber, DataRequestPriority.Background)
+                            .map { it.task }
+                    },
                 )
             }
         }
@@ -8781,6 +8788,9 @@ private fun SharedThreadRouteContentContent(
             }
             if (event is TaskDeleted) {
                 taskConversationHeaderViewModel?.onTaskDeleted(event.taskId, event.conversationChannelId)
+            }
+            if (event is ThreadFollowersUpdated) {
+                taskConversationHeaderViewModel?.onFollowersUpdated(serverId, event.threadChannelId)
             }
             if (
                 event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&

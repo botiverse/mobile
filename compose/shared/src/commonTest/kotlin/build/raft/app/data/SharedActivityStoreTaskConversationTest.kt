@@ -4,6 +4,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
+import build.raft.app.model.ThreadFollowersUpdated
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,6 +56,32 @@ class SharedActivityStoreTaskConversationTest {
         assertEquals(listOf(ChannelId("conv-1")), conversation.unfollowedThreadChannelIds)
         assertEquals(listOf(ChannelId("conv-1")), conversation.followedTaskConversationIds)
         assertEquals(emptyList(), conversation.followedParentMessageIds, "a task row never follows by a parent message")
+        scope.cancel()
+    }
+
+    /**
+     * `thread:followers-updated { threadChannelId }` for a task conversation row: the reader may have
+     * unfollowed on another device, so Activity re-reads (background reconcile). A frame for a
+     * conversation with no task row here re-reads nothing.
+     */
+    @Test
+    fun followersUpdatedForATaskRowReReadsActivityAndOthersDoNot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val row = taskRow(unreadCount = 0)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(row)), snapshot(listOf(row.copy(isFollowing = false))))
+            )
+        val store = activityStore(scope = scope, inboxRepository = inbox, realtimeBackgroundRefreshIntervalMillis = 0L)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(1, inbox.initialLoadCount)
+
+        store.acceptRealtime(SharedActivityIntent.ApplyRealtimeEvent(ThreadFollowersUpdated(ChannelId("conv-other"))))
+        assertEquals(1, inbox.initialLoadCount, "no task row for that conversation")
+
+        store.acceptRealtime(SharedActivityIntent.ApplyRealtimeEvent(ThreadFollowersUpdated(ChannelId("conv-1"))))
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(false, store.state.value.items.single().isFollowing)
         scope.cancel()
     }
 

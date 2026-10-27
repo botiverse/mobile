@@ -307,6 +307,117 @@ class TaskConversationHeaderStoreTest {
         assertEquals(false, projected().conversationFollowed)
     }
 
+    /**
+     * `thread:followers-updated { threadChannelId }` (slock staging threadFollowerRealtimeService,
+     * to `channel:<conversation>`): the reader followed elsewhere or was auto-followed. The page
+     * re-reads `GET /tasks/channel/:id/number/:n` (Background) and the button flips.
+     */
+    @Test
+    fun followersUpdatedForThisConversationRefetchesAndFlipsTheButton() = runTest {
+        var serverFollowed = false
+        val loads = mutableListOf<String>()
+        val viewModel =
+            followRefetchViewModel { serverId, channelId, number ->
+                loads += "$serverId/${channelId.value}/$number"
+                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = serverFollowed))
+            }
+        fun followed() = viewModel.state.value.followed(viewModel.state.value.barTask(listed = null)?.conversationFollowed)
+        assertEquals(false, followed())
+
+        // Followed on another device (or auto-followed on assignment): the frame names this conversation.
+        serverFollowed = true
+        viewModel.onFollowersUpdated("server-1", ChannelId("conv-1"))
+        advanceUntilIdle()
+        assertEquals(listOf("server-1/channel-1/7"), loads)
+        assertEquals(true, followed())
+        // The bar model reads it even when the (stale) channel list copy says otherwise.
+        val listed = task(TaskStatus.InProgress).copy(conversationFollowed = false)
+        assertEquals(true, listed.taskConversationHeaderBarModel(viewModel.state.value, serverRole = "member", statusUpdating = false).followed)
+
+        // And back: unfollowed elsewhere.
+        serverFollowed = false
+        viewModel.onFollowersUpdated("server-1", ChannelId("conv-1"))
+        advanceUntilIdle()
+        assertEquals(false, followed())
+    }
+
+    @Test
+    fun followersUpdatedForAnotherConversationDoesNotRefetch() = runTest {
+        var loads = 0
+        val viewModel =
+            followRefetchViewModel { _, _, _ ->
+                loads++
+                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = true))
+            }
+        viewModel.onFollowersUpdated("server-1", ChannelId("conv-2"))
+        viewModel.onFollowersUpdated("server-1", ChannelId("channel-1"))
+        advanceUntilIdle()
+        assertEquals(0, loads)
+        assertEquals(false, viewModel.state.value.followed(viewModel.state.value.lastSeenTask?.conversationFollowed))
+    }
+
+    @Test
+    fun repeatedFollowersUpdatedCoalesceIntoOneTrailingRefetch() = runTest {
+        val gates = mutableListOf<CompletableDeferred<Unit>>()
+        var serverFollowed = true
+        val viewModel =
+            followRefetchViewModel { _, _, _ ->
+                val gate = CompletableDeferred<Unit>().also { gates += it }
+                gate.await()
+                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = serverFollowed))
+            }
+        viewModel.onFollowersUpdated("server-1", ChannelId("conv-1"))
+        advanceUntilIdle()
+        assertEquals(1, gates.size, "one request in flight")
+        // Five more frames while it is on the network: no parallel request.
+        repeat(5) { viewModel.onFollowersUpdated("server-1", ChannelId("conv-1")) }
+        advanceUntilIdle()
+        assertEquals(1, gates.size)
+        // The first answer may predate those frames: exactly one more read follows it.
+        serverFollowed = false
+        gates[0].complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2, gates.size)
+        gates[1].complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2, gates.size)
+        assertEquals(false, viewModel.state.value.followed(taskFollowed = true), "the trailing read's value")
+    }
+
+    @Test
+    fun aRefetchThatStartedBeforeThisPagesWriteDoesNotUndoIt() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel =
+            followRefetchViewModel { _, _, _ ->
+                gate.await()
+                DataResult.Content(task(TaskStatus.InProgress).copy(conversationFollowed = false))
+            }
+        viewModel.onFollowersUpdated("server-1", ChannelId("conv-1"))
+        advanceUntilIdle()
+        viewModel.toggleFollow(currentlyFollowed = false)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.followed(taskFollowed = false))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.followed(taskFollowed = false), "the stale answer is dropped")
+    }
+
+    private fun TestScope.followRefetchViewModel(
+        loadTask: suspend (String, ChannelId, Int) -> DataResult<TaskSummary>,
+    ): TaskConversationHeaderViewModel =
+        TaskConversationHeaderViewModel(
+            conversationChannelId = ChannelId("conv-1"),
+            loadRef = { DataResult.Content(TaskConversationChannelRef(it, ChannelId("channel-1"), TaskId("task-1"))) },
+            follow = { DataResult.Content(ThreadActionResult(it, changed = true)) },
+            unfollow = { DataResult.Content(ThreadActionResult(it, changed = true)) },
+            loadTask = loadTask,
+            scopeOverride = this,
+        ).also { viewModel ->
+            viewModel.start()
+            advanceUntilIdle()
+            viewModel.onTaskSeen(task(TaskStatus.InProgress).copy(conversationFollowed = false))
+        }
+
     private fun task(status: TaskStatus): TaskSummary =
         parseSharedServerTasksPayload("""{"tasks":[${taskDtoJson(conversationFollowed = null)}]}""")
             ?.tasks
