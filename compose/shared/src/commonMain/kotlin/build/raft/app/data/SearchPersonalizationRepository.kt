@@ -195,14 +195,17 @@ internal class PersistentSearchPersonalizationRepository(
 
     /**
      * Removed from (or deleted) server: that server's searches name channels and people the account
-     * can no longer see. Drops the server's scopes for every principal.
+     * can no longer see. Drops the server's scopes of [principalId] (the account that lost it; another
+     * account on this device keeps its own), or of every principal when null.
      */
-    suspend fun dropServer(serverId: String, nowMillis: Long) {
+    suspend fun dropServer(serverId: String, principalId: String?, nowMillis: Long) {
         val key = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        val principal = principalId?.trim()
+        fun SearchPersonalizationWireScope.dropped() = this.serverId == key && (principal == null || this.principalId == principal)
         searchPersonalizationStorageMutex.withLock {
             val envelope = readEnvelope(nowMillis)
-            if (envelope.scopes.none { it.serverId == key }) return@withLock
-            writeEnvelope(envelope.copy(scopes = envelope.scopes.filterNot { it.serverId == key }), nowMillis)
+            if (envelope.scopes.none { it.dropped() }) return@withLock
+            writeEnvelope(envelope.copy(scopes = envelope.scopes.filterNot { it.dropped() }), nowMillis)
         }
     }
 
