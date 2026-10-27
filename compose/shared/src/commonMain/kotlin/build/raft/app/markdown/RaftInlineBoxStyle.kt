@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextLayoutResult
@@ -187,6 +188,64 @@ internal fun raftInlineGapWidth(id: String): Dp? =
         ?.toFloatOrNull()
         ?.takeIf { it > 0f }
         ?.dp
+
+/**
+ * Makes a linked chip's reserved gaps tap as the chip (task #wg-mobile:#9).
+ *
+ * [withRaftInlineChipGaps] reserves a chip's horizontal padding as gap placeholders outside the
+ * chip's link, and [raftInlineDecorations] paints the chip box over them. Without this a tap on the
+ * painted padding of a chip (a self @mention's yellow sticker, a #channel or task chip, a permalink
+ * or App link chip) hit no link and fell through to the message body, which opens the thread. Each
+ * gap glued (by a word joiner) to the start or end of a link gets an unstyled copy of that link, so
+ * the whole visible chip dispatches the chip's action and only that. The link ranges over the
+ * chip's own characters, and their styles, are unchanged.
+ */
+internal fun AnnotatedString.withRaftInlineChipGapLinks(): AnnotatedString {
+    val links = getLinkAnnotations(0, length)
+    if (links.isEmpty()) return this
+    val gaps =
+        getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
+            .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) && it.end > it.start }
+    if (gaps.isEmpty()) return this
+    val gapEndingAt = gaps.associateBy { it.end }
+    val gapStartingAt = gaps.associateBy { it.start }
+    val linked = links.flatMap { range ->
+        val leading =
+            if (range.start >= 1 && text[range.start - 1] == '⁠') {
+                gapEndingAt[range.start - 1]?.let { gap -> gap.start until range.start }
+            } else {
+                null
+            }
+        val trailing =
+            if (range.end < length && text[range.end] == '⁠') {
+                gapStartingAt[range.end + 1]?.let { gap -> range.end until gap.end }
+            } else {
+                null
+            }
+        listOfNotNull(leading, trailing).map { flank -> range.item.withoutRaftLinkStyles() to flank }
+    }
+    if (linked.isEmpty()) return this
+    val occupied = links.map { it.start until it.end }
+    return AnnotatedString.Builder(this)
+        .apply {
+            linked.forEach { (link, flank) ->
+                // A gap already inside another link (a chip inside a Markdown link) keeps that link.
+                if (occupied.any { it.first <= flank.first && flank.last <= it.last }) return@forEach
+                when (link) {
+                    is LinkAnnotation.Url -> addLink(link, flank.first, flank.last + 1)
+                    is LinkAnnotation.Clickable -> addLink(link, flank.first, flank.last + 1)
+                }
+            }
+        }
+        .toAnnotatedString()
+}
+
+private fun LinkAnnotation.withoutRaftLinkStyles(): LinkAnnotation =
+    when (this) {
+        is LinkAnnotation.Url -> LinkAnnotation.Url(url = url, linkInteractionListener = linkInteractionListener)
+        is LinkAnnotation.Clickable -> LinkAnnotation.Clickable(tag = tag, linkInteractionListener = linkInteractionListener)
+        else -> this
+    }
 
 /**
  * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
