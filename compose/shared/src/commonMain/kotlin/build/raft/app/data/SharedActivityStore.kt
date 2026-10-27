@@ -26,6 +26,7 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
@@ -1053,6 +1054,17 @@ class SharedActivityStore internal constructor(
             dropRetainedRows(intent) { true }
         }
         event.channelUpdatedId()?.let(::checkRetainedChannelReadableLocked)
+        if (event is ThreadFollowersUpdated) {
+            // A task conversation row shows the reader's follow state (Unfollow / Follow). The frame
+            // (slock threadFollowerRealtimeService, to the conversation's room) does not say whose
+            // follow changed — another device, a server auto-follow, or an agent — so only a row
+            // for that conversation re-reads Activity, through the debounced single-flight
+            // background reconcile. Thread rows keep today's behavior (web refetches agent
+            // followers only).
+            val threadChannelId = event.threadChannelId
+            val hasRow = _state.value.items.any { it.isTaskConversation && it.threadChannelId == threadChannelId }
+            return if (hasRow) scheduleRealtimeBackgroundReconcileLocked() else null
+        }
         if (!event.refreshesActivity()) return null
         when (event) {
             // Not past a mute (the shell's allowLocalPatch): the served row stops there.
