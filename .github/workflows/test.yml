@@ -328,7 +328,7 @@ jobs:
         run: rm -rf "$GRADLE_USER_HOME" && mkdir -p "$GRADLE_USER_HOME"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
         with:
           # Re-enable the Gradle cache so the local build cache (caches/build-cache-1)
           # and dependency bundles restore across runs — with cache-disabled the Android
@@ -929,7 +929,7 @@ jobs:
         uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
       # The device target (:shared:compileKotlinIosArm64, ~1.5 min on top of the simulator
