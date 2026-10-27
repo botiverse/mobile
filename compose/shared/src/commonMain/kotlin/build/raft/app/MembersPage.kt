@@ -66,6 +66,8 @@ import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueReportSubmission
+import build.raft.app.data.AgentIssueTicketRequest
+import build.raft.app.data.AgentIssueTranscriptRequestState
 import build.raft.app.data.AgentAppLoginItem
 import build.raft.app.data.AgentAppLoginLoadState
 import build.raft.app.data.AgentAppLoginSnapshot
@@ -699,7 +701,9 @@ internal sealed interface MembersMachineStatusRow {
     data object NoComputer : MembersMachineStatusRow
     data class Machine(
         val online: Boolean,
-        val runLabel: MembersMachineRunLabel
+        val runLabel: MembersMachineRunLabel,
+        /** The requester attached this machine's Computer (web `computerAttachedByCurrentUser`). */
+        val attachedByCurrentUser: Boolean = false
     ) : MembersMachineStatusRow
 }
 
@@ -738,7 +742,8 @@ internal fun membersMachineStatusRow(
     val machine = machines.firstOrNull { it.id == id } ?: return MembersMachineStatusRow.NoComputer
     return MembersMachineStatusRow.Machine(
         online = machine.status == ComputerStatus.Online,
-        runLabel = membersMachineRunLabel(machine)
+        runLabel = membersMachineRunLabel(machine),
+        attachedByCurrentUser = machine.attachedByCurrentUser
     )
 }
 
@@ -3615,7 +3620,11 @@ private class MemberDetailRouteProvider(
                 includeLiveActivity = request.includeLiveActivity,
                 includeActivityHistory = request.includeActivityHistory,
                 includeRuntimeTranscript = request.includeRuntimeTranscript,
-                liveActivity = request.liveActivity
+                liveActivity = request.liveActivity,
+                title = request.title,
+                locale = request.locale,
+                includeMachineLogTail = request.includeMachineLogTail,
+                canIncludeMachineLog = request.canIncludeMachineLog
             )
         )
         if (result !is DataResult.Content) {
@@ -3623,6 +3632,9 @@ private class MemberDetailRouteProvider(
         }
         return result
     }
+
+    suspend fun retryIssueTicket(server: ServerSummary, request: AgentIssueTicketRequest): DataResult<String> =
+        agentIssueReportRepository.fileTicket(server.id, request)
 }
 
 @Composable
@@ -3674,7 +3686,9 @@ private fun rememberMemberDetailRouteProvider(
             selectedServerStore = selectedServerStore,
             networkClient = networkClient,
             sha256Hex = codecModule::sha256,
-            logger = { message -> bridge.log("member_detail_agent_issue $message") }
+            logger = { message -> bridge.log("member_detail_agent_issue $message") },
+            feedbackClientKind = raftFeedbackWebViewClientKind(),
+            feedbackClientVersion = build.raft.app.network.RaftAppIdentityRegistry.current()?.version.orEmpty()
         )
     }
     val computersApiClient = remember(networkClient) {
@@ -4476,6 +4490,10 @@ internal fun MemberDetailPageContent(
                                     )
                                 }
 
+                                override suspend fun retryIssueTicket(
+                                    request: AgentIssueTicketRequest
+                                ): DataResult<String> = provider.retryIssueTicket(current.server, request)
+
                                 override suspend fun updateAgentProfile(
                                     request: AgentProfileUpdateRequest
                                 ): DataResult<MemberProfile> =
@@ -4642,7 +4660,13 @@ internal fun MemberDetailPageContent(
                             },
                             onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
                             onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
-                            onReportAgentIssue = agentDetailActions::reportIssue
+                            onReportAgentIssue = agentDetailActions::reportIssue,
+                            // Web "View Ticket" opens Settings › Feedback on the ticket; the app's
+                            // Feedback page is the same web workspace, hosted in a WebView.
+                            onOpenFeedbackTicket = { ticketId ->
+                                provider.bridge.log("member_detail_feedback_ticket_open")
+                                pager.openSettingsFeedbackWebViewPage(provider.storeScope, ticketId = ticketId)
+                            }
                         ),
                         timeContext = timeContext,
                         presentation = MembersAgentDetailPresentation(
@@ -4952,7 +4976,9 @@ private fun MemberDetailVisualSeedContent(
                         artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
                         serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
                         issueDescription = "The agent stopped responding after a long-running command.",
-                        transcriptRequested = true
+                        transcriptRequested = true,
+                        transcriptRequestState = AgentIssueTranscriptRequestState.Requested,
+                        ticketId = "3f6c2a10-8d4b-4e2f-9a1c-5b7d8e9f0a1b"
                     )
                 )
             }
@@ -5876,7 +5902,9 @@ private class MembersAgentDetailCallbacks(
     val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
     val onCopyAgentDiagnostics: (String) -> Unit,
     val onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
-    val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?
+    val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
+    /** Opens a report's feedback ticket (Settings › Feedback on that ticket); null hides View Ticket. */
+    val onOpenFeedbackTicket: ((String) -> Unit)? = null
 )
 
 /** Agent remote controls the detail page offers beyond the lifecycle actions (web parity). */
@@ -5990,6 +6018,7 @@ private fun MembersDetailContent(
     val agentWorkspaceChildrenLoader = agentCallbacks.agentWorkspaceChildrenLoader
     val onCopyAgentDiagnostics = agentCallbacks.onCopyAgentDiagnostics
     val onCopyAgentIssueReference = agentCallbacks.onCopyAgentIssueReference
+    val onOpenFeedbackTicket = agentCallbacks.onOpenFeedbackTicket
     val onReportAgentIssue = agentCallbacks.onReportAgentIssue
     val onBack = actions.onBack
     val onOpenDirectMessage = actions.onOpenDirectMessage
@@ -6017,6 +6046,8 @@ private fun MembersDetailContent(
     val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
     val diagnosticsCopied = stringResource(Res.string.member_action_diagnostics_copied)
     val issueReported = stringResource(Res.string.member_action_issue_reported)
+    val issueReportTitle = stringResource(Res.string.member_report_issue_title_for_agent, member.displayName)
+    val issueTicketRetryFailed = stringResource(Res.string.member_report_issue_retry_ticket_failed)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
@@ -6143,6 +6174,10 @@ private fun MembersDetailContent(
     var reportIssueDialogOpen by remember(member.id.value) { mutableStateOf(false) }
     var issueReportReceipt by remember(member.id.value) { mutableStateOf<AgentIssueReportResult?>(null) }
     var issueReportReferenceCopied by remember(member.id.value) { mutableStateOf(false) }
+    var issueTicketRetrying by remember(member.id.value) { mutableStateOf(false) }
+    // Set before the launch: a second tap in the same frame must not file a second ticket (every
+    // submit gets a new submission id, so the server's dedup can't catch it).
+    var issueReportSubmitting by remember(member.id.value) { mutableStateOf(false) }
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
@@ -6229,7 +6264,9 @@ private fun MembersDetailContent(
                         artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
                         serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
                         issueDescription = "The agent stopped responding after a long-running command.",
-                        transcriptRequested = true
+                        transcriptRequested = true,
+                        transcriptRequestState = AgentIssueTranscriptRequestState.Requested,
+                        ticketId = "3f6c2a10-8d4b-4e2f-9a1c-5b7d8e9f0a1b"
                     )
                 issueReportReferenceCopied = false
             }
@@ -6416,62 +6453,65 @@ private fun MembersDetailContent(
                 )
         }
     }
-    fun submitIssueReport(
-        description: String,
-        includeRecentMessages: Boolean,
-        includeLiveActivity: Boolean,
-        includeActivityHistory: Boolean,
-        includeRuntimeTranscript: Boolean
-    ) {
+    fun submitIssueReport(selection: MembersAgentIssueReportSelection, canIncludeMachineLog: Boolean) {
         val callback = onReportAgentIssue
-        if (diagnosticInFlight != null) return
+        if (diagnosticInFlight != null || issueReportSubmitting) return
         if (agentDetailActions == null && callback == null) {
             onUnavailableAction(issueReportingUnavailable)
             return
         }
+        issueReportSubmitting = true
         scope.launch {
-            diagnosticActionState =
-                MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
-            val request =
-                SharedAgentIssueReportRequest(
-                    description = description.trim(),
-                    diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState),
-                    includeRecentMessages = includeRecentMessages,
-                    includeLiveActivity = includeLiveActivity,
-                    includeActivityHistory = includeActivityHistory,
-                    includeRuntimeTranscript = includeRuntimeTranscript,
-                    liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty()
-                )
-            val result =
-                if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                    sharedAgentDetailStore.reportIssue(request, agentDetailActions)
-                } else {
-                    try {
-                        requireNotNull(callback).invoke(request)
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (_: Throwable) {
-                        DataResult.Error(ScreenError("agent_issue_report_failed"))
+            try {
+                diagnosticActionState =
+                    MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
+                val request =
+                    SharedAgentIssueReportRequest(
+                        description = selection.description.trim(),
+                        diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState),
+                        includeRecentMessages = selection.includeRecentMessages,
+                        includeLiveActivity = selection.includeLiveActivity,
+                        includeActivityHistory = selection.includeActivityHistory,
+                        includeRuntimeTranscript = selection.includeRuntimeTranscript,
+                        liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty(),
+                        title = issueReportTitle,
+                        locale = raftCurrentUiLocaleTag(),
+                        includeMachineLogTail = selection.includeMachineLogTail,
+                        canIncludeMachineLog = canIncludeMachineLog
+                    )
+                val result =
+                    if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                        sharedAgentDetailStore.reportIssue(request, agentDetailActions)
+                    } else {
+                        try {
+                            requireNotNull(callback).invoke(request)
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            DataResult.Error(ScreenError("agent_issue_report_failed"))
+                        }
                     }
+                val error =
+                    when (result) {
+                        is DataResult.Content -> null
+                        is DataResult.Empty -> ScreenError(result.reason.name, retryable = false)
+                        is DataResult.Error -> result.error
+                        is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false)
+                    }
+                diagnosticActionState =
+                    MembersAgentDiagnosticActionState(
+                        actionKey = "report",
+                        inProgress = false,
+                        error = error,
+                        successLabel = issueReported.takeIf { error == null }
+                    )
+                if (result is DataResult.Content) {
+                    reportIssueDialogOpen = false
+                    issueReportReceipt = result.data
+                    issueReportReferenceCopied = false
                 }
-            val error =
-                when (result) {
-                    is DataResult.Content -> null
-                    is DataResult.Empty -> ScreenError(result.reason.name, retryable = false)
-                    is DataResult.Error -> result.error
-                    is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false)
-                }
-            diagnosticActionState =
-                MembersAgentDiagnosticActionState(
-                    actionKey = "report",
-                    inProgress = false,
-                    error = error,
-                    successLabel = issueReported.takeIf { error == null }
-                )
-            if (result is DataResult.Content) {
-                reportIssueDialogOpen = false
-                issueReportReceipt = result.data
-                issueReportReferenceCopied = false
+            } finally {
+                issueReportSubmitting = false
             }
         }
     }
@@ -6938,20 +6978,17 @@ private fun MembersDetailContent(
         }
         if (reportIssueDialogOpen && member.kind == MemberKind.Agent) {
             val reportState = effectiveDiagnosticActionState?.takeIf { it.actionKey == "report" }
+            // Web `canIncludeMachineLog`: the agent's machine was attached by the reporter.
+            val canIncludeMachineLog =
+                (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)
+                    ?.attachedByCurrentUser == true
             MembersAgentIssueReportDialog(
                 agentName = member.displayName,
                 runtimeTranscriptAvailable = detail?.summary?.machineId?.isNotBlank() == true,
+                canIncludeMachineLog = canIncludeMachineLog,
                 busy = reportState?.inProgress == true,
                 errorMessage = reportState?.error?.userFacingMessage(errorStrings),
-                onSubmit = { description, includeRecentMessages, includeLiveActivity, includeActivityHistory, includeRuntimeTranscript ->
-                    submitIssueReport(
-                        description,
-                        includeRecentMessages,
-                        includeLiveActivity,
-                        includeActivityHistory,
-                        includeRuntimeTranscript
-                    )
-                },
+                onSubmit = { selection -> submitIssueReport(selection, canIncludeMachineLog) },
                 onDismiss = {
                     if (reportState?.inProgress != true) {
                         reportIssueDialogOpen = false
@@ -6960,13 +6997,43 @@ private fun MembersDetailContent(
             )
         }
         issueReportReceipt?.let { receipt ->
+            val retryActions = agentDetailActions
             MembersAgentIssueReportReceiptDialog(
                 receipt = receipt,
                 referenceCopied = issueReportReferenceCopied,
+                ticketRetrying = issueTicketRetrying,
                 onCopyReference = {
                     onCopyAgentIssueReference(buildMembersAgentIssueReportReference(receipt))
                     issueReportReferenceCopied = true
                 },
+                onRetryTicket =
+                    receipt.ticketRequest?.takeIf { retryActions != null }?.let { ticketRequest ->
+                        {
+                            if (!issueTicketRetrying) {
+                                issueTicketRetrying = true
+                                scope.launch {
+                                    try {
+                                        val retried = requireNotNull(retryActions).retryIssueTicket(ticketRequest)
+                                        if (retried !is DataResult.Content) {
+                                            onUnavailableAction(issueTicketRetryFailed)
+                                        } else if (issueReportReceipt?.reportId == receipt.reportId) {
+                                            issueReportReceipt = receipt.copy(ticketId = retried.data)
+                                        }
+                                    } finally {
+                                        issueTicketRetrying = false
+                                    }
+                                }
+                            }
+                        }
+                    },
+                onViewTicket =
+                    onOpenFeedbackTicket?.let { open ->
+                        { ticketId: String ->
+                            issueReportReceipt = null
+                            issueReportReferenceCopied = false
+                            open(ticketId)
+                        }
+                    },
                 onDismiss = {
                     issueReportReceipt = null
                     issueReportReferenceCopied = false
@@ -7812,361 +7879,6 @@ private fun MembersArchiveWorkspaceOption(
                 style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = RaftColor.TextMutedGray
             )
-        }
-    }
-}
-
-@Composable
-internal fun MembersAgentIssueReportDialog(
-    agentName: String,
-    runtimeTranscriptAvailable: Boolean,
-    busy: Boolean,
-    errorMessage: String?,
-    onSubmit: (String, Boolean, Boolean, Boolean, Boolean) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var description by remember(agentName) { mutableStateOf(TextFieldValue()) }
-    var consented by remember(agentName) { mutableStateOf(false) }
-    var includeRecentMessages by remember(agentName) { mutableStateOf(true) }
-    var includeLiveActivity by remember(agentName) { mutableStateOf(true) }
-    var includeActivityHistory by remember(agentName) { mutableStateOf(true) }
-    var includeRuntimeTranscript by remember(agentName, runtimeTranscriptAvailable) {
-        mutableStateOf(runtimeTranscriptAvailable)
-    }
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.member_report_issue_title).raftDisplayUppercase(),
-        dismissEnabled = !busy,
-        keyboardAvoidanceEnabled = true,
-        maxWidth = 384.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        onDismiss = onDismiss
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
-        ) {
-            item {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .raftCardSurface(fill = RaftColor.Card)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_agent_label))
-                    Text(
-                        text = agentName,
-                        style = RaftType.ButtonBold,
-                        color = RaftColor.TextBlack
-                    )
-                }
-            }
-            item {
-                RaftField(
-                    label = stringResource(Res.string.member_report_issue_description_label),
-                    modifier = Modifier.fillMaxWidth(),
-                    optional = true,
-                    enabled = !busy
-                ) {
-                    RaftTextarea(
-                        value = description,
-                        onValueChange = { description = it },
-                        placeholder = stringResource(Res.string.member_report_issue_description_placeholder)
-                    )
-                }
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_include))
-                    MembersAgentIssueReportOption(
-                        label = stringResource(Res.string.member_report_issue_recent_messages),
-                        checked = includeRecentMessages,
-                        enabled = !busy,
-                        onCheckedChange = { includeRecentMessages = it }
-                    )
-                    MembersAgentIssueReportOption(
-                        label = stringResource(Res.string.member_report_issue_live_activity),
-                        checked = includeLiveActivity,
-                        enabled = !busy,
-                        onCheckedChange = { includeLiveActivity = it }
-                    )
-                    MembersAgentIssueReportOption(
-                        label = stringResource(Res.string.member_report_issue_activity_history),
-                        checked = includeActivityHistory,
-                        enabled = !busy,
-                        onCheckedChange = { includeActivityHistory = it }
-                    )
-                    MembersAgentIssueReportOption(
-                        label = stringResource(Res.string.member_report_issue_runtime_transcript),
-                        checked = includeRuntimeTranscript,
-                        enabled = runtimeTranscriptAvailable && !busy,
-                        onCheckedChange = { includeRuntimeTranscript = it }
-                    )
-                    if (!runtimeTranscriptAvailable) {
-                        Text(
-                            text = stringResource(Res.string.member_report_issue_runtime_transcript_unavailable),
-                            modifier = Modifier.padding(start = 26.dp),
-                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                            color = RaftColor.TextMutedGray
-                        )
-                    }
-                }
-            }
-            item {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                            .raftCardSurface(fill = RaftColor.WarningSoft)
-                            .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        RaftLucideIcon(
-                            RaftLucideIconName.TriangleAlert,
-                            modifier = Modifier.size(18.dp),
-                            color = RaftColor.TextBlackArgb
-                        )
-                        Text(
-                            text = stringResource(Res.string.member_report_issue_disclosure),
-                            modifier = Modifier.weight(1f),
-                            style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                            color = RaftColor.TextBlack
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { consented = !consented },
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RaftAppCheckbox(
-                            checked = consented,
-                            onCheckedChange = { consented = it },
-                            enabled = !busy,
-                            size = 16.dp
-                        )
-                        Text(
-                            text = stringResource(Res.string.member_report_issue_consent),
-                            modifier = Modifier.weight(1f),
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = RaftColor.TextBlack
-                        )
-                    }
-                }
-            }
-            errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
-                item {
-                    Text(
-                        text = stringResource(Res.string.member_report_issue_failed, message),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.AccentRed
-                    )
-                }
-            }
-        }
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                enabled = !busy,
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg
-            )
-            RaftButton(
-                text =
-                    if (busy) {
-                        stringResource(Res.string.member_report_issue_submitting)
-                    } else {
-                        stringResource(Res.string.member_report_issue_submit)
-                    },
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bug) },
-                enabled = consented,
-                loading = busy,
-                // Web ReportIssueDialog submits with the pink primary action, lg in the footer.
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg,
-                onClick = {
-                    onSubmit(
-                        description.text,
-                        includeRecentMessages,
-                        includeLiveActivity,
-                        includeActivityHistory,
-                        includeRuntimeTranscript
-                    )
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembersAgentIssueReportOption(
-    label: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onCheckedChange(!checked) },
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftAppCheckbox(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            size = 16.dp
-        )
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            // Web option labels are text-sm, regular weight.
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
-        )
-    }
-}
-
-internal fun buildMembersAgentIssueReportReference(
-    receipt: AgentIssueReportResult
-): String = buildList {
-    add("reportId: ${receipt.reportId}")
-    add("serverId: ${receipt.serverId}")
-    receipt.artifactId?.takeIf { it.isNotBlank() }?.let { artifactId ->
-        add("artifactId: $artifactId")
-    }
-    receipt.issueDescription?.takeIf { it.isNotBlank() }?.let { description ->
-        add("issueDescription:\n$description")
-    }
-}.joinToString("\n")
-
-@Composable
-private fun MembersAgentIssueReportReferenceRow(
-    label: String,
-    value: String
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label.raftDisplayUppercase(),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = RaftColor.TextBlack.copy(alpha = 0.6f)
-        )
-        Text(
-            text = value,
-            style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-            color = RaftColor.TextBlack
-        )
-    }
-}
-
-@Composable
-private fun MembersAgentIssueReportReceiptDialog(
-    receipt: AgentIssueReportResult,
-    referenceCopied: Boolean,
-    onCopyReference: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.member_report_issue_success_title).raftDisplayUppercase(),
-        maxWidth = 384.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        onDismiss = onDismiss
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .raftCardSurface(fill = RaftColor.SuccessSoft),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(
-                    RaftLucideIconName.CircleCheckBig,
-                    modifier = Modifier.size(24.dp),
-                    color = RaftColor.TextBlackArgb
-                )
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = stringResource(Res.string.member_report_issue_success_body),
-                    style = RaftType.ButtonBold,
-                    color = RaftColor.TextBlack,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = stringResource(Res.string.member_report_issue_success_hint),
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = RaftColor.TextBlack.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .raftCardSurface(fill = RaftColor.Card)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_reference_label))
-                MembersAgentIssueReportReferenceRow(
-                    label = stringResource(Res.string.member_report_issue_report_id),
-                    value = receipt.reportId
-                )
-                receipt.artifactId?.takeIf { it.isNotBlank() }?.let { artifactId ->
-                    MembersAgentIssueReportReferenceRow(
-                        label = stringResource(Res.string.member_report_issue_artifact_id),
-                        value = artifactId
-                    )
-                }
-                MembersAgentIssueReportReferenceRow(
-                    label = stringResource(Res.string.member_report_issue_server_id),
-                    value = receipt.serverId
-                )
-                if (receipt.transcriptRequested) {
-                    MembersAgentIssueReportReferenceRow(
-                        label = stringResource(Res.string.member_report_issue_runtime_transcript_label),
-                        value = stringResource(Res.string.member_report_issue_runtime_transcript_queued)
-                    )
-                }
-                // Web ReportIssueDialog: outline (default) md inside the receipt card.
-                RaftButton(
-                    text =
-                        if (referenceCopied) {
-                            stringResource(Res.string.member_report_issue_reference_copied)
-                        } else {
-                            stringResource(Res.string.member_report_issue_copy_reference)
-                        },
-                    leadingIcon = {
-                        RaftSlotIcon(if (referenceCopied) RaftLucideIconName.Check else RaftLucideIconName.Copy)
-                    },
-                    variant = RaftButtonVariant.Default,
-                    size = RaftButtonSize.Md,
-                    onClick = onCopyReference
-                )
-            }
-            RaftDialogFooter {
-                RaftButton(
-                    text = stringResource(Res.string.common_done),
-                    onClick = onDismiss,
-                    size = RaftButtonSize.Lg
-                )
-            }
         }
     }
 }

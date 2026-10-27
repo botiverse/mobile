@@ -5,46 +5,46 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class MembersAgentIssueReportReceiptTest {
+    // Web ReportIssueDialog handleCopyReportReference: reportId, serverId, then the description.
     @Test
-    fun copiedReferenceKeepsFullReportAndArtifactIds() {
-        val reference =
-            buildMembersAgentIssueReportReference(
-                receipt =
-                    AgentIssueReportResult(
-                        reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
-                        artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
-                        serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
-                        issueDescription = "Agent stopped responding",
-                        transcriptRequested = true
-                    )
-            )
-
-        assertEquals(
-            "reportId: 7e91c120-f424-42d7-96e5-21eb816866d0\n" +
+    fun copiedReferenceMatchesWebReportReference() {
+        listOf(
+            "Agent stopped responding" to
+                "reportId: 7e91c120-f424-42d7-96e5-21eb816866d0\n" +
                 "serverId: 65598229-cd0a-4e92-96f3-c33e7e2e4cc1\n" +
-                "artifactId: 95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab\n" +
                 "issueDescription:\nAgent stopped responding",
-            reference
-        )
+            null to
+                "reportId: 7e91c120-f424-42d7-96e5-21eb816866d0\n" +
+                "serverId: 65598229-cd0a-4e92-96f3-c33e7e2e4cc1"
+        ).forEach { (description, expected) ->
+            val reference =
+                buildMembersAgentIssueReportReference(
+                    receipt =
+                        AgentIssueReportResult(
+                            reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
+                            artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
+                            serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
+                            issueDescription = description,
+                            transcriptRequested = true
+                        )
+                )
+            assertEquals(expected, reference)
+        }
     }
 
     @Test
-    fun copiedReferenceOmitsMissingArtifactWithoutLosingReportId() {
-        val reference =
-            buildMembersAgentIssueReportReference(
-                receipt =
-                    AgentIssueReportResult(
-                        reportId = "report-12345678",
-                        artifactId = null,
-                        serverId = "server-1",
-                        issueDescription = null,
-                        transcriptRequested = false
-                    )
-            )
+    fun disclosureBoldsTheStrongPhraseOnly() {
+        val text = membersAgentIssueDisclosure("This report may contain %1\$s. Redaction is best-effort.", "prompt history")
+        assertEquals("This report may contain prompt history. Redaction is best-effort.", text.text)
+        val bold = text.spanStyles.single()
+        assertEquals("prompt history", text.text.substring(bold.start, bold.end))
+    }
 
-        assertEquals(
-            "reportId: report-12345678\nserverId: server-1",
-            reference
-        )
+    @Test
+    fun machineLogTailFollowsOwnershipUntilTouched() {
+        assertEquals(true, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = true))
+        assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = false))
+        assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = false, canIncludeMachineLog = true))
+        assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = true, canIncludeMachineLog = false))
     }
 }

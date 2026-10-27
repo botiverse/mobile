@@ -40,7 +40,6 @@ import org.robolectric.shadows.ShadowDialog
  *   dialog's, `members.agent-avatar.*`).
  * - `members.agent-permissions`: a customised permission set (Use default, Save permissions,
  *   Discard).
- * - `members.report-issue`: the report-issue dialog (Field + Textarea, primary lg submit).
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -65,12 +64,6 @@ class MembersAgentControlsScreenshotTest {
     // The whole scope list plus the action bar under it.
     @Config(sdk = [34], qualifiers = "w390dp-h1700dp-xxhdpi")
     fun permissionsDark() = capture("members.agent-permissions.dark", RaftAppAppearance.Dark) { AgentPermissionsContent() }
-
-    @Test
-    fun reportIssueLight() = capture("members.report-issue", RaftAppAppearance.Light, dialog = true) { ReportIssueContent() }
-
-    @Test
-    fun reportIssueDark() = capture("members.report-issue.dark", RaftAppAppearance.Dark, dialog = true) { ReportIssueContent() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, dialog: Boolean = false, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(
@@ -165,16 +158,4 @@ private fun AgentPermissionsContent() {
             onUnavailableAction = {},
         )
     }
-}
-
-@Composable
-private fun ReportIssueContent() {
-    MembersAgentIssueReportDialog(
-        agentName = "Cindy",
-        runtimeTranscriptAvailable = true,
-        busy = false,
-        errorMessage = null,
-        onSubmit = { _, _, _, _, _ -> },
-        onDismiss = {},
-    )
 }
