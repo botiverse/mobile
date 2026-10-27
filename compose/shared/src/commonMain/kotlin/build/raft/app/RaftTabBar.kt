@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
@@ -133,8 +134,8 @@ private val RaftNativeHostTabBarFallbackHeight = 49.dp
 internal fun raftAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
     val nativeTabBar = raftNativeTabBarBridge()
     if (nativeTabBar != null) {
-        val bandPoints by nativeTabBar.bottomInsetPoints.collectAsState()
-        return raftNativeHostTabBarContentInset(bandPoints.toFloat().dp, bottomSafeArea)
+        val band by nativeTabBar.band.collectAsState()
+        return raftNativeHostTabBarContentInset(band, bottomSafeArea)
     }
     return raftAppBottomTabBarContentInset(
         renderer = raftAppTabBarRenderer(),
@@ -147,6 +148,16 @@ internal fun raftAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
  * area, so the safe area is not added again; content keeps the shared Lg breathing room above
  * the bar. Before the host reports a band, a compact UIKit bar plus the safe area is assumed.
  */
+internal fun raftNativeHostTabBarContentInset(band: RaftNativeTabBarBand?, bottomSafeArea: Dp): Dp =
+    when {
+        band == null -> raftNativeHostTabBarContentInset(0.dp, bottomSafeArea)
+        band.edge == RaftNativeTabBarEdge.Bottom ->
+            raftNativeHostTabBarContentInset(band.points.toFloat().dp, bottomSafeArea)
+        // The bar sits on another edge (top or side, reserved by raftNativeTabBarEdgeInsets):
+        // the bottom keeps only the safe area, like a page without a bar.
+        else -> bottomSafeArea + RaftAppSpacing.Lg
+    }
+
 internal fun raftNativeHostTabBarContentInset(nativeBand: Dp, bottomSafeArea: Dp): Dp {
     val band = if (nativeBand > 0.dp) nativeBand else RaftNativeHostTabBarFallbackHeight + bottomSafeArea
     return band + RaftAppSpacing.Lg
@@ -203,7 +214,8 @@ internal fun RaftVerticalTabBar(
     sectionStartPadding: Dp = 6.dp,
     itemStartPadding: Dp = 14.dp
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    // Sticker items on the page's canvas: the whole list stays out of the horizontal safe area.
+    Column(modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
         var lastSection: String? = null
         items.forEachIndexed { index, item ->
             if (item.section != null && item.section != lastSection) {

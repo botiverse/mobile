@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControlOption
@@ -78,7 +79,7 @@ internal fun SettingsMobileContent(
             else -> null
         }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {

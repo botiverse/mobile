@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactWebUrl
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalBadge
@@ -1262,6 +1263,7 @@ internal fun SharedActivityFilterBar(
                 Modifier
                     .fillMaxWidth()
                     .height(54.dp - RaftAppStroke.Thin)
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween

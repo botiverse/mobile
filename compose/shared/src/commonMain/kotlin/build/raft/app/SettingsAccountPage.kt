@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftSpinner
@@ -419,6 +420,7 @@ internal fun SettingsAccountContent(
                     .dismissInputFocusOnScrollableChrome()
                     .background(RaftColor.SurfaceWhite)
                     .padding(top = topSafeArea)
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

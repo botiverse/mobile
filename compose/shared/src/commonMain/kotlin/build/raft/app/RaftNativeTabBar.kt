@@ -2,11 +2,14 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.data.RaftSharedStoreRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -135,6 +138,7 @@ class RaftNativeTabBarBridge {
     private var shellState = RaftNativeTabBarState.Hidden
     private val covers = mutableSetOf<Any>()
     private val mutableBottomInsetPoints = MutableStateFlow(0.0)
+    private val mutableBand = MutableStateFlow<RaftNativeTabBarBand?>(null)
     private var listener: RaftNativeTabBarListener? = null
     private var publisherToken: Any? = null
     private var onSelect: ((String) -> Unit)? = null
@@ -175,10 +179,28 @@ class RaftNativeTabBarBridge {
         return true
     }
 
-    /** Host -> shell: see [bottomInsetPoints]. Non-finite or negative values are ignored. */
+    /**
+     * The edge the host laid the bar out on and the band (points) it covers, measured from that
+     * edge of the page to the bar's inner edge. Null until the host has laid the bar out.
+     * [bottomInsetPoints] mirrors a bottom band and is 0 while the bar sits on another edge.
+     */
+    internal val band: StateFlow<RaftNativeTabBarBand?> = mutableBand.asStateFlow()
+
+    /** Host -> shell: a bottom band; see [updateBand]. */
     fun updateBottomInset(points: Double) {
+        updateBand(RaftNativeTabBarEdge.Bottom.wireName, points)
+    }
+
+    /**
+     * Host -> shell: the bar sits on [edge] ("bottom", "top", "left" or "right", physical) and
+     * covers [points] from that edge of the page. Unknown edges and non-finite or negative values
+     * are ignored.
+     */
+    fun updateBand(edge: String, points: Double) {
         if (!points.isFinite() || points < 0.0) return
-        mutableBottomInsetPoints.value = points
+        val resolved = RaftNativeTabBarEdge.fromWireName(edge) ?: return
+        mutableBand.value = RaftNativeTabBarBand(resolved, points)
+        mutableBottomInsetPoints.value = if (resolved == RaftNativeTabBarEdge.Bottom) points else 0.0
     }
 
     internal fun publish(token: Any, state: RaftNativeTabBarState, onSelect: (String) -> Unit) {
@@ -214,6 +236,22 @@ class RaftNativeTabBarBridge {
     }
 }
 
+/** The page edge a host-drawn tab bar is laid out on (physical: left/right do not flip in RTL). */
+internal enum class RaftNativeTabBarEdge(val wireName: String) {
+    Bottom("bottom"),
+    Top("top"),
+    Left("left"),
+    Right("right");
+
+    companion object {
+        fun fromWireName(name: String): RaftNativeTabBarEdge? =
+            entries.firstOrNull { it.wireName == name.trim().lowercase() }
+    }
+}
+
+/** [points] (== dp on iOS) of the page the host bar covers, measured from [edge]. */
+internal data class RaftNativeTabBarBand(val edge: RaftNativeTabBarEdge, val points: Double)
+
 /** Host-owned bridges by host id. Exported to Swift as `RaftNativeTabBarRegistry.shared`. */
 object RaftNativeTabBarRegistry {
     private val bridges = mutableMapOf<String, RaftNativeTabBarBridge>()
@@ -241,6 +279,37 @@ internal val LocalRaftNativeTabBarBridge = staticCompositionLocalOf<RaftNativeTa
 
 @Composable
 internal fun raftNativeTabBarBridge(): RaftNativeTabBarBridge? = LocalRaftNativeTabBarBridge.current
+
+/**
+ * Space (dp, physical edges) a visible host bar laid out on the top, left or right edge takes
+ * from the page. A bottom bar is reserved through the bottom content inset instead
+ * ([raftAppBottomTabBarContentInset]), and a hidden bar reserves nothing.
+ */
+internal data class RaftNativeTabBarEdgeInsets(val top: Dp = 0.dp, val left: Dp = 0.dp, val right: Dp = 0.dp) {
+    companion object {
+        val Zero = RaftNativeTabBarEdgeInsets()
+    }
+}
+
+internal fun raftNativeTabBarEdgeInsets(band: RaftNativeTabBarBand?, visible: Boolean): RaftNativeTabBarEdgeInsets {
+    if (band == null || !visible) return RaftNativeTabBarEdgeInsets.Zero
+    val points = band.points.toFloat().dp
+    return when (band.edge) {
+        RaftNativeTabBarEdge.Bottom -> RaftNativeTabBarEdgeInsets.Zero
+        RaftNativeTabBarEdge.Top -> RaftNativeTabBarEdgeInsets(top = points)
+        RaftNativeTabBarEdge.Left -> RaftNativeTabBarEdgeInsets(left = points)
+        RaftNativeTabBarEdge.Right -> RaftNativeTabBarEdgeInsets(right = points)
+    }
+}
+
+/** [raftNativeTabBarEdgeInsets] for the current page's host bar; zero without one. */
+@Composable
+internal fun raftNativeTabBarEdgeInsets(): RaftNativeTabBarEdgeInsets {
+    val bridge = raftNativeTabBarBridge() ?: return RaftNativeTabBarEdgeInsets.Zero
+    val band by bridge.band.collectAsState()
+    val state by bridge.state.collectAsState()
+    return raftNativeTabBarEdgeInsets(band, state.visible)
+}
 
 /**
  * Hides the host-drawn bar while this call is composed and [active]: the page is drawing a

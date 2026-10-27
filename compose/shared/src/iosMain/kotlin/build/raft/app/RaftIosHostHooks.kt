@@ -72,6 +72,14 @@ class RaftIosManagedImageBytes(
 object RaftIosHostHooks {
     private var installed = false
 
+    /**
+     * A page controller went away: drop its window-inset snapshot (keyed `ios:page:<uuid>`, see
+     * `RaftPageViewController`). Main thread only.
+     */
+    fun forgetPageWindowInsets(windowId: String) {
+        RaftHostWindowInsets.remove(windowId)
+    }
+
     /** Main thread only. Idempotent. */
     fun install(
         managedImages: RaftIosManagedImageStore?,

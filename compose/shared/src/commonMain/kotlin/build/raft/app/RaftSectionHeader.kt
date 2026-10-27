@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
 
 // raft-ui `sidebarSectionDisclosure`: a 14px chevron (`size-3.5`), `gap-1.5`, all in ink-3.
@@ -238,6 +239,9 @@ internal fun RaftPanelBackHeader(
                     .fillMaxWidth()
                     .padding(top = safeTop)
                     .height(RaftPanelHeaderHeight - RaftAppStroke.Thin)
+                    // The canvas and seam run edge to edge; the content stays out of the
+                    // horizontal safe area.
+                    .raftSafeAreaHorizontalPadding()
                     // The last 44dp icon button's 22dp glyph ends on the 16dp line, like Back's.
                     .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = RaftBackButtonDefaults.EdgeInset),
             verticalAlignment = Alignment.CenterVertically,
@@ -317,7 +321,11 @@ internal fun RaftTopPageHeaderFrame(
                 Modifier
                     .fillMaxWidth()
                     .height(metrics.contentHeight)
-                    .padding(start = contentStartPadding, top = topSafeArea, end = contentEndPadding),
+                    .padding(top = topSafeArea)
+                    // The frame and seam run edge to edge (into the landscape sensor housing's
+                    // side); the title and controls stay out of the horizontal safe area.
+                    .raftSafeAreaHorizontalPadding()
+                    .padding(start = contentStartPadding, end = contentEndPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
             content = content,

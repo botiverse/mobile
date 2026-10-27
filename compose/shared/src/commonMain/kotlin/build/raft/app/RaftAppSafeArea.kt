@@ -1,8 +1,19 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -10,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.LocalRaftSafeAreaInsets
+import build.raft.designsystem.components.RaftSafeAreaInsets
 
 private const val KEY_NATIVE_SAFE_AREA_INSETS_ARE_PIXELS = "slockNativeSafeAreaInsetsArePixels"
 private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
@@ -38,17 +51,64 @@ private const val DEFAULT_HOST_WINDOW_ID = "host:default"
  * its state changes, so a pager composed before the first dispatch re-reads on
  * insert.
  */
-internal class RaftHostWindowInsetSnapshot(
-    topPx: Float,
-    bottomPx: Float,
-    statusBarHidden: Boolean?,
-) {
+internal class RaftHostWindowInsetSnapshot(values: RaftHostWindowInsetValues) {
     /** Null payload = no measurement yet (distinct from a real 0px value). */
-    val state =
-        androidx.compose.runtime.mutableStateOf(
-            Triple(topPx, bottomPx, statusBarHidden)
-        )
+    val state = androidx.compose.runtime.mutableStateOf(values)
 }
+
+/**
+ * One host window-inset measurement, in pixels. [leftPx] / [rightPx] are PHYSICAL edges (the
+ * iOS host's `safeAreaInsets.left/right`); the Android host does not send them and they stay 0
+ * there, because Android pages keep their existing inset handling.
+ */
+internal data class RaftHostWindowInsetValues(
+    val topPx: Float,
+    val bottomPx: Float,
+    val statusBarHidden: Boolean?,
+    val leftPx: Float = 0f,
+    val rightPx: Float = 0f,
+    /**
+     * The page is the content of a sheet (iOS page or form sheet): [topPx] is the sheet's own top
+     * safe area, about 0, so [raftTopSafeAreaPadding] keeps [RaftSheetHeaderTopMargin] above the
+     * header instead.
+     */
+    val presentedAsSheet: Boolean = false,
+)
+
+/**
+ * The top margin a sheet-presented page keeps above its header: the sheet's top edge is not the
+ * screen's, its own top safe area is about 0, and the header must not touch it. The same margin
+ * as a page under a hidden status bar.
+ */
+internal val RaftSheetHeaderTopMargin: Dp = RaftAppSpacing.Md
+
+/**
+ * The top inset of a page from a live host [values] snapshot, in dp: [RaftSheetHeaderTopMargin]
+ * at least for a sheet-presented page, otherwise the host value as is (0 means 0).
+ */
+internal fun resolveRaftLiveTopSafeArea(values: RaftHostWindowInsetValues, density: Float): Dp {
+    val top = if (density > 0f) (values.topPx.coerceAtLeast(0f) / density).dp else 0.dp
+    return if (values.presentedAsSheet) maxOf(top, RaftSheetHeaderTopMargin) else top
+}
+
+/**
+ * Parses one `slockWindowInsetsChanged` payload: `statusBarHeightPx` (top),
+ * `navigationBarHeightPx` (bottom), `safeAreaLeftPx`, `safeAreaRightPx` (physical edges) and
+ * `statusBarHidden`. Missing, blank, negative or non-finite values read as 0.
+ */
+internal fun raftHostWindowInsetsFromEvent(eventData: JSONObject): RaftHostWindowInsetValues =
+    RaftHostWindowInsetValues(
+        topPx = eventData.insetPx("statusBarHeightPx"),
+        bottomPx = eventData.insetPx("navigationBarHeightPx"),
+        statusBarHidden =
+            if (eventData.has("statusBarHidden")) eventData.optBoolean("statusBarHidden") else null,
+        leftPx = eventData.insetPx("safeAreaLeftPx"),
+        rightPx = eventData.insetPx("safeAreaRightPx"),
+        presentedAsSheet = eventData.optBoolean("presentedAsSheet", false),
+    )
+
+private fun JSONObject.insetPx(key: String): Float =
+    optString(key).toFloatOrNull()?.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
 
 internal object RaftHostWindowInsets {
     // Observable: inserting a missing window entry must invalidate readers that
@@ -68,14 +128,34 @@ internal object RaftHostWindowInsets {
         bottomPx: Float,
         statusBarHidden: Boolean?,
         fromLiveEvent: Boolean = true,
+        leftPx: Float = 0f,
+        rightPx: Float = 0f,
     ) {
+        publish(
+            windowId,
+            RaftHostWindowInsetValues(topPx, bottomPx, statusBarHidden, leftPx, rightPx),
+            fromLiveEvent,
+        )
+    }
+
+    fun publish(windowId: String, values: RaftHostWindowInsetValues, fromLiveEvent: Boolean = true) {
         val key = windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
         if (!fromLiveEvent && key in liveSeen) return
         if (fromLiveEvent) liveSeen.add(key)
-        val entry = snapshots.getOrPut(key) {
-            RaftHostWindowInsetSnapshot(topPx, bottomPx, statusBarHidden)
-        }
-        entry.state.value = Triple(topPx, bottomPx, statusBarHidden)
+        val entry = snapshots.getOrPut(key) { RaftHostWindowInsetSnapshot(values) }
+        entry.state.value = values
+    }
+
+    /**
+     * Forgets the window: its snapshot and its live-event mark. The iOS host keys snapshots per
+     * page controller (`ios:page:<uuid>`) and calls this when the controller goes away, so the
+     * map does not grow for the whole session. A page still composed for that id falls back to
+     * its pageData, as before its first publish. Main thread only.
+     */
+    fun remove(windowId: String) {
+        val key = windowId.trim().ifEmpty { DEFAULT_HOST_WINDOW_ID }
+        liveSeen.remove(key)
+        snapshots.remove(key)
     }
 
     /**
@@ -83,25 +163,31 @@ internal object RaftHostWindowInsets {
      * been published. Reading the map (not just a pre-created state) keeps the
      * lookup observable for readers composed before the first publish.
      */
-    fun current(windowId: String): Triple<Float, Float, Boolean?>? =
+    fun current(windowId: String): RaftHostWindowInsetValues? =
         snapshots[windowId]?.state?.value
 
     internal fun seedFromPageDataIfPresent(params: JSONObject) {
         val hasInsetField =
             params.has("safeAreaTop") || params.has("statusBarHeight") ||
-                params.has("safeAreaBottom") || params.has("navigationBarHeight")
+                params.has("safeAreaBottom") || params.has("navigationBarHeight") ||
+                params.has("safeAreaLeft") || params.has("safeAreaRight")
         if (!hasInsetField) return
         RaftHostWindowInsets.publish(
             windowId = params.optString(KEY_HOST_WINDOW_ID).ifBlank { DEFAULT_HOST_WINDOW_ID },
-            topPx = params.optString("safeAreaTop").ifBlank { params.optString("statusBarHeight") }
-                .toFloatOrNull() ?: 0f,
-            bottomPx = params.optString("safeAreaBottom").ifBlank { params.optString("navigationBarHeight") }
-                .toFloatOrNull() ?: 0f,
-            statusBarHidden = if (params.has(KEY_STATUS_BAR_HIDDEN)) {
-                params.optBoolean(KEY_STATUS_BAR_HIDDEN)
-            } else {
-                null
-            },
+            values =
+                RaftHostWindowInsetValues(
+                    topPx = params.optString("safeAreaTop").ifBlank { params.optString("statusBarHeight") }
+                        .toFloatOrNull() ?: 0f,
+                    bottomPx = params.optString("safeAreaBottom").ifBlank { params.optString("navigationBarHeight") }
+                        .toFloatOrNull() ?: 0f,
+                    statusBarHidden = if (params.has(KEY_STATUS_BAR_HIDDEN)) {
+                        params.optBoolean(KEY_STATUS_BAR_HIDDEN)
+                    } else {
+                        null
+                    },
+                    leftPx = params.insetPx("safeAreaLeft"),
+                    rightPx = params.insetPx("safeAreaRight"),
+                ),
             fromLiveEvent = false,
         )
     }
@@ -128,18 +214,7 @@ private fun raftHostWindowIdEnsuringObserver(): String {
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
                     if (pagerEvent != WINDOW_INSETS_PAGER_EVENT) return
-                    RaftHostWindowInsets.publish(
-                        windowId = windowId,
-                        topPx = eventData.optString("statusBarHeightPx").toFloatOrNull() ?: 0f,
-                        bottomPx =
-                            eventData.optString("navigationBarHeightPx").toFloatOrNull() ?: 0f,
-                        statusBarHidden =
-                            if (eventData.has("statusBarHidden")) {
-                                eventData.optBoolean("statusBarHidden")
-                            } else {
-                                null
-                            },
-                    )
+                    RaftHostWindowInsets.publish(windowId, raftHostWindowInsetsFromEvent(eventData))
                 }
             }
         pager.addPagerEventObserver(observer)
@@ -161,14 +236,14 @@ internal fun raftTopSafeAreaPadding(): Dp {
     // bar height would reserve a strip of dead space; keep a small fixed
     // padding instead so page headers are not flush against the top edge.
     val statusBarHidden =
-        live?.third ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)
+        live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)
     if (statusBarHidden) return RaftAppSpacing.Md
-    // A live host snapshot is authoritative (it replaces, so 0 means 0). The
-    // renderer-native and attach-time params are fallbacks for windows with no
-    // host measurement.
+    // A live host snapshot is authoritative (it replaces, so 0 means 0), except that a
+    // sheet-presented page keeps its header off the sheet's top edge. The renderer-native and
+    // attach-time params are fallbacks for windows with no host measurement.
+    if (live != null) return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
     val hostInsetPx =
-        live?.first
-            ?: maxOf(
+        maxOf(
                 params.safeAreaPx("safeAreaTop"),
                 params.safeAreaPx("statusBarHeight"),
             ).takeIf { it > 0f }
@@ -194,7 +269,7 @@ internal fun raftBottomSafeAreaPadding(): Dp {
     if (params.optBoolean("slockHostExcludesNavigationBar", false)) return 0.dp
     val live = RaftHostWindowInsets.current(windowId)
     val hostInsetPx =
-        live?.second
+        live?.bottomPx
             ?: maxOf(
                 params.safeAreaPx("safeAreaBottom"),
                 params.safeAreaPx("navigationBarHeight"),
@@ -212,6 +287,163 @@ internal fun raftBottomSafeAreaPadding(): Dp {
         )
     return if (live != null) hostInsetDp.dp else nativeInsetDp.coerceAtLeast(hostInsetDp).dp
 }
+
+/**
+ * Left/right safe-area insets in dp, on PHYSICAL edges (what UIKit reports; the sensor housing
+ * of an iPhone in landscape, or the iPhone Duo inner display's right-edge status bar).
+ * [start] / [end] resolve them for a layout direction.
+ */
+internal data class RaftHorizontalSafeArea(val left: Dp = 0.dp, val right: Dp = 0.dp) {
+    fun start(layoutDirection: LayoutDirection): Dp =
+        if (layoutDirection == LayoutDirection.Ltr) left else right
+
+    fun end(layoutDirection: LayoutDirection): Dp =
+        if (layoutDirection == LayoutDirection.Ltr) right else left
+
+    /** Per edge, the larger of the two. */
+    fun union(other: RaftHorizontalSafeArea): RaftHorizontalSafeArea =
+        RaftHorizontalSafeArea(maxOf(left, other.left), maxOf(right, other.right))
+
+    val isZero: Boolean get() = left <= 0.dp && right <= 0.dp
+
+    companion object {
+        val Zero = RaftHorizontalSafeArea()
+    }
+}
+
+/**
+ * The horizontal safe area from the host contract ([RaftHostWindowInsetValues.leftPx] /
+ * [RaftHostWindowInsetValues.rightPx]) converted with [density]. Only the host contract counts:
+ * the renderer's own `safeAreaInsets.left/right` are not read, so the Android host (which sends
+ * no horizontal values) keeps its layout unchanged.
+ */
+internal fun resolveRaftHorizontalSafeArea(
+    values: RaftHostWindowInsetValues?,
+    density: Float,
+    visualZeroSafeArea: Boolean = false,
+): RaftHorizontalSafeArea {
+    if (values == null || visualZeroSafeArea || !(density > 0f)) return RaftHorizontalSafeArea.Zero
+    return RaftHorizontalSafeArea(
+        left = (values.leftPx.coerceAtLeast(0f) / density).dp,
+        right = (values.rightPx.coerceAtLeast(0f) / density).dp,
+    )
+}
+
+/** The current page window's horizontal safe area (see [resolveRaftHorizontalSafeArea]). */
+@Composable
+internal fun raftHorizontalSafeArea(): RaftHorizontalSafeArea {
+    val windowId = raftHostWindowIdEnsuringObserver()
+    val params = LocalActivity.current.pageData.params
+    return resolveRaftHorizontalSafeArea(
+        values = RaftHostWindowInsets.current(windowId),
+        density = LocalDensity.current.density,
+        visualZeroSafeArea = params.optBoolean("slockVisualZeroSafeArea", false),
+    )
+}
+
+/** Start-edge safe area of the page's window (layout-direction aware). */
+@Composable
+internal fun raftStartSafeAreaPadding(): Dp = raftHorizontalSafeArea().start(LocalLayoutDirection.current)
+
+/** End-edge safe area of the page's window (layout-direction aware). */
+@Composable
+internal fun raftEndSafeAreaPadding(): Dp = raftHorizontalSafeArea().end(LocalLayoutDirection.current)
+
+/**
+ * The window's horizontal safe area as the enclosing page shells know it (the union of their
+ * [RaftHorizontalSafeAreaShell.required]). A [Modal] is its own full-window layer and pads all of
+ * it itself.
+ */
+internal val LocalRaftWindowHorizontalSafeArea = compositionLocalOf { RaftHorizontalSafeArea.Zero }
+
+/**
+ * What the nearest [RaftHorizontalSafeAreaShell] padded itself: a full-bleed background inside it
+ * ([raftBleedHorizontalSafeArea]) extends back out by this much. Zero inside a page (a page shell
+ * does not pad); the safe area a [Modal] pads inside its window.
+ */
+internal val LocalRaftHorizontalSafeAreaBleed = compositionLocalOf { RaftHorizontalSafeArea.Zero }
+
+/** The design-system form of the safe area ([LocalRaftSafeAreaInsets]). */
+internal fun RaftHorizontalSafeArea.toDesignSystemInsets(): RaftSafeAreaInsets =
+    RaftSafeAreaInsets(left = left.coerceAtLeast(0.dp), right = right.coerceAtLeast(0.dp))
+
+/**
+ * The horizontal safe area for [content] (Apple's rule: backgrounds run edge to edge, content gets
+ * out of the way).
+ *
+ * A page ([windowRoot] false) is NOT padded: its backgrounds (the canvas, a header frame, a list's
+ * selection wash, the composer surface) reach the screen edge. The safe area goes to descendants
+ * as [LocalRaftSafeAreaInsets], and the shared building blocks pad only their content with it
+ * (`raftSafeAreaHorizontalPadding`: the page header and top bar, list and sidebar rows, the
+ * composer, empty and loading states). That padding consumes it like `WindowInsets`, so an
+ * embedded child page inside an already padded container does not pad again, and a child page
+ * shell nested in this one provides the same window inset.
+ *
+ * A [Modal] ([windowRoot] true) is a full-window layer that holds menus, dialogs and sheets: it
+ * keeps padding the whole [required] and consumes it, and a scrim bleeds back over the strips
+ * ([raftBleedHorizontalSafeArea] with [LocalRaftHorizontalSafeAreaBleed]).
+ */
+@Composable
+internal fun RaftHorizontalSafeAreaShell(
+    required: RaftHorizontalSafeArea,
+    windowRoot: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val window = if (windowRoot) required else LocalRaftWindowHorizontalSafeArea.current.union(required)
+    val padding = if (windowRoot) required else RaftHorizontalSafeArea.Zero
+    val paddingValues = PaddingValues.Absolute(left = padding.left, right = padding.right)
+    // Always the same node, whatever the insets: a rotation must not reset the page's state.
+    Box(Modifier.fillMaxSize().padding(paddingValues).consumeWindowInsets(paddingValues)) {
+        CompositionLocalProvider(
+            LocalRaftWindowHorizontalSafeArea provides window,
+            LocalRaftHorizontalSafeAreaBleed provides padding,
+            LocalRaftSafeAreaInsets provides window.toDesignSystemInsets(),
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * The page host's shell: the window's horizontal safe area plus the band of a host tab bar laid
+ * out on a side edge ([raftNativeTabBarEdgeInsets]).
+ */
+@Composable
+internal fun RaftPageHorizontalSafeAreaShell(content: @Composable () -> Unit) {
+    val tabBar = raftNativeTabBarEdgeInsets()
+    RaftHorizontalSafeAreaShell(
+        required = raftHorizontalSafeArea().union(RaftHorizontalSafeArea(tabBar.left, tabBar.right)),
+        content = content,
+    )
+}
+
+/**
+ * Lays the element out [bleed] wider on each physical edge and shifts it back, so a full-bleed
+ * background (a modal scrim) still covers the safe-area strip its shell padded.
+ */
+internal fun Modifier.raftBleedHorizontalSafeArea(bleed: RaftHorizontalSafeArea): Modifier =
+    if (bleed.isZero) {
+        this
+    } else {
+        layout { measurable, constraints ->
+            if (!constraints.hasBoundedWidth) {
+                val placeable = measurable.measure(constraints)
+                return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            }
+            val left = bleed.left.roundToPx().coerceAtLeast(0)
+            val right = bleed.right.roundToPx().coerceAtLeast(0)
+            val placeable =
+                measurable.measure(
+                    constraints.copy(
+                        minWidth = constraints.minWidth + left + right,
+                        maxWidth = constraints.maxWidth + left + right,
+                    )
+                )
+            val width = (placeable.width - left - right).coerceIn(constraints.minWidth, constraints.maxWidth)
+            // place, not placeRelative: the bleed is on physical edges.
+            layout(width, placeable.height) { placeable.place(-left, 0) }
+        }
+    }
 
 @Composable
 internal fun raftKeyboardInsetExcludesBottomSafeArea(): Boolean =

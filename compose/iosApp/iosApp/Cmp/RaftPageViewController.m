@@ -4,6 +4,7 @@
 #import "HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
+#import <shared/shared.h>
 #import <math.h>
 
 static const NSTimeInterval RaftPageMillisPerDay = 86400000.0;
@@ -63,23 +64,23 @@ static UIWindow *RaftPageCurrentKeyWindow(void) {
 #pragma clang diagnostic pop
 }
 
-static CGFloat RaftPageStatusBarHeight(UIWindow *window) {
-    CGRect statusBarFrame = window.windowScene.statusBarManager.statusBarFrame;
-    if (!CGRectIsEmpty(statusBarFrame)) {
-        return CGRectGetHeight(statusBarFrame);
-    }
-    return 0;
-}
-
-static NSString *RaftPagePixelString(CGFloat points, CGFloat scale) {
-    CGFloat pixels = MAX(0, points) * MAX(1, scale);
-    return [NSString stringWithFormat:@"%.3f", pixels];
-}
-
-/** Per-scene window id for the shared window-inset snapshots (RaftAppSafeArea.kt). */
-static NSString *RaftPageWindowId(UIWindow *window) {
-    NSString *session = window.windowScene.session.persistentIdentifier;
-    return session.length > 0 ? [@"ios:" stringByAppendingString:session] : @"ios:default";
+/**
+ * Inset key for the shared window-inset snapshots (RaftAppSafeArea.kt): one per page controller,
+ * because the controller publishes its own view's safeAreaInsets. The page's pageData is fixed at
+ * init, before the page has a window, so a scene id resolved then (from the key window) could name
+ * another Raft scene and two scenes would share one entry.
+ *
+ * Who uses which key:
+ * - A page with its own RaftPageViewController (pushed, presented, a tab root) always gets this
+ *   controller's key; p_mergeHostContextIntoPageData overwrites any id copied in through pageData,
+ *   which would name the page it was copied from.
+ * - A child page embedded inline (shared RaftChildPage) has no controller and no view publishing
+ *   insets; it draws in this controller's view, so the shared side copies this key into the child's
+ *   pageData and the child reads this controller's snapshot.
+ * The snapshot is removed when the controller is deallocated (-dealloc).
+ */
+static NSString *RaftPageWindowId(NSString *controllerToken) {
+    return [@"ios:page:" stringByAppendingString:controllerToken ?: @"default"];
 }
 
 @implementation RaftPageViewController {
@@ -96,7 +97,7 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     BOOL _raftConversationForwardGestureEnabled;
     BOOL _raftAdaptivePanePublishingActive;
     RaftIosAdaptivePanePublisher *_raftAdaptivePanePublisher;
-    NSString *_lastPublishedInsetsKey;
+    RaftIosWindowInsetsPublisher *_raftWindowInsetsPublisher;
     NSNumber *_darkTheme;
 }
 
@@ -104,6 +105,7 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     if (self = [super initWithNibName:nil bundle:nil]) {
         _raftControllerToken = NSUUID.UUID.UUIDString;
         _raftNavigationSession = [RaftAdaptiveNavigationSession new];
+        _raftWindowInsetsPublisher = [[RaftIosWindowInsetsPublisher alloc] init];
         [NSNotificationCenter.defaultCenter addObserver:self
             selector:@selector(raftInvalidateAdaptiveNavigation)
             name:UIApplicationWillResignActiveNotification object:nil];
@@ -435,33 +437,38 @@ static NSString *RaftPageWindowId(UIWindow *window) {
 }
 
 /**
- * Live window insets (the Android host's slockWindowInsetsChanged contract): status bar / top
- * safe area and bottom safe area in pixels, replacing the attach-time pageData seed. Deduplicated.
+ * Live window insets (the Android host's slockWindowInsetsChanged contract): this page view's
+ * safe area on all four edges in pixels, replacing the attach-time pageData seed. The safe area
+ * already includes the status bar on whichever edge it is; statusBarFrame is not used for insets
+ * (a right-edge status bar's frame height can be the whole window). Deduplicated.
  */
 - (void)raftPublishWindowInsets {
-    UIWindow *window = self.viewIfLoaded.window;
+    UIView *view = self.viewIfLoaded;
+    UIWindow *window = view.window;
     if (window == nil || _sendEvent == nil) {
         return;
     }
     CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
-    UIEdgeInsets insets = window.safeAreaInsets;
     BOOL statusBarHidden = window.windowScene.statusBarManager.isStatusBarHidden;
-    CGFloat top = MAX(insets.top, statusBarHidden ? 0 : RaftPageStatusBarHeight(window));
-    NSString *topPx = RaftPagePixelString(top, scale);
-    NSString *bottomPx = RaftPagePixelString(insets.bottom, scale);
     NSString *windowId = [_pageData[RaftHostWindowIdKey] isKindOfClass:NSString.class]
-        ? _pageData[RaftHostWindowIdKey] : RaftPageWindowId(window);
-    NSString *key = [NSString stringWithFormat:@"%@:%@:%d:%@", topPx, bottomPx, statusBarHidden, windowId];
-    if ([key isEqualToString:_lastPublishedInsetsKey]) {
+        ? _pageData[RaftHostWindowIdKey] : RaftPageWindowId(_raftControllerToken);
+    // The content of a page or form sheet (the router presents pages in a navigation controller):
+    // its own top safe area is about 0, so shared keeps the sheet's header off its top edge. A
+    // sheet that adapts to full screen (compact height) is not one.
+    UIViewController *presented = self.navigationController ?: self;
+    BOOL presentedAsSheet = presented.presentingViewController != nil &&
+        presented.presentationController.presentedView != nil &&
+        !CGRectEqualToRect(presented.presentationController.presentedView.frame, window.bounds) &&
+        [RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle];
+    NSDictionary *payload = [_raftWindowInsetsPublisher nextPayloadWithInsets:view.safeAreaInsets
+                                                                        scale:scale
+                                                              statusBarHidden:statusBarHidden
+                                                             presentedAsSheet:presentedAsSheet
+                                                                     windowId:windowId];
+    if (payload == nil) {
         return;
     }
-    _lastPublishedInsetsKey = key;
-    [self raftSendEvent:RaftWindowInsetsPagerEvent data:@{
-        @"statusBarHeightPx": topPx,
-        @"navigationBarHeightPx": bottomPx,
-        @"statusBarHidden": @(statusBarHidden),
-        RaftHostWindowIdKey: windowId,
-    }];
+    [self raftSendEvent:RaftWindowInsetsPagerEvent data:payload];
 }
 
 - (NSDictionary *)p_mergeHostContextIntoPageData:(NSDictionary *)pageParam {
@@ -471,21 +478,28 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     // uses dp. Mark the unit so shared safe-area helpers convert through LocalDensity (on iOS the
     // Compose density is the screen scale) instead of treating 102px as 102dp.
     mParam[@"slockNativeSafeAreaInsetsArePixels"] = @YES;
+    // Provisional seed only (the page has no window yet): the key window's safe area, replaced by
+    // this page's first live slockWindowInsetsChanged.
     UIWindow *window = RaftPageCurrentKeyWindow();
     CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
-    UIEdgeInsets safeAreaInsets = window.safeAreaInsets;
-    CGFloat statusBarHeight = RaftPageStatusBarHeight(window);
-    mParam[@"safeAreaTop"] = RaftPagePixelString(safeAreaInsets.top, scale);
-    mParam[@"safeAreaBottom"] = RaftPagePixelString(safeAreaInsets.bottom, scale);
-    mParam[@"statusBarHeight"] = RaftPagePixelString(statusBarHeight, scale);
-    if (![mParam[RaftHostWindowIdKey] isKindOfClass:NSString.class] && window != nil) {
-        mParam[RaftHostWindowIdKey] = RaftPageWindowId(window);
-    }
+    [mParam addEntriesFromDictionary:[RaftIosWindowInsetsPublisher pageDataSeedWithInsets:window.safeAreaInsets
+                                                                                     scale:scale]];
+    // Always this controller's own key: an id inherited through pageData would name another page.
+    mParam[RaftHostWindowIdKey] = RaftPageWindowId(_raftControllerToken);
     return mParam;
 }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    // The shared inset map is keyed per controller; drop this page's entry so it does not live for
+    // the whole session. The shared registry is main-thread only.
+    NSString *windowId = [_pageData[RaftHostWindowIdKey] isKindOfClass:NSString.class]
+        ? [_pageData[RaftHostWindowIdKey] copy] : nil;
+    if (windowId.length > 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [SharedRaftIosHostHooks.shared forgetPageWindowInsetsWindowId:windowId];
+        });
+    }
 }
 
 @end

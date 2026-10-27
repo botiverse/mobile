@@ -66,6 +66,8 @@ fun RaftTopBar(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = topInset)
+                    // The frame runs edge to edge; its items stay out of the horizontal safe area.
+                    .raftSafeAreaHorizontalPadding()
                     .height(RaftTopBarDefaults.Height - RaftStroke.Hairline),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

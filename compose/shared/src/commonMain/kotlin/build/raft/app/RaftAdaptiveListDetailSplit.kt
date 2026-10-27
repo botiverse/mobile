@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.WindowInsetsSides
+import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -104,7 +106,10 @@ internal fun RaftAdaptiveListDetailSplit(
                         listFillsRow -> Modifier.weight(1f)
                         split -> Modifier.width(listWidthDp.dp)
                         else -> Modifier.width(0.dp)
-                    }.fillMaxHeight(),
+                    }.fillMaxHeight()
+                        // Split: the list's inner side is away from the screen edge, so its rows
+                        // pad no horizontal safe area there (the detail pane's start likewise).
+                        .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier),
             ) {
                 if (dualPane) listPane(active)
             }
@@ -116,7 +121,10 @@ internal fun RaftAdaptiveListDetailSplit(
                         .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
             )
             Box(
-                modifier = (if (listFillsRow) Modifier.width(0.dp) else Modifier.weight(1f)).fillMaxHeight()
+                modifier =
+                    (if (listFillsRow) Modifier.width(0.dp) else Modifier.weight(1f))
+                        .fillMaxHeight()
+                        .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
             ) {
                 if (split || hasSelection) {
                     detailPane(Modifier.fillMaxSize().padding(bottom = detailBottomInset))

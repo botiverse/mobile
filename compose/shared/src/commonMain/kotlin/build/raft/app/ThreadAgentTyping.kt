@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -205,7 +206,7 @@ internal fun ThreadAgentTypingLine(typing: ThreadAgentTypingUi, modifier: Modifi
         contentAlignment = Alignment.BottomStart,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(ThreadAgentTypingLineHeight).padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxWidth().height(ThreadAgentTypingLineHeight).raftSafeAreaHorizontalPadding().padding(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

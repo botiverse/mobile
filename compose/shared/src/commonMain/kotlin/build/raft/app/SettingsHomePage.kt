@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
@@ -11891,6 +11892,7 @@ private fun SharedHomeSearchControlsRow(
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
                 .height(56.dp)
+                .raftSafeAreaHorizontalPadding()
                 .padding(start = startPadding, end = SearchControlsHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -12312,7 +12314,7 @@ private fun SharedHomeSearchFilters(
         LazyRow(
             state = backSwipeRowState,
             userScrollEnabled = backSwipeRow.userScrollEnabled,
-            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             homeSearchFilterOrder(showSenderFilter).forEach { filter ->
@@ -13021,7 +13023,7 @@ internal fun SharedHomeSearchEntityRow(
                         )
                     }
                 }
-                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+                .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -13184,7 +13186,7 @@ private fun SharedHomeThreadResultGroup(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = 4.dp),
+                    .raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
@@ -13290,7 +13292,7 @@ internal fun SharedHomeSearchMessageResultRow(
                 .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
                 .raftSearchRowPressed(pressed, RaftColor.FillPressed)
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
-                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+                .raftSafeAreaHorizontalPadding().padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Row(

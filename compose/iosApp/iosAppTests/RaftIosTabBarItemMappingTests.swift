@@ -148,6 +148,47 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: .nan), 0)
     }
 
+    func testBandOfABottomBarSpansFromItsTopToTheContainerBottom() {
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let band = RaftIosTabBarItemMapping.band(
+            container: container,
+            tabBar: CGRect(x: 0, y: 761, width: 390, height: 83)
+        )
+        XCTAssertEqual(band, RaftIosTabBarBand(edge: .bottom, points: 83))
+    }
+
+    func testBandOfATopBarIsNotReportedAsAFullHeightBottomBand() {
+        // A bar laid out under the status bar at the top: the old minY-based band would have been
+        // 844 - 47 = 797 points of bottom inset.
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let band = RaftIosTabBarItemMapping.band(
+            container: container,
+            tabBar: CGRect(x: 0, y: 47, width: 390, height: 49)
+        )
+        XCTAssertEqual(band, RaftIosTabBarBand(edge: .top, points: 96))
+    }
+
+    func testBandOfSideBarsUsesTheirPhysicalEdge() {
+        let container = CGRect(x: 0, y: 0, width: 951, height: 669)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 851, y: 0, width: 60, height: 669)),
+            RaftIosTabBarBand(edge: .right, points: 100)
+        )
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: 0, width: 80, height: 669)),
+            RaftIosTabBarBand(edge: .left, points: 80)
+        )
+    }
+
+    func testBandRejectsEmptyOrNonFiniteFrames() {
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertNil(RaftIosTabBarItemMapping.band(container: container, tabBar: .zero))
+        XCTAssertNil(RaftIosTabBarItemMapping.band(container: .zero, tabBar: CGRect(x: 0, y: 761, width: 390, height: 83)))
+        XCTAssertNil(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: CGFloat.nan, width: 390, height: 83))
+        )
+    }
+
     // MARK: - iOS 26 server button
 
     private func serverSpec() -> RaftIosTabBarItemSpec {

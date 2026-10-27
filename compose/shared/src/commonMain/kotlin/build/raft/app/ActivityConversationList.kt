@@ -5,6 +5,7 @@ import build.raft.app.data.ActivityObjectEventVerb
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.eventVerb
 import build.raft.app.markdown.lucideIcon
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
@@ -798,7 +799,10 @@ internal fun ActivityConversationListRow(
                         } else {
                             Modifier
                         }
-                    ),
+                    )
+                    // The washes above run edge to edge; the row's content (and its actions)
+                    // stays out of the horizontal safe area.
+                    .raftSafeAreaHorizontalPadding(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(

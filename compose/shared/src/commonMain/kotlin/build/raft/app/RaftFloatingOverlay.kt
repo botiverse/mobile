@@ -254,6 +254,8 @@ internal fun RaftModalDismissBarrier(
     Box(
         modifier =
             Modifier
+                // The veil covers the safe-area strips the enclosing shell padded.
+                .raftBleedHorizontalSafeArea(LocalRaftHorizontalSafeAreaBleed.current)
                 .fillMaxSize()
                 .background(veil)
                 .raftNativeDispatchCapture()

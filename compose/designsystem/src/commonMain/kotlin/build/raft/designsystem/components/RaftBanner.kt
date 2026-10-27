@@ -340,6 +340,7 @@ fun RaftPanelNotice(
                 drawLine(seam, Offset(0f, size.height - w / 2f), Offset(size.width, size.height - w / 2f), strokeWidth = w)
             }
             .heightIn(min = 40.dp)
+            .raftSafeAreaHorizontalPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
         horizontalArrangement = Arrangement.spacedBy(10.dp),

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
@@ -44,7 +45,7 @@ internal fun SettingsAppearanceContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SettingsAppearanceThemeCard() }
