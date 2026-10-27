@@ -554,6 +554,12 @@ class SharedServerMembersStore internal constructor(
     actorResolve: (suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome)? = null,
     /** Where [jointActors] runs its batches; required with [actorResolve]. */
     actorResolveScope: CoroutineScope? = null,
+    /**
+     * Incremental sync (`mobile_sync_changes_v0`) keeps this server's roster current: humans and
+     * machines through the change log, agents through the (re)connect / foreground `/agents` read.
+     * The provider answers with the same decision a (re)connect takes; tests and fixtures keep it off.
+     */
+    private val incrementalSyncCoversRoster: (ServerId) -> Boolean = { false },
 ) {
     private val mutex = Mutex()
 
@@ -1982,6 +1988,40 @@ class SharedServerMembersStore internal constructor(
         reason: String = "unspecified"
     ): DataResult<Unit> {
         return loadMembersIntoStore(serverId, priority, force, reason, expectedOwner = null)
+    }
+
+    /**
+     * The roster read behind Home's agent-status projection (every Home load). With incremental
+     * sync on and the roster already held (loaded from the server, not only durable-seeded), Home
+     * uses that roster: the change log and the jittered `/agents` refetch keep it current, so a
+     * Home reload never reads `/members` + `/agents` + `/machines` again (a reconnect's Home
+     * reloads otherwise undid the agents-only refetch, Tenny 10-27). Sync off, or nothing held
+     * yet: the cached / network load as before.
+     */
+    internal suspend fun refreshMembersForHomeProjection(
+        serverId: ServerId,
+        priority: DataRequestPriority,
+        reason: String,
+    ): DataResult<Unit> {
+        val key = serverId.value.normalizedServerMembersId()
+        if (key != null && incrementalSyncCoversRoster(ServerId(key)) && holdsServerLoadedRoster(ServerId(key))) {
+            logger("store_load domain=server_members serverId=$key result=sync_roster_held network=false reason=$reason")
+            return DataResult.Content(Unit)
+        }
+        return refreshMembers(serverId, priority = priority, force = false, reason = reason)
+    }
+
+    /** Whether incremental sync keeps [serverId]'s lists current (the provider's per-server flag decision). */
+    internal fun incrementalSyncCovers(serverId: ServerId): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        return incrementalSyncCoversRoster(ServerId(key))
+    }
+
+    /** A roster of the current owner loaded from the server (a durable seed alone does not count). */
+    private fun holdsServerLoadedRoster(serverId: ServerId): Boolean {
+        val binding = currentDirectoryOwnerBinding(serverId) ?: return false
+        val entry = _state.value.entriesByServerId[serverId.value] ?: return false
+        return entry.matches(binding) && entry.status == SharedServerMembersLoadStatus.Loaded && !entry.seededFromDurable
     }
 
     internal suspend fun refreshMembers(

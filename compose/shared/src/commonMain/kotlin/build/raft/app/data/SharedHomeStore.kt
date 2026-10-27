@@ -2695,7 +2695,7 @@ internal class SharedHomeStore(
             }
             settleUnreadStaleRecovery(dataResult, fetchedSnapshot?.unreadRetryAfterMillis)
             if (refreshNotificationsAfterLoad) {
-                loadNotifications()
+                loadNotifications(afterHomeLoad = true)
             } else {
                 diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
             }
@@ -2927,10 +2927,11 @@ internal class SharedHomeStore(
         )
     }
 
-    private suspend fun loadNotifications() {
+    private suspend fun loadNotifications(afterHomeLoad: Boolean = false) {
         val requestGeneration = beginNotificationRequest()
         val requestAuthority = authStore.readSession().notificationAuthority()
-        val result = dataSource.loadNotifications()
+        val result =
+            if (afterHomeLoad) dataSource.loadNotificationsAfterHomeLoad() else dataSource.loadNotifications()
         val latestAuthority = authStore.readSession().notificationAuthority()
         beforeNotificationPublicationCommit()
         val commitResult =

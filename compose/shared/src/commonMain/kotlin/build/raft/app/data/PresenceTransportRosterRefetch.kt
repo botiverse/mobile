@@ -21,9 +21,16 @@ import kotlinx.coroutines.launch
  * state changed during the outage and who sends no push stays stale until the refetch.
  *
  * Incremental sync on for the server (`agentsOnlyOnReconnect`, `mobile_sync_changes_v0`): a
- * RE-connect refetches only `/agents` ([SharedServerMembersStore.refreshAgents]), still through
- * [jitter]. Agent online state is not in the change log; humans, machines and channel rosters are
- * (Ray / Tenny 10-27). A first connect keeps the full refetch.
+ * RE-connect refetches only `/agents` ([SharedServerMembersStore.refreshAgents]) and the machine
+ * list ([refreshMachines]), still through [jitter]. Agent presence and machine online status are
+ * not in the change log; humans, machine rows and channel rosters are (Ray / Tenny / Scout 10-27).
+ * A first connect keeps the full refetch.
+ *
+ * A sync-on RE-connect also leaves the roster valid: no [invalidate]. The held roster stays the
+ * process core's cached answer, so a Home reload right after the reconnect (catch-up, sync
+ * `home=true`) reuses it instead of reading `/members` + `/agents` + `/machines` at once, outside
+ * the jitter (staging run 10-27, Tenny). A failed pull still gets the full refetch
+ * ([onSyncPullFailed]).
  */
 internal class PresenceTransportRosterRefetch(
     private val jitter: RaftReconnectRefetchJitter,
@@ -32,6 +39,8 @@ internal class PresenceTransportRosterRefetch(
     private val storesForServer: (serverId: String) -> List<SharedServerMembersStore>,
     /** False once the owner's binding is gone (sign-out / account switch while waiting). */
     private val isCurrentOwner: (ProcessServerMembersOwner) -> Boolean = { true },
+    /** Sync-on reconnect: re-read the server's machine list (online status), once per refetch. */
+    private val refreshMachines: suspend (serverId: String) -> Unit = {},
     private val logger: (String) -> Unit = {},
     private val warnLogger: (String) -> Unit = {},
 ) {
@@ -42,14 +51,22 @@ internal class PresenceTransportRosterRefetch(
         /** Decided once at this connect, with the pull: incremental sync covers the server's lists. */
         agentsOnlyOnReconnect: Boolean = false,
     ): RaftReconnectRefetchDecision {
-        invalidate(owner, REASON)
+        // Sync off: retire the roster before the decision, as always (a delayed refetch may run at 0 ms).
+        if (!agentsOnlyOnReconnect) invalidate(owner, REASON)
         val decision =
             jitter.onConnected(
                 session = RaftReconnectSession(owner.environmentId, owner.accountId, owner.serverId),
                 source = SOURCE,
             ) { refetch(owner, transport, rebaselineResult, agentsOnly = agentsOnlyOnReconnect) }
         if (decision == RaftReconnectRefetchDecision.Immediate) {
+            // Sync on, first connect: the full forced refetch, so retire what the old transport read.
+            if (agentsOnlyOnReconnect) invalidate(owner, REASON)
             refetch(owner, transport, rebaselineResult, agentsOnly = false)
+        } else if (agentsOnlyOnReconnect) {
+            logger(
+                "presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} " +
+                    "roster_invalidate=skipped cause=incremental_sync"
+            )
         }
         return decision
     }
@@ -78,9 +95,20 @@ internal class PresenceTransportRosterRefetch(
         val stores = storesForServer(owner.serverId)
         logger(
             "presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} " +
-                "result=${rebaselineResult.name} stores=${stores.size} refetch=${if (agentsOnly) "agents" else "roster"}"
+                "result=${rebaselineResult.name} stores=${stores.size} refetch=${if (agentsOnly) "agents+machines" else "roster"}"
         )
         coroutineScope {
+            if (agentsOnly) {
+                launch {
+                    try {
+                        refreshMachines(owner.serverId)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        warnLogger("serverId=${owner.serverId} machines_refresh_failed=${error::class.simpleName ?: "unknown"}")
+                    }
+                }
+            }
             stores.forEach { store ->
                 launch {
                     try {
