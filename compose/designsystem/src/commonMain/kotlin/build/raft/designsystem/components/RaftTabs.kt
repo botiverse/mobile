@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftFade
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiThemeColors
@@ -146,7 +147,7 @@ fun RaftTabStrip(
 }
 
 /** How far a scrolling tab strip fades at an edge with more tabs past it. */
-private val RaftEdgeFadeWidth = 24.dp
+private val RaftEdgeFadeWidth = RaftFade.Edge
 
 /**
  * Fades the content out towards the start / end edge while [start] / [end] say so (CSS

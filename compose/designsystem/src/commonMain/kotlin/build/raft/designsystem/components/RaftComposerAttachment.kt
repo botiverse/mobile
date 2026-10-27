@@ -227,7 +227,7 @@ fun BoxScope.RaftComposerAttachmentOverlay(
                 modifier
                     .matchParentSize()
                     .clip(shape)
-                    .background(colors.layerCard.copy(alpha = 0.9f))
+                    .background(colors.layerVeil)
                     .border(RaftStroke.Hairline, colors.dangerStrong, shape)
                     .tileClick(onAction, action)
                     .padding(horizontal = 4.dp),
@@ -251,7 +251,7 @@ fun BoxScope.RaftComposerAttachmentOverlay(
         modifier =
             modifier
                 .matchParentSize()
-                .background(colors.layerCard.copy(alpha = 0.8f), shape)
+                .background(colors.layerVeil, shape)
                 // Centred above the bar, so a two-line label on an image tile never runs into it.
                 .padding(start = 4.dp, end = 4.dp, bottom = if (percent != null) ProgressInset + ProgressHeight else 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

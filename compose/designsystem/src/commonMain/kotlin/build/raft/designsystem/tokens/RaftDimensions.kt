@@ -58,6 +58,24 @@ object RaftSpacing {
     val Xl = 32.dp
 }
 
+/**
+ * raft-ui 0.37 fade lengths (`--fade-*`): content that runs on past an edge fades out with a
+ * mask over [Edge] at the edge of a scrolling strip (tabs), or over [Content] where content is
+ * cut off (a fold). A mask, not a colour gradient, so the fade works on any surface.
+ */
+object RaftFade {
+    val Edge = 24.dp
+    val Content = 48.dp
+}
+
+/**
+ * raft-ui 0.37 `--opacity-dimmed`: deleted, offline and pending items, and busy controls, at
+ * 60%. (A drag origin stays 40%; the app has no drag.)
+ */
+object RaftOpacity {
+    const val Dimmed = 0.6f
+}
+
 object RaftSize {
     val MinTouchTarget = 48.dp
     val IconButton = 44.dp

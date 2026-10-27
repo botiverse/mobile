@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -137,8 +138,8 @@ object RaftMobileNavDefaults {
     /** The server popover is at most this share of the screen tall. */
     const val ServerPopoverMaxHeightFraction: Float = 0.6f
 
-    /** The server list while a switch is pending (web `opacity-60`). */
-    const val ServerPopoverPendingAlpha: Float = 0.6f
+    /** The server list while a switch is pending (`opacity-dimmed`). */
+    const val ServerPopoverPendingAlpha: Float = RaftOpacity.Dimmed
 
     /** A server's avatar in a popover row (raft-ui `size-5`). */
     val ServerPopoverAvatarSize: Dp = 20.dp
