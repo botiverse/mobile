@@ -221,10 +221,13 @@ private fun RaftMemberPickerRow(
     fixtureStatusFallbackEnabled: Boolean,
     onClick: () -> Unit,
 ) {
+    // web `CreateChannelDialog` / `CreateJointChannelDialog`: an App Bot's name carries the Bot
+    // badge, and it has no presence to show.
+    val appBot = remember(member) { member.appBotIdentityOrNull() }
     // Dot-facing resolution: the OrNull variant, so an agent whose status is not known yet
     // shows no dot rather than an Offline-grey one (tasks #253 / #256).
     val status =
-        if (member.kind == MemberKind.Agent) {
+        if (member.kind == MemberKind.Agent && appBot == null) {
             resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value),
                 fixtureFallback =
@@ -274,6 +277,7 @@ private fun RaftMemberPickerRow(
             cacheSubject = member.raftAvatarCacheSubject(),
             cacheServerId = member.serverId?.value,
             avatarFill = raftAvatarFallbackFill(member.kind),
+            titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName.ifBlank { member.handle }) } },
         )
     }
 }

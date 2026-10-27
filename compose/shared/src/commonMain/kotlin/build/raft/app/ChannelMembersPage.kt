@@ -146,9 +146,11 @@ internal fun ChannelMembersRow(
     onRemove: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     subtitleCopyText: String? = null,
+    titleBadge: (@Composable () -> Unit)? = null,
 ) {
     RaftListRow(
         title = title,
+        titleTrailing = titleBadge,
         onClick = onClick,
         enabled = !removing,
         divider = divider,

@@ -720,8 +720,10 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     result.memberId
                         ?.takeIf { it.isNotBlank() }
                         ?.let { rememberRaftMemberAvatarWireValue(memberAvatarResolver, it) }
+                    // An App Bot has no presence (web: no `AgentActivityDot` when `appBot`).
+                    val appBot = rememberRaftMemberAppBot(result.appBotLookupMemberId())
                     val status =
-                        if (result.showPresence) {
+                        if (result.showPresence && appBot == null) {
                             result.memberId
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let {
@@ -10411,6 +10413,10 @@ private fun SharedHomeScreen(
                 remember(serverMembersStore, snapshot.server.id.value) {
                     raftMemberAvatarResolver(serverMembersStore, snapshot.server.id.value)
                 }
+            val memberAppBotResolver =
+                remember(serverMembersStore, snapshot.server.id.value) {
+                    raftMemberAppBotResolver(serverMembersStore, snapshot.server.id.value)
+                }
             val serverMembersState by (serverMembersStore?.state ?: flowOf(SharedServerMembersState()))
                 .collectAsState(SharedServerMembersState())
             val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? =
@@ -10762,6 +10768,7 @@ private fun SharedHomeScreen(
                 },
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                memberAppBotResolver = memberAppBotResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
                 scrollToTopRequest = scrollToTopRequest,
@@ -11157,6 +11164,8 @@ internal fun SharedHomeSearchPanel(
     cacheServerId: String? = null,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    // botiverse/slock #11273: which agents are App Bots (the Bot badge replaces the kind tag).
+    memberAppBotResolver: RaftMemberAppBotResolver = EmptyRaftMemberAppBotResolver,
     computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
@@ -11367,6 +11376,7 @@ internal fun SharedHomeSearchPanel(
         }
     }
     // raft-ui search panel: designsystem type tokens and badges, on the canvas layer.
+    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
     RaftDesignSystemTheme {
         Box(
             modifier =
@@ -11817,6 +11827,7 @@ internal fun SharedHomeSearchPanel(
                 )
             }
         }
+    }
     }
 }
 
@@ -13310,6 +13321,14 @@ internal fun SharedHomeSearchEntityRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
+        // An App Bot is a Bot, not an Agent: the Bot badge takes the kind tag's place and its
+        // subtitle drops the "Agent" kind word (web `searchEntities`: an agent's subtitle is its
+        // `@handle`).
+        val appBot = rememberRaftMemberAppBot(result.appBotLookupMemberId())
+        val agentKindLabel = stringResource(Res.string.search_entity_agent)
+        val shown = remember(result, appBot != null, agentKindLabel) {
+            if (appBot != null) result.withoutAgentKindLabel(agentKindLabel) else result
+        }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftSearchHitText(
@@ -13324,7 +13343,12 @@ internal fun SharedHomeSearchEntityRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
+                // The Bot tag in the kind tags' outline look (web `AppBotBadge appearance="outline"`).
+                if (appBot != null) {
+                    RaftAppBotBadge(identity = appBot, botName = result.title, appearance = RaftBadgeAppearance.Outline)
+                } else {
+                    SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
+                }
                 if (result.archived) {
                     RaftBadge(
                         text = stringResource(Res.string.channel_settings_status_archived),
@@ -13336,15 +13360,15 @@ internal fun SharedHomeSearchEntityRow(
             // A channel matched by its description shows it cut like a message snippet (web
             // `searchEntitySubtitleForQuery`): only when the description holds a hit.
             val subtitle =
-                if (result.type == SearchEntityType.Channel && result.subtitleDataRange == null) {
-                    channelDescriptionSnippet(result.subtitle, query)
+                if (shown.type == SearchEntityType.Channel && shown.subtitleDataRange == null) {
+                    channelDescriptionSnippet(shown.subtitle, query)
                 } else {
-                    result.subtitle
+                    shown.subtitle
                 }
-            RaftSearchHitText(
+            if (subtitle.isNotBlank() || appBot == null) RaftSearchHitText(
                 text = subtitle,
                 query = query,
-                highlightRange = result.subtitleDataRange.takeIf { subtitle == result.subtitle },
+                highlightRange = shown.subtitleDataRange.takeIf { subtitle == shown.subtitle },
                 style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
                 color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
                 maxLines = 1,
@@ -14045,6 +14069,47 @@ internal data class SearchEntityResult(
 ) {
     val memberId: String?
         get() = memberIdentity?.memberId?.value
+}
+
+/**
+ * The agent whose App Bot identity a search entity row shows (web `EntityResultRow` /
+ * `SearchHomeEntityRow` `useAppBotAgent(result.type === "agentDm" ? result.agentId : null)`):
+ * an agent result, or a DM whose peer is an agent. Null for channels, computers and humans.
+ */
+/**
+ * An App Bot's search subtitle without the "Agent" kind word the directory mapping puts first
+ * ("Agent · @stamp" -> "@stamp", "Agent · @stamp · Members" -> "@stamp · Members", "Agent" -> "").
+ * Web `searchEntities` gives an agent its `@handle` as the subtitle; a Bot is not an Agent.
+ * The marked `@handle` range moves with the text. Other results are returned as they are.
+ */
+internal fun SearchEntityResult.withoutAgentKindLabel(agentLabel: String): SearchEntityResult {
+    if (type != SearchEntityType.Agent || agentLabel.isEmpty() || !subtitle.startsWith(agentLabel)) return this
+    val rest = subtitle.removePrefix(agentLabel)
+    val cut =
+        when {
+            rest.isEmpty() -> agentLabel.length
+            rest.startsWith(SearchEntitySubtitleSeparator) -> agentLabel.length + SearchEntitySubtitleSeparator.length
+            else -> return this
+        }
+    val range = subtitleDataRange
+    return copy(
+        subtitle = subtitle.substring(cut),
+        subtitleDataRange =
+            when {
+                range == null -> null
+                range.isEmpty() -> IntRange.EMPTY
+                range.first < cut -> IntRange.EMPTY
+                else -> (range.first - cut)..(range.last - cut)
+            },
+    )
+}
+
+private const val SearchEntitySubtitleSeparator = " · "
+
+internal fun SearchEntityResult.appBotLookupMemberId(): String? {
+    if (type != SearchEntityType.Agent && type != SearchEntityType.DirectMessage) return null
+    if (memberIdentity?.kind != MemberKind.Agent) return null
+    return memberId?.trim()?.takeIf { it.isNotBlank() }
 }
 
 internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): RaftLucideIconName =

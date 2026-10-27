@@ -268,16 +268,30 @@ internal fun <T> RaftForwardPickerTargetRow(
                     )
                 }
         }
-        RaftText(
-            text = target.forwardPickerLabel(),
-            style = typography.subhead.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
-            color = colors.foreground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        // web `ForwardSearchTargetTitle` / `ChannelPicker` `ChannelRowContent`: a DM with an App
+        // Bot (an open one, or a new DM to it) shows the Bot badge after the name, 6dp from it.
+        val appBot = rememberRaftMemberAppBot(target.forwardAppBotLookupMemberId())
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftText(
+                text = target.forwardPickerLabel(),
+                style = typography.subhead.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = appBot == null)
+            )
+            if (appBot != null) RaftAppBotBadge(identity = appBot, botName = target.title)
+        }
     }
 }
+
+/** The DM peer whose App Bot identity a forward target shows; null for channels. */
+internal fun <T> RaftForwardTargetPickerItem<T>.forwardAppBotLookupMemberId(): String? =
+    cacheMemberId?.trim()?.takeIf { visualKind == RaftForwardTargetVisualKind.DirectMessage && it.isNotBlank() }
 
 /** web `targetPickerLabel`: a DM reads `@name`, a channel its bare name. */
 internal fun <T> RaftForwardTargetPickerItem<T>.forwardPickerLabel(): String =

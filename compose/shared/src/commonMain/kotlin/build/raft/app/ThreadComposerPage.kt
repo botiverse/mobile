@@ -3700,8 +3700,12 @@ private fun ComposerSuggestionHeader(
     }
 }
 
+/** The agent whose App Bot identity a mention candidate shows; null for people. */
+internal fun RaftComposerMemberItem.mentionAppBotLookupMemberId(): String? =
+    memberId?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
+
 @Composable
-private fun ComposerMemberSuggestionRow(
+internal fun ComposerMemberSuggestionRow(
     member: RaftComposerMemberItem,
     inChannel: Boolean,
     selected: Boolean,
@@ -3720,10 +3724,13 @@ private fun ComposerMemberSuggestionRow(
             else -> null
         }
     val muted = !inChannel
+    // web `MentionCandidateBody`: an App Bot is a Bot, not an Agent; the Bot badge takes the
+    // kind tag's place, and its avatar has no activity light (`MentionCandidateAvatar`).
+    val appBot = rememberRaftMemberAppBot(member.mentionAppBotLookupMemberId())
     // web `MentionCandidateAvatar`: the agent's activity light sits on the avatar corner
     // (`AgentActivityDot size="sm"`), only for members of this conversation.
     val agentStatus =
-        if (inChannel && member.kind == MemberKind.Agent) {
+        if (inChannel && member.kind == MemberKind.Agent && appBot == null) {
             rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)
         } else {
             null
@@ -3780,7 +3787,11 @@ private fun ComposerMemberSuggestionRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
+            if (appBot != null) {
+                RaftAppBotBadge(identity = appBot, botName = member.displayName)
+            } else {
+                actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
+            }
             description?.let {
                 Text(
                     text = it,
