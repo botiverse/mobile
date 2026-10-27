@@ -36,6 +36,31 @@ class SyncChangesEngineTest {
     }
 
     @Test
+    fun `a reconnect pull waits the jitter before its snapshots but not before its changes`() = runTest {
+        val log = mutableListOf<String>()
+        val sink = RecordingSyncChangesSink(calls = log)
+        val engine =
+            RaftSyncChangesEngine(
+                api =
+                    ScriptedSyncChangesApi(
+                        syncPage(syncChangesBody("c1.10.100")),
+                        syncPage(syncChangesBody("c1.11.100", changes = listOf(syncDelete(11, "agent", "a-1")))),
+                        syncPage(syncChangesBody("c1.12.100", changes = listOf(syncDelete(12, "agent", "a-2")))),
+                    ),
+                cursors = cursors,
+                sink = sink,
+                snapshotJitterDelay = { log += "jitter" },
+            )
+
+        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true)
+        assertEquals(listOf("jitter", "snapshots:first_sync", "apply"), log)
+
+        log.clear()
+        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true)
+        assertEquals(listOf("apply"), log)
+    }
+
+    @Test
     fun `a failed first snapshot keeps no cursor so the next pull starts over`() = runTest {
         val api = ScriptedSyncChangesApi(syncPage(syncChangesBody("c1.10.100")))
         val sink = RecordingSyncChangesSink(snapshotsSucceed = false)

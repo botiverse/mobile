@@ -1,6 +1,7 @@
 package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+import build.raft.app.data.MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
@@ -29,6 +30,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
                 SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
                 THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
                 MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
+                MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
             ).sorted(),
             registry.supportedKeys,
         )
@@ -43,6 +45,10 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ServerExact,
             registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).scopeKind,
+        )
+        assertEquals(
+            DiagnosticFeatureFlagScopeKind.ServerExact,
+            registry.snapshot(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY).scopeKind,
         )
         assertEquals(
             DiagnosticFeatureFlagScopeKind.ServerExact,
