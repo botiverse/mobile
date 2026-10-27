@@ -38,7 +38,7 @@ class ThreadJumpPillsTest {
         // In view: m2..m3. Below: m4 (nearest) and m8; above: m1.
         val jump = projectThreadUnreadThreadJump(unread, messages, visibleMessageIndexes = 2..3, dismissedAtCount = null)
 
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 3, targetMessageId = "m4"), jump)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 3, targetMessageId = "m4", targetThreadChannelId = "t4"), jump)
     }
 
     @Test
@@ -46,7 +46,7 @@ class ThreadJumpPillsTest {
         // In view: m8..m9 (m8 is on screen, so it is neither above nor below).
         val jump = projectThreadUnreadThreadJump(unread, messages, visibleMessageIndexes = 8..9, dismissedAtCount = null)
 
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 3, targetMessageId = "m1"), jump)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 3, targetMessageId = "m1", targetThreadChannelId = "t1"), jump)
     }
 
     @Test
@@ -76,13 +76,13 @@ class ThreadJumpPillsTest {
         val atTail = ThreadJumpLoadedRange(newestCreatedAtEpochMillis = 9_000L, hasNewer = false)
 
         val jump = projectThreadUnreadThreadJump(setOf("t-old"), messages, 7..9, dismissedAtCount = null, unloadedParents = parents, loadedRange = atTail)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 1, targetMessageId = "p-old"), jump)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 1, targetMessageId = "p-old", targetThreadChannelId = "t-old"), jump)
 
         // It is above every loaded parent, so it wins Earliest over m1; a loaded parent below still wins Next.
         val mixed = projectThreadUnreadThreadJump(unread + "t-old", messages, 2..3, dismissedAtCount = null, unloadedParents = parents, loadedRange = atTail)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 4, targetMessageId = "m4"), mixed)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 4, targetMessageId = "m4", targetThreadChannelId = "t4"), mixed)
         val noneBelow = projectThreadUnreadThreadJump(unread + "t-old", messages, 8..9, dismissedAtCount = null, unloadedParents = parents, loadedRange = atTail)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 4, targetMessageId = "p-old"), noneBelow)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count = 4, targetMessageId = "p-old", targetThreadChannelId = "t-old"), noneBelow)
     }
 
     @Test
@@ -91,7 +91,7 @@ class ThreadJumpPillsTest {
         val history = ThreadJumpLoadedRange(newestCreatedAtEpochMillis = 9_000L, hasNewer = true)
 
         val onlyUnloaded = projectThreadUnreadThreadJump(setOf("t-newer", "t-new"), messages, 2..3, dismissedAtCount = null, unloadedParents = parents, loadedRange = history)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 2, targetMessageId = "p-new"), onlyUnloaded)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 2, targetMessageId = "p-new", targetThreadChannelId = "t-new"), onlyUnloaded)
         // A loaded parent below is nearer.
         val withLoaded = projectThreadUnreadThreadJump(unread + "t-new", messages, 2..3, dismissedAtCount = null, unloadedParents = parents, loadedRange = history)
         assertEquals("m4", withLoaded?.targetMessageId)
@@ -106,7 +106,7 @@ class ThreadJumpPillsTest {
         val parents = mapOf(resolved("t5", "m5"))
 
         val below = projectThreadUnreadThreadJump(setOf("t5"), messages, 2..3, dismissedAtCount = null, unloadedParents = parents)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 1, targetMessageId = "m5"), below)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 1, targetMessageId = "m5", targetThreadChannelId = "t5"), below)
         assertNull(projectThreadUnreadThreadJump(setOf("t5"), messages, 4..6, dismissedAtCount = null, unloadedParents = parents))
     }
 
@@ -155,7 +155,7 @@ class ThreadJumpPillsTest {
         assertNull(projectThreadUnreadThreadJump(unread, messages, visibleMessageIndexes = 2..3, dismissedAtCount = 3))
 
         val afterOneRead = projectThreadUnreadThreadJump(setOf("t1", "t8"), messages, visibleMessageIndexes = 2..3, dismissedAtCount = 3)
-        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 2, targetMessageId = "m8"), afterOneRead)
+        assertEquals(ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count = 2, targetMessageId = "m8", targetThreadChannelId = "t8"), afterOneRead)
     }
 
     @Test

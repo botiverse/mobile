@@ -20,6 +20,7 @@ import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
+import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.CreateAgentBody
 import build.raft.app.data.CreateChannelRequest
@@ -4318,6 +4319,31 @@ internal class SharedThreadDataSource(
         return DataResult.Content(payload)
     }
 
+    /**
+     * The unread-thread pill's prewarm (artin): [prewarmReplyThread] for a reply thread of the
+     * current server, whose id the caller (a channel page) does not hold itself.
+     */
+    suspend fun prewarmReplyThreadOnCurrentServer(
+        parentChannelId: String,
+        parentMessageId: String,
+        threadChannelId: String,
+    ): DataResult<Unit> {
+        val serverId =
+            readReplyResolutionScope()?.provenance?.serverId?.takeIf { it.isNotBlank() }
+                ?: return authSessionRequiredResult()
+        return prewarmReplyThread(
+            ActivityReplyThreadPrewarmMarker(
+                key =
+                    ActivityReplyThreadPrewarmKey(
+                        serverId = serverId,
+                        parentChannelId = parentChannelId,
+                        parentMessageId = parentMessageId,
+                        threadChannelId = threadChannelId,
+                    )
+            )
+        )
+    }
+
     suspend fun prewarmReplyThread(
         marker: ActivityReplyThreadPrewarmMarker
     ): DataResult<Unit> {
@@ -7061,7 +7087,16 @@ internal sealed interface SharedThreadIntent {
      * Web ChatPanel `jumpToMessage`: focus (scroll to and highlight) [messageId], on [switchToTab]
      * when set; when it is not loaded, first replace the window with the messages around it.
      */
-    data class JumpToMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
+    data class JumpToMessage(
+        val messageId: String,
+        val switchToTab: String? = null,
+        /**
+         * The unread-thread pill's target thread (the reply thread under [messageId]). After the
+         * jump's own load, its replies are prewarmed in the background into the shared thread
+         * payload cache the reply page opens from (artin: opening it right after the jump is instant).
+         */
+        val prewarmThreadChannelId: String? = null,
+    ) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
         val members: List<RaftThreadMemberItem>,
@@ -7442,7 +7477,10 @@ internal class SharedThreadStore(
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
-            is SharedThreadIntent.JumpToMessage -> jumpToMessage(intent.messageId, intent.switchToTab)
+            is SharedThreadIntent.JumpToMessage -> {
+                jumpToMessage(intent.messageId, intent.switchToTab)
+                intent.prewarmThreadChannelId?.let { threadId -> prewarmUnreadThread(threadId, intent.messageId) }
+            }
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
             is SharedThreadIntent.SetRemoveMemberStatus ->
@@ -11684,6 +11722,63 @@ internal class SharedThreadStore(
             resolveUnreadThreadParents(ids)
             true
         }
+    }
+
+    /** The one unread-thread jump prewarm of this page (concurrency 1) and the thread it warms. */
+    private var unreadThreadPrewarmJob: Job? = null
+    private var unreadThreadPrewarmThreadId: String? = null
+
+    /**
+     * artin: the unread-thread pill jumped to [parentMessageId]; warm its reply thread [threadChannelId]
+     * so opening it next renders at once. Reuses the Activity reply prewarm
+     * ([SharedThreadDataSource.prewarmReplyThread]): one `Background` request through the shared,
+     * single-flight [SharedThreadPayloadStore] (an already-warm thread is not fetched again), whose
+     * result the reply page consumes on open instead of fetching ([SharedThreadPayloadStore.joinOrConsumePrewarm]).
+     * Runs after the jump's own (foreground) load. At most one per page: a jump to another thread
+     * replaces it, a repeat jump to the same thread while it runs is a no-op, and leaving the page
+     * (store scope cancelled) stops it.
+     */
+    private fun prewarmUnreadThread(threadChannelId: String, parentMessageId: String) {
+        val threadId = threadChannelId.trim()
+        val parentId = parentMessageId.trim()
+        fun log(result: String, extra: String = "") =
+            diagnosticsLogger?.invoke(
+                "thread_prewarm reason=unread_jump result=$result thread=${threadId.take(8)} " +
+                    "parent=${parentId.take(8)}$extra"
+            )
+        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
+        val parentChannelId =
+            routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
+        if (threadId.isBlank() || parentId.isBlank() || parentChannelId == null) {
+            log("skipped", " reason=identity_missing")
+            return
+        }
+        if (unreadThreadPrewarmThreadId == threadId && unreadThreadPrewarmJob?.isActive == true) {
+            log("skipped", " reason=in_flight")
+            return
+        }
+        unreadThreadPrewarmJob?.takeIf { it.isActive }?.let { previous ->
+            previous.cancel()
+            diagnosticsLogger?.invoke(
+                "thread_prewarm reason=unread_jump result=cancelled thread=${unreadThreadPrewarmThreadId?.take(8)} " +
+                    "by=${threadId.take(8)}"
+            )
+        }
+        unreadThreadPrewarmThreadId = threadId
+        log("requested", " priority=background")
+        unreadThreadPrewarmJob =
+            scope.launch {
+                val result = dataSource.prewarmReplyThreadOnCurrentServer(parentChannelId, parentId, threadId)
+                log(
+                    when (result) {
+                        is DataResult.Content -> "success"
+                        is DataResult.Empty -> "empty"
+                        is DataResult.Error -> "error"
+                        is DataResult.NoPermission -> "no_permission"
+                    },
+                    (result as? DataResult.Error)?.error?.code?.let { " code=$it" }.orEmpty()
+                )
+            }
     }
 
     /**

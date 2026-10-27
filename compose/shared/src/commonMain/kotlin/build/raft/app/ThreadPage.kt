@@ -11763,7 +11763,7 @@ private fun SharedThreadRouteContentContent(
                     onOpenThreadPayload(bannerPayload)
                 }
             },
-            onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId ->
+            onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId, eventThreadChannelId ->
                 // An in-app open of a Raft web link target (a permalink, a spec card's channel).
                 fun openThreadWebLinkTargetInApp(target: RaftThreadWebLinkTarget) {
                     val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
@@ -11850,9 +11850,14 @@ private fun SharedThreadRouteContentContent(
                     action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
                         // The unread-thread pill: focus (scroll to and highlight) the parent
                         // message through the route focus session, as a search hit does; a parent
-                        // that is not loaded is loaded around first (web jumpToMessage).
+                        // that is not loaded is loaded around first (web jumpToMessage). The target
+                        // thread's replies are then prewarmed so opening it renders at once (artin).
                         threadViewModel.dispatch(
-                            SharedThreadIntent.JumpToMessage(messageId = itemId, switchToTab = RaftThreadTab.Chat.wireValue)
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                prewarmThreadChannelId = eventThreadChannelId,
+                            )
                         )
                     }
                     action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
@@ -14684,7 +14689,8 @@ private class ThreadEventHandler(
         itemId: String?,
         attachmentId: String?,
         tab: String?,
-        markdownActionId: String?
+        markdownActionId: String?,
+        threadChannelId: String?
     ) -> Unit
 ) {
     operator fun invoke(
@@ -14692,9 +14698,11 @@ private class ThreadEventHandler(
         itemId: String? = null,
         attachmentId: String? = null,
         tab: String? = null,
-        markdownActionId: String? = null
+        markdownActionId: String? = null,
+        /** The reply thread an action targets, when it is not [itemId] (the unread-thread pill). */
+        threadChannelId: String? = null
     ) {
-        dispatch(action, itemId, attachmentId, tab, markdownActionId)
+        dispatch(action, itemId, attachmentId, tab, markdownActionId, threadChannelId)
     }
 }
 
@@ -22440,7 +22448,11 @@ private fun ThreadMessagesListContent(
                         "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
                             "target=${jump.targetMessageId.take(8)}"
                     )
-                    onThreadEvent(ThreadJumpToUnreadThreadParentAction, jump.targetMessageId, null, null)
+                    onThreadEvent(
+                        ThreadJumpToUnreadThreadParentAction,
+                        jump.targetMessageId,
+                        threadChannelId = jump.targetThreadChannelId,
+                    )
                 },
                 onDismiss = { unreadThreadJumpDismissedAtCount = jump.count },
             )
