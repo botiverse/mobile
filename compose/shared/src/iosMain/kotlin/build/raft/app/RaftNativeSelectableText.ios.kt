@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.app.compat.ui.RaftIosFallbackFontName
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftTheme
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
@@ -55,9 +56,11 @@ actual fun RaftNativeSelectableText(
     // own copy of this same text!) bleed through and look like the text drew twice.
     // The view must paint an opaque background matching the surface it sits on.
     val surfaceColor = LocalRaftSurfaceColor.current
+    val themeCanvas = RaftTheme.colors.layerCanvas
     val backgroundColor =
-        remember(surfaceColor) {
-            surfaceColor.takeIf { it != Color.Unspecified }?.toUIColor() ?: UIColor.whiteColor
+        remember(surfaceColor, themeCanvas) {
+            val fill = if (surfaceColor != Color.Unspecified) surfaceColor else themeCanvas
+            fill.toUIColor()
         }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
