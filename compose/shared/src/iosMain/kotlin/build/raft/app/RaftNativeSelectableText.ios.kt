@@ -47,7 +47,9 @@ actual fun RaftNativeSelectableText(
     val lineHeightPt = style.lineHeight.ptOrNull(fontSizePt)
     val fontName = style.raftIosFontName()
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
-    // One UITextView instance serves as both the rendered view and the height measurer.
+    // The rendered UITextView. Height is measured on a separate throwaway instance (see below):
+    // laying the on-screen view out at a measuring width leaves a stale TextKit 2 layout
+    // fragment in it, so the text drew twice with different wrapping (iOS-only double draw).
     val textView = remember { raftSelectableUITextView() }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
@@ -63,8 +65,7 @@ actual fun RaftNativeSelectableText(
     }
     val attributed =
         remember(text, fontName, fontSizePt, lineHeightPt, color) {
-            textView.attributedText = raftAttributedText(text, fontName, fontSizePt, lineHeightPt, color)
-            textView.attributedText
+            raftAttributedText(text, fontName, fontSizePt, lineHeightPt, color)
         }
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -72,7 +73,9 @@ actual fun RaftNativeSelectableText(
         val widthPt = constraints.maxWidth.toDouble() / density.density
         val heightPt =
             remember(attributed, widthPt) {
-                textView.sizeThatFits(CGSizeMake(widthPt, Double.MAX_VALUE)).useContents { height }
+                raftMeasuringTextView(attributed)
+                    .sizeThatFits(CGSizeMake(widthPt, Double.MAX_VALUE))
+                    .useContents { height }
             }
         UIKitView(
             factory = { textView },
@@ -87,6 +90,13 @@ actual fun RaftNativeSelectableText(
 
 private fun Color.toUIColor(): UIColor =
     UIColor.colorWithRed(red = red.toDouble(), green = green.toDouble(), blue = blue.toDouble(), alpha = alpha.toDouble())
+
+/**
+ * Off-screen UITextView used only for sizeThatFits measuring. Kept identical in configuration to
+ * the on-screen view so the measured height matches what the displayed view wraps to.
+ */
+private fun raftMeasuringTextView(attributed: NSAttributedString): UITextView =
+    raftSelectableUITextView().apply { attributedText = attributed }
 
 /** Non-editable, selectable, non-scrolling text view: the system edit menu owns Copy/Look Up/Translate/Share. */
 private fun raftSelectableUITextView(): UITextView =
