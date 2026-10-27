@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -10,6 +12,9 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal const val FOREGROUND_RECONCILE_COALESCE_MS = 10_000L
+
+/** [SharedForegroundReconciler.onForeground] reason of a foreground return seen by the app lifecycle. */
+internal const val FOREGROUND_RECONCILE_APP_LIFECYCLE_REASON = "app_lifecycle_foreground"
 
 /**
  * Shared foreground reconciliation per mobile-foreground-reconciliation-spec
@@ -34,16 +39,49 @@ class SharedForegroundReconciler internal constructor(
     private var lastRefreshServerId: String? = null
     private var lastRefreshMark: TimeMark? = null
 
+    /**
+     * Incremental sync (`mobile_sync_changes_v0`): a foreground return pulls the selected server's
+     * changes (plus the `/agents` read) whatever page bookkeeping the shell does. The shell's
+     * lifecycle path only calls [onForeground] once its page is visible, and on Android the
+     * activity resume reaches the shell before the page appears (`cause=page_not_visible`), so the
+     * foreground pull never ran (staging run 10-27). Here the return is decided by the app
+     * lifecycle ([appForeground]: process ON_START / scene active, false -> true), never by a page.
+     *
+     * Only servers [coversServer] says sync is on for; sync off keeps the shell path alone
+     * (unchanged). Both paths meet in [onForeground], whose per-server window keeps it to one
+     * refresh (one pull) per return.
+     */
+    internal fun followAppLifecycle(appForeground: Flow<Boolean>, coversServer: (serverId: String) -> Boolean): Job =
+        scope.launch {
+            var previous: Boolean? = null
+            appForeground.collect { foreground ->
+                val returned = foreground && previous == false
+                previous = foreground
+                if (!returned) return@collect
+                val serverId = currentServerId() ?: return@collect
+                if (!coversServer(serverId)) {
+                    diagnosticsLogger(
+                        "foreground_reconcile_skip reason=$FOREGROUND_RECONCILE_APP_LIFECYCLE_REASON " +
+                            "serverId=$serverId cause=sync_off"
+                    )
+                    return@collect
+                }
+                onForeground(FOREGROUND_RECONCILE_APP_LIFECYCLE_REASON)
+            }
+        }
+
+    private suspend fun currentServerId(): String? =
+        try {
+            authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            null
+        }
+
     fun onForeground(reason: String) {
         scope.launch {
-            val serverId =
-                try {
-                    authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    null
-                } ?: return@launch
+            val serverId = currentServerId() ?: return@launch
             val shouldRefresh =
                 mutex.withLock {
                     val mark = lastRefreshMark

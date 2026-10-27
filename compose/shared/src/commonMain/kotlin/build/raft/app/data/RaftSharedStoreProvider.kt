@@ -1133,6 +1133,12 @@ internal class RaftSharedStoreProvider private constructor(
         }
         updateNetworkKmmRecoveryEnvironment()
         installServerMembersBindingFollower()
+        // Incremental sync: a foreground return (app lifecycle, not page visibility) pulls the
+        // selected server's changes once (flag off: the shell's lifecycle path only, unchanged).
+        foregroundReconciler.followAppLifecycle(
+            appForeground = RaftStaleReadRecoverySignals.foreground,
+            coversServer = ::syncChangesPullAllowed,
+        )
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
         // Attach canonical/reaction shadow mutation to the dedicated process
@@ -2975,7 +2981,11 @@ internal class RaftSharedStoreProvider private constructor(
                                 },
                             )
                         if (pulled) {
-                            targetStore.refreshAgents(serverId = serverId, reason = "foreground_reconcile")
+                            // Agent presence and machine status are not in the change log (no jitter here).
+                            coroutineScope {
+                                launch { targetStore.refreshAgents(serverId = serverId, reason = "foreground_reconcile") }
+                                launch { provider.refreshMachinesForSync(serverId.value, reason = "foreground_reconcile") }
+                            }
                         } else {
                             fullRefresh()
                         }

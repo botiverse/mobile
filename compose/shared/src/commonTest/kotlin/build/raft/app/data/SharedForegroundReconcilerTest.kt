@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -125,6 +126,62 @@ class SharedForegroundReconcilerTest {
         reconciler.onForeground("app_shell_resume")
 
         assertEquals(2, calls)
+        scope.cancel()
+    }
+
+    /**
+     * Staging run 10-27: on resume the shell saw `app_shell_visible_refresh_skip
+     * cause=page_not_visible` and never called [SharedForegroundReconciler.onForeground], so the
+     * `trigger=foreground` sync pull never ran. The app lifecycle alone now decides the return.
+     */
+    @Test
+    fun syncOnForegroundReturnWithThePageNotVisiblePullsOnce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val appForeground = MutableStateFlow(true)
+        val pulls = mutableListOf<String>()
+        val reconciler =
+            SharedForegroundReconciler(
+                authStore = ReconcilerFakeAuthStore(reconcilerSession("server-1")),
+                refreshMembers = { serverId -> pulls += serverId.value },
+                scope = scope,
+                coalesceWindowMs = 10_000,
+                timeSource = TestTimeSource()
+            )
+        reconciler.followAppLifecycle(appForeground, coversServer = { true })
+        assertEquals(emptyList(), pulls, "the process starting in the foreground is not a return")
+
+        appForeground.value = false
+        appForeground.value = true
+        // No shell onForeground at all (page not visible yet): the lifecycle return still pulls.
+        assertEquals(listOf("server-1"), pulls)
+
+        // The page appears and the shell's own path fires for the same return: no second pull.
+        reconciler.onForeground("app_shell_resume")
+        assertEquals(listOf("server-1"), pulls)
+        scope.cancel()
+    }
+
+    @Test
+    fun syncOffForegroundReturnKeepsTheShellPathOnly() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val appForeground = MutableStateFlow(true)
+        val refreshed = mutableListOf<String>()
+        val reconciler =
+            SharedForegroundReconciler(
+                authStore = ReconcilerFakeAuthStore(reconcilerSession("server-1")),
+                refreshMembers = { serverId -> refreshed += serverId.value },
+                scope = scope,
+                coalesceWindowMs = 10_000,
+                timeSource = TestTimeSource()
+            )
+        reconciler.followAppLifecycle(appForeground, coversServer = { false })
+
+        appForeground.value = false
+        appForeground.value = true
+        assertEquals(emptyList(), refreshed)
+
+        reconciler.onForeground("app_shell_resume")
+        assertEquals(listOf("server-1"), refreshed)
         scope.cancel()
     }
 }
