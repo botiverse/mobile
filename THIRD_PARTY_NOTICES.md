@@ -32,7 +32,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | com.squareup.okhttp3:okhttp | 4.12.0 | Apache-2.0 |
 | com.google.code.gson:gson | 2.11.0 | Apache-2.0 |
 | io.socket:socket.io-client | 2.1.2 | MIT |
-| app.cash.sqldelight:runtime / android-driver / native-driver / sqlite-driver / coroutines-extensions | 2.1.0 | Apache-2.0 |
+| app.cash.sqldelight:runtime / android-driver / native-driver / sqlite-driver / coroutines-extensions | 2.4.1 | Apache-2.0 |
 | com.caverock:androidsvg-aar | 1.4 | Apache-2.0 |
 | com.tencent:mmkv | 2.4.0 | BSD-3-Clause |
 | org.jetbrains:markdown (coordinate reference only; sources vendored) | 0.7.5 | Apache-2.0 |
@@ -40,7 +40,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | dev.snipme:highlights (message code block syntax colours) | 1.1.0 | Apache-2.0 |
 | KaTeX fonts (`compose/designsystem/src/commonMain/composeResources/font/katex_*.ttf`, from the `katex` npm package) | 0.19.0 | MIT |
 | Test-only: junit 4.13.2 (EPL-1.0), androidx.test.* (Apache-2.0), org.robolectric:robolectric 4.14.1 (MIT), androidx.benchmark / uiautomator (Apache-2.0) | — | as listed |
-| Gradle plugins: AGP 8.13.2, Kotlin 2.1.21, KSP, Compose plugin 1.7.3, SQLDelight 2.1.0, google-services 4.5.0 | — | Apache-2.0 (google-services plugin: Apache-2.0) |
+| Gradle plugins: AGP 8.13.2, Kotlin 2.1.21, KSP, Compose plugin 1.7.3, SQLDelight 2.4.1, google-services 4.5.0 | — | Apache-2.0 (google-services plugin: Apache-2.0) |
 
 ## iOS — CocoaPods
 | Pod | Version | License |
