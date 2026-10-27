@@ -1487,7 +1487,17 @@ private fun logAgentsWithoutComputer(logger: (String) -> Unit, serverId: ServerI
     )
 }
 
-private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, String>): List<MemberProfile> =
+/** Machine id -> name as the roster's agents already show it (their `computer-id:` + `computer:` badges). */
+internal fun List<MemberProfile>.knownComputerNames(): Map<String, String> =
+    buildMap {
+        this@knownComputerNames.forEach { member ->
+            val machineId = member.permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return@forEach
+            val name = member.permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() } ?: return@forEach
+            put(machineId, name)
+        }
+    }
+
+internal fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, String>): List<MemberProfile> =
     map { it.resolveComputerLabel(machineNames) }
 
 private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {

@@ -39,12 +39,6 @@ internal data class RaftSyncApplyPlan(
     fun upsertsOf(entity: RaftSyncRowEntity): Map<String, JsonObject> = upserts[entity].orEmpty()
 
     fun deletesOf(entity: RaftSyncRowEntity): Set<String> = deletes[entity].orEmpty()
-
-    /** Entities this plan touches through a row or a retaken snapshot. */
-    fun touches(snapshot: RaftSyncSnapshot): Boolean =
-        snapshot in snapshots ||
-            RaftSyncRowEntity.entries.any { it.snapshot == snapshot && (it in upserts || it in deletes) } ||
-            (snapshot in RaftSyncConversationSnapshots && staleConversations.isNotEmpty())
 }
 
 internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
@@ -156,6 +150,10 @@ internal sealed interface RaftSyncPullResult {
  *
  * Pulls of one scope run one at a time; a trigger during a pull waits and pulls again (cheap: no
  * changes). A pull stops as soon as [isCurrent] says the scope is no longer the signed-in binding.
+ *
+ * The pull itself is cheap and runs at once. Its snapshot reloads (first sync, reset) are full-list
+ * reads: a pull with `jitterSnapshots` (a socket RE-connect, when every client reconnects together
+ * after a deploy or a forced reset) waits [snapshotJitterDelay] before them (web #11453, mobile #3756).
  */
 internal class RaftSyncChangesEngine(
     private val api: RaftSyncChangesApi,
@@ -164,18 +162,19 @@ internal class RaftSyncChangesEngine(
     private val isCurrent: (RaftSyncScope) -> Boolean = { true },
     private val pageLimit: Int = SYNC_CHANGES_PAGE_LIMIT,
     private val maxPagesPerPull: Int = SYNC_CHANGES_MAX_PAGES_PER_PULL,
+    private val snapshotJitterDelay: suspend () -> Unit = {},
     private val logger: (String) -> Unit = {},
 ) {
     private val lock = SynchronizedObject()
     private val mutexes = mutableMapOf<RaftSyncScope, Mutex>()
 
-    suspend fun pull(scope: RaftSyncScope, trigger: String): RaftSyncPullResult {
+    suspend fun pull(scope: RaftSyncScope, trigger: String, jitterSnapshots: Boolean = false): RaftSyncPullResult {
         val mutex = synchronized(lock) { mutexes.getOrPut(scope) { Mutex() } }
         return mutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()
             val result =
                 try {
-                    pullLocked(scope)
+                    pullLocked(scope, jitterSnapshots)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -193,7 +192,7 @@ internal class RaftSyncChangesEngine(
         }
     }
 
-    private suspend fun pullLocked(scope: RaftSyncScope): RaftSyncPullResult {
+    private suspend fun pullLocked(scope: RaftSyncScope, jitterSnapshots: Boolean): RaftSyncPullResult {
         val serverId = ServerId(scope.serverId)
         var firstSync = false
         var restarted = false
@@ -212,6 +211,8 @@ internal class RaftSyncChangesEngine(
                         is RaftSyncChangesFetch.Failed -> return RaftSyncPullResult.Failed(fetch.code)
                     }
                 // Snapshots after the cursor was read: whatever changes during them comes again.
+                if (jitterSnapshots) snapshotJitterDelay()
+                if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, RaftSyncSnapshot.All, reason = "first_sync")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
                 }
@@ -239,6 +240,8 @@ internal class RaftSyncChangesEngine(
             val reset = page.reset
             if (reset != null) {
                 resetReason = reset.reason
+                if (jitterSnapshots) snapshotJitterDelay()
+                if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, reset.snapshots, reason = "reset_${reset.reason}")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
                 }
