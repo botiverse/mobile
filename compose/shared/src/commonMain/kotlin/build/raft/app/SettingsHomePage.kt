@@ -6397,9 +6397,18 @@ private fun RaftAppShellReadyContent(
     // own window, the way the Choose workspace page does; false means switch in place.
     fun openServerInSeparateWindowIfEnabled(serverId: String, source: String): Boolean {
         val session = readySession ?: return false
+        // The server this window shows now (the shell's selected server, else what Home renders,
+        // else the session's) — never the launch-time scope server.
+        val currentServerId =
+            appShellNavigationServerId(
+                selectedServerId = selectedServerId,
+                renderedHomeServerId = renderedHomeServerId,
+                scopeInitialServerId = session.currentServerId
+            )
         val pageData =
             appShellServerSwitchNewWindowPageDataOrNull(
                 sourceStoreScope = navigationStoreScope,
+                currentServerId = currentServerId,
                 sourceDocumentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false),
                 selectedServerId = serverId,
                 multiShellHostEnabled = raftMultiShellHostEnabled(),
@@ -6412,7 +6421,7 @@ private fun RaftAppShellReadyContent(
             ) ?: return false
         bridge.log(
             "app_shell_server_switch_new_window source=$source " +
-                "from=${navigationStoreScope.initialServerId.orEmpty()} to=${serverId.trim()}"
+                "from=${currentServerId.orEmpty()} to=${serverId.trim()}"
         )
         pager.openAppShellReplacingCurrentPage(pageData)
         return true
@@ -8763,21 +8772,27 @@ internal fun raftMultiShellHostEnabled(): Boolean =
 
 /**
  * A server picked inside a shell (server menu, wide top bar strip, Home switcher, drawer header):
- * with the multi-window setting on and a different server, the page data that opens (or brings to
- * front) that server's own window — the launch the Choose workspace page uses, minus replacing the
- * source page. Null means switch in place.
+ * with the multi-window setting on and a server other than the one this window shows NOW
+ * ([currentServerId] — not the scope's launch-time server, which is null for a launcher-started
+ * window and stale after in-place switches), the page data that opens (or brings to front) that
+ * server's own window — the launch the Choose workspace page uses, minus replacing the source page.
+ * Null means switch in place; so does an unknown current server.
  */
 internal fun appShellServerSwitchNewWindowPageDataOrNull(
     sourceStoreScope: RaftShellStoreScope,
+    currentServerId: String?,
     sourceDocumentShell: Boolean,
     selectedServerId: String,
     multiShellHostEnabled: Boolean,
     routeOwner: AuthenticatedRouteOwner?
 ): JSONObject? {
     if (routeOwner == null) return null
-    if (!isMultiShellCrossServerSelection(sourceStoreScope, selectedServerId, multiShellHostEnabled)) return null
+    val current = currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    // Decide against the server on screen: the source scope as it is now.
+    val currentScope = RaftShellStoreScope.create(sourceStoreScope.shellInstanceId, current)
+    if (!isMultiShellCrossServerSelection(currentScope, selectedServerId, multiShellHostEnabled)) return null
     return appShellPageDataForServerSelection(
-        sourceStoreScope = sourceStoreScope,
+        sourceStoreScope = currentScope,
         sourceDocumentShell = sourceDocumentShell,
         selectedServerId = selectedServerId,
         multiShellHostEnabled = multiShellHostEnabled,

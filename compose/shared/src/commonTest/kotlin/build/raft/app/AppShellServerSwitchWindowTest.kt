@@ -28,6 +28,7 @@ class AppShellServerSwitchWindowTest {
             assertNotNull(
                 appShellServerSwitchNewWindowPageDataOrNull(
                     sourceStoreScope = sourceScope,
+                    currentServerId = "server-a",
                     sourceDocumentShell = false,
                     selectedServerId = "server-b",
                     multiShellHostEnabled = true,
@@ -54,6 +55,7 @@ class AppShellServerSwitchWindowTest {
             assertNotNull(
                 appShellServerSwitchNewWindowPageDataOrNull(
                     sourceStoreScope = sourceScope,
+                    currentServerId = "server-a",
                     sourceDocumentShell = false,
                     selectedServerId = "server-b",
                     multiShellHostEnabled = true,
@@ -78,6 +80,7 @@ class AppShellServerSwitchWindowTest {
         assertNull(
             appShellServerSwitchNewWindowPageDataOrNull(
                 sourceStoreScope = sourceScope,
+                currentServerId = "server-a",
                 sourceDocumentShell = false,
                 selectedServerId = "server-b",
                 multiShellHostEnabled = false,
@@ -91,6 +94,7 @@ class AppShellServerSwitchWindowTest {
         assertNull(
             appShellServerSwitchNewWindowPageDataOrNull(
                 sourceStoreScope = sourceScope,
+                currentServerId = "server-a",
                 sourceDocumentShell = false,
                 selectedServerId = " server-a ",
                 multiShellHostEnabled = true,
@@ -104,11 +108,47 @@ class AppShellServerSwitchWindowTest {
         assertNull(
             appShellServerSwitchNewWindowPageDataOrNull(
                 sourceStoreScope = sourceScope,
+                currentServerId = "server-a",
                 sourceDocumentShell = false,
                 selectedServerId = "server-b",
                 multiShellHostEnabled = true,
                 routeOwner = null,
             )
         )
+    }
+
+    private fun decide(scope: RaftShellStoreScope, currentServerId: String?, picked: String) =
+        appShellServerSwitchNewWindowPageDataOrNull(
+            sourceStoreScope = scope,
+            currentServerId = currentServerId,
+            sourceDocumentShell = false,
+            selectedServerId = picked,
+            multiShellHostEnabled = true,
+            routeOwner = owner(picked),
+        )
+
+    @Test
+    fun launcherWindowWithoutLaunchServerPickingTheServerItShowsSwitchesInPlace() {
+        val launcherScope = RaftShellStoreScope.create("android-default-app-shell", null)
+
+        assertNull(decide(launcherScope, currentServerId = "server-a", picked = "server-a"))
+        assertNotNull(decide(launcherScope, currentServerId = "server-a", picked = "server-b"))
+    }
+
+    @Test
+    fun windowSwitchedInPlaceDecidesAgainstTheServerItShowsNotItsLaunchServer() {
+        // Launched on A, switched in place to C while the setting was off.
+        val launchedOnA = RaftShellStoreScope.create("android-default-app-shell", "server-a")
+
+        assertNull(decide(launchedOnA, currentServerId = "server-c", picked = "server-c"))
+        val toA = assertNotNull(decide(launchedOnA, currentServerId = "server-c", picked = "server-a"))
+        assertEquals(true, toA.optBoolean("slockDocumentShell", false))
+        assertEquals("server-a", toA.optString("slockRouteServerId"))
+    }
+
+    @Test
+    fun unknownCurrentServerSwitchesInPlace() {
+        assertNull(decide(sourceScope, currentServerId = null, picked = "server-b"))
+        assertNull(decide(sourceScope, currentServerId = " ", picked = "server-b"))
     }
 }
