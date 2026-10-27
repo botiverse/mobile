@@ -62,6 +62,17 @@ final class RaftIosAdaptivePanePublisher: NSObject {
 /// whichever edge it sits. `statusBarFrame` is not used for any inset: with the status bar along
 /// the right edge (iPhone Duo inner display) its height can be close to the window height.
 /// `statusBarHidden` is reported as a fact only.
+///
+/// TODO(iphone-duo, iOS 27.1 SDK): the safe area does not cover every reserved region. On iPhone
+/// Duo the inner front-facing camera is an occlusion region only while the camera is active, and
+/// the fold is a division region while the device is partially open. UIKit exposes them from the
+/// iOS 27.1 SDK as `UIView.reservedRegions(kind:options:)` returning `[UIView.ReservedRegion]`
+/// (`frame` in the view's points, margins included; `isActive`; kinds `.occlusion` and
+/// `.division`). It is Swift-only and absent from the Xcode 26.6 / iOS 26.5 SDK we ship with, so
+/// it is not referenced yet. When the opt-in Xcode 27.1 lane builds, publish active occlusion
+/// frames here behind `if #available(iOS 27.1, *)` (and a compile-time guard while 26.x still
+/// builds), and have shared keep text and buttons out of them. Under the 26.x SDK the app is
+/// letterboxed clear of the camera and status bar, so nothing is lost until then.
 @objcMembers
 final class RaftIosWindowInsetsPublisher: NSObject {
     private var latest: NSDictionary?

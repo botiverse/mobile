@@ -3879,19 +3879,28 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         return;
     }
     if ([action isEqualToString:@"appLoginOpen"]) {
-        [[RaftIosMobileOAuthHost shared] openAppLoginWithUrl:RaftBridgeString(params[@"authorizationUrl"])
-                                                   completion:^(NSDictionary *result) {
-            callback(result);
-        }];
+        NSString *authorizationUrl = RaftBridgeString(params[@"authorizationUrl"]);
+        RaftBridgeRunOnMain(^{
+            // The requesting page's window: the sign-in sheet opens in this page's scene, not in
+            // whichever Raft window is key (Split View, several scenes, iPhone Duo).
+            [[RaftIosMobileOAuthHost shared] openAppLoginWithUrl:authorizationUrl
+                                                presentingWindow:self.raftHostController.viewIfLoaded.window
+                                                      completion:^(NSDictionary *result) {
+                callback(result);
+            }];
+        });
         return;
     }
     if ([action isEqualToString:@"mobileOAuthLink"]) {
         NSString *provider = RaftBridgeString(params[@"providerId"]);
-        [[RaftIosMobileOAuthHost shared] startWithProvider:provider
-                                                      mode:@"link"
-                                                completion:^(NSDictionary *result) {
-            callback(result);
-        }];
+        RaftBridgeRunOnMain(^{
+            [[RaftIosMobileOAuthHost shared] startWithProvider:provider
+                                                          mode:@"link"
+                                              presentingWindow:self.raftHostController.viewIfLoaded.window
+                                                    completion:^(NSDictionary *result) {
+                callback(result);
+            }];
+        });
         return;
     }
     if ([action isEqualToString:@"promoteFeedbackDraftAttachments"] ||

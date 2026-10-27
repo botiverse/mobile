@@ -191,6 +191,13 @@ jobs:
           XCODE_APP_PATH: /Applications/Xcode_26.6.app
         run: bash scripts/ci/select_ios_xcode.sh
 
+      - name: Record Xcode and iOS SDK
+        # The "Raft iOS SDK tier" of this build in the release summary (iPhone Duo audit §7).
+        env:
+          XCODE_APP_PATH: /Applications/Xcode_26.6.app
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+        run: bash scripts/ci/record_ios_toolchain.sh
+
       - name: Setup JDK 17
         uses: actions/setup-java@v6
         with:
