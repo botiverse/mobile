@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: "arm64"
+      xcode_app_path:
+        description: "Opt-in Xcode for this run, e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). Empty = the pinned Xcode_26.6. Must be an installed /Applications/Xcode*.app."
+        required: false
+        type: string
+        default: ""
   # workflow_dispatch only registers once this file reaches the default
   # branch; until then, pushing an edit of THIS FILE on a branch is the
   # trigger (scoped so ordinary source pushes never burn a macOS runner).
@@ -57,9 +62,26 @@ jobs:
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
+        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane, e.g.
+        # /Applications/Xcode_27.1.app for the iOS 27.1 SDK; empty keeps the pinned default.
         env:
-          XCODE_APP_PATH: /Applications/Xcode_26.6.app
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
         run: bash scripts/ci/select_ios_xcode.sh
+
+      - name: Record Xcode and iOS SDK
+        env:
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+        shell: bash
+        # source_sha can predate the script; then log the bare versions.
+        run: |
+          set -euo pipefail
+          if [ -f scripts/ci/record_ios_toolchain.sh ]; then
+            bash scripts/ci/record_ios_toolchain.sh
+          else
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version
+          fi
 
       - name: Record actual product source
         shell: bash
@@ -226,6 +248,8 @@ jobs:
             echo "ref=$GITHUB_REF_NAME"
             echo "run_id=$GITHUB_RUN_ID"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "xcode=$(xcodebuild -version | head -1)"
+            echo "iphonesimulator_sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)"
           } | tee "$staging/PROVENANCE.txt"
           sha=$(awk '{print $1}' "$staging/raft-ios-simulator.app.zip.sha256")
           {

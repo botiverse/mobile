@@ -50,6 +50,9 @@ jobs:
       - name: Test full Xcode selection
         run: python3 scripts/ci/test_select_ios_xcode.py
 
+      - name: Test iOS toolchain record
+        run: python3 scripts/ci/test_record_ios_toolchain.py
+
       - name: Test iOS bootstrap dependency decisions
         run: python3 scripts/ci/test_bootstrap_ios_runner.py
 
