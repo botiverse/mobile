@@ -94,6 +94,21 @@ class WebLoginAttemptTest {
     }
 
     @Test
+    fun onIosAPauseAndResumeWhileTheSheetIsOpenNeverEndsTheAttempt() = runTest {
+        // The "wants to use … to sign in" prompt and the sheet itself can pause/resume the app.
+        val attempt = WebLoginAttempt(backgroundScope, resumeGraceMs = GRACE, endsOnResume = false)
+        attempt.tryBegin()
+        attempt.onPaused()
+        attempt.onBrowserOpened(true)
+        attempt.onResumed()
+        advanceTimeBy(GRACE * 4)
+        runCurrent()
+        assertEquals(WebLoginAttemptPhase.AwaitingCallback, attempt.phase)
+        attempt.onCompletion(APP_LOGIN_BROWSER_CLOSED)
+        assertEquals(WebLoginAttemptPhase.Idle, attempt.phase, "the sheet's own cancel ends it")
+    }
+
+    @Test
     fun hostReturningAfterTheUserCameBackStartsTheGraceAtOnce() = runTest {
         val attempt = WebLoginAttempt(backgroundScope, resumeGraceMs = GRACE)
         attempt.tryBegin()

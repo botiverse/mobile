@@ -52,7 +52,14 @@ internal fun WebLoginScreen(
         bridge = bridge,
         routeScope = RaftInAppBrowserRouteScope.Unscoped,
     )
-    val attempt = remember(scope) { WebLoginAttempt(scope, logger = { raftLogInfo("SlockAppLogin", it) }) }
+    val attempt =
+        remember(scope) {
+            WebLoginAttempt(
+                scope,
+                endsOnResume = raftPlatformWebLoginEndsOnResume(),
+                logger = { raftLogInfo("SlockAppLogin", it) },
+            )
+        }
     var failed by remember { mutableStateOf(false) }
     var staleCallback by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -163,10 +170,11 @@ internal fun WebLoginContent(
                         if (pending) Res.string.auth_web_login_button_pending else Res.string.auth_web_login_button
                     ),
                 tone = AuthButtonTone.Pink,
-                enabled = consentAccepted && !pending,
+                // Busy, not unavailable (Kirby #3820): while pending the button keeps its pink and ink
+                // with a spinner before "Signing in…"; `loading` is what ignores the taps.
+                enabled = consentAccepted || pending,
                 loading = pending,
-                // Busy, not unavailable: keep the pink, dimmed (react `disabled:opacity-50` while signing in).
-                preserveDisabledVisual = pending,
+                busySpinner = true,
                 onClick = onSignIn,
             )
             Text(

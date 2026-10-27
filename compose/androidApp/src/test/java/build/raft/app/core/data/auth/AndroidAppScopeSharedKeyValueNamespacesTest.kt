@@ -1,5 +1,6 @@
 package build.raft.app.core.data.auth
 
+import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,5 +13,12 @@ class AndroidAppScopeSharedKeyValueNamespacesTest {
         // provider throws, the bridge fails to install, and the device silently
         // never registers for push.
         assertTrue(RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
+    }
+
+    @Test
+    fun deviceStateNamespaceGetsAppScopeStorage() {
+        // The notification-permission auto prompt keeps its "asked" flag here; without a factory
+        // the shared provider throws when the signed-in shell first shows.
+        assertTrue(RAFT_DEVICE_STATE_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
     }
 }

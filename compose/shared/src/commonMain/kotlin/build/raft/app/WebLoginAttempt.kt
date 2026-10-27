@@ -34,7 +34,8 @@ internal enum class WebLoginAttemptPhase {
  * - the callback is an error, a denial or a stale link ([onCompletion]);
  * - the host says the browser sheet closed without one ([APP_LOGIN_BROWSER_CLOSED], iOS);
  * - the app comes back to the foreground after leaving for the browser and no callback arrives
- *   within [resumeGraceMs] (the user cancelled or closed the browser tab).
+ *   within [resumeGraceMs] (the user cancelled or closed the browser tab); not when
+ *   [endsOnResume] is false (iOS, whose sheet reports its own cancel).
  * A successful callback stays pending: the page moves on to the post-sign-in route.
  *
  * [scope] runs the resume grace; tests pass a `runTest` scope so the grace is virtual time.
@@ -42,6 +43,8 @@ internal enum class WebLoginAttemptPhase {
 internal class WebLoginAttempt(
     private val scope: CoroutineScope,
     private val resumeGraceMs: Long = WEB_LOGIN_RESUME_GRACE_MS,
+    /** False on iOS: see [raftPlatformWebLoginEndsOnResume]. */
+    private val endsOnResume: Boolean = true,
     private val logger: (String) -> Unit = {},
 ) {
     var phase by mutableStateOf(WebLoginAttemptPhase.Idle)
@@ -116,6 +119,7 @@ internal class WebLoginAttempt(
     fun onSessionMissing() = release("session_missing")
 
     private fun armResumeGrace() {
+        if (!endsOnResume) return
         cancelResumeGrace()
         releaseJob =
             scope.launch {

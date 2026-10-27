@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.raftLogInfo
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -98,16 +100,18 @@ object RaftAppLoginBridge {
      */
     fun reportBrowserClosed() {
         raftLogInfo("SlockAppLogin", "app_login_browser_closed")
-        if (RaftWebLoginCompletion.status.value == null) RaftWebLoginCompletion.publish(APP_LOGIN_BROWSER_CLOSED)
+        completionMarker.browserClosed()
     }
+
+    private val completionMarker = AppLoginCompletionMarker()
 
     fun completeCallback(returnUri: String, requestId: String, code: String, error: String): Boolean {
         if (returnUri !in APP_LOGIN_RETURN_URIS || requestId.isBlank() || code.isBlank() == error.isBlank()) {
             return false
         }
-        // Published at once (the exchange below takes a network round trip) so the sign-in page,
+        // Marked at once (the exchange below takes a network round trip) so the sign-in page,
         // coming back to the foreground, knows a callback is on its way.
-        RaftWebLoginCompletion.publish(APP_LOGIN_CALLBACK_RECEIVED)
+        completionMarker.callbackAccepted()
         scope.launch {
             repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
                 val result =
@@ -116,19 +120,49 @@ object RaftAppLoginBridge {
                         .getOrDefault("login_error")
                 if (result != "retry") {
                     raftLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
-                    if (result != "ignored") {
-                        RaftWebLoginCompletion.publish(result)
-                    } else if (RaftWebLoginCompletion.status.value == APP_LOGIN_CALLBACK_RECEIVED) {
-                        RaftWebLoginCompletion.clear()
-                    }
+                    completionMarker.callbackFinished(result)
                     return@launch
                 }
                 delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
             }
             raftLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
-            RaftWebLoginCompletion.publish("login_error")
+            completionMarker.callbackFinished("login_error")
         }
         return true
+    }
+}
+
+/**
+ * What accepted callbacks write to [RaftWebLoginCompletion]. A duplicate callback (the web's
+ * "back to app" tapped twice) must never undo an earlier one's result: "callback received" is
+ * written only over nothing or "browser closed", and an ignored callback clears that marker only
+ * when no other accepted callback is still being exchanged.
+ */
+internal class AppLoginCompletionMarker(
+    private val status: () -> String? = { RaftWebLoginCompletion.status.value },
+    private val publish: (String) -> Unit = RaftWebLoginCompletion::publish,
+    private val clear: () -> Unit = RaftWebLoginCompletion::clear,
+) : SynchronizedObject() {
+    private var inFlight = 0
+
+    fun callbackAccepted() = synchronized(this) {
+        inFlight += 1
+        val current = status()
+        if (current == null || current == APP_LOGIN_BROWSER_CLOSED) publish(APP_LOGIN_CALLBACK_RECEIVED)
+    }
+
+    /** [result] is [AppLoginCoordinator.complete]'s (never "retry"). */
+    fun callbackFinished(result: String) = synchronized(this) {
+        inFlight = (inFlight - 1).coerceAtLeast(0)
+        if (result != "ignored") {
+            publish(result)
+        } else if (inFlight == 0 && status() == APP_LOGIN_CALLBACK_RECEIVED) {
+            clear()
+        }
+    }
+
+    fun browserClosed() = synchronized(this) {
+        if (status() == null) publish(APP_LOGIN_BROWSER_CLOSED)
     }
 }
 

@@ -77,6 +77,15 @@ internal expect fun raftPlatformSupportsBackgroundRealtime(): Boolean
  */
 internal expect fun raftPlatformAutoPromptsNotificationPermissionAfterSignIn(): Boolean
 
+/**
+ * Whether returning to the app after the browser sign-in opened (and no callback within the
+ * grace) ends a pending sign-in. Android and the Compose desktop app hand off to an external
+ * browser, so coming back is the only cancel signal. iOS signs in in an in-app
+ * `ASWebAuthenticationSession` sheet whose consent prompt and presentation can pause and resume
+ * the app while the sheet is still open; it reports a cancel itself (`reportBrowserClosed`).
+ */
+internal expect fun raftPlatformWebLoginEndsOnResume(): Boolean
+
 // The iOS app shell always has the native UITabBar renderer available. Route
 // launches created after auth/server changes do not pass the SwiftUI root's
 // pageData, so shared needs a platform default when the host did not provide an

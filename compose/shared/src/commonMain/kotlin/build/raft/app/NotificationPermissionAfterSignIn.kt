@@ -12,6 +12,7 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.KeyValueNotificationPermissionPromptPreferenceStore
 import build.raft.app.data.NotificationPermissionAutoPrompt
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.raftDeviceStateKeyValueStore
 import kotlinx.coroutines.launch
 
 /**
@@ -22,12 +23,12 @@ import kotlinx.coroutines.launch
 internal fun NotificationPermissionAfterSignInEffect(
     active: Boolean,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    preferenceStore: SharedPreferenceStore,
 ) {
     val prompt =
-        remember(settingsCapabilities, preferenceStore) {
+        remember(settingsCapabilities) {
             NotificationPermissionAutoPrompt(
-                preferences = KeyValueNotificationPermissionPromptPreferenceStore(preferenceStore),
+                // Opened only when the platform prompts (iOS installs no device-state store).
+                preferences = KeyValueNotificationPermissionPromptPreferenceStore(LazySharedPreferenceStore(::raftDeviceStateKeyValueStore)),
                 supported = raftPlatformAutoPromptsNotificationPermissionAfterSignIn(),
                 loadStatusCode = settingsCapabilities::loadSystemNotificationPermissionCode,
                 requestPermission = settingsCapabilities::requestNotificationPermission,
@@ -47,4 +48,12 @@ internal fun NotificationPermissionAfterSignInEffect(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+}
+
+private class LazySharedPreferenceStore(factory: () -> SharedPreferenceStore) : SharedPreferenceStore {
+    private val store by lazy(factory)
+
+    override fun getString(key: String): String? = store.getString(key)
+
+    override fun putString(key: String, value: String?) = store.putString(key, value)
 }

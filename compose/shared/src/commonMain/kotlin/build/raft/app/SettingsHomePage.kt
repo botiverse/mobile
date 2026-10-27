@@ -3874,7 +3874,6 @@ private fun RaftAppShellReadyContent(
     NotificationPermissionAfterSignInEffect(
         active = pageVisible && authGateState is SharedAuthGateState.Ready && !readyServerId.isNullOrBlank(),
         settingsCapabilities = settingsCapabilities,
-        preferenceStore = sharedPreferenceStore,
     )
     val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
     val activityUnreadSummaryFlow =

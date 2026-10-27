@@ -20,7 +20,7 @@ internal enum class NotificationPermissionAutoPromptOutcome {
     /** The system prompt was requested. */
     Requested,
 
-    /** The host refused to show the prompt. */
+    /** The prompt could not be shown; the "asked" flag is cleared so a later launch asks. */
     RequestFailed,
 }
 
@@ -50,7 +50,12 @@ internal class NotificationPermissionAutoPrompt(
         ProcessLock.withLock {
             settled?.let { return@withLock it }
             val outcome = decideAndAsk()
-            if (outcome != NotificationPermissionAutoPromptOutcome.StatusUnknown) settled = outcome
+            // Unknown status and a prompt that never showed retry the next time the shell shows.
+            if (outcome != NotificationPermissionAutoPromptOutcome.StatusUnknown &&
+                outcome != NotificationPermissionAutoPromptOutcome.RequestFailed
+            ) {
+                settled = outcome
+            }
             // Unsupported / already asked are the steady state on every launch: not worth a line.
             if (outcome != NotificationPermissionAutoPromptOutcome.Unsupported &&
                 outcome != NotificationPermissionAutoPromptOutcome.AlreadyAsked
@@ -84,6 +89,8 @@ internal class NotificationPermissionAutoPrompt(
             awaitingResult = result.status == SystemNotificationActionStatus.Requested
             return NotificationPermissionAutoPromptOutcome.Requested
         }
+        // The prompt never reached the system (e.g. no activity yet): this was not the one ask.
+        preferences.clearAutoPromptAsked()
         logger("notification_permission_auto_prompt request_failed code=${result.code}")
         return NotificationPermissionAutoPromptOutcome.RequestFailed
     }

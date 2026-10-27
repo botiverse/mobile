@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftSpinner
 import build.raft.app.resources.*
 import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.RaftBrutalIconButton
@@ -554,6 +555,12 @@ internal fun AuthActionButton(
     loading: Boolean = false,
     preserveDisabledVisual: Boolean = false,
     variant: AuthActionButtonVariant = AuthActionButtonVariant.Large,
+    /**
+     * While [loading], draw the design-system [RaftSpinner] in the label's ink before the label
+     * (in place of [leadingContent]). Keep [enabled] true with it: the button keeps its active
+     * colours and reads "in progress", not "unavailable"; [loading] alone already ignores taps.
+     */
+    busySpinner: Boolean = false,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
     val background = when (tone) {
@@ -621,7 +628,12 @@ internal fun AuthActionButton(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (leadingContent != null) {
+                if (loading && busySpinner) {
+                    Box(Modifier.padding(end = 8.dp), contentAlignment = Alignment.Center) {
+                        // The label already names what is happening; the spinner is decoration.
+                        RaftSpinner(color = contentColor, contentDescription = "")
+                    }
+                } else if (leadingContent != null) {
                     Box(Modifier.padding(end = 8.dp), contentAlignment = Alignment.Center) {
                         leadingContent()
                     }

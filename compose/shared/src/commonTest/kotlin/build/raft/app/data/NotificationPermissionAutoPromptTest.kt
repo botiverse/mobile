@@ -81,12 +81,19 @@ class NotificationPermissionAutoPromptTest {
     }
 
     @Test
-    fun aRefusedRequestIsLoggedAndStillCountsAsAsked() = runTest {
+    fun aPromptThatNeverShowedDoesNotCountAsTheOneAsk() = runTest {
+        // e.g. no activity to show it on yet: the host answers permission_denied without a dialog.
         val store = InMemoryRaftKeyValueStore()
         val host = Host()
         host.requestResult = SystemNotificationActionResult(SystemNotificationActionStatus.PermissionDenied, code = "permission_denied")
-        assertEquals(NotificationPermissionAutoPromptOutcome.RequestFailed, host.prompt(store).maybeAsk())
-        assertTrue(KeyValueNotificationPermissionPromptPreferenceStore(store).readAutoPromptAskedSync())
+        val prompt = host.prompt(store)
+        assertEquals(NotificationPermissionAutoPromptOutcome.RequestFailed, prompt.maybeAsk())
+        assertFalse(KeyValueNotificationPermissionPromptPreferenceStore(store).readAutoPromptAskedSync())
         assertTrue(host.logs.contains("notification_permission_auto_prompt request_failed code=permission_denied"), host.logs.toString())
+
+        host.requestResult = SystemNotificationActionResult(SystemNotificationActionStatus.Requested, code = "permission_requested")
+        assertEquals(NotificationPermissionAutoPromptOutcome.Requested, prompt.maybeAsk(), "the shell showing again retries")
+        assertEquals(2, host.requests)
+        assertTrue(KeyValueNotificationPermissionPromptPreferenceStore(store).readAutoPromptAskedSync())
     }
 }
