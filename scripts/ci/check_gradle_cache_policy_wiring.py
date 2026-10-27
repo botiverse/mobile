@@ -5,7 +5,10 @@ Asserts, for every workflow job, that each gradle/actions/setup-gradle step is
 preceded (within the same job) by a step using ./.github/actions/gradle-cache-policy,
 so no setup-gradle invocation can silently run outside the epoch/quarantine policy.
 Also re-validates the two policy files with the same fail-closed rules the runtime
-reader enforces. Run with --self-test to exercise the checker against fixtures.
+reader enforces, and that the epoch reaches the Gradle build-cache directory: apply.sh exports
+RAFT_GRADLE_BUILD_CACHE_EPOCH, compose/settings.gradle.kts applies the settings plugin that
+reads it (gradle/actions v6 keys the build-cache entry by file names only, so the epoch must
+be in the directory name for a rotation to produce a new entry). Run with --self-test to exercise the checker against fixtures.
 """
 import glob
 import re
@@ -17,6 +20,11 @@ POLICY_ACTION = "./.github/actions/gradle-cache-policy"
 SETUP_GRADLE = "gradle/actions/setup-gradle@"
 EPOCH_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 ALLOWLIST = {"dependencies", "transforms"}
+BUILD_CACHE_EPOCH_ENV = "RAFT_GRADLE_BUILD_CACHE_EPOCH"
+BUILD_CACHE_EPOCH_PLUGIN = "gradle/build-cache-epoch.settings.gradle.kts"
+SETTINGS_APPLY_RE = re.compile(
+    r'(?m)^apply\(from = "' + re.escape(BUILD_CACHE_EPOCH_PLUGIN) + r'"\)\s*$'
+)
 
 
 def check_workflows(paths):
@@ -37,6 +45,25 @@ def check_workflows(paths):
                         f"{path}: job '{job_name}' step {index} uses {uses} "
                         f"without a preceding {POLICY_ACTION} step"
                     )
+    return errors
+
+
+def check_build_cache_epoch_wiring(apply_path, settings_path, plugin_path):
+    errors = []
+    try:
+        apply_src = open(apply_path).read()
+        settings_src = open(settings_path).read()
+        plugin_src = open(plugin_path).read()
+    except OSError as error:
+        return [f"build-cache epoch wiring: unreadable ({error})"]
+    if f'echo "{BUILD_CACHE_EPOCH_ENV}=${{epoch}}" >> "${{github_env}}"' not in apply_src:
+        errors.append(f"{apply_path}: must export {BUILD_CACHE_EPOCH_ENV}=${{epoch}}")
+    if not SETTINGS_APPLY_RE.search(settings_src):
+        errors.append(f'{settings_path}: must apply(from = "{BUILD_CACHE_EPOCH_PLUGIN}")')
+    if f'environmentVariable("{BUILD_CACHE_EPOCH_ENV}")' not in plugin_src:
+        errors.append(f"{plugin_path}: must read {BUILD_CACHE_EPOCH_ENV}")
+    if '"caches/build-cache-epoch-$buildCacheEpoch"' not in plugin_src:
+        errors.append(f"{plugin_path}: must put the epoch in the build-cache directory name")
     return errors
 
 
@@ -70,10 +97,10 @@ def self_test():
 
     good = {"jobs": {"a": {"steps": [
         {"uses": POLICY_ACTION},
-        {"uses": "gradle/actions/setup-gradle@v5"},
+        {"uses": "gradle/actions/setup-gradle@v6"},
     ]}}}
     bad = {"jobs": {"a": {"steps": [
-        {"uses": "gradle/actions/setup-gradle@v5"},
+        {"uses": "gradle/actions/setup-gradle@v6"},
         {"uses": POLICY_ACTION},
     ]}}}
     with tempfile.TemporaryDirectory() as tmp:
@@ -109,11 +136,31 @@ def self_test():
         # Lookalike policy path must not count as wiring; .yaml workflows must be scanned.
         lookalike = {"jobs": {"a": {"steps": [
             {"uses": POLICY_ACTION + "-broken"},
-            {"uses": "gradle/actions/setup-gradle@v5"},
+            {"uses": "gradle/actions/setup-gradle@v6"},
         ]}}}
         lookalike_path = os.path.join(tmp, "lookalike.yaml")
         yaml.safe_dump(lookalike, open(lookalike_path, "w"))
         assert check_workflows([lookalike_path]), "lookalike policy path must not satisfy the invariant"
+
+        # Build-cache epoch wiring: the real files pass; each broken link fails.
+        real = (".github/actions/gradle-cache-policy/apply.sh", "compose/settings.gradle.kts",
+                "compose/" + BUILD_CACHE_EPOCH_PLUGIN)
+        assert not check_build_cache_epoch_wiring(*real), check_build_cache_epoch_wiring(*real)
+        sources = [open(path).read() for path in real]
+        mutations = [
+            (0, f"{BUILD_CACHE_EPOCH_ENV}=${{epoch}}", "OTHER_EPOCH=${epoch}"),
+            (1, f'apply(from = "{BUILD_CACHE_EPOCH_PLUGIN}")', f'// apply(from = "{BUILD_CACHE_EPOCH_PLUGIN}")'),
+            (2, f'environmentVariable("{BUILD_CACHE_EPOCH_ENV}")', 'environmentVariable("OTHER_EPOCH")'),
+            (2, '"caches/build-cache-epoch-$buildCacheEpoch"', '"caches/build-cache-1"'),
+        ]
+        for which, old, new in mutations:
+            assert old in sources[which], old
+            paths = []
+            for index, source in enumerate(sources):
+                mutated = os.path.join(tmp, f"wiring-{index}")
+                open(mutated, "w").write(source.replace(old, new) if index == which else source)
+                paths.append(mutated)
+            assert check_build_cache_epoch_wiring(*paths), f"mutation must fail: {old} -> {new}"
     print("check_gradle_cache_policy_wiring self-test: OK")
 
 
@@ -124,6 +171,11 @@ def main():
     workflow_paths = glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")
     errors = check_workflows(workflow_paths)
     errors += check_policy_files(".github/gradle-cache-epoch", ".github/gradle-cache-quarantine")
+    errors += check_build_cache_epoch_wiring(
+        ".github/actions/gradle-cache-policy/apply.sh",
+        "compose/settings.gradle.kts",
+        "compose/" + BUILD_CACHE_EPOCH_PLUGIN,
+    )
     if errors:
         print("\n".join(errors), file=sys.stderr)
         sys.exit(1)

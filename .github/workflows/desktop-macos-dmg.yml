@@ -50,7 +50,7 @@ jobs:
         uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Package dmg
         working-directory: compose

@@ -51,7 +51,7 @@ jobs:
         uses: ./.github/actions/gradle-cache-policy
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Run Testbox
         uses: useblacksmith/run-testbox@9b976c32aa3bcbffb348889673585a5deee1b2f3 # v2
