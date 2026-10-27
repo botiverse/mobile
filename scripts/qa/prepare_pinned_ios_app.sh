@@ -12,6 +12,10 @@ EXPECTED_SOURCE="${6:-}"
 EXPECTED_BUNDLE="${7:-}"
 EXPECTED_VERSION="${8:-}"
 EXPECTED_CODE="${9:-}"
+# ALLOW_NON_DEFAULT_XCODE_LANE=true accepts an app built on an opt-in Xcode lane
+# (metadata xcode_lane != "default", e.g. the iOS 27.1 SDK). Otherwise it is refused: it is
+# not the release toolchain, and the SDK changes how the app lays out (iPhone Duo).
+ALLOW_NON_DEFAULT_XCODE_LANE="${ALLOW_NON_DEFAULT_XCODE_LANE:-false}"
 DITTO_BIN="${DITTO_BIN:-ditto}"
 PLIST_BUDDY="${PLIST_BUDDY:-/usr/libexec/PlistBuddy}"
 
@@ -38,12 +42,29 @@ VERIFIED_ENV="$WORK/verified.env"
 ACTUAL_SHA="$ACTUAL_SHA" ACTUAL_SIZE="$ACTUAL_SIZE" APP_RUN_ID="$APP_RUN_ID" \
   EXPECTED_SHA="$EXPECTED_SHA" EXPECTED_SOURCE="$EXPECTED_SOURCE" EXPECTED_BUNDLE="$EXPECTED_BUNDLE" \
   EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_CODE="$EXPECTED_CODE" \
+  ALLOW_NON_DEFAULT_XCODE_LANE="$ALLOW_NON_DEFAULT_XCODE_LANE" \
   node - "$METADATA_PATH" "$VERIFIED_ENV" <<'NODE'
 const fs = require("fs");
 const [metadataPath, outputPath] = process.argv.slice(2);
 const value = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
 if (value.platform !== "ios-simulator") throw new Error("metadata platform mismatch");
 const e = process.env;
+// Xcode lane (scripts/ci/stamp_ios_xcode_lane.py). Carriers from before the lane was stamped
+// have no xcode_lane; every one of them was built on the default lane, so warn and accept.
+const toolchain = `Xcode ${value.xcode_version ?? "?"} (${value.xcode_app ?? "?"}), iPhoneSimulator SDK ${value.ios_sdk_version ?? "?"}`;
+if (value.xcode_lane === undefined) {
+  console.log("::warning::pinned iOS app metadata has no xcode_lane (carrier predates lane stamping); treating it as the default lane");
+} else if (value.xcode_lane !== "default") {
+  if (e.ALLOW_NON_DEFAULT_XCODE_LANE !== "true") {
+    console.error(`::error::pinned iOS app was built on the '${value.xcode_lane}' Xcode lane: ${toolchain}. ` +
+      "That is not the release toolchain (the iOS SDK changes the iPhone Duo layout), so it cannot stand in for the release build. " +
+      "Re-run with allow_non_default_xcode_lane=true only if this acceptance run is about that lane on purpose.");
+    process.exit(3);
+  }
+  console.log(`::warning::accepting a pinned iOS app from the '${value.xcode_lane}' Xcode lane (${toolchain}) because allow_non_default_xcode_lane=true. Not the release build.`);
+} else {
+  console.log(`pinned iOS app Xcode lane: default, ${toolchain}`);
+}
 const exact = {
   sha: String(value.artifact_sha256 || ""),
   source: String(value.source_commit || ""),

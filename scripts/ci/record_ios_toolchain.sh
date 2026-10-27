@@ -7,23 +7,29 @@
 #   iOS 27.1 SDK or later -> full display, bars vertical below the status bar.
 # Run after scripts/ci/select_ios_xcode.sh (it exports DEVELOPER_DIR). RAFT_DEFAULT_XCODE_APP is
 # the workflow's pinned default; a different XCODE_APP_PATH is flagged as an opt-in lane.
-set -euo pipefail
+#
+# Log-only: this script never fails the job. A tool that errors or an SDK version it cannot
+# parse becomes a ::warning:: and tier "unknown"; a release must not stop on a log line.
+set -uo pipefail
 
-xcode_version="$(xcodebuild -version)"
-device_sdk="$(xcrun --sdk iphoneos --show-sdk-version)"
-simulator_sdk="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+xcode_version="$(xcodebuild -version 2>&1)" || xcode_version="xcodebuild -version failed: $xcode_version"
+device_sdk="$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null)" || device_sdk=""
+simulator_sdk="$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)" || simulator_sdk=""
 selected_app="${XCODE_APP_PATH:-}"
 default_app="${RAFT_DEFAULT_XCODE_APP:-}"
 
-case "$device_sdk" in
-  ''|*[!0-9.]*) echo "::error::Unexpected iPhoneOS SDK version: $device_sdk" >&2; exit 1 ;;
-esac
 major="${device_sdk%%.*}"
 rest="${device_sdk#"$major"}"
 rest="${rest#.}"
 minor="${rest%%.*}"
 minor="${minor:-0}"
-if [ "$major" -lt 27 ]; then
+parsed=yes
+case "$major" in ''|*[!0-9]*) parsed=no ;; esac
+case "$minor" in ''|*[!0-9]*) parsed=no ;; esac
+if [ "$parsed" != yes ]; then
+  echo "::warning::Unexpected iPhoneOS SDK version: '${device_sdk}'; SDK tier not recorded"
+  tier="unknown (could not parse iPhoneOS SDK '${device_sdk}')"
+elif [ "$major" -lt 27 ]; then
   tier="iOS 26 SDK or earlier: letterboxed on the iPhone Duo inner display"
 elif [ "$major" -eq 27 ] && [ "$minor" -lt 1 ]; then
   tier="iOS 27.0 SDK: resizes on iPhone Duo, avoids the right-edge status bar"
@@ -58,3 +64,4 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "- Xcode lane: $lane"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
+exit 0

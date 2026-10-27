@@ -101,3 +101,47 @@ test("rejects a non-iOS-simulator artifact manifest before extraction", () => {
   ], { env: { ...process.env, GITHUB_ENV: "", PATH: `${path.dirname(process.execPath)}:${process.env.PATH}`, DITTO_BIN: path.join(f.bin, "ditto"), PLIST_BUDDY: path.join(f.bin, "PlistBuddy") } }), /Command failed/);
   assert.equal(fs.existsSync(f.dittoLog), false);
 });
+
+function runPinned(f, extraEnv = {}) {
+  return execFileSync("bash", [
+    new URL("./prepare_pinned_ios_app.sh", import.meta.url).pathname,
+    f.zip, f.metadata, f.products, "29700366778", f.sha, "4".repeat(40), "build.raft.app", "1.0", "1",
+  ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ENV: "", PATH: `${path.dirname(process.execPath)}:${process.env.PATH}`, DITTO_BIN: path.join(f.bin, "ditto"), PLIST_BUDDY: path.join(f.bin, "PlistBuddy"), ...extraEnv } });
+}
+
+const optInLane = { xcode_lane: "opt-in", xcode_version: "27.1", xcode_app: "Xcode_27.1.app", ios_sdk_version: "27.1" };
+
+test("refuses an app from the opt-in Xcode lane before extraction", () => {
+  const f = fixture({ metadataOverrides: optInLane });
+  for (const allow of [undefined, "", "false", "1"]) {
+    const env = allow === undefined ? {} : { ALLOW_NON_DEFAULT_XCODE_LANE: allow };
+    assert.throws(() => runPinned(f, env), (error) => {
+      assert.equal(error.status, 3);
+      assert.match(error.stderr, /built on the 'opt-in' Xcode lane: Xcode 27\.1 \(Xcode_27\.1\.app\), iPhoneSimulator SDK 27\.1/);
+      assert.match(error.stderr, /allow_non_default_xcode_lane=true/);
+      return true;
+    });
+  }
+  assert.equal(fs.existsSync(f.dittoLog), false);
+  assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "old-marker"), "utf8"), "old");
+});
+
+test("accepts an opt-in lane app only when explicitly allowed, with a warning", () => {
+  const f = fixture({ metadataOverrides: optInLane });
+  const out = runPinned(f, { ALLOW_NON_DEFAULT_XCODE_LANE: "true" });
+  assert.match(out, /::warning::accepting a pinned iOS app from the 'opt-in' Xcode lane/);
+  assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "pinned-marker"), "utf8"), "pinned");
+});
+
+test("accepts a default lane app and logs its toolchain", () => {
+  const f = fixture({ metadataOverrides: { xcode_lane: "default", xcode_version: "26.6", xcode_app: "Xcode_26.6.app", ios_sdk_version: "26.5" } });
+  const out = runPinned(f);
+  assert.match(out, /Xcode lane: default, Xcode 26\.6 \(Xcode_26\.6\.app\), iPhoneSimulator SDK 26\.5/);
+  assert.doesNotMatch(out, /::warning::/);
+});
+
+test("accepts a carrier without xcode_lane (predates stamping) with a warning", () => {
+  const f = fixture();
+  const out = runPinned(f);
+  assert.match(out, /::warning::pinned iOS app metadata has no xcode_lane/);
+});

@@ -64,9 +64,22 @@ class RecordIosToolchainTest(unittest.TestCase):
         self.run_script()
         self.assertIn("iOS 27.1 SDK or later", self.summary.read_text())
 
-    def test_unexpected_sdk_version_fails(self):
-        self.env["FAKE_DEVICE_SDK"] = "not-a-version"
-        self.run_script(False)
+    def test_unexpected_sdk_version_warns_but_never_fails(self):
+        # Log-only: ios-release.yml runs this before a release build.
+        for bad in ("not-a-version", "", "27.x", "27.1-beta"):
+            self.env["FAKE_DEVICE_SDK"] = bad
+            out = self.run_script().stdout
+            self.assertIn("::warning::Unexpected iPhoneOS SDK version", out)
+            self.assertIn("Raft iOS SDK tier: unknown", out)
+
+    def test_failing_tools_do_not_fail_the_step(self):
+        bin_dir = Path(self.tmp.name) / "bin"
+        for tool in ("xcodebuild", "xcrun"):
+            (bin_dir / tool).write_text("#!/bin/sh\necho boom >&2\nexit 3\n")
+        out = self.run_script().stdout
+        self.assertIn("xcodebuild -version failed", out)
+        self.assertIn("Raft iOS SDK tier: unknown", out)
+        self.assertIn("Raft iOS SDK tier: unknown", self.summary.read_text())
 
 
 if __name__ == "__main__":
