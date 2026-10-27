@@ -136,6 +136,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
@@ -5624,6 +5625,34 @@ internal class SharedThreadDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true))
+        }
+    }
+
+    /** Task v2: follow a task conversation, named by its own (local) channel id. */
+    suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true))
+        return try {
+            repository.followTaskConversation(conversationChannelId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true))
+        }
+    }
+
+    /** Task v2: the task and parent channel behind a task conversation channel. */
+    suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+        return try {
+            repository.loadTaskConversationRef(conversationChannelId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
         }
     }
 

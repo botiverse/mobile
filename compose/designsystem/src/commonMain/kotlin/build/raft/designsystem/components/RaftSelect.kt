@@ -268,6 +268,7 @@ internal fun raftPickerTriggerLook(
  * false; [leadingIcon] is 14dp. Pressed lays `fill-pressed` over the fill; keyboard focus
  * rings it; [invalid] draws a `danger-strong` inset ring; disabled is `fill-muted`. It
  * draws 32dp but takes touches 44dp tall ([raftTouchTarget]); keep 6dp free above and below.
+ * Given less width than its label needs, the label ends in an ellipsis (web `truncate`).
  */
 @Composable
 fun RaftPickerTriggerButton(
@@ -307,12 +308,16 @@ fun RaftPickerTriggerButton(
                 Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) { leadingIcon() }
             }
         }
+        // A trigger narrower than its label (a long assignee name) ends in an ellipsis before the
+        // chevron instead of cutting the text.
         RaftText(
             text,
+            modifier = Modifier.weight(1f, fill = false),
             style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
             color = look.ink,
             maxLines = 1,
             softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
         if (showIndicator) RaftGlyphIcon(RaftGlyph.ChevronDown, size = 14.dp, color = look.indicator)
     }

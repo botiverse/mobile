@@ -102,6 +102,9 @@ import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftTaskStatus
+import build.raft.designsystem.components.RaftTaskStatusBadge
+import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftStep
 import build.raft.designsystem.components.RaftStepStatus
 import build.raft.designsystem.components.RaftSteps
@@ -608,6 +611,39 @@ class DisplayComponentScreenshotTest {
                         RaftStatusDot(presence = presence)
                         RaftText(presence.word, style = RaftTheme.typography.footnote)
                     }
+                }
+            }
+        }
+
+    /**
+     * raft-ui TaskStatusBadge: the five statuses at `default` (22dp) and `sm` (20dp), then the
+     * status editor's trigger (chevron) at rest and pressed, and a read-only (disabled) trigger.
+     */
+    @Test
+    fun taskStatusBadge() =
+        capture("task_status_badge") {
+            val labels =
+                mapOf(
+                    RaftTaskStatus.Todo to "Todo",
+                    RaftTaskStatus.InProgress to "In Progress",
+                    RaftTaskStatus.InReview to "In Review",
+                    RaftTaskStatus.Done to "Done",
+                    RaftTaskStatus.Closed to "Closed",
+                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                RaftTaskStatusBadgeSize.entries.forEach { size ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Caption(size.name, Modifier.width(28.dp))
+                        labels.forEach { (status, label) -> RaftTaskStatusBadge(status = status, text = label, size = size) }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Caption("Edit", Modifier.width(28.dp))
+                    RaftTaskStatusBadge(status = RaftTaskStatus.InProgress, text = "In Progress", onClick = {})
+                    StateCell(pressed = true) {
+                        RaftTaskStatusBadge(status = RaftTaskStatus.InReview, text = "In Review", onClick = {})
+                    }
+                    RaftTaskStatusBadge(status = RaftTaskStatus.Done, text = "Done", onClick = {}, enabled = false)
                 }
             }
         }

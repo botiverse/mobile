@@ -190,6 +190,8 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.TaskConversationHeaderEvent
+import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
@@ -7990,6 +7992,79 @@ private fun SharedThreadRouteContentContent(
                 )
             }
         }
+    // Task v2 (web TaskConversationBar): a task conversation's bar resolves the task and its channel
+    // from the conversation, then reads the task from that channel's shared task projection, so a
+    // status / assignee write and a `task:updated` fold take the Tasks board's path.
+    val taskConversationId =
+        payload.resolvedAuxiliaryThreadId()
+            ?.takeIf { payload.channelKind == RaftTaskConversationChannelKind }
+            ?.let(::ChannelId)
+    val taskConversationHeaderViewModel: TaskConversationHeaderViewModel? =
+        taskConversationId?.let { conversationId ->
+            viewModel(key = "task-conversation-header-${conversationId.value}") {
+                TaskConversationHeaderViewModel(
+                    conversationChannelId = conversationId,
+                    loadRef = dataSource::loadTaskConversationRef,
+                    follow = dataSource::followTaskConversation,
+                    unfollow = dataSource::unfollowThread,
+                    log = { bridge.log(it) },
+                )
+            }
+        }
+    val taskConversationHeaderState =
+        taskConversationHeaderViewModel?.state?.collectAsState()?.value
+    LaunchedEffect(taskConversationHeaderViewModel) { taskConversationHeaderViewModel?.start() }
+    val taskConversationParentChannelId = taskConversationHeaderState?.ref?.parentChannelId
+    val taskConversationTasksViewModel: SharedTasksViewModel? =
+        taskConversationParentChannelId?.let { parentChannelId ->
+            viewModel(key = "task-conversation-tasks-${parentChannelId.value}") {
+                SharedTasksViewModel(
+                    authStore = authStore,
+                    dataSource = tasksDataSource,
+                    sharedTasksDataStore = tasksDataStore,
+                    scope = SharedTasksScope.Channel(parentChannelId),
+                    diagnosticsLogger = { bridge.log(it) }
+                )
+            }
+        }
+    LaunchedEffect(taskConversationTasksViewModel) {
+        taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
+    }
+    val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
+    val taskConversationTask =
+        taskConversationHeaderState?.ref?.taskId?.let { taskId ->
+            (taskConversationTasksState?.loadState as? ScreenLoadState.Content)
+                ?.data
+                ?.tasks
+                ?.firstOrNull { it.id == taskId }
+        }
+    // A task seen on this page that then leaves its channel's list was deleted (the shared projection
+    // drops it on `task:deleted`); one never seen (a stale list) is not.
+    var taskConversationTaskSeen by remember(taskConversationId?.value) { mutableStateOf(false) }
+    LaunchedEffect(taskConversationTask != null, taskConversationTasksState?.loadState) {
+        if (taskConversationTask != null) {
+            taskConversationTaskSeen = true
+        } else if (taskConversationTaskSeen && taskConversationTasksState?.loadState is ScreenLoadState.Content) {
+            taskConversationHeaderViewModel?.onTaskMissing()
+        }
+    }
+    val taskConversationDeletedLabel = stringResource(Res.string.task_conversation_deleted)
+    val taskConversationFollowFailedLabel = stringResource(Res.string.task_conversation_follow_failed)
+    LaunchedEffect(taskConversationHeaderState?.removed == true) {
+        if (taskConversationHeaderState?.removed == true) {
+            // Web closes the task dialog when its task is deleted; the page says why, then closes.
+            bridge.log("task_conversation_removed conversationId=${taskConversationId?.value.orEmpty()}")
+            bridge.toast(taskConversationDeletedLabel)
+            onBack()
+        }
+    }
+    LaunchedEffect(taskConversationHeaderViewModel) {
+        taskConversationHeaderViewModel?.events?.collect { event ->
+            when (event) {
+                is TaskConversationHeaderEvent.FollowFailed -> bridge.toast(taskConversationFollowFailedLabel)
+            }
+        }
+    }
     val memberSuggestionScopePayload =
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
@@ -8649,6 +8724,21 @@ private fun SharedThreadRouteContentContent(
             )
         }
 
+    LaunchedEffect(taskConversationTasksViewModel, unableToUpdateTaskLabel) {
+        taskConversationTasksViewModel?.uiEvents?.collect { event ->
+            when (event) {
+                is SharedTasksEvent.OperationFailed -> {
+                    when {
+                        event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
+                            bridge.toast(unableToUpdateTaskLabel)
+                        event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
+                            bridge.toast(unableToUpdateAssigneeLabel)
+                    }
+                }
+            }
+        }
+    }
+
     LaunchedEffect(tasksViewModel, unableToUpdateTaskLabel) {
         tasksViewModel?.uiEvents?.collect { event ->
             when (event) {
@@ -8689,6 +8779,10 @@ private fun SharedThreadRouteContentContent(
         { serverId, event ->
             if (event is TaskUpdated) {
                 tasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
+                taskConversationTasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
+            }
+            if (event is TaskDeleted) {
+                taskConversationHeaderViewModel?.onTaskDeleted(event.taskId, event.conversationChannelId)
             }
             if (
                 event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&
@@ -11523,12 +11617,50 @@ private fun SharedThreadRouteContentContent(
             LocalRaftMarkdownPlainCandidateSession,
             plainCandidateCensusSession
         )
+        // Task v2: the task channel's people and agents for the assignee picker (web
+        // `useChannelMembers(task.channelId)`); a task conversation has no members of its own.
+        val taskConversationMembersServerId = currentServerId?.let(::ServerId)
+        val taskConversationMembersSlice by remember(serverMembersStore, taskConversationMembersServerId, taskConversationParentChannelId) {
+            val store = serverMembersStore
+            if (store != null && taskConversationMembersServerId != null && taskConversationParentChannelId != null) {
+                store.channelMemberSliceFlow(taskConversationMembersServerId, taskConversationParentChannelId)
+                    .onStart {
+                        store.loadChannelMembers(taskConversationMembersServerId, taskConversationParentChannelId, DataRequestPriority.Visible)
+                    }
+            } else {
+                MutableStateFlow(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
+            }
+        }.collectAsState(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
+        val taskConversationServerRole =
+            currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role
+        val taskConversationBar: (@Composable () -> Unit)? =
+            if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
+                {
+                    TaskConversationBarRoute(
+                        task = taskConversationTask,
+                        state = taskConversationHeaderState,
+                        serverRole = taskConversationServerRole,
+                        statusUpdating = taskConversationTasksState?.statusUpdatingTaskId == taskConversationTask.id.value,
+                        assigneeCandidates = taskConversationMembersSlice.members,
+                        onUpdateStatus = { status ->
+                            taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.UpdateStatus(taskConversationTask, status))
+                        },
+                        onAssign = { member ->
+                            taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.AssignTask(taskConversationTask, member))
+                        },
+                        onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
+                    )
+                }
+            } else {
+                null
+            }
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
+            taskConversationBar = taskConversationBar,
             agentFollowersHeader = {
                 if (renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
@@ -14714,6 +14846,8 @@ private class ThreadEventHandler(
  */
 private data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
+    /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
+    val taskConversationBar: (@Composable () -> Unit)? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -14819,6 +14953,7 @@ private class ThreadPageContentCallbacks(
 private @Composable
 fun ThreadPageContent(
     agentFollowersHeader: @Composable () -> Unit = {},
+    taskConversationBar: (@Composable () -> Unit)? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -14923,6 +15058,7 @@ fun ThreadPageContent(
         data =
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
+                taskConversationBar = taskConversationBar,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -16100,6 +16236,7 @@ private fun ThreadPageContentContent(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
+            data.taskConversationBar?.invoke()
             if (payload.showModeTabs) {
                 RaftTabbedScaffold(
                     tabs = availableTabs.map { it.toRaftTabSpec() },

@@ -1558,6 +1558,11 @@
     <string name="tasks_status_in_review">评审中</string>
     <string name="tasks_status_done">已完成</string>
     <string name="tasks_status_closed">已关闭</string>
+    <string name="tasks_status_reopen_to_todo">重开为待办</string>
+    <string name="task_conversation_follow">关注任务</string>
+    <string name="task_conversation_unfollow">取消关注任务</string>
+    <string name="task_conversation_deleted">该任务已被删除</string>
+    <string name="task_conversation_follow_failed">无法更新任务的关注状态</string>
     <string name="tasks_label_title">任务标题</string>
     <string name="tasks_action_add_another">添加另一个</string>
     <string name="auth_label_email">邮箱</string>
