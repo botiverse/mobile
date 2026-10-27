@@ -471,11 +471,3 @@ private data class SharedSettingsRowGestureCallbacks(
     val onCopyValue: ((String) -> Unit)?,
     val onAction: (String, String?) -> Unit
 )
-
-internal fun build.raft.app.data.SharedSettingsActionState?.statusFor(action: String, fallback: String): String =
-    when {
-        this == null || this.action != action -> fallback
-        inProgress -> "Loading"
-        errorCode != null -> "Error"
-        else -> "Saved"
-    }

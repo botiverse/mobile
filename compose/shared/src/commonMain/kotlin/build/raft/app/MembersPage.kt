@@ -13620,13 +13620,6 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
     return null
 }
 
-@Composable
-private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: Modifier = Modifier) {
-    MembersDetailSection(title = title, modifier = modifier) {
-        MembersDetailField(stringResource(Res.string.member_label_state), detail)
-    }
-}
-
 // #89 React parity: agent scope grant list + per-group row definitions.
 // Mirrors `packages/shared/src/agentScopes.ts` AGENT_SCOPE_GROUPS. Kept local
 // (private to MembersPage.kt) for now — owner pending whether to lift to

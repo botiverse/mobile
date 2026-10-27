@@ -6031,135 +6031,6 @@ private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
 private fun channelPanelVisualSettingsActions(): List<RaftThreadSettingsAction> =
     defaultThreadSettingsChannelActionCapabilities()
 
-@Composable
-private fun ThreadMessageVisualCard(
-    message: RaftThreadMessageItem,
-    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    highlightedMentions: Set<String> = emptySet(),
-    resolvedTaskAssigneeName: String? = null,
-    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
-    activeMarkdownTagKey: String? = null,
-    isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
-    timestampLabel: String = message.timestampLabel,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit,
-    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
-) {
-    val avatarWireValue =
-        resolveThreadRowAvatarWireValue(
-            rememberRaftMemberAvatarWireValue(memberAvatarResolver, message.authorId)
-        )
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm)
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .padding(horizontal = RaftAppSpacing.Xxs, vertical = RaftAppSpacing.Xs),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ThreadMessageStaticAvatar(
-                    avatarLabel = message.threadAvatarName(),
-                    avatarFill = message.threadAvatarFill(),
-                    avatarWireValue =
-                        if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
-                    status = null,
-                    cacheSubject =
-                        raftMemberAvatarCacheSubject(
-                            message.authorKind.projectedMemberKindOrNull(),
-                            message.authorId
-                        )
-                )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Row(
-                        modifier = Modifier.threadMessageContentWidth(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-                    ) {
-                        Text(
-                            text = message.authorName,
-                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, lineHeight = 20.sp),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 220.dp)
-                        )
-                        message.threadAuthorBadgeLabel()?.let { label ->
-                            ThreadMessageAuthorBadge(label)
-                        }
-                        message.authorDescription?.let { description ->
-                            ThreadMessageAuthorSubtitle(
-                                description,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                        }
-                        Text(
-                            text = timestampLabel,
-                            style =
-                                RaftType.Caption.copy(
-                                    fontFamily = RaftMonoFamily,
-                                    color = RaftColor.TextBlack.copy(alpha = 0.4f)
-                                ),
-                            color = RaftColor.TextBlack.copy(alpha = 0.4f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (message.body.isNotBlank()) {
-                        Box(modifier = Modifier.threadMessageContentWidth(1f)) {
-                            RaftMarkdownBody(
-                                body = message.body,
-                                textStyle = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
-                                highlightedMentions = highlightedMentions,
-                                isTagValid = isMarkdownTagValid,
-                                resolveTagLabel = resolveMarkdownTagLabel,
-                                inlineContentScope = message.id,
-                                activeTagKey = activeMarkdownTagKey,
-                                onOpenTag = onOpenMarkdownTag,
-                                onOpenUrl = onOpenMarkdownUrl
-                            )
-                        }
-                    }
-                    Box(modifier = Modifier.threadMessageContentWidth(1f)) {
-                        ThreadMessageAttachments(
-                            attachments = message.attachments,
-                            alignEnd = false,
-                            onOpenAttachment = {}
-                        )
-                    }
-                    Box(modifier = Modifier.threadMessageContentWidth(1f)) {
-                        ThreadMessageFooterMeta(
-                            message = message,
-                            taskOpenEnabled = false,
-                            taskStatusActionsEnabled = false,
-                            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                            alignEnd = false,
-                            onOpenTask = {},
-                            onShowActions = {},
-                            onOpenTaskStatusMenu = {}
-                        )
-                    }
-                }
-            }
-        }
-}
-}
-
 /**
  * release/1.12.0 vc 1120118 hotfix: payload classes for [SharedThreadRouteContent].
  * The flat 27-parameter composable body pushed past the Android ART dex verifier
@@ -17783,22 +17654,6 @@ private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
     )
 }
 
-@Composable
-private fun ThreadPageTabs(
-    selectedTab: RaftThreadTab,
-    tabs: List<RaftThreadTab> = RaftThreadTab.entries,
-    onSelect: (RaftThreadTab) -> Unit
-) {
-    RaftTopTabBar(
-        items = tabs.map { it.toRaftTabSpec().toTopTabBarItem() },
-        selectedKey = selectedTab.toString(),
-        onSelectedKeyChange = { key ->
-            tabs.firstOrNull { it.toString() == key }?.let(onSelect)
-        },
-        itemKeyPrefix = "thread-tab"
-    )
-}
-
 internal fun threadHeaderScrollToTopEnabled(surfaceKind: String?, selectedTab: String?): Boolean =
     surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         selectedTab?.trim()?.lowercase() == "chat"
@@ -26998,8 +26853,6 @@ private fun ThreadNewMessageMenuToolButton(
 // Legacy pure-black icon strings on themed surfaces: unchanged in light, foreground ink in dark.
 private val ThreadLegacyBlackIconArgb: String
     get() = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#FF000000"
-private val ThreadLegacyChevronIconArgb: String
-    get() = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#FF111111"
 
 /**
  * raft-ui MessageItem `located`: the row fill is `info-soft` at [locatedStrength] (0..1, from
@@ -31106,66 +30959,8 @@ private data class ThreadMessageAvatarGestureCallbacks(
     val onLongPress: () -> Unit
 )
 
-@Composable
-private fun ThreadMessageStaticAvatar(
-    avatarLabel: String,
-    avatarFill: Color,
-    avatarWireValue: String?,
-    status: RaftAgentStatusIndicatorState?,
-    statusPulsing: Boolean = true,
-    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null
-) {
-    val avatarSource =
-        remember(avatarWireValue) {
-            avatarWireValue?.takeIf { it.isNotBlank() }
-        }
-    Box(
-        modifier = Modifier.size(36.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftAvatarWithStatus(
-            statusColor = status?.color,
-            avatarSize = 36.dp,
-            statusPulsing = status?.pulsing == true && statusPulsing
-        ) {
-            RaftAppAvatar(
-                avatarWireValue = avatarSource,
-                label = avatarLabel,
-                avatarSize = 36.dp,
-                cacheSubject = cacheSubject,
-                fallbackFill = avatarFill
-            )
-        }
-    }
-}
-
 private fun RaftThreadMessageItem.showsAgentStatusIndicator(): Boolean =
     isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
-
-@Composable
-private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        drawRect(spec.background)
-        spec.spans.forEach { span ->
-            val left = threadPixelAvatarGridEdge(span.startColumnIndex, size.width)
-            val right = threadPixelAvatarGridEdge(span.startColumnIndex + span.columnCount, size.width)
-            val top = threadPixelAvatarGridEdge(span.rowIndex, size.height)
-            val bottom = threadPixelAvatarGridEdge(span.rowIndex + 1, size.height)
-            drawRect(
-                color = span.color,
-                topLeft = Offset(left, top),
-                size = Size(right - left, bottom - top)
-            )
-        }
-    }
-}
-
-private fun threadPixelAvatarGridEdge(index: Int, extent: Float): Float =
-    when {
-        index <= 0 -> 0f
-        index >= ThreadPixelAvatarGridCellCount -> extent
-        else -> (extent * index / ThreadPixelAvatarGridCellCount).roundToInt().toFloat()
-    }
 
 private data class ThreadPixelAvatarSpec(val background: Color, val grid: List<String>) {
     val spans: List<ThreadPixelAvatarSpan> =
@@ -33018,19 +32813,6 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
             }
     }
 
-@Composable
-private fun <T> RaftForwardTargetPickerItem<T>.localizedForwardTargetSubtitle(): String =
-    when (subtitle) {
-        "Join channel before forwarding" -> stringResource(Res.string.thread_forward_join_channel_first)
-        "Start DM before forwarding" -> stringResource(Res.string.thread_forward_start_dm_first)
-        "Recent channel" -> stringResource(Res.string.thread_forward_recent_channel)
-        "Recent DM" -> stringResource(Res.string.thread_forward_recent_dm)
-        "Public channel" -> stringResource(Res.string.thread_forward_public_channel)
-        "Member" -> stringResource(Res.string.thread_forward_member)
-        "Agent" -> stringResource(Res.string.thread_forward_agent)
-        else -> subtitle
-    }
-
 const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
 private const val ThreadForwardBundleLocalOffsetMinutesKey = "localOffsetMinutes"
 
@@ -33745,90 +33527,6 @@ private fun ThreadForwardSearchingSkeletonRow() {
                 Box(modifier = Modifier.width(144.dp).height(12.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Xs)))
                 Box(modifier = Modifier.width(92.dp).height(9.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Xs)))
             }
-        }
-    }
-}
-
-@Composable
-private fun <T> ThreadForwardTargetRow(
-    target: RaftForwardTargetPickerItem<T>,
-    selected: Boolean,
-    interactive: Boolean,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        pressFeedback = false,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .alpha(if (interactive) 1f else 0.72f)
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                // raft selection row: primary-soft when selected, ink edge marks the choice.
-                .raftControlSurface(
-                    fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
-                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                    radius = RaftAppRadius.Container,
-                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            when (target.visualKind) {
-                RaftForwardTargetVisualKind.DirectMessage ->
-                    RaftAppAvatar(
-                        avatarWireValue = target.avatarWireValue,
-                        label = target.title.ifBlank { target.avatarLabel },
-                        avatarSize = 38.dp,
-                        cacheSubject =
-                            raftMemberAvatarCacheSubject(
-                                target.cacheMemberKind,
-                                target.cacheMemberId
-                            ),
-                        cacheServerId = target.cacheServerId,
-                        fallbackFill = raftAvatarFallbackFill(target.cacheMemberKind)
-                    )
-                RaftForwardTargetVisualKind.PublicChannel,
-                RaftForwardTargetVisualKind.PrivateChannel,
-                RaftForwardTargetVisualKind.JointChannel ->
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(38.dp)
-                                .background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Sticker))
-                                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        RaftLucideIcon(
-                            target.visualKind.iconName() ?: RaftLucideIconName.Hash,
-                            modifier = Modifier.size(18.dp),
-                            color = "#FF111111"
-                        )
-                    }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = target.title,
-                    style = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 21.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (target.subtitle.isNotBlank()) {
-                    Text(
-                    text = target.localizedForwardTargetSubtitle(),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = ThreadLegacyChevronIconArgb)
         }
     }
 }

@@ -3,8 +3,6 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftBackButtonDefaults
-import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.app.compat.ui.nativeEvent
@@ -47,11 +45,8 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -106,7 +101,6 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
@@ -118,9 +112,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -131,7 +123,6 @@ import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftWindowDialogProperties
 import build.raft.app.compat.ui.BorderStyle
-import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.ui.KeyboardParams
 import build.raft.app.compat.ui.TextInputState
 import kotlinx.coroutines.CoroutineScope
@@ -2252,35 +2243,5 @@ internal fun Modifier.onSizeChangedDp(
             )
             onSizeChanged(dpSize)
         }
-    }
-}
-
-@Composable
-fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Unit) {
-    val localPager = LocalActivity.current.getPager()
-    val routerModule = localPager.getModule<RouterModule>(RouterModule.MODULE_NAME)
-    val title = localPager.pageData.params.optString("pageTitle", titleInput)
-
-    Column {
-        Spacer(modifier = Modifier.height(40.dp))
-        Box {
-            RaftBackButton(
-                onClick = { routerModule?.closePage() },
-                label = stringResource(Res.string.common_back),
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = RaftBackButtonDefaults.EdgeInset)
-            )
-            Text(
-                title,
-                style = RaftType.PageTitle
-                    .copy(fontSize = 22.sp, lineHeight = 28.sp)
-                    .withRaftFontWeight(FontWeight.SemiBold),
-                textAlign = TextAlign.Center,
-                color = if (RaftAppThemeState.isDark) RaftColor.TextBlack else Color(0xFF333333), // raft-color: light legacy title ink
-                modifier = Modifier
-                    .padding(vertical = 12.dp, horizontal = 12.dp)
-                    .fillMaxWidth(),
-            )
-        }
-        content.invoke()
     }
 }

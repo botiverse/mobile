@@ -10,7 +10,6 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
-import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
@@ -301,31 +300,6 @@ private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, on
     )
 }
 
-@Composable
-private fun SettingsServerTranslationPreferenceCard(
-    snapshot: SettingsLanguageRegionSnapshot,
-    actionState: SharedSettingsActionState?,
-    onServerTranslationChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Wand, title = stringResource(Res.string.settings_workspace_translation)) {
-        SettingsSegmentedControlField(
-            detail = snapshot.serverTranslation.detail,
-            selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
-            options =
-                listOf(
-                    SegmentedControlOption("on", stringResource(Res.string.settings_option_on), RaftLucideIconName.CircleCheck),
-                    SegmentedControlOption("off", stringResource(Res.string.settings_option_off), RaftLucideIconName.X)
-                ),
-            onValueSelected = { onServerTranslationChange(it == "on") },
-            enabled = snapshot.serverTranslation.available && !busy
-        )
-        if (actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
 private fun SettingsMobileSelectionSnapshot.toComboboxOptions(): List<RaftComboboxOption<String>> {
     val listed = options.map { RaftComboboxOption(it.key, it.label) }
     // A saved value the list does not offer still shows under its own label.
@@ -338,138 +312,4 @@ private fun SettingsMobileSelectionSnapshot.toTranslationTargetOptions(): List<R
     return toComboboxOptions().map { option ->
         if (option.value == TranslationTargetLanguages.System) option.copy(label = systemLanguageLabel) else option
     }
-}
-
-private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayload(
-    actionState: build.raft.app.data.SharedSettingsActionState?,
-    refreshing: Boolean,
-    errorStrings: ErrorPresentationStrings
-): RaftSharedSettingsPayload {
-    val languageRegion =
-        (this as? ScreenLoadState.Content<SettingsLanguageRegionSnapshot>)?.data
-            ?: return appShellLanguageRegionPlaceholderPayload(this, refreshing, errorStrings)
-    return RaftSharedSettingsPayload(
-        instanceId = "shared-shell-settings-language-region",
-        title = "Language & Region",
-        heroIconName = RaftLucideIconName.Languages,
-        heroLabel = "Language & Region",
-        detail =
-            if (refreshing) {
-                "Refreshing language and region settings..."
-            } else {
-                "Manage language, timezone, and translation preferences."
-            },
-        sections =
-            listOf(
-                RaftSharedSettingsSection(
-                    title = "Language",
-                    rows =
-                        listOf(
-                            RaftSharedSettingsRow(
-                                key = LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
-                                iconName = RaftLucideIconName.Languages,
-                                title = "Enable message translation for this server",
-                                detail =
-                                    languageRegion.serverTranslation.errorPresentation?.resolve(errorStrings)
-                                        ?: languageRegion.serverTranslation.detail,
-                                value = (!languageRegion.serverTranslation.enabled).toString(),
-                                status =
-                                    actionState.statusFor(
-                                        LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
-                                        languageRegion.serverTranslation.statusLabel
-                                    ),
-                                enabled = languageRegion.serverTranslation.available && actionState?.inProgress != true
-                            ),
-                            RaftSharedSettingsRow(
-                                key = LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
-                                iconName = RaftLucideIconName.Wand,
-                                title = "Auto-translate messages",
-                                detail =
-                                    languageRegion.autoTranslation.errorPresentation?.resolve(errorStrings)
-                                        ?: languageRegion.autoTranslation.detail,
-                                value = (!languageRegion.autoTranslation.enabled).toString(),
-                                status =
-                                    actionState.statusFor(
-                                        LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
-                                        languageRegion.autoTranslation.statusLabel
-                                    ),
-                                enabled = languageRegion.autoTranslation.available && actionState?.inProgress != true
-                            ),
-                            languageRegion.browserLanguage.toMobileSelectionRow(
-                                key = LANGUAGE_REGION_ACTION_LANGUAGE,
-                                iconName = RaftLucideIconName.Globe,
-                                title = "Preferred translation language",
-                                fallbackStatus = "Others",
-                                actionState = actionState
-                            )
-                        )
-                ),
-                RaftSharedSettingsSection(
-                    title = "Date & Time",
-                    rows =
-                        listOf(
-                            languageRegion.timezone.toMobileSelectionRow(
-                                key = LANGUAGE_REGION_ACTION_TIMEZONE,
-                                iconName = RaftLucideIconName.Clock,
-                                title = "Timezone",
-                                fallbackStatus = "UTC",
-                                actionState = actionState
-                            ),
-                            languageRegion.timeFormat.toMobileSelectionRow(
-                                key = LANGUAGE_REGION_ACTION_TIME_FORMAT,
-                                iconName = RaftLucideIconName.Clock3,
-                                title = "Time format",
-                                fallbackStatus = "24-hour",
-                                actionState = actionState
-                            )
-                        )
-                )
-            )
-    )
-}
-
-private fun appShellLanguageRegionPlaceholderPayload(
-    state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
-    refreshing: Boolean,
-    errorStrings: ErrorPresentationStrings
-): RaftSharedSettingsPayload {
-    val status =
-        when (state) {
-            ScreenLoadState.Loading -> if (refreshing) "Refreshing" else "Loading"
-            is ScreenLoadState.Empty -> "Unavailable"
-            is ScreenLoadState.Error -> "Error"
-            is ScreenLoadState.NoPermission -> "No permission"
-            is ScreenLoadState.Content -> "Ready"
-        }
-    val detail =
-        when (state) {
-            is ScreenLoadState.Error -> state.error.userFacingMessage(errorStrings)
-            is ScreenLoadState.NoPermission -> state.blocker.userFacingMessage(errorStrings)
-            is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
-            else -> "Loading language and region settings."
-        }
-    return RaftSharedSettingsPayload(
-        instanceId = "shared-shell-settings-language-region-placeholder",
-        title = "Language & Region",
-        heroIconName = RaftLucideIconName.Languages,
-        heroLabel = "Language & Region",
-        detail = detail,
-        sections =
-            listOf(
-                RaftSharedSettingsSection(
-                    title = "Status",
-                    rows =
-                        listOf(
-                            RaftSharedSettingsRow(
-                                key = "languageRegionStatus",
-                                iconName = RaftLucideIconName.Languages,
-                                title = "Language & Region",
-                                detail = detail,
-                                status = status,
-                                enabled = false
-                            )
-                        )
-                )
-            )
-    )
 }

@@ -898,13 +898,6 @@
     <string name="thread_forward_chat_history_named">%1$s 的聊天记录</string>
     <string name="thread_forward_attachment_one">[1 个附件]</string>
     <string name="thread_forward_attachment_many">[%1$d 个附件]</string>
-    <string name="thread_forward_join_channel_first">请先加入频道再转发</string>
-    <string name="thread_forward_start_dm_first">请先发起私信再转发</string>
-    <string name="thread_forward_recent_channel">最近频道</string>
-    <string name="thread_forward_recent_dm">最近私信</string>
-    <string name="thread_forward_public_channel">公开频道</string>
-    <string name="thread_forward_member">成员</string>
-    <string name="thread_forward_agent">Agent</string>
     <string name="external_share_title">分享到 Raft</string>
     <string name="external_share_preparing">正在准备分享内容…</string>
     <string name="external_share_opening_target">正在打开 %1$s…</string>
@@ -1583,7 +1576,6 @@
     <string name="task_conversation_follow_failed">无法更新任务的关注状态</string>
     <string name="tasks_label_title">任务标题</string>
     <string name="tasks_action_add_another">添加另一个</string>
-    <string name="auth_label_email">邮箱</string>
     <string name="auth_label_name">名称</string>
     <string name="auth_password_pattern">字母、数字、连字符、下划线</string>
     <string name="auth_validation_username_min_length">用户名至少需要 %1$s 个字符。</string>
@@ -2314,7 +2306,6 @@
     <string name="settings_connected_apps_loading">正在加载集成、应用市场项目和 OAuth 客户端。</string>
     <string name="settings_connected_apps_empty">暂无已连接应用</string>
     <string name="settings_connected_apps_error">已连接应用出错</string>
-    <string name="settings_connected_apps_no_install_prompt">此原生设置页面中没有可用的安装提示。</string>
     <string name="settings_common_no_description">未提供说明。</string>
     <string name="settings_connected_apps_no_built_in">没有可用的内置应用。</string>
     <string name="settings_connected_apps_no_marketplace">没有可用的应用市场项目。</string>

@@ -488,52 +488,6 @@ internal class NetworkRaftTasksApi(
         )
 }
 
-class RealTaskRepository(
-    private val sessionStore: RaftAuthSessionStore,
-    private val networkClient: RaftNetworkClient
-) : TaskRepository {
-    override suspend fun getTasks(
-        serverId: ServerId,
-        filter: TaskFilter
-    ): DataResult<TaskSnapshot> {
-        val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
-        val result =
-            networkClient.serverTasks(DataRequestPriority.Visible, serverId)
-                .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_server")
-        return result.filterAssignedToMe(filter, context.currentUserId)
-    }
-
-    override suspend fun getChannelTasks(
-        serverId: ServerId,
-        channelId: ChannelId,
-        filter: TaskFilter
-    ): DataResult<TaskSnapshot> {
-        val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
-        val result =
-            networkClient.channelTasks(DataRequestPriority.Visible, channelId, serverId)
-                .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_channel")
-        return result.filterAssignedToMe(filter, context.currentUserId)
-    }
-
-    override suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> {
-        sessionStore.currentTaskContext() ?: return authRequired()
-        return networkClient.claimTask(DataRequestPriority.Foreground, taskId)
-            .toTaskActionResult(source = "tasks_claim")
-    }
-
-    override suspend fun updateTaskStatus(
-        taskId: TaskId,
-        status: TaskStatus
-    ): DataResult<TaskActionResult> {
-        sessionStore.currentTaskContext() ?: return authRequired()
-        return networkClient.updateTaskStatus(
-            DataRequestPriority.Foreground,
-            taskId,
-            buildSharedTaskStatusBody(status)
-        ).toTaskActionResult(source = "tasks_status", requestedStatus = status)
-    }
-}
-
 /**
  * Typed Tasks boundary.
  *
@@ -1168,22 +1122,6 @@ private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {
     return copy(tasks = filtered, summaryCounts = filtered.summaryCounts())
 }
 
-private fun DataResult<TaskSnapshot>.filterAssignedToMe(
-    filter: TaskFilter,
-    currentUserId: String
-): DataResult<TaskSnapshot> {
-    if (!filter.assignedToMeOnly || this !is DataResult.Content) return this
-    val filteredTasks = data.tasks.filter { it.assignee?.id?.value == currentUserId }
-    return if (filteredTasks.isEmpty()) {
-        DataResult.Empty(EmptyReason.NoTasks)
-    } else {
-        DataResult.Content(data.copy(tasks = filteredTasks, summaryCounts = filteredTasks.summaryCounts()))
-    }
-}
-
-private fun TaskFilter.withoutAssigneeFilter(): TaskFilter =
-    if (!assignedToMeOnly) this else copy(assignedToMeOnly = false)
-
 /**
  * Wire-format envelopes for Tasks API responses.
  *
@@ -1381,21 +1319,3 @@ private fun memberFrom(
         presence = Presence.Offline
     )
 }
-
-private data class TaskServerContext(val currentUserId: String)
-
-private suspend fun RaftAuthSessionStore.taskServerContext(serverId: ServerId): TaskServerContext? {
-    val session = readSession() ?: return null
-    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
-    if (session.servers.none { it.id == requestedId }) return null
-    return TaskServerContext(currentUserId = session.user.id)
-}
-
-private suspend fun RaftAuthSessionStore.currentTaskContext(): TaskServerContext? {
-    val session = readSession() ?: return null
-    val selectedId = session.currentServerId ?: return null
-    return taskServerContext(ServerId(selectedId))
-}
-
-private fun <T> authRequired(): DataResult<T> =
-    DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))

@@ -4,27 +4,21 @@ import build.raft.app.resources.*
 import build.raft.app.raftMenuWidth
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingDefaultViewportGap
-import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftFloatingVerticalPlacement
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftPopoverAnchor
-import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.RaftModalAnchoredPopover
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftShadow
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.TextField
-import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.withRaftFontWeight
 import build.raft.app.raftArgbHex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,7 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -307,60 +300,6 @@ internal fun RaftUiSelectionPopover(
 }
 
 @Composable
-internal fun RaftMenuItemRow(
-    label: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    leadingIconName: RaftLucideIconName? = null,
-    trailing: String? = null,
-    dividerBefore: Boolean = false,
-    onClick: () -> Unit = {}
-) {
-    // raft-ui MenuItem: min 36dp, control radius, px-2.5 py-1.5, 10dp gap, callout
-    // 14/20 medium ink, 16dp icon in icon ink, mono 12/16 hint trailing; disabled ink.
-    // Separators are the menu's `-mx-1.5 my-1.5` hairline.
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (dividerBefore) {
-            RaftLookSeparator(verticalSpacing = 6.dp)
-        }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(RaftMetrics.MenuRowHeight)
-                    .clickable(enabled = enabled) { onClick() }
-                    .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
-            horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            leadingIconName?.let {
-                RaftLucideIcon(
-                    it,
-                    modifier = Modifier.size(16.dp),
-                    color = raftArgbHex(if (enabled) RaftColor.TextMuted else RaftColor.ForegroundDisabled)
-                )
-            }
-            Text(
-                text = label,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium),
-                color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            trailing?.let {
-                Text(
-                    text = it,
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
-
-@Composable
 internal fun RaftAppSelectTrigger(
     label: String,
     modifier: Modifier = Modifier,
@@ -567,66 +506,6 @@ internal fun RaftUiControlledSelect(
         searchPlaceholder = searchPlaceholder,
         emptyLabel = emptyLabel,
         onClear = onClear
-    )
-}
-
-@Composable
-internal fun RaftUiSelectField(
-    options: List<RaftUiSelectionOption>,
-    selectedId: String,
-    onSelect: (RaftUiSelectionOption) -> Unit,
-    modifier: Modifier = Modifier,
-    title: String = "Options",
-    placeholder: String = "Select...",
-    selectedLabel: String = "",
-    enabled: Boolean = true,
-    triggerHeight: Dp = 40.dp,
-    rowHeight: Dp = 36.dp,
-    search: String? = null,
-    searchPlaceholder: String = "Search...",
-    emptyLabel: String? = null
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var triggerAnchorValue by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var triggerRootWidthPx by remember { mutableStateOf(0f) }
-    val triggerAnchor = remember { RaftLiveRootAnchorRef(identity = "raft_ui_select") }
-    val density = LocalDensity.current
-    val menuWidth = raftSelectMenuWidth(triggerRootWidthPx, density.density)
-    RaftUiControlledSelect(
-        expanded = expanded,
-        anchor = triggerAnchorValue,
-        options = options,
-        selectedId = selectedId,
-        selectedLabel = selectedLabel,
-        placeholder = placeholder,
-        enabled = enabled,
-        title = title,
-        triggerHeight = triggerHeight,
-        menuWidth = menuWidth,
-        rowHeight = rowHeight,
-        search = search,
-        searchPlaceholder = searchPlaceholder,
-        emptyLabel = emptyLabel,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .raftCaptureLiveRootAnchor(triggerAnchor) { size ->
-                    triggerRootWidthPx = size.width.toFloat()
-                },
-        onTriggerClick = {
-            if (expanded) {
-                expanded = false
-            } else {
-                triggerAnchor.resolve(RaftPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
-                    triggerAnchorValue = anchor
-                    expanded = true
-                }
-            }
-        },
-        onDismiss = { expanded = false },
-        onSelect = { id ->
-            options.firstOrNull { it.id == id }?.let(onSelect)
-        }
     )
 }
 

@@ -166,14 +166,6 @@ internal fun SettingsNotificationsContent(
 }
 
 @Composable
-private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = RaftLucideIconName.AppWindow, title = stringResource(Res.string.settings_pwa_install_title)) {
-        SettingsFormDetailText(stringResource(Res.string.settings_pwa_install_native_detail))
-        SettingsFormEmptyText(stringResource(Res.string.settings_connected_apps_no_install_prompt))
-    }
-}
-
-@Composable
 private fun SettingsPushStatusCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,

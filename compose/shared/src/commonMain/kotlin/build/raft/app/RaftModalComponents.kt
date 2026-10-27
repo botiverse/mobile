@@ -6,14 +6,9 @@ import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow
-import build.raft.designsystem.components.RaftDialogHeader
-import build.raft.app.components.RaftBrutalModalLayer
-import build.raft.app.components.RaftActionSheetRowModel
-import build.raft.app.components.RaftModalShellModel
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -342,28 +337,6 @@ internal fun RaftUnifiedDialogHost(
     }
 }
 
-@Composable
-internal fun RaftModalLayer(
-    title: String,
-    subtitle: String = "",
-    onDismiss: () -> Unit,
-    overlayAlpha: Float = 0.60f,
-    maxWidth: Dp = 384.dp,
-    content: @Composable () -> Unit
-) {
-    RaftBrutalModalLayer(
-        model =
-            RaftModalShellModel(
-                title = title,
-                subtitle = subtitle,
-                overlayAlpha = overlayAlpha,
-                maxWidth = maxWidth
-            ),
-        onDismiss = onDismiss,
-        content = content
-    )
-}
-
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUnifiedDialog(
@@ -666,41 +639,6 @@ private fun RaftUnifiedDialogSurface(
             }
         }
     }
-}
-
-@Composable
-private fun RaftModalHeader(
-    title: String,
-    subtitle: String,
-    onDismiss: () -> Unit
-) {
-    RaftDialogHeader(
-        title = title,
-        description = subtitle.takeIf { it.isNotBlank() },
-        onClose = onDismiss
-    )
-}
-
-@Composable
-internal fun RaftActionSheetRow(
-    title: String,
-    subtitle: String = "",
-    icon: RaftLucideIconName,
-    destructive: Boolean = false,
-    menuItemPadding: Boolean = false,
-    onClick: () -> Unit
-) {
-    RaftBrutalActionSheetRow(
-        model =
-            RaftActionSheetRowModel(
-                title = title,
-                subtitle = subtitle,
-                icon = icon,
-                destructive = destructive
-            ),
-        onClick = onClick,
-        menuItemPadding = menuItemPadding
-    )
 }
 
 @Composable

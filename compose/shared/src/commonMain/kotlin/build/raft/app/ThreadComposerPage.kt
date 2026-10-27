@@ -4779,48 +4779,6 @@ private fun ComposerSuggestionDivider() {
 }
 
 @Composable
-private fun ComposerSuggestionRow(
-    leading: @Composable () -> Unit,
-    title: String,
-    subtitle: String,
-    trailing: (@Composable () -> Unit)? = null,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = ComposerMemberSuggestionRowMinHeight)
-                .clickable(onClick = onClick)
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        leading()
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = title,
-                style = RaftType.Button.copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle.isNotBlank()) {
-                Text(
-                    text = subtitle,
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        trailing?.invoke()
-    }
-}
-
-@Composable
 private fun ComposerIconButton(
     icon: RaftLucideIconName,
     enabled: Boolean,

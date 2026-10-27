@@ -584,38 +584,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeServerBadgeTiltUsesFinalVectorGeometry() {
-        val corners = homeServerBadgeTiltCorners(widthPx = 300f, heightPx = 80f)
-
-        assertEquals(4, corners.size)
-        assertTrue(corners.all { it.x.isFinite() && it.y.isFinite() })
-        assertTrue(corners.minOf { it.x } in -0.01f..0.01f)
-        assertTrue(corners.maxOf { it.x } in 299.99f..300.01f)
-        assertTrue(corners.minOf { it.y } in -0.01f..0.01f)
-        assertTrue(corners.maxOf { it.y } in 79.99f..80.01f)
-        assertTrue(corners[0].y > corners[1].y)
-        assertTrue(corners[3].y > corners[2].y)
-    }
-
-    @Test
-    fun homeServerBadgeChromeReservesShadowWithoutTruncatingMainPath() {
-        val layers = homeServerBadgeChromeLayers(
-            widthPx = 306f,
-            heightPx = 86f,
-            shadowOffsetPx = 6f
-        )
-
-        assertTrue(layers.mainCorners.minOf { it.x } in -0.01f..0.01f)
-        assertTrue(layers.mainCorners.maxOf { it.x } in 299.99f..300.01f)
-        assertTrue(layers.mainCorners.minOf { it.y } in -0.01f..0.01f)
-        assertTrue(layers.mainCorners.maxOf { it.y } in 79.99f..80.01f)
-        assertTrue(layers.shadowCorners.minOf { it.x } in 5.99f..6.01f)
-        assertTrue(layers.shadowCorners.maxOf { it.x } in 305.99f..306.01f)
-        assertTrue(layers.shadowCorners.minOf { it.y } in 5.99f..6.01f)
-        assertTrue(layers.shadowCorners.maxOf { it.y } in 85.99f..86.01f)
-    }
-
-    @Test
     fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
         assertEquals(
             RaftAppSize.PageHeaderHeight + 4.dp,

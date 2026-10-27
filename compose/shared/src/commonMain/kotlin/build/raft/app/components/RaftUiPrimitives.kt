@@ -1,7 +1,6 @@
 package build.raft.app.components
 
 import build.raft.app.Button as RaftAppButton
-import build.raft.app.RaftAppAvatar
 import build.raft.app.RaftColor
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftLucideIcon
@@ -20,10 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -37,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -180,65 +175,5 @@ internal fun RaftSurfaceListItem(
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
     ) {
         content()
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun RaftAvatarListRow(
-    avatarWireValue: String?,
-    avatarLabel: String,
-    name: String,
-    modifier: Modifier = Modifier,
-    subtitle: String? = null,
-    selected: Boolean = false,
-    onClick: (() -> Unit)? = null,
-    rightContent: (@Composable RowScope.() -> Unit)? = null,
-    actionContent: (@Composable RowScope.() -> Unit)? = null,
-    avatarSize: Dp = 32.dp
-) {
-    RaftSurfaceListItem(
-        modifier = modifier,
-        selected = selected,
-        interactive = onClick != null,
-        onClick = onClick,
-        horizontalPadding = 12.dp,
-        verticalPadding = 12.dp
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftAppAvatar(
-                avatarWireValue = avatarWireValue,
-                label = avatarLabel,
-                avatarSize = avatarSize,
-            )
-            FlowRow(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
-            ) {
-                Text(
-                    text = name,
-                    style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                subtitle?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
-                        color = RaftColor.ForegroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            rightContent?.invoke(this)
-            actionContent?.invoke(this)
-        }
     }
 }

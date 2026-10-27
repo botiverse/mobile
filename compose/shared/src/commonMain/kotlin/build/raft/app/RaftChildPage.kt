@@ -152,41 +152,6 @@ internal fun raftEmbeddedChildPageData(pageData: JSONObject): JSONObject =
         put(RAFT_EMBEDDED_CHILD_PAGE_PARAM, true)
     }
 
-internal const val RAFT_CHILD_LIFECYCLE_DID_APPEAR = "didAppear"
-internal const val RAFT_CHILD_LIFECYCLE_DID_DISAPPEAR = "didDisappear"
-internal const val RAFT_CHILD_LIFECYCLE_VIEW_DID_APPEAR = "viewDidAppear"
-internal const val RAFT_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR = "viewDidDisappear"
-
-internal fun raftChildLifecycleShouldBeVisible(viewAppeared: Boolean, active: Boolean): Boolean =
-    viewAppeared && active
-
-internal fun raftChildLifecyclePagerAppearState(pagerEvent: String): Boolean? =
-    when (pagerEvent) {
-        RAFT_CHILD_LIFECYCLE_VIEW_DID_APPEAR -> true
-        RAFT_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR -> false
-        else -> null
-    }
-
-/**
- * Native nested hosts require both the view-visibility event (`didAppear`) and
- * the pager appear event (`viewDidAppear`) before they call child `onResume`.
- * The first AppShell child (Home) is created while the parent pager is still
- * appearing, so sending only one of the pair leaves the native surface blank.
- */
-internal fun raftChildLifecycleEvents(
-    previouslyVisible: Boolean,
-    shouldBeVisible: Boolean
-): List<String> {
-    if (previouslyVisible == shouldBeVisible) {
-        return emptyList()
-    }
-    return if (shouldBeVisible) {
-        listOf(RAFT_CHILD_LIFECYCLE_DID_APPEAR, RAFT_CHILD_LIFECYCLE_VIEW_DID_APPEAR)
-    } else {
-        listOf(RAFT_CHILD_LIFECYCLE_DID_DISAPPEAR, RAFT_CHILD_LIFECYCLE_VIEW_DID_DISAPPEAR)
-    }
-}
-
 @Page(RAFT_CHILD_PAGE_HOST_SMOKE_PAGE, supportInLocal = true)
 internal class RaftChildPageHostSmokePage : BasePager() {
     override fun willInit() {

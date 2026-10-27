@@ -30,8 +30,6 @@ internal actual fun logPixelAvatarDrawCache(message: String) = Unit
 
 internal actual suspend fun raftPlatformCompleteQaBootstrapRouteReady(authDataSource: SharedAuthDataSource) = Unit
 
-internal actual fun isRaftNativeTiltedBadgeChromeSupported(): Boolean = false
-
 internal actual fun raftPlatformTextMotion(): TextMotion? = null
 
 internal actual fun raftPlatformLog(

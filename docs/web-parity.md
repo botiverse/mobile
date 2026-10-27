@@ -150,7 +150,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | People / channel search, recent searches | `search/searchEntities.ts`, `searchHome.ts` | done | `data/SearchPersonalizationRepository.kt` | local | – |
 | Realtime reconnect (`sync:resume`, gap sync) | server `sync:resume` | done | Android `SocketIoRealtimeClient.kt:454`, iOS `RaftIosRealtimeHost.swift`, `data/realtime/MessageSeqRecoveryPolicy.kt` | existing | – |
 | sync-core domains (messages, read state, thread replies) | `packages/sync-core/src/` | partial | `network/sync/SyncCore.kt`, `MessageSyncDomain.kt`, `ThreadRepliesSyncDomain.kt` | – | M |
-| Activity sync domain (snapshot / difference) | `store/activityPanel/runtime.ts` (gate off by default) | partial: code present, not wired | `network/sync/activity/ActivitySyncDomain.kt` | `/channels/activity/snapshot`, `/difference` | L |
+| Activity sync domain (snapshot / difference) | `store/activityPanel/runtime.ts` (gate off by default) | missing: the unwired v1 reducer and its stale bindings were removed as dead production code (2026-10-27); start from the current slock contract | – | `/channels/activity/snapshot`, `/difference` | L |
 
 ### 2.3 Tasks, agents, computers and members
 
@@ -216,9 +216,9 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 
 Under `/s/:serverSlug/` (`components/layout/MainLayout.tsx`): `channel`, `dm`, `agent`, `computer`, `human`, `members`, `members/graph`, `computers`, `search`, `raftbench`, `settings/:tab`, `activity`, `tasks`, `saved`, `release-notes`. Settings tabs (`components/settings/settingsNavigation.ts`): account, language-region, appearance, notifications, server, billing, administration, im-bridges, integrations, labs, mcp, providers, about, feedback. Outside a server: auth pages, `/login/device`, `/login/app`, `/login-with-raft/setup`, integration invite, `/servers`, public `/s/:slug`.
 
-### 3.2 Stale activity-v1 bindings
+### 3.2 Stale activity-v1 bindings (removed)
 
-`network/sync/activity/contract/v1/ActivitySync.kt` does not match the generated `packages/sync-core/contracts/activity-v1/generated/bindings/ActivitySync.kt` at the slock base commit. The mobile copy is missing `latestActivitySeq`, the paging fields on `DifferenceIngress` (`nextCursor`, `hasMore`, `complete`, `totalCount`, `totalUnreadCount`; `ActivityWindow` already has them) and the `ExternalProjection` kind, and still uses `expectedRowVersion` where the contract now has `throughActivitySeq`. Nothing calls it in production yet (web also keeps the activity gate off by default), so this is a cutover blocker, not a live bug.
+The mobile copy of the activity-v1 bindings (`network/sync/activity/contract/v1/ActivitySync.kt`) had drifted from `packages/sync-core/contracts/activity-v1/generated/bindings/ActivitySync.kt` and had no production caller. It was deleted together with `ActivitySyncDomain.kt` on 2026-10-27; an activity cutover should regenerate the bindings from the current contract.
 
 ### 3.3 Dead code found
 

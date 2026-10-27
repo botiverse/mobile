@@ -1180,12 +1180,3 @@ data class NotificationPushReceived(
     val messagePreview: String? = null,
     val mentioned: Boolean? = null
 ) : RealtimeEvent
-
-// Settings Models
-@Serializable
-data class SettingsSummary(
-    val server: ServerSummary,
-    val notificationEnabled: Boolean,
-    val compactModeEnabled: Boolean,
-    val manageableSections: List<String>
-)

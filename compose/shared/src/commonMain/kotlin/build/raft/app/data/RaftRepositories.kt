@@ -8,20 +8,6 @@ enum class DataRequestPriority {
     Background
 }
 
-interface AuthSessionRepository {
-    suspend fun currentSession(): DataResult<SessionSnapshot>
-}
-
-interface ServerRepository {
-    suspend fun getServers(): DataResult<ServerListSnapshot>
-    suspend fun selectServer(serverId: ServerId): DataResult<ServerListSnapshot>
-    suspend fun createServer(request: CreateServerRequest): DataResult<ServerListSnapshot>
-    suspend fun getHomeSnapshot(serverId: ServerId): DataResult<HomeSnapshot>
-    suspend fun getInbox(serverId: ServerId): DataResult<InboxSnapshot>
-    suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot>
-    suspend fun getSettings(serverId: ServerId): DataResult<SettingsSnapshot>
-}
-
 /**
  * Typed Settings data boundary used by shared Settings pages.
  *
@@ -364,20 +350,6 @@ interface ConversationRepository {
         DataResult.Error(ScreenError(code = "mention_actions_unavailable", retryable = false))
 }
 
-interface TaskRepository {
-    suspend fun getTasks(serverId: ServerId, filter: TaskFilter): DataResult<TaskSnapshot>
-    suspend fun getChannelTasks(
-        serverId: ServerId,
-        channelId: ChannelId,
-        filter: TaskFilter
-    ): DataResult<TaskSnapshot>
-    suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult>
-    suspend fun updateTaskStatus(
-        taskId: TaskId,
-        status: TaskStatus
-    ): DataResult<TaskActionResult>
-}
-
 interface MemberRepository {
     suspend fun getMembers(
         priority: DataRequestPriority,
@@ -504,10 +476,6 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
     ): DataResult<ChannelMemberActionResult>
-}
-
-interface AgentRepository {
-    suspend fun getAgents(serverId: ServerId): DataResult<AgentSnapshot>
 }
 
 interface ChannelRepository {
@@ -724,8 +692,7 @@ fun interface RealtimeSubscription {
 }
 
 data class TaskFilter(
-    val statuses: Set<TaskStatus> = emptySet(),
-    val assignedToMeOnly: Boolean = false
+    val statuses: Set<TaskStatus> = emptySet()
 )
 
 /**
@@ -950,12 +917,6 @@ data class SettingsComputerActionResult(
     val success: Boolean,
     val action: String,
     val directoryName: String? = null
-)
-
-data class CreateServerRequest(
-    val name: String,
-    val slug: String? = null,
-    val region: String? = null
 )
 
 data class CreateChannelRequest(

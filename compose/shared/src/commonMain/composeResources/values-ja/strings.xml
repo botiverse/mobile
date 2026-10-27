@@ -900,13 +900,6 @@
     <string name="thread_forward_chat_history_named">%1$s のチャット履歴</string>
     <string name="thread_forward_attachment_one">[添付ファイル 1 個]</string>
     <string name="thread_forward_attachment_many">[添付ファイル %1$d 個]</string>
-    <string name="thread_forward_join_channel_first">転送する前にチャンネルに参加してください</string>
-    <string name="thread_forward_start_dm_first">転送する前に DM を開始してください</string>
-    <string name="thread_forward_recent_channel">最近のチャンネル</string>
-    <string name="thread_forward_recent_dm">最近の DM</string>
-    <string name="thread_forward_public_channel">公開チャンネル</string>
-    <string name="thread_forward_member">メンバー</string>
-    <string name="thread_forward_agent">エージェント</string>
     <string name="external_share_title">Raft に共有</string>
     <string name="external_share_preparing">共有コンテンツを準備しています…</string>
     <string name="external_share_opening_target">%1$s を開いています…</string>
@@ -1587,7 +1580,6 @@
     <string name="task_conversation_follow_failed">このタスクのフォロー状態を更新できませんでした</string>
     <string name="tasks_label_title">タスクのタイトル</string>
     <string name="tasks_action_add_another">さらに追加</string>
-    <string name="auth_label_email">メールアドレス</string>
     <string name="auth_label_name">名前</string>
     <string name="auth_password_pattern">英字、数字、ハイフン、アンダースコア</string>
     <string name="auth_validation_username_min_length">ユーザー名は %1$s 文字以上で入力してください。</string>
@@ -2314,7 +2306,6 @@
     <string name="settings_connected_apps_loading">連携、マーケットプレイスアプリ、OAuth クライアントを読み込んでいます。</string>
     <string name="settings_connected_apps_empty">連携アプリはありません</string>
     <string name="settings_connected_apps_error">連携アプリのエラー</string>
-    <string name="settings_connected_apps_no_install_prompt">このネイティブ設定画面では、インストールの案内は利用できません。</string>
     <string name="settings_common_no_description">説明はありません。</string>
     <string name="settings_connected_apps_no_built_in">利用できる組み込みアプリはありません。</string>
     <string name="settings_connected_apps_no_marketplace">利用できるマーケットプレイスアプリはありません。</string>
