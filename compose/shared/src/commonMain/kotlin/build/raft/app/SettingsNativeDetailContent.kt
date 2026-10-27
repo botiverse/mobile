@@ -36,7 +36,11 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsAppearanceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsServerProfileUpdateRequest
+import build.raft.app.data.RealtimeGuardedActiveThreadSink
+import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +50,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -128,6 +133,16 @@ internal fun SettingsNativeDetailScreen() {
             }
         onDispose { subscription.close() }
     }
+    SettingsServerNotificationRealtimeEffect(
+        owner = remember(sharedStores, environment.storeScope) {
+            sharedStores.realtimeDomainEventOwner(environment.storeScope)
+        },
+        serverId =
+            session?.currentServerId
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && route.page == SettingsNativeDetailPage.Notifications },
+        dispatch = settingsViewModel::dispatch,
+    )
     LaunchedEffect(environment.chatLayoutPreferenceRepository) {
         activitySenderAvatarsEnabled =
             environment.chatLayoutPreferenceRepository
@@ -193,6 +208,42 @@ internal fun SettingsNativeDetailScreen() {
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
 }
+
+/**
+ * While the Notifications page of [serverId] is open, routes the viewer's server notification preference
+ * push (`notification_prefs:updated` with a server mode, from another device or the web) into the page's
+ * settings store, which refetches the preference (single-flight). The last-known copy is refreshed by the
+ * process-level refresher whether or not this page is open.
+ */
+@Composable
+private fun SettingsServerNotificationRealtimeEffect(
+    owner: SharedRealtimeDomainEventOwner,
+    serverId: String?,
+    dispatch: (SharedSettingsIntent) -> Unit,
+) {
+    val latestDispatch by rememberUpdatedState(dispatch)
+    DisposableEffect(owner, serverId) {
+        if (serverId == null) return@DisposableEffect onDispose {}
+        val sink =
+            RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (settingsServerNotificationRealtimeEventApplies(eventServerId, event, serverId)) {
+                    latestDispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
+                }
+            }
+        owner.registerGuardedActiveThreadSink(sink)
+        onDispose { owner.unregisterGuardedActiveThreadSink(sink) }
+    }
+}
+
+/** Whether a realtime event is the viewer's notification preference change for the open page's [serverId]. */
+internal fun settingsServerNotificationRealtimeEventApplies(
+    eventServerId: String,
+    event: RealtimeEvent,
+    serverId: String,
+): Boolean =
+    event is ServerNotificationPreferencesChanged &&
+        eventServerId.trim() == serverId.trim() &&
+        event.serverId.value.trim() == serverId.trim()
 
 @Composable
 internal fun SettingsNativeDetailPageContent(

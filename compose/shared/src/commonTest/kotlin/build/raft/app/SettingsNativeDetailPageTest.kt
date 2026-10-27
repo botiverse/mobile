@@ -1,9 +1,14 @@
 package build.raft.app
 
+import build.raft.app.data.ServerPushMode
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsPageContentOwner
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -203,6 +208,34 @@ class SettingsNativeDetailPageTest {
         assertEquals(
             listOf("load-start", "load-complete", "wait:2500", "close"),
             events,
+        )
+    }
+
+    @Test
+    fun notificationsPageTakesOnlyItsServersNotificationPreferenceChange() {
+        val changed =
+            ServerNotificationPreferencesChanged(ServerId("server-1"), ServerPushMode.None.wireName, prefsVersion = 2)
+
+        assertTrue(settingsServerNotificationRealtimeEventApplies("server-1", changed, "server-1"))
+        // Another server's change, a frame accepted for another socket, or any other event: not routed.
+        assertFalse(settingsServerNotificationRealtimeEventApplies("server-2", changed, "server-1"))
+        assertFalse(
+            settingsServerNotificationRealtimeEventApplies(
+                "server-1",
+                changed.copy(serverId = ServerId("server-2")),
+                "server-1",
+            )
+        )
+        assertFalse(
+            settingsServerNotificationRealtimeEventApplies(
+                "server-1",
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Machines,
+                    reason = "machine:status",
+                    serverId = ServerId("server-1"),
+                ),
+                "server-1",
+            )
         )
     }
 }
