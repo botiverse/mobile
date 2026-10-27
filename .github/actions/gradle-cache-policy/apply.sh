@@ -11,7 +11,9 @@
 #
 # Exports for the following gradle/actions/setup-gradle step:
 #   GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=<epoch>-   (rotates the top-level Gradle User Home key;
-#                                                    verified against gradle/actions@v5 source —
+#                                                    verified against gradle/actions@v5 source;
+#                                                    both env names are still read by the
+#                                                    bundled gradle-actions-caching in v6.4.0 —
 #                                                    extracted-entry keys are NOT covered)
 #   GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1,b2>        (only when the quarantine file lists bundles)
 #

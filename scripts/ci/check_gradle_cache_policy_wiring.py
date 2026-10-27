@@ -70,10 +70,10 @@ def self_test():
 
     good = {"jobs": {"a": {"steps": [
         {"uses": POLICY_ACTION},
-        {"uses": "gradle/actions/setup-gradle@v5"},
+        {"uses": "gradle/actions/setup-gradle@v6"},
     ]}}}
     bad = {"jobs": {"a": {"steps": [
-        {"uses": "gradle/actions/setup-gradle@v5"},
+        {"uses": "gradle/actions/setup-gradle@v6"},
         {"uses": POLICY_ACTION},
     ]}}}
     with tempfile.TemporaryDirectory() as tmp:
@@ -109,7 +109,7 @@ def self_test():
         # Lookalike policy path must not count as wiring; .yaml workflows must be scanned.
         lookalike = {"jobs": {"a": {"steps": [
             {"uses": POLICY_ACTION + "-broken"},
-            {"uses": "gradle/actions/setup-gradle@v5"},
+            {"uses": "gradle/actions/setup-gradle@v6"},
         ]}}}
         lookalike_path = os.path.join(tmp, "lookalike.yaml")
         yaml.safe_dump(lookalike, open(lookalike_path, "w"))

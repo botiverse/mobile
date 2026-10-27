@@ -34,7 +34,7 @@ jobs:
 
   # #1478 poison-exclusion guard: proves the Android compile job's
   # gradle-home-cache-excludes (caches/jars-*, caches/transforms-*,
-  # caches/*/transforms — the pinned gradle/actions@v5 instrumentation families)
+  # caches/*/transforms — the gradle/actions v5/v6 instrumentation families)
   # actually keep those families out of the setup-gradle save/restore round-trip
   # while build-cache-1 survives. The normal Android run is a cold miss and cannot
   # exercise this. A throwaway per-run cache-key prefix (re-asserted AFTER the
@@ -71,7 +71,7 @@ jobs:
       - name: Isolate to a throwaway cache key (override the fleet epoch)
         run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=poison-guard-${{ github.run_id }}-${{ github.run_attempt }}-" >> "$GITHUB_ENV"
       - name: Set up Gradle (writer, saves the seeded home cache)
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: false
           gradle-home-cache-excludes: |
@@ -119,7 +119,7 @@ jobs:
       - name: Isolate to the same throwaway cache key (override the fleet epoch)
         run: echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=poison-guard-${{ github.run_id }}-${{ github.run_attempt }}-" >> "$GITHUB_ENV"
       - name: Set up Gradle (fresh reader, restores the writer's home cache)
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: true
           gradle-home-cache-excludes: |
