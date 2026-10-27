@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
  *  - `Volta` is an ordinary agent: its light, runtime, "Agent" tag and "Offline" line stay.
  *
  * Frames: Home DMs (badge after the name; no light, no runtime), search results (the outline Bot
- * tag replaces the kind tag; no light), @-mention suggestions (Bot replaces "Agent"; no light),
+ * tag replaces the kind tag; a Bot's subtitle is "@stamp", not "Agent · @stamp"; no light), @-mention suggestions (Bot replaces "Agent"; no light),
  * forward targets (open DM and new DM), channel members + Create Channel's member picker (badge
  * after the name; no light, no "Offline" line). Reports land in
  * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
@@ -170,13 +170,19 @@ private fun searchResult(key: String, type: SearchEntityType, title: String, sub
         conversationIdentity = null,
         avatarWireValue = "pixel:robot".takeIf { kind == MemberKind.Agent },
         showPresence = kind == MemberKind.Agent,
+        // As `toHomeSearchEntityResult` marks it: only the "@handle" after the kind word is data.
+        subtitleDataRange =
+            subtitle.indexOf('@').takeIf { it >= 0 }?.let { at ->
+                at until subtitle.indexOf(" · ", at).let { end -> if (end < 0) subtitle.length else end }
+            },
     )
 
 @Composable
 private fun SearchRows() {
     listOf(
         searchResult("a", SearchEntityType.Agent, "Stamp", "Agent · @stamp", "agent-stamp", MemberKind.Agent),
-        searchResult("b", SearchEntityType.DirectMessage, "Release helper", "Drafts release notes", "agent-helper", MemberKind.Agent),
+        searchResult("b", SearchEntityType.Agent, "Release helper", "Agent · @listing-bot · Members", "agent-helper", MemberKind.Agent),
+        searchResult("b2", SearchEntityType.DirectMessage, "Release helper", "Drafts release notes", "agent-helper", MemberKind.Agent),
         searchResult("c", SearchEntityType.Agent, "Volta", "Agent · @volta", "agent-volta", MemberKind.Agent),
         searchResult("d", SearchEntityType.Human, "Ada Lovelace", "Person · @ada", "human-ada", MemberKind.Human),
     ).forEachIndexed { index, result ->

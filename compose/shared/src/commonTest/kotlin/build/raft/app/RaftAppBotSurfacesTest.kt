@@ -73,6 +73,28 @@ class RaftAppBotSurfacesTest {
         assertNull(searchResult(SearchEntityType.DirectMessage, null, null).appBotLookupMemberId())
     }
 
+    @Test
+    fun aBotsSearchSubtitleDropsTheAgentKindWord() {
+        // As `toHomeSearchEntityResult` builds it: "Agent · @stamp", only "@stamp" marked.
+        fun agent(subtitle: String, range: IntRange?) =
+            searchResult(SearchEntityType.Agent, "agent-1", MemberKind.Agent).copy(subtitle = subtitle, subtitleDataRange = range)
+        val handle = agent("Agent · @stamp", 8..13).withoutAgentKindLabel("Agent")
+        assertEquals("@stamp", handle.subtitle)
+        assertEquals(0..5, handle.subtitleDataRange)
+        val members = agent("Agent · @stamp · Members", 8..13).withoutAgentKindLabel("Agent")
+        assertEquals("@stamp · Members", members.subtitle)
+        assertEquals(0..5, members.subtitleDataRange)
+        val bare = agent("Agent", IntRange.EMPTY).withoutAgentKindLabel("Agent")
+        assertEquals("", bare.subtitle)
+        assertEquals(IntRange.EMPTY, bare.subtitleDataRange)
+        // A description or another label is left alone; so is anything that is not an agent result.
+        assertEquals("Agents helper", agent("Agents helper", null).withoutAgentKindLabel("Agent").subtitle)
+        val dm = searchResult(SearchEntityType.DirectMessage, "agent-1", MemberKind.Agent).copy(subtitle = "Agent · x")
+        assertEquals("Agent · x", dm.withoutAgentKindLabel("Agent").subtitle)
+        // Localized label (zh-CN catalog value is irrelevant here: whatever the row passes).
+        assertEquals("@stamp", agent("智能体 · @stamp", 6..11).withoutAgentKindLabel("智能体").subtitle)
+    }
+
     // Mentions.
 
     @Test
