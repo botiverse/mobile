@@ -12,7 +12,11 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isMetaPressed
@@ -34,20 +38,29 @@ import build.raft.app.cmp.host.RaftCmpHost
  * Renders [navigator]'s page stack. Every page stays composed while it is on the stack (its state
  * and ViewModels survive a page opened on top, like an Android Activity) but only the top one is
  * laid out and drawn. Each page gets its own host (bridge, navigator, events) and ViewModel store,
- * cleared when the page leaves the stack. Esc / Cmd+[ go back.
+ * cleared when the page leaves the stack. Esc / Cmd+[ go back. A mouse's back / forward buttons
+ * step through the shell's history ([RaftDesktopNavigator.history]).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
     val top = navigator.pages.lastOrNull() ?: return
     Box(
-        // Bubbling, not preview: a focused popup, menu or suggestion list that handles Esc itself
-        // (closing) wins over going back.
-        Modifier.fillMaxSize().onKeyEvent { event ->
-            val back =
-                event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Escape || (event.isMetaPressed && event.key == Key.LeftBracket))
-            back && navigator.back()
-        }
+        Modifier
+            .fillMaxSize()
+            // Bubbling, not preview: a focused popup, menu or suggestion list that handles Esc itself
+            // (closing) wins over going back.
+            .onKeyEvent { event ->
+                val back =
+                    event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.Escape || (event.isMetaPressed && event.key == Key.LeftBracket))
+                back && navigator.back()
+            }
+            // Initial pass: no control below uses the side buttons, and a list that consumes the
+            // press for its own scrolling must not swallow them.
+            .onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
+                raftDesktopHistoryMouseButton(event.button)?.let(navigator::history)
+            }
     ) {
         navigator.pages.forEach { page ->
             key(page.id) {

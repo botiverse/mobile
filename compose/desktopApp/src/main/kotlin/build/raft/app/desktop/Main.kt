@@ -1,6 +1,13 @@
 package build.raft.app.desktop
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -37,7 +44,24 @@ fun main(args: Array<String>) {
         val windowState = rememberWindowState(size = DpSize(1200.dp, 800.dp))
         // Default 1200x800: wide enough (>= 840dp) for the rail and split panes. Narrower windows
         // get the phone layout, down to a phone-sized minimum.
-        Window(onCloseRequest = ::exitApplication, state = windowState, title = "Raft") {
+        // History shortcuts at the window level, after the content: a focused text field or menu that
+        // handles the chord itself keeps it.
+        Window(
+            onCloseRequest = ::exitApplication,
+            state = windowState,
+            title = "Raft",
+            onKeyEvent = { event ->
+                raftDesktopHistoryShortcut(
+                    keyDown = event.type == KeyEventType.KeyDown,
+                    key = event.key,
+                    meta = event.isMetaPressed,
+                    ctrl = event.isCtrlPressed,
+                    alt = event.isAltPressed,
+                    shift = event.isShiftPressed,
+                    mac = RaftDesktopHistoryInput.isMac,
+                )?.let(navigator::history) ?: false
+            },
+        ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
             RaftDesktopHost(navigator)
         }

@@ -1998,6 +1998,8 @@ internal fun RaftAppShellContent(
     pageVisible: Boolean = true,
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     conversationForwardRequestTick: Int = 0,
+    /** A desktop shortcut or mouse button's step through the wide layout's history. */
+    wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {}
 ) {
@@ -2021,6 +2023,7 @@ internal fun RaftAppShellContent(
                 pageVisible = pageVisible,
                 adaptivePane = adaptivePane,
                 conversationForwardRequestTick = conversationForwardRequestTick,
+                wideHistoryRequest = wideHistoryRequest,
                 searchHandoff = searchHandoff,
                 onSearchHandoffApplied = onSearchHandoffApplied,
                 sharedStores = databaseLaunchAttempt.value,
@@ -2057,6 +2060,7 @@ private fun RaftAppShellReadyContent(
     pageVisible: Boolean,
     adaptivePane: RaftAdaptivePaneState,
     conversationForwardRequestTick: Int,
+    wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {},
     sharedStores: RaftSharedStoreProvider,
@@ -5984,6 +5988,101 @@ private fun RaftAppShellReadyContent(
         selectAppShellTab(root, directChildSwitch = true)
         retainedAppShellTabs = retainedAppShellTabs + root
     }
+    // artin 2026-10-27 ("宽屏还有一个痛点，就是前进后退"): Back / Forward through what the wide layout
+    // showed, Slack desktop style (RaftWideNavigationHistory.kt). Recorded from what the shell shows
+    // — not from each open call — so row taps, in-pane thread replaces, search / saved / activity
+    // picks and member picks all count. Phone single-pane keeps its own back stack: nothing is
+    // recorded or restored there.
+    var wideNavHistories by remember(storeScope.shellInstanceId) { mutableStateOf(RaftWideNavHistories()) }
+    var wideNavMemberOpenRequest by remember(readyServerId) { mutableStateOf<MemberDetailIdentity?>(null) }
+    val wideNavShowing =
+        if (navRailActive && pageVisible) {
+            raftWideNavEntryOf(
+                serverId = readyServerId,
+                selectedTab = selectedTab,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                selectedHomeDestination = selectedHomeDestination,
+                tasksDetailOverlayOpen = tasksDetailOverlayOpen,
+                conversation = adaptiveWorkspaceState?.selection?.identity,
+                conversationRoute = adaptiveDetailLaunchPayload,
+                member = membersDetailSelection.value?.identity,
+            )
+        } else {
+            null
+        }
+    val latestWideNavShowing by rememberUpdatedState(wideNavShowing)
+    LaunchedEffect(wideNavShowing) {
+        val entry = wideNavShowing ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.record(entry)
+    }
+    val wideNavHistory = wideNavHistories.of(readyServerId)
+    LaunchedEffect(readyServerId, wideNavHistory.pendingRestore) {
+        val serverId = readyServerId ?: return@LaunchedEffect
+        val pending = wideNavHistory.pendingRestore ?: return@LaunchedEffect
+        delay(RaftWideNavRestoreSettleMillis)
+        bridge.logWarn("wide_history_restore_settled surface=${pending.surface} detail=${pending.detail}")
+        wideNavHistories = wideNavHistories.settle(serverId, latestWideNavShowing)
+    }
+
+    /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
+    fun restoreWideNavEntry(entry: RaftWideNavEntry) {
+        serverMenuState.dismiss()
+        if (entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey) {
+            railInlineSecondaryDestination = entry.surface
+        } else {
+            railInlineSecondaryDestination = null
+            if (retainedAppShellSelectedTab(selectedTab) != entry.surface) {
+                // As a rail tap selects a tab (onAppShellTabSelected).
+                selectAppShellTab(entry.surface, directChildSwitch = true)
+                if (isRetainedAppShellTab(entry.surface)) retainedAppShellTabs = retainedAppShellTabs + entry.surface
+            }
+            // A Home entry is the Home list, never a Home secondary page.
+            if (entry.surface == "home") homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        }
+        when (val detail = entry.detail) {
+            is RaftWideNavDetail.Conversation -> {
+                openLaunchPayloadInAdaptiveDetail(detail.route)
+                val session = adaptiveWorkspaceStore.snapshot()
+                if (session.workspace?.selection?.identity?.key != detail.identity.key) {
+                    bridge.logWarn("wide_history_restore_open_refused detail=$detail")
+                    return
+                }
+                if (entry.surface == "tasks") tasksDetailOverlayActive = true
+                homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(session.detailListSelectionId()))
+            }
+            is RaftWideNavDetail.Member -> wideNavMemberOpenRequest = detail.identity
+            null ->
+                when (entry.surface) {
+                    "members" -> membersDetailSelection.value = null
+                    "tasks" -> tasksDetailOverlayActive = false
+                    "settings" -> Unit
+                    else -> {
+                        val selection = adaptiveWorkspaceStore.snapshot().workspace?.selection ?: return
+                        adaptiveWorkspaceStore.update { it.closeDetailCompletely() }
+                        releaseAdaptiveHandoffLease(selection.generation)
+                        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                    }
+                }
+        }
+    }
+
+    fun navigateWideHistory(direction: RaftWideNavDirection, source: String) {
+        val serverId = readyServerId ?: return
+        if (!navRailActive) return
+        val before = wideNavHistories.of(serverId)
+        val after = before.go(direction)
+        val target = after.current?.takeIf { after != before } ?: return
+        wideNavHistories = wideNavHistories.go(serverId, direction)
+        bridge.log(
+            "wide_history_${direction.wireName} source=$source index=${after.index}/${after.entries.size} " +
+                "surface=${target.surface} detail=${target.detail}"
+        )
+        restoreWideNavEntry(target)
+    }
+    LaunchedEffect(wideHistoryRequest) {
+        val request = wideHistoryRequest ?: return@LaunchedEffect
+        navigateWideHistory(request.direction, source = "host")
+    }
     val showAppShellBottomTabs =
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
@@ -6755,6 +6854,19 @@ private fun RaftAppShellReadyContent(
                             topSafeArea = shellScope.topSafeArea,
                             bell = appShellTopBar,
                             onBellToggle = { serverMenuState.dismiss() },
+                            history =
+                                RaftAppShellTopBarHistory(
+                                    canGoBack = wideNavHistory.canGoBack,
+                                    canGoForward = wideNavHistory.canGoForward,
+                                    onBack = {
+                                        appShellTopBar.bellOpen.value = false
+                                        navigateWideHistory(RaftWideNavDirection.Back, source = "top_bar")
+                                    },
+                                    onForward = {
+                                        appShellTopBar.bellOpen.value = false
+                                        navigateWideHistory(RaftWideNavDirection.Forward, source = "top_bar")
+                                    },
+                                ),
                         )
                     }
                 } else {
@@ -7462,6 +7574,8 @@ private fun RaftAppShellReadyContent(
                             paneLayout = shellScope.adaptivePane.layout,
                             desktopMembersEnabled = desktopModeOnLargeScreen,
                             detailSelection = membersDetailSelection,
+                            detailOpenRequest = wideNavMemberOpenRequest,
+                            onDetailOpenRequestHandled = { wideNavMemberOpenRequest = null },
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
                             }
@@ -9196,6 +9310,9 @@ private fun SharedMembersScreen(
     paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     desktopMembersEnabled: Boolean = false,
     detailSelection: androidx.compose.runtime.MutableState<RaftMemberDetailPayload?>,
+    /** A member the wide layout's Back / Forward reopens in the split's detail pane, until handled. */
+    detailOpenRequest: MemberDetailIdentity? = null,
+    onDetailOpenRequestHandled: () -> Unit = {},
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -9366,6 +9483,12 @@ private fun SharedMembersScreen(
                 }
             val membersPayload = buildHostMembersPayload(current.server, timeContext, agentPanelTabOrder)
             val renderMembersPayload = membersPayload.copy(members = current.members)
+            LaunchedEffect(detailOpenRequest, membersPayload, showMemberSplit) {
+                val request = detailOpenRequest ?: return@LaunchedEffect
+                // The same payload a row tap in the split builds (identity only; the detail loads the rest).
+                if (showMemberSplit) selectedDetail = membersPayload.toMemberDetailPageData(request)?.toRaftMemberDetailPayload()
+                onDetailOpenRequestHandled()
+            }
             val agentStatusResolver =
                 remember(serverMembersStore, serverId) {
                     raftScopedAgentStatusResolver(serverMembersStore, serverId)
