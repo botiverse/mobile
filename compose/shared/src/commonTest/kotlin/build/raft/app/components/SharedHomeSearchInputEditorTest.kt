@@ -137,4 +137,28 @@ class SharedHomeSearchInputEditorTest {
         assertSame(before, owner.value)
         assertEquals(TextRange(0), owner.value.selection)
     }
+
+    @Test
+    fun storeResetOnServerSwitchEmptiesTheFieldWithoutAnEcho() {
+        val owner = SharedHomeSearchEditorOwner("")
+        val projections = mutableListOf<String>()
+        owner.acceptEditorValue(TextFieldValue("deploy", selection = TextRange(6))) { projections += it }
+
+        assertTrue(owner.adoptStoreReset(""))
+
+        assertEquals(TextFieldValue(""), owner.value)
+        assertEquals(listOf("deploy"), projections)
+        assertFalse(owner.adoptStoreReset(""))
+    }
+
+    @Test
+    fun storeTextThatMayLagTypingNeverOverridesTheField() {
+        val owner = SharedHomeSearchEditorOwner("")
+        val latest = TextFieldValue("deploy", selection = TextRange(6))
+        owner.acceptEditorValue(latest) {}
+
+        assertFalse(owner.adoptStoreReset("depl"))
+
+        assertSame(latest, owner.value)
+    }
 }

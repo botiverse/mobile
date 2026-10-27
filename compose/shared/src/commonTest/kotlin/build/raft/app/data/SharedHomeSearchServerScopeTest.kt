@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
  */
 class SharedHomeSearchServerScopeTest {
     @Test
-    fun serverSwitchDropsPreviousServerRowsAndFiltersAndReRunsOnTheNewServer() = runBlocking<Unit> {
+    fun serverSwitchEmptiesTheQueryAndDropsRowsAndFiltersWithoutReRunningOnTheNewServer() = runBlocking<Unit> {
         val auth = EventingAuthStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
         val search = ServerTaggedSearchRepository()
         val storeScope = CoroutineScope(coroutineContext + Job())
@@ -39,23 +39,55 @@ class SharedHomeSearchServerScopeTest {
 
         store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("deploy"))
         settle()
+        store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
+        settle()
         store.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel("channel-on-a"))
+        settle()
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchTimeRange(SearchTimeRange.Last7Days))
         settle()
         assertEquals(listOf("server-a:deploy"), store.state.value.search.items.map { it.key })
         assertEquals("channel-on-a", store.state.value.search.selectedChannelId)
+        val callsBeforeSwitch = search.calls.size
 
         auth.switchServer("server-b")
         settle()
 
         val after = store.state.value.search
         assertEquals("server-b", after.serverId)
-        assertEquals("deploy", after.query)
+        assertEquals("", after.query)
+        assertEquals(null, after.resultQuery)
+        assertEquals(false, after.querySearchPending)
         assertEquals(null, after.selectedChannelId)
-        assertEquals(listOf("server-b:deploy"), after.items.map { it.key })
-        assertTrue(after.items.none { it.key.startsWith("server-a") })
-        val lastCall = search.calls.last()
-        assertEquals("server-b", lastCall.first)
-        assertEquals(null, lastCall.second.channelId)
+        assertEquals(SearchTimeRange.Any, after.timeRange)
+        assertEquals(emptyList(), after.items)
+        assertEquals(false, after.searched)
+        assertEquals(false, after.loading)
+        // No request carries the old query to the new server.
+        assertEquals(callsBeforeSwitch, search.calls.size)
+        assertTrue(search.calls.none { it.first == "server-b" })
+        store.clear()
+        storeScope.coroutineContext[Job]?.cancel()
+    }
+
+    @Test
+    fun firstServerAdoptionKeepsTheTypedQuery() = runBlocking<Unit> {
+        val auth = InMemoryRaftAuthSessionStore(authSessionFixture(servers = twoServers, selectedServerId = "server-a"))
+        val search = ServerTaggedSearchRepository()
+        val storeScope = CoroutineScope(coroutineContext + Job())
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = auth,
+                savedRepository = EmptySavedRepository,
+                searchRepository = search,
+                scope = storeScope,
+                searchDebounceMillis = 0L,
+            )
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("deploy"))
+        settle()
+
+        assertEquals("server-a", store.state.value.search.serverId)
+        assertEquals("deploy", store.state.value.search.query)
+        assertEquals(listOf("server-a:deploy"), store.state.value.search.items.map { it.key })
         store.clear()
         storeScope.coroutineContext[Job]?.cancel()
     }
@@ -85,11 +117,10 @@ class SharedHomeSearchServerScopeTest {
         val afterStale = store.state.value.search
         assertEquals(emptyList(), afterStale.items.map { it.key })
         assertEquals("server-b", afterStale.serverId)
-        assertEquals(listOf("server-a", "server-b"), search.requestedServers)
-
-        search.complete("server-b")
-        settle()
-        assertEquals(listOf("server-b:deploy"), store.state.value.search.items.map { it.key })
+        assertEquals("", afterStale.query)
+        assertEquals(false, afterStale.loading)
+        // The old query is not re-run on the server the user switched to.
+        assertEquals(listOf("server-a"), search.requestedServers)
         store.clear()
     }
 

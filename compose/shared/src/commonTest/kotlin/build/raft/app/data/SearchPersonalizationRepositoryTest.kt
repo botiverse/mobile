@@ -62,6 +62,32 @@ class SearchPersonalizationRepositoryTest {
     }
 
     @Test
+    fun dropServerRemovesOnlyThatServerAndClearAllRemovesEverything() = runBlocking {
+        val store = InMemoryRaftKeyValueStore()
+        val repository = PersistentSearchPersonalizationRepository(store)
+        val removedA = SearchPersonalizationOwner("server-gone", "user-a")
+        val removedB = SearchPersonalizationOwner("server-gone", "user-b")
+        val kept = SearchPersonalizationOwner("server-kept", "user-a")
+        val now = 1_800_000_000_000L
+        val entity = SearchPersonalizationEntityKey.create(SearchPersonalizationEntityKind.Channel, "channel-a")!!
+        repository.recordSuccessfulOpen(removedA, "secret plan", entity, now)
+        repository.recordSuccessfulOpen(removedB, "roadmap", null, now)
+        repository.recordSuccessfulOpen(kept, "release", entity, now)
+
+        repository.dropServer(" server-gone ", now + 1)
+        assertEquals(emptyList(), repository.read(removedA, now + 1).history)
+        assertEquals(emptyMap(), repository.read(removedA, now + 1).usage)
+        assertEquals(emptyList(), repository.read(removedB, now + 1).history)
+        assertEquals(listOf("release"), repository.read(kept, now + 1).history)
+        assertTrue(store.getString("search:personalization:v1").orEmpty().contains("server-kept"))
+        assertTrue(!store.getString("search:personalization:v1").orEmpty().contains("server-gone"))
+
+        repository.clearAll()
+        assertEquals(null, store.getString("search:personalization:v1"))
+        assertEquals(emptyList(), repository.read(kept, now + 2).history)
+    }
+
+    @Test
     fun corruptOrFailingStorageIsEmptyAndNeverBlocksUpdates() = runBlocking {
         val corrupt = InMemoryRaftKeyValueStore(mapOf("search:personalization:v1" to "{not-json"))
         val owner = SearchPersonalizationOwner("server-a", "user-a")

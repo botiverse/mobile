@@ -427,6 +427,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
     /** Last-known workspace notification preference per (user, server); cleared with the other copies. */
     val settingsServerNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(sharedPreferenceStore)
+    private val searchPersonalizationRepository = PersistentSearchPersonalizationRepository(sharedPreferenceStore)
     private val homeRowHintPersistSlice =
         createSharedHomeRowHintPersistSlice(
             storage = homeRowHintPersistStorage,
@@ -1123,6 +1124,8 @@ internal class RaftSharedStoreProvider private constructor(
                     threadSendScope.launch {
                         jointConnectionsCache.clearAll()
                         agentDetailCache.clearAll()
+                        // Recent searches and frequent people / channels (#45): same lifetime.
+                        searchPersonalizationRepository.clearAll()
                     }
                     // Reply previews are message content: same lifetime (page keys are also
                     // principal-scoped, so a successor never reads them in the meantime).
@@ -1198,6 +1201,8 @@ internal class RaftSharedStoreProvider private constructor(
                 jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
+                // #45: that server's recent searches and frequent people / channels.
+                searchPersonalizationRepository.dropServer(grant.serverId, nowMillis = defaultNowMillis())
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 )

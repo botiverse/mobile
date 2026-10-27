@@ -11272,6 +11272,15 @@ internal fun SharedHomeSearchPanel(
     var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
     var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
     val searchEditor = remember { SharedHomeSearchEditorOwner(state.query) }
+    // The field owns its text, so a store-side reset has to be pushed into it: switching server
+    // empties the query in the store (search is per server), and the box must visibly empty too.
+    var searchEditorServerId by remember { mutableStateOf(state.serverId) }
+    LaunchedEffect(state.serverId) {
+        if (state.serverId != searchEditorServerId) {
+            searchEditorServerId = state.serverId
+            searchEditor.adoptStoreReset(state.query)
+        }
+    }
     val searchFocusRequester = remember { FocusRequester() }
     val searchInputFocus =
         rememberSharedHomeSearchInputFocus(

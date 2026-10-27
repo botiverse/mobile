@@ -183,6 +183,29 @@ internal class PersistentSearchPersonalizationRepository(
             }
         }
 
+    /**
+     * Sign-out: recent searches and frequent people / channels are the account's, so none outlives
+     * the session (the other per-account caches leave on the same auth-terminal cleanup).
+     */
+    suspend fun clearAll() {
+        searchPersonalizationStorageMutex.withLock {
+            runCatching { store.putString(SearchPersonalizationStorageKey, null) }
+        }
+    }
+
+    /**
+     * Removed from (or deleted) server: that server's searches name channels and people the account
+     * can no longer see. Drops the server's scopes for every principal.
+     */
+    suspend fun dropServer(serverId: String, nowMillis: Long) {
+        val key = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        searchPersonalizationStorageMutex.withLock {
+            val envelope = readEnvelope(nowMillis)
+            if (envelope.scopes.none { it.serverId == key }) return@withLock
+            writeEnvelope(envelope.copy(scopes = envelope.scopes.filterNot { it.serverId == key }), nowMillis)
+        }
+    }
+
     private fun readEnvelope(nowMillis: Long): SearchPersonalizationWireEnvelope {
         val raw = runCatching { store.getString(SearchPersonalizationStorageKey) }.getOrNull()
         if (raw.isNullOrBlank()) return SearchPersonalizationWireEnvelope()
