@@ -56,6 +56,25 @@ internal fun raftDesktopHistoryShortcut(
     }
 }
 
+/** Who takes a history step: the app shell (its history), the page on top (closing), or nobody. */
+internal enum class RaftDesktopHistoryRoute { Shell, ClosePage, None }
+
+/**
+ * The shell alone on the stack takes every step; a page pushed over it takes Back as closing
+ * itself and ignores Forward; any other lone page (none today) ignores both.
+ */
+internal fun raftDesktopHistoryRoute(
+    stackSize: Int,
+    topIsShell: Boolean,
+    direction: RaftDesktopHistoryDirection,
+): RaftDesktopHistoryRoute =
+    when {
+        stackSize > 1 ->
+            if (direction == RaftDesktopHistoryDirection.Back) RaftDesktopHistoryRoute.ClosePage else RaftDesktopHistoryRoute.None
+        stackSize == 1 && topIsShell -> RaftDesktopHistoryRoute.Shell
+        else -> RaftDesktopHistoryRoute.None
+    }
+
 /** A mouse's side buttons: back (button 4) and forward (button 5). */
 internal fun raftDesktopHistoryMouseButton(button: PointerButton?): RaftDesktopHistoryDirection? =
     when (button) {

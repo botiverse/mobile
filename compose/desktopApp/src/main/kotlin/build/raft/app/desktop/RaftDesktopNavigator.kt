@@ -65,13 +65,17 @@ class RaftDesktopNavigator(private val onEmpty: () -> Unit) {
      * the stack, gets it (it owns the wide layout's history); a page pushed over the shell takes
      * Back as closing itself and ignores Forward. True when something took it.
      */
-    fun history(direction: RaftDesktopHistoryDirection): Boolean {
+    internal fun history(direction: RaftDesktopHistoryDirection): Boolean {
         val top = pages.lastOrNull() ?: return false
-        if (pages.size > 1) return direction == RaftDesktopHistoryDirection.Back && back()
-        if (top.args.pageName != RaftDesktopPages.APP_SHELL) return false
-        log("history ${direction.wireName}")
-        top.events.send(RaftDesktopHistoryInput.EVENT_NAME, RaftDesktopHistoryInput.eventData(direction))
-        return true
+        return when (raftDesktopHistoryRoute(pages.size, top.args.pageName == RaftDesktopPages.APP_SHELL, direction)) {
+            RaftDesktopHistoryRoute.Shell -> {
+                log("history ${direction.wireName}")
+                top.events.send(RaftDesktopHistoryInput.EVENT_NAME, RaftDesktopHistoryInput.eventData(direction))
+                true
+            }
+            RaftDesktopHistoryRoute.ClosePage -> back()
+            RaftDesktopHistoryRoute.None -> false
+        }
     }
 
     private fun page(pageName: String, pageData: JsonObject) =

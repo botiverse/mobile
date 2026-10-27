@@ -2023,6 +2023,7 @@ internal fun RaftAppShellContent(
                 pageVisible = pageVisible,
                 adaptivePane = adaptivePane,
                 conversationForwardRequestTick = conversationForwardRequestTick,
+                wideHistoryRequest = wideHistoryRequest,
                 searchHandoff = searchHandoff,
                 onSearchHandoffApplied = onSearchHandoffApplied,
                 sharedStores = databaseLaunchAttempt.value,
@@ -2059,6 +2060,7 @@ private fun RaftAppShellReadyContent(
     pageVisible: Boolean,
     adaptivePane: RaftAdaptivePaneState,
     conversationForwardRequestTick: Int,
+    wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {},
     sharedStores: RaftSharedStoreProvider,
@@ -6030,9 +6032,12 @@ private fun RaftAppShellReadyContent(
         } else {
             railInlineSecondaryDestination = null
             if (retainedAppShellSelectedTab(selectedTab) != entry.surface) {
+                // As a rail tap selects a tab (onAppShellTabSelected).
                 selectAppShellTab(entry.surface, directChildSwitch = true)
-                retainedAppShellTabs = retainedAppShellTabs + entry.surface
+                if (isRetainedAppShellTab(entry.surface)) retainedAppShellTabs = retainedAppShellTabs + entry.surface
             }
+            // A Home entry is the Home list, never a Home secondary page.
+            if (entry.surface == "home") homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
         }
         when (val detail = entry.detail) {
             is RaftWideNavDetail.Conversation -> {
