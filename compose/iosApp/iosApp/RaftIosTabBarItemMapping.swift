@@ -109,6 +109,43 @@ enum RaftIosTabBarItemMapping {
         guard containerHeight.isFinite, tabBarMinY.isFinite else { return 0 }
         return max(0, min(containerHeight, containerHeight - tabBarMinY))
     }
+
+    /// The edge the bar is laid out on and the band it covers from that edge of [container] to
+    /// the bar's inner edge (points), from the bar's actual [tabBar] frame (in the container's
+    /// coordinates). A bar wider than tall is a top or bottom bar, by which half its centre is
+    /// in; a bar taller than wide is a left or right bar. Nil for an empty or non-finite frame.
+    /// Never assumes a bottom bar: under newer SDKs the bar can sit below a side status bar.
+    static func band(container: CGRect, tabBar: CGRect) -> RaftIosTabBarBand? {
+        let values = [
+            container.minX, container.minY, container.width, container.height,
+            tabBar.minX, tabBar.minY, tabBar.width, tabBar.height,
+        ]
+        guard values.allSatisfy(\.isFinite),
+              container.width > 0, container.height > 0,
+              tabBar.width > 0, tabBar.height > 0 else { return nil }
+        func clamp(_ value: CGFloat, _ limit: CGFloat) -> CGFloat { max(0, min(limit, value)) }
+        if tabBar.width >= tabBar.height {
+            if tabBar.midY >= container.midY {
+                return RaftIosTabBarBand(edge: .bottom, points: clamp(container.maxY - tabBar.minY, container.height))
+            }
+            return RaftIosTabBarBand(edge: .top, points: clamp(tabBar.maxY - container.minY, container.height))
+        }
+        if tabBar.midX >= container.midX {
+            return RaftIosTabBarBand(edge: .right, points: clamp(container.maxX - tabBar.minX, container.width))
+        }
+        return RaftIosTabBarBand(edge: .left, points: clamp(tabBar.maxX - container.minX, container.width))
+    }
+}
+
+/// Where the native bar sits and how much of the page it covers (shared `RaftNativeTabBarBand`).
+struct RaftIosTabBarBand: Equatable {
+    /// Physical edge; [rawValue] is the shared bridge's wire name.
+    enum Edge: String {
+        case bottom, top, left, right
+    }
+
+    let edge: Edge
+    let points: CGFloat
 }
 
 /// One action per tap on a tab bar item.

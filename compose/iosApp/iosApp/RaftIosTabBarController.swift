@@ -41,7 +41,7 @@ final class RaftIosTabBarController: UIViewController {
     private var slotsByKey: [String: RaftIosTabSlotViewController] = [:]
     private var tabKeys: [String] = []
     private var tabBarVisible: Bool?
-    private var reportedBottomBand: CGFloat = -1
+    private var reportedBand: RaftIosTabBarBand?
     private var tapGate = RaftIosTabTapGate()
     /// iOS 26: the bar's system tabs (`RaftIosSystemTabs`); nil before iOS 26.
     private var systemTabs: AnyObject?
@@ -201,20 +201,28 @@ final class RaftIosTabBarController: UIViewController {
         }
     }
 
-    /// Reports the band the visible bar covers; skipped while hidden so a hide/show cycle does
-    /// not flap the shared content inset.
+    /// Reports the edge the visible bar is laid out on and the band it covers, from its actual
+    /// frame (not assuming a bottom bar); skipped while hidden so a hide/show cycle does not flap
+    /// the shared content inset.
     private func reportBottomBand() {
         guard tabBarVisible == true, let container = systemTabBarController.viewIfLoaded else { return }
         let tabBar = systemTabBarController.tabBar
         guard !tabBar.isHidden, tabBar.superview != nil else { return }
         let frame = tabBar.convert(tabBar.bounds, to: container)
-        let band = RaftIosTabBarItemMapping.bottomBand(
-            containerHeight: container.bounds.height,
-            tabBarMinY: frame.minY
-        )
-        guard band > 0, abs(band - reportedBottomBand) >= 0.5 else { return }
-        reportedBottomBand = band
-        bridge.updateBottomInset(points: Double(band))
+        guard let band = RaftIosTabBarItemMapping.band(container: container.bounds, tabBar: frame),
+              band.points > 0 else { return }
+        if let reported = reportedBand, reported.edge == band.edge, abs(reported.points - band.points) < 0.5 {
+            return
+        }
+        if band.edge != .bottom, reportedBand?.edge != band.edge {
+            RaftIosDiagnosticsRecord(
+                "info",
+                "RaftIosTabBar",
+                "tab_bar_edge edge=\(band.edge.rawValue) points=\(band.points)"
+            )
+        }
+        reportedBand = band
+        bridge.updateBand(edge: band.edge.rawValue, points: Double(band.points))
     }
 }
 

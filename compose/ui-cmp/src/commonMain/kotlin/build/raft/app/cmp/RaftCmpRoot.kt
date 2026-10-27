@@ -30,7 +30,9 @@ import build.raft.designsystem.tokens.RaftSpacing
 /**
  * Root of every CMP page, on both hosts: provides the Raft theme, the route ([LocalRaftPageArgs])
  * and the native host ([LocalRaftHost]), paints the canvas edge to edge and renders the page
- * registered for [args]'s page name. Pages own their insets (`WindowInsets.safeDrawing`).
+ * registered for [args]'s page name. Pages own their insets: shared pages read the host's
+ * window-inset contract (`RaftAppSafeArea.kt`; the page host pads the left/right safe area for
+ * every page), other pages use `WindowInsets.safeDrawing`.
  * [onDarkThemeResolved] reports the resolved appearance after each change (system bar icons);
  * [onCanvasColorResolved] reports the canvas colour painted behind the page after each change, so
  * a host can give its native container the same colour (whatever Compose does not draw, e.g. the

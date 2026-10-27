@@ -245,6 +245,61 @@ class RaftNativeTabBarTest {
     }
 
     @Test
+    fun bandKeepsTheEdgeTheHostLaidTheBarOutOn() {
+        val bridge = RaftNativeTabBarBridge()
+        bridge.updateBand("bottom", 83.0)
+        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), bridge.band.value)
+        assertEquals(83.0, bridge.bottomInsetPoints.value)
+
+        bridge.updateBand("top", 96.0)
+        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), bridge.band.value)
+        // A top bar reserves no bottom band.
+        assertEquals(0.0, bridge.bottomInsetPoints.value)
+
+        bridge.updateBand("diagonal", 10.0)
+        bridge.updateBand("right", Double.NaN)
+        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), bridge.band.value)
+    }
+
+    @Test
+    fun nonBottomBarsReserveTheirOwnEdgeNotTheBottom() {
+        val bottomSafeArea = 34.dp
+        // Bottom bar: unchanged contract.
+        assertEquals(
+            83.dp + RaftAppSpacing.Lg,
+            raftNativeHostTabBarContentInset(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), bottomSafeArea),
+        )
+        // A top or side bar: the bottom keeps only the safe area (no full-height band).
+        for (edge in listOf(RaftNativeTabBarEdge.Top, RaftNativeTabBarEdge.Left, RaftNativeTabBarEdge.Right)) {
+            assertEquals(
+                bottomSafeArea + RaftAppSpacing.Lg,
+                raftNativeHostTabBarContentInset(RaftNativeTabBarBand(edge, 797.0), bottomSafeArea),
+            )
+        }
+        assertEquals(
+            RaftNativeTabBarEdgeInsets(top = 96.dp),
+            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), visible = true),
+        )
+        assertEquals(
+            RaftNativeTabBarEdgeInsets(right = 100.dp),
+            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Right, 100.0), visible = true),
+        )
+        assertEquals(
+            RaftNativeTabBarEdgeInsets(left = 80.dp),
+            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Left, 80.0), visible = true),
+        )
+        // Hidden bars and bottom bars take nothing from the other edges.
+        assertEquals(
+            RaftNativeTabBarEdgeInsets.Zero,
+            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Right, 100.0), visible = false),
+        )
+        assertEquals(
+            RaftNativeTabBarEdgeInsets.Zero,
+            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), visible = true),
+        )
+    }
+
+    @Test
     fun registryResolvesOnlyTheRegisteredBridge() {
         val bridge = RaftNativeTabBarBridge()
         val other = RaftNativeTabBarBridge()

@@ -94,7 +94,8 @@ internal data class RaftAppShellScope(
 internal fun rememberRaftAppShellScope(
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState()
 ): RaftAppShellScope {
-    val topSafeArea = raftTopSafeAreaPadding()
+    // A host tab bar laid out along the top edge covers the status bar area too.
+    val topSafeArea = maxOf(raftTopSafeAreaPadding(), raftNativeTabBarEdgeInsets().top)
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val bottomTabBarContentInset = raftAppBottomTabBarContentInset(bottomSafeArea)
     val bottomTabBarOverlaysContent = raftAppBottomTabBarOverlaysContent()

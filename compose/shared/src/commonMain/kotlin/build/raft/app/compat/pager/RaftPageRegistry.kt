@@ -37,6 +37,7 @@ import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.LocalRaftNativeTabBarBridge
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
+import build.raft.app.RaftPageHorizontalSafeAreaShell
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.image.raftInstallImageLoader
 import build.raft.app.toKuiklyJson
@@ -209,7 +210,11 @@ fun RaftPagerHost(
                     RaftProvideDesignSystemCopy(host.capabilities) {
                         // Debug builds fail on design-system misuse (a nameless icon button, ...).
                         RaftProvideDesignSystemMisuse {
-                            (pager as? ComposeContainer)?.composedContent?.invoke()
+                            // Left/right safe area for every page (landscape sensor housing,
+                            // a side status bar): content and controls never run under it.
+                            RaftPageHorizontalSafeAreaShell {
+                                (pager as? ComposeContainer)?.composedContent?.invoke()
+                            }
                         }
                     }
                 }

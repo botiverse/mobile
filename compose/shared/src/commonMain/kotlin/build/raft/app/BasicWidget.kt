@@ -1477,6 +1477,13 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
+    // The page window's horizontal safe area (what the page shells around this call padded in
+    // total), read here in the page: the dialog is its own full-window layer, so it pads the whole
+    // left/right inset itself. Zero outside a page shell (previews, screenshot tests).
+    val horizontalSafeArea = LocalRaftAppliedHorizontalSafeArea.current
+    // The strips stay transparent: under them is the page's own padded strip (the canvas), and a
+    // scrim bleeds over them (RaftModalDismissBarrier). Painting them would cover the ends of a
+    // host tab bar while a menu is open.
     // RaftWindowDialog: back-swipe block, edge-to-edge window, system bars that follow the theme.
     // Kuikly's Modal had no framework scrim and left the keyboard to the page: the pages draw
     // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
@@ -1489,7 +1496,9 @@ fun Modal(
         CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
             RaftInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
-                    content()
+                    RaftHorizontalSafeAreaShell(required = horizontalSafeArea, windowRoot = true) {
+                        content()
+                    }
                 }
             }
         }
