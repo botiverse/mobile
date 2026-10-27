@@ -26,6 +26,9 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
@@ -6694,6 +6697,13 @@ private fun SharedThreadRouteContentContent(
                 serverId = headerProjectionServerId?.value,
             )
         }
+    val memberAppBotResolver =
+        remember(serverMembersStore, headerProjectionServerId) {
+            raftMemberAppBotResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = headerProjectionServerId?.value,
+            )
+        }
     // First-frame header: whatever the app already holds in memory for this exact
     // account+server+conversation (Home sidebar row, identity hub). Canonical state still wins;
     // see displayModelWithKnownCandidate.
@@ -11493,6 +11503,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
+                LocalRaftMemberAppBotResolver provides memberAppBotResolver,
                 LocalRaftTimeContextProvider provides timeContextProvider
             ),
             LocalRaftMarkdownPlainCandidateSession,
@@ -14984,6 +14995,10 @@ private fun ThreadPageContentContent(
     val filesViewModel = data.filesViewModel
     val memberSuggestionsFlow = data.memberSuggestionsFlow
     val channelSuggestionsFlow = data.channelSuggestionsFlow
+    // botiverse/slock #11303 / #11321: the DM with an App Bot removed from this server, and that
+    // DM's threads, keep their history but the Bot can't answer: the composer is read-only.
+    val composerRemovedAppBot =
+        rememberRaftMemberAppBot(data.headerDisplay.composerDmAgentPeerId())?.takeIf { it.removed }
     val selectedTab = data.selectedTab
     val availableTabs = data.availableTabs
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
@@ -16191,6 +16206,7 @@ private fun ThreadPageContentContent(
                     ) {
                         ThreadComposerRoute(
                             baseComposerState = baseComposerState,
+                            removedAppBot = composerRemovedAppBot,
                             composerDraftViewModel = composerDraftViewModel,
                             renderedPayload = payload,
                             timelineSlice = timelineSlice,
@@ -16613,10 +16629,13 @@ internal fun ThreadPageHeader(
             memberAvatarResolver,
             headerDisplay.dmPeerIdentity?.memberId?.value
         )
+    // botiverse/slock #11273: an App Bot has no presence (it would read "Offline" forever); its
+    // DM header carries the Bot badge instead.
+    val dmAppBot = rememberRaftMemberAppBot(headerDisplay.dmAgentActivityMemberId())
     val dmAgentActivity =
         rememberRaftAgentStatusIndicatorState(
             agentStatusResolver = agentStatusResolver,
-            memberId = headerDisplay.dmAgentActivityMemberId()
+            memberId = headerDisplay.dmAgentActivityMemberId().takeIf { dmAppBot == null }
         )
     val showHeaderActions =
         showActions &&
@@ -16697,7 +16716,11 @@ internal fun ThreadPageHeader(
                     if (activityMutedIndicatorVisible) {
                         ThreadActivityMutedBadge()
                     }
-                    dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
+                    if (dmAppBot != null) {
+                        RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
+                    } else {
+                        dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
+                    }
                 }
                 headerSubtitle?.let {
                     Text(
@@ -16927,7 +16950,14 @@ private fun ThreadComposerRoute(
     composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
+    /** A removed App Bot's DM (or a thread in it): notice above a disabled composer. */
+    removedAppBot: RaftAppBotIdentity? = null,
 ) {
+    if (removedAppBot != null) {
+        // The editor never mounts, so the saved draft stays in the store untouched.
+        ThreadRemovedAppBotReadOnlyComposer(handle = removedAppBot.handle)
+        return
+    }
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
     val restingHeightKey = surface.threadComposerRestingHeightKey()
@@ -16980,6 +17010,24 @@ private fun ThreadComposerRoute(
         contentPaddingBottom = 0.dp,
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
     )
+    }
+}
+
+/**
+ * The DM with an App Bot removed from this server, and threads in it (botiverse/slock #11303
+ * `RemovedAppBotDmNotice` over #11321 `ReadOnlyComposer`): a raft-ui warning Banner that says why
+ * and where an admin adds the Bot back, 8dp above the one-line read-only composer ("Chat is
+ * unavailable"; no typing, attachments, As Task or send). Web links "Settings › Applications" for
+ * people who can manage Apps; the phone has no server Apps settings, so everyone reads plain text.
+ */
+@Composable
+internal fun ThreadRemovedAppBotReadOnlyComposer(handle: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftBanner(
+            description = stringResource(Res.string.thread_app_bot_removed_notice, handle.removePrefix("@")),
+            status = RaftBannerStatus.Warning,
+        )
+        RaftReadOnlyComposer(text = stringResource(Res.string.thread_composer_chat_unavailable))
     }
 }
 
@@ -25448,6 +25496,8 @@ private fun ThreadMessageCardContent(
         } else {
             null
         }
+    // botiverse/slock #11273: an App Bot's row shows the Bot badge (and no model).
+    val authorAppBot = rememberRaftMemberAppBot(message.authorId.takeIf { message.isThreadAgentAuthor() })
     val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
@@ -25832,10 +25882,13 @@ private fun ThreadMessageCardContent(
                                                 .widthIn(max = 220.dp)
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
+                                    authorAppBot?.let { appBot ->
+                                        RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
+                                    }
                                     // task #392 (port of Web PR #7545): agent
                                     // model name after the name, before
                                     // badge/subtitle; raft-ui MessageItemMeta.
-                                    authorModelLabel?.let { modelLabel ->
+                                    authorModelLabel?.takeIf { authorAppBot == null }?.let { modelLabel ->
                                         Text(
                                             text = modelLabel,
                                             style =

@@ -418,6 +418,17 @@ data class MemberProfile(
      * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).
      */
     val managedByAppInstallId: String? = null,
+    /**
+     * App Bots only: the owning App's name (`managedByApp.name` on `GET /agents` and
+     * `GET /agents/:id`, botiverse/slock #11273). Web `AppBotBadge` reads it for "Bot · <App>".
+     */
+    val managedByAppName: String? = null,
+    /**
+     * App Bots only: `inMemberLists` from the agent directory (botiverse/slock #11295). `false`
+     * while the Bot is removed from this server: member lists leave it out and its DM is
+     * read-only. `null` for ordinary agents (the server omits the key).
+     */
+    val inMemberLists: Boolean? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,

@@ -453,6 +453,8 @@
     <string name="thread_attachment_meta_file">ファイル</string>
     <string name="thread_composer_payload_failed">コンポーザーのペイロード解析に失敗しました</string>
     <string name="thread_composer_placeholder_message">メッセージ</string>
+    <string name="thread_composer_chat_unavailable">チャットを利用できません</string>
+    <string name="thread_app_bot_removed_notice">@%1$s はこのサーバーから削除されました。管理者は 設定 › アプリ から再び追加できます。</string>
     <string name="thread_composer_placeholder_dm">@%1$s にメッセージを送信</string>
     <string name="thread_composer_placeholder_channel">#%1$s にメッセージを送信</string>
     <string name="thread_composer_placeholder_reply">スレッドに返信</string>
@@ -1248,6 +1250,10 @@
     <string name="member_label_active">アクティブ</string>
     <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">ミュート中</string>
+    <string name="member_label_bot">ボット</string>
+    <string name="member_label_bot_with_app">ボット · %1$s</string>
+    <string name="member_label_bot_created_by_app">%1$s アプリが作成</string>
+    <string name="member_label_bot_from_app">提供元: %1$s</string>
     <string name="member_label_agent_dm">エージェント DM</string>
     <string name="member_label_show_more">もっと見る</string>
     <string name="member_label_show_less">折りたたむ</string>

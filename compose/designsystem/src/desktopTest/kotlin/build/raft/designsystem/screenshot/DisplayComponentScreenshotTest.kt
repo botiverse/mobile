@@ -32,6 +32,7 @@ import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAgentStateChip
+import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftAgentTag
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarBadgeBox
@@ -721,6 +722,19 @@ class DisplayComponentScreenshotTest {
             }
         }
     }
+
+    /** Web `ReadOnlyComposer`: a removed App Bot's DM under its warning notice. */
+    @Test
+    fun readOnlyComposer() =
+        capture("read_only_composer") {
+            Column(Modifier.width(380.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftBanner(
+                    description = "@stamp was removed from this server. An admin can add it back in Settings › Applications.",
+                    status = RaftBannerStatus.Warning,
+                )
+                RaftReadOnlyComposer("Chat is unavailable")
+            }
+        }
 
     @Test
     fun banner() =

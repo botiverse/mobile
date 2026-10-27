@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.MemberKind
 
 internal data class ConversationAccessCandidate(
     val ids: Set<String>,
@@ -21,6 +22,11 @@ internal data class ThreadHeaderDisplayModel(
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
     val dmPeerIdentity: MemberDetailIdentity? = null,
+    /**
+     * Reply threads only: the peer of the parent DM, from the accepted parent directory row.
+     * A thread in the DM with a removed App Bot is read-only like the DM (botiverse/slock #11321).
+     */
+    val replyParentDmPeerIdentity: MemberDetailIdentity? = null,
     // task #396: Channel-surface only; reply threads / DMs never show the bridge badge.
     val bridgeProvider: String? = null,
     /** Channel-surface only: the directory row's `guestVisible` / archived state. */
@@ -348,6 +354,8 @@ internal fun RaftThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 title = threadHeaderDisplayTitle(null, surfaceKind),
                 subtitle = directory.replyThreadParentSubtitle(),
                 surfaceKind = surfaceKind,
+                replyParentDmPeerIdentity =
+                    directory.peerIdentity?.takeIf { directory.surfaceKind == RaftThreadSurfaceKind.DirectMessage },
                 channelKind = parentChannelKind.normalizedHeaderChannelKind()
                     ?: directory.channelKind.normalizedHeaderChannelKind()
                     ?: channelKind
@@ -422,6 +430,21 @@ private fun directMessageReplyThreadSubtitle(title: String?): String? {
     val display = threadHeaderSafeTitleOrNull(title)?.removePrefix("@")
         ?: return null
     return "@$display"
+}
+
+/**
+ * The App Bot whose DM this conversation is (the DM itself, or a reply thread in it): the peer
+ * the composer checks for a removed App Bot (botiverse/slock #11303 / #11321). Agents only.
+ */
+internal fun ThreadHeaderDisplayModel.composerDmAgentPeerId(): String? {
+    val peer =
+        when (surfaceKind) {
+            RaftThreadSurfaceKind.DirectMessage -> dmPeerIdentity
+            RaftThreadSurfaceKind.ReplyThread -> replyParentDmPeerIdentity
+            else -> null
+        } ?: return null
+    if (peer.kind != MemberKind.Agent) return null
+    return peer.memberId.value.trim().takeIf { it.isNotBlank() }
 }
 
 internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =

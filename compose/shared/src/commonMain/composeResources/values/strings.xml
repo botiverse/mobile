@@ -451,6 +451,8 @@
     <string name="thread_attachment_meta_file">file</string>
     <string name="thread_composer_payload_failed">Composer payload parse failed</string>
     <string name="thread_composer_placeholder_message">Message</string>
+    <string name="thread_composer_chat_unavailable">Chat is unavailable</string>
+    <string name="thread_app_bot_removed_notice">@%1$s was removed from this server. An admin can add it back in Settings › Applications.</string>
     <string name="thread_composer_placeholder_dm">Message @%1$s</string>
     <string name="thread_composer_placeholder_channel">Message #%1$s</string>
     <string name="thread_composer_placeholder_reply">Reply in thread</string>
@@ -1246,6 +1248,10 @@
     <string name="member_label_active">Active</string>
     <string name="channel_bridge_provider_slack">Slack</string>
     <string name="member_label_muted">Muted</string>
+    <string name="member_label_bot">Bot</string>
+    <string name="member_label_bot_with_app">Bot · %1$s</string>
+    <string name="member_label_bot_created_by_app">Created by the %1$s app</string>
+    <string name="member_label_bot_from_app">From %1$s</string>
     <string name="member_label_agent_dm">Agent DM</string>
     <string name="member_label_show_more">Show more</string>
     <string name="member_label_show_less">Show less</string>
