@@ -669,10 +669,11 @@ internal fun AuthDivider() {
 }
 
 @Composable
-internal fun AuthTextLink(text: String, onClick: () -> Unit) {
+internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     RaftLinkButton(
         text = text,
         onClick = onClick,
+        enabled = enabled,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         color = RaftColor.TextMutedGray,

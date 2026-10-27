@@ -37,6 +37,8 @@ internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false
 
 internal actual fun raftPlatformSupportsBackgroundRealtime(): Boolean = false
 
+internal actual fun raftPlatformAutoPromptsNotificationPermissionAfterSignIn(): Boolean = false
+
 internal actual fun raftPlatformDefaultAppTabBarRenderer(): String? = null
 
 // TODO(desktop): no video host yet (RaftVideoPlayer is a placeholder).

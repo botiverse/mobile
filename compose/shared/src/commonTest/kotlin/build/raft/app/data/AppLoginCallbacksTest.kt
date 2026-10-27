@@ -60,4 +60,18 @@ class AppLoginCallbacksTest {
         assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", " ", "c", ""))
         assertTrue(APP_LOGIN_RETURN_URIS.all { it.endsWith("://login/callback") })
     }
+
+    @Test fun browserClosedNeverOverwritesACallbackThatAlreadyArrived() {
+        try {
+            RaftWebLoginCompletion.clear()
+            RaftAppLoginBridge.reportBrowserClosed()
+            assertEquals(APP_LOGIN_BROWSER_CLOSED, RaftWebLoginCompletion.status.value)
+
+            RaftWebLoginCompletion.publish(APP_LOGIN_CALLBACK_RECEIVED)
+            RaftAppLoginBridge.reportBrowserClosed()
+            assertEquals(APP_LOGIN_CALLBACK_RECEIVED, RaftWebLoginCompletion.status.value)
+        } finally {
+            RaftWebLoginCompletion.clear()
+        }
+    }
 }

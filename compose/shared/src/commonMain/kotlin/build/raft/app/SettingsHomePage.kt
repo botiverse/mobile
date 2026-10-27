@@ -3870,6 +3870,12 @@ private fun RaftAppShellReadyContent(
             is SharedAuthGateState.Error -> Unit
         }
     }
+    // artin 10-27: ask once for the notification permission when the signed-in shell shows (Android 13+).
+    NotificationPermissionAfterSignInEffect(
+        active = pageVisible && authGateState is SharedAuthGateState.Ready && !readyServerId.isNullOrBlank(),
+        settingsCapabilities = settingsCapabilities,
+        preferenceStore = sharedPreferenceStore,
+    )
     val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
     val activityUnreadSummaryFlow =
         remember(sharedStores.activityUnreadSummaryStore, activityUnreadServerId) {

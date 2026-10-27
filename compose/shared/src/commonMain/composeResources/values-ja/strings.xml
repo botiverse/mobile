@@ -2659,6 +2659,7 @@
     <string name="joint_billing_locked_title">ジョイントチャンネルは読み取り専用です</string>
     <string name="joint_billing_locked_detail">猶予期間が終了しました。管理者がアップグレードするか無料サーバーが脱退するまで、このチャンネルは読み取り専用です。</string>
     <string name="auth_web_login_button">Raft にログイン</string>
+    <string name="auth_web_login_button_pending">ログイン中…</string>
     <string name="auth_web_login_hint">%1$s からログイン</string>
     <string name="auth_web_login_private_entry">プライベートデプロイにログイン</string>
     <string name="auth_web_login_failed">ログインを完了できませんでした。もう一度お試しください。</string>

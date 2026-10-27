@@ -2659,6 +2659,7 @@
     <string name="joint_billing_locked_title">联合频道只读</string>
     <string name="joint_billing_locked_detail">宽限期已结束。在管理员升级或一个免费服务器退出之前，此频道为只读。</string>
     <string name="auth_web_login_button">登录到 Raft</string>
+    <string name="auth_web_login_button_pending">登录中…</string>
     <string name="auth_web_login_hint">从 %1$s 登录</string>
     <string name="auth_web_login_private_entry">登录私有化部署</string>
     <string name="auth_web_login_failed">未能完成登录，请重试。</string>

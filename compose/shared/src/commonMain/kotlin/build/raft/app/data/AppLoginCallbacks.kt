@@ -92,10 +92,22 @@ object RaftAppLoginBridge {
         return completeCallback(callback.returnUri, callback.requestId, callback.code, callback.error)
     }
 
+    /**
+     * The host's browser sheet closed without a callback (iOS `ASWebAuthenticationSession` cancel):
+     * the sign-in page stops showing "Signing in…". A callback that already arrived wins.
+     */
+    fun reportBrowserClosed() {
+        raftLogInfo("SlockAppLogin", "app_login_browser_closed")
+        if (RaftWebLoginCompletion.status.value == null) RaftWebLoginCompletion.publish(APP_LOGIN_BROWSER_CLOSED)
+    }
+
     fun completeCallback(returnUri: String, requestId: String, code: String, error: String): Boolean {
         if (returnUri !in APP_LOGIN_RETURN_URIS || requestId.isBlank() || code.isBlank() == error.isBlank()) {
             return false
         }
+        // Published at once (the exchange below takes a network round trip) so the sign-in page,
+        // coming back to the foreground, knows a callback is on its way.
+        RaftWebLoginCompletion.publish(APP_LOGIN_CALLBACK_RECEIVED)
         scope.launch {
             repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
                 val result =
@@ -104,7 +116,11 @@ object RaftAppLoginBridge {
                         .getOrDefault("login_error")
                 if (result != "retry") {
                     raftLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
-                    if (result != "ignored") RaftWebLoginCompletion.publish(result)
+                    if (result != "ignored") {
+                        RaftWebLoginCompletion.publish(result)
+                    } else if (RaftWebLoginCompletion.status.value == APP_LOGIN_CALLBACK_RECEIVED) {
+                        RaftWebLoginCompletion.clear()
+                    }
                     return@launch
                 }
                 delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
