@@ -114,6 +114,30 @@ class SharedAppLinkPreviewStoreTest {
         assertTrue(store.state.value.messageView(Viewer, MessageB, Content, "channel-2").results.isEmpty())
     }
 
+    /**
+     * The server's v1 read leaves Artifact links out before it takes its first three
+     * (botiverse/slock `appLinkPreviewService.ts` `appLinkReadUrls`): three Artifact links, then a
+     * Linear link. The server reads (and asks about) Linear; so must the App.
+     */
+    @Test
+    fun artifactLinksNeverTakeOneOfTheFirstThree() = runTest(StandardTestDispatcher()) {
+        val linear = "https://linear.app/raft/issue/RAFT-812"
+        val content =
+            "https://app.raft.build/artifacts/pt_a https://artifacts.raft.build/pt_b " +
+                "https://a-pt-0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11.raftusercontent.com/index.html $linear"
+        val prompt =
+            """{"previews":[],"prompts":[{"url":"$linear","app":{"id":"client-linear","name":"Linear","icon":null}}],"appIcons":{}}"""
+        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, prompt) }
+        val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, artifactHosts = { listOf("app.raft.build") })
+        assertEquals(listOf(linear), appLinkMessagePreviewUrls(content) { isArtifactIdLink(it, listOf("app.raft.build")) })
+        store.read(Viewer, Server, MessageA, content, Conversation)
+        runCurrent()
+        val view = store.state.value.messageView(Viewer, MessageA, content, Conversation, listOf("app.raft.build"))
+        assertTrue(view.results[linear] is AppLinkResult.Consent, "the prompt is kept: results=${view.results}")
+        // Before this fix the App counted the Artifact links and dropped Linear's prompt.
+        assertTrue(appLinkMessagePreviewUrls(content).none { it == linear })
+    }
+
     @Test
     fun aPromptOnALinkTheAuthorGaveWordsToIsDropped() = runTest(StandardTestDispatcher()) {
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, PromptBody) }

@@ -456,6 +456,8 @@ internal class RaftSharedStoreProvider private constructor(
             scope = RaftStoreThreading.newScope(),
             resolveIcon = { icon -> resolveAppLinkIconUrl(icon, apiEnvironmentStore.current().apiBaseUrl) },
             diagnosticsLogger = sharedInfoLogger("SlockAppLinkPreviews", "shared_app_link_previews"),
+            // As the server's read: Artifact links never take one of the first three App links.
+            artifactHosts = { clientConfigStore.appHosts.value },
         )
     }
     val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy

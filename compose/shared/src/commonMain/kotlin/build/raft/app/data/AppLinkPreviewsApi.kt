@@ -160,8 +160,16 @@ internal fun appLinkShortAddress(url: String): String? {
  * message order, deduplicated, at most [limit]. A link the author gave words to, links in code
  * and images are left out.
  */
-internal fun appLinkMessagePreviewUrls(content: String, limit: Int = APP_LINK_PREVIEW_V1_LINK_LIMIT): List<String> =
-    appLinkMessageBareLinks(content, limit, ::appLinkPreviewHref)
+internal fun appLinkMessagePreviewUrls(
+    content: String,
+    limit: Int = APP_LINK_PREVIEW_V1_LINK_LIMIT,
+    /**
+     * Links the server leaves out before it counts (slock `appLinkReadUrls`, appLinkPreviewService.ts:
+     * Artifact links by id, [isArtifactIdLink]): an Artifact link never takes one of the first three.
+     */
+    excluded: (String) -> Boolean = { false },
+): List<String> =
+    appLinkMessageBareLinks(content, limit) { raw -> appLinkPreviewHref(raw)?.takeUnless { excluded(raw) } }
 
 /**
  * The bare links of a message as [normalize] keeps them (null: not this kind of link), in message

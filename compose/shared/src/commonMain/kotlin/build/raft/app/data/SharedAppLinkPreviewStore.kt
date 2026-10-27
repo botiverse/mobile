@@ -85,6 +85,8 @@ fun SharedAppLinkPreviewState.messageView(
     messageId: String,
     content: String,
     conversationId: String,
+    /** Raft's own app hosts: Artifact links on them never count as App links ([isArtifactIdLink]). */
+    artifactHosts: Collection<String> = emptyList(),
 ): AppLinkMessageView {
     val loaded = entries[appLinkReadScope(viewerKey, messageId, content)]
         ?: return AppLinkMessageView(results = emptyMap(), wantsRead = true, readSignature = "")
@@ -93,7 +95,7 @@ fun SharedAppLinkPreviewState.messageView(
     val conversationKey = appLinkConversationKey(viewerKey, conversationId)
     val results = LinkedHashMap(loaded.results)
     var stale = false
-    val links by lazy { appLinkMessagePreviewUrls(content) }
+    val links by lazy { appLinkMessagePreviewUrls(content) { isArtifactIdLink(it, artifactHosts) } }
     for (prompt in prompts) {
         val appKey = appLinkAppKey(viewerKey, prompt.app.id)
         val allowedSince = (epoch[appKey] ?: 0) > (loaded.epochs[appKey] ?: 0)
@@ -128,6 +130,8 @@ class SharedAppLinkPreviewStore internal constructor(
     private val resolveIcon: (String) -> String? = { it },
     private val diagnosticsLogger: (String) -> Unit = {},
     initialState: SharedAppLinkPreviewState = SharedAppLinkPreviewState(),
+    /** Raft's own app hosts (client config): Artifact links on them are left out as the server does. */
+    internal val artifactHosts: () -> Collection<String> = { emptyList() },
 ) {
     private val _state = raftStoreState(initialState, "SharedAppLinkPreviewStore")
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
@@ -139,7 +143,7 @@ class SharedAppLinkPreviewStore internal constructor(
      * only when that message's view changes: the selector a row collects instead of [state].
      */
     fun messageViewFlow(viewerKey: String, messageId: String, content: String, conversationId: String): Flow<AppLinkMessageView> =
-        state.map { it.messageView(viewerKey, messageId, content, conversationId) }.distinctUntilChanged()
+        state.map { it.messageView(viewerKey, messageId, content, conversationId, artifactHosts()) }.distinctUntilChanged()
 
     /**
      * Drops every answer and every consent status (sign-out, account or environment switch).
@@ -164,7 +168,7 @@ class SharedAppLinkPreviewStore internal constructor(
     private suspend fun readOnStore(viewerKey: String, serverId: String, messageId: String, content: String, conversationId: String) {
         val readScope = appLinkReadScope(viewerKey, messageId, content)
         val before = _state.value
-        if (!before.messageView(viewerKey, messageId, content, conversationId).wantsRead) return
+        if (!before.messageView(viewerKey, messageId, content, conversationId, artifactHosts()).wantsRead) return
         if (!inFlight.add(readScope)) return
         val askedAt = before.epoch
         val askedGeneration = before.generation
@@ -195,7 +199,8 @@ class SharedAppLinkPreviewStore internal constructor(
             return
         }
         // Ask only on a link that can become the chip: a bare link of this content.
-        val bare = appLinkMessagePreviewUrls(content).toSet()
+        val hosts = artifactHosts()
+        val bare = appLinkMessagePreviewUrls(content) { isArtifactIdLink(it, hosts) }.toSet()
         val results = parsed.filterValues { it !is AppLinkResult.Consent || it.url in bare }
         val conversationKey = appLinkConversationKey(viewerKey, conversationId)
         _state.update { state ->

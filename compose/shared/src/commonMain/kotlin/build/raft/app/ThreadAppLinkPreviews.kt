@@ -146,7 +146,7 @@ internal fun ThreadAppLinkPreviewScope(
     val state by host.store.state.collectAsState()
     val view =
         remember(state, host.viewerKey, messageId, body, host.conversationId) {
-            state.messageView(host.viewerKey, messageId, body, host.conversationId)
+            state.messageView(host.viewerKey, messageId, body, host.conversationId, host.store.artifactHosts())
         }
     LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature) {
         if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId)

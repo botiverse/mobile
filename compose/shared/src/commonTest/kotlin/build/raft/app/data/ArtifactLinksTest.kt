@@ -28,6 +28,10 @@ class ArtifactLinksTest {
                 "https://App.Raft.Build:8443/artifacts/$id" to ArtifactLinkTarget(id),
                 // A URL's hostname is after the last `@`.
                 "https://evil.example@app.raft.build/artifacts/$id" to ArtifactLinkTarget(id),
+                // The fixed hosts of the shared parser, on any app host list.
+                "https://artifacts.raft.build/$id" to ArtifactLinkTarget(id),
+                "https://artifacts.raft.build/$id/v/2" to ArtifactLinkTarget(id, 2),
+                "https://a-pt-0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11.raftusercontent.com/index.html" to ArtifactLinkTarget(id),
             )
         for ((link, expected) in cases) assertEquals(expected, parseArtifactLinkTarget(link, hosts), link)
         assertEquals("$id;version=3", ArtifactLinkTarget(id, 3).key)
@@ -53,23 +57,25 @@ class ArtifactLinksTest {
                 "https://app.raft.build/",
                 "ftp://app.raft.build/artifacts/$id",
                 "app.raft.build/artifacts/$id",
-                // The redirect and legacy hosts are not read by this client.
-                "https://artifacts.raft.build/$id",
+                // A legacy link names an Artifact by name, not id (not read).
                 "https://raft-artifacts.com/p/botiverse/report",
+                "https://artifacts.raft.build/not-an-id",
             )
         for (link in plain) assertNull(parseArtifactLinkTarget(link, hosts), link)
     }
 
     @Test
     fun theContentDomainIsNeverRaftsOwn() {
-        // Even a config that (wrongly) lists it changes nothing.
+        // Even a config that (wrongly) lists it changes nothing; only the content origin's own
+        // `a-pt-<uuid>` host names its Artifact (by host, see recognisesArtifactPathsOnAppHosts).
         val withContent = hosts + listOf("raftusercontent.com", "a1b2.w.raftusercontent.com")
         val links =
             listOf(
                 "https://a1b2c3.w.raftusercontent.com/artifacts/$id",
                 "https://a1b2c3.w.raftusercontent.com/$id/index.html",
                 "https://raftusercontent.com/artifacts/$id",
-                "https://a-pt-0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11.raftusercontent.com/",
+                "https://a-pt-not-a-uuid.raftusercontent.com/",
+                "https://x.a-pt-0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11.raftusercontent.com/",
             )
         for (link in links) {
             assertNull(parseArtifactLinkTarget(link, withContent), link)
@@ -78,8 +84,10 @@ class ArtifactLinksTest {
     }
 
     @Test
-    fun noHostsMeansNoArtifactLinks() {
+    fun noHostsMeansNoAppHostArtifactLinks() {
         assertNull(parseArtifactLinkTarget("https://app.raft.build/artifacts/$id", emptyList()))
+        // The fixed hosts don't depend on the list.
+        assertEquals(ArtifactLinkTarget(id), parseArtifactLinkTarget("https://artifacts.raft.build/$id", emptyList()))
     }
 
     @Test
@@ -98,11 +106,13 @@ class ArtifactLinksTest {
     }
 
     @Test
-    fun aMessageNamesAtMostFiftyReferences() {
-        val content = (1..60).joinToString(" ") { "https://app.raft.build/artifacts/pt_$it" }
+    fun aMessageReadsAtMostTenReferences() {
+        // web useMessageLinkCards.ts MESSAGE_OBJECT_LINK_LIMIT; repeats don't count, in message order.
+        val content = "https://app.raft.build/artifacts/pt_1 " + (1..30).joinToString(" ") { "https://app.raft.build/artifacts/pt_$it" }
         val targets = artifactMessageLinkTargets(content, hosts)
-        assertEquals(OBJECT_SUMMARIES_MAX_REFS, targets.size)
-        assertEquals(ArtifactLinkTarget("pt_1"), targets.first())
+        assertEquals(MESSAGE_OBJECT_LINK_LIMIT, targets.size)
+        assertEquals(10, MESSAGE_OBJECT_LINK_LIMIT)
+        assertEquals((1..10).map { ArtifactLinkTarget("pt_$it") }, targets)
     }
 
     @Test
