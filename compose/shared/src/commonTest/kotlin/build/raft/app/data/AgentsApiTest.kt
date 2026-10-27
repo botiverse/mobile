@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
@@ -442,6 +443,36 @@ class AgentsApiTest {
             assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data
         assertEquals("stopped", otherDetail.activityDetailKind)
         assertEquals(null, otherDetail.wakeCrashLoop)
+    }
+
+    @Test
+    fun agentDetailCarriesToolStuckWithAnyActivity() = runPortableCoroutineTest {
+        // GET /agents/:id (botiverse/slock routes/agents.ts, #10409): `toolStuck` rides any activity
+        // while the agent is stuck on one tool call; absent when it is not.
+        val stuck =
+            """{"id":"agent-1","name":"Agent One","status":"active","activity":"working",""" +
+                """"activityDetail":"Running command…","activityDetailKind":"running_command",""" +
+                """"toolStuck":{"toolName":"bash","toolDetailKind":"running_command","startedAtMs":1000,""" +
+                """"quietSinceMs":2000,"thresholdMs":600000,"queuedMessages":2}}"""
+        val detail =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(RecordingAgentsApi(agentBody = stuck)).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+        assertEquals(
+            AgentToolStuck(
+                toolName = "bash",
+                toolDetailKind = "running_command",
+                startedAtMs = 1000L,
+                quietSinceMs = 2000L,
+                thresholdMs = 600000L,
+                queuedMessages = 2
+            ),
+            detail.toolStuck
+        )
+        val plain = stuck.substringBefore(""","toolStuck"""") + "}"
+        val plainDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = plain)).agent(MemberId("agent-1"))).data
+        assertEquals(null, plainDetail.toolStuck)
     }
 
     @Test

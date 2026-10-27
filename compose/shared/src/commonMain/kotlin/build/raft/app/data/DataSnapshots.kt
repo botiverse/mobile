@@ -897,7 +897,9 @@ data class AgentDetailSummary(
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
-    val wakeCrashLoop: build.raft.app.model.AgentWakeCrashLoop? = null
+    val wakeCrashLoop: build.raft.app.model.AgentWakeCrashLoop? = null,
+    /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
+    val toolStuck: build.raft.app.model.AgentToolStuck? = null
 )
 
 data class AgentCreatorSummary(

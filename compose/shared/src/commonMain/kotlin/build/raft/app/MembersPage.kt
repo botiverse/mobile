@@ -157,6 +157,7 @@ import build.raft.app.data.agentDetailCacheKey
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
@@ -6087,6 +6088,30 @@ private fun MembersDetailContent(
         }
         turnStopStore?.dispatch(AgentTurnStopIntent.ConsumeFeedback)
     }
+    // Web AgentDetailPanel (#10446): whoever may stop this agent's turn gets Stop Current Turn on
+    // the "stuck on a tool call" notice too, by the same rule as the management menu.
+    val profileStopTurn: (() -> Unit)? =
+        if (
+            member.kind == MemberKind.Agent &&
+            turnStopStore != null &&
+            canStopAgentTurn(
+                serverRole = remoteControls?.serverRole,
+                isCreator = currentUserId != null && detail?.summary?.creatorId == currentUserId,
+                isExternalAgent = isExternalAgent,
+                deleted = deleted,
+                online =
+                    membersResolvedPrimaryLifecycleAction(
+                        resolvedStatus = agentStatusIndicatorState?.status,
+                        detailFallbackStatus = null,
+                        deleted = deleted,
+                        hasResolvedPresence = true
+                    ) == MembersAgentLifecycleAction.Stop
+            )
+        ) {
+            { turnStopStore.dispatch(AgentTurnStopIntent.Stop(member.id)) }
+        } else {
+            null
+        }
     // Web AgentDetailPanel mounts AgentMigrationSection for people who can manage a
     // non-external agent that has a computer (cloud agents keep it only for their arrival,
     // which mobile does not show).
@@ -6703,7 +6728,9 @@ private fun MembersDetailContent(
                                                     issueReportReferenceCopied = false
                                                     reportIssueDialogOpen = true
                                                 },
-                                                onOpenComputer = onOpenComputer
+                                                onOpenComputer = onOpenComputer,
+                                                onStopTurn = profileStopTurn,
+                                                stopTurnInProgress = turnStopState.inFlightAgentId != null
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,
@@ -9282,7 +9309,11 @@ private fun MembersAgentProfileHeader(
     agentStatusObservedState: RaftAgentStatusIndicatorState?,
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    onChangeAvatar: () -> Unit
+    onChangeAvatar: () -> Unit,
+    /** The agent is stuck on one tool call ([membersAgentToolStuck]); null when not. */
+    toolStuck: AgentToolStuck? = null,
+    onStopTurn: (() -> Unit)? = null,
+    stopTurnInProgress: Boolean = false
 ) {
     val rawStatusLabel = membersLiveAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
@@ -9394,6 +9425,16 @@ private fun MembersAgentProfileHeader(
                         null
                     }
                 )
+                // Web #10446: stuck on one tool call: its own lines under the status chip, so the
+                // chip never truncates it, with the way out for whoever can stop the turn.
+                if (toolStuck != null && member.managedByAppInstallId.isNullOrBlank()) {
+                    AgentToolStuckNotice(
+                        toolStuck = toolStuck,
+                        onStopTurn = onStopTurn,
+                        stopTurnEnabled = !stopTurnInProgress,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
         }
     }
@@ -9452,7 +9493,10 @@ private class MembersAgentLifecycleInputs(
     val onCopyDiagnostics: () -> Unit = {},
     val onCopyText: (String) -> Unit = {},
     val onReportIssue: () -> Unit = {},
-    val onOpenComputer: (() -> Unit)? = null
+    val onOpenComputer: (() -> Unit)? = null,
+    /** Stop Current Turn on the "stuck on a tool call" notice; null when the viewer may not. */
+    val onStopTurn: (() -> Unit)? = null,
+    val stopTurnInProgress: Boolean = false
 )
 
 /**
@@ -10942,7 +10986,10 @@ private fun MembersAgentProfileTab(
             agentStatusIndicatorState = agentStatusIndicatorState,
             agentStatusObservedState = agentStatusObservedState,
             memberAvatarResolver = memberAvatarResolver,
-            onChangeAvatar = onChangeAvatar
+            onChangeAvatar = onChangeAvatar,
+            toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck),
+            onStopTurn = lifecycle.onStopTurn,
+            stopTurnInProgress = lifecycle.stopTurnInProgress
         )
 
         MembersAgentProfileFieldsSection(

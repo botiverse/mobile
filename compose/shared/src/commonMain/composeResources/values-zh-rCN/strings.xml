@@ -2982,6 +2982,10 @@
     <string name="joint_invite_error_cannot_invite_self">不能邀请本服务器加入它自己的联合频道。</string>
     <string name="joint_create_failed">创建联合频道失败</string>
     <string name="agent_stop_turn">停止当前这一轮</string>
+    <string name="agent_status_tool_stuck">卡在 %1$s 上 · %2$d 分钟没有输出</string>
+    <string name="agent_status_tool_stuck_waiting_one">1 条消息在等待</string>
+    <string name="agent_status_tool_stuck_waiting_other">%1$d 条消息在等待</string>
+    <string name="agent_status_tool_stuck_hint">这个 agent 运行的一个命令已经很久没有输出。新消息会一直等到命令结束，或者停止这一轮。</string>
     <string name="agent_stop_turn_interrupted">已停止当前这一轮。</string>
     <string name="agent_stop_turn_not_running">当前没有在运行。</string>
     <string name="agent_stop_turn_failed">没能停止当前这一轮。</string>

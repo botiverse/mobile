@@ -2982,6 +2982,10 @@
     <string name="joint_invite_error_cannot_invite_self">このサーバーを、自身の共同チャンネルに招待することはできません。</string>
     <string name="joint_create_failed">共同チャンネルを作成できませんでした</string>
     <string name="agent_stop_turn">現在のターンを停止</string>
+    <string name="agent_status_tool_stuck">%1$s で停止中 · %2$d 分間出力なし</string>
+    <string name="agent_status_tool_stuck_waiting_one">1 件のメッセージが待機中</string>
+    <string name="agent_status_tool_stuck_waiting_other">%1$d 件のメッセージが待機中</string>
+    <string name="agent_status_tool_stuck_hint">このエージェントが実行したコマンドがしばらく何も出力していません。新しいメッセージは、コマンドが終わるかこのターンを停止するまで待機します。</string>
     <string name="agent_stop_turn_interrupted">現在のターンを停止しました。</string>
     <string name="agent_stop_turn_not_running">実行中の処理はありませんでした。</string>
     <string name="agent_stop_turn_failed">現在のターンを停止できませんでした。</string>

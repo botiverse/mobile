@@ -2982,6 +2982,10 @@
     <string name="joint_invite_error_cannot_invite_self">You can’t invite this server to its own joint channel.</string>
     <string name="joint_create_failed">Failed to create joint channel</string>
     <string name="agent_stop_turn">Stop Current Turn</string>
+    <string name="agent_status_tool_stuck">Stuck on %1$s · no output for %2$d min</string>
+    <string name="agent_status_tool_stuck_waiting_one">1 message waiting</string>
+    <string name="agent_status_tool_stuck_waiting_other">%1$d messages waiting</string>
+    <string name="agent_status_tool_stuck_hint">A command started by this agent has produced no output for a while. New messages wait until it ends or this turn is stopped.</string>
     <string name="agent_stop_turn_interrupted">Stopped the current turn.</string>
     <string name="agent_stop_turn_not_running">Nothing was running.</string>
     <string name="agent_stop_turn_failed">Couldn't stop the current turn.</string>
