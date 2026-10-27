@@ -1401,15 +1401,6 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
     private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()
-    /**
-     * Reply-quote handoff, keyed by parent message id: Reply on a partial text selection stages
-     * the quote here before opening the reply page, and that page's composer takes it once its
-     * reply draft key exists (the thread channel may still be resolving at open time). Memory
-     * only and outside the reducer, so it needs no transition snapshot.
-     */
-    private val stagedReplyQuotesByParentMessageId = MutableStateFlow<Map<String, List<String>>>(emptyMap())
-    val stagedReplyQuotesState: StateFlow<Map<String, List<String>>> =
-        stagedReplyQuotesByParentMessageId.asStateFlow()
     /** Single re-entrant lock for every slice-local map and the shared active-record projection. */
     private val stateLock = reentrantLock()
     /** Secondary write ordering lock; always acquired after [stateLock]. */
@@ -1990,31 +1981,6 @@ internal class SharedThreadComposerDraftPersistSlice(
         return result
     }
 
-    fun stageReplyQuote(parentMessageId: String, quote: String) {
-        val parent = parentMessageId.takeIf { it.isNotBlank() } ?: return
-        if (quote.isBlank()) return
-        stagedReplyQuotesByParentMessageId.update { staged ->
-            staged + (parent to (staged[parent].orEmpty() + quote))
-        }
-    }
-
-    /** Takes the quotes staged for the reply thread [draftKey] belongs to; empty for root drafts. */
-    fun consumeStagedReplyQuotes(draftKey: String?): List<String> {
-        val parent =
-            draftKey
-                ?.takeIf { it.isNotBlank() }
-                ?.let(persistence::recordForKey)
-                ?.takeUnless { it.isRootComposer }
-                ?.parentMessageId
-                ?: return emptyList()
-        var taken = emptyList<String>()
-        stagedReplyQuotesByParentMessageId.update { staged ->
-            taken = staged[parent].orEmpty()
-            staged - parent
-        }
-        return taken
-    }
-
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
         val key = draftKey?.takeIf { it.isNotBlank() } ?: return emptyList()
         return stateLock.withLock { stagedUploadedAttachmentsByDraftKey.remove(key).orEmpty() }
@@ -2552,6 +2518,8 @@ internal class SharedThreadComposerDraftStore(
                                 expectedText = current.seedText,
                                 expectedAsTask = current.seedAsTask,
                             ),
+                        // Select Text > Quote: the reader goes on typing under the quote.
+                        focusRequestNonce = current.focusRequestNonce + 1,
                         sending = false,
                         failureLabel = null
                     )

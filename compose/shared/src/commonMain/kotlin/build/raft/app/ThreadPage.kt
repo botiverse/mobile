@@ -586,6 +586,8 @@ internal enum class ThreadNewMessageMenuTool {
     FollowThread,
     TaskStatus,
     ConvertToTask,
+    /** Opens the Select Text sheet (third row, first slot; Kirby, web #11467). */
+    SelectText,
     /** In-place text selection context only: select the whole message body. */
     SelectAll
 }
@@ -615,11 +617,13 @@ internal val ThreadNewMessageMenuSelectionToolOrder =
     )
 
 /**
- * The Compact menu's second row: the remaining Classic actions, each shown only when it applies
- * (the primary row keeps its six slots and greys unavailable ones out instead).
+ * The Compact menu's second row of tools (its third row under the reactions): Select Text, always
+ * first and always shown (Kirby, web #11467), then the remaining Classic actions, each shown only
+ * when it applies (the primary row keeps its six slots and greys unavailable ones out instead).
  */
 internal val ThreadNewMessageMenuSecondaryToolOrder =
     listOf(
+        ThreadNewMessageMenuTool.SelectText,
         ThreadNewMessageMenuTool.AddReaction,
         ThreadNewMessageMenuTool.CopyLink,
         ThreadNewMessageMenuTool.FollowThread,
@@ -645,6 +649,7 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onFollowThread: () -> Unit = {},
     val onTaskStatus: () -> Unit = {},
     val onConvertToTask: () -> Unit = {},
+    val onSelectText: () -> Unit = {},
     val onSelectAll: () -> Unit = {}
 )
 
@@ -661,6 +666,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.FollowThread -> callbacks.onFollowThread()
         ThreadNewMessageMenuTool.TaskStatus -> callbacks.onTaskStatus()
         ThreadNewMessageMenuTool.ConvertToTask -> callbacks.onConvertToTask()
+        ThreadNewMessageMenuTool.SelectText -> callbacks.onSelectText()
         ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
     }
 }
@@ -704,6 +710,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.FollowThread -> followThread
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
+            // The sheet is for picking text; an in-place selection already does that.
+            ThreadNewMessageMenuTool.SelectText -> !selectionContext
             ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
         }
 
@@ -8675,19 +8683,6 @@ private fun SharedThreadRouteContentContent(
             )
         )
     }
-    // A quote staged by a partial-selection Reply lands here (also on an already-open reply page),
-    // after Start restored any saved draft, so it is appended and never overwrites the draft.
-    LaunchedEffect(composerDraftViewModel, composerDraftPersistSlice) {
-        combine(
-            composerDraftViewModel.state.map { it.draftKey }.distinctUntilChanged(),
-            composerDraftPersistSlice.stagedReplyQuotesState
-        ) { draftKey, _ -> draftKey }
-            .collect { draftKey ->
-                composerDraftPersistSlice.consumeStagedReplyQuotes(draftKey).forEach { quote ->
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
-                }
-            }
-    }
 
     val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (String, RealtimeEvent) -> Unit>(
         { serverId, event ->
@@ -12009,12 +12004,6 @@ private fun SharedThreadRouteContentContent(
                             "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
                             "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                     )
-                    // Reply on a partial text selection passes its quote in the 4th slot; the reply
-                    // page's composer appends it once its draft key is known.
-                    tab?.takeIf { it.isNotBlank() }?.let { quote ->
-                        composerDraftPersistSlice.stageReplyQuote(parentMessage.id, quote)
-                        bridge.log("thread_reply_quote_staged parentMessageId=${parentMessage.id} chars=${quote.length}")
-                    }
                     onOpenThreadPayload(loadingPayload)
                 }
                 action == "followMessageThread" && !itemId.isNullOrBlank() -> {
@@ -13474,11 +13463,46 @@ private fun SharedThreadRouteContentContent(
             )
         }
         textSelectionMessage?.let { message ->
+            // Select Text (web #11467): the message's Markdown in a bottom sheet; Copy / Quote take
+            // the selection made there, or the whole message.
+            val quoteTarget =
+                threadSelectTextQuoteTarget(
+                    surfaceKind = renderedThread.surfaceKind,
+                    composerAvailable =
+                        jointBillingNotice != JointBillingNotice.Locked &&
+                            shouldShowThreadComposerForReadyContent(
+                                joined = payload.joined && renderSlice.writeActionsEnabled,
+                                showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
+                                selectedTab = selectedThreadTab.wireValue
+                            )
+                )
+            val timeContext = LocalRaftTimeContextProvider.current?.current
             key(message.id, message.body) {
-                ThreadMessageTextSelectionDialog(
-                    message = message,
-                    messageBodyTextStyle = resolvedMessageBodyTextStyle,
-                    onDismiss = { textSelectionMessage = null }
+                ThreadMessageSelectTextSheet(
+                    markdown = message.body,
+                    senderName = message.authorName,
+                    timeLabel = formatThreadCompactTimestampLabel(message.timestampLabel, timeContext),
+                    textStyle = resolvedMessageBodyTextStyle,
+                    onDismiss = { textSelectionMessage = null },
+                    onCopy = { text ->
+                        bridge.log("thread_select_text_copy messageId=${message.id} chars=${text.length}")
+                        bridge.copyToPasteboard(text)
+                        bridge.toast(copiedLabel)
+                    },
+                    onQuote =
+                        if (quoteTarget == ThreadSelectTextQuoteTarget.None) {
+                            null
+                        } else {
+                            { quote ->
+                                // Close first so the sheet's window gives the composer its focus back.
+                                textSelectionMessage = null
+                                bridge.log(
+                                    "thread_select_text_quote messageId=${message.id} target=${quoteTarget.name} " +
+                                        "chars=${quote.length}"
+                                )
+                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
+                            }
+                        }
                 )
             }
         }
@@ -22577,6 +22601,11 @@ private fun ThreadMessagesListContent(
                             close()
                             trackTool(ThreadNewMessageMenuTool.ConvertToTask)
                             onThreadEvent("convertMessageToTask", message.id, null, null)
+                        },
+                        onSelectText = {
+                            close()
+                            trackTool(ThreadNewMessageMenuTool.SelectText)
+                            onThreadEvent("openSelectMessageText", message.id, null, null)
                         }
                     )
             )
@@ -22614,16 +22643,8 @@ private fun ThreadMessagesListContent(
                             ),
                         onReact = actions.onReact,
                         onCopy = request.copySelection,
-                        onReply = {
-                            // A partial selection replies quoting just the picked text.
-                            val quote = request.replyQuote()
-                            if (quote == null) {
-                                actions.tools.onReply()
-                            } else {
-                                request.dismiss()
-                                onThreadEvent("openMessageThread", message.id, null, quote)
-                            }
-                        },
+                        // Reply only opens the thread; quoting goes through Select Text > Quote.
+                        onReply = actions.tools.onReply,
                         onForward = actions.tools.onForward,
                         onSave = actions.tools.onSave,
                         onTranslate = actions.tools.onTranslate,
@@ -22725,7 +22746,8 @@ private fun ThreadMessagesListContent(
                         onCopyLink = actions.tools.onCopyLink,
                         onFollowThread = actions.tools.onFollowThread,
                         onTaskStatus = actions.tools.onTaskStatus,
-                        onConvertToTask = actions.tools.onConvertToTask
+                        onConvertToTask = actions.tools.onConvertToTask,
+                        onSelectText = actions.tools.onSelectText
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -22764,6 +22786,7 @@ private fun ThreadMessagesListContent(
                         },
                         onSelectText = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.SelectText)
                             onThreadEvent("openSelectMessageText", message.id, null, null)
                         },
                         onShareMessages = {
@@ -26452,7 +26475,8 @@ internal fun ThreadNewMessageMenu(
     onCopyLink: () -> Unit = {},
     onFollowThread: () -> Unit = {},
     onTaskStatus: () -> Unit = {},
-    onConvertToTask: () -> Unit = {}
+    onConvertToTask: () -> Unit = {},
+    onSelectText: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
@@ -26496,7 +26520,8 @@ internal fun ThreadNewMessageMenu(
             onCopyLink = onCopyLink,
             onFollowThread = onFollowThread,
             onTaskStatus = onTaskStatus,
-            onConvertToTask = onConvertToTask
+            onConvertToTask = onConvertToTask,
+            onSelectText = onSelectText
         )
     }
 }
@@ -26518,6 +26543,7 @@ internal fun ThreadNewMessageMenuChrome(
     onFollowThread: () -> Unit = {},
     onTaskStatus: () -> Unit = {},
     onConvertToTask: () -> Unit = {},
+    onSelectText: () -> Unit = {},
     onSelectAll: () -> Unit = {}
 ) {
     val callbacks =
@@ -26533,6 +26559,7 @@ internal fun ThreadNewMessageMenuChrome(
             onFollowThread = onFollowThread,
             onTaskStatus = onTaskStatus,
             onConvertToTask = onConvertToTask,
+            onSelectText = onSelectText,
             onSelectAll = onSelectAll
         )
     val secondaryTools = availability.secondaryTools()
@@ -26632,6 +26659,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
                 Res.string.thread_action_mark_done
             }
         ThreadNewMessageMenuTool.ConvertToTask -> Res.string.thread_action_convert_to_task
+        ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
     }
 
@@ -26652,6 +26680,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.TaskStatus ->
             if (availability.taskDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig
         ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
+        ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.FileText
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
     }
 
@@ -30114,71 +30143,6 @@ private fun ThreadMessageActionMenu(
                 "thread_message_menu_shell_request messageId=${message.id} requestId=$requestId " +
                     "anchor=$pageWindowAnchor menuW=$menuWidth menuH=$menuHeight"
             )
-        }
-    }
-}
-
-@Composable
-private fun ThreadMessageTextSelectionDialog(
-    message: RaftThreadMessageItem,
-    messageBodyTextStyle: TextStyle,
-    onDismiss: () -> Unit
-) {
-    val originalText = message.body
-    val topSafeArea = raftTopSafeAreaPadding()
-    val bottomSafeArea = raftBottomSafeAreaPadding()
-    Modal(onWillDismiss = { onDismiss() }) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Keep the modal dismissal boundary behind the native selectable
-            // text. Capturing on the content column would prevent the platform
-            // text view from receiving long-press/handle gestures on Android.
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .raftNativeDispatchCapture()
-            )
-            Column(
-                modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(topSafeArea + 56.dp)
-                        .padding(start = 16.dp, top = topSafeArea, end = RaftBackButtonDefaults.EdgeInset),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    RaftBackButton(
-                        onClick = onDismiss,
-                        label = stringResource(Res.string.common_close),
-                        glyph = RaftGlyph.X,
-                    )
-                }
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                        .raftCardSurface()
-                ) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            // task #924: platform text view so the system selection menu
-                            // (Android PROCESS_TEXT, iOS Look Up/Translate/Share) stays intact.
-                            RaftNativeSelectableText(
-                                text = originalText,
-                                style = messageBodyTextStyle,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .testTag("thread_message_selection_text")
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

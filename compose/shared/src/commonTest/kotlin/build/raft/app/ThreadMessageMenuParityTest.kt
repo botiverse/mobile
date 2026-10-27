@@ -205,6 +205,7 @@ class ThreadMessageMenuParityTest {
 
         assertEquals(
             listOf(
+                ThreadNewMessageMenuTool.SelectText,
                 ThreadNewMessageMenuTool.CopyLink,
                 ThreadNewMessageMenuTool.FollowThread,
                 ThreadNewMessageMenuTool.ConvertToTask
@@ -221,6 +222,29 @@ class ThreadMessageMenuParityTest {
         assertTrue(taskAvailability.taskDone)
         assertTrue(taskAvailability.saved)
         assertEquals(RaftLucideIconName.BookmarkMinus, ThreadNewMessageMenuTool.Save.compactIcon(taskAvailability))
+    }
+
+    @Test
+    fun compactMenuShowsSelectTextFirstOnTheThirdRowForEveryMessage() {
+        // Kirby (web #11467): third row (reactions, tools, then this one), first slot, always shown.
+        listOf(
+            message(),
+            message(body = ""),
+            message(taskId = "task-1", taskNumber = 1, taskStatus = "done"),
+            message(threadChannelId = "thread-1", replyCount = 1, isThreadFollowed = true)
+        ).forEach { candidate ->
+            val availability =
+                capabilities(candidate).toThreadNewMessageMenuActionAvailability(candidate, candidate.toThreadReplyMetadata())
+            assertEquals(ThreadNewMessageMenuTool.SelectText, availability.secondaryTools().first())
+            assertTrue(availability.showsReactionRow())
+        }
+        val plain = capabilities(message()).toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
+        assertEquals(Res.string.thread_action_select_text, ThreadNewMessageMenuTool.SelectText.compactLabelResource(plain))
+        assertEquals(RaftLucideIconName.FileText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
+        // An in-place selection already picks text: the sheet's entry is not offered there.
+        for (coversAll in listOf(true, false)) {
+            assertFalse(ThreadNewMessageMenuTool.SelectText in threadInPlaceSelectionMenuAvailability(plain, coversAll).secondaryTools())
+        }
     }
 
     @Test
@@ -251,7 +275,8 @@ class ThreadMessageMenuParityTest {
                 onCopyLink = { routed += ThreadNewMessageMenuTool.CopyLink },
                 onFollowThread = { routed += ThreadNewMessageMenuTool.FollowThread },
                 onTaskStatus = { routed += ThreadNewMessageMenuTool.TaskStatus },
-                onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask }
+                onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
+                onSelectText = { routed += ThreadNewMessageMenuTool.SelectText }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }

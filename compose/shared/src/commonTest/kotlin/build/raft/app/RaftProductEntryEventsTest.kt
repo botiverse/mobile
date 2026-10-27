@@ -30,6 +30,7 @@ class RaftProductEntryEventsTest {
                 ThreadNewMessageMenuTool.FollowThread to RaftMessageAction.FollowThread,
                 ThreadNewMessageMenuTool.TaskStatus to RaftMessageAction.TaskDone,
                 ThreadNewMessageMenuTool.ConvertToTask to RaftMessageAction.ConvertToTask,
+                ThreadNewMessageMenuTool.SelectText to RaftMessageAction.SelectText,
             )
         cases.forEach { (tool, action) -> assertEquals(action, tool.action(), tool.name) }
         assertEquals(ThreadNewMessageMenuTool.entries.toSet() - ThreadNewMessageMenuTool.SelectAll, cases.keys)

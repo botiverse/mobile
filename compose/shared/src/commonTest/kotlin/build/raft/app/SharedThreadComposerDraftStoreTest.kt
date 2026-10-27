@@ -483,18 +483,11 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
-    fun stagedReplyQuoteAppendsToTheReplyDraftAndPersists() {
+    fun appendQuoteAddsTheQuoteAfterTheDraftFocusesAndPersists() {
         val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val replyKey = "send=thread-1|parent=message-1|mention=channel-1"
-        val rootKey = "send=channel-1|parent=_|mention=channel-1"
         persistence.save(key = replyKey, text = "earlier draft", asTask = false)
-
-        persistSlice.stageReplyQuote(parentMessageId = "message-1", quote = "> picked line")
-        // The parent channel's root composer and another reply never take the quote.
-        assertEquals(emptyList(), persistSlice.consumeStagedReplyQuotes(rootKey))
-        assertEquals(emptyList(), persistSlice.consumeStagedReplyQuotes("send=thread-2|parent=message-2|mention=channel-1"))
-        assertEquals(emptyList(), persistSlice.consumeStagedReplyQuotes(null))
 
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         store.dispatch(
@@ -503,16 +496,15 @@ class SharedThreadComposerDraftStoreTest {
                 draftKey = replyKey
             )
         )
-        persistSlice.consumeStagedReplyQuotes(replyKey).forEach { quote ->
-            store.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
-        }
+        val focusBefore = store.state.value.focusRequestNonce
+        // Select Text > Quote dispatches the sheet's quote into this page's composer.
+        store.dispatch(SharedThreadComposerDraftIntent.AppendQuote("> picked line"))
 
         assertEquals("earlier draft\n\n> picked line\n\n", store.state.value.seedText)
         assertEquals(ThreadComposerEditorCommandKind.Replace, store.state.value.editorCommand?.kind)
         assertEquals("earlier draft\n\n> picked line\n\n", store.state.value.editorCommand?.text)
-        // One-shot: a later remount does not quote again.
-        assertEquals(emptyList(), persistSlice.consumeStagedReplyQuotes(replyKey))
-        assertTrue(persistSlice.stagedReplyQuotesState.value.isEmpty())
+        // The composer takes focus so the reader types under the quote.
+        assertEquals(focusBefore + 1, store.state.value.focusRequestNonce)
 
         val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(

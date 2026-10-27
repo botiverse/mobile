@@ -43,6 +43,13 @@ const val RAFT_PRODUCT_ENTRY_EVENTS_SLOCK_SHA: String = "36b076b0ca196bbeccd695c
  */
 const val RAFT_PRODUCT_EVENTS_HEADER_SWIPE_SLOCK_SHA: String = "86f1a6a3477068ca53946c0578cd65889a8ffedf"
 
+/**
+ * botiverse/slock #11467 head (Kirby, the touch Select Text sheet): `MESSAGE_ACTIONS` gained
+ * `select_text`. The server validates values strictly, so a build that sends it must not ship
+ * before a server with #11467 is in production.
+ */
+const val RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA: String = "27f555f166a5f51e8758d8e10549751db15f4429"
+
 /** botiverse/slock #11045 merge commit on staging: `channel_tab_selected`, `message_action_selected`. */
 const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
 
@@ -196,6 +203,8 @@ enum class RaftMessageAction(val wire: String) {
     @SerialName("convert_to_task") ConvertToTask("convert_to_task"),
     @SerialName("copy_link") CopyLink("copy_link"),
     @SerialName("copy_markdown") CopyMarkdown("copy_markdown"),
+    /** botiverse/slock #11467 @ [RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA]: opens the Select Text sheet. */
+    @SerialName("select_text") SelectText("select_text"),
     @SerialName("forward") Forward("forward"),
     @SerialName("select") Select("select"),
     @SerialName("save") Save("save"),
