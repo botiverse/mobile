@@ -25,16 +25,19 @@ import org.robolectric.annotation.Config
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Hands b205bd89 on a real LazyColumn: after the Activity scroll-to-top lands, a change that moves
- * the head row down (and does not pass through the canonical anchor) must not carry the list off
- * the top; once the reader scrolls, the list is theirs again.
+ * Hands b205bd89 (artin: "tap back to the top, then it jumps to the second screen") on a real
+ * LazyColumn. LazyList keeps the first visible row by key, so a change that moves the head row
+ * down carries a list parked at the top with it. The root rule [keepTopIfParked], applied in the
+ * same snapshot as the change (as SharedInboxPanel's settleTopEdge does), keeps it at the top;
+ * a reader who scrolled away keeps their row.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w400dp-h800dp")
-class ActivityScrollToTopOwnerLayoutTest {
+class ActivityKeepTopIfParkedLayoutTest {
     @get:Rule val activities = RobolectricComposeActivityRule()
 
     private val rows = (0 until 80).map { "row$it" }
@@ -46,11 +49,10 @@ class ActivityScrollToTopOwnerLayoutTest {
 
     private class Harness(val items: androidx.compose.runtime.MutableState<List<String>>, val listState: LazyListState)
 
-    private fun mount(owner: ActivityScrollToTopOwner?): Harness {
-        val harness = Harness(mutableStateOf(rows), LazyListState(firstVisibleItemIndex = 40))
+    private fun mount(firstVisibleItemIndex: Int = 0): Harness {
+        val harness = Harness(mutableStateOf(rows), LazyListState(firstVisibleItemIndex = firstVisibleItemIndex))
         activities.launch().setContent {
             val list by harness.items
-            if (owner != null) ActivityScrollToTopOwnerEffect(harness.listState, owner)
             LazyColumn(state = harness.listState, modifier = Modifier.fillMaxSize()) {
                 items(list, key = { it }) { BasicText(it, Modifier.fillMaxWidth().height(60.dp)) }
             }
@@ -59,60 +61,58 @@ class ActivityScrollToTopOwnerLayoutTest {
         return harness
     }
 
-    private fun scrollToTop(harness: Harness, owner: ActivityScrollToTopOwner?) {
-        CoroutineScope(AndroidUiDispatcher.Main).launch {
-            if (owner != null) {
-                harness.listState.animateActivityScrollToTop(owner, ActivityScrollToTopSource.Title)
-            } else {
-                harness.listState.animateScrollToTopExpressive()
-            }
-        }
+    /** The change, and (with [keepTop]) the rule in the same snapshot, before the next measure. */
+    private fun change(harness: Harness, next: List<String>, keepTop: Boolean): Boolean {
+        val previousHead = harness.items.value.first()
+        harness.items.value = next
+        val pinned = if (keepTop) harness.listState.keepTopIfParked(previousHead, next.first()) else false
         frames()
-        assertEquals(0, harness.listState.firstVisibleItemIndex, "the scroll-to-top lands at the top")
+        return pinned
     }
 
     @Test
-    fun `without an owner the parked list follows the head row down (the reported jump)`() {
-        val harness = mount(owner = null)
-        scrollToTop(harness, owner = null)
-        harness.items.value = rows.headMovedDown()
-        frames()
+    fun `without the rule a list parked at the top follows the head row down (the reported jump)`() {
+        val harness = mount()
+        change(harness, rows.headMovedDown(), keepTop = false)
         assertEquals(20, harness.listState.firstVisibleItemIndex)
     }
 
     @Test
-    fun `a landed scroll-to-top keeps the list at the top when the head row moves down`() {
-        val lines = mutableListOf<String>()
-        val owner = ActivityScrollToTopOwner(log = { lines += it })
-        val harness = mount(owner)
-        scrollToTop(harness, owner)
-        harness.items.value = rows.headMovedDown()
-        frames()
+    fun `a list parked at the top stays at the top when the head row moves down`() {
+        val harness = mount()
+        assertTrue(change(harness, rows.headMovedDown(), keepTop = true))
         assertEquals(0, harness.listState.firstVisibleItemIndex)
         assertEquals(0, harness.listState.firstVisibleItemScrollOffset)
         assertEquals("row1", harness.listState.layoutInfo.visibleItemsInfo.first().key)
-        // The feedback zip shows the correction and where the list had been carried.
-        val correction = lines.map(::parseScrollToTopLogLine).single { it.first == "activity_scroll_to_top_hold_correct" }
-        assertEquals("layout", correction.second["via"])
-        assertEquals("20", correction.second["fromIndex"])
-        val start = lines.map(::parseScrollToTopLogLine).first { it.first == "activity_scroll_to_top_start" }
-        assertEquals("40", start.second["fromIndex"])
     }
 
     @Test
-    fun `after the reader scrolls, a head move is not pinned back to the top`() {
-        val owner = ActivityScrollToTopOwner()
-        val harness = mount(owner)
-        scrollToTop(harness, owner)
+    fun `after a scroll to the top lands, the next head move keeps the top too`() {
+        val harness = mount(firstVisibleItemIndex = 40)
+        CoroutineScope(AndroidUiDispatcher.Main).launch { harness.listState.animateScrollToTopExpressive() }
+        frames()
+        assertEquals(0, harness.listState.firstVisibleItemIndex, "the scroll-to-top lands at the top")
+        assertTrue(change(harness, rows.headMovedDown(), keepTop = true))
+        assertEquals(0, harness.listState.firstVisibleItemIndex)
+    }
+
+    @Test
+    fun `a reader scrolled away keeps their row`() {
+        val harness = mount()
         CoroutineScope(AndroidUiDispatcher.Main).launch {
             harness.listState.scroll(MutatePriority.UserInput) { scrollBy(400f) }
         }
         frames()
         val readerKey = harness.listState.layoutInfo.visibleItemsInfo.first().key
         assertTrue(harness.listState.firstVisibleItemIndex > 0)
-        harness.items.value = harness.items.value.headMovedDown()
-        frames()
+        assertFalse(change(harness, harness.items.value.headMovedDown(), keepTop = true))
         assertEquals(readerKey, harness.listState.layoutInfo.visibleItemsInfo.first().key, "the reader's row stays put")
-        assertTrue(harness.listState.firstVisibleItemIndex > 0, "the reader is not pulled back to the top")
+    }
+
+    @Test
+    fun `an unchanged head is not touched`() {
+        val harness = mount()
+        assertFalse(change(harness, rows.take(1) + rows.drop(2), keepTop = true))
+        assertEquals(0, harness.listState.firstVisibleItemIndex)
     }
 }
