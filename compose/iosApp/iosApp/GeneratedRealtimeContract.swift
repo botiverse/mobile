@@ -80,6 +80,7 @@ enum GeneratedRealtimeContract {
         static let serverMembershipRemoved = "server:membership-removed"
         static let serverDeleted = "server:deleted"
         static let serverPlanUpdated = "server:plan-updated"
+        static let serverFeaturesChanged = "server:features-changed"
         static let announcementNew = "announcement:new"
         static let reminderFired = "reminder:fired"
         static let reminderScheduled = "reminder:scheduled"

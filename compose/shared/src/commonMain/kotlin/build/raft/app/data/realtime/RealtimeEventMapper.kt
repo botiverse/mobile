@@ -60,6 +60,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ServerDeleted
+import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
@@ -274,6 +275,10 @@ class RealtimeEventMapper(
                 val dto = decodeOrNull(ServerPlanUpdatedDto.serializer(), element)
                 dto?.let { ServerPlanUpdated(ServerId(it.serverId), it.plan) }
             }
+            RealtimeSocketEvents.ServerFeaturesChanged ->
+                decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
+                    ?.takeIf { it.serverId.isNotBlank() }
+                    ?.let { ServerFeaturesChanged(ServerId(it.serverId), it.keys) }
             RealtimeSocketEvents.AnnouncementNew ->
                 RealtimeRefreshRequired(
                     scope = RealtimeRefreshScope.Announcements,
@@ -672,6 +677,13 @@ private data class ComputerRestartDoneDto(
         return ComputerRestartDone(machineId = machine, requestId = request, ok = ok, error = error?.takeIf { it.isNotBlank() })
     }
 }
+
+/** slock `packages/shared/src/featuresChanged.ts` `ServerFeaturesChangedEvent`: `{ serverId, keys }`. */
+@Serializable
+private data class ServerFeaturesChangedDto(
+    val serverId: String,
+    val keys: List<String> = emptyList(),
+)
 
 @Serializable
 private data class ServerPlanUpdatedDto(

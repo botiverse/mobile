@@ -11,6 +11,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
+import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.optLong
 import build.raft.app.optString
@@ -47,6 +48,8 @@ internal class ProcessRealtimeIngressCoordinator(
      * grant's server. The account lost the server, so its cached timelines (memory + durable) go.
      */
     private val onServerAccessLost: suspend (RealtimeGrantRecord) -> Unit = {},
+    /** Every event the domain owner accepted, with the grant it was accepted under (after the owner ran). */
+    private val onAccepted: suspend (RealtimeGrantRecord, RealtimeEvent) -> Unit = { _, _ -> },
 ) {
     fun start() {
         // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
@@ -145,6 +148,7 @@ internal class ProcessRealtimeIngressCoordinator(
                 )
             }
         if (!accepted) return
+        onAccepted(grant, event)
         if (event is ServerMembershipRemoved || event is ServerDeleted) {
             onServerAccessLost(grant)
         }
@@ -250,5 +254,6 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerMembershipRemoved -> serverId
         is ServerDeleted -> serverId
         is ServerPlanUpdated -> serverId
+        is ServerFeaturesChanged -> serverId
         else -> null
     }
