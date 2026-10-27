@@ -944,7 +944,15 @@ data class AgentToolStuck(
     val startedAtMs: Long = 0L,
     val quietSinceMs: Long,
     val thresholdMs: Long = 0L,
-    val queuedMessages: Int = 0
+    val queuedMessages: Int = 0,
+    /**
+     * How long the call had been quiet when the server sent this frame (the frame's server
+     * `timestamp` minus [quietSinceMs]), and when this device received it ([receivedAtMs], its
+     * own clock). The shown minutes add the time since receipt, so this device's clock never
+     * meets the agent's Computer clock (Lagoon's review). Null: not known (a REST snapshot).
+     */
+    val quietMillisAtFrame: Long? = null,
+    val receivedAtMs: Long = 0L
 )
 
 @Serializable

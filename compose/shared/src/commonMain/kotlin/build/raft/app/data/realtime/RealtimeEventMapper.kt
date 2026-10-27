@@ -653,7 +653,10 @@ internal data class ToolStuckDto(
 )
 
 /** The stuck report, or null without a tool name or quiet start (not shown then). */
-internal fun ToolStuckDto?.toAgentToolStuck(): AgentToolStuck? {
+internal fun ToolStuckDto?.toAgentToolStuck(
+    frameServerMillis: Long? = null,
+    receivedAtMs: Long = 0L,
+): AgentToolStuck? {
     if (this == null) return null
     val tool = toolName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val quietSince = quietSinceMs ?: startedAtMs ?: return null
@@ -664,6 +667,8 @@ internal fun ToolStuckDto?.toAgentToolStuck(): AgentToolStuck? {
         quietSinceMs = quietSince,
         thresholdMs = (thresholdMs ?: 0L).coerceAtLeast(0L),
         queuedMessages = (queuedMessages ?: 0).coerceAtLeast(0),
+        quietMillisAtFrame = frameServerMillis?.let { (it - quietSince).coerceAtLeast(0L) },
+        receivedAtMs = receivedAtMs,
     )
 }
 
@@ -1138,7 +1143,12 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         activityToolName = projectedActivity.toolName,
         serverSeq = serverSeq,
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
-        toolStuck = toolStuck.toAgentToolStuck(),
+        toolStuck =
+            toolStuck.toAgentToolStuck(
+                // The server stamps the frame with its own clock in epoch ms.
+                frameServerMillis = (timestamp as? JsonPrimitive)?.contentOrNull?.toLongOrNull(),
+                receivedAtMs = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            ),
         activityEntries = entries.toRealtimeAgentActivityEntries(
             agentId = agentId,
             timestamp = timestamp,

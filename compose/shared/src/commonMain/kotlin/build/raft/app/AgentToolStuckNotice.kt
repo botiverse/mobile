@@ -26,12 +26,18 @@ import build.raft.designsystem.theme.RaftTheme
 private const val ToolStuckMinuteMillis = 60_000L
 
 /**
- * Whole minutes the agent has been quiet on the tool call, at least 1. `quietSinceMs` is the
- * agent's Computer clock, so a small skew against this device is expected: like web
- * `toolStuckMinutes`, it never reads below the reported threshold.
+ * Whole minutes the agent has been quiet on the tool call, at least 1, never below the reported
+ * threshold (web `toolStuckMinutes`). From a live frame it is the quiet time when the server sent
+ * it plus the time since this device received it, both differences on one clock each, so a skewed
+ * device clock doesn't shift it (Lagoon's review). A REST snapshot has no frame time: it falls back
+ * to this device's clock against `quietSinceMs` (the agent's Computer clock).
  */
 internal fun agentToolStuckMinutes(toolStuck: AgentToolStuck, nowEpochMillis: Long): Long {
-    val quietMillis = maxOf(nowEpochMillis - toolStuck.quietSinceMs, toolStuck.thresholdMs)
+    val elapsed =
+        toolStuck.quietMillisAtFrame?.let { atFrame ->
+            atFrame + (nowEpochMillis - toolStuck.receivedAtMs).coerceAtLeast(0L)
+        } ?: (nowEpochMillis - toolStuck.quietSinceMs)
+    val quietMillis = maxOf(elapsed, toolStuck.thresholdMs)
     return maxOf(1L, quietMillis / ToolStuckMinuteMillis)
 }
 

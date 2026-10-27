@@ -123,4 +123,20 @@ class AgentToolStuckTest {
         val offline = raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
         assertNull(membersAgentToolStuck(offline.copy(toolStuck = stuck), summaryToolStuck = stuck))
     }
+
+    @Test
+    fun aLiveFrameCountsFromTheServerStampNotThisDevicesClock() {
+        // The agent's Computer clock is an hour ahead of this device: quietSinceMs alone would
+        // read as negative quiet time. The frame says 5 min quiet when sent; 2 min have passed here.
+        val now = 10_000_000L
+        val stuck =
+            AgentToolStuck(
+                toolName = "bash",
+                quietSinceMs = now + 3_600_000L,
+                thresholdMs = 60_000L,
+                quietMillisAtFrame = 5 * 60_000L,
+                receivedAtMs = now - 2 * 60_000L,
+            )
+        kotlin.test.assertEquals(7L, agentToolStuckMinutes(stuck, now))
+    }
 }
