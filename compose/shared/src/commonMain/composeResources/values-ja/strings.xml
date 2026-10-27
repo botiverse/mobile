@@ -1562,6 +1562,7 @@
     <string name="tasks_status_in_review">レビュー中</string>
     <string name="tasks_status_done">完了</string>
     <string name="tasks_status_closed">クローズ</string>
+    <string name="tasks_reply_count_description">このタスクのメッセージ：%1$d 件</string>
     <string name="tasks_status_reopen_to_todo">未着手に戻す</string>
     <string name="task_conversation_follow">タスクをフォロー</string>
     <string name="task_conversation_unfollow">タスクのフォローを解除</string>

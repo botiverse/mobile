@@ -541,6 +541,8 @@ private fun SharedTasksDataStoreState.removeTaskState(
     )
 }
 
+private const val CountedReplyKeyLimit = 512
+
 internal class SharedTasksDataStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val ownerIdentityProvider: (suspend () -> String?)? = null,
@@ -1060,6 +1062,38 @@ internal class SharedTasksDataStore(
      * Synchronous fixture seam for stores without an owner provider. Production realtime deletion
      * uses [removeTaskForCurrentOwner] so an old-account callback cannot clear current data.
      */
+    /** Reply ids already counted ([bumpTaskConversationReplyCount]), oldest first; bounded. */
+    private val countedReplyKeys = ArrayDeque<String>()
+    private val countedReplyKeySet = mutableSetOf<String>()
+
+    /**
+     * Task v2 (web `bumpTaskConversationReplyCount`): a reply in task [taskId]'s own conversation
+     * (`message:new` with `conversationContext.channelType = "task"`) adds one to its
+     * `conversationReplyCount` until the next task list carries the server's count. The server sends
+     * no `task:updated` for a reply. Each [messageId] counts once (the frame can reach both the
+     * conversation's room and the reader's own room); a task not loaded here is left alone.
+     */
+    suspend fun bumpTaskConversationReplyCount(serverId: String, taskId: TaskId, messageId: MessageId): Boolean {
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return false
+        return loadMutex.withLock {
+            val fact = state.value.canonicalTaskFacts[taskId] ?: return@withLock false
+            val key = "$normalizedServerId:${messageId.value}"
+            if (!countedReplyKeySet.add(key)) return@withLock false
+            countedReplyKeys.addLast(key)
+            while (countedReplyKeys.size > CountedReplyKeyLimit) countedReplyKeySet.remove(countedReplyKeys.removeFirst())
+            val bumped = fact.copy(conversationReplyCount = fact.conversationReplyCount + 1)
+            val current = state.value
+            state.value =
+                current.copy(
+                    canonicalTaskFacts = current.canonicalTaskFacts + (taskId to bumped),
+                    serverSnapshots = current.serverSnapshots.reprojectServerTask(bumped, current.taskProjectionRoutes),
+                    channelSnapshots = current.channelSnapshots.reprojectChannelTask(bumped, current.taskProjectionRoutes),
+                )
+            true
+        }
+    }
+
     fun removeTask(serverId: String, taskId: TaskId) {
         if (ownerIdentityProvider != null) return
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return

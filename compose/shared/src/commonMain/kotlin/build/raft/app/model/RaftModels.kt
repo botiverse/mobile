@@ -508,7 +508,9 @@ data class MessageConversationContext(
     val channelKind: ConversationKind? = null,
     val parentMessageId: MessageId? = null,
     val parentChannelId: ChannelId? = null,
-    val parentChannelKind: ConversationKind? = null
+    val parentChannelKind: ConversationKind? = null,
+    /** Task v2: the task a `channelType: "task"` conversation belongs to (slock `buildFrontendConversationContext`). */
+    val taskId: TaskId? = null,
 )
 
 @Serializable

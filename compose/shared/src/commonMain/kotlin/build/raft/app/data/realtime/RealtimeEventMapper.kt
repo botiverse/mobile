@@ -473,6 +473,8 @@ private data class ConversationContextWireDto(
     val parentMessageId: String? = null,
     val parentChannelId: String? = null,
     val parentChannelType: String? = null,
+    // task v2 conversations only (slock messageService.ts `buildFrontendConversationContext`)
+    val taskId: String? = null,
 )
 
 @Serializable
@@ -905,6 +907,7 @@ private fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
+        taskId = taskId?.trim()?.takeIf { it.isNotBlank() && parseConversationKindOrNull(channelType) == ConversationKind.Task }?.let(::TaskId),
     )
     return context.takeIf {
         it.channelKind != null ||
