@@ -126,6 +126,8 @@ dependencyResolutionManagement {
     }
 }
 
+apply(from = "gradle/build-cache-epoch.settings.gradle.kts")
+
 rootProject.name = "compose"
 include(":androidApp")
 include(":core")

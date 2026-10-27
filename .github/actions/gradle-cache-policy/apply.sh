@@ -15,6 +15,13 @@
 #                                                    both env names are still read by the
 #                                                    bundled gradle-actions-caching in v6.4.0 —
 #                                                    extracted-entry keys are NOT covered)
+#   RAFT_GRADLE_BUILD_CACHE_EPOCH=<epoch>           (compose/gradle/build-cache-epoch.settings.gradle.kts
+#                                                    names the local build cache directory
+#                                                    caches/build-cache-epoch-<epoch>; v6 keys the
+#                                                    extracted build-cache entry by file names, so
+#                                                    this is what makes a rotation produce a new
+#                                                    build-cache entry instead of re-referencing
+#                                                    the old one)
 #   GRADLE_BUILD_ACTION_SKIP_RESTORE=<b1,b2>        (only when the quarantine file lists bundles)
 #
 # Operating procedure: docs/ci-gradle-cache-epoch-runbook.md (task #786).
@@ -60,6 +67,7 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
 done < "${quarantine_file}"
 
 echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=${epoch}-" >> "${github_env}"
+echo "RAFT_GRADLE_BUILD_CACHE_EPOCH=${epoch}" >> "${github_env}"
 summary="epoch=${epoch}"
 if [[ "${#bundles[@]}" -gt 0 ]]; then
   joined="$(IFS=,; echo "${bundles[*]}")"

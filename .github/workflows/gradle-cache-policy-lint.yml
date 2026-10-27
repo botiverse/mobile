@@ -6,11 +6,17 @@ on:
       - ".github/**"
       - "scripts/ci/check_gradle_cache_policy_wiring.py"
       - "scripts/ci/test_gradle_cache_policy.sh"
+      - "scripts/ci/gradle_cache_epoch_guard.sh"
+      - "compose/settings.gradle.kts"
+      - "compose/gradle/build-cache-epoch.settings.gradle.kts"
   push:
     branches:
       - main
     paths:
       - ".github/**"
+      - "scripts/ci/gradle_cache_epoch_guard.sh"
+      - "compose/settings.gradle.kts"
+      - "compose/gradle/build-cache-epoch.settings.gradle.kts"
 
 permissions:
   contents: read
@@ -165,3 +171,139 @@ jobs:
           : > "$probe/build.gradle"
           (cd compose && ./gradlew --project-dir "$probe" help --no-daemon -q)
           echo "configuration-boundary PASS: clean configure on restored home"
+
+  # Build-cache epoch guard. gradle/actions v6 stores caches/build-cache-*/* as its own entry,
+  # keyed by a hash of the entry FILE NAMES with no epoch in it, so a rotation that only changed
+  # the key prefix would let the first post-rotation save collide with the old entry ("already
+  # exists") and re-reference the old blob. compose/gradle/build-cache-epoch.settings.gradle.kts
+  # puts the epoch in the build-cache directory name to prevent that. Scenario, all within one
+  # run (shared per-run GRADLE_USER_HOME, so it never touches the fleet cache):
+  #   seed (epoch guard-a): real probe build, entries overwritten with POISON, saved.
+  #   rotated (epoch guard-b): cold start, same probe build (same task cache keys), saved.
+  #   same-epoch reader (guard-a): the POISON entries MUST restore (restore works at all).
+  #   rotated reader (guard-b): its own entries MUST restore and the POISON must NOT.
+
+  gradle-cache-epoch-guard-seed:
+    name: Gradle build-cache epoch guard (seed, epoch a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GRADLE_USER_HOME: /tmp/epoch-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: epoch-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Simulate epoch guard-a (throwaway key prefix + build-cache epoch)
+        run: |
+          echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch-guard-${{ github.run_id }}-${{ github.run_attempt }}-a-" >> "$GITHUB_ENV"
+          echo "RAFT_GRADLE_BUILD_CACHE_EPOCH=guard-a" >> "$GITHUB_ENV"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
+      - name: Probe build into the epoch build-cache directory
+        run: bash scripts/ci/gradle_cache_epoch_guard.sh build
+      - name: Poison the seeded entries
+        run: bash scripts/ci/gradle_cache_epoch_guard.sh poison
+
+  gradle-cache-epoch-guard-rotated:
+    name: Gradle build-cache epoch guard (rotated writer, epoch b)
+    runs-on: ubuntu-latest
+    needs: gradle-cache-epoch-guard-seed
+    timeout-minutes: 15
+    env:
+      GRADLE_USER_HOME: /tmp/epoch-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: epoch-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Simulate epoch guard-b (throwaway key prefix + build-cache epoch)
+        run: |
+          echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch-guard-${{ github.run_id }}-${{ github.run_attempt }}-b-" >> "$GITHUB_ENV"
+          echo "RAFT_GRADLE_BUILD_CACHE_EPOCH=guard-b" >> "$GITHUB_ENV"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
+      - name: Probe build into the epoch build-cache directory
+        run: bash scripts/ci/gradle_cache_epoch_guard.sh build
+
+  gradle-cache-epoch-guard-same-reader:
+    name: Gradle build-cache epoch guard (same-epoch reader)
+    runs-on: ubuntu-latest
+    needs: gradle-cache-epoch-guard-seed
+    timeout-minutes: 15
+    env:
+      GRADLE_USER_HOME: /tmp/epoch-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: epoch-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Simulate epoch guard-a (throwaway key prefix + build-cache epoch)
+        run: |
+          echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch-guard-${{ github.run_id }}-${{ github.run_attempt }}-a-" >> "$GITHUB_ENV"
+          echo "RAFT_GRADLE_BUILD_CACHE_EPOCH=guard-a" >> "$GITHUB_ENV"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      - name: Seeded build cache restores without a bump
+        run: bash scripts/ci/gradle_cache_epoch_guard.sh assert-poison-restored
+
+  gradle-cache-epoch-guard-rotated-reader:
+    name: Gradle build-cache epoch guard (rotated reader)
+    runs-on: ubuntu-latest
+    needs: gradle-cache-epoch-guard-rotated
+    timeout-minutes: 15
+    env:
+      GRADLE_USER_HOME: /tmp/epoch-guard-home-${{ github.run_id }}-${{ github.run_attempt }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_INSTANCE: epoch-guard
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: epoch-guard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+      - name: Simulate epoch guard-b (throwaway key prefix + build-cache epoch)
+        run: |
+          echo "GRADLE_BUILD_ACTION_CACHE_KEY_PREFIX=epoch-guard-${{ github.run_id }}-${{ github.run_attempt }}-b-" >> "$GITHUB_ENV"
+          echo "RAFT_GRADLE_BUILD_CACHE_EPOCH=guard-b" >> "$GITHUB_ENV"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      - name: After the bump the old build cache is not restored
+        run: bash scripts/ci/gradle_cache_epoch_guard.sh assert-clean-restored

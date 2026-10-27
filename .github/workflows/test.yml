@@ -330,7 +330,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          # Re-enable the Gradle cache so the local build cache (caches/build-cache-1)
+          # Re-enable the Gradle cache so the local build cache (caches/build-cache-epoch-<epoch>,
+          # see compose/gradle/build-cache-epoch.settings.gradle.kts)
           # and dependency bundles restore across runs — with cache-disabled the Android
           # compile job recompiled everything from scratch every run (~8m40s).
           #
@@ -345,7 +346,7 @@ jobs:
           #   transforms        -> caches/transforms-<N>/ (top-level) AND caches/<gradleVer>/transforms/
           # `gradle-home-cache-excludes` deletes matching paths after restore and before
           # save, so excluding these keeps them rebuilt-fresh while every other bundle
-          # (build-cache-1, modules-2, wrapper-zips, kotlin-dsl, generated-gradle-jars,
+          # (build cache, modules-2, wrapper-zips, kotlin-dsl, generated-gradle-jars,
           # java-toolchains) is content-addressed and restores across runs. transforms-*
           # (not a pinned transforms-4) survives a Gradle metadata-version bump. Job-scoped
           # permanent replacement for the blunt cache-disabled; the fleet-wide
@@ -355,7 +356,8 @@ jobs:
           # version stable across runs; PRs (non-main refs) read the default-branch
           # cache seed read-only and never write back. The poison-guard writer/reader
           # jobs in gradle-cache-policy-lint.yml are the authority that these families
-          # never restore while build-cache-1 does.
+          # never restore while the build cache does; the build-cache epoch guard jobs there
+          # prove an epoch bump drops the old build cache.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           gradle-home-cache-excludes: |
             caches/jars-*

@@ -15,8 +15,23 @@ compile; attribution in #proj-chat task #781, design review in task #786).
     top-level MISS under the new family — never the save or the HIT;
   - after merge, the FIRST eligible main run misses and saves the `<epoch>-` family; the NEXT
     main run proves the HIT. Both receipts belong in the rotation PR's thread.
-  NOTE (verified against gradle/actions@v5 source): extracted-entry keys
-  (`gradle-dependencies-*`, `gradle-transforms-*`, ...) are NOT covered by the prefix.
+  NOTE (verified against gradle/actions@v5 source, re-checked on v6.4.0): extracted-entry keys
+  (`gradle-dependencies-*`, `gradle-transforms-*`, ...) are NOT covered by the prefix. They are
+  restored only through the metadata inside the (prefixed) Gradle-home entry, so a rotation
+  stops restoring them; but their keys are a hash of the bundle's FILE NAMES, so the first
+  post-rotation save of an unchanged file set hits "entry with key already exists" and the new
+  metadata points back at the old blob.
+- Build cache (gradle/actions v6): v6.2+ moved `caches/build-cache-*` out of the Gradle-home
+  entry into its own extracted entry (`gradle-build-cache-v2-<hash>`), which would have exposed
+  it to exactly that re-reference. The policy action therefore also exports
+  `RAFT_GRADLE_BUILD_CACHE_EPOCH=<epoch>`, and `compose/gradle/build-cache-epoch.settings.gradle.kts`
+  (applied by `compose/settings.gradle.kts`) points the local build cache at
+  `caches/build-cache-epoch-<epoch>`. The epoch is then in every build-cache file name, so a
+  rotation always produces a new build-cache entry and the old one is never restored again.
+  Local builds (variable unset) keep Gradle's default directory. Proven on every change by the
+  "Gradle build-cache epoch guard" jobs in `gradle-cache-policy-lint.yml` (seed + poison under
+  epoch a; same-epoch reader must restore the poison; rotated writer/reader under epoch b must
+  restore their own entry and never the poison).
 - `.github/gradle-cache-quarantine` — incident-response file, EMPTY in steady state. Allowlisted
   bundle names (`dependencies`, `transforms`), one per line (final newline optional — a trailing
   active entry is honored; CR rejected). Listed bundles are exported as
@@ -40,10 +55,11 @@ Signatures like: `Failed to transform ... instrumentation-dependencies.bin`, `EO
 read N bytes; M expected` on a dependency jar, `ClassNotFoundException` for classes that exist,
 reproducing byte-identically across runs/PRs at the same restore key.
 
-1. Top-level Gradle home entry poisoned → **epoch rotation request**: one PR bumping
+1. Top-level Gradle home entry or local build cache (`gradle-build-cache-*`) poisoned → **epoch
+   rotation request**: one PR bumping
    `.github/gradle-cache-epoch` (e.g. `1` → `2`).
 2. Extracted bundle poisoned (key visible in the `Restored cache entry with key
-   gradle-<bundle>-v1-...` log line) → **quarantine**: one PR adding that bundle name to
+   gradle-<bundle>-v2-...` log line; `-v1-` before gradle/actions v6.3) → **quarantine**: one PR adding that bundle name to
    `.github/gradle-cache-quarantine`, with a dated comment naming the poisoned key. Remove only
    after that key rotates.
 3. Unsure which layer → do both in one PR; quarantine is reversible.
@@ -58,5 +74,6 @@ the task thread. Audit trail = the PR history of the two policy files.
   per-owner inventory; each has its own key literal to rotate.
 - True backend deletion of poisoned entries (no API access) — entries die by eviction or key
   rotation only.
-- Getting the epoch into extracted-entry keys — needs an upstream gradle/actions change
+- Getting the epoch into the other extracted-entry keys (dependencies, transforms, ...) — needs an
+  upstream gradle/actions change (the build cache is covered by its directory name, above)
   (optional follow-up, explicitly not gated).
