@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.app.compat.ui.RaftIosFallbackFontName
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
@@ -29,11 +30,8 @@ import platform.Foundation.NSAttributedString
 import platform.Foundation.create
 import platform.UIKit.NSFontAttributeName
 import platform.UIKit.NSForegroundColorAttributeName
-import platform.UIKit.NSLayoutManager
 import platform.UIKit.NSMutableParagraphStyle
 import platform.UIKit.NSParagraphStyleAttributeName
-import platform.UIKit.NSTextContainer
-import platform.UIKit.NSTextStorage
 import platform.UIKit.UIColor
 import platform.UIKit.UIEdgeInsetsMake
 import platform.UIKit.UIFont
@@ -50,15 +48,17 @@ actual fun RaftNativeSelectableText(
     val lineHeightPt = style.lineHeight.ptOrNull(fontSizePt)
     val fontName = style.raftIosFontName()
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
-    // The rendered UITextView, with its NSTextStorage kept alive by the stack holder (see
-    // raftSelectableUITextView: storage → layoutManager is the only strong edge, so the
-    // storage would dealloc if nothing held it). Two safeguards against the TextKit 2
-    // stale-fragment bug that drew the text twice:
-    // 1) the view stack is TextKit 1, so layout invalidation is complete;
-    // 2) height is measured on a separate throwaway instance, so the displayed view is
-    //    never laid out at a foreign width.
-    val stack = remember { raftSelectableUITextView() }
-    val textView = stack.view
+    // One UITextView instance serves as both the rendered view and the height measurer.
+    val textView = remember { raftSelectableUITextView() }
+    // CMP's UIKitView interop punches a hole in the Metal canvas behind the native view,
+    // so a transparent background lets whatever is behind the sheet (the message list's
+    // own copy of this same text!) bleed through and look like the text drew twice.
+    // The view must paint an opaque background matching the surface it sits on.
+    val surfaceColor = LocalRaftSurfaceColor.current
+    val backgroundColor =
+        remember(surfaceColor) {
+            surfaceColor.takeIf { it != Color.Unspecified }?.toUIColor() ?: UIColor.systemBackgroundColor
+        }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
     val handleColor = LocalTextSelectionColors.current.handleColor
@@ -73,7 +73,8 @@ actual fun RaftNativeSelectableText(
     }
     val attributed =
         remember(text, fontName, fontSizePt, lineHeightPt, color) {
-            raftAttributedText(text, fontName, fontSizePt, lineHeightPt, color)
+            textView.attributedText = raftAttributedText(text, fontName, fontSizePt, lineHeightPt, color)
+            textView.attributedText
         }
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -81,12 +82,7 @@ actual fun RaftNativeSelectableText(
         val widthPt = constraints.maxWidth.toDouble() / density.density
         val heightPt =
             remember(attributed, widthPt) {
-                // The stack keeps the measuring view's storage alive for the call; it is
-                // dropped when the remember block leaves composition.
-                raftMeasuringTextView(attributed)
-                    .view
-                    .sizeThatFits(CGSizeMake(widthPt, Double.MAX_VALUE))
-                    .useContents { height }
+                textView.sizeThatFits(CGSizeMake(widthPt, Double.MAX_VALUE)).useContents { height }
             }
         UIKitView(
             factory = { textView },
@@ -94,6 +90,7 @@ actual fun RaftNativeSelectableText(
             update = { view ->
                 if (view.attributedText != attributed) view.attributedText = attributed
                 view.tintColor = handleColor.toUIColor()
+                view.backgroundColor = backgroundColor
             },
         )
     }
@@ -102,51 +99,17 @@ actual fun RaftNativeSelectableText(
 private fun Color.toUIColor(): UIColor =
     UIColor.colorWithRed(red = red.toDouble(), green = green.toDouble(), blue = blue.toDouble(), alpha = alpha.toDouble())
 
-/**
- * Keeps a TextKit 1 UITextView's NSTextStorage alive. In UIKit's ownership graph the view
- * holds its text container, but container → layoutManager and layoutManager → textStorage
- * are both weak; only the storage owns the layout manager. Returning just the view would
- * let the storage (and with it the layout manager) dealloc as soon as the factory returns.
- */
-private class RaftSelectableTextStack(val view: UITextView, val storage: NSTextStorage)
-
-/**
- * Off-screen UITextView used only for sizeThatFits measuring. Kept identical in configuration to
- * the on-screen view so the measured height matches what the displayed view wraps to.
- */
-private fun raftMeasuringTextView(attributed: NSAttributedString): RaftSelectableTextStack =
-    raftSelectableUITextView().also { it.view.attributedText = attributed }
-
-/**
- * Non-editable, selectable, non-scrolling text view: the system edit menu owns
- * Copy/Look Up/Translate/Share.
- *
- * Built on an explicit NSTextStorage + NSLayoutManager + NSTextContainer stack so the view
- * uses TextKit 1. UITextView's default TextKit 2 path caches layout fragments across frame
- * changes and leaves the old fragment rendered under the new one — the sheet's text drew
- * twice with two different wrappings (iOS-only). TextKit 1 re-lays out cleanly.
- */
-private fun raftSelectableUITextView(): RaftSelectableTextStack {
-    val storage = NSTextStorage()
-    val layoutManager = NSLayoutManager()
-    val container =
-        NSTextContainer(size = CGSizeMake(0.0, Double.MAX_VALUE)).apply {
-            widthTracksTextView = true
-            heightTracksTextView = false
-            lineFragmentPadding = 0.0
-        }
-    storage.addLayoutManager(layoutManager)
-    layoutManager.addTextContainer(container)
-    val view =
-        UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), textContainer = container).apply {
-            setEditable(false)
-            setSelectable(true)
-            setScrollEnabled(false)
-            textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
-            backgroundColor = UIColor.clearColor
-        }
-    return RaftSelectableTextStack(view = view, storage = storage)
-}
+/** Non-editable, selectable, non-scrolling text view: the system edit menu owns Copy/Look Up/Translate/Share. */
+private fun raftSelectableUITextView(): UITextView =
+    UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)).apply {
+        setEditable(false)
+        setSelectable(true)
+        setScrollEnabled(false)
+        textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
+        textContainer.lineFragmentPadding = 0.0
+        // The opaque surface colour is applied in UIKitView's update (see the caller);
+        // clearColor here would let whatever is behind the interop hole bleed through.
+    }
 
 private fun raftAttributedText(
     text: String,
@@ -167,13 +130,8 @@ private fun raftAttributedText(
     if (lineHeightPt != null) {
         attributes[NSParagraphStyleAttributeName] =
             NSMutableParagraphStyle().apply {
-                // min/maxLineHeight *shrinks* the line box when the style's line height is
-                // smaller than the font's natural height — every line then draws on top of
-                // the previous one, which is what the "two overlaid copies" in the sheet
-                // actually were. lineSpacing only adds space between lines: it honours the
-                // design when lineHeight is looser and can never make lines overlap.
-                val extra = lineHeightPt - font.lineHeight
-                if (extra > 0.0) setLineSpacing(extra)
+                setMinimumLineHeight(lineHeightPt)
+                setMaximumLineHeight(lineHeightPt)
             }
     }
     return NSAttributedString.create(string = text, attributes = attributes)
