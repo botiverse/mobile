@@ -43,6 +43,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
@@ -2179,10 +2182,13 @@ class SharedHomeStoreTest {
      * Sync on, Home reloads reuse the held machine list. A machine change (`machine:status`, a sync
      * `machine` row, the sync machines refresh: all a Machines-scope refresh) arriving while Home is
      * hidden must make the reload on return read the list again, not reuse the old one.
+     *
+     * Virtual time on one test dispatcher: each step runs to quiescence ([runCurrent]) before the
+     * next, so the Home reload has finished (reused the held list) before the machine change.
      */
     @Test
-    fun syncOnMachineChangeWhileHomeHiddenMakesTheReturnReloadReadMachines() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    fun syncOnMachineChangeWhileHomeHiddenMakesTheReturnReloadReadMachines() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val api = RecordingHomeApi()
         val computersApi = RecordingComputersApi()
         val store = SharedHomeStore(
@@ -2196,7 +2202,8 @@ class SharedHomeStoreTest {
             scope = scope,
         )
         store.accept(SharedHomeIntent.Start)
-        awaitCondition { computersApi.calls == listOf("GET machines:server-1") }
+        runCurrent()
+        assertEquals(listOf("GET machines:server-1"), computersApi.calls, "Start reads the machine list")
         // A Home reload with nothing changed reuses the held list.
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
@@ -2204,8 +2211,9 @@ class SharedHomeStoreTest {
                 event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, reason = "sync_changes", serverId = ServerId("server-1"))
             )
         )
-        awaitCondition { api.calls.count { it == "channels:server-1" } == 2 }
-        assertEquals(listOf("GET machines:server-1"), computersApi.calls)
+        runCurrent()
+        assertEquals(2, api.calls.count { it == "channels:server-1" }, "the Home reload ran")
+        assertEquals(listOf("GET machines:server-1"), computersApi.calls, "the Home reload reused the held list")
 
         store.accept(SharedHomeIntent.SetSurfaceVisible(false))
         store.accept(
@@ -2220,11 +2228,12 @@ class SharedHomeStoreTest {
                     )
             )
         )
+        runCurrent()
         assertEquals(1, computersApi.calls.size, "hidden: nothing read yet")
         store.accept(SharedHomeIntent.SetSurfaceVisible(true))
+        runCurrent()
 
-        awaitCondition { computersApi.calls.size == 2 }
-        assertEquals(listOf("GET machines:server-1", "GET machines:server-1"), computersApi.calls)
+        assertEquals(listOf("GET machines:server-1", "GET machines:server-1"), computersApi.calls, "the return reload read it again")
         scope.cancel()
     }
 
@@ -4281,7 +4290,11 @@ class SharedHomeStoreTest {
                     override suspend fun setOfflineComputerAlertsEnabled(enabled: Boolean): NotificationPreferenceSnapshot =
                         error("unused")
                 },
-            parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+            parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) },
+            // Decode inline, as in sourceWithSnapshot: on the real JSON lane a launched Home load
+            // resumes on a parse worker after its channels request, so a test that waits for that
+            // request races the rest of the load (CI run 40564229281).
+            parseDispatcher = Dispatchers.Unconfined
         )
 
     private fun sourceWithSnapshot(

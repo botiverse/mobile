@@ -15,6 +15,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -648,6 +649,28 @@ class HomeDataSourceTest {
         assertEquals(2, computersApi.machineCalls)
         assertEquals(emptyList(), refreshed.data.map { it.id })
         assertEquals(emptyList(), reused.data.map { it.id }, "the reload reuses the refreshed list, not the first")
+    }
+
+    /**
+     * A machine read in flight when the held list is dropped may have been answered before the
+     * change: landing after the drop it is not held, so the next sync-on Home reload reads again.
+     */
+    @Test
+    fun syncOnMachineReadLandingAfterADropIsNotHeld() = runTest {
+        val machinesAnswer = CompletableDeferred<Unit>()
+        val computersApi = ConcurrentComputersApi(machinesAnswer)
+        val source = syncOnMachinesSource(computersApi)
+        val inFlight = async { source.loadNotificationsAfterHomeLoad() }
+        computersApi.machinesStarted.await()
+
+        source.dropHeldMachines()
+        machinesAnswer.complete(Unit)
+        assertEquals(listOf("machine-offline:machine-1"), (inFlight.await() as DataResult.Content).data.map { it.id })
+        computersApi.bodyText = ONLINE_MACHINE_BODY
+        val next = source.loadNotificationsAfterHomeLoad() as DataResult.Content
+
+        assertEquals(2, computersApi.machineCalls, "the next reload read the list again")
+        assertEquals(emptyList(), next.data.map { it.id }, "not the offline list read before the change")
     }
 
     private fun syncOnMachinesSource(computersApi: ConcurrentComputersApi) =
