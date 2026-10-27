@@ -6,6 +6,8 @@ pluginManagement {
     // parallel move overwrites a >255 register holding an object with an int, then
     // move-object reads it -> VerifyError at Home launch. R8 9.5.28 verifies cleanly
     // (`cmd package compile -m verify`). This also replaces D8 for debug/alpha dexing.
+    // AGP 9.4.1 bundles R8 9.4.24 (com/android/tools/r8/Version in builder-9.4.1.jar), still
+    // older than 9.5.28, so the pin stays until AGP bundles an R8 >= 9.5.28.
     buildscript {
         repositories { google(); mavenCentral() }
         dependencies { classpath("com.android.tools:r8:9.5.28") }
