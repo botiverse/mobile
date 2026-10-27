@@ -29,8 +29,11 @@ import platform.Foundation.NSAttributedString
 import platform.Foundation.create
 import platform.UIKit.NSFontAttributeName
 import platform.UIKit.NSForegroundColorAttributeName
+import platform.UIKit.NSLayoutManager
 import platform.UIKit.NSMutableParagraphStyle
 import platform.UIKit.NSParagraphStyleAttributeName
+import platform.UIKit.NSTextContainer
+import platform.UIKit.NSTextStorage
 import platform.UIKit.UIColor
 import platform.UIKit.UIEdgeInsetsMake
 import platform.UIKit.UIFont
@@ -47,9 +50,11 @@ actual fun RaftNativeSelectableText(
     val lineHeightPt = style.lineHeight.ptOrNull(fontSizePt)
     val fontName = style.raftIosFontName()
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
-    // The rendered UITextView. Height is measured on a separate throwaway instance (see below):
-    // laying the on-screen view out at a measuring width leaves a stale TextKit 2 layout
-    // fragment in it, so the text drew twice with different wrapping (iOS-only double draw).
+    // The rendered UITextView. Two safeguards against the TextKit 2 stale-fragment bug
+    // that drew the text twice (see raftSelectableUITextView):
+    // 1) the view stack is TextKit 1, so layout invalidation is complete;
+    // 2) height is measured on a separate throwaway instance, so the displayed view is
+    //    never laid out at a foreign width.
     val textView = remember { raftSelectableUITextView() }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
@@ -98,16 +103,34 @@ private fun Color.toUIColor(): UIColor =
 private fun raftMeasuringTextView(attributed: NSAttributedString): UITextView =
     raftSelectableUITextView().apply { attributedText = attributed }
 
-/** Non-editable, selectable, non-scrolling text view: the system edit menu owns Copy/Look Up/Translate/Share. */
-private fun raftSelectableUITextView(): UITextView =
-    UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)).apply {
+/**
+ * Non-editable, selectable, non-scrolling text view: the system edit menu owns
+ * Copy/Look Up/Translate/Share.
+ *
+ * Built on an explicit NSTextStorage + NSLayoutManager + NSTextContainer stack so the view
+ * uses TextKit 1. UITextView's default TextKit 2 path caches layout fragments across frame
+ * changes and leaves the old fragment rendered under the new one — the sheet's text drew
+ * twice with two different wrappings (iOS-only). TextKit 1 re-lays out cleanly.
+ */
+private fun raftSelectableUITextView(): UITextView {
+    val storage = NSTextStorage()
+    val layoutManager = NSLayoutManager()
+    val container =
+        NSTextContainer(size = CGSizeMake(0.0, Double.MAX_VALUE)).apply {
+            widthTracksTextView = true
+            heightTracksTextView = false
+            lineFragmentPadding = 0.0
+        }
+    storage.addLayoutManager(layoutManager)
+    layoutManager.addTextContainer(container)
+    return UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), textContainer = container).apply {
         setEditable(false)
         setSelectable(true)
         setScrollEnabled(false)
         textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
-        textContainer.lineFragmentPadding = 0.0
         backgroundColor = UIColor.clearColor
     }
+}
 
 private fun raftAttributedText(
     text: String,
