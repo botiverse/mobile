@@ -12,8 +12,13 @@ import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import build.raft.designsystem.theme.RaftTheme
 import java.time.Duration
 import kotlin.test.Test
@@ -43,7 +48,28 @@ class ActivityExcerptBesideMarksTest {
         "Lagoon: 收到，我来查：动态页点顶部回到最上面以后，又被拉回第二屏。先把这张单的诊断包拉下来看看是哪一步把列表滚回去的。"
 
     @Test
-    fun theSecondLineStaysWhenTheRowIsMeasuredAgain() {
+    fun theSecondLineStaysWhenTheRowIsMeasuredAgain() = secondLineStays(withFace = false)
+
+    /** A row whose sender's face rides inline (an `appendInlineContent` placeholder) before the excerpt. */
+    @Test
+    fun theSecondLineStaysWithAnInlineFace() = secondLineStays(withFace = true)
+
+    private fun secondLineStays(withFace: Boolean) {
+        val text =
+            buildAnnotatedString {
+                if (withFace) {
+                    appendInlineContent("face", "[face]")
+                    append(" ")
+                }
+                append(excerpt)
+            }
+        val inline =
+            if (withFace) {
+                mapOf("face" to InlineTextContent(Placeholder(16.sp, 16.sp, PlaceholderVerticalAlign.TextCenter)) { Box(Modifier.size(16.dp)) })
+            } else {
+                emptyMap()
+            }
+        val full = text.text
         val showMarks = mutableStateOf(false)
         // Any later recomposition of the row (a new marks lambda, the time ticking) measures it again.
         val tick = mutableStateOf(0)
@@ -52,17 +78,17 @@ class ActivityExcerptBesideMarksTest {
             val t = tick.value
             RaftTheme {
                 ActivityExcerptBesideMarks(
-                    text = AnnotatedString(excerpt),
+                    text = text,
                     style = RaftTheme.typography.callout,
                     color = RaftTheme.colors.foreground,
-                    inlineContent = emptyMap(),
+                    inlineContent = inline,
                     lineHeight = 22.dp,
                     marks = { if (showMarks.value && t >= 0) Box(Modifier.size(28.dp, 22.dp)) },
                 )
             }
         }
         settle()
-        assertEquals(listOf(excerpt), texts(activity), "no marks: one two-line text")
+        assertEquals(listOf(full), texts(activity), "no marks: one two-line text")
 
         // The first measure with marks lays line 1 out and splits the rest onto line 2.
         showMarks.value = true
@@ -70,7 +96,7 @@ class ActivityExcerptBesideMarksTest {
         val split = texts(activity)
         assertEquals(2, split.size, "marks: line 1 beside them, the rest on line 2")
         val rest = split[1]
-        assertTrue(rest.isNotBlank() && excerpt.endsWith(rest) && rest.length < excerpt.length, "line 2 is the rest: $rest")
+        assertTrue(rest.isNotBlank() && full.endsWith(rest) && rest.length < excerpt.length, "line 2 is the rest: $rest")
 
         // Measured again with the same text and width: line 1's layout is cached and not reported again.
         tick.value++

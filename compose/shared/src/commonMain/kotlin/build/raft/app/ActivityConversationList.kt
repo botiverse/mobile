@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -977,11 +978,12 @@ internal fun ActivityExcerptBesideMarks(
     lineHeight: Dp,
     marks: @Composable () -> Unit,
 ) {
-    // Where line 1 ends, from the first line's last text layout. Kept across measures: a text only
-    // reports its layout when the layout changes, so a re-measure with the same text and width (the
-    // unread count or the mention mark appearing) does not report it again, and a fresh local here
-    // would read as "all of it on line 1" and drop line 2 (artin, dm 37e8b6e9).
-    val firstLineEnd = remember { IntArray(1) { Int.MAX_VALUE } }
+    // Where line 1 ends is measured here, in the measure pass that uses it, with the same style and
+    // placeholders as line 1's text. It used to come from line 1's onTextLayout, which a text calls
+    // only when its layout changes: measured again with the same text and width (the row
+    // recomposing), it was not called, line 1 read as all of the excerpt and line 2 was dropped
+    // (artin, dm 37e8b6e9).
+    val measurer = rememberTextMeasurer()
     SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
         val width = constraints.maxWidth
         val gap = 8.dp.roundToPx()
@@ -1016,6 +1018,16 @@ internal fun ActivityExcerptBesideMarks(
             }
         }
         val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
+        val firstLineEnd =
+            measurer
+                .measure(
+                    text = text,
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                    maxLines = 1,
+                    placeholders = text.inlinePlaceholders(inlineContent),
+                    constraints = Constraints(maxWidth = firstWidth),
+                ).getLineEnd(0, visibleEnd = false)
         val first =
             subcompose("first") {
                 Box(readAs) {
@@ -1026,12 +1038,11 @@ internal fun ActivityExcerptBesideMarks(
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         inlineContent = inlineContent,
-                        onTextLayout = { layout -> firstLineEnd[0] = layout.getLineEnd(0, visibleEnd = false) },
                     )
                 }
             }.first().measure(Constraints(maxWidth = firstWidth))
         val firstRow = maxOf(first.height, minLine)
-        val rest = text.subSequence(firstLineEnd[0].coerceIn(0, text.length), text.length)
+        val rest = text.subSequence(firstLineEnd.coerceIn(0, text.length), text.length)
         val second =
             if (rest.text.isBlank()) {
                 null
@@ -1061,3 +1072,16 @@ internal fun ActivityExcerptBesideMarks(
         }
     }
 }
+
+/** The [inlineContent] placeholders [BasicText] lays [this] out with (its `appendInlineContent` ranges). */
+private fun AnnotatedString.inlinePlaceholders(inlineContent: Map<String, InlineTextContent>): List<AnnotatedString.Range<Placeholder>> =
+    if (inlineContent.isEmpty()) {
+        emptyList()
+    } else {
+        getStringAnnotations(InlineContentTag, 0, length).mapNotNull { annotation ->
+            inlineContent[annotation.item]?.let { AnnotatedString.Range(it.placeholder, annotation.start, annotation.end) }
+        }
+    }
+
+/** `androidx.compose.foundation.text.INLINE_CONTENT_TAG`, the annotation `appendInlineContent` writes. */
+private const val InlineContentTag = "androidx.compose.foundation.text.inlineContent"
