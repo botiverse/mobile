@@ -943,11 +943,15 @@ private fun SharedActivityPanelContent(
         rememberLazyListState(),
         rememberLazyListState(),
     )
+    // One explicit scroll-to-top owner per filter list, index-aligned with pageListStates: it keeps
+    // the top edge after the animation lands until the reader moves that list (Hands b205bd89).
+    val pageTopOwners = remember { List(InboxFilter.entries.size) { ActivityScrollToTopOwner() } }
     val scrollToTopScope = rememberCoroutineScope()
     // Head tap and bottom-tab re-tap both scroll the selected filter's page back to the top, like the
     // other tabs (the unread walk was removed, artin 2026-10-23).
     suspend fun scrollSelectedPageToTop() {
-        activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+        activityScrollToTopTarget(state.selectedFilter, pageListStates)
+            .animateActivityScrollToTop(activityScrollToTopTarget(state.selectedFilter, pageTopOwners))
     }
     // Bottom-tab double tap targets the same list the title tap does (the selected filter's page).
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1003,6 +1007,7 @@ private fun SharedActivityPanelContent(
                         bottomContentPadding = bottomContentPadding,
                         timeContext = timeContext,
                         listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
+                        scrollToTopOwner = activityScrollToTopTarget(state.selectedFilter, pageTopOwners),
                         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                         draftProjection = draftProjection,
                         presentationAccountId = state.ownerUserId.orEmpty(),
@@ -1052,6 +1057,7 @@ private fun SharedActivityBodyContent(
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
     listState: LazyListState,
+    scrollToTopOwner: ActivityScrollToTopOwner,
     activityTaskStatusBadgesEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     presentationAccountId: String,
@@ -1139,6 +1145,7 @@ private fun SharedActivityBodyContent(
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
                     listState = listState,
+                    scrollToTopOwner = scrollToTopOwner,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
@@ -1330,6 +1337,7 @@ private fun SharedActivityList(
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
     listState: LazyListState = rememberLazyListState(),
+    scrollToTopOwner: ActivityScrollToTopOwner = remember(listState) { ActivityScrollToTopOwner() },
     activityTaskStatusBadgesEnabled: Boolean,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
@@ -1464,8 +1472,10 @@ private fun SharedActivityList(
         )
     // Same snapshot as the list change: the next measure pass applies both, so
     // LazyList cannot first re-anchor on the old head key and no delayed job exists.
+    // Hands b205bd89: after an explicit scroll-to-top landed, the owner holds the top edge until
+    // the reader scrolls, so a change that moves the head row down cannot carry the list with it.
     fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
-        if (anchorTop) {
+        if (anchorTop || listState.activityHeldTopOwnsChange(scrollToTopOwner)) {
             if (newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet()
             listState.requestScrollToItem(0)
         } else {
@@ -1659,9 +1669,10 @@ private fun SharedActivityList(
     }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
-            listState.animateScrollToTopExpressive()
+            listState.animateActivityScrollToTop(scrollToTopOwner)
         }
     }
+    ActivityScrollToTopOwnerEffect(listState, scrollToTopOwner)
     LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems, active) {
         if (!active) return@LaunchedEffect
         val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
