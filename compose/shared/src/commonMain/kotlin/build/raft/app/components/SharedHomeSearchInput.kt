@@ -107,6 +107,18 @@ internal class SharedHomeSearchEditorOwner(initialText: String) {
     }
 
     /**
+     * Follows a reset the store made on its own (a server switch empties the query): the field
+     * takes [storeText] without projecting it back, so the store gets no echo. Only an empty store
+     * query is adopted; any other store text may just lag the user's typing and must not win.
+     * Returns whether the field changed.
+     */
+    fun adoptStoreReset(storeText: String): Boolean {
+        if (storeText.isNotEmpty() || value.text.isEmpty()) return false
+        value = TextFieldValue("")
+        return true
+    }
+
+    /**
      * Selects the whole query so the next keystroke replaces it (re-tapping the selected Search
      * tab, artin 2026-10-26). The text is unchanged, so the store gets no projection; an empty
      * field keeps its value.

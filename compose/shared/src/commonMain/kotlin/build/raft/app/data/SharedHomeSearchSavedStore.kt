@@ -116,9 +116,12 @@ internal class SharedHomeSearchSavedStore(
 
     /**
      * Adopts [owner] as the server Search results belong to. When it replaces a different owner
-     * (a server or account switch), every server-scoped part of the state is dropped and any
-     * in-flight search / sender-filter request is invalidated, so nothing from the previous server
-     * can reach the new one. With [reload], the open Search re-runs against the new server.
+     * (a server or account switch), Search starts over on the new server, as in Slack/Discord where
+     * search is per workspace: the query, its results and every filter are dropped and any in-flight
+     * search / sender-filter request is invalidated, so nothing from the previous server can reach
+     * the new one, and the old query is not re-run there. The first adoption (no previous owner)
+     * only records the server and keeps whatever the user already typed. With [reload], an open
+     * Search reloads the new server's sender filters.
      */
     private fun adoptSearchServerOwner(owner: SearchServerOwner?, reload: Boolean) {
         val previous = searchServerOwner
@@ -146,6 +149,12 @@ internal class SharedHomeSearchSavedStore(
                 search =
                     _state.value.search.copy(
                         serverId = owner?.serverId?.value,
+                        // The query and filters were typed for the server the user left; the
+                        // search box empties instead of re-running them here.
+                        query = "",
+                        timeRange = SearchTimeRange.Any,
+                        myMessagesOnly = false,
+                        selectedScopes = emptyList(),
                         selectedSenderId = null,
                         selectedChannelId = null,
                         senderFilters = emptyList(),
@@ -169,7 +178,6 @@ internal class SharedHomeSearchSavedStore(
             )
         if (!reload || owner == null) return
         if (searchOpened) loadSenderFilters()
-        if (_state.value.search.hasMessageSearchIntent()) runSearch(refresh = true)
     }
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
@@ -616,7 +624,7 @@ internal class SharedHomeSearchSavedStore(
                         ?: return@launch setSearchErrorIfActive(requestToken, "server_missing")
                     if (owner != searchServerOwner) {
                         // The server changed before its auth event reached this store: drop the
-                        // previous server's state; that re-runs this search for the new server.
+                        // previous server's state (query included); this search is abandoned.
                         val switched = searchServerOwner != null
                         adoptSearchServerOwner(owner, reload = true)
                         if (switched) return@launch
