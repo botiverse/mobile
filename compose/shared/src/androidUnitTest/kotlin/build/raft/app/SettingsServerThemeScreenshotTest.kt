@@ -28,7 +28,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h1180dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h1260dp-xxhdpi")
 class SettingsServerThemeScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()

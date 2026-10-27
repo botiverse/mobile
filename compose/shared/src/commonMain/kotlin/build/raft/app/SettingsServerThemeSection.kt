@@ -237,24 +237,32 @@ private fun SettingsServerThemeSwatch(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftText(
-                text = name,
-                modifier = Modifier.weight(1f, fill = false),
-                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (theme == RaftThemeId.Raft) {
+            // The name and its label share the row before the check; the name is the only weighted
+            // child here, so it gets every bit of width the label leaves (a second weighted spacer
+            // would take half and cut "Raft Yellow" short).
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 RaftText(
-                    text = stringResource(Res.string.settings_server_theme_default),
-                    style = RaftTheme.typography.footnote,
-                    color = colors.foregroundHint,
+                    text = name,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (theme == RaftThemeId.Raft) {
+                    RaftText(
+                        text = stringResource(Res.string.settings_server_theme_default),
+                        style = RaftTheme.typography.footnote,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
+                    )
+                }
+                if (theme.isPro) RaftProBadge()
             }
-            if (theme.isPro) RaftProBadge()
-            Spacer(Modifier.weight(1f))
             if (selected) {
                 RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(16.dp), color = raftArgbHex(colors.foreground))
             }
