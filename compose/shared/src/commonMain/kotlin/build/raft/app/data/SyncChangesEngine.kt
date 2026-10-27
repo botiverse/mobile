@@ -12,6 +12,9 @@ import kotlin.time.TimeSource
 /** The most pages one pull reads before it stops (the cursor is kept; the next trigger goes on). */
 internal const val SYNC_CHANGES_MAX_PAGES_PER_PULL: Int = 40
 
+/** The most a pull triggered by a socket RE-connect waits before its first request (Ray 10-27). */
+internal const val SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS: Long = 2_000L
+
 /**
  * One page of changes, coalesced for the stores: the newest change per (entity, id) wins, so
  * duplicates (a change the snapshot already held) are harmless. Changes made before a scope was
@@ -151,9 +154,11 @@ internal sealed interface RaftSyncPullResult {
  * Pulls of one scope run one at a time; a trigger during a pull waits and pulls again (cheap: no
  * changes). A pull stops as soon as [isCurrent] says the scope is no longer the signed-in binding.
  *
- * The pull itself is cheap and runs at once. Its snapshot reloads (first sync, reset) are full-list
- * reads: a pull with `jitterSnapshots` (a socket RE-connect, when every client reconnects together
- * after a deploy or a forced reset) waits [snapshotJitterDelay] before them (web #11453, mobile #3756).
+ * The pull itself is cheap. A pull with `jitterPull` (a socket RE-connect: every client reconnects
+ * together after a deploy) first waits [pullJitterDelay] (0–2 s), so the pulls do not land on the
+ * server in one burst; foreground and server-select pulls run at once. Its snapshot reloads (first
+ * sync, reset) are full-list reads: a pull with `jitterSnapshots` (the same RE-connect) waits
+ * [snapshotJitterDelay] before them (web #11453, mobile #3756).
  */
 internal class RaftSyncChangesEngine(
     private val api: RaftSyncChangesApi,
@@ -163,12 +168,20 @@ internal class RaftSyncChangesEngine(
     private val pageLimit: Int = SYNC_CHANGES_PAGE_LIMIT,
     private val maxPagesPerPull: Int = SYNC_CHANGES_MAX_PAGES_PER_PULL,
     private val snapshotJitterDelay: suspend () -> Unit = {},
+    private val pullJitterDelay: suspend () -> Unit = {},
     private val logger: (String) -> Unit = {},
 ) {
     private val lock = SynchronizedObject()
     private val mutexes = mutableMapOf<RaftSyncScope, Mutex>()
 
-    suspend fun pull(scope: RaftSyncScope, trigger: String, jitterSnapshots: Boolean = false): RaftSyncPullResult {
+    suspend fun pull(
+        scope: RaftSyncScope,
+        trigger: String,
+        jitterSnapshots: Boolean = false,
+        jitterPull: Boolean = false,
+    ): RaftSyncPullResult {
+        // Before the scope's lock: a trigger arriving meanwhile is not held behind this wait.
+        if (jitterPull) pullJitterDelay()
         val mutex = synchronized(lock) { mutexes.getOrPut(scope) { Mutex() } }
         return mutex.withLock {
             val startedAt = TimeSource.Monotonic.markNow()

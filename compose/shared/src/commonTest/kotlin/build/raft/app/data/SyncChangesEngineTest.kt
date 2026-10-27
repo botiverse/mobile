@@ -61,6 +61,48 @@ class SyncChangesEngineTest {
     }
 
     @Test
+    fun `a reconnect pull waits the short pull jitter before its first request and others do not`() = runTest {
+        val log = mutableListOf<String>()
+        val api =
+            object : RaftSyncChangesApi {
+                val scripted =
+                    ScriptedSyncChangesApi(
+                        syncPage(syncChangesBody("c1.11.100")),
+                        syncPage(syncChangesBody("c1.12.100")),
+                        syncPage(syncChangesBody("c1.13.100")),
+                    )
+
+                override suspend fun changes(serverId: build.raft.app.model.ServerId, since: String?, limit: Int) =
+                    scripted.changes(serverId, since, limit).also { log += "request:${since ?: "none"}" }
+            }
+        cursors.write(syncTestScope, "c1.10.100")
+        val engine =
+            RaftSyncChangesEngine(
+                api = api,
+                cursors = cursors,
+                sink = RecordingSyncChangesSink(calls = log),
+                snapshotJitterDelay = { log += "snapshot_jitter" },
+                pullJitterDelay = { log += "pull_jitter" },
+            )
+
+        engine.pull(syncTestScope, trigger = "reconnect", jitterSnapshots = true, jitterPull = true)
+        assertEquals(listOf("pull_jitter", "request:c1.10.100"), log)
+
+        log.clear()
+        engine.pull(syncTestScope, trigger = "foreground")
+        engine.pull(syncTestScope, trigger = "server_selected")
+        assertEquals(listOf("request:c1.11.100", "request:c1.12.100"), log)
+    }
+
+    @Test
+    fun `the reconnect pull jitter is uniform up to two seconds`() {
+        val random = kotlin.random.Random(7)
+        val delays = List(500) { reconnectRefetchJitterMillis(random, SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS) }
+        assertTrue(delays.all { it in 0L..2_000L })
+        assertTrue(delays.any { it < 500L } && delays.any { it > 1_500L })
+    }
+
+    @Test
     fun `a failed first snapshot keeps no cursor so the next pull starts over`() = runTest {
         val api = ScriptedSyncChangesApi(syncPage(syncChangesBody("c1.10.100")))
         val sink = RecordingSyncChangesSink(snapshotsSucceed = false)

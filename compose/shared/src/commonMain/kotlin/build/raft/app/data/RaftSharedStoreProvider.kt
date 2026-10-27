@@ -657,12 +657,14 @@ internal class RaftSharedStoreProvider private constructor(
                     ),
                 rebaselineResult = result,
             )
-        // Incremental sync (mobile_sync_changes_v0): what changed during the outage, at once. Its
-        // snapshot reloads (first sync, reset) take the reconnect jitter like the roster refetch.
+        // Incremental sync (mobile_sync_changes_v0): what changed during the outage. A RE-connect
+        // pull waits 0–2 s and its snapshot reloads (first sync, reset) take the roster's 0–20 s.
+        val reconnect = rosterDecision != RaftReconnectRefetchDecision.Immediate
         requestSyncChangesPull(
             serverId = owner.serverId,
             trigger = "reconnect",
-            jitterSnapshots = rosterDecision != RaftReconnectRefetchDecision.Immediate,
+            jitterSnapshots = reconnect,
+            jitterPull = reconnect,
         )
     }
 
@@ -680,6 +682,14 @@ internal class RaftSharedStoreProvider private constructor(
                 ),
             isCurrent = { scope -> currentSyncScope(scope.serverId) == scope },
             snapshotJitterDelay = { delay(reconnectRefetchJitterMillis(kotlin.random.Random.Default)) },
+            pullJitterDelay = {
+                delay(
+                    reconnectRefetchJitterMillis(
+                        kotlin.random.Random.Default,
+                        maxMillis = SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS
+                    )
+                )
+            },
             logger = sharedInfoLogger("SlockSync", "sync_changes"),
         )
     }
@@ -705,11 +715,16 @@ internal class RaftSharedStoreProvider private constructor(
      * has selected (other servers keep their summary fetch) and `mobile_sync_changes_v0` is on.
      * Triggers: socket (re)connect, foreground return, server select. False when skipped.
      */
-    internal fun requestSyncChangesPull(serverId: String, trigger: String, jitterSnapshots: Boolean = false): Boolean {
+    internal fun requestSyncChangesPull(
+        serverId: String,
+        trigger: String,
+        jitterSnapshots: Boolean = false,
+        jitterPull: Boolean = false,
+    ): Boolean {
         val scope = currentSyncScope(serverId) ?: return false
         if (scopesForServer(scope.serverId).isEmpty()) return false
         if (!syncChangesEnabled(scope)) return false
-        threadSendScope.launch { syncChangesEngine.pull(scope, trigger, jitterSnapshots) }
+        threadSendScope.launch { syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull) }
         return true
     }
 
