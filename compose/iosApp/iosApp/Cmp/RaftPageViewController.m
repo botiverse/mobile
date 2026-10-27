@@ -412,8 +412,14 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     if (!_raftAdaptivePanePublishingActive) {
         return;
     }
-    UIWindow *window = self.view.window ?: RaftPageCurrentKeyWindow();
-    CGSize size = window != nil ? window.bounds.size : self.view.bounds.size;
+    // Only this page's own window: the key window can belong to another Raft scene (Split View,
+    // two windows, iPhone Duo), whose size would drive this page's layout. The next layout pass in
+    // a window publishes.
+    UIWindow *window = self.viewIfLoaded.window;
+    if (window == nil) {
+        return;
+    }
+    CGSize size = window.bounds.size;
     CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
     NSDictionary *payload =
         [_raftAdaptivePanePublisher nextPayloadWithWidthPoints:size.width

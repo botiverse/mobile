@@ -159,6 +159,9 @@ final class RaftIosMobileOAuthHost: NSObject,
     private var session: ASWebAuthenticationSession?
     private var appleAuthorizationController: ASAuthorizationController?
     private weak var presentationWindow: UIWindow?
+    /// The window the last sign-in was presented over; kept after it ends so a follow-up notice
+    /// appears in the same scene (another Raft window in Split View or on the iPhone Duo).
+    private weak var lastRequestingWindow: UIWindow?
     private var pendingStartGeneration: String?
     private var activeGeneration: String?
     private var activeAppleGeneration: String?
@@ -185,12 +188,16 @@ final class RaftIosMobileOAuthHost: NSObject,
         }
     }
 
-    @objc(startWithProvider:mode:completion:)
+    /// [presentingWindow]: the requesting page's window (its scene presents the sign-in); nil
+    /// falls back to a foreground-active scene's window.
+    @objc(startWithProvider:mode:presentingWindow:completion:)
     func start(
         provider: String,
         mode: String,
+        presentingWindow: UIWindow?,
         completion: @escaping (NSDictionary) -> Void
     ) {
+        weak var requestingWindow = presentingWindow
         runOnMain { [weak self] in
             guard let self else { return }
             let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -243,7 +250,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                             ))
                             return
                         }
-                        guard let anchor = self.currentPresentationWindow() else {
+                        guard let anchor = self.resolvePresentationWindow(preferring: requestingWindow) else {
                             self.cancelPending(generation: generation, error: "provider_failed", applyRoute: false)
                             completion(self.startError(
                                 code: "ios_mobile_oauth_window_unavailable",
@@ -260,6 +267,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                         controller.delegate = self
                         controller.presentationContextProvider = self
                         self.presentationWindow = anchor
+                        self.lastRequestingWindow = anchor
                         self.activeAppleGeneration = generation
                         self.appleAuthorizationController = controller
                         controller.performRequests()
@@ -286,7 +294,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                         ))
                         return
                     }
-                    guard let anchor = self.currentPresentationWindow() else {
+                    guard let anchor = self.resolvePresentationWindow(preferring: requestingWindow) else {
                         self.cancelPending(generation: generation, error: "browser_failed", applyRoute: false)
                         completion(self.startError(
                             code: "ios_mobile_oauth_window_unavailable",
@@ -334,6 +342,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                     authSession.presentationContextProvider = self
                     authSession.prefersEphemeralWebBrowserSession = false
                     self.presentationWindow = anchor
+                    self.lastRequestingWindow = anchor
                     self.activeGeneration = generation
                     self.session = authSession
                     guard authSession.start() else {
@@ -406,8 +415,10 @@ final class RaftIosMobileOAuthHost: NSObject,
     }
 
     /// Opens the web login page in an auth session; its callback goes to the shared coordinator.
-    @objc(openAppLoginWithUrl:completion:)
-    func openAppLogin(url: String, completion: @escaping (NSDictionary) -> Void) {
+    /// [presentingWindow] as in [start].
+    @objc(openAppLoginWithUrl:presentingWindow:completion:)
+    func openAppLogin(url: String, presentingWindow: UIWindow?, completion: @escaping (NSDictionary) -> Void) {
+        weak var requestingWindow = presentingWindow
         runOnMain { [weak self] in
             guard let self else { return }
             guard
@@ -418,7 +429,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                 completion(self.startError(code: "settings_mobile_oauth_url_invalid", message: "Unable to open web sign-in."))
                 return
             }
-            guard let anchor = self.currentPresentationWindow() else {
+            guard let anchor = self.resolvePresentationWindow(preferring: requestingWindow) else {
                 completion(self.startError(code: "settings_mobile_oauth_browser_failed", message: "Unable to open web sign-in."))
                 return
             }
@@ -451,6 +462,7 @@ final class RaftIosMobileOAuthHost: NSObject,
             authSession.presentationContextProvider = self
             authSession.prefersEphemeralWebBrowserSession = false
             self.presentationWindow = anchor
+            self.lastRequestingWindow = anchor
             self.activeGeneration = generation
             self.session = authSession
             guard authSession.start() else {
@@ -492,11 +504,11 @@ final class RaftIosMobileOAuthHost: NSObject,
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+        presentationWindow ?? currentPresentationWindow() ?? sceneFallbackAnchor()
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        presentationWindow ?? currentPresentationWindow() ?? UIWindow(frame: UIScreen.main.bounds)
+        presentationWindow ?? currentPresentationWindow() ?? sceneFallbackAnchor()
     }
 
     func authorizationController(
@@ -867,6 +879,34 @@ final class RaftIosMobileOAuthHost: NSObject,
         ["status": "error", "code": code, "message": message]
     }
 
+    /// The window to present sign-in over: the requesting page's window while its scene is in the
+    /// foreground, else [currentPresentationWindow]. Never a detached screen-sized window: one
+    /// screen is not one window (Split View, several Raft scenes, the iPhone Duo's two displays).
+    private func resolvePresentationWindow(preferring requested: UIWindow?) -> UIWindow? {
+        if let requested, let scene = requested.windowScene,
+           scene.activationState == .foregroundActive || scene.activationState == .foregroundInactive {
+            return requested
+        }
+        return currentPresentationWindow()
+    }
+
+    /// Last resort for the non-optional anchor (no foreground scene has a window; the sign-in was
+    /// started over a window that is gone): a window of a connected scene, or a new one created
+    /// in that scene. A window with no scene only when the app has no window scene at all.
+    private func sceneFallbackAnchor() -> ASPresentationAnchor {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first(where: { $0.activationState == .foregroundActive })
+            ?? scenes.first(where: { $0.activationState == .foregroundInactive })
+            ?? scenes.first
+        RaftIosDiagnosticsRecord(
+            "warn",
+            "SlockIosOAuth",
+            "oauth_anchor_fallback scene=\(scene == nil ? "none" : "connected")"
+        )
+        guard let scene else { return ASPresentationAnchor() }
+        return scene.windows.first ?? UIWindow(windowScene: scene)
+    }
+
     private func currentPresentationWindow() -> UIWindow? {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -881,7 +921,9 @@ final class RaftIosMobileOAuthHost: NSObject,
     }
 
     private static func topViewController() -> UIViewController? {
-        guard let root = shared.currentPresentationWindow()?.rootViewController else { return nil }
+        let window = shared.lastRequestingWindow.flatMap { shared.resolvePresentationWindow(preferring: $0) }
+            ?? shared.currentPresentationWindow()
+        guard let root = window?.rootViewController else { return nil }
         var current = root
         while let presented = current.presentedViewController {
             current = presented
