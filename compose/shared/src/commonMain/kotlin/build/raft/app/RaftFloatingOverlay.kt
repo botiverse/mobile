@@ -282,21 +282,44 @@ private fun RaftFloatingOverlayDismissBarrier(
             .raftNativeDispatchCapture()
             .pointerInput(dismissClickableActive) {
                 awaitEachGesture {
-                    var moved = false
+                    val tap = RaftOutsideTapTracker()
                     while (true) {
                         val event = awaitPointerEvent()
-                        event.changes.forEach { change ->
-                            moved = moved || change.positionChanged()
-                            change.consume()
-                        }
-                        if (event.changes.all { !it.pressed }) break
-                    }
-                    if (dismissClickableActive && !moved) {
-                        currentOnDismiss()
+                        event.changes.forEach { it.consume() }
+                        val dismiss =
+                            tap.onEvent(
+                                anyPressed = event.changes.any { it.pressed },
+                                moved = event.changes.any { it.positionChanged() },
+                            ) ?: continue
+                        if (dismiss && dismissClickableActive) currentOnDismiss()
+                        break
                     }
                 }
             }
     )
+}
+
+/**
+ * One outside gesture on the dismiss barrier: a press and its release without movement is a tap
+ * that dismisses. Only a press starts a gesture. A mouse also sends hover events (enter, move,
+ * exit) with no button down: the barrier appearing under the pointer sends an enter at once, and
+ * counting that "release" as a tap closed a click-opened popover the moment it opened (desktop,
+ * the thread followers popover). Touch input always starts with the press, so it is unchanged.
+ */
+internal class RaftOutsideTapTracker {
+    private var down = false
+    private var moved = false
+
+    /** Feeds one pointer event; null while the gesture goes on, else whether it was a dismissing tap. */
+    fun onEvent(anyPressed: Boolean, moved: Boolean): Boolean? {
+        if (!down) {
+            if (!anyPressed) return false
+            down = true
+            return null
+        }
+        this.moved = this.moved || moved
+        return if (anyPressed) null else !this.moved
+    }
 }
 
 private const val RaftFloatingOverlayTouchGuardAlpha = 0.01f
