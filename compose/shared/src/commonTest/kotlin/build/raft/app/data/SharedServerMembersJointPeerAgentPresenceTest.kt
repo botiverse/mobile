@@ -7,6 +7,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -483,6 +485,95 @@ class SharedServerMembersJointPeerAgentPresenceTest {
         assertEquals(1, store.channelPeerPresenceTransportScopesForTest().size)
         store.retireAccountData()
         assertTrue(store.channelPeerPresenceTransportScopesForTest().isEmpty())
+    }
+
+    // --- botiverse/slock #11201: a joint channel's external peer agents (agent:seen + roster lastSeenAt) ---
+
+    /** Real `GET /channels/:id/members` row for an external agent since #11201 (routes/channels.ts). */
+    private fun externalPeerJson(lastSeenAt: String?, activity: String? = "offline"): String =
+        buildString {
+            append("""{"id":"peer-ext","serverId":"server-2","name":"peer-ext","displayName":"peer-ext",""")
+            append(""""status":"active","runtime":"external","external":true""")
+            append(""","lastSeenAt":${lastSeenAt?.let { "\"$it\"" } ?: "null"}""")
+            if (activity != null) append(""","activity":"$activity","activityDetail":""""")
+            append("}")
+        }
+
+    private fun realtime(event: String, json: String): MemberPresenceUpdated =
+        assertIs(RealtimeEventMapper().map(event, json))
+
+    private fun seen(at: String) =
+        realtime(RealtimeSocketEvents.AgentSeen, """{"agentId":"peer-ext","lastSeenAt":"$at"}""")
+
+    @Test
+    fun externalPeerAgentPresenceFollowsRosterThenAgentSeenPastActivity() = runBlocking {
+        val (registry, _, store) = fixture(body(externalPeerJson("2026-10-25T10:00:00.000Z")))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+        store.loadChannelMembers(serverId, channelId)
+
+        val fromRoster = store.memberStatusFlow(serverId, "peer-ext").first()
+        assertEquals(true, fromRoster?.external)
+        assertEquals("2026-10-25T10:00:00.000Z", fromRoster?.lastSeenAt)
+
+        // agent:activity (seq-carrying) lands first, then agent:seen pushes to the projection room.
+        registry.apply(
+            owner,
+            realtime(RealtimeSocketEvents.AgentActivity, """{"agentId":"peer-ext","activity":"working","detail":"Run","serverSeq":7}"""),
+            registry.writeGeneration,
+            transport1
+        )
+        registry.apply(owner, seen("2026-10-25T10:05:00.000Z"), registry.writeGeneration, transport1)
+
+        val live = store.memberStatusFlow(serverId, "peer-ext").first()
+        assertEquals("2026-10-25T10:05:00.000Z", live?.lastSeenAt, "agent:seen after agent:activity must land")
+        assertEquals(AgentStatus.Working, live?.status, "agent:seen keeps the activity status")
+        assertEquals(7L, registry.factFor(owner, "peer-ext")?.serverSeq, "seq watermark survives the merge")
+
+        // Forward only (web applyAgentSeen): an older push changes nothing.
+        registry.apply(owner, seen("2026-10-25T10:01:00.000Z"), registry.writeGeneration, transport1)
+        assertEquals("2026-10-25T10:05:00.000Z", store.memberStatusFlow(serverId, "peer-ext").first()?.lastSeenAt)
+        // The kept watermark still rejects an older agent:activity.
+        registry.apply(
+            owner,
+            realtime(RealtimeSocketEvents.AgentActivity, """{"agentId":"peer-ext","activity":"offline","serverSeq":6}"""),
+            registry.writeGeneration,
+            transport1
+        )
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-ext")?.agentStatus)
+    }
+
+    @Test
+    fun externalPeerAgentKeepsLastSeenAtThroughRebaselineAndRefetchesIt() = runBlocking {
+        val (registry, repo, store) = fixture(body(externalPeerJson("2026-10-25T10:00:00.000Z", activity = null)))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+        store.loadChannelMembers(serverId, channelId)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+
+        // No fact (rebaselined / never written): the neutral status keeps the timestamp.
+        val neutralExternal = store.memberStatusFlow(serverId, "peer-ext").first()
+        assertEquals("—", neutralExternal?.statusLabel)
+        assertEquals(true, neutralExternal?.external)
+        assertEquals("2026-10-25T10:00:00.000Z", neutralExternal?.lastSeenAt)
+
+        // Reconnect: the slice is refetched (pushes were missed) though the row had no live activity.
+        repo.body = body(externalPeerJson("2026-10-25T10:09:00.000Z", activity = null))
+        store.refreshPeerAgentChannelPresence(serverId, transport2, reason = "test_reconnect")
+
+        assertEquals(2, repo.fetches)
+        assertEquals("2026-10-25T10:09:00.000Z", store.memberStatusFlow(serverId, "peer-ext").first()?.lastSeenAt)
+    }
+
+    @Test
+    fun agentSeenWithoutPriorFactStillCreatesOne() {
+        val registry = ProcessMemberPresenceRegistry()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+
+        registry.apply(owner, seen("2026-10-25T10:05:00.000Z"), registry.writeGeneration, transport1)
+
+        val fact = registry.factFor(owner, "peer-ext")
+        assertEquals("2026-10-25T10:05:00.000Z", fact?.lastSeenAt)
+        assertEquals(Presence.Active, fact?.presence)
+        assertNull(fact?.serverSeq)
     }
 
     private fun peerPresence(status: AgentStatus, serverSeq: Long) =

@@ -1039,7 +1039,11 @@ class SharedServerMembersStore internal constructor(
                 status = null,
                 presence = Presence.Offline,
                 statusLabel = "—",
-                external = member?.isExternal == true
+                external = member?.isExternal == true,
+                // An external agent's presence is its credential's last use, a timestamp rather
+                // than a pre-connect status, so it survives the rebaseline (web never resets it).
+                // A joint channel's peer external agent may have no live-activity fact to wait for.
+                lastSeenAt = member?.lastSeenAt?.takeIf { member.isExternal && it.isNotBlank() }
             )
         } else {
             applySeedOnlyOfflinePolicy(
@@ -2463,7 +2467,7 @@ class SharedServerMembersStore internal constructor(
     ) {
         val channelIds =
             currentOwnerChannelMemberSlices(ServerId(serverKey))
-                .filter { slice -> slice.hasPeerServerLiveActivityAgents(serverKey) }
+                .filter { slice -> slice.hasPeerServerPresenceAgents(serverKey) }
                 .map { it.channelId }
                 .distinct()
         for (channelId in channelIds) {
@@ -2873,7 +2877,7 @@ class SharedServerMembersStore internal constructor(
         if (slice.ownerWriteGeneration != ownerWriteGeneration) return null
         if (slice.status != SharedServerMembersLoadStatus.Loaded) return null
         if (
-            slice.hasPeerServerLiveActivityAgents(scope.serverId) &&
+            slice.hasPeerServerPresenceAgents(scope.serverId) &&
             channelPeerPresenceTransports[scope] != currentPresenceTransport(ServerId(scope.serverId))
         ) {
             // The peer-agent facts this slice wrote belong to a retired transport.
@@ -3637,9 +3641,22 @@ private fun MemberProfile.isPeerServerLiveActivityAgent(
     return id.value.trim() in liveActivityAgentIds
 }
 
-private fun SharedServerChannelMembersSlice.hasPeerServerLiveActivityAgents(serverId: String): Boolean =
-    liveActivityAgentIds.isNotEmpty() &&
-        members.any { it.isPeerServerLiveActivityAgent(serverId, liveActivityAgentIds) }
+/** An external agent of a peer server (joint channel): its presence is the row's `lastSeenAt`. */
+private fun MemberProfile.isPeerServerExternalAgent(serverId: String): Boolean {
+    if (kind != MemberKind.Agent || !isExternal || !agentDeletedAt.isNullOrBlank()) return false
+    val sourceServerId = this.serverId?.value?.trim().orEmpty()
+    return sourceServerId.isNotEmpty() && sourceServerId != serverId.trim()
+}
+
+/**
+ * Slices whose peer-agent presence only a refetch repairs after a reconnect: live-activity peer
+ * agents (their facts were rebaselined away) and peer external agents (`agent:seen` pushes missed
+ * while disconnected; the roster's `lastSeenAt` catches up, botiverse/slock #11201).
+ */
+private fun SharedServerChannelMembersSlice.hasPeerServerPresenceAgents(serverId: String): Boolean =
+    members.any {
+        it.isPeerServerLiveActivityAgent(serverId, liveActivityAgentIds) || it.isPeerServerExternalAgent(serverId)
+    }
 
 private fun ProcessPresenceWrite.toChannelMembersOwnerBinding(): SharedServerChannelMembersOwnerBinding? {
     val environmentId = owner.environmentId.normalizedChannelMembersEnvironmentId() ?: return null
