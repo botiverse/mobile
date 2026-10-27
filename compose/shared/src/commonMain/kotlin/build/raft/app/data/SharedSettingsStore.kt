@@ -2506,6 +2506,8 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.SetServerMute -> {
                 if (serverNotificationModeMutation != null) return
+                val shownMute = (_state.value.mobile as? ScreenLoadState.Content)?.data?.muteServer
+                if (shownMute != null && !shownMute.available) return
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
@@ -3374,6 +3376,8 @@ class SharedSettingsStore(
             return
         }
         val current = (_state.value.mobile as? ScreenLoadState.Content)?.data ?: return
+        // Unknown or last-known-only (fetch failed): the live value is not on screen, so it cannot be changed.
+        if (!current.serverNotificationMode.available) return
         if (current.serverNotificationMode.selectedKey == selectedMode.wireName) return
         if (_state.value.actionState?.let { it.action == MOBILE_ACTION_SERVER_MUTE && it.inProgress } == true) return
 
@@ -3528,8 +3532,7 @@ class SharedSettingsStore(
                                         available = false,
                                         statusLabel = "Unavailable"
                                     ),
-                                serverNotificationMode =
-                                    ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false)
+                                serverNotificationMode = unknownServerNotificationModeSelectionSnapshot()
                             )
                         )
                     } else {

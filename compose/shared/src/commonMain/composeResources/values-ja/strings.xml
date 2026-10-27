@@ -2039,6 +2039,7 @@
     <string name="settings_notifications_mode_mentions_detail">メッセージがあなたを直接メンションしたときのみ通知します（展開されたグループメンションを含む）。</string>
     <string name="settings_notifications_mode_none">通知しない</string>
     <string name="settings_notifications_mode_none_detail">メンションであっても、このワークスペースからプッシュ通知を送信しません。</string>
+    <string name="settings_notifications_mode_unavailable">ワークスペースの通知設定を読み込めませんでした。読み込み後に変更できます。</string>
     <string name="settings_computers_loading">コンピューターを読み込み中</string>
     <string name="settings_computers_loading_detail">このサーバーから接続済みのマシンを取得しています。</string>
     <string name="settings_computers_error_load">コンピューターを読み込めませんでした</string>

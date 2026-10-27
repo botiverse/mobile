@@ -1048,7 +1048,13 @@ class SharedSettingsStoreTest {
     @Test
     fun mobileServerNotificationModeIntentUsesSettingsRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val repository =
+            FakeSettingsRepository(
+                mobileResult =
+                    DataResult.Content(
+                        mobileSnapshot().copy(serverNotificationMode = ServerPushMode.All.toSettingsMobileSelectionSnapshot())
+                    )
+            )
         val store =
             SharedSettingsStore(
                 dataSource =
@@ -1062,7 +1068,9 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
+        // The only caller is the Notifications page (server-backed snapshot); Mobile shows the local-only copy.
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
         store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -1128,6 +1136,30 @@ class SharedSettingsStoreTest {
         override fun putString(key: String, value: String?) {
             if (value == null) values.remove(key) else values[key] = value
         }
+    }
+
+    @Test
+    fun unavailableServerNotificationModeCannotBeChanged() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            mobileSnapshot().let { snapshot ->
+                snapshot.copy(
+                    muteServer = snapshot.muteServer.copy(enabled = false, available = false, statusLabel = "Unavailable"),
+                    serverNotificationMode = unknownServerNotificationModeSelectionSnapshot(),
+                )
+            }
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(initial))
+        val store = settingsStore(repository, scope = scope)
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.None.wireName))
+        store.accept(SharedSettingsIntent.SetServerMute(true))
+
+        assertEquals(emptyList(), repository.calls)
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals("", mobile.serverNotificationMode.selectedKey)
+        scope.cancel()
     }
 
     @Test
@@ -1303,7 +1335,7 @@ class SharedSettingsStoreTest {
         yield()
 
         mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals("", mobile.serverNotificationMode.selectedKey)
         assertEquals(false, mobile.serverNotificationMode.available)
         assertEquals(false, mobile.muteServer.available)
         assertNull(store.state.value.actionState)
@@ -1362,7 +1394,7 @@ class SharedSettingsStoreTest {
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(SharedSettingsDestination.Mobile, store.state.value.route.destination)
-        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals("", mobile.serverNotificationMode.selectedKey)
         assertEquals(false, mobile.serverNotificationMode.available)
         assertNull(store.state.value.actionState)
         assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
@@ -1399,7 +1431,7 @@ class SharedSettingsStoreTest {
         mutation.join()
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals("", mobile.serverNotificationMode.selectedKey)
         assertEquals(false, mobile.serverNotificationMode.available)
         assertNull(store.state.value.actionState)
         scope.cancel()

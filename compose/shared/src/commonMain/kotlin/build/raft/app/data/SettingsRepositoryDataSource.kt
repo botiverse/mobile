@@ -298,6 +298,11 @@ class RealSettingsRepository(
     private val warningLogger: (String) -> Unit = {},
     private val channelRepository: ChannelRepository? = null,
     private val onAppearanceSnapshot: suspend (ownerId: String, snapshot: SettingsAppearanceSnapshot) -> Unit = { _, _ -> },
+    /**
+     * Durable last-known workspace notification preference per (user, server). Null only for repositories
+     * that never serve the notification settings screen (sidebar order, members, thread pages).
+     */
+    private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
 
@@ -1352,13 +1357,20 @@ class RealSettingsRepository(
     }
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
-        sessionStore.readSession() ?: return authRequired()
+        val session = sessionStore.readSession() ?: return authRequired()
+        val serverId = session.currentServerId
         val serverNotificationPreferences =
-            selectedServerId()?.let { serverId ->
-                fetchServerNotificationPreferences(serverId)
-            } ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        val serverNotificationMode =
-            (serverNotificationPreferences as? DataResult.Content)?.data?.mode ?: ServerPushMode.All
+            serverId?.let { fetchServerNotificationPreferences(session.user.id, it) }
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val live = serverNotificationPreferences is DataResult.Content
+        // Shown value: the live answer, else this user's last-known copy for this server. Never a default:
+        // with neither, the mode is unknown and both controls stay unavailable (no value to flip).
+        val shownPreferences =
+            (serverNotificationPreferences as? DataResult.Content)?.data
+                ?: serverId
+                    ?.takeIf { serverNotificationPreferences !is DataResult.NoPermission }
+                    ?.let { serverNotificationLastKnownStore?.read(session.user.id, it) }
+        val serverNotificationMode = shownPreferences?.mode
         return DataResult.Content(
             SettingsMobileSnapshot(
                 pushNotifications = SettingsMobileToggleSnapshot(
@@ -1369,12 +1381,12 @@ class RealSettingsRepository(
                 ),
                 muteServer = SettingsMobileToggleSnapshot(
                     enabled = serverNotificationMode == ServerPushMode.None,
-                    available = serverNotificationPreferences is DataResult.Content,
+                    available = live,
                     statusLabel =
-                        if (serverNotificationMode == ServerPushMode.None) {
-                            "Muted"
-                        } else {
-                            "Not muted"
+                        when (serverNotificationMode) {
+                            null -> "Unavailable"
+                            ServerPushMode.None -> "Muted"
+                            else -> "Not muted"
                         },
                     detail =
                         when (serverNotificationPreferences) {
@@ -1386,14 +1398,11 @@ class RealSettingsRepository(
                     errorPresentation = serverNotificationPreferences.errorPresentationOrNull()
                 ),
                 serverNotificationMode =
-                    serverNotificationMode.toSettingsMobileSelectionSnapshot(
-                        available = serverNotificationPreferences is DataResult.Content,
-                        mentionsSupported =
-                            (serverNotificationPreferences as? DataResult.Content)
-                                ?.data
-                                ?.canonicalModeSupported == true,
+                    serverNotificationMode?.toSettingsMobileSelectionSnapshot(
+                        available = live,
+                        mentionsSupported = shownPreferences.canonicalModeSupported,
                         detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
-                    ),
+                    ) ?: unknownServerNotificationModeSelectionSnapshot(),
                 sendTestEnabled = true
             )
         )
@@ -1478,8 +1487,10 @@ class RealSettingsRepository(
     }
 
     override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {
-        val serverId = selectedServerId() ?: return serverRequired()
-        val current = fetchServerNotificationPreferences(serverId)
+        val session = sessionStore.readSession() ?: return authRequired()
+        val serverId = session.currentServerId ?: return serverRequired()
+        // Writes always start from the live value, never the last-known copy: offline the write fails here.
+        val current = fetchServerNotificationPreferences(session.user.id, serverId)
         val preferences = (current as? DataResult.Content)?.data
             ?: return when (current) {
                 is DataResult.Empty -> current
@@ -1499,7 +1510,10 @@ class RealSettingsRepository(
                 canonicalModeSupported = preferences.canonicalModeSupported
             )
         ) {
-            is DataResult.Content -> getMobileSettings()
+            is DataResult.Content -> {
+                serverNotificationLastKnownStore?.write(session.user.id, serverId, result.data)
+                getMobileSettings()
+            }
             is DataResult.Empty -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -2072,7 +2086,10 @@ class RealSettingsRepository(
         }
     }
 
-    private suspend fun fetchServerNotificationPreferences(serverId: String): DataResult<SettingsServerNotificationPreferences> =
+    private suspend fun fetchServerNotificationPreferences(
+        userId: String,
+        serverId: String,
+    ): DataResult<SettingsServerNotificationPreferences> =
         executeTypedSettings(
             source = "settings_server_notification_settings",
             contractCode = "settings_server_notification_settings_contract_mismatch",
@@ -2082,7 +2099,11 @@ class RealSettingsRepository(
                 parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
             }
-        )
+        ).also { result ->
+            (result as? DataResult.Content)?.data?.let { preferences ->
+                serverNotificationLastKnownStore?.write(userId, serverId, preferences)
+            }
+        }
 
     private suspend fun settingsUpdateServerProfile(
         serverId: String,

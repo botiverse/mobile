@@ -423,6 +423,8 @@ internal class RaftSharedStoreProvider private constructor(
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
+    /** Last-known workspace notification preference per (user, server); cleared with the other copies. */
+    val settingsServerNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(sharedPreferenceStore)
     private val homeRowHintPersistSlice =
         createSharedHomeRowHintPersistSlice(
             storage = homeRowHintPersistStorage,
@@ -1090,6 +1092,8 @@ internal class RaftSharedStoreProvider private constructor(
                     // too: same lifetime (web lastCounts logout clear). The Activity badge counts
                     // leave through activityUnreadSummaryStore.invalidateAll on AuthSessionEvent.Cleared.
                     SharedActivityPersistStorage(sharedPreferenceStore).clearAll()
+                    // Workspace notification preferences are the viewer's last-known settings: same lifetime.
+                    settingsServerNotificationLastKnownStore.clearAll()
                     // Avatar references are account-visible directory data: same lifetime.
                     memberAvatarRefStore.clearAll()
                     // Durable rosters (data-layer plan step 3): same lifetime; the epoch bump inside

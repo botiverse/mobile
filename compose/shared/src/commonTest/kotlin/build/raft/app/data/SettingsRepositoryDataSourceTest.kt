@@ -721,6 +721,98 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun serverNotificationPreferencesArePersistedOnFetchAndUpdate() = runBlocking {
+        val preferences = SyncTestPreferences()
+        val lastKnown = SettingsServerNotificationLastKnownStore(preferences)
+        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true,"serverPushMode":"none"}""")
+        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
+
+        assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings())
+        assertEquals(ServerPushMode.None, lastKnown.read("user-1", "server-1")?.mode)
+        assertEquals(true, lastKnown.read("user-1", "server-1")?.canonicalModeSupported)
+
+        assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.setServerNotificationMode(ServerPushMode.Mentions))
+        assertEquals(ServerPushMode.Mentions, lastKnown.read("user-1", "server-1")?.mode)
+        // A fresh store over the same durable preferences reads the same value (survives process death).
+        assertEquals(ServerPushMode.Mentions, SettingsServerNotificationLastKnownStore(preferences).read("user-1", "server-1")?.mode)
+    }
+
+    @Test
+    fun failedServerNotificationFetchShowsStoredMutedReadOnly() = runBlocking {
+        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
+        RealSettingsRepository(
+            sampleStore(),
+            FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true}"""),
+            serverNotificationLastKnownStore = lastKnown,
+        ).getMobileSettings()
+        val offline = FakeSettingsNetworkClient(responseCode = 503)
+        val repository = RealSettingsRepository(sampleStore(), offline, serverNotificationLastKnownStore = lastKnown)
+
+        val mobile = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
+
+        assertTrue(mobile.muteServer.enabled)
+        assertEquals("Muted", mobile.muteServer.statusLabel)
+        assertFalse(mobile.muteServer.available)
+        assertEquals(ServerPushMode.None.wireName, mobile.serverNotificationMode.selectedKey)
+        assertFalse(mobile.serverNotificationMode.available)
+        // The stored copy came from a legacy (mute-only) server: Mentions stays hidden.
+        assertEquals(listOf("all", "none"), mobile.serverNotificationMode.options.map { it.key })
+    }
+
+    @Test
+    fun failedServerNotificationFetchWithNothingStoredIsUnknownNotAll() = runBlocking {
+        val offline = FakeSettingsNetworkClient(responseCode = 503)
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                offline,
+                serverNotificationLastKnownStore = SettingsServerNotificationLastKnownStore(SyncTestPreferences()),
+            )
+
+        val mobile = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
+
+        assertEquals("", mobile.serverNotificationMode.selectedKey)
+        assertFalse(mobile.serverNotificationMode.available)
+        assertFalse(mobile.muteServer.enabled)
+        assertFalse(mobile.muteServer.available)
+        assertEquals("Unavailable", mobile.muteServer.statusLabel)
+        // A write while unknown never reaches the server.
+        assertIs<DataResult.Error>(repository.setServerNotificationMode(ServerPushMode.None))
+        assertTrue(offline.notificationSettingsBodies.isEmpty())
+    }
+
+    @Test
+    fun storedServerNotificationPreferencesDoNotLeakAcrossUsersOrServers() = runBlocking {
+        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
+        RealSettingsRepository(
+            sampleStore(),
+            FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true}"""),
+            serverNotificationLastKnownStore = lastKnown,
+        ).getMobileSettings()
+        assertEquals(ServerPushMode.None, lastKnown.read("user-1", "server-1")?.mode)
+
+        val otherUser = sampleSession().let { it.copy(user = it.user.copy(id = "user-2")) }
+        val otherServer = sampleSession().copy(selectedServerId = "server-2")
+        listOf(otherUser, otherServer).forEach { session ->
+            val mobile =
+                assertIs<DataResult.Content<SettingsMobileSnapshot>>(
+                    RealSettingsRepository(
+                        sampleStore(session),
+                        FakeSettingsNetworkClient(responseCode = 503),
+                        serverNotificationLastKnownStore = lastKnown,
+                    ).getMobileSettings()
+                ).data
+            assertEquals("", mobile.serverNotificationMode.selectedKey)
+            assertFalse(mobile.muteServer.enabled)
+        }
+        assertNull(lastKnown.read("user-2", "server-1"))
+        assertNull(lastKnown.read("user-1", "server-2"))
+
+        lastKnown.clearAll()
+        assertNull(lastKnown.read("user-1", "server-1"))
+    }
+
+    @Test
     fun legacyServerKeepsAllAndNoneButDoesNotExposeMentions() = runBlocking {
         val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
         val repository = RealSettingsRepository(sampleStore(), network)
