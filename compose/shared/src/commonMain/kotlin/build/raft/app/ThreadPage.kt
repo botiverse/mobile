@@ -384,6 +384,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -25862,6 +25863,14 @@ private fun ThreadMessageCardContent(
                                 onShowActions(anchor)
                                 onLongPressMenuOpened()
                             },
+                            // Double tap opens the message's thread wherever a row may open it (not
+                            // inside a thread, not while sharing or sending): artin, #proj-raft-ui:911ccc08.
+                            onDoubleTap =
+                                if (threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, message.hasLocalSendState())) {
+                                    { onOpenThread(message.id) }
+                                } else {
+                                    null
+                                },
                             onInputReady = onLongPressInputReady,
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
@@ -28103,7 +28112,8 @@ internal fun Modifier.threadMessageLongPressActions(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onInputReady: ((String) -> Unit)? = null,
     deferLongPressAt: ((Offset) -> Boolean)? = null,
-    onPointerDown: ((Offset) -> Unit)? = null
+    onPointerDown: ((Offset) -> Unit)? = null,
+    onDoubleTap: (() -> Unit)? = null
 ): Modifier {
     SideEffect {
         gestureOwner.updateCallbacks(
@@ -28115,7 +28125,8 @@ internal fun Modifier.threadMessageLongPressActions(
                 onShowActions = onShowActions,
                 onInputReady = onInputReady,
                 deferLongPressAt = deferLongPressAt,
-                onPointerDown = onPointerDown
+                onPointerDown = onPointerDown,
+                onDoubleTap = onDoubleTap
             )
         )
     }
@@ -28133,6 +28144,10 @@ internal fun Modifier.threadMessageLongPressActions(
                 val compositionLease =
                     gestureOwner.captureActiveLease() ?: return@awaitEachGesture
                 gestureOwner.callbacksSnapshot(compositionLease)?.onPointerDown?.invoke(down.position)
+                gestureOwner.lastDownFromTouch = down.type == PointerType.Touch
+                gestureOwner.lastDownUptimeMillis = down.uptimeMillis
+                gestureOwner.lastDownPosition = down.position
+                gestureOwner.doubleTapSlopPx = ThreadMessageDoubleTapSlop.toPx()
                 gestureOwner.tapMovementGate.begin(down.position, compositionLease)
                 do {
                     val event = awaitPointerEvent()
@@ -28192,9 +28207,26 @@ internal fun Modifier.threadMessageLongPressActions(
                             gestureOwner.callbacksSnapshot(compositionLease) ?: return@launch
                         val decision = gestureOwner.tapMovementGate.decision(gestureToken)
                         if (decision.allowed) {
-                            callbacks.onTap?.invoke()
-                        } else if (callbacks.onTap != null) {
-                            callbacks.onTapRejected(decision)
+                            val doubleTap =
+                                callbacks.onDoubleTap?.takeIf {
+                                    gestureOwner.lastDownFromTouch &&
+                                        callbacks.deferLongPressAt?.invoke(gestureOwner.lastDownPosition) != true &&
+                                        gestureOwner.doubleTapTracker.onTap(
+                                            gestureOwner.lastDownUptimeMillis,
+                                            gestureOwner.lastDownPosition,
+                                            gestureOwner.doubleTapSlopPx
+                                        )
+                                }
+                            if (doubleTap != null) {
+                                callbacks.diagnosticsLogger("thread_message_double_tap_open messageId=$messageId")
+                                doubleTap()
+                            } else {
+                                callbacks.onTap?.invoke()
+                            }
+                        } else {
+                            // A tap a child took (a link, a reaction) breaks a pending pair.
+                            gestureOwner.doubleTapTracker.reset()
+                            if (callbacks.onTap != null) callbacks.onTapRejected(decision)
                         }
                     }
                 },
@@ -28304,8 +28336,47 @@ internal data class ThreadMessageLongPressCallbacks(
     val onInputReady: ((String) -> Unit)? = null,
     // In-place text selection (New Message Menu toggle): body presses belong to the selection.
     val deferLongPressAt: ((Offset) -> Boolean)? = null,
-    val onPointerDown: ((Offset) -> Unit)? = null
+    val onPointerDown: ((Offset) -> Unit)? = null,
+    // Two quick finger taps on the row: open its thread (null where a double tap does nothing).
+    val onDoubleTap: (() -> Unit)? = null
 )
+
+/**
+ * Two finger taps on one message row within [ThreadMessageDoubleTapTimeoutMillis] and
+ * [ThreadMessageDoubleTapSlop] open its thread (artin; rules agreed with web, #proj-raft-ui:911ccc08).
+ * Detected by hand rather than with the detector's double tap, which would hold every single tap
+ * back by the timeout: the first tap runs as before, the second opens the thread instead of
+ * running the tap again. Only taps the row accepted count (a link, a button, a reaction or an
+ * image takes its own tap), only from a finger (a mouse double click selects a word), and the
+ * pair resets after a double tap so a third tap starts over.
+ */
+internal class ThreadMessageDoubleTapTracker {
+    private var lastUptimeMillis = -1L
+    private var lastPosition = Offset.Zero
+
+    /** Records an accepted tap; true when it completes a double tap with the previous one. */
+    fun onTap(uptimeMillis: Long, position: Offset, slopPx: Float): Boolean {
+        val previous = lastUptimeMillis
+        val isDouble =
+            previous >= 0 &&
+                uptimeMillis - previous in 0..ThreadMessageDoubleTapTimeoutMillis &&
+                (position - lastPosition).getDistance() <= slopPx
+        if (isDouble) {
+            lastUptimeMillis = -1L
+        } else {
+            lastUptimeMillis = uptimeMillis
+            lastPosition = position
+        }
+        return isDouble
+    }
+
+    fun reset() {
+        lastUptimeMillis = -1L
+    }
+}
+
+internal const val ThreadMessageDoubleTapTimeoutMillis = 300L
+internal val ThreadMessageDoubleTapSlop = 10.dp
 
 internal class ThreadMessageLongPressGestureOwner(
     val key: ThreadMessageLongPressGestureOwnerKey,
@@ -28314,6 +28385,13 @@ internal class ThreadMessageLongPressGestureOwner(
     val rootAnchor =
         RaftLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(key.messageId))
     val tapMovementGate = ThreadMessageTapMovementGate()
+    val doubleTapTracker = ThreadMessageDoubleTapTracker()
+
+    /** The current gesture's down: from a finger, when, where, and the slop in px (for the double tap). */
+    var lastDownFromTouch = false
+    var lastDownUptimeMillis = 0L
+    var lastDownPosition = Offset.Zero
+    var doubleTapSlopPx = 0f
 
     var pressed by mutableStateOf(false)
         private set
