@@ -1399,3 +1399,19 @@ selectSnapshotIds:
 SELECT id
 FROM localSnapshotEntity
 WHERE scope = ?;
+
+selectSnapshotWithTime:
+SELECT value, updatedAtMs
+FROM localSnapshotEntity
+WHERE scope = ?
+  AND id = ?
+LIMIT 1;
+
+selectSnapshotRowTimes:
+SELECT id, updatedAtMs
+FROM localSnapshotEntity
+WHERE scope = ?;
+
+deleteSnapshotScope:
+DELETE FROM localSnapshotEntity
+WHERE scope = ?;

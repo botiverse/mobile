@@ -398,6 +398,11 @@ internal class RaftSharedStoreProvider private constructor(
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
+    /**
+     * Offline-first resources (persistence audit item 4): every resource's durable rows, wiped once on
+     * auth-terminal cleanup and per server on lost access. New resources need no cleanup wiring.
+     */
+    internal val offlineResourceCache: RaftOfflineResourceCache,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val eventBus: RaftEventBusRelay,
@@ -1090,6 +1095,8 @@ internal class RaftSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     ProcessAttachmentAuthScopes.retireAccount()
                     homeSavedStateCache.clear()
+                    // Every offline resource (the Saved list, ...): one wipe for all of them, every account.
+                    offlineResourceCache.wipeAllAsync()
                     // Cached previews are message content: they leave with the session. Losing a
                     // successor's hints to a late terminal event only costs one cold-start hint.
                     homeRowHintPersistStorage.clearAll()
@@ -1185,6 +1192,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (allComputersStores().isEmpty()) computersDurableStore.evictServer(grant.serverId, lostAccountId)
                 jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
+                offlineResourceCache.wipeServer(grant.serverId, lostAccountId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -3046,6 +3054,12 @@ internal class RaftSharedStoreProvider private constructor(
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),
                     isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
+            val offlineResourceCache =
+                RaftOfflineResourceCache(
+                    rows = SqlDelightRaftOfflineResourceRows(database),
+                    environmentId = { apiEnvironmentStore.current().apiBaseUrl },
+                    logger = sharedInfoLogger("SlockOfflineResources", "offline_resources"),
+                )
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -3106,7 +3120,8 @@ internal class RaftSharedStoreProvider private constructor(
                         diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
                         failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
                     ),
-                homeSavedStateCache = SharedHomeSavedStateCache(),
+                homeSavedStateCache = SharedHomeSavedStateCache(offlineResourceCache.resource(SavedListResourceSpec)),
+                offlineResourceCache = offlineResourceCache,
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
