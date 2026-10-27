@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.MemberDetailIdentitySource
 import build.raft.app.memberDetailIdentityFromWire
@@ -454,7 +455,8 @@ internal fun ConversationSummary.toCanonicalConversationDirectoryProjection(
         ConversationKind.Joint -> toHomeChannelRow().toSharedConversationDirectoryProjection(serverId)
         ConversationKind.Thread,
         ConversationKind.Inbox,
-        ConversationKind.System -> null
+        ConversationKind.System,
+        ConversationKind.Task -> null
     }
 
 internal fun HomeSnapshot.toSharedConversationDirectoryState(
@@ -636,6 +638,9 @@ private fun InboxItem.toSharedConversationDirectoryProjections(
         } else {
             null
         }
+    // Task v2: a task conversation row proves its parent channel only; it is not a reply-thread
+    // projection (no parent message) and is opened by its own typed identity.
+    if (isTaskConversation) return listOfNotNull(parentProjection)
     val itemProjection = toSharedConversationDirectoryProjection(serverId, dmPeerNames)
     return listOfNotNull(parentProjection, itemProjection)
 }
@@ -850,6 +855,7 @@ private fun HomeConversationRow.toDirectoryChannelType(): String =
         ConversationKind.Joint -> "joint"
         ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: "channel"
         ConversationKind.DirectMessage -> "dm"
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
     }
@@ -872,6 +878,7 @@ private fun HomeConversationRow.toDirectoryConversationKind(): ConversationKind 
         ConversationKind.Thread -> ConversationKind.Thread
         ConversationKind.Joint -> ConversationKind.Joint
         ConversationKind.DirectMessage -> ConversationKind.DirectMessage
+        ConversationKind.Task -> ConversationKind.Task
         ConversationKind.Channel,
         ConversationKind.Inbox,
         ConversationKind.System -> ConversationKind.Channel
@@ -899,7 +906,8 @@ private fun HomeConversationRow.genericDisplayTitleFallback(): String =
         ConversationKind.Channel,
         ConversationKind.Joint,
         ConversationKind.Inbox,
-        ConversationKind.System -> "Channel"
+        ConversationKind.System,
+        ConversationKind.Task -> "Channel"
     }
 
 private fun HomeConversationRow.headerIdentityIds(): Set<String> =
@@ -914,6 +922,7 @@ private fun ConversationKind?.toDirectoryChannelType(): String =
         ConversationKind.DirectMessage -> toWireChannelKindOrNull() ?: "dm"
         ConversationKind.Joint -> toWireChannelKindOrNull() ?: "joint"
         ConversationKind.Thread -> "thread"
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         ConversationKind.Channel,
         ConversationKind.Inbox,
         ConversationKind.System,

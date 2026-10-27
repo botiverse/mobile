@@ -106,7 +106,24 @@ data class InboxItem(
     val unfollowedAt: String? = null,
     /** [InboxItemKind.Object] rows only: the object's row (workspace Artifacts). */
     val activityObject: ActivityObjectRow? = null,
+    /**
+     * Task v2: this [InboxItemKind.Thread] row is a task's own conversation (wire `kind: "task"`,
+     * slock `TaskConversationInboxItem`): [threadChannelId] is the reader's LOCAL conversation,
+     * `parentChannel*` the task's channel, and there is no parent message.
+     */
+    val taskConversation: InboxTaskConversation? = null,
 )
+
+/** The task a task-conversation Activity row belongs to (wire `taskId` / `taskTitle`). */
+@kotlinx.serialization.Serializable
+data class InboxTaskConversation(
+    val taskId: TaskId?,
+    val taskTitle: String?,
+)
+
+/** A task v2 conversation row (web `isTaskConversationItem`). */
+val InboxItem.isTaskConversation: Boolean
+    get() = taskConversation != null
 
 /**
  * The frontier a Done request names, chosen exactly like web

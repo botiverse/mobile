@@ -313,6 +313,17 @@ enum RaftIosPushHost {
         if let parentMessageId = stringValue("parentMessageId") {
             payload["slockNotificationParentMessageId"] = parentMessageId
         }
+        // Task v2 task-reply push (slock #11445): top-level custom keys next to `channelId`; shared
+        // `parseRaftTaskConversationPushTarget` decides the route.
+        if let taskConversationChannelId = stringValue("taskConversationChannelId") {
+            payload["slockNotificationTaskConversationChannelId"] = taskConversationChannelId
+            if let taskId = stringValue("taskId") {
+                payload["slockNotificationTaskId"] = taskId
+            }
+            if let taskMessageId = stringValue("taskMessageId") {
+                payload["slockNotificationTaskMessageId"] = taskMessageId
+            }
+        }
         let category =
             categoryIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
                 ?? ((userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String)?

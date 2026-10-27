@@ -3799,7 +3799,13 @@ internal suspend fun openMarkdownTaskNumberPayload(
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
                     serverId = serverId,
-                    conversationIdentityProvider = conversationIdentityProvider
+                    conversationIdentityProvider = conversationIdentityProvider,
+                    resolvedConversationChannelId =
+                        resolveTaskOpenConversationChannelId(
+                            task = resolution.task,
+                            serverId = serverId.value,
+                            tasksDataSource = tasksDataSource,
+                        ),
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
                 task = resolution.task,
@@ -3829,7 +3835,9 @@ internal suspend fun openMarkdownTaskNumberPayload(
 internal fun RaftThreadScreenPayload.taskThreadLaunchPayload(
     task: TaskSummary,
     serverId: ServerId,
-    conversationIdentityProvider: SharedConversationIdentityProvider? = null
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null,
+    /** Task v2: the local conversation `POST /tasks/:id/conversation` answered ([taskOpenTarget]). */
+    resolvedConversationChannelId: ChannelId? = null,
 ): RaftThreadScreenPayload? {
     val taskIds = listOfNotNull(task.threadId?.value, task.channelId?.value).filter { it.isNotBlank() }
     val directory =
@@ -3865,7 +3873,8 @@ internal fun RaftThreadScreenPayload.taskThreadLaunchPayload(
                 ),
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            parentConversationKind = currentParentKind
+            parentConversationKind = currentParentKind,
+            resolvedConversationChannelId = resolvedConversationChannelId,
         ) ?: return null
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
@@ -11298,14 +11307,15 @@ private fun SharedThreadRouteContentContent(
         refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
-    val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
+    fun openCanonicalTaskWith(task: TaskSummary, source: String, resolvedConversationChannelId: ChannelId?) {
         val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val loadingPayload =
             serverId?.let {
                 renderedThread.taskThreadLaunchPayload(
                     task = task,
                     serverId = it,
-                    conversationIdentityProvider = conversationIdentityProvider
+                    conversationIdentityProvider = conversationIdentityProvider,
+                    resolvedConversationChannelId = resolvedConversationChannelId,
                 )
             }
         if (loadingPayload == null) {
@@ -11326,6 +11336,26 @@ private fun SharedThreadRouteContentContent(
                     "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
             )
             onOpenThreadPayload(loadingPayload)
+        }
+    }
+    val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
+        if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+            // Task v2: the local conversation id comes from the server first.
+            coroutineScope.launch {
+                openCanonicalTaskWith(
+                    task = task,
+                    source = source,
+                    resolvedConversationChannelId =
+                        resolveTaskOpenConversationChannelId(
+                            task = task,
+                            serverId = currentServerId.orEmpty(),
+                            tasksDataSource = tasksDataSource,
+                            log = bridge::log,
+                        ),
+                )
+            }
+        } else {
+            openCanonicalTaskWith(task, source, null)
         }
     }
 

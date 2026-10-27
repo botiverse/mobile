@@ -1092,4 +1092,5 @@ private val TopLevelScopeRefV2.scopeKind: String
         is TopLevelScopeRefV2.Private -> "private"
         is TopLevelScopeRefV2.DirectMessage -> "dm"
         is TopLevelScopeRefV2.Joint -> "joint"
+        is TopLevelScopeRefV2.Task -> CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND
     }

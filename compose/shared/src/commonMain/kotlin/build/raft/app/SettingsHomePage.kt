@@ -544,6 +544,9 @@ private const val AppShellNotificationParentChannelIdKey = "slockNotificationPar
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
 private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
+private const val AppShellNotificationTaskIdKey = "slockNotificationTaskId"
+private const val AppShellNotificationTaskConversationChannelIdKey = "slockNotificationTaskConversationChannelId"
+private const val AppShellNotificationTaskMessageIdKey = "slockNotificationTaskMessageId"
 /** WindowNavigationIntent.source of an external message link (#proj-mobile #25/#26). */
 internal const val MessageLinkNavigationSource = "message_link"
 private const val MessageLinkServerNamePlaceholder = "__raft_message_link_server__"
@@ -7043,9 +7046,27 @@ private fun RaftAppShellReadyContent(
                             timeContext = threadTimeContext,
                             onOpenTask = { task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
-                                // task #34: wide desktop mode keeps the board and opens the task's
-                                // thread in a bounded overlay; otherwise the full-page push stays.
-                                val taskLaunchPayload =
+                                fun openTaskLaunchPayload(taskLaunchPayload: WireThreadLaunchPayload?) {
+                                    if (taskLaunchPayload == null) {
+                                        bridge.logWarn("tasks_open_rejected task=${task.id.value} reason=launch_unresolved")
+                                        return
+                                    }
+                                    // page_viewed: the thread page this opens counts as `task`.
+                                    RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
+                                    // task #34: wide desktop mode keeps the board and opens the task's
+                                    // thread in a bounded overlay; otherwise the full-page push stays.
+                                    val overlaySelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
+                                    if (overlaySelection != null) {
+                                        tasksDetailOverlayActive = true
+                                        bridge.log(
+                                            "tasks_detail_overlay_open task=${task.id} " +
+                                                "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
+                                        )
+                                        return
+                                    }
+                                    pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope)
+                                }
+                                fun buildLaunch(resolvedConversationChannelId: ChannelId?) =
                                     buildStandaloneTaskThreadLaunchPayload(
                                         task = task,
                                         serverId = readyServerId.orEmpty(),
@@ -7053,27 +7074,23 @@ private fun RaftAppShellReadyContent(
                                         timeContext = threadTimeContext,
                                         alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                         compactConsecutiveMessages = compactConsecutiveMessages,
+                                        resolvedConversationChannelId = resolvedConversationChannelId,
                                     )
-                                // page_viewed: the thread page this opens counts as `task`.
-                                taskLaunchPayload?.instanceId?.let(RaftProductEvents.recorder::markTaskThreadOpening)
-                                val overlaySelection = taskLaunchPayload?.let(::openLaunchPayloadInAdaptiveDetail)
-                                if (overlaySelection != null) {
-                                    tasksDetailOverlayActive = true
-                                    bridge.log(
-                                        "tasks_detail_overlay_open task=${task.id} " +
-                                            "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
-                                    )
-                                    return@SharedTasksScreen
+                                if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+                                    // Task v2: the local conversation id comes from the server first.
+                                    appShellCoroutineScope.launch {
+                                        val conversationId =
+                                            resolveTaskOpenConversationChannelId(
+                                                task = task,
+                                                serverId = readyServerId.orEmpty(),
+                                                tasksDataSource = tasksDataSource,
+                                                log = bridge::log,
+                                            )
+                                        openTaskLaunchPayload(buildLaunch(conversationId))
+                                    }
+                                } else {
+                                    openTaskLaunchPayload(buildLaunch(null))
                                 }
-                                pager.openStandaloneTaskThreadPage(
-                                    task = task,
-                                    serverId = readyServerId.orEmpty(),
-                                    conversationDirectory = appShellConversationDirectory,
-                                    timeContext = threadTimeContext,
-                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                    compactConsecutiveMessages = compactConsecutiveMessages,
-                                                            storeScope = navigationStoreScope
-                                )
                             }
                         )
                         }
@@ -14671,7 +14688,9 @@ internal data class AppShellNotificationThreadLaunchRequest(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val conversationKind: ConversationKind? = null,
-    val category: String? = null
+    val category: String? = null,
+    /** Task v2: the push names the task conversation the reply was written in ([RaftTaskConversationPushTarget]). */
+    val taskConversation: RaftTaskConversationPushTarget? = null,
 )
 
 internal fun notificationLaunchHomeContentReady(
@@ -14695,7 +14714,13 @@ private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotifi
             parentChannelId = optString(AppShellNotificationParentChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentMessageId = optString(AppShellNotificationParentMessageIdKey).trim().takeIf { it.isNotBlank() },
             conversationKind = parseConversationKindOrNull(optString(AppShellNotificationKindKey)),
-            category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() }
+            category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() },
+            taskConversation =
+                parseRaftTaskConversationPushTarget(
+                    taskId = optString(AppShellNotificationTaskIdKey),
+                    taskConversationChannelId = optString(AppShellNotificationTaskConversationChannelIdKey),
+                    taskMessageId = optString(AppShellNotificationTaskMessageIdKey),
+                ),
         )
     }
     return legacyAppShellNotificationThreadLaunchRequest()
@@ -14948,8 +14973,10 @@ internal fun buildAppShellThreadPayload(
             null
         }
     val canSend = accessState.joined && accessState.permissions.canSend
+    // Task v2: a task conversation is a sub-conversation (no tabs, members, settings or task sends).
+    val isTaskConversation = conversation.kind == ConversationKind.Task
     // Joint channels have task surfaces like any channel (server task surface mapping).
-    val supportsChannelTasks = accessState.permissions.canCreateTask
+    val supportsChannelTasks = accessState.permissions.canCreateTask && !isTaskConversation
     val composer =
         RaftThreadComposerPayload(
             surfaceKind = surfaceKind,
@@ -14988,7 +15015,7 @@ internal fun buildAppShellThreadPayload(
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",
         navigationLabel = "Back",
-        showModeTabs = !isReplyThread,
+        showModeTabs = !isReplyThread && !isTaskConversation,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
@@ -14999,11 +15026,12 @@ internal fun buildAppShellThreadPayload(
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
         timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
-        showMembersAction = !isReplyThread && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
-        showSettingsAction = !isReplyThread && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+        showMembersAction = !isReplyThread && !isTaskConversation && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+        showSettingsAction = !isReplyThread && !isTaskConversation && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
         showTaskOpenActions = supportsChannelTasks,
         showTaskStatusActions = supportsChannelTasks,
-        settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
+        settingsActions =
+            if (isReplyThread || isTaskConversation) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
@@ -15021,28 +15049,6 @@ internal data class ThreadLaunchAccessState(
     val joined: Boolean = true,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
-
-private fun Pager.openStandaloneTaskThreadPage(
-    task: TaskSummary,
-    serverId: String,
-    conversationDirectory: SharedConversationDirectoryState,
-    timeContext: AppShellThreadTimeContext?,
-    alignOwnMessagesRight: Boolean,
-    compactConsecutiveMessages: Boolean,
-    storeScope: RaftShellStoreScope
-) {
-    val launchPayload =
-        buildStandaloneTaskThreadLaunchPayload(
-            task = task,
-            serverId = serverId,
-            conversationDirectory = conversationDirectory,
-            timeContext = timeContext,
-            alignOwnMessagesRight = alignOwnMessagesRight,
-            compactConsecutiveMessages = compactConsecutiveMessages,
-        )
-            ?: return
-    openStandaloneThreadLaunchPayload(launchPayload, storeScope)
-}
 
 private fun Pager.openStandaloneThreadLaunchPayload(
     launchPayload: WireThreadLaunchPayload,
@@ -15229,7 +15235,8 @@ internal fun ThreadLaunchConversationIdentity.searchPersonalizationEntityKeyOrNu
             }
         }
         ConversationKind.Inbox,
-        ConversationKind.System -> null
+        ConversationKind.System,
+        ConversationKind.Task -> null
     }
 
 internal fun homeSearchMemberDetailPageData(
@@ -15348,22 +15355,31 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
-    parentConversationKind: ConversationKind? = null
-): WireThreadLaunchPayload? {
-    val request =
-        task.resolveTaskThreadOpenRequest(
-            serverId = serverId,
-            conversationDirectory = conversationDirectory,
-            parentConversationKind = parentConversationKind
-        ) ?: return null
-    return buildStandaloneConversationThreadLaunchPayload(
-        conversation = request.conversationIdentity,
+    parentConversationKind: ConversationKind? = null,
+    /** Task v2: the local conversation `POST /tasks/:id/conversation` answered (see [taskOpenTarget]). */
+    resolvedConversationChannelId: ChannelId? = null,
+): WireThreadLaunchPayload? =
+    buildTaskOpenLaunchPayload(
+        task = task,
+        resolvedConversationChannelId = resolvedConversationChannelId,
         timeContext = timeContext,
-        anchorMessageId = request.anchorMessageId,
         alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages
-    )
-}
+        compactConsecutiveMessages = compactConsecutiveMessages,
+    ) {
+        val request =
+            task.resolveTaskThreadOpenRequest(
+                serverId = serverId,
+                conversationDirectory = conversationDirectory,
+                parentConversationKind = parentConversationKind
+            ) ?: return@buildTaskOpenLaunchPayload null
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = request.conversationIdentity,
+            timeContext = timeContext,
+            anchorMessageId = request.anchorMessageId,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages
+        )
+    }
 
 private fun RealtimeEvent.performanceMarkerName(): String =
     when (this) {

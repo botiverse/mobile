@@ -51,7 +51,8 @@ fun ConversationSummary.genericDisplayTitleFallback(): String =
         ConversationKind.Channel,
         ConversationKind.Joint,
         ConversationKind.Inbox,
-        ConversationKind.System -> "Channel"
+        ConversationKind.System,
+        ConversationKind.Task -> "Channel"
     }
 
 fun ConversationSummary.isGenericDisplayName(

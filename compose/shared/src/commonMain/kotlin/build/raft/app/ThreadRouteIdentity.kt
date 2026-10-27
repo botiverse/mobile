@@ -256,5 +256,6 @@ private fun ConversationSummary.conversationThreadChannelKind(): String? =
         ConversationKind.Joint -> "joint"
         ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: RaftThreadSurfaceKind.Channel
         ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Task -> RaftTaskConversationChannelKind
         else -> channelType.normalizedThreadChannelKind()
     }

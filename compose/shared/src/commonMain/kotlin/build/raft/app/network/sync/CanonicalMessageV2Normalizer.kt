@@ -51,6 +51,33 @@ fun normalizeCanonicalMessageV2(
                 replyMembership = null,
             )
         }
+        CANONICAL_MESSAGE_V2_TASK_SCOPE_KIND -> {
+            // Task v2 (slock `messageService.ts` buildFrontendConversationContext): a task
+            // conversation names its parent channel (+ type) and no parent message, and its messages
+            // never anchor a reply thread (sub-conversations do not nest).
+            if (input.childReplyScopeId != null || input.producerContext.parentMessageId != null) {
+                return CanonicalMessageV2NormalizationResult.Rejected(CANONICAL_MESSAGE_V2_INVALID_CONTEXT)
+            }
+            val parentScopeId = input.producerContext.parentChannelId.canonicalOrNull()
+                ?: return CanonicalMessageV2NormalizationResult.Rejected(CANONICAL_MESSAGE_V2_INVALID_CONTEXT)
+            val parentKind = input.producerContext.parentChannelType
+            if (
+                parentScopeId == input.scopeId ||
+                (parentKind != null && parentKind !in CANONICAL_MESSAGE_V2_REPLY_PARENT_SCOPE_KINDS)
+            ) return CanonicalMessageV2NormalizationResult.Rejected(CANONICAL_MESSAGE_V2_INVALID_CONTEXT)
+            CanonicalMessageEnvelopeV2(
+                fact = input.fact,
+                context = CanonicalConversationContextV2.TopLevel(
+                    scope = TopLevelScopeRefV2.Task(
+                        serverId = serverId,
+                        scopeId = input.scopeId,
+                        parentScopeId = parentScopeId,
+                    ),
+                ),
+                childReplyScope = null,
+                replyMembership = null,
+            )
+        }
         "thread" -> {
             if (input.childReplyScopeId != null) {
                 return CanonicalMessageV2NormalizationResult.Rejected(CANONICAL_MESSAGE_V2_INVALID_CONTEXT)

@@ -97,6 +97,7 @@ private fun ConversationSummary.toDirectoryChannelType(): String =
         ConversationKind.Joint -> "joint"
         ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: "channel"
         ConversationKind.DirectMessage -> "dm"
+        ConversationKind.Task -> "task"
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
     }
@@ -106,6 +107,7 @@ private fun ConversationSummary.toDirectoryConversationKind(): ConversationKind 
         ConversationKind.Thread -> ConversationKind.Thread
         ConversationKind.Joint -> ConversationKind.Joint
         ConversationKind.DirectMessage -> ConversationKind.DirectMessage
+        ConversationKind.Task -> ConversationKind.Task
         ConversationKind.Channel,
         ConversationKind.Inbox,
         ConversationKind.System -> ConversationKind.Channel
