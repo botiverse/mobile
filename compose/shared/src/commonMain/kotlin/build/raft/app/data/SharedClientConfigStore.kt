@@ -91,7 +91,11 @@ class SharedClientConfigStore internal constructor(
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
 ) {
-    private val mutableAppHosts = MutableStateFlow(cachedHosts(normalizedEnvironment(currentEnvironment())) ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS)
+    private val mutableAppHosts =
+        MutableStateFlow(
+            cachedHosts(normalizedEnvironment(currentEnvironment()))?.also(RaftClientConfigAppHosts::publish)
+                ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS,
+        )
     val appHosts: StateFlow<List<String>> = mutableAppHosts.asStateFlow()
 
     private var started: Job? = null
@@ -102,7 +106,10 @@ class SharedClientConfigStore internal constructor(
         started =
             scope.launch {
                 environmentChanges.map(::normalizedEnvironment).distinctUntilChanged().collect { environment ->
-                    mutableAppHosts.value = cachedHosts(environment) ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS
+                    val cached = cachedHosts(environment)
+                    // Another environment's hosts never count here; the fallback adds nothing readers lack.
+                    RaftClientConfigAppHosts.publish(cached.orEmpty())
+                    mutableAppHosts.value = cached ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS
                     refresh(environment)
                 }
             }
@@ -127,6 +134,7 @@ class SharedClientConfigStore internal constructor(
         writeCachedHosts(environment, config.appHosts)
         if (normalizedEnvironment(currentEnvironment()) == environment) {
             mutableAppHosts.value = config.appHosts
+            RaftClientConfigAppHosts.publish(config.appHosts)
             logger("client_config applied hosts=${config.appHosts.size}")
         } else {
             logger("client_config stale_environment_ignored")

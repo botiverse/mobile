@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.model.ConversationKind
@@ -55,9 +56,17 @@ internal val RaftMessageLinkProductionHosts: Set<String> = setOf("app.raft.build
  * `[A-Za-z0-9_-]`, a malformed `thread`, and a `thread` whose channel id differs from the path's.
  * `app=missing` (the open.raft.build fallback marker) and unknown query keys are ignored.
  */
-internal fun parseRaftMessageLink(url: String, configuredWebUrl: String? = null): RaftMessageLink? {
+internal fun parseRaftMessageLink(
+    url: String,
+    configuredWebUrl: String? = null,
+    /**
+     * Raft's own app hosts from the client config (`appHosts`), added to the hosts above (a union,
+     * as the web reads them): `https`, default port, the host matched exactly.
+     */
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): RaftMessageLink? {
     val parsed = url.toRaftLinkUrl() ?: return null
-    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl())) return null
+    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
     val segments = parsed.path.removePrefix("/").split('/')
     if (segments.size != 4 || segments[0] != "s") return null
     val serverSlug = segments[1].raftLinkPercentDecode()?.takeIf(::isRaftLinkIdentifier) ?: return null
@@ -158,8 +167,9 @@ private fun String.toRaftLinkUrl(): RaftLinkUrl? {
     )
 }
 
-private fun RaftLinkUrl.isAllowedMessageLinkOrigin(configured: RaftLinkUrl?): Boolean {
+private fun RaftLinkUrl.isAllowedMessageLinkOrigin(configured: RaftLinkUrl?, appHosts: Set<String>): Boolean {
     if (scheme == "https" && host in RaftMessageLinkProductionHosts && (port == null || port == 443)) return true
+    if (scheme == "https" && host in appHosts && (port == null || port == 443)) return true
     return configured != null &&
         configured.host == host &&
         configured.scheme == scheme &&

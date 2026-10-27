@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -12,6 +13,10 @@ import kotlinx.coroutines.test.runTest
  * `packages/server/src/routes/publicClientConfig.ts` at feat/workspace-artifacts 8a44f57be).
  */
 class SharedClientConfigStoreTest {
+    // The store publishes to the process-wide list message links read (RaftClientConfigAppHosts).
+    @AfterTest
+    fun resetProcessHosts() = RaftClientConfigAppHosts.publish(emptyList())
+
     private class MemoryPreferences : SharedPreferenceStore {
         val values = mutableMapOf<String, String>()
         override fun getString(key: String): String? = values[key]
@@ -78,5 +83,7 @@ class SharedClientConfigStoreTest {
         // A new process starts from the disk cache before its read lands.
         val restarted = SharedClientConfigStore(FakeApi { error("offline") }, preferences, { environment.value }, environment, backgroundScope)
         assertEquals(listOf("app.raft.build", "raft.build"), restarted.appHosts.value)
+        // What message links read: this environment's list, not the fallback.
+        assertEquals(setOf("app.raft.build", "raft.build"), RaftClientConfigAppHosts.current)
     }
 }
