@@ -7,6 +7,7 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonObject
 
 /** Full normalized-message V2 discriminator. Schema v5 remains the reaction-only tripwire. */
 const val CANONICAL_MESSAGE_FULL_V2_SCHEMA_VERSION: Int = 6
@@ -152,6 +153,14 @@ data class CanonicalActionCardActionV2(
     val scopes: List<String> = emptyList(),
 )
 
+/**
+ * A done card's `metadata.result` (slock `ActionCardResult`, a union keyed by `kind`).
+ *
+ * The first seven keys are the schema 6 shape and are always in the bytes. The rest are additive OPTIONAL
+ * keys (App manifest v9), each present only with a value and never `null`, so a result without them keeps
+ * its earlier bytes. Which keys a result may carry depends on its kind:
+ * [CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND]. The producer drops any other key, never the card.
+ */
 @Serializable
 data class CanonicalActionCardResultV2(
     val kind: String,
@@ -161,6 +170,70 @@ data class CanonicalActionCardResultV2(
     val channelName: String? = null,
     val addedHumanIds: List<String> = emptyList(),
     val addedAgentIds: List<String> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val mode: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val requestId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val grantId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val mcpServerId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val serverId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val agentId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val agentName: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val clientId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val clientKey: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val clientName: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val ownerAgentId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val ownerAgentName: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val returnUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val homepageUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val agentManifestUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val setupUrl: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val setupDescription: String? = null,
+    /** Producer order (the scopes as granted), not sorted. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val scopes: List<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val unsafeDemoUrlOverride: Boolean? = null,
+    /** `product-feedback`: the Hands ticket; absent when Hands named none (wire `null`). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val ticketId: String? = null,
+    /** `product-feedback`: Hands' human-readable reference. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val reference: String? = null,
+    /** `product-feedback`: the Hands app (`web`, `ios`, `android`, `ohos`) the ticket was filed into. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val source: String? = null,
+)
+
+/** The schema 6 result keys: always in the bytes (`null` / `[]` when the kind does not use them). */
+internal val CANONICAL_ACTION_CARD_RESULT_BASE_KEYS: List<String> = listOf(
+    "kind", "id", "name", "channelId", "channelName", "addedHumanIds", "addedAgentIds",
+)
+
+/** Manifest v9: the optional result keys, present only with a value (never `null`). */
+internal val CANONICAL_ACTION_CARD_RESULT_OPTIONAL_KEYS: List<String> = listOf(
+    "mode", "requestId", "grantId", "mcpServerId", "serverId", "agentId", "agentName", "clientId", "clientKey",
+    "clientName", "ownerAgentId", "ownerAgentName", "returnUrl", "homepageUrl", "agentManifestUrl", "setupUrl",
+    "setupDescription", "scopes", "unsafeDemoUrlOverride", "ticketId", "reference", "source",
+)
+
+/**
+ * Manifest v9: the keys each result kind may carry, from slock `packages/shared/src/actionCards.ts`
+ * `ActionCardResult` (staging 7cd67301) and the `actionCardsService` builders. A result of a kind not
+ * listed here keeps only its `kind`.
+ */
+internal val CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND: Map<String, Set<String>> = mapOf(
+    "channel" to setOf("kind", "id", "name"),
+    "agent" to setOf("kind", "id", "name"),
+    "channel-members" to setOf("kind", "channelId", "channelName", "addedHumanIds", "addedAgentIds"),
+    "mcp-connection" to setOf("kind", "mcpServerId", "agentId"),
+    "agent-integration-login" to setOf(
+        "kind", "requestId", "agentId", "agentName", "clientId", "clientKey", "clientName", "scopes", "grantId",
+    ),
+    "marketplace-app-installation" to setOf(
+        "kind", "clientId", "clientKey", "clientName", "serverId", "agentId", "agentName", "scopes", "setupUrl",
+    ),
+    "integration-app-registration" to setOf(
+        "kind", "mode", "clientId", "clientKey", "clientName", "returnUrl", "homepageUrl", "agentManifestUrl",
+        "setupUrl", "setupDescription", "scopes", "unsafeDemoUrlOverride",
+    ),
+    "integration-app-owner-recovery" to setOf(
+        "kind", "clientId", "clientKey", "clientName", "ownerAgentId", "ownerAgentName",
+    ),
+    "product-feedback" to setOf("kind", "ticketId", "reference", "source"),
 )
 
 /** Privacy-safe forwarded author snapshot. Source/user pointer ids are intentionally absent. */
@@ -209,6 +282,37 @@ sealed interface CanonicalActionMetadataV2 {
         val executedAt: String? = null,
         val executedByUserName: String? = null,
         val result: CanonicalActionCardResultV2? = null,
+        /**
+         * Additive OPTIONAL keys (App manifest v8), each present only when the producer card has a value and
+         * never `null`, so a card without them keeps its earlier bytes. The store treats them one-way: a
+         * frame whose card lacks one keeps the stored value, and [confirmationVersion] never goes down.
+         *
+         * The card's own server (wire `sourceServerId`, fixed at prepare time). In a joint channel it can
+         * differ from the partition server, so it is a display/routing value, not an embedded ref.
+         */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val sourceServerId: String? = null,
+        /** Display name of [sourceServerId] at prepare time (wire `targetServerName`). */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val targetServerName: String? = null,
+        /** The card's optimistic credential (wire `confirmationVersion`), sent back when it is run. */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val confirmationVersion: Int? = null,
+        /**
+         * The server-built presentation object (wire `presentation`: title, confirmLabel, warning,
+         * genericApprovalAllowed, displayItems, `card` (action-card.v1), ...), kept as the producer's JSON
+         * object. It is server copy for human clients; readers parse it exactly like a REST card.
+         */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val presentation: JsonObject? = null,
+        /**
+         * Who ran the card (wire `executedByUserId`), App manifest v9; same presence rule as above but
+         * parent-replace like [executedByUserName]. Room-common: every viewer of the channel gets the same
+         * value and the card already names the person; the App reads it only to tell whether the viewer is
+         * the one who ran it (a done feedback card's "View in Settings", S0.3).
+         */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val executedByUserId: String? = null,
     ) : CanonicalActionMetadataV2
 
     @Serializable

@@ -455,7 +455,17 @@ internal class SqlDelightCanonicalMessageV2Store(
                     ?.takeIf { merged.fact.deletedAt == null && it.canonicalFactJson.contains(RETRACTION_BYTES_MARKER) }
                     ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
                     ?.fact?.takeIf { it.deletedAt != null }
-                val envelope = merged.withStoredRetraction(storedRetraction)
+                // Manifest v8: the card's optional keys are one-way. A frame whose card lacks one is an
+                // older/narrower copy: the stored value stays, and confirmationVersion never goes down.
+                // The keys are only in the bytes of a card that has them, so other facts are never decoded.
+                val storedCard = storedRow
+                    ?.takeIf {
+                        merged.fact.actionMetadata is CanonicalActionMetadataV2.ActionCard &&
+                            ACTION_CARD_ONE_WAY_BYTES_MARKERS.any(it.canonicalFactJson::contains)
+                    }
+                    ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
+                    ?.fact?.actionMetadata as? CanonicalActionMetadataV2.ActionCard
+                val envelope = merged.withStoredRetraction(storedRetraction).withStoredActionCardKeys(storedCard)
                 val bytes = encodeCanonicalMessageV2(envelope, scope.serverId)
                 queries.insertCanonicalFactIfAbsent(
                     environmentId = scope.environmentId,
@@ -1002,6 +1012,26 @@ private fun CanonicalMessageEnvelopeV2.withStoredRetraction(retracted: Canonical
             ),
         )
     }
+
+/** The manifest-v8 optional action-card keys as they appear in canonical bytes (pre-filter only). */
+private val ACTION_CARD_ONE_WAY_BYTES_MARKERS = listOf(
+    "\"sourceServerId\":", "\"targetServerName\":", "\"confirmationVersion\":", "\"presentation\":",
+)
+
+/** [storedCard] (the stored copy of this card) under a frame card that may not know its optional keys. */
+private fun CanonicalMessageEnvelopeV2.withStoredActionCardKeys(
+    storedCard: CanonicalActionMetadataV2.ActionCard?,
+): CanonicalMessageEnvelopeV2 {
+    val card = fact.actionMetadata as? CanonicalActionMetadataV2.ActionCard ?: return this
+    if (storedCard == null) return this
+    val kept = card.copy(
+        sourceServerId = card.sourceServerId ?: storedCard.sourceServerId,
+        targetServerName = card.targetServerName ?: storedCard.targetServerName,
+        confirmationVersion = listOfNotNull(card.confirmationVersion, storedCard.confirmationVersion).maxOrNull(),
+        presentation = card.presentation ?: storedCard.presentation,
+    )
+    return if (kept == card) this else copy(fact = fact.copy(actionMetadata = kept))
+}
 
 private fun CanonicalMessageEnvelopeV2.withAggregatesFrom(
     source: CanonicalMessageEnvelopeV2,

@@ -10,6 +10,8 @@ import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.WireMessage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.model.ServerId
+import build.raft.app.data.actionCardFromMessageMetadata
+import build.raft.app.network.sync.CanonicalActionMetadataV2
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageNodeV2
@@ -90,6 +92,53 @@ class SharedThreadStoreDurableLastKnownTest {
             releaseLoadingState.complete(Unit)
             scopeJob.cancelAndJoin()
         }
+    }
+
+    @Test
+    fun durableFrameRestoresAnActionCardWithItsPresentationAndConfirmationVersion() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(
+                        frames = mapOf(partition(ownerA) to frame("card body", actionMetadata = v2ActionCardWithPresentation())),
+                    ),
+                    identity = { ownerA },
+                ),
+                scope = scope,
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val restored = store.state.value.payload
+        assertTrue(restored.durableLastKnown)
+        assertRestoredActionCardPresentation(restored.messages.single().metadata)
+        scope.cancel()
+
+        // Twin: the same card stored without the optional keys renders only the legacy fallback.
+        val bareScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val bare =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(
+                        frames = mapOf(
+                            partition(ownerA) to frame(
+                                "card body",
+                                actionMetadata = v2ActionCardWithPresentation()
+                                    .copy(sourceServerId = null, targetServerName = null, confirmationVersion = null, presentation = null),
+                            ),
+                        ),
+                    ),
+                    identity = { ownerA },
+                ),
+                scope = bareScope,
+            )
+        bare.accept(SharedThreadIntent.Start(basePayload()))
+        val bareCard = assertNotNull(actionCardFromMessageMetadata(bare.state.value.payload.messages.single().metadata))
+        assertNull(bareCard.presentationTitle)
+        assertFalse(bareCard.genericApprovalAllowed)
+        assertNull(bareCard.confirmationVersion)
+        bareScope.cancel()
     }
 
     @Test
@@ -536,7 +585,11 @@ class SharedThreadStoreDurableLastKnownTest {
             cursor = PersistedCursor(count.toLong(), 1, count.toLong(), hasLoadedOldest = true, epoch = "epoch-v2"),
         )
 
-    private fun frame(body: String, scopeKind: String = "channel"): ThreadDurableLastKnownFrame {
+    private fun frame(
+        body: String,
+        scopeKind: String = "channel",
+        actionMetadata: CanonicalActionMetadataV2? = null,
+    ): ThreadDurableLastKnownFrame {
         val scope = SyncScopeKey(partition(ownerA), "channel-1", scopeKind)
         return ThreadDurableLastKnownFrame(
             scope = scope,
@@ -551,6 +604,7 @@ class SharedThreadStoreDurableLastKnownTest {
                         messageType = "chat",
                         createdAt = "2026-05-19T16:00:00Z",
                         senderName = "Owner A",
+                        actionMetadata = actionMetadata,
                     ),
                     context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
                 ),
