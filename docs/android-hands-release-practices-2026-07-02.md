@@ -382,6 +382,13 @@ Client/device validation passed on `emulator-5554`:
 - Do not publish an APK to Hands with a `versionCode` lower than or equal to
   the intended installed client version.
 - Do not cancel the real `main` active release for visibility tests.
+- Publish Android releases only with `scripts/finalize_android_hands_release.sh`,
+  never with a bare `hands releases publish`. Finalize checks that the build was
+  packaged for the target channel; 1.14.0 went to `main` as the Google Play
+  build (in-app updates compiled out), and those installs can never update.
+- Ship every release to both `main` and `preview`, one APK per channel (the
+  channel is compiled into the APK). Finalize warns when the other channel is
+  still on an older version.
 - Keep channel selection overrideable for QA.
 - Keep GitHub Packages credentials out of chat and source control.
 - Preserve mapping/native symbols for crash analysis once the build produces

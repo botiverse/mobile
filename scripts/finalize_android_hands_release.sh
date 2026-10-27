@@ -256,3 +256,32 @@ if max(codes, default=-1) != expected:
 PY
 
 echo "Hands release ${RELEASE_ID} published and public update check reports ${EXPECTED_CODE}."
+
+# main and preview ship the same version. Each channel needs its own APK (the channel is
+# compiled in), so this only reports a lagging sibling; it does not fail the publish.
+# 1.16.1 went to main only and preview installs kept seeing 1.16.0.
+case "${CHANNEL}" in
+  main) SIBLING_CHANNEL="preview" ;;
+  preview) SIBLING_CHANNEL="main" ;;
+  *) SIBLING_CHANNEL="" ;;
+esac
+if [ -n "${SIBLING_CHANNEL}" ]; then
+  SIBLING_VERSION="$(
+    curl --fail --silent --show-error \
+      --get "${HANDS_API}/public/v2/apps/${HANDS_APP_SLUG}/updates/check" \
+      --data-urlencode "channel=${SIBLING_CHANNEL}" \
+      --data-urlencode "product_type=android-apk" \
+      --data-urlencode "current_version_code=0" \
+      --data-urlencode "platform=android" \
+      --data-urlencode "arch=${HANDS_ARCH}" \
+      --data-urlencode "filetype=apk" 2>/dev/null \
+      | python3 -c 'import json,sys; print((json.load(sys.stdin).get("latest") or {}).get("version") or "")' 2>/dev/null \
+      || true
+  )"
+  if [ "${SIBLING_VERSION}" = "${VERSION}" ]; then
+    echo "Hands ${SIBLING_CHANNEL} is also on ${VERSION}."
+  else
+    echo "WARNING: Hands ${SIBLING_CHANNEL} is on ${SIBLING_VERSION:-unknown}, not ${VERSION}." >&2
+    echo "         Build ${VERSION} with hands_channel=${SIBLING_CHANNEL} and finalize it too." >&2
+  fi
+fi
