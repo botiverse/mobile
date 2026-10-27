@@ -16627,6 +16627,10 @@ private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
                 statusLabel = "Unmuted",
                 detail = "This server can send push notifications."
             ),
+        // Explicit: the snapshot default is the unknown (nothing selected) mode since #3795.
+        serverNotificationMode =
+            build.raft.app.data.ServerPushMode.All
+                .toSettingsMobileSelectionSnapshot(available = true),
         pushPreviewMode =
             build.raft.app.data.PushPreviewMode.Full
                 .toSettingsMobileSelectionSnapshot(available = true),
