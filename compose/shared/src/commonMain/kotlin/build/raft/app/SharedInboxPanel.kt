@@ -2273,13 +2273,6 @@ internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map
             if (item.activityObject?.isFollowing == true) add("unfollow-object")
             return@buildList
         }
-        if (item.isTaskConversation) {
-            // Task v2 (P0): only Done, keyed by the conversation's `threadChannelId` like a thread's.
-            // Follow is keyed by a parent message (a task conversation has none) and read/unread are
-            // not wired for task rows yet, so they are not offered.
-            add("done")
-            return@buildList
-        }
         if (item.isUnfollowedActivityThread) {
             // Web InboxContextMenu: an unfollowed row has no read/unread toggle
             // (the server zeroes its attention) but keeps Done, then Follow.

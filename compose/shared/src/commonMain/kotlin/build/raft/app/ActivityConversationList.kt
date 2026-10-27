@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.formatTaskConversationRef
+import build.raft.app.data.isTaskConversation
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedActivitySenderProfile
@@ -83,6 +85,8 @@ import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftInboxItemLeading
 import build.raft.designsystem.components.RaftInboxItemLeadingBadge
 import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
+import build.raft.designsystem.components.RaftTaskStatusBadge
+import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftUnreadCountText
@@ -331,6 +335,12 @@ internal data class ActivityConversationRowModel(
     val objectLine: ActivityObjectLine? = null,
     /** [InboxItemKind.Object] rows: the kind's icon in the leading tile (web `artifactKindIcon`). */
     val objectIcon: RaftLucideIconName? = null,
+    /**
+     * Task v2 rows (web ThreadsInbox task row): the corner badge is the task mark (`list-todo`)
+     * instead of the thread mark, and the task's status sits in the marks beside the excerpt.
+     */
+    val taskConversation: Boolean = false,
+    val taskStatusMark: TaskStatus? = null,
 ) {
     /** The thread badge sits in the leading corner (on the channel tile or the DM peer's face). */
     val leadingThreadBadge: Boolean
@@ -422,8 +432,23 @@ internal fun InboxItem.activityConversationRowModel(
     val threadInDirectMessage = kind == InboxItemKind.Thread && parentChannelKind == ConversationKind.DirectMessage
     val threadDmPeer = activityThreadDmPeer(context)
     val dmPeer = if (directMessage) context.dmPeersByChannelId[channelId.value] else threadDmPeer
+    // Task v2 (web ThreadsInbox): a task row is titled by the task's own title and its address
+    // (`#channel:#7`) moves to the body line where a thread row names its channel.
+    val taskConversationRow = kind == InboxItemKind.Thread && isTaskConversation
+    val taskRef =
+        taskNumber?.takeIf { taskConversationRow }?.let { number ->
+            val placeName =
+                if (parentChannelKind == ConversationKind.DirectMessage) {
+                    threadDmPeer?.displayName ?: parentChannelId?.let { dmPeerNames[it.value] } ?: parentChannelName
+                } else {
+                    parentChannelName
+                }
+            formatTaskConversationRef(number, placeName, parentChannelKind)
+        }
+    val taskTitle = taskConversation?.taskTitle?.trim()?.takeIf { taskConversationRow && it.isNotBlank() }
     val title =
         when {
+            taskTitle != null -> RaftMarkdownPreview(taskTitle)
             kind == InboxItemKind.Thread -> parentMessagePreview?.let(::markdownToPreview)?.takeIf { it.text.isNotBlank() }
             kind == InboxItemKind.DirectMessage ->
                 RaftMarkdownPreview(
@@ -476,11 +501,12 @@ internal fun InboxItem.activityConversationRowModel(
         threadChannelLabel =
             when {
                 kind != InboxItemKind.Thread -> null
+                taskTitle != null && taskRef != null -> taskRef
                 // The Home DM row names the peer the face shows.
                 threadDmPeer?.displayName != null -> "@${threadDmPeer.displayName.stripActivityTitlePrefix()}"
                 else -> channelLabel(dmPeerNames)
             },
-        threadChannelLabelVisible = kind == InboxItemKind.Thread && threadDmPeer == null,
+        threadChannelLabelVisible = kind == InboxItemKind.Thread && (threadDmPeer == null || (taskTitle != null && taskRef != null)),
         threadInDirectMessage = threadInDirectMessage,
         channelSymbol =
             if (leadingKind == ActivityConversationLeadingKind.DirectMessage || threadInDirectMessage) "#" else activityChannelSymbol(context.channelSymbolsByChannelId),
@@ -492,9 +518,11 @@ internal fun InboxItem.activityConversationRowModel(
         unreadCount = unread,
         showUnreadCount = !muted && unread > 0,
         hasDraft = hasDraft,
-        taskNumber = taskNumber.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && taskStatus != null },
-        taskStatus = taskStatus.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && taskNumber != null },
+        taskNumber = taskNumber.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskStatus != null },
+        taskStatus = taskStatus.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskNumber != null },
         delegatedBy = previewDelegatedBy(),
+        taskConversation = taskConversationRow,
+        taskStatusMark = taskStatus.takeIf { taskConversationRow },
     )
 }
 
@@ -977,8 +1005,17 @@ private fun ActivityConversationLeading(
         if (model.leadingThreadBadge) {
             {
                 RaftInboxItemLeadingBadge {
-                    // raft-ui `ThreadIcon`, in the badge's `foreground` ink.
-                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    if (model.taskConversation) {
+                        // web `ThreadCornerMark task`: lucide `list-todo`, in the badge's ink.
+                        RaftLucideIcon(
+                            RaftLucideIconName.ListTodo,
+                            Modifier.size(RaftInboxItemLeadingDefaults.BadgeIcon),
+                            color = raftArgbHex(colors.foreground),
+                        )
+                    } else {
+                        // raft-ui `ThreadIcon`, in the badge's `foreground` ink.
+                        RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                    }
                 }
             }
         } else {
@@ -1056,12 +1093,21 @@ private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeConte
 @Composable
 private fun ActivityConversationMarks(model: ActivityConversationRowModel, marksHeight: Dp) {
     val colors = RaftTheme.colors
-    if (!model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount) return
+    if (!model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount && model.taskStatusMark == null) return
     Row(
         modifier = Modifier.height(marksHeight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        model.taskStatusMark?.let { status ->
+            // web ThreadsInbox: a task row's status sits at the start of the marks (`StatusBadge sm`),
+            // before the draft mark and the unread count, so it never takes room from the title.
+            RaftTaskStatusBadge(
+                status = status.raftTaskStatus(),
+                text = status.localizedLabel(),
+                size = RaftTaskStatusBadgeSize.Sm,
+            )
+        }
         if (model.hasDraft) {
             val draftDescription = stringResource(Res.string.activity_list_draft_description)
             Box(
