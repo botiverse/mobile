@@ -38,6 +38,10 @@ import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.data.AppLinkApp
+import build.raft.app.data.ArtifactKind
+import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.ArtifactSummary
+import build.raft.app.data.parseArtifactLinkTarget
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.appLinkPreviewHref
@@ -61,6 +65,18 @@ internal data class RaftAppLinkChipHost(
     val onOpenCard: ((AppLinkResult.Card) -> Unit)? = null,
     /** Marks the chip of a link (by URL) whose card [onOpenCard] opens, so the card can open beside it. */
     val cardAnchor: ((String) -> Modifier)? = null,
+    /**
+     * Workspace Artifacts (flag `workspace_artifacts_v0`): the message's Artifact links answered `ok`,
+     * by [ArtifactLinkTarget.key]. A link not in it (off, loading, unavailable, failed) stays the
+     * author's plain link. Empty while the flag is off.
+     */
+    val artifacts: Map<String, ArtifactSummary> = emptyMap(),
+    /** Raft's own app hosts the links were split on ([parseArtifactLinkTarget]). */
+    val artifactHosts: List<String> = emptyList(),
+    /** A tap on an Artifact's chip: its item card (or its page when the card can't open). */
+    val onOpenArtifact: ((ArtifactLinkTarget) -> Unit)? = null,
+    /** Marks an Artifact chip's mark, by [ArtifactLinkTarget.key], as its item card's anchor. */
+    val artifactAnchor: ((String) -> Modifier)? = null,
 )
 
 /**
@@ -98,10 +114,26 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
     host: RaftAppLinkChipHost?,
     openUri: (String) -> Unit,
 ): RaftAppLinkChipContent {
-    if (host == null || host.results.isEmpty()) return RaftAppLinkChipContent(this, emptyMap())
+    if (host == null || (host.results.isEmpty() && host.artifacts.isEmpty())) return RaftAppLinkChipContent(this, emptyMap())
+    val links = getLinkAnnotations(0, length).sortedBy { it.start }
+    val artifactChips =
+        if (host.artifacts.isEmpty()) {
+            emptyList()
+        } else {
+            links.mapNotNull { range ->
+                val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
+                val target = parseArtifactLinkTarget(link.url, host.artifactHosts) ?: return@mapNotNull null
+                // Only a bare link becomes a chip: its text is its own address.
+                if (parseArtifactLinkTarget(text.substring(range.start, range.end).trim(), host.artifactHosts) != target) return@mapNotNull null
+                val summary = host.artifacts[target.key] ?: return@mapNotNull null
+                range to RaftArtifactLinkChip(target, summary)
+            }
+        }
+    val artifactChipStarts = artifactChips.mapTo(mutableSetOf()) { (range, _) -> range.start }
     val chips =
-        getLinkAnnotations(0, length)
+        links
             .mapNotNull { range ->
+                if (range.start in artifactChipStarts) return@mapNotNull null
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 val key = appLinkPreviewHref(link.url) ?: return@mapNotNull null
                 // Only a bare link becomes a chip: its text is its own address.
@@ -109,14 +141,22 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 val result = host.results[key] ?: return@mapNotNull null
                 range to result
             }
-            .sortedBy { (range, _) -> range.start }
-    if (chips.isEmpty()) return RaftAppLinkChipContent(this, emptyMap())
+    if (chips.isEmpty() && artifactChips.isEmpty()) return RaftAppLinkChipContent(this, emptyMap())
+    val allChips: List<Pair<AnnotatedString.Range<LinkAnnotation>, Any>> =
+        (chips + artifactChips).sortedBy { (range, _) -> range.start }
 
     val builder = AnnotatedString.Builder(length)
     val inlineContent = linkedMapOf<String, InlineTextContent>()
     var cursor = 0
-    chips.forEach { (range, result) ->
+    allChips.forEach { (range, chip) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
+        if (chip is RaftArtifactLinkChip) {
+            builder.append(this, cursor, range.start)
+            builder.appendRaftArtifactLinkChip(range, chip, host, inlineContent, openUri)
+            cursor = range.end
+            return@forEach
+        }
+        val result = chip as AppLinkResult
         // raft-design #755: the host in ASCII (punycode), never a look-alike Unicode name.
         val domain = appLinkDomain(result.url)?.let(::raftAppLinkAsciiHost) ?: return@forEach
         builder.append(this, cursor, range.start)
@@ -201,6 +241,78 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
     return RaftAppLinkChipContent(builder.toAnnotatedString(), inlineContent)
 }
 
+/** One Artifact link of the message answered `ok`. */
+internal data class RaftArtifactLinkChip(val target: ArtifactLinkTarget, val summary: ArtifactSummary)
+
+/**
+ * An Artifact link's chip (web `AppLinkChip.tsx` `ObjectLinkChip`): the same cyan chip as an App
+ * link's, with the Artifact kind's icon and its title and no domain (the link is Raft's own). A tap
+ * opens its item card ([RaftAppLinkChipHost.onOpenArtifact]); without one, the author's link.
+ */
+private fun AnnotatedString.Builder.appendRaftArtifactLinkChip(
+    range: AnnotatedString.Range<LinkAnnotation>,
+    chip: RaftArtifactLinkChip,
+    host: RaftAppLinkChipHost,
+    inlineContent: MutableMap<String, InlineTextContent>,
+    openUri: (String) -> Unit,
+) {
+    val prefix = "raft-artifact-link-${range.start}-${range.end}"
+    val iconId = "$prefix-icon"
+    val iconGapId = "$prefix-icon-gap"
+    val box = raftAppLinkChipBoxStyle(info = true)
+    val url = (range.item as LinkAnnotation.Url).url
+    val annotation: LinkAnnotation =
+        host.onOpenArtifact?.let { open ->
+            LinkAnnotation.Clickable(
+                tag = RaftArtifactLinkTag,
+                styles = raftAppLinkChipLinkStyles(),
+                linkInteractionListener = LinkInteractionListener { open(chip.target) },
+            )
+        } ?: LinkAnnotation.Url(url = url, styles = raftAppLinkChipLinkStyles(), linkInteractionListener = LinkInteractionListener { openUri(url) })
+    withRaftInlineChipGaps(box) {
+        withRaftInlineBox(box) {
+            withLink(annotation) {
+                withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
+                    appendInlineContent(iconId, "\uFFFC")
+                    append(RaftInlineWordJoiner)
+                    appendInlineContent(iconGapId, "\uFFFC")
+                    append(RaftInlineWordJoiner)
+                    withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
+                        append(raftAppLinkUnbreakable(raftAppLinkCap(chip.summary.title.ifBlank { chip.target.id }, RaftAppLinkChipMaxChars)))
+                    }
+                }
+            }
+        }
+    }
+    val anchor = host.artifactAnchor?.invoke(chip.target.key) ?: Modifier
+    inlineContent[iconId] =
+        InlineTextContent(
+            placeholder = Placeholder(width = 12.sp, height = 12.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
+        ) {
+            Box(anchor.size(12.dp), contentAlignment = Alignment.Center) {
+                RaftLucideIcon(
+                    name = chip.summary.kind.lucideIcon(),
+                    modifier = Modifier.size(12.dp),
+                    color = raftArgbHex(RaftColor.ForegroundMuted),
+                    strokeWidth = 2f,
+                )
+            }
+        }
+    inlineContent[iconGapId] = raftAppLinkSpacerInlineContent(4.sp)
+}
+
+/** web `artifactKindIcon`. */
+internal fun ArtifactKind.lucideIcon(): RaftLucideIconName =
+    when (this) {
+        ArtifactKind.Html -> RaftLucideIconName.FileCode
+        ArtifactKind.Image -> RaftLucideIconName.FileImage
+        ArtifactKind.Video -> RaftLucideIconName.FileVideoCamera
+        ArtifactKind.Csv -> RaftLucideIconName.FileSpreadsheet
+        ArtifactKind.Other -> RaftLucideIconName.FileQuestionMark
+        ArtifactKind.Markdown, ArtifactKind.Text, ArtifactKind.Pdf -> RaftLucideIconName.FileText
+    }
+
+internal const val RaftArtifactLinkTag = "raft.build.markdown.artifactLink"
 internal const val RaftAppLinkConsentTag = "raft.build.markdown.appLinkConsent"
 internal const val RaftAppLinkCardTag = "raft.build.markdown.appLinkCard"
 
@@ -231,9 +343,11 @@ internal fun raftAppLinkKeepEnd(text: String, maxChars: Int): String =
 
 // raft-ui inline chip with a leading mark: 4.5px at each end, `rounded-sticker`, no edge. A
 // preview is `info-soft` (cyan); one that asks first, or waits, `inactive-soft` (grey).
-internal fun raftAppLinkChipBoxStyle(result: AppLinkResult): RaftInlineBoxStyle =
+internal fun raftAppLinkChipBoxStyle(result: AppLinkResult): RaftInlineBoxStyle = raftAppLinkChipBoxStyle(info = result is AppLinkResult.Card)
+
+internal fun raftAppLinkChipBoxStyle(info: Boolean): RaftInlineBoxStyle =
     RaftInlineBoxStyle(
-        backgroundColor = if (result is AppLinkResult.Card) RaftColor.InfoSoft else RaftColor.InactiveSoft,
+        backgroundColor = if (info) RaftColor.InfoSoft else RaftColor.InactiveSoft,
         paddingStart = 4.5.dp,
         paddingEnd = 4.5.dp,
         paddingTop = RaftRichTextInlineChipVerticalPaddingDp.dp,

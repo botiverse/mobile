@@ -103,7 +103,9 @@ data class InboxItem(
     /** Wire `firstMentionMessageId` (unread-mention anchor), null when absent. */
     val firstMentionMessageId: MessageId? = null,
     /** Wire `unfollowedAt` for inline unfollowed thread rows (`isFollowing:false`). */
-    val unfollowedAt: String? = null
+    val unfollowedAt: String? = null,
+    /** [InboxItemKind.Object] rows only: the object's row (workspace Artifacts). */
+    val activityObject: ActivityObjectRow? = null,
 )
 
 /**
@@ -1108,22 +1110,34 @@ data class InboxSnapshot(
     val staleReason: RaftStaleReason? = null,
     /** Task #164: the server's `Retry-After` with that remembered page. Never persisted. */
     @Transient
-    val staleRetryAfterMillis: Long? = null
+    val staleRetryAfterMillis: Long? = null,
+    /**
+     * Workspace Artifacts (slock `activityObjectsContract.ts` `ObjectInboxFields`): the object rows'
+     * own counts, apart from [totalCount] / [totalUnreadCount], which count no object rows. Null when
+     * the server sent none (every object app off).
+     */
+    val objectCounts: ActivityObjectCounts? = null,
 )
 
+/**
+ * The counts Activity shows and badges for the All filter: the conversation rows' ([totalCount],
+ * [totalUnreadCount], which the server keeps free of object rows) plus the object rows' own
+ * ([objectCounts]); an override replaces the conversation part only.
+ */
 internal fun InboxSnapshot.activityVisibleSummaryCounts(
     totalUnreadCountOverride: Int? = null,
     totalCountOverride: Int? = null
 ): Pair<Int, Int> {
-    val suppressed = items.filter { item -> item.hasUnopenableInternalJointParentSource() }
-    val visibleItems = items.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
+    val conversations = items.filterNot { item -> item.kind == InboxItemKind.Object }
+    val suppressed = conversations.filter { item -> item.hasUnopenableInternalJointParentSource() }
+    val visibleItems = conversations.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
     return maxOf(
         visibleItems.sumOf(InboxItem::unreadCount),
         (totalUnreadCountOverride ?: totalUnreadCount) - suppressed.sumOf(InboxItem::unreadCount)
-    ) to maxOf(
+    ) + (objectCounts?.objectUnreadCount ?: 0) to maxOf(
         visibleItems.size,
         (totalCountOverride ?: totalCount) - suppressed.size
-    )
+    ) + (objectCounts?.objectCount ?: 0)
 }
 
 data class InboxDoneResult(

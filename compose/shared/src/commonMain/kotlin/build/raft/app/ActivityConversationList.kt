@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.data.ActivityObjectRow
+import build.raft.app.data.ActivityObjectEventVerb
+import build.raft.app.data.ArtifactKind
+import build.raft.app.data.eventVerb
+import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
@@ -237,7 +242,21 @@ internal fun activityRowsInDisplayOrder(conversationListEntries: List<ActivityCo
     conversationListEntries.mapNotNull { entry -> (entry as? ActivityConversationListEntry.Row)?.item }
 
 /** What leads the row: the DM peer's face, else a neutral tile for the kind of place. */
-internal enum class ActivityConversationLeadingKind { Thread, DirectMessage, Channel }
+internal enum class ActivityConversationLeadingKind { Thread, DirectMessage, Channel, Object }
+
+/**
+ * An object row's line (web `ObjectInboxRow`): who did what, then where the object lives —
+ * "[face] Alice commented · #proj-workspace". The sentence is built here from the event's kind and
+ * why it reached the person ([ActivityObjectEventVerb]); [actorName] null reads "Someone".
+ */
+@Immutable
+internal data class ActivityObjectLine(
+    val actorName: String?,
+    val verb: ActivityObjectEventVerb,
+    val version: Int?,
+    val home: String?,
+    val avatar: ActivitySenderAvatarIdentity?,
+)
 
 /** Who spoke last, before the preview. */
 internal sealed interface ActivityConversationSender {
@@ -301,6 +320,10 @@ internal data class ActivityConversationRowModel(
      * Friday)", text only (web ThreadsInbox `formatDelegatedSender`). Never on a system row.
      */
     val delegatedBy: MessageDelegatedBy? = null,
+    /** [InboxItemKind.Object] rows: their line instead of sender and preview. */
+    val objectLine: ActivityObjectLine? = null,
+    /** [InboxItemKind.Object] rows: the kind's icon in the leading tile (web `artifactKindIcon`). */
+    val objectIcon: RaftLucideIconName? = null,
 ) {
     /** The thread badge sits in the leading corner (on the channel tile or the DM peer's face). */
     val leadingThreadBadge: Boolean
@@ -381,6 +404,7 @@ internal fun InboxItem.activityConversationRowModel(
     dmPeerNames: Map<String, String> = emptyMap(),
     activityTaskStatusBadgesEnabled: Boolean = true,
 ): ActivityConversationRowModel {
+    if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles)
     val directMessage = isActivityDirectMessageConversation()
     val leadingKind =
         when {
@@ -466,6 +490,94 @@ internal fun InboxItem.activityConversationRowModel(
         delegatedBy = previewDelegatedBy(),
     )
 }
+
+/**
+ * An object row (web `ObjectInboxRow`, raft-ui InboxItem compact): the kind's tile, the object's
+ * title, "[face] who did what · #home", then the time and the unread / @ marks. Never muted.
+ */
+internal fun InboxItem.activityObjectRowModel(
+    selectedFilter: InboxFilter,
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+): ActivityConversationRowModel {
+    val row = activityObject ?: ActivityObjectRow()
+    val unread = unreadCount.coerceAtLeast(0)
+    val actorName = senderProfiles[row.actorId]?.displayName?.takeIf { it.isNotBlank() } ?: row.actorName?.takeIf { it.isNotBlank() }
+    val actorKind = if (row.actorType == "agent") MemberKind.Agent else MemberKind.Human
+    val (verb, version) = row.eventVerb()
+    return ActivityConversationRowModel(
+        leadingKind = ActivityConversationLeadingKind.Object,
+        dmPeer = null,
+        title = row.title?.trim()?.takeIf { it.isNotEmpty() }?.let(::RaftMarkdownPreview),
+        threadChannelLabel = null,
+        sender = null,
+        preview = null,
+        muted = false,
+        strong = unread > 0,
+        showMentionMarker = selectedFilter != InboxFilter.Mentions && hasMention && unread > 0,
+        unreadCount = unread,
+        showUnreadCount = unread > 0,
+        hasDraft = false,
+        taskNumber = null,
+        taskStatus = null,
+        objectLine =
+            ActivityObjectLine(
+                actorName = actorName,
+                verb = verb,
+                version = version,
+                home = row.homeText,
+                avatar =
+                    ActivitySenderAvatarIdentity(
+                        senderKind = actorKind,
+                        avatarWireValue = null,
+                        label = actorName.orEmpty(),
+                        senderId = row.actorId.takeIf { it.isNotBlank() },
+                    ),
+            ),
+        objectIcon = ArtifactKind.fromWire(row.artifactKind).lucideIcon(),
+    )
+}
+
+/** The object row's sentence with its actor in the sender's style (raft-ui `InboxItemSender`). */
+@Composable
+internal fun activityObjectBodyText(line: ActivityObjectLine, senderStyle: SpanStyle): AnnotatedString {
+    val name = line.actorName ?: stringResource(Res.string.artifacts_activity_someone)
+    val sentence =
+        when (line.verb) {
+            ActivityObjectEventVerb.MentionedYou -> stringResource(Res.string.artifacts_activity_mentioned_you, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Commented -> stringResource(Res.string.artifacts_activity_commented, ActivityObjectNameMark)
+            ActivityObjectEventVerb.EditedComment -> stringResource(Res.string.artifacts_activity_edited_comment, ActivityObjectNameMark)
+            ActivityObjectEventVerb.PublishedVersion ->
+                stringResource(Res.string.artifacts_activity_published_version, ActivityObjectNameMark, line.version ?: 0)
+            ActivityObjectEventVerb.Published -> stringResource(Res.string.artifacts_activity_published, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Updated -> stringResource(Res.string.artifacts_activity_updated, ActivityObjectNameMark)
+        }
+    val home = line.home?.let { stringResource(Res.string.activity_list_object_home, it) }
+    return activityObjectBodyText(sentence, name, home, senderStyle, avatar = line.avatar != null)
+}
+
+/** Pure part of [activityObjectBodyText]: [sentence] holds [ActivityObjectNameMark] where the name goes. */
+internal fun activityObjectBodyText(
+    sentence: String,
+    name: String,
+    home: String?,
+    senderStyle: SpanStyle,
+    avatar: Boolean,
+): AnnotatedString =
+    buildAnnotatedString {
+        if (avatar) appendInlineContent(ActivityConversationSenderAvatarInlineId, alternateText = " ")
+        val at = sentence.indexOf(ActivityObjectNameMark)
+        if (at < 0) {
+            append(sentence)
+        } else {
+            append(sentence.substring(0, at))
+            withStyle(senderStyle) { append(name) }
+            append(sentence.substring(at + ActivityObjectNameMark.length))
+        }
+        if (!home.isNullOrBlank()) append(" $home")
+    }
+
+/** Stands in for the actor's name while the localized sentence is resolved. */
+internal const val ActivityObjectNameMark = "\u2063NAME\u2063"
 
 // ---------------------------------------------------------------------------------------------
 // Avatars
@@ -631,10 +743,12 @@ internal fun ActivityConversationListRow(
     val threadChannelText = model.threadChannelLabel?.let { stringResource(Res.string.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
+    val untitledObject = stringResource(Res.string.artifacts_activity_untitled)
     val fallback =
         when (item.kind) {
             InboxItemKind.Thread -> threadFallback
             InboxItemKind.MentionAction -> actionFallback
+            InboxItemKind.Object -> untitledObject
             else -> conversationFallback
         }
     var pressed by remember(item.key) { mutableStateOf(false) }
@@ -739,7 +853,7 @@ internal fun ActivityConversationListRow(
                         when (val sender = model.sender) {
                             is ActivityConversationSender.Named -> sender.avatar
                             is ActivityConversationSender.Self -> sender.avatar
-                            else -> null
+                            else -> model.objectLine?.avatar
                         }
                     val density = LocalDensity.current
                     val inlineContent =
@@ -770,14 +884,16 @@ internal fun ActivityConversationListRow(
                             is ActivityConversationSender.Named -> delegatedPreviewSender(sender.name, model.delegatedBy)
                             null -> null
                         }
+                    val senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground)
                     val bodyText =
-                        activityConversationBodyText(
-                            channelLabel = visibleThreadChannelText,
-                            sender = senderText,
-                            preview = model.preview?.toAnnotatedString() ?: AnnotatedString(fallback),
-                            senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
-                            senderAvatar = senderAvatar != null,
-                        )
+                        model.objectLine?.let { line -> activityObjectBodyText(line, senderStyle) }
+                            ?: activityConversationBodyText(
+                                channelLabel = visibleThreadChannelText,
+                                sender = senderText,
+                                preview = model.preview?.toAnnotatedString() ?: AnnotatedString(fallback),
+                                senderStyle = senderStyle,
+                                senderAvatar = senderAvatar != null,
+                            )
                     ActivityExcerptBesideMarks(
                         text = bodyText,
                         accessibilityText =
@@ -892,7 +1008,10 @@ private fun ActivityConversationLeading(
             // channel's own glyph as the Home sidebar draws it. A DM (or a thread in one) whose peer is
             // not loaded yet shows the DM icon, never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
-                if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
+                val objectIcon = model.objectIcon
+                if (model.leadingKind == ActivityConversationLeadingKind.Object && objectIcon != null) {
+                    RaftLucideIcon(objectIcon, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
+                } else if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
                     RaftLucideIcon(RaftLucideIconName.MessageCircle, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
                 } else {
                     HomeSidebarChannelGlyph(model.channelSymbol, size = ConversationTileGlyph)

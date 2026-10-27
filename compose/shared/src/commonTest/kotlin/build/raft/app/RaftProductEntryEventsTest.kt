@@ -77,8 +77,10 @@ class RaftProductEntryEventsTest {
                 InboxItemKind.MentionAction to RaftActivityItemKind.MentionAction,
             )
         expected.forEach { (kind, item) -> assertEquals(item, kind.productActivityItemKind(), kind.name) }
-        assertNull(InboxItemKind.System.productActivityItemKind())
-        assertEquals(InboxItemKind.entries.toSet() - InboxItemKind.System, expected.keys)
+        // System rows and Artifact object rows (no `artifact` kind in the registry yet) send nothing.
+        val silent = setOf(InboxItemKind.System, InboxItemKind.Object)
+        silent.forEach { kind -> assertNull(kind.productActivityItemKind(), kind.name) }
+        assertEquals(InboxItemKind.entries.toSet() - silent, expected.keys)
     }
 
     @Test

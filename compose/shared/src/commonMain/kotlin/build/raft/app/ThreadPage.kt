@@ -11407,6 +11407,14 @@ private fun SharedThreadRouteContentContent(
                         serverId = serverId,
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
+                        // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
+                        artifacts =
+                            ThreadArtifactLinkHost(
+                                summaries = sharedStores.artifactSummaryStore,
+                                appHosts = sharedStores.clientConfigStore.appHosts,
+                                featureFlags = sharedStores.serverFeatureFlags,
+                                webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                            ),
                     )
                 }
             }

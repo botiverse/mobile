@@ -24,6 +24,7 @@ new product concept gets a Japanese rendering.
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |
+| Artifact / Artifacts | Artifact / Artifacts | Workspace Artifacts; kept in English as the web ja catalog does (「無題の Artifact」); the app name is always "Artifacts" |
 | Saved | 保存済み | Bookmark feature |
 | Pinned / Pin | ピン留め | Unpin = ピン留めを解除 |
 | Follow (thread) | フォロー | Unfollow = フォロー解除 |

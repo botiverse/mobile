@@ -729,7 +729,12 @@ enum class InboxItemKind {
     DirectMessage,
     Thread,
     MentionAction,
-    System
+    System,
+    /**
+     * A first-party object's row (slock `activityObjectsContract.ts` `ObjectInboxItem`, Artifacts):
+     * [build.raft.app.data.InboxItem.activityObject] carries it; its `channelId` names no conversation.
+     */
+    Object
 }
 
 // Realtime Event Models
@@ -943,6 +948,18 @@ data class ServerPlanUpdated(
 data class ServerFeaturesChanged(
     val serverId: ServerId,
     val keys: List<String>,
+) : RealtimeEvent
+
+/**
+ * `activity:changed` (botiverse/slock `packages/shared/src/activityObjectsContract.ts`
+ * `ActivityChangedEvent`), to the person's own room: their Activity in [serverId] changed (an
+ * object event, or their own Done / undo / read of an object row elsewhere). Carries no content:
+ * refetch that server's Activity and unread summary. [source] is `object` today.
+ */
+@Serializable
+data class ActivityChanged(
+    val serverId: ServerId,
+    val source: String,
 ) : RealtimeEvent
 
 @Serializable

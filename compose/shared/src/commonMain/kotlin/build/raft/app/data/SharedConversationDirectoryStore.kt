@@ -628,6 +628,8 @@ private fun InboxItem.toSharedConversationDirectoryProjections(
     dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit
 ): List<SharedConversationDirectoryProjection> {
+    // Workspace Artifacts rows name no conversation.
+    if (kind == InboxItemKind.Object) return emptyList()
     val parentProjection =
         if (kind == InboxItemKind.Thread) {
             parentChannelProjection(serverId, dmPeerNames, logger)
@@ -857,7 +859,7 @@ private fun InboxItem.directoryConversationKind(): ConversationKind =
         InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
         InboxItemKind.Thread -> ConversationKind.Thread
         InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
-        InboxItemKind.System -> ConversationKind.System
+        InboxItemKind.System, InboxItemKind.Object -> ConversationKind.System
         InboxItemKind.Channel ->
             when (channelKind) {
                 ConversationKind.Joint -> ConversationKind.Joint

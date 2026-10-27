@@ -305,6 +305,7 @@ internal data class SharedThreadComposerDraftProjection(
             InboxItemKind.DirectMessage,
             InboxItemKind.MentionAction,
             InboxItemKind.System -> hasRootDraft(item.channelId.value)
+            InboxItemKind.Object -> false
         }
 
     fun hasDraftForTask(task: TaskSummary): Boolean =

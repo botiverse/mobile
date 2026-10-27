@@ -130,6 +130,13 @@ const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hos
  */
 const val ACTION_CARD_SPEC_FEATURE_FLAG_KEY: String = "action_card_spec"
 
+/**
+ * Workspace Artifacts (slock `packages/shared/src/featureFlags.ts` `WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY`):
+ * per server, default off, no rules. Off (or unresolved), Artifact links stay plain links and nothing
+ * new is shown: no chips, no item cards, no Activity object rows.
+ */
+const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -149,6 +156,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
+    WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
 )
 
 /**

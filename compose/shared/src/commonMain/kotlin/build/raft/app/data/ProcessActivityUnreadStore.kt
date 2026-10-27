@@ -701,6 +701,8 @@ internal fun RealtimeEvent.affectsActivityContent(): Boolean =
         is TaskCreated,
         is TaskUpdated,
         is TaskDeleted,
+        // Workspace Artifacts: an object row changed (activityObjectsContract.ts); refetch.
+        is build.raft.app.model.ActivityChanged,
         is SyncResumeResponse -> true
         is RealtimeRefreshRequired ->
             scope == RealtimeRefreshScope.Home ||

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
@@ -58,10 +59,12 @@ private val INLINE_CODE_PATTERN = Regex("""``[^`]+``|`[^`]+`""")
  * The configured web origin is an exact additional allow-list entry.
  */
 internal fun String.toRaftMessagePermalinkTarget(
-    configuredWebUrl: String? = null
+    configuredWebUrl: String? = null,
+    /** The client config's `appHosts`, added to the hosts above (a union, never a replacement). */
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): RaftMessagePermalinkTarget? {
     val parsed = parseRaftAbsoluteUrl() ?: return null
-    if (parsed.host !in raftPermalinkAllowedHosts(configuredWebUrl)) return null
+    if (parsed.host !in raftPermalinkAllowedHosts(configuredWebUrl) && parsed.host !in appHosts) return null
     val segments = parsed.path.split('/').filter(String::isNotBlank)
     if (segments.size != 4 || segments[0] != "s") return null
 

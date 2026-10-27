@@ -24,6 +24,17 @@ import build.raft.app.data.AppLinkConsentAnswer
 import build.raft.app.data.AppLinkConsentStatus
 import build.raft.app.data.AppLinkPromptApp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.data.ArtifactSummary
+import build.raft.app.data.ArtifactSummaryAnswer
+import build.raft.app.data.SharedArtifactSummaryStore
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+import build.raft.app.data.answersFor
+import build.raft.app.data.artifactMessageLinkTargets
+import build.raft.app.data.artifactWebUrl
+import build.raft.app.data.rememberServerFeatureLatched
+import build.raft.app.model.ServerId
+import kotlinx.coroutines.flow.StateFlow
 import build.raft.app.data.SharedAppLinkPreviewStore
 import build.raft.app.data.appLinkAppKey
 import build.raft.app.data.appLinkDomain
@@ -54,7 +65,56 @@ internal data class ThreadAppLinkPreviewHost(
     val serverId: String,
     val conversationId: String,
     val toast: (String) -> Unit,
+    /** Workspace Artifacts links; null where they aren't read (fixtures, no provider). */
+    val artifacts: ThreadArtifactLinkHost? = null,
 )
+
+/**
+ * What a message needs to show its Artifact links as chips (web `ArtifactMessageRefs.tsx`
+ * `useArtifactLinkTargets` + core's `useMessageLinkCards`): the summaries, Raft's own app hosts
+ * (`GET /api/public/client-config`), the flag, and the environment's web origin a chip opens on.
+ */
+@Immutable
+internal data class ThreadArtifactLinkHost(
+    val summaries: SharedArtifactSummaryStore,
+    val appHosts: StateFlow<List<String>>,
+    val featureFlags: SharedServerFeatureFlags?,
+    val webBaseUrl: String,
+)
+
+/** One message's Artifact links answered `ok`, and the hosts they were split on. */
+@Immutable
+internal data class ThreadArtifactLinks(
+    val summaries: Map<String, ArtifactSummary>,
+    val appHosts: List<String>,
+) {
+    companion object {
+        val None = ThreadArtifactLinks(emptyMap(), emptyList())
+    }
+}
+
+/**
+ * The message's Artifact links (workspace_artifacts_v0, latched for this composition: a flag that
+ * turns off leaves what is shown until the next entry): split on the app hosts, read in the
+ * message's batch, and only those answered `ok`.
+ */
+@Composable
+internal fun rememberThreadArtifactLinks(host: ThreadArtifactLinkHost?, serverId: String, body: String): ThreadArtifactLinks {
+    if (host == null) return ThreadArtifactLinks.None
+    val enabled = rememberServerFeatureLatched(host.featureFlags, ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
+    val appHosts by host.appHosts.collectAsState()
+    val targets = remember(enabled, appHosts, body) { if (enabled) artifactMessageLinkTargets(body, appHosts) else emptyList() }
+    if (targets.isEmpty()) return ThreadArtifactLinks.None
+    val answersFlow = remember(host.summaries, serverId, targets) { host.summaries.answersFlow(serverId, targets) }
+    val answers by answersFlow.collectAsState(initial = host.summaries.state.value.answersFor(serverId, targets))
+    LaunchedEffect(host.summaries, serverId, targets) { host.summaries.request(serverId, targets) }
+    return remember(answers, appHosts) {
+        ThreadArtifactLinks(
+            summaries = answers.mapNotNull { (key, answer) -> (answer as? ArtifactSummaryAnswer.Ok)?.let { key to it.summary } }.toMap(),
+            appHosts = appHosts,
+        )
+    }
+}
 
 internal val LocalThreadAppLinkPreviewHost = staticCompositionLocalOf<ThreadAppLinkPreviewHost?> { null }
 
@@ -74,14 +134,19 @@ internal fun ThreadAppLinkPreviewScope(
     val host = LocalThreadAppLinkPreviewHost.current
     // A share image keeps the links the author wrote: no chips, item card, prompt or placeholder.
     val previewsEnabled = threadAppLinkPreviewsEnabled(enabled, LocalThreadShareCaptureActive.current)
-    if (host == null || !previewsEnabled || !appLinkPreviewsApply(body) || !messageId.isAppLinkMessageId()) {
+    if (host == null || !previewsEnabled || !messageId.isAppLinkMessageId()) {
+        content()
+        return
+    }
+    val artifacts = rememberThreadArtifactLinks(host.artifacts, host.serverId, body)
+    if (!appLinkPreviewsApply(body) && artifacts.summaries.isEmpty()) {
         content()
         return
     }
     val state by host.store.state.collectAsState()
     val view =
         remember(state, host.viewerKey, messageId, body, host.conversationId) {
-            state.messageView(host.viewerKey, messageId, body, host.conversationId)
+            state.messageView(host.viewerKey, messageId, body, host.conversationId, host.store.artifactHosts())
         }
     LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature) {
         if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId)
@@ -89,12 +154,22 @@ internal fun ThreadAppLinkPreviewScope(
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
     val cards = rememberThreadAppLinkCards(messageId)
+    val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
     val chipHost =
-        remember(view.results, cards) {
-            RaftAppLinkChipHost(view.results, onAsk = { asking = it }, onOpenCard = cards::open, cardAnchor = cards::anchor)
+        remember(view.results, cards, artifacts, artifactWebBaseUrl) {
+            RaftAppLinkChipHost(
+                view.results,
+                onAsk = { asking = it },
+                onOpenCard = cards::open,
+                cardAnchor = cards::anchor,
+                artifacts = artifacts.summaries,
+                artifactHosts = artifacts.appHosts,
+                onOpenArtifact = { target -> cards.openArtifact(target, artifactWebUrl(artifactWebBaseUrl, target)) },
+                artifactAnchor = { key -> cards.anchor(threadArtifactCardKey(key)) },
+            )
         }
     CompositionLocalProvider(LocalRaftAppLinkChips provides chipHost, content = content)
-    ThreadAppLinkCardPopoverHost(results = view.results, cards = cards)
+    ThreadAppLinkCardPopoverHost(results = view.results, cards = cards, artifacts = artifacts.summaries, artifactWebBaseUrl = artifactWebBaseUrl)
     val prompt = asking
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent

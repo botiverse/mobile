@@ -231,7 +231,8 @@ internal fun InboxItem.toConversationOpenSourceMessageIdentity(): ConversationOp
                 InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
                 InboxItemKind.Thread -> ConversationKind.Thread
                 InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
-                InboxItemKind.System -> ConversationKind.System
+                // Object rows open on the web, never as a conversation.
+                InboxItemKind.System, InboxItemKind.Object -> ConversationKind.System
                 InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
             },
         parentConversationKind = parentChannelKind,
