@@ -9216,10 +9216,6 @@ private val MembersInfoFieldGapY = 12.dp // web gap-y-3, when those two wrap ont
 private val MembersInfoStatusGapX = 6.dp // web gap-x-1.5, inside the machine status line
 private val MembersInfoStatusGapY = 4.dp // web gap-y-1, when that status line wraps
 
-// Task #259: web's status line is text-xs (12px); the old row was 10sp. Dot matches web StatusDot.
-private val MembersMachineStatusFontSize = 12.sp
-private val MembersMachineStatusLineHeight = 16.sp
-
 /**
  * Label -> string resource pairing, kept out of the Composable so the six pairs are unit-testable
  * (MembersMachineStatusRowTest). Three of the six branches have no visual fixture until Batch 3,
@@ -10198,173 +10194,184 @@ private fun MembersAgentInfoSection(
         if (roleHelpOpen) {
             MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
         }
-        // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
-        // value here rather than using a fixed left gutter. The old 86dp label
-        // column is what made a long machine name ellipsize: the gutter never
-        // yields, so the value gets whatever is left. Stacked, the value owns the
-        // full width and wraps instead.
-        MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
-            val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
-            val machineNameStyle =
-                RaftType.Body.copy(
-                    fontFamily = raftMonoFamilyForWeight(FontWeight.SemiBold),
-                    fontSize = MembersInfoValueFontSize,
-                    lineHeight = MembersInfoValueLineHeight,
-                    fontWeight = FontWeight.Normal
-                ).let { base ->
-                    // Web renders the name as a button with a hover underline. Android
-                    // has no hover, so the underline is shown whenever it is actually
-                    // tappable — the affordance has to be visible without a pointer.
-                    if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
-                }
-            Text(
-                text = machineName,
-                style = machineNameStyle,
-                color = RaftColor.TextBlack,
-                // Web sets break-all on this specific value: machine names are
-                // unbroken tokens, so without it a long one overflows its box. No
-                // maxLines/ellipsis here on purpose — truncating a machine name
-                // hides exactly the part that distinguishes two similar hosts.
-                softWrap = true,
-                // Long press copies the name; a tap still opens the computer.
-                modifier = Modifier
-                    .raftCopyable(machineName.takeIf { it != "—" }, onClick = onOpenComputer)
-                    .fillMaxWidth()
-            )
-            // Status line (task #259). Truth source is the computers store, not
-            // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
-            // Two independent facts -- status word and run label -- rendered as two
-            // spans with a literal " · " between them, exactly as web does in JSX.
-            when (val statusRow = machineStatusRow(summary?.machineId)) {
-                // artin: 甲 -- until the store has answered, render nothing here. Web
-                // falls through to "no computer assigned" during this window; that is
-                // its defect, not a reference to copy.
-                MembersMachineStatusRow.Loading -> Unit
-                MembersMachineStatusRow.NoComputer ->
-                    Text(
-                        text = stringResource(Res.string.member_machine_no_computer_assigned),
-                        style = RaftType.Caption.copy(
-                            fontSize = MembersMachineStatusFontSize,
-                            lineHeight = MembersMachineStatusLineHeight
-                        ),
-                        color = RaftColor.TextMutedGray,
-                        modifier = Modifier.padding(top = MembersInfoBlockGap)
-                    )
-                is MembersMachineStatusRow.Machine -> {
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
-                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                        verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
-                    ) {
-                        // web: <StatusDot class="shrink-0"> -- fixed size, never compressed.
-                        // raft-ui Status pixel (square, sticker-ink edge), centred on the 16dp line.
-                        Box(Modifier.height(MembersMachineStatusLineHeight.value.dp), contentAlignment = Alignment.Center) {
-                            RaftStatusDot(
-                                presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
-                                size = RaftStatusSize.Sm
-                            )
-                        }
-                        Text(
-                            text = stringResource(
-                                if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
-                            ),
-                            style = RaftType.Caption.copy(
-                                fontSize = MembersMachineStatusFontSize,
-                                lineHeight = MembersMachineStatusLineHeight
-                            ),
-                            color = RaftColor.TextMutedGray
-                        )
-                        // web: <span class="font-mono">· {runLabel}</span> -- the separator is
-                        // layout text inside the mono span, not part of any i18n string.
-                        Text(
-                            text = "· " + statusRow.runLabel.localized(),
-                            style = RaftType.Caption.copy(
-                                fontFamily = RaftMonoFamily,
-                                fontSize = MembersMachineStatusFontSize,
-                                lineHeight = MembersMachineStatusLineHeight
-                            ),
-                            color = RaftColor.TextMutedGray
+        MembersAgentComputerInfoRows(
+            member = member,
+            summary = summary,
+            machineStatusRow = machineStatusRow,
+            onOpenComputer = onOpenComputer,
+            timeContext = timeContext,
+            memberAvatarResolver = memberAvatarResolver
+        )
+    }
+}
+
+/**
+ * raft-ui DescriptionDetails value type: `font-sans text-callout` (14/20 400, `foreground`).
+ * [mono] is the web's `font-mono` on that span (machine names, versions, dates, model ids):
+ * Space Mono at the same callout size.
+ */
+@Composable
+private fun membersInfoValueStyle(mono: Boolean = false): TextStyle {
+    val typography = RaftTheme.typography
+    return if (mono) typography.callout.copy(fontFamily = typography.monoCode.fontFamily) else typography.callout
+}
+
+/**
+ * The Computer / Created / Creator rows of the agent profile's INFO section (web
+ * AgentDetailPanel `AgentProfileInfo` InfoRows), split out so a golden can cover them.
+ */
+@Composable
+internal fun MembersAgentComputerInfoRows(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    onOpenComputer: (() -> Unit)?,
+    timeContext: RaftTimeContext,
+    memberAvatarResolver: RaftMemberAvatarResolver
+) {
+    // Computer / Created / Creator — web AgentDetailPanel stacks label ABOVE
+    // value here rather than using a fixed left gutter. The old 86dp label
+    // column is what made a long machine name ellipsize: the gutter never
+    // yields, so the value gets whatever is left. Stacked, the value owns the
+    // full width and wraps instead.
+    MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
+        val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
+        // Web `font-mono text-foreground` on the DescriptionDetails callout.
+        val machineNameStyle =
+            membersInfoValueStyle(mono = true).let { base ->
+                // Web renders the name as a button with a hover underline. Android
+                // has no hover, so the underline is shown whenever it is actually
+                // tappable — the affordance has to be visible without a pointer.
+                if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
+            }
+        RaftText(
+            text = machineName,
+            style = machineNameStyle,
+            color = RaftTheme.colors.foreground,
+            // Web sets break-all on this specific value: machine names are
+            // unbroken tokens, so without it a long one overflows its box. No
+            // maxLines/ellipsis here on purpose — truncating a machine name
+            // hides exactly the part that distinguishes two similar hosts.
+            softWrap = true,
+            // Long press copies the name; a tap still opens the computer.
+            modifier = Modifier
+                .raftCopyable(machineName.takeIf { it != "—" }, onClick = onOpenComputer)
+                .fillMaxWidth()
+        )
+        // Status line (task #259). Truth source is the computers store, not
+        // `machineId != null`; the six-way run label mirrors web machineRunLabel.ts.
+        // Two independent facts -- status word and run label -- rendered as two
+        // spans with a literal " · " between them, exactly as web does in JSX.
+        when (val statusRow = machineStatusRow(summary?.machineId)) {
+            // artin: 甲 -- until the store has answered, render nothing here. Web
+            // falls through to "no computer assigned" during this window; that is
+            // its defect, not a reference to copy.
+            MembersMachineStatusRow.Loading -> Unit
+            MembersMachineStatusRow.NoComputer ->
+                // Web `text-foreground-hint` on the callout.
+                RaftText(
+                    text = stringResource(Res.string.member_machine_no_computer_assigned),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foregroundHint,
+                    modifier = Modifier.padding(top = MembersInfoBlockGap)
+                )
+            is MembersMachineStatusRow.Machine -> {
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
+                    horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                    verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                ) {
+                    // web `agent-computer-connection`: <StatusDot> (Status md, 10px) then the
+                    // word on the DescriptionDetails callout, `foreground`. The pixel is
+                    // centred on the 20dp callout line.
+                    Box(Modifier.height(MembersInfoValueLineHeight.value.dp), contentAlignment = Alignment.Center) {
+                        RaftStatusDot(
+                            presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
+                            size = RaftStatusSize.Md
                         )
                     }
+                    RaftText(
+                        text = stringResource(
+                            if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
+                        ),
+                        style = membersInfoValueStyle(),
+                        color = RaftTheme.colors.foreground
+                    )
+                    // web `agent-computer-version`: <span class="font-mono"> on the callout. The
+                    // separator is layout text inside the mono span, not part of any i18n string.
+                    RaftText(
+                        text = "· " + statusRow.runLabel.localized(),
+                        style = membersInfoValueStyle(mono = true),
+                        color = RaftTheme.colors.foreground
+                    )
                 }
             }
         }
-        // Created and Creator sit side by side while they fit and drop to their own
-        // lines when they do not. A fixed two-column Row would keep them side by
-        // side at any width, which is the failure this section is meant to avoid.
-        @OptIn(ExperimentalLayoutApi::class)
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
-            verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
-        ) {
-            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                MembersAgentInfoField(label = stringResource(Res.string.member_label_created), copyText = createdDate) {
-                    Text(
-                        text = createdDate,
-                        style = RaftType.Body.copy(
-                            fontFamily = RaftMonoFamily,
-                            fontSize = MembersInfoValueFontSize,
-                            lineHeight = MembersInfoValueLineHeight
-                        ),
-                        color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+    }
+    // Created and Creator sit side by side while they fit and drop to their own
+    // lines when they do not. A fixed two-column Row would keep them side by
+    // side at any width, which is the failure this section is meant to avoid.
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
+        verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
+    ) {
+        summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+            MembersAgentInfoField(label = stringResource(Res.string.member_label_created), copyText = createdDate) {
+                // Web `<span className="font-mono">` on the callout.
+                RaftText(
+                    text = createdDate,
+                    style = membersInfoValueStyle(mono = true),
+                    color = RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            // Creator value stays a clickable identity chip (web opens the profile).
-            val creatorProfile = summary?.creator?.toStrictMemberProfile()
-            MembersAgentInfoField(label = stringResource(Res.string.member_label_creator), copyText = creatorProfile?.displayName) {
-                if (creatorProfile != null) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MembersRaftAvatar(
-                            member = creatorProfile,
-                            size = RaftAvatarSize.Xs,
-                            memberAvatarResolver = memberAvatarResolver
-                        )
-                        Text(
-                            text = creatorProfile.displayName,
-                            style = RaftType.Body.copy(
-                                fontSize = MembersInfoValueFontSize,
-                                lineHeight = MembersInfoValueLineHeight
-                            ).withRaftFontWeight(FontWeight.SemiBold),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // fill = false so the name shrinks to its content and the
-                            // handle beside it is not pushed out; without this the
-                            // name would claim the row and squeeze its sibling.
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        Text(
-                            text = creatorProfile.detailHandle,
-                            style = RaftType.Caption.copy(
-                                fontFamily = RaftMonoFamily,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
-                            ),
-                            color = RaftColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                } else {
-                    Text(
-                        text = stringResource(Res.string.member_state_no_creator_assigned),
-                        style = RaftType.Body.copy(
-                            fontSize = MembersInfoValueFontSize,
-                            lineHeight = MembersInfoValueLineHeight
-                        ),
+        }
+        // Creator value stays a clickable identity chip (web opens the profile).
+        val creatorProfile = summary?.creator?.toStrictMemberProfile()
+        MembersAgentInfoField(label = stringResource(Res.string.member_label_creator), copyText = creatorProfile?.displayName) {
+            if (creatorProfile != null) {
+                // Web creator button: `flex items-center gap-2`, the name on the callout at
+                // 400, the @handle `font-mono text-mono-meta text-foreground-hint`.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MembersRaftAvatar(
+                        member = creatorProfile,
+                        size = RaftAvatarSize.Xs,
+                        memberAvatarResolver = memberAvatarResolver
+                    )
+                    RaftText(
+                        text = creatorProfile.displayName,
+                        style = membersInfoValueStyle(),
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // fill = false so the name shrinks to its content and the
+                        // handle beside it is not pushed out; without this the
+                        // name would claim the row and squeeze its sibling.
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    RaftText(
+                        text = creatorProfile.detailHandle,
+                        style = RaftTheme.typography.monoMeta,
                         color = RaftTheme.colors.foregroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            } else {
+                RaftText(
+                    text = stringResource(Res.string.member_state_no_creator_assigned),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -11209,13 +11216,8 @@ internal fun MembersAgentRuntimeConfigRows(
         }
         if (modelLabel != null) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_model), copyText = modelLabel) {
-                // The model id in machine type on the neutral wash.
-                RaftBadge(
-                    text = modelLabel,
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = RaftBadgeVariant.Default,
-                    machineType = true
-                )
+                // Web `<span className="min-w-0 break-all font-mono">`: plain machine text, no chip.
+                RaftText(text = modelLabel, style = membersInfoValueStyle(mono = true), color = RaftTheme.colors.foreground)
             }
         }
         // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
@@ -11230,19 +11232,20 @@ internal fun MembersAgentRuntimeConfigRows(
             ) != null
         ) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_reasoning)) {
-                RaftBadge(
+                // Web `<span>`: the plain callout value.
+                RaftText(
                     text = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(Res.string.member_label_default),
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = RaftBadgeVariant.Primary
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground
                 )
             }
         }
         if (supportsRuntimeFastMode(runtimeId)) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_mode)) {
-                RaftBadge(
+                RaftText(
                     text = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = RaftBadgeVariant.Warning
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground
                 )
             }
         }
@@ -11266,14 +11269,11 @@ internal fun MembersAgentRuntimeConfigRows(
             val providerId =
                 (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_provider), copyText = providerId) {
-                Text(
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
                     text = providerId ?: stringResource(Res.string.member_label_default),
-                    style = RaftType.Caption.copy(
-                        fontFamily = if (providerId == null) RaftType.Caption.fontFamily else RaftMonoFamily,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    ),
-                    color = if (providerId == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
+                    style = membersInfoValueStyle(mono = !(providerId == null)),
+                    color = if (providerId == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -11285,30 +11285,22 @@ internal fun MembersAgentRuntimeConfigRows(
                 stringResource(Res.string.member_label_provider),
                 copyText = provider?.apiUrl?.takeIf { it.isNotBlank() }
             ) {
-                Text(
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
                     text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.member_label_default),
-                    style = RaftType.Caption.copy(
-                        fontFamily = if (provider == null) RaftType.Caption.fontFamily else RaftMonoFamily,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
-                        fontStyle = if (provider == null) FontStyle.Italic else FontStyle.Normal
-                    ),
-                    color = if (provider == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
+                    style = membersInfoValueStyle(mono = !(provider == null)),
+                    color = if (provider == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_command), copyText = command) {
-                Text(
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
                     text = command ?: stringResource(Res.string.member_label_default),
-                    style = RaftType.Caption.copy(
-                        fontFamily = if (command == null) RaftType.Caption.fontFamily else RaftMonoFamily,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
-                        fontStyle = if (command == null) FontStyle.Italic else FontStyle.Normal
-                    ),
-                    color = if (command == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
+                    style = membersInfoValueStyle(mono = !(command == null)),
+                    color = if (command == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -11348,8 +11340,11 @@ private fun MembersAgentRuntimeConfigField(
     copyText: String? = null,
     content: @Composable () -> Unit
 ) {
+    // At least one 122dp column, so short values line up two to a row; a longer value (a model
+    // id, an API URL) widens its field and the FlowRow moves it to a line of its own instead
+    // of breaking the id mid-token.
     Column(
-        modifier = Modifier.width(122.dp),
+        modifier = Modifier.widthIn(min = 122.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // raft-ui DescriptionTerm: footnote medium `foreground-hint`.
