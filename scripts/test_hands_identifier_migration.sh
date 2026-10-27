@@ -26,6 +26,9 @@ while IFS= read -r match; do
   case "${match}" in
     .github/workflows/android-release.yml:*"secrets.${old_upper}_BEARER_TOKEN"*) ;;
     .github/workflows/ios-release.yml:*"secrets.${old_upper}_IOS_BEARER_TOKEN"*) ;;
+    # Read-only Hands lookups for the GitHub Release (scripts/github_release_from_hands.py).
+    .github/workflows/github-release.yml:*"HANDS_ANDROID_BEARER_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
+    .github/workflows/github-release.yml:*"HANDS_IOS_BEARER_TOKEN: \${{ secrets.${old_upper}_IOS_BEARER_TOKEN }}"*) ;;
     *)
       echo "${match}"
       unexpected=1
