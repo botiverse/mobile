@@ -868,7 +868,7 @@ platform directories.
 
 - Add one kebab-case Markdown file per user-facing feature, improvement, or
   fix. Use
-  `change-logs/1.6.0/changesets/sync-core-v2-sole-apply-canary.md` as the
+  `change-logs/1.6.0/changesets/app-shell-idle-prewarm.md` as the
   current structure reference.
 - Ship the changeset in the same PR as the product change whenever possible.
   If the target version is assigned only after the product PR merged, create a

@@ -3747,11 +3747,6 @@ internal class SharedRealtimeDomainEventOwner(
         // `sync_core_messages_v1` SHADOW partition gate, BEFORE the sink fan-out and invisible to it. This
         // legacy overload has no principal, so only canonical MessageNew/Updated frames are counted and
         // denied; non-message and non-canonical events produce no diagnostic. The sink path stays untouched.
-        // Slice-2 lane insert point: when sole-apply becomes eligible (CANONICAL_FACT_SOLE_APPLY_ELIGIBLE,
-        // V2 envelope), the per-scope MessageSoleApplyLane replaces this shadow persist HERE — message
-        // frames route through fold+commit (one-txn) FIRST and only fan out to the sinks below on
-        // CommitSucceeded. Dormant in slice-2: MessageSoleApplyLane.createIfEligible is structurally
-        // false-gated, so no lane exists in production and this path stays byte-identical.
         messageShadowFoldLane?.let { lane ->
             if (lane.isEnabled()) {
                 val deniedFrameCount = acceptedEvents.count { acceptedEvent ->
