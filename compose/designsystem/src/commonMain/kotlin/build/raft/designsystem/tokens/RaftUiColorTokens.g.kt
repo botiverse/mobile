@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.35.1/dist/styles.css sha256=de66fe7057a7a86e
-//   npm:@botiverse/raft-ui@0.35.1/dist/foundation.css sha256=b3cf18148a40ed1d
-//   botiverse/slock@3652d3703232dd2e61b8f07b0217befe94337118:packages/web/src/index.css sha256=85dc624a9146fda9
+//   npm:@botiverse/raft-ui@0.37.0/dist/styles.css sha256=48f3861f4a9c26d5
+//   npm:@botiverse/raft-ui@0.37.0/dist/foundation.css sha256=a82f6e5ffffc2bf8
+//   botiverse/slock@6924ec3a016ebfc956d58863f81046d59d07c05c:packages/web/src/index.css sha256=c8226ab77a793855
 
 package build.raft.designsystem.tokens
 
@@ -1362,6 +1362,8 @@ sealed class RaftUiThemeColors {
     abstract val layerPopover: Color
     /** `--layer-sidebar` */
     abstract val layerSidebar: Color
+    /** `--layer-veil` */
+    abstract val layerVeil: Color
     /** `--line` */
     abstract val line: Color
     /** `--line-field` */
@@ -1492,6 +1494,7 @@ sealed class RaftUiThemeColors {
         override val layerPanel = Color(0xFFFFFFFF)
         override val layerPopover = Color(0xFFFFFFFF)
         override val layerSidebar = Color(0xFFFFFAEF)
+        override val layerVeil = Color(0xCCFFFFFF)
         override val line = Color(0x73141111)
         override val lineField = Color(0xFF141111)
         override val lineFieldHover = Color(0xFF141111)
@@ -1591,6 +1594,7 @@ sealed class RaftUiThemeColors {
         override val layerPanel = Color(0xFF1B1B19)
         override val layerPopover = Color(0xFF292927)
         override val layerSidebar = Color(0xFF0D0D0B)
+        override val layerVeil = Color(0xCC1B1B19)
         override val line = Color(0x42FAFAF7)
         override val lineField = Color(0xFFE5E5E2)
         override val lineFieldHover = Color(0xFFE5E5E2)
