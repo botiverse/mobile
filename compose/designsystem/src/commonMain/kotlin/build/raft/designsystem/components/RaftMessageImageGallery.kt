@@ -17,9 +17,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -70,11 +68,7 @@ object RaftMessageImageGalleryDefaults {
     /** The gallery's own width from which rows take the taller heights (its full [MaxWidth]). */
     val WideFrom = 360.dp
 
-    /** `has-overlay:opacity-70`: an image still uploading. */
-    const val PendingAlpha = 0.7f
-
-    /** `hover:backdrop-brightness-95`: the image dims a step while pressed. */
-    val PressedScrim = Color.Black.copy(alpha = 0.05f)
+    /** `hover:bg-ink-8`: the image dims a step while pressed (the theme's `ink8`). */
 }
 
 /** An image's intrinsic pixel size, when the server knows it. */
@@ -168,8 +162,8 @@ fun raftMessageImageSingleSize(image: RaftMessageImageDimensions, availableWidth
  * One image cell (`message-image-gallery-item`): `fill-muted` behind the media (the
  * letterbox of a `contain` image), a `line-hairline` border, `rounded-control`, or
  * `rounded-container` for a lone image. Size it with [modifier]; [content] fills it.
- * Pressing dims the image a step; keyboard focus draws the inset outline. [pending] (an image
- * still sending) dims the cell to 70% under an inverse spinner.
+ * Pressing dims the image a step (`ink-8`); keyboard focus draws the inset outline. [pending]
+ * (an image still sending) covers it with `layer-veil` under a spinner in its default colour.
  */
 @Composable
 fun RaftMessageImageFrame(
@@ -190,7 +184,6 @@ fun RaftMessageImageFrame(
     val focused = onClick != null && isFocused
     Box(
         modifier
-            .then(if (pending) Modifier.alpha(RaftMessageImageGalleryDefaults.PendingAlpha) else Modifier)
             .clip(shape)
             .background(colors.fillMuted)
             .then(
@@ -211,12 +204,12 @@ fun RaftMessageImageFrame(
         contentAlignment = Alignment.Center,
     ) {
         content()
-        if (pressed) Box(Modifier.matchParentSize().background(RaftMessageImageGalleryDefaults.PressedScrim))
-        // `MessageImageGalleryOverlay` + `Spinner md inverse` (web GalleryImageItem): an image
-        // still sending sits dimmed under a spinner.
+        if (pressed) Box(Modifier.matchParentSize().background(colors.ink8))
+        // `MessageImageGalleryOverlay` (`bg-layer-veil`) + `Spinner md` (web GalleryImageItem):
+        // an image still sending sits under the veil and a spinner.
         if (pending) {
-            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
-                RaftSpinner(size = RaftSpinnerSize.Md, variant = RaftSpinnerVariant.Inverse)
+            Box(Modifier.matchParentSize().background(colors.layerVeil), contentAlignment = Alignment.Center) {
+                RaftSpinner(size = RaftSpinnerSize.Md)
             }
         }
     }

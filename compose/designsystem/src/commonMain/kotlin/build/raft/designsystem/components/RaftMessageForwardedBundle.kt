@@ -34,8 +34,11 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
@@ -49,6 +52,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftFade
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -67,9 +71,12 @@ object RaftMessageForwardedBundleDefaults {
     /** `max-h-40`: the fold height when the line height is not known. */
     val FallbackFoldHeight = 160.dp
 
-    /** `after:h-10`: the fade at the bottom of a folded list; `h-5` under a 60dp fold. */
-    val FadeHeight = 40.dp
-    val TightFadeHeight = 20.dp
+    /**
+     * `mask-fade-b`: the fade at the bottom of a folded list, the content fade; under a 60dp
+     * fold `mask-fade-b-edge`, the edge fade, so one line stays readable.
+     */
+    val FadeHeight = RaftFade.Content
+    val TightFadeHeight = RaftFade.Edge
     val TightFoldBelow = 60.dp
 
     /** An item's time: Space Mono `mono-meta`, tabular figures, `foreground-hint`. */
@@ -251,8 +258,9 @@ internal val LocalForwardedFoldMeter = compositionLocalOf<ForwardedFoldMeter?> {
 
 /**
  * raft-ui's fold: when the items' text together ([meter]) runs past [foldHeight] (1px of
- * slack), the list is cut at that height and fades into `layer-card` at the bottom
- * (`from-layer-card via-layer-card/80 to-layer-card/0`); the footer then opens the rest.
+ * slack), the list is cut at that height and fades out at the bottom (`mask-fade-b`); the
+ * footer then opens the rest. A mask, not a `layer-card` gradient, so a pressed or located row
+ * under the cut fades with its own fill.
  */
 @Composable
 private fun ForwardedFold(
@@ -261,7 +269,6 @@ private fun ForwardedFold(
     meter: ForwardedFoldMeter,
     content: @Composable () -> Unit,
 ) {
-    val surface = RaftTheme.colors.layerCard
     val fade =
         if (foldHeight < RaftMessageForwardedBundleDefaults.TightFoldBelow) {
             RaftMessageForwardedBundleDefaults.TightFadeHeight
@@ -274,20 +281,21 @@ private fun ForwardedFold(
             Modifier
                 .fillMaxWidth()
                 .clipToBounds()
+                // Offscreen, so DstIn masks only the list, not what is under it.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()
                     if (folded.value) {
                         val h = fade.toPx().coerceAtMost(size.height)
                         drawRect(
                             Brush.verticalGradient(
-                                0f to surface.copy(alpha = 0f),
-                                0.5f to surface.copy(alpha = 0.8f),
-                                1f to surface,
+                                listOf(Color.Black, Color.Transparent),
                                 startY = size.height - h,
                                 endY = size.height,
                             ),
                             topLeft = Offset(0f, size.height - h),
                             size = Size(size.width, h),
+                            blendMode = BlendMode.DstIn,
                         )
                     }
                 },

@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -61,8 +62,8 @@ object RaftMessageDelegatedAvatarDefaults {
      */
     val RingDark: Dp = RaftStroke.Control * 2
 
-    /** A deleted assistant's face: `grayscale opacity-60`. */
-    const val DeletedAlpha: Float = 0.6f
+    /** A deleted assistant's face: `grayscale opacity-dimmed`. */
+    const val DeletedAlpha: Float = RaftOpacity.Dimmed
 }
 
 /**
