@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout exact change
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # Bind the check to the submitted PR head, not GitHub's synthetic
           # merge ref. Push/manual runs use the event SHA directly.

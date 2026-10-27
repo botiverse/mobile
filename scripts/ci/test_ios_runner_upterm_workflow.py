@@ -83,7 +83,7 @@ class UptermWorkflowTest(unittest.TestCase):
         self.assertIn('            --join-timeout 5m \\\n', source)
         self.assertNotIn('--skip-host-key-check', source)
         self.assertNotIn('--allow-local-tcp-forwarding', source)
-        self.assertIn('uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6', source)
+        self.assertIn('uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2', source)
 
     def cleanup_script(self):
         tail = self.workflow.split(

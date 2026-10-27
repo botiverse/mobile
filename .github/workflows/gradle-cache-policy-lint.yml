@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Self-test checker and policy parser
         run: |
@@ -60,9 +60,9 @@ jobs:
       GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: poison-guard
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -108,9 +108,9 @@ jobs:
       GRADLE_BUILD_ACTION_CACHE_KEY_JOB_EXECUTION: poison-guard
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"

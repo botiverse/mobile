@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -81,7 +81,7 @@ jobs:
           PYTHONPATH=tools/mobile-use/src python3 tools/mobile-use/tests/test_ios_use.py
           python3 compose/iosApp/scripts/assert_xctest_ran.py --self-test
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
