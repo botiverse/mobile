@@ -8,33 +8,32 @@ cmpMaterial3 = "1.9.0"
 cmpLifecycle = "2.11.0"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
-kotlinxSerialization = "1.11.0"
+kotlinxSerialization = "1.12.0"
 # Time zones (kotlin.time.Instant API, Kotlin 2.2+).
 kotlinxDatetime = "0.7.1"
 atomicfu = "0.33.0"
-coreKtx = "1.10.1"
-media3 = "1.6.1"
-coreSplashscreen = "1.0.1"
-webkit = "1.14.0"
+coreKtx = "1.19.1"
+media3 = "1.11.1"
+coreSplashscreen = "1.2.0"
+webkit = "1.18.0"
 junit = "4.13.2"
-robolectric = "4.14.1"
-junitVersion = "1.1.5"
-espressoCore = "3.5.1"
-lifecycleRuntimeKtx = "2.6.1"
-window = "1.3.0"
+robolectric = "4.17"
+junitVersion = "1.3.0"
+espressoCore = "3.7.0"
+lifecycleRuntimeKtx = "2.11.0"
+window = "1.5.1"
 metricsPerformance = "1.0.0"
-activityCompose = "1.8.0"
-fragment = "1.8.9"
+activityCompose = "1.13.0"
+fragment = "1.9.1"
 composeBom = "2026.09.00"
-recyclerview = "1.3.2"
-okhttp = "4.12.0"
-# OkHttp under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against 5.5.0); it also wins
-# resolution over 4.12.0 for socket.io-client and the Hands preupload.
-okhttpTransport = "5.5.0"
+recyclerview = "1.4.0"
+# The app's only OkHttp version: under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against
+# 5.5.0), and it wins resolution over the transitive OkHttp 3.12 (socket.io-client) and 4.12 (Hands SDK).
+okhttpTransport = "5.5.1"
 # Ktor client for app HTTP (OkHttp on Android, Darwin on iOS). 3.6.0 is built against kotlinx-coroutines
 # 1.11.0, the app's version: Ktor 2.3.7 called coroutines internals 1.11 removed (Hands ae47bba1).
 ktor = "3.6.0"
-gson = "2.11.0"
+gson = "2.15.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.4.1"
 coil = "3.6.3"
@@ -44,12 +43,12 @@ hrmLatex = "1.6.1"
 # Multiplatform (jvm + iosArm64/iosSimulatorArm64 klibs), Apache-2.0.
 snipmeHighlights = "1.1.0"
 androidsvg = "1.4"
-mmkv = "2.4.0"
+mmkv = "2.4.3"
 firebaseBom = "35.1.0"
 googleServices = "4.5.0"
-benchmarkMacro = "1.3.4"
+benchmarkMacro = "1.5.0"
 profileinstaller = "1.4.1"
-uiautomator = "2.3.0"
+uiautomator = "2.4.0"
 
 [libraries]
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
@@ -80,7 +79,6 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-transport = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttpTransport" }
 okhttp-mockwebserver3 = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttpTransport" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
