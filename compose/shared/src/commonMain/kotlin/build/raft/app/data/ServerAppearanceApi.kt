@@ -75,6 +75,21 @@ fun encodeServerAppearancePatchBody(theme: RaftThemeId?, themeDecor: Boolean): S
         ServerAppearancePatchBody(theme = (theme ?: RaftThemeId.Raft).wire, themeDecor = themeDecor),
     )
 
+/**
+ * `PATCH .../appearance-settings` body that turns the decorations on or off and leaves the
+ * theme alone (web ServerThemeSection `save({ themeDecor })`).
+ */
+@Serializable
+data class ServerAppearanceDecorPatchBody(
+    val themeDecor: Boolean,
+)
+
+fun encodeServerAppearanceDecorPatchBody(themeDecor: Boolean): String =
+    serverAppearanceJson.encodeToString(
+        ServerAppearanceDecorPatchBody.serializer(),
+        ServerAppearanceDecorPatchBody(themeDecor = themeDecor),
+    )
+
 /** Parses the appearance-settings body; an unknown theme id reads as the default. */
 fun parseSharedServerAppearance(bodyText: String): ServerAppearance? =
     runCatching {
@@ -134,6 +149,9 @@ interface ServerAppearanceRepository {
 
     /** Saves [theme] (null = Raft Yellow, sent as `"raft"`) and [themeDecor] for [serverId]. */
     suspend fun update(serverId: ServerId, theme: RaftThemeId?, themeDecor: Boolean): ServerAppearanceUpdateResult
+
+    /** Saves only [themeDecor] for [serverId]; the PATCH body carries no theme. */
+    suspend fun updateDecor(serverId: ServerId, themeDecor: Boolean): ServerAppearanceUpdateResult
 }
 
 /**
@@ -174,6 +192,17 @@ class NetworkServerAppearanceRepository(
         val session = sessionStore.readSession()
         val plan = session?.servers?.firstOrNull { it.id == serverId.value }?.plan
         if (theme?.isPro == true && isFreeThemePlan(plan)) return ServerAppearanceUpdateResult.ProRequired
+        return patch(session, serverId, encodeServerAppearancePatchBody(theme, themeDecor))
+    }
+
+    override suspend fun updateDecor(serverId: ServerId, themeDecor: Boolean): ServerAppearanceUpdateResult =
+        patch(sessionStore.readSession(), serverId, encodeServerAppearanceDecorPatchBody(themeDecor))
+
+    private suspend fun patch(
+        session: StoredAuthSession?,
+        serverId: ServerId,
+        bodyText: String,
+    ): ServerAppearanceUpdateResult {
         val response =
             runCatchingPreservingCancellation {
                 networkClient.request(
@@ -181,7 +210,7 @@ class NetworkServerAppearanceRepository(
                     path = appearancePath(serverId),
                     method = "PATCH",
                     serverIdOverride = serverId,
-                    bodyText = encodeServerAppearancePatchBody(theme, themeDecor),
+                    bodyText = bodyText,
                 )
             }.getOrNull() ?: return ServerAppearanceUpdateResult.Failed(code = 0, serverMessage = null)
         if (!response.isSuccessful) {

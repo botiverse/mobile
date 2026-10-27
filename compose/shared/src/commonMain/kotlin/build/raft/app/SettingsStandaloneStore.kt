@@ -16,6 +16,8 @@ import build.raft.app.data.NotificationPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.NetworkServerPublicVisibilityRepository
 import build.raft.app.data.ServerPublicVisibilityRepository
+import build.raft.app.data.NetworkServerAppearanceRepository
+import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedApiEnvironmentStore
@@ -58,6 +60,7 @@ internal data class StandaloneSettingsEnvironment(
     val storeScope: RaftShellStoreScope,
     val webBaseUrl: String,
     val serverPublicVisibilityRepository: ServerPublicVisibilityRepository,
+    val serverAppearanceRepository: ServerAppearanceRepository,
 )
 
 /**
@@ -190,9 +193,12 @@ internal fun rememberStandaloneSettingsEnvironment(
         }
     val serverPublicVisibilityRepository =
         remember(networkClient) { NetworkServerPublicVisibilityRepository(networkClient) }
+    val serverAppearanceRepository =
+        remember(networkClient, authStore) { NetworkServerAppearanceRepository(networkClient, authStore) }
     return remember(
         dataSource,
         serverPublicVisibilityRepository,
+        serverAppearanceRepository,
         authDataSource,
         authStore,
         serverMembersStore,
@@ -213,6 +219,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             storeScope = storeScope,
             webBaseUrl = webBaseUrl,
             serverPublicVisibilityRepository = serverPublicVisibilityRepository,
+            serverAppearanceRepository = serverAppearanceRepository,
         )
     }
 }

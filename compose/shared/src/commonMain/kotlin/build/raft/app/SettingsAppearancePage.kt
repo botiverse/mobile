@@ -42,13 +42,18 @@ internal fun SettingsAppearanceContent(
     onFontSizeDraftChange: (String) -> Unit,
     onActivitySenderAvatarsChange: (Boolean) -> Unit,
     onSave: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    /** "Theme on {server}"; null where the page has no server to theme (fixtures). */
+    serverTheme: SettingsServerThemeBinding? = null,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SettingsAppearanceThemeCard() }
+        if (serverTheme != null && serverTheme.state.visible) {
+            item { SettingsServerThemeCard(serverTheme) }
+        }
         item {
             SettingsActivitySenderAvatarsCard(
                 enabled = activitySenderAvatarsEnabled,
