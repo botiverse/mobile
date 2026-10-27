@@ -173,7 +173,7 @@ private fun raftAttributedText(
                 // actually were. lineSpacing only adds space between lines: it honours the
                 // design when lineHeight is looser and can never make lines overlap.
                 val extra = lineHeightPt - font.lineHeight
-                if (extra > 0.0) lineSpacing = extra
+                if (extra > 0.0) setLineSpacing(extra)
             }
     }
     return NSAttributedString.create(string = text, attributes = attributes)
