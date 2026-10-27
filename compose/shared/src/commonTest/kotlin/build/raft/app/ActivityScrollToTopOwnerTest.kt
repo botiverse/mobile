@@ -110,7 +110,7 @@ class ActivityScrollToTopOwnerTest {
     }
 
     @Test
-    fun `a held top pins only its own head row pushed down by key, anything else retires`() {
+    fun `a held top pins only its own head row pushed down by key and anything else retires`() {
         // Parked: record the head.
         assertEquals(ActivityHeldTopAction.None, activityHeldTopAction("row0", 0, 0, "row0"))
         // A data change kept row0 by key and moved it to index 20: pin back to the owned edge.
@@ -123,7 +123,7 @@ class ActivityScrollToTopOwnerTest {
     }
 
     @Test
-    fun `observing a held layout records the head, pins a key move and retires on the reader's move`() = runTest {
+    fun `observing a held layout records the head and pins a key move and retires on a reader move`() = runTest {
         val owner = ActivityScrollToTopOwner()
         launch { owner.runScrollToTop(scrollToTop = { delay(100) }, pinTopIfOwned = {}) }
         advanceUntilIdle()
@@ -138,7 +138,7 @@ class ActivityScrollToTopOwnerTest {
     }
 
     @Test
-    fun `diagnostics record start, end, hold correction, cancel and retire with their reasons`() = runTest {
+    fun `diagnostics record start and end and hold correction and cancel and retire with their reasons`() = runTest {
         val lines = mutableListOf<String>()
         val owner = ActivityScrollToTopOwner(log = { lines += it })
         var index = 37
