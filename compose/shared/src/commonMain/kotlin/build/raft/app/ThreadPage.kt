@@ -3058,8 +3058,16 @@ internal val ThreadComposerOwnedTemporarySources =
         "platform_picker",
         "platform_camera",
         "composer_image_editor",
-        "composer_image_compressor"
+        "composer_image_compressor",
+        ThreadComposerClipboardImageSource
     )
+
+/**
+ * A copied image pasted into the desktop composer: the host writes it to its clipboard cache, so
+ * the composer owns the file like a picker's temporary copy and retires it after send / removal.
+ * (Files pasted from Finder are the user's own files and keep the non-owned "paste" source.)
+ */
+internal const val ThreadComposerClipboardImageSource = "clipboard_image"
 
 internal fun threadPendingSendOwnedTemporaryFileRefs(
     attachments: List<SharedThreadComposerAttachment>,

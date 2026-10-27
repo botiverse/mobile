@@ -35,6 +35,12 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+// Tests run on the packaged app's JDK 21 runtime: :shared's desktop classes can be JDK 21
+// bytecode, which a JDK 17 test JVM cannot load.
+tasks.withType<Test>().configureEach {
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+}
+
 // macOS requires MAJOR.MINOR.PATCH with MAJOR > 0 for the bundle version.
 val raftDesktopVersion = providers.gradleProperty("raft.desktop.version").orElse("1.0.0")
 
