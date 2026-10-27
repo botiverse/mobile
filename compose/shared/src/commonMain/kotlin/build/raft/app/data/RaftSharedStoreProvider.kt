@@ -1910,7 +1910,8 @@ internal class RaftSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
-                onConversationReadAllAcknowledged = ::publishConversationReadAllAck
+                onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
+                onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) }
             )
             return store
         }
@@ -1939,6 +1940,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
                 onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
+                onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) },
                 // Identity first: the hint slice attaches to the durable content it restores.
                 persistSlices = listOf(homeIdentityPersistSlice, homeRowHintPersistSlice),
                 conversationIdentityPublicationSink = publication@{ publication ->
@@ -2064,6 +2066,15 @@ internal class RaftSharedStoreProvider private constructor(
      * Activity unread summary is invalidated and each Activity store applies the versioned scopes
      * (web `markConversationRead` -> `applyReadStateUpdate`).
      */
+    /**
+     * The user no longer has [channelId] (left it, deleted or disconnected it): Activity's Unread
+     * keeps rows read this visit, and a channel the user no longer has must not stay. Channel
+     * settings and the Home row menu's Leave both hand off here.
+     */
+    fun publishChannelAccessLost(scope: RaftShellStoreScope, channelId: ChannelId) {
+        homeActivityStoreOrNull(scope)?.dispatch(SharedActivityIntent.ChannelAccessLost(setOf(channelId.value)))
+    }
+
     private fun publishConversationReadAllAck(accountId: String, event: PerReceiverReadStateChanged) {
         val serverId = event.serverId?.value ?: return
         activityUnreadSummaryStore.invalidate(

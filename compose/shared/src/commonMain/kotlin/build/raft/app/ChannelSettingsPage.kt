@@ -52,7 +52,6 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.ChannelSosStore
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.data.serverRoleCanControlAgentRuntime
-import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -427,10 +426,7 @@ private fun ChannelSettingsPageScreen() {
             ChannelSettingsEffect.Close -> {
                 confirm = null
                 if (settingsState.closedWithAccessLost) {
-                    // Activity's Unread keeps rows read this visit; a channel the user no longer has must not stay.
-                    sharedStores.homeActivityStoreOrNull(storeScope)?.dispatch(
-                        SharedActivityIntent.ChannelAccessLost(setOf(route.channelId.value))
-                    )
+                    sharedStores.publishChannelAccessLost(storeScope, route.channelId)
                 }
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
                 router.closePage()

@@ -25,15 +25,21 @@ import kotlin.test.assertTrue
  * -> `POST /channels/:id/leave`), dispatched after its confirmation.
  */
 class SharedHomeStoreLeaveChannelTest {
+    // A successful leave hands the channel to onChannelLeft, which the provider wires to
+    // publishChannelAccessLost: the same Activity ChannelAccessLost hand-off as settings' Leave.
     @Test
     fun publicChannelStaysListedAsNotJoinedAndCallsLeaveOnce() = runTest {
         val response = CompletableDeferred<DataResult<ChannelLeaveResult>>()
         val calls = mutableListOf<ChannelId>()
+        val left = mutableListOf<ChannelId>()
         val store =
-            store(leaveChannel = { channelId ->
-                calls += channelId
-                response.await()
-            })
+            store(
+                leaveChannel = { channelId ->
+                    calls += channelId
+                    response.await()
+                },
+                onChannelLeft = { left += it },
+            )
         store.accept(SharedHomeIntent.Start)
 
         val action = launch { store.accept(SharedHomeIntent.LeaveChannel("channel-public")) }
@@ -42,27 +48,35 @@ class SharedHomeStoreLeaveChannelTest {
         val row = store.snapshot().channels.single { it.channelId == ChannelId("channel-public") }
         assertFalse(row.joined)
         assertEquals(listOf(ChannelId("channel-public")), calls)
+        // Activity hears of it only once the server has acknowledged the leave.
+        assertTrue(left.isEmpty())
 
         response.complete(DataResult.Content(ChannelLeaveResult(ChannelId("channel-public"))))
         action.join()
         assertFalse(store.snapshot().channels.single { it.channelId == ChannelId("channel-public") }.joined)
+        assertEquals(listOf(ChannelId("channel-public")), left)
     }
 
     @Test
     fun privateAndJointChannelsLeaveTheListAndTheSelection() = runTest {
         for (conversationId in listOf("channel-private", "channel-joint")) {
             val calls = mutableListOf<ChannelId>()
+            val left = mutableListOf<ChannelId>()
             val store =
-                store(leaveChannel = { channelId ->
-                    calls += channelId
-                    DataResult.Content(ChannelLeaveResult(channelId))
-                })
+                store(
+                    leaveChannel = { channelId ->
+                        calls += channelId
+                        DataResult.Content(ChannelLeaveResult(channelId))
+                    },
+                    onChannelLeft = { left += it },
+                )
             store.accept(SharedHomeIntent.Start)
             store.accept(SharedHomeIntent.SelectConversation(conversationId))
 
             store.accept(SharedHomeIntent.LeaveChannel(conversationId))
 
             assertEquals(listOf(ChannelId(conversationId)), calls)
+            assertEquals(listOf(ChannelId(conversationId)), left, conversationId)
             assertTrue(store.snapshot().channels.none { it.channelId == ChannelId(conversationId) }, conversationId)
             assertNull(store.state.value.selectedConversationId, conversationId)
         }
@@ -71,10 +85,12 @@ class SharedHomeStoreLeaveChannelTest {
     @Test
     fun failedLeaveRestoresTheRowAndReportsIt() = runTest {
         val failures = mutableListOf<String>()
+        val left = mutableListOf<ChannelId>()
         val store =
             store(
                 leaveChannel = { DataResult.Error(ScreenError(code = "http_403", retryable = false)) },
                 onFailure = { failures += it },
+                onChannelLeft = { left += it },
             )
         store.accept(SharedHomeIntent.Start)
         val before = store.snapshot()
@@ -83,6 +99,7 @@ class SharedHomeStoreLeaveChannelTest {
 
         assertEquals(before.channels, store.snapshot().channels)
         assertEquals(listOf("Unable to leave channel"), failures)
+        assertTrue(left.isEmpty())
     }
 
     @Test
@@ -103,6 +120,7 @@ class SharedHomeStoreLeaveChannelTest {
     private fun TestScope.store(
         leaveChannel: suspend (ChannelId) -> DataResult<ChannelLeaveResult>,
         onFailure: (String) -> Unit = {},
+        onChannelLeft: (ChannelId) -> Unit = {},
     ): SharedHomeStore {
         val session = sampleSession()
         val home = sampleHome()
@@ -117,6 +135,7 @@ class SharedHomeStoreLeaveChannelTest {
             scope = backgroundScope,
             leaveChannel = leaveChannel,
             pinUpdateFailureCallback = onFailure,
+            onChannelLeft = onChannelLeft,
         )
     }
 

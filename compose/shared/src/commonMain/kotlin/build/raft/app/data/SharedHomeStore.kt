@@ -163,6 +163,11 @@ internal class SharedHomeStore(
      */
     private var onConversationReadAllAcknowledged: (accountId: String, event: PerReceiverReadStateChanged) -> Unit =
         { _, _ -> },
+    /**
+     * A row-menu Leave succeeded: the host tells Activity the channel is gone, the hand-off channel
+     * settings' Leave makes ([RaftSharedStoreProvider.publishChannelAccessLost]).
+     */
+    private var onChannelLeft: (ChannelId) -> Unit = {},
     private val persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList(),
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
@@ -332,7 +337,8 @@ internal class SharedHomeStore(
         readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         pinUpdateFailureCallback: (String) -> Unit = {},
         onConversationReadAllAcknowledged: (accountId: String, event: PerReceiverReadStateChanged) -> Unit =
-            this.onConversationReadAllAcknowledged
+            this.onConversationReadAllAcknowledged,
+        onChannelLeft: (ChannelId) -> Unit = this.onChannelLeft
     ) {
         loadJob?.cancel()
         agentDirectMessageStatusJob?.cancel()
@@ -359,6 +365,7 @@ internal class SharedHomeStore(
         this.readStateV1Canary = readStateV1Canary
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
         this.onConversationReadAllAcknowledged = onConversationReadAllAcknowledged
+        this.onChannelLeft = onChannelLeft
         diagnosticsLogger("home_runtime_integrations_updated")
     }
 
@@ -3920,7 +3927,7 @@ internal class SharedHomeStore(
         }
         when (leaveChannel(channelId)) {
             is DataResult.Content,
-            is DataResult.Empty -> Unit
+            is DataResult.Empty -> onChannelLeft(channelId)
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 reduceState(previousState)
