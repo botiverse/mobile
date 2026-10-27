@@ -384,13 +384,17 @@ def _kotlin_code_only(text: str) -> str:
 
 
 def _run_blocking_call_sites(text: str) -> list[tuple[int, str]]:
+    # Matched over the whole code-only text, not per line: `runBlocking` with its `{` / `(` on
+    # the next line is still a call. Reported at the line holding `runBlocking`.
     sites: list[tuple[int, str]] = []
     raw_lines = text.split("\n")
-    for number, line in enumerate(_kotlin_code_only(text).split("\n"), start=1):
-        if line.lstrip().startswith("import "):
+    code = _kotlin_code_only(text)
+    code_lines = code.split("\n")
+    for match in RUN_BLOCKING_CALL.finditer(code):
+        number = code.count("\n", 0, match.start()) + 1
+        if code_lines[number - 1].lstrip().startswith("import "):
             continue
-        if RUN_BLOCKING_CALL.search(line):
-            sites.append((number, raw_lines[number - 1].strip()))
+        sites.append((number, raw_lines[number - 1].strip()))
     return sites
 
 
@@ -662,6 +666,8 @@ com.apple.SignInWithApple = {
         ({**good_run_blocking, "c.kt": "/* a /* b */ c */ val s = runBlocking { x() }\n"}, allow),
         ({**good_run_blocking, "c.kt": "val q = '\"'\nval s = runBlocking { x() }\n"}, allow),
         ({**good_run_blocking, "c.kt": "val q = '\\''; val s = runBlocking { x() }\n"}, allow),
+        ({**good_run_blocking, "c.kt": "val s = runBlocking\n{\n    x()\n}\n"}, allow),
+        ({**good_run_blocking, "c.kt": "val s = runBlocking<Int>\n    (Dispatchers.IO) { 1 }\n"}, allow),
         ({**good_run_blocking, "c.kt": 'val t = "${runBlocking { x() }}"\n'}, allow),
         # Allowlisted file, second call site: still a violation.
         ({"a.kt": good_run_blocking["a.kt"] + "val w = runBlocking { other() }\n"}, allow),
