@@ -56,7 +56,10 @@ class AgentToolStuckTest {
     fun activityFrameCarriesToolStuck() {
         val frame = map(payload(serverSeq = 7, toolStuck = stuckJson))
         assertEquals(AgentStatus.Working, frame.agentStatus)
-        assertEquals(stuck, frame.toolStuck)
+        // The report as sent, plus the frame-time fields: quiet when the server sent it
+        // (timestamp 1782367200000 − quietSinceMs 1000) and this device's receipt time.
+        assertEquals(stuck, frame.toolStuck?.withoutReceipt())
+        assertEquals(1782367200000L - 1000L, frame.toolStuck?.quietMillisAtFrame)
         // Any detail kind may carry it; without a tool name it is not shown.
         assertNull(map(payload(serverSeq = 8, toolStuck = """{"quietSinceMs":1000}""")).toolStuck)
         assertNull(map(payload(serverSeq = 9, toolStuck = null)).toolStuck)
@@ -67,7 +70,7 @@ class AgentToolStuckTest {
         val owner = ProcessServerMembersOwner(environmentId = "env-1", accountId = "acct-1", serverId = "server-a")
         val registry = ProcessMemberPresenceRegistry()
         registry.apply(owner, map(payload(serverSeq = 1, toolStuck = stuckJson)), 0L)
-        assertEquals(stuck, registry.factFor(owner, "agent-1")?.toolStuck)
+        assertEquals(stuck, registry.factFor(owner, "agent-1")?.toolStuck?.withoutReceipt())
 
         // A later heartbeat with a grown queue updates the count, though the activity repeats.
         registry.apply(owner, map(payload(serverSeq = 2, toolStuck = stuckJson.replace("\"queuedMessages\":3", "\"queuedMessages\":5"))), 0L)
@@ -139,4 +142,6 @@ class AgentToolStuckTest {
             )
         kotlin.test.assertEquals(7L, agentToolStuckMinutes(stuck, now))
     }
+
+    private fun AgentToolStuck.withoutReceipt() = copy(quietMillisAtFrame = null, receivedAtMs = 0L)
 }
