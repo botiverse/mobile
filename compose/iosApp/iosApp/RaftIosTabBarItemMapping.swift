@@ -103,18 +103,14 @@ enum RaftIosTabBarItemMapping {
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    /// Height (points) of the band the tab bar covers, from its top edge to the bottom of its
-    /// container: the content inset the shared shell reserves. Includes the home-indicator area.
-    static func bottomBand(containerHeight: CGFloat, tabBarMinY: CGFloat) -> CGFloat {
-        guard containerHeight.isFinite, tabBarMinY.isFinite else { return 0 }
-        return max(0, min(containerHeight, containerHeight - tabBarMinY))
-    }
-
     /// The edge the bar is laid out on and the band it covers from that edge of [container] to
     /// the bar's inner edge (points), from the bar's actual [tabBar] frame (in the container's
     /// coordinates). A bar wider than tall is a top or bottom bar, by which half its centre is
     /// in; a bar taller than wide is a left or right bar. Nil for an empty or non-finite frame.
     /// Never assumes a bottom bar: under newer SDKs the bar can sit below a side status bar.
+    /// A bottom bar need not touch the container's bottom edge (the iOS 26 floating bar sits above
+    /// the home indicator), so the edge is chosen by the bar's centre, not by `maxY ==
+    /// container.maxY`; its band still runs to that edge and includes the home-indicator area.
     static func band(container: CGRect, tabBar: CGRect) -> RaftIosTabBarBand? {
         let values = [
             container.minX, container.minY, container.width, container.height,

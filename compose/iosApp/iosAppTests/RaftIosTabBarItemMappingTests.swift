@@ -141,13 +141,6 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(RaftIosTabBarItemMapping.imageNameCandidates(preferred: ""), ["circle"])
     }
 
-    func testBottomBandSpansFromBarTopToContainerBottom() {
-        XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: 761), 83)
-        XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: 900), 0)
-        XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: -10), 844)
-        XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: .nan), 0)
-    }
-
     func testBandOfABottomBarSpansFromItsTopToTheContainerBottom() {
         let container = CGRect(x: 0, y: 0, width: 390, height: 844)
         let band = RaftIosTabBarItemMapping.band(
@@ -177,6 +170,62 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(
             RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: 0, width: 80, height: 669)),
             RaftIosTabBarBand(edge: .left, points: 80)
+        )
+    }
+
+    func testBandOfAFloatingBottomBarRunsToTheContainerBottom() {
+        // iOS 26 floating glass bar: narrower than the window and above the home indicator, so its
+        // maxY is not the container's maxY. It is still a bottom bar, and the band includes the gap.
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let band = RaftIosTabBarItemMapping.band(
+            container: container,
+            tabBar: CGRect(x: 21, y: 746, width: 348, height: 64)
+        )
+        XCTAssertEqual(band, RaftIosTabBarBand(edge: .bottom, points: 98))
+    }
+
+    func testBandOfATopBarOnAWideWindowIsATopBand() {
+        // A wide (iPhone Duo inner landscape size) window with the bar moved under the top edge.
+        let container = CGRect(x: 0, y: 0, width: 951, height: 669)
+        let band = RaftIosTabBarItemMapping.band(
+            container: container,
+            tabBar: CGRect(x: 200, y: 24, width: 551, height: 56)
+        )
+        XCTAssertEqual(band, RaftIosTabBarBand(edge: .top, points: 80))
+    }
+
+    func testBandOfAShortFloatingSideBarUsesItsSideNotItsHeight() {
+        // A vertical bar that does not span the window height (below a right-edge status bar):
+        // the band is its distance from that side, never a bottom band of maxY.
+        let container = CGRect(x: 0, y: 0, width: 951, height: 669)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 871, y: 180, width: 64, height: 310)),
+            RaftIosTabBarBand(edge: .right, points: 80)
+        )
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 16, y: 180, width: 64, height: 310)),
+            RaftIosTabBarBand(edge: .left, points: 80)
+        )
+    }
+
+    func testBandIsMeasuredFromTheContainerEdgesWhenItsOriginIsNotZero() {
+        let container = CGRect(x: 0, y: 100, width: 390, height: 744)
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: 761, width: 390, height: 83)),
+            RaftIosTabBarBand(edge: .bottom, points: 83)
+        )
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: 100, width: 390, height: 50)),
+            RaftIosTabBarBand(edge: .top, points: 50)
+        )
+    }
+
+    func testBandIsClampedToTheContainer() {
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        // A bar frame reaching past the container's top cannot cover more than the container.
+        XCTAssertEqual(
+            RaftIosTabBarItemMapping.band(container: container, tabBar: CGRect(x: 0, y: -50, width: 2000, height: 1000)),
+            RaftIosTabBarBand(edge: .bottom, points: 844)
         )
     }
 
@@ -266,8 +315,10 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
     @available(iOS 26.0, *)
     private func makeSystemBar() -> LiveBar {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
-        window.frame = scene?.screen.bounds ?? UIScreen.main.bounds
+        // Sized from the test host's scene, not UIScreen.main (one screen is not one window).
+        let fallbackBounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: fallbackBounds)
+        window.frame = scene?.coordinateSpace.bounds ?? fallbackBounds
         window.overrideUserInterfaceStyle = .dark
         let controller = UITabBarController()
         controller.traitOverrides.horizontalSizeClass = .compact

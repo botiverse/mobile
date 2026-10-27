@@ -16,8 +16,9 @@ import UIKit
 /// - shared publishes tabs, badges, selection and visibility through `RaftNativeTabBarBridge`
 ///   (registered for this page in `RaftNativeTabBarRegistry`), and taps go back through
 ///   `selectTab`, which runs the shell's tab handler (switch, re-tap scroll-to-top, ...);
-/// - the bar's bottom band is reported to shared, which insets content by it instead of the
-///   Compose bar height.
+/// - the edge the bar is laid out on and the band it covers (`RaftIosTabBarItemMapping.band`, from
+///   its actual frame; a top or side bar under newer SDKs is not a bottom band) are reported to
+///   shared, which insets content by it instead of the Compose bar height.
 ///
 /// Pushed pages (thread, channel, composer, ...) are pushed over the whole shell page by the
 /// navigation controller, so they cover this bar exactly as they covered the Compose one.
@@ -82,7 +83,7 @@ final class RaftIosTabBarController: UIViewController {
 
         let tabs = systemTabBarController
         tabs.delegate = self
-        tabs.onLayout = { [weak self] in self?.reportBottomBand() }
+        tabs.onLayout = { [weak self] in self?.reportBand() }
         addChild(tabs)
         // Always a bottom bar: iPadOS 18+ would otherwise move regular-width tabs to the top.
         if #available(iOS 17.0, *) {
@@ -124,7 +125,7 @@ final class RaftIosTabBarController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        reportBottomBand()
+        reportBand()
     }
 
     // MARK: - Shared state -> UIKit
@@ -204,7 +205,7 @@ final class RaftIosTabBarController: UIViewController {
     /// Reports the edge the visible bar is laid out on and the band it covers, from its actual
     /// frame (not assuming a bottom bar); skipped while hidden so a hide/show cycle does not flap
     /// the shared content inset.
-    private func reportBottomBand() {
+    private func reportBand() {
         guard tabBarVisible == true, let container = systemTabBarController.viewIfLoaded else { return }
         let tabBar = systemTabBarController.tabBar
         guard !tabBar.isHidden, tabBar.superview != nil else { return }
