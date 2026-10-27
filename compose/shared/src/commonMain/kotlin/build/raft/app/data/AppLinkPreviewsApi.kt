@@ -160,11 +160,19 @@ internal fun appLinkShortAddress(url: String): String? {
  * message order, deduplicated, at most [limit]. A link the author gave words to, links in code
  * and images are left out.
  */
-internal fun appLinkMessagePreviewUrls(content: String, limit: Int = APP_LINK_PREVIEW_V1_LINK_LIMIT): List<String> {
+internal fun appLinkMessagePreviewUrls(content: String, limit: Int = APP_LINK_PREVIEW_V1_LINK_LIMIT): List<String> =
+    appLinkMessageBareLinks(content, limit, ::appLinkPreviewHref)
+
+/**
+ * The bare links of a message as [normalize] keeps them (null: not this kind of link), in message
+ * order, deduplicated, at most [limit]: an autolink, `<url>` or `[url](url)` whose text is its own
+ * address; links in code and images are left out. http(s) are both scanned; [normalize] decides.
+ */
+internal fun appLinkMessageBareLinks(content: String, limit: Int, normalize: (String) -> String?): List<String> {
     val text = content.take(32_000).withoutAppLinkCode()
     val urls = LinkedHashSet<String>()
     fun add(raw: String) {
-        appLinkPreviewHref(raw)?.let(urls::add)
+        normalize(raw)?.let(urls::add)
     }
     var index = 0
     while (index < text.length && urls.size < limit) {
@@ -178,13 +186,13 @@ internal fun appLinkMessagePreviewUrls(content: String, limit: Int = APP_LINK_PR
                 if (link == null) {
                     index++
                 } else {
-                    if (appLinkPreviewHref(link.label.trim()) != null && appLinkPreviewHref(link.label.trim()) == appLinkPreviewHref(link.destination)) {
+                    if (normalize(link.label.trim()) != null && normalize(link.label.trim()) == normalize(link.destination)) {
                         add(link.destination)
                     }
                     index = link.end
                 }
             }
-            char == '<' && text.startsWith("https://", index + 1, ignoreCase = true) -> {
+            char == '<' && (text.startsWith("https://", index + 1, ignoreCase = true) || text.startsWith("http://", index + 1, ignoreCase = true)) -> {
                 val close = text.indexOf('>', index)
                 val candidate = if (close < 0) null else text.substring(index + 1, close)
                 if (candidate != null && candidate.none { it.isWhitespace() || it == '<' }) {
@@ -194,7 +202,8 @@ internal fun appLinkMessagePreviewUrls(content: String, limit: Int = APP_LINK_PR
                     index++
                 }
             }
-            (char == 'h' || char == 'H') && text.startsWith("https://", index, ignoreCase = true) &&
+            (char == 'h' || char == 'H') &&
+                (text.startsWith("https://", index, ignoreCase = true) || text.startsWith("http://", index, ignoreCase = true)) &&
                 (index == 0 || !text[index - 1].isLetterOrDigit()) -> {
                 var end = index
                 while (end < text.length && !text[end].isWhitespace() && text[end] != '<') end++

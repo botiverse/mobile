@@ -1,0 +1,82 @@
+package build.raft.app.data
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+
+/**
+ * `GET /api/public/client-config` `{ appHosts }` (botiverse/slock #11421,
+ * `packages/server/src/routes/publicClientConfig.ts` at feat/workspace-artifacts 8a44f57be).
+ */
+class SharedClientConfigStoreTest {
+    private class MemoryPreferences : SharedPreferenceStore {
+        val values = mutableMapOf<String, String>()
+        override fun getString(key: String): String? = values[key]
+        override fun putString(key: String, value: String?) {
+            if (value == null) values.remove(key) else values[key] = value
+        }
+    }
+
+    private class FakeApi(var next: () -> HomeNetworkResponse) : RaftClientConfigApi {
+        var calls = 0
+        override suspend fun read(): HomeNetworkResponse {
+            calls += 1
+            return next()
+        }
+    }
+
+    private fun ok(body: String) = HomeNetworkResponse(200, body)
+
+    @Test
+    fun parsesHostnamesOnlyDedupedInOrder() {
+        assertEquals(
+            listOf("app.raft.build", "staging.raft.build", "xn--bcher-kva.example"),
+            parseRaftClientConfig(
+                """{"appHosts":["app.raft.build","staging.raft.build","app.raft.build","App.Raft.build","host:443","https://x.example","a/b","","xn--bcher-kva.example"],"later":1}""",
+            )?.appHosts,
+        )
+        assertNull(parseRaftClientConfig("""{"appHosts":[]}"""))
+        assertNull(parseRaftClientConfig("""{"other":true}"""))
+        assertNull(parseRaftClientConfig("not json"))
+    }
+
+    @Test
+    fun beforeAnyFetchTheFallbackIsTheCanonicalHost() = runTest {
+        val store = MutableStateFlow("https://api.raft.build/api").let { env -> SharedClientConfigStore(FakeApi { error("offline") }, MemoryPreferences(), { env.value }, env, backgroundScope) }
+        assertEquals(listOf("app.raft.build"), store.appHosts.value)
+        store.start()
+        runCurrent()
+        assertEquals(CLIENT_CONFIG_FALLBACK_APP_HOSTS, store.appHosts.value, "a failed first read keeps the fallback")
+    }
+
+    @Test
+    fun anAnswerIsAppliedAndCachedPerEnvironmentAndAFailureKeepsIt() = runTest {
+        val preferences = MemoryPreferences()
+        val environment = MutableStateFlow("https://api.raft.build/api")
+        val api = FakeApi { ok("""{"appHosts":["app.raft.build","raft.build"]}""") }
+        val store = SharedClientConfigStore(api, preferences, { environment.value }, environment, backgroundScope)
+        store.start()
+        runCurrent()
+        assertEquals(listOf("app.raft.build", "raft.build"), store.appHosts.value)
+
+        // Another environment: its own read, the production list not carried over.
+        api.next = { ok("""{"appHosts":["app.raft.build","staging.raft.build"]}""") }
+        environment.value = "https://staging-api.raft.build/api"
+        runCurrent()
+        assertEquals(listOf("app.raft.build", "staging.raft.build"), store.appHosts.value)
+
+        // Back to production while offline: its cached list, not the fallback.
+        api.next = { HomeNetworkResponse(503, null) }
+        environment.value = "https://api.raft.build/api/"
+        runCurrent()
+        assertEquals(listOf("app.raft.build", "raft.build"), store.appHosts.value)
+        assertEquals(3, api.calls)
+
+        // A new process starts from the disk cache before its read lands.
+        val restarted = SharedClientConfigStore(FakeApi { error("offline") }, preferences, { environment.value }, environment, backgroundScope)
+        assertEquals(listOf("app.raft.build", "raft.build"), restarted.appHosts.value)
+    }
+}

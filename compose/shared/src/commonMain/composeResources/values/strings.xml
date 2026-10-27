@@ -3266,4 +3266,9 @@
     <string name="action_card_form_channels_search">Search channels</string>
     <string name="action_card_form_channels_no_matches">No channels match “%1$s”</string>
     <string name="action_card_form_channels_empty">No channels to choose from</string>
+    <string name="artifacts_app_name">Artifacts</string>
+    <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_scope_server">Whole server</string>
+    <string name="artifacts_scope_public">Public</string>
+    <string name="artifacts_home_dm">Direct message with %1$s</string>
 </resources>

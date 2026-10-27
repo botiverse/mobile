@@ -16,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.data.ArtifactHome
+import build.raft.app.data.ArtifactSummary
+import build.raft.app.resources.*
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
@@ -76,6 +79,67 @@ internal fun RaftAppLinkCardView(
             }
         }
         RaftAppLinkCardFooter(appName = card.app.name, domain = appLinkDomain(card.url).orEmpty())
+    }
+}
+
+/**
+ * An Artifact link's item card (web `ArtifactLinkPreview.tsx` in core's `ObjectLinkChip` hover
+ * card): the title; the details row (the file type, the version, where it lives), then the
+ * description or the start of its text, two lines; the footer names the app alone ("Artifacts"),
+ * no domain: the link is Raft's own. Not drawn yet: the web's fact line ("6 pages") and "updated by".
+ */
+@Composable
+internal fun RaftArtifactLinkCardView(
+    summary: ArtifactSummary,
+    modifier: Modifier = Modifier,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val home =
+        when (val where = summary.home) {
+            is ArtifactHome.Conversation ->
+                where.name.takeIf { it.isNotBlank() }?.let {
+                    if (where.dm) stringResource(Res.string.artifacts_home_dm, it) else "#$it"
+                }
+            ArtifactHome.Server -> stringResource(Res.string.artifacts_scope_server)
+            ArtifactHome.Public -> stringResource(Res.string.artifacts_scope_public)
+        }
+    val details =
+        listOfNotNull(summary.kind.badge, stringResource(Res.string.artifacts_card_version, summary.version), home)
+            .joinToString(" · ")
+    RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                RaftText(
+                    text = summary.title,
+                    style = RaftTheme.typography.headline,
+                    color = RaftTheme.colors.foreground,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                RaftText(text = details, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                summary.description?.let {
+                    RaftText(
+                        text = it,
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (actions != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions,
+                )
+            }
+        }
+        RaftAppLinkCardFooter(appName = stringResource(Res.string.artifacts_app_name), domain = "")
     }
 }
 

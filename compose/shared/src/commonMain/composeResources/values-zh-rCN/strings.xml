@@ -3266,4 +3266,9 @@
     <string name="action_card_form_channels_search">搜索频道</string>
     <string name="action_card_form_channels_no_matches">没有符合「%1$s」的频道</string>
     <string name="action_card_form_channels_empty">没有可选的频道</string>
+    <string name="artifacts_app_name">Artifacts</string>
+    <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_scope_server">整个 server</string>
+    <string name="artifacts_scope_public">公开</string>
+    <string name="artifacts_home_dm">与 %1$s 的私信</string>
 </resources>

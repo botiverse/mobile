@@ -3266,4 +3266,9 @@
     <string name="action_card_form_channels_search">チャンネルを検索</string>
     <string name="action_card_form_channels_no_matches">「%1$s」に一致するチャンネルはありません</string>
     <string name="action_card_form_channels_empty">選択できるチャンネルはありません</string>
+    <string name="artifacts_app_name">Artifacts</string>
+    <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_scope_server">サーバー全体</string>
+    <string name="artifacts_scope_public">公開</string>
+    <string name="artifacts_home_dm">%1$s さんとのダイレクトメッセージ</string>
 </resources>

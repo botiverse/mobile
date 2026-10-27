@@ -460,6 +460,37 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val appLinkPreviewStore: SharedAppLinkPreviewStore by appLinkPreviewStoreLazy
 
+    /**
+     * Deploy-level client config of the current API environment (`GET /api/public/client-config`):
+     * Raft's own app hosts, which Artifact links are recognised on. Read on app start and on every
+     * environment change, cached per environment on disk.
+     */
+    val clientConfigStore: SharedClientConfigStore by lazy {
+        SharedClientConfigStore(
+            api = NetworkRaftClientConfigApi(networkClient),
+            preferences = sharedPreferenceStore,
+            currentEnvironment = { apiEnvironmentStore.current().apiBaseUrl },
+            environmentChanges = apiEnvironmentStore.state.map { it.apiBaseUrl },
+            scope = threadSendScope,
+            logger = sharedInfoLogger("SlockClientConfig", "client_config"),
+        )
+    }
+
+    /**
+     * Workspace Artifacts: the summaries of the Artifact links on screen (`POST /api/objects/summaries`),
+     * batched and kept briefly, in memory for this viewer.
+     */
+    private val artifactSummaryStoreLazy = lazy {
+        val clock = kotlin.time.TimeSource.Monotonic.markNow()
+        SharedArtifactSummaryStore(
+            api = NetworkRaftArtifactSummariesApi(networkClient),
+            scope = RaftStoreThreading.newScope(),
+            nowMillis = { clock.elapsedNow().inWholeMilliseconds },
+            diagnosticsLogger = sharedInfoLogger("SlockArtifacts", "artifact_summaries"),
+        )
+    }
+    val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(
@@ -814,6 +845,8 @@ internal class RaftSharedStoreProvider private constructor(
                     threadPayloadStore.clearAll()
                     // App link previews and consent answers are the viewer's: same lifetime.
                     if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
+                    // Artifact summaries are per viewer: same lifetime.
+                    if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -835,6 +868,8 @@ internal class RaftSharedStoreProvider private constructor(
         }
         updateNetworkKmmRecoveryEnvironment()
         installServerMembersBindingFollower()
+        // App start: read this environment's client config (and again on each environment change).
+        clientConfigStore.start()
         // Attach canonical/reaction shadow mutation to the dedicated process
         // owner. Shell owners are projection-only and never repeat this work.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
