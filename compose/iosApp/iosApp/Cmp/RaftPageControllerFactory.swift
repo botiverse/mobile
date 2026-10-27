@@ -42,8 +42,12 @@ import shared
         container.raftInitialBackgroundColor =
             RaftCmpIos.shared.lastCanvasColor()
             ?? UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
-        // Status bar icons follow the app theme from the first frame, not only after composition.
-        container.raftSetDarkTheme(RaftAppAppearanceRuntime.shared.isDark)
+        // Status bar icons from the first frame, not only after composition: by what the page
+        // will paint under the status bar (the app shell's head paints the theme frame, other
+        // pages mostly the canvas), judged by luminance like the page's own report.
+        container.raftSetDarkTheme(
+            RaftAppAppearanceRuntime.shared.statusBarBackdropDark(frameUnderStatusBar: container.raftIsAppShellPage)
+        )
         let bridge = RaftCmpBridgeHost()
         bridge.hostController = container
         let navigator = RaftCmpPageNavigator()

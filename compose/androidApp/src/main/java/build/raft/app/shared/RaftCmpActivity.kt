@@ -98,6 +98,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
+import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.components.applyRaftSystemBarsAppearance
 import build.raft.designsystem.components.applyRaftTransparentSystemBars
 import kotlinx.serialization.json.JsonObject
@@ -1035,7 +1036,7 @@ internal open class RaftCmpActivity :
                         RaftCmpRoot(
                             args,
                             host,
-                            onDarkThemeResolved = ::applySystemBarAppearance,
+                            onSystemBarsResolved = ::applySystemBarAppearance,
                             onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
                         )
                     }
@@ -1127,12 +1128,15 @@ internal open class RaftCmpActivity :
     }
 
     /**
-     * Light theme: dark status/navigation bar icons; dark theme: light icons. The same rule
-     * (designsystem raftSystemBarsAppearance) every RaftWindowDialog window applies from its
-     * own RaftTheme.isDark, so dialogs never copy this window's flags.
+     * The bars are transparent and the page draws edge to edge, so the icons follow what the page
+     * paints under each bar (RaftCmpRoot's onSystemBarsResolved, by luminance): under the status
+     * bar the frame of the head that pads for it (app shell top bar / phone head, section heads),
+     * else the canvas; under the navigation bar the canvas or the tab bar's card, which are light
+     * or dark together in every theme. RaftWindowDialog windows still apply their own
+     * RaftTheme.isDark, so dialogs never copy this window's flags.
      */
-    private fun applySystemBarAppearance(dark: Boolean) {
-        window.applyRaftSystemBarsAppearance(dark)
+    private fun applySystemBarAppearance(appearance: RaftSystemBarsAppearance) {
+        window.applyRaftSystemBarsAppearance(appearance)
     }
 
     /** Kuikly `sendEvent`: delivered to the hosted page(s) as a pager event, on the main thread. */
@@ -1277,7 +1281,9 @@ internal open class RaftCmpActivity :
         super.onConfigurationChanged(newConfig)
         if (RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(newConfig.uiMode))) {
             applyHostCanvasColor(RaftAppAppearanceRuntime.canvasArgb)
-            applySystemBarAppearance(RaftAppAppearanceRuntime.isDark)
+            // Bar icons: the page reports them on its next frame (onSystemBarsResolved), from
+            // what it paints under the bars; the mode alone would be wrong on a dark light-mode
+            // frame (Space, Quest).
         }
     }
 
@@ -2627,7 +2633,11 @@ internal open class RaftCmpActivity :
                 window.attributes = attrs
             }
         }
-        applySystemBarAppearance(RaftAppAppearanceRuntime.isDark)
+        // Before the page reports its own: the app shell's head paints the frame under the
+        // status bar, other pages mostly the canvas.
+        applySystemBarAppearance(
+            RaftAppAppearanceRuntime.hostSystemBars(frameUnderStatusBar = pageName == RaftPages.APP_SHELL),
+        )
     }
 
     private fun applyDecorFitsSystemWindows(window: Window) {

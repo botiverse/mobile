@@ -11,11 +11,12 @@ internal fun raftMessageBodyTextStyle(preferenceKey: String?): TextStyle =
 
 // The style bakes the theme foreground (RaftColor.TextBlack is read once, at build time), so a
 // remembered copy must be keyed on the theme too: keyed on the font size alone, pages already open
-// across a light/dark switch kept painting message bodies in the old theme's text colour.
+// across a light/dark switch kept painting message bodies in the old theme's text colour. The key
+// is the resolved colours (mode and server theme), so a server theme switch rebuilds it as well.
 @Composable
 internal fun rememberRaftMessageBodyTextStyle(preferenceKey: String?): TextStyle {
-    val dark = RaftAppThemeState.isDark
-    return remember(preferenceKey, dark) { raftMessageBodyTextStyle(preferenceKey) }
+    val themeColors = RaftAppThemeState.colors
+    return remember(preferenceKey, themeColors) { raftMessageBodyTextStyle(preferenceKey) }
 }
 
 private fun raftMessageBodyStep(preferenceKey: String?): TextStyle =

@@ -14,6 +14,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.designsystem.tokens.RaftThemeId
 import java.io.File
 import java.time.Duration
 import kotlin.math.abs
@@ -53,10 +54,13 @@ class HomeChannelListScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     private val previousAppearance = RaftAppThemeState.appearance
+    private val previousRaftTheme = RaftAppThemeState.raftTheme
+    private val previousDecor = RaftAppThemeState.decor
 
     @After
     fun restoreAppearance() {
         RaftAppThemeState.apply(previousAppearance)
+        RaftAppThemeState.setRaftTheme(previousRaftTheme, previousDecor)
     }
 
     @Test
@@ -65,8 +69,19 @@ class HomeChannelListScreenshotTest {
     @Test
     fun homeChannelListDark() = capture("screens.home.channel-list.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    // A server theme worn app-wide (per-server theme step 4): Bots repaints the frame (light blue
+    // in light mode) and, in dark mode, the canvas and cards too.
+    @Test
+    fun homeChannelListBotsLight() =
+        capture("screens.home.channel-list.bots", RaftAppAppearance.Light, RaftThemeId.Bots)
+
+    @Test
+    fun homeChannelListBotsDark() =
+        capture("screens.home.channel-list.bots.dark", RaftAppAppearance.Dark, RaftThemeId.Bots)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, theme: RaftThemeId = RaftThemeId.Raft) {
         RaftAppThemeState.apply(appearance)
+        RaftAppThemeState.setRaftTheme(theme)
         val activity = activities.launch()
         // Moko string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)

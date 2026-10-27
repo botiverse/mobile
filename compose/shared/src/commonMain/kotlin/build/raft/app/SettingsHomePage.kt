@@ -2180,6 +2180,11 @@ private fun RaftAppShellReadyContent(
             sharedStores.markActiveAppShellPager(pager.pagerId)
         }
     }
+    // The app wears this shell's selected server theme from its first composition, and again
+    // whenever it appears (another window's shell may have taken over meanwhile).
+    LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
+        sharedStores.followServerTheme(storeScope)
+    }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val authSessionTerminalSource =

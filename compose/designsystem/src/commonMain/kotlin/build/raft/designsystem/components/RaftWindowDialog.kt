@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
@@ -101,3 +103,26 @@ data class RaftSystemBarsAppearance(
  */
 fun raftSystemBarsAppearance(isDark: Boolean): RaftSystemBarsAppearance =
     RaftSystemBarsAppearance(lightStatusBars = !isDark, lightNavigationBars = !isDark)
+
+/**
+ * The bar icons for what a page actually paints behind each bar: dark icons on a light colour,
+ * light icons on a dark one, by the colour's luminance rather than the dark-mode flag. The two
+ * differ on a themed frame: Space and Quest put a dark frame under the status bar in light mode
+ * (light icons), while Raft Yellow and Bots light blue are light frames (dark icons).
+ */
+fun raftSystemBarsAppearance(statusBarBackdrop: Color, navigationBarBackdrop: Color): RaftSystemBarsAppearance =
+    RaftSystemBarsAppearance(
+        lightStatusBars = raftWantsDarkSystemBarIcons(statusBarBackdrop),
+        lightNavigationBars = raftWantsDarkSystemBarIcons(navigationBarBackdrop),
+    )
+
+/**
+ * Whether dark (black) system bar icons read better than light (white) ones on [backdrop]: the
+ * WCAG contrast of black beats white's above a relative luminance of about 0.179, so the split
+ * is there. A translucent colour is judged as if opaque.
+ */
+fun raftWantsDarkSystemBarIcons(backdrop: Color): Boolean =
+    backdrop.copy(alpha = 1f).luminance() > RaftSystemBarIconLuminanceSplit
+
+/** sqrt(1.05 * 0.05) - 0.05: the luminance where black and white text have equal WCAG contrast. */
+private const val RaftSystemBarIconLuminanceSplit = 0.179f

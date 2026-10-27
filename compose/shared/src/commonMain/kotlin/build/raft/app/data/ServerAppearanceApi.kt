@@ -274,7 +274,14 @@ internal fun raftServerThemeLookFlow(
     sessions: Flow<StoredAuthSession?>,
     selectedServerId: Flow<String?>,
 ): Flow<RaftServerThemeLook> =
-    combine(sessions, selectedServerId) { session, selected ->
-        val serverId = selected?.trim()?.takeIf { it.isNotEmpty() } ?: session?.currentServerId
-        session?.servers?.firstOrNull { it.id == serverId }?.themeLook() ?: RaftServerThemeLook.Default
-    }.distinctUntilChanged()
+    combine(sessions, selectedServerId) { session, selected -> raftSessionThemeLook(session, selected) }
+        .distinctUntilChanged()
+
+/**
+ * The look of [selectedServerId] when set, else of [session]'s own current server; Raft Yellow
+ * with decorations on while signed out or when the server is unknown.
+ */
+internal fun raftSessionThemeLook(session: StoredAuthSession?, selectedServerId: String?): RaftServerThemeLook {
+    val serverId = selectedServerId?.trim()?.takeIf { it.isNotEmpty() } ?: session?.currentServerId
+    return session?.servers?.firstOrNull { it.id == serverId }?.themeLook() ?: RaftServerThemeLook.Default
+}

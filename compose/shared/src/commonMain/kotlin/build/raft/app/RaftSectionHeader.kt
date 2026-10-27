@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import androidx.compose.runtime.Composable
@@ -309,6 +310,8 @@ internal fun RaftTopPageHeaderFrame(
     content: @Composable RowScope.() -> Unit,
 ) {
     val metrics = raftTopPageHeaderFrameMetrics(topSafeArea = topSafeArea, headerHeight = headerHeight)
+    // A head that pads for the status bar paints under it: the host's status bar icons follow.
+    RaftStatusBarBackdropClaim(backgroundColor, enabled = topSafeArea > 0.dp)
     Box(
         modifier =
             modifier

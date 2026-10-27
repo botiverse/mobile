@@ -17,6 +17,7 @@ import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
+import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.experimental.ExperimentalObjCName
 import kotlin.native.ObjCName
@@ -75,7 +76,12 @@ interface RaftCmpIosNavigator {
 
 /** Implemented by the iOS page container (`RaftPageViewController`): page -> host notifications. */
 interface RaftIosPageListener {
-    /** The page's resolved appearance after each change (status bar style). */
+    /**
+     * Whether the page paints a dark colour behind the status bar, after each change (status bar
+     * style: light content when true). That is the frame under a head that claims the status bar
+     * (dark in light mode for the Space and Quest themes), else the canvas; judged by luminance
+     * (RaftCmpRoot's onSystemBarsResolved), not by the dark-mode flag.
+     */
     fun onDarkThemeResolved(dark: Boolean)
 }
 
@@ -174,7 +180,8 @@ object RaftCmpIos {
                 events = events,
             )
         val args = RaftCmpPageArgs.fromJsonText(pageName, pageDataJson)
-        val onDarkThemeResolved: ((Boolean) -> Unit)? = listener?.let { target -> { dark -> target.onDarkThemeResolved(dark) } }
+        val onSystemBarsResolved: ((RaftSystemBarsAppearance) -> Unit)? =
+            listener?.let { target -> { bars -> target.onDarkThemeResolved(!bars.lightStatusBars) } }
         val backSwipeRegions = RaftBackSwipeRegions()
         return RaftIosPage(events, backSwipeRegions) { page ->
             ComposeUIViewController(
@@ -209,7 +216,7 @@ object RaftCmpIos {
                     RaftCmpRoot(
                         args = args,
                         host = host,
-                        onDarkThemeResolved = onDarkThemeResolved,
+                        onSystemBarsResolved = onSystemBarsResolved,
                         onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
                         backSwipeRegions = backSwipeRegions,
                     )

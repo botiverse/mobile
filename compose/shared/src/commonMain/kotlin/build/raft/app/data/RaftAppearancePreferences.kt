@@ -2,6 +2,9 @@ package build.raft.app.data
 
 import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftAppThemeState
+import build.raft.app.model.RaftServerThemeLook
+import build.raft.designsystem.components.RaftSystemBarsAppearance
+import build.raft.designsystem.components.raftSystemBarsAppearance
 import androidx.compose.ui.graphics.toArgb
 import kotlin.concurrent.Volatile
 
@@ -70,8 +73,29 @@ object RaftAppAppearanceRuntime {
     private fun repository(): RaftAppearancePreferenceRepository =
         repositoryOverride ?: KeyValueRaftAppearancePreferenceRepository(raftSharedPreferenceStore())
 
-    /** Idempotent. An unreadable store leaves the default (System). */
+    @Volatile
+    private var serverThemeSettled = false
+
+    private var sessionSnapshotOverride: (() -> StoredAuthSession?)? = null
+
+    /**
+     * The last committed auth session, lock-free (never waits on the session lock, which the main
+     * thread must not do: #3823/#3824); decoded from the store when this process has not read it.
+     */
+    private fun committedSession(): StoredAuthSession? {
+        sessionSnapshotOverride?.let { reader -> return reader() }
+        return KeyValueAuthSessionStore(RaftSharedAuthSessionKeyValueStoreProvider.create().store)
+            .readCommittedSessionSnapshot()
+    }
+
+    /**
+     * Idempotent. An unreadable store leaves the default (System). Also seeds the server theme
+     * before the first frame: the look of the persisted session's current server (Raft Yellow
+     * when signed out), read lock-free; the shell's own look then follows through
+     * [applyServerThemeLook].
+     */
     fun ensureLoaded() {
+        seedServerThemeLook()
         if (loaded) return
         val stored = runCatching { repository().readAppearanceSync() }.getOrNull() ?: return
         loaded = true
@@ -79,15 +103,23 @@ object RaftAppAppearanceRuntime {
         notifyHost()
     }
 
-    val appearance: RaftAppAppearance
-        get() = RaftAppThemeState.appearance
+    private fun seedServerThemeLook() {
+        if (serverThemeSettled) return
+        // An unreadable store (not installed yet) leaves it for the next call or the session flow.
+        val session = runCatching { committedSession() }.getOrElse { return }
+        serverThemeSettled = true
+        val seed = raftSessionThemeLook(session, selectedServerId = null)
+        RaftAppThemeState.setRaftTheme(seed.theme, seed.decor)
+    }
 
-    /** Applies [next] at once (every screen repaints) and saves it on this device. */
-    fun select(next: RaftAppAppearance) {
-        loaded = true
-        RaftAppThemeState.apply(next)
-        runCatching { repository().saveAppearanceSync(next) }
-        notifyHost()
+    /**
+     * Wears [look] (the selected server's theme and decor) app-wide: every screen repaints. Main
+     * thread.
+     */
+    fun applyServerThemeLook(look: RaftServerThemeLook) {
+        // A look from the session flow outranks a seed still to be read.
+        serverThemeSettled = true
+        RaftAppThemeState.setRaftTheme(look.theme, look.decor)
     }
 
     /**
@@ -106,11 +138,28 @@ object RaftAppAppearanceRuntime {
 
     /**
      * `layer-frame` of the resolved theme as ARGB: the frame the top bar and rail sit on (Raft
-     * Yellow in light), which the system status / navigation bars will follow once a server theme
-     * is applied. Hosts do not read it yet.
+     * Yellow in light, the server theme's frame otherwise), which heads paint under the status bar.
      */
     val frameArgb: Int
         get() = RaftAppThemeState.colors.layerFrame.toArgb()
+
+    /**
+     * The system bar icons before a page reports its own (RaftCmpRoot's onSystemBarsResolved):
+     * the status bar's from the frame when the page's head paints it there
+     * ([frameUnderStatusBar]: the app shell), else from the canvas; the navigation bar's from the
+     * canvas. By luminance: Space and Quest have a dark frame in light mode.
+     */
+    fun hostSystemBars(frameUnderStatusBar: Boolean): RaftSystemBarsAppearance {
+        val colors = RaftAppThemeState.colors
+        return raftSystemBarsAppearance(
+            statusBarBackdrop = if (frameUnderStatusBar) colors.layerFrame else colors.layerCanvas,
+            navigationBarBackdrop = colors.layerCanvas,
+        )
+    }
+
+    /** iOS: whether the status bar sits on a dark colour (light content), as [hostSystemBars]. */
+    fun statusBarBackdropDark(frameUnderStatusBar: Boolean): Boolean =
+        !hostSystemBars(frameUnderStatusBar).lightStatusBars
 
     /** `foreground` / `foreground-muted` of the resolved theme, for native host text. */
     val foregroundArgb: Int
@@ -141,5 +190,12 @@ object RaftAppAppearanceRuntime {
     internal fun installRepositoryForTests(repository: RaftAppearancePreferenceRepository?) {
         repositoryOverride = repository
         loaded = false
+        serverThemeSettled = false
+    }
+
+    /** Tests: the committed session the cold-start seed reads; null restores the store's. */
+    internal fun installSessionSnapshotReaderForTests(reader: (() -> StoredAuthSession?)?) {
+        sessionSnapshotOverride = reader
+        serverThemeSettled = false
     }
 }

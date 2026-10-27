@@ -115,6 +115,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.coroutines.EmptyCoroutineContext
@@ -1045,6 +1048,11 @@ internal class RaftSharedStoreProvider private constructor(
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
+    private val serverThemeFollower =
+        RaftServerThemeFollower(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
+            apply = RaftAppAppearanceRuntime::applyServerThemeLook,
+        )
     private val processRealtimeAuthorityFlow =
         realtimeAuthorityProvider.authorityFlow(ProcessRealtimeAuthorityScopeKey)
 
@@ -1547,6 +1555,31 @@ internal class RaftSharedStoreProvider private constructor(
             sessions = raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() },
             selectedServerId = selectedServerStore(scope).selectedServerId,
         )
+
+    /**
+     * The process-level look: the stored session's own current server (the next launch's
+     * default), for when no app shell is on screen (cold start before the shell, the login page
+     * after a sign-out, which reads Raft Yellow).
+     */
+    internal fun processServerThemeLookFlow(): Flow<RaftServerThemeLook> =
+        raftServerThemeLookFlow(
+            sessions = raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() },
+            selectedServerId = flowOf(null),
+        )
+
+    /** Wears the process-level look app-wide until an app shell takes over ([followServerTheme]). */
+    internal fun followProcessServerTheme() {
+        serverThemeFollower.follow(ProcessServerThemeFollowKey, processServerThemeLookFlow().flowOn(Dispatchers.Default))
+    }
+
+    /**
+     * Wears the look of [scope]'s selected server app-wide from now on (the shell on screen):
+     * server switches, sign-out, plan changes and `appearance:updated` follow through the stored
+     * session. Session reads stay off the main thread; the look is applied on it.
+     */
+    internal fun followServerTheme(scope: RaftShellStoreScope) {
+        serverThemeFollower.follow(scope, serverThemeLookFlow(scope).flowOn(Dispatchers.Default))
+    }
 
     internal fun authenticatedRouteOwnerFlow(
         scope: RaftShellStoreScope,
@@ -3236,6 +3269,7 @@ internal class RaftSharedStoreProvider private constructor(
                 threadSendScope = threadSendScope
             )
             return provider.also {
+                provider.followProcessServerTheme()
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
                 RaftPushRegistrationLifecycle.observeSessionEvents(
                     source = authStore.authSessionEvents,
@@ -4251,6 +4285,9 @@ private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<
                 ?.let { seq -> MessageSeqEnvelope(seq = seq, epoch = epoch, event = this) }
         else -> null
     }
+
+/** [RaftServerThemeFollower] key of the process-level look (no shell selection). */
+private object ProcessServerThemeFollowKey
 
 internal object RaftSharedStoreRegistry {
     private val productionFactory =
