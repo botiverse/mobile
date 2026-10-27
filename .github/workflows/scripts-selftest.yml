@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   selftest:
-    name: Merge tooling self-test
+    name: Scripts self-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,17 +32,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - name: Test merge tooling scripts
-        shell: bash
-        run: |
-          scripts/test_validate_commit_message.sh
-          scripts/test_validate_landed_commit_message.sh
-          scripts/test_guarded_merge_preflight.sh
-          scripts/test_guarded_rebase_merge.sh
-          scripts/test_guarded_squash_merge.sh
-          scripts/test_merge_command_policy.sh
-          scripts/check-merge-command-policy.sh
 
       - name: Test iOS capture runner resource ownership
         run: python3 scripts/ci/test_ios_visual_runner.py

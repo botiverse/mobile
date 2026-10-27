@@ -80,6 +80,9 @@ jobs:
           python3 scripts/test_android_aab_signing.py
           python3 scripts/test_download_android_aab_repair.py
 
+      - name: Validate Hands artifact upload contract
+        run: python3 scripts/test_upload_android_hands_artifacts.py
+
       - name: Validate workflow contract
         run: scripts/test_android_hands_release_contract.sh
 
