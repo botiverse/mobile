@@ -157,5 +157,11 @@ internal class RaftInMemoryThreadReplyWindowStorage : RaftThreadReplyWindowStora
     override suspend fun clearAll() {
         values.clear()
     }
+
+    override suspend fun pageKeys(): List<String> = values.keys.toList()
+
+    override suspend fun delete(pageKeys: List<String>) {
+        pageKeys.forEach { values.remove(it) }
+    }
 }
 

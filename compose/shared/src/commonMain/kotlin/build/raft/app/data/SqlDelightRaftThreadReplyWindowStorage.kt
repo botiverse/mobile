@@ -31,6 +31,20 @@ internal class SqlDelightRaftThreadReplyWindowStorage(
             }
         }
     }
+
+    override suspend fun pageKeys(): List<String> =
+        RaftStoreThreading.runOffStoreDispatcher {
+            database.queries.selectSnapshotIds(RaftThreadReplyWindowSnapshotScope).executeAsList()
+        }
+
+    override suspend fun delete(pageKeys: List<String>) {
+        if (pageKeys.isEmpty()) return
+        RaftStoreThreading.runOffStoreDispatcher {
+            database.queries.transaction {
+                pageKeys.forEach { id -> database.queries.deleteSnapshot(RaftThreadReplyWindowSnapshotScope, id) }
+            }
+        }
+    }
 }
 
 /** Persisted scope name: keep the spelling stable across releases. */

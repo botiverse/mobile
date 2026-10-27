@@ -29,7 +29,8 @@ import kotlin.concurrent.Volatile
  *    writes: [clearAll] and the eviction calls advance [epoch], and a write captured under an
  *    older epoch is dropped.
  * 2. Lost access evicts: [evictServer] (removed from the server / server deleted), member removal
- *    rewrites the row without the member ([removeMember]), sign-out clears every row ([clearAll]).
+ *    rewrites the row without the member ([removeMember]), [clearAll] clears every row (sign-out keeps them: rows are keyed by
+ *    environment + account (owner decision 2026-10-27, see AccountLocalData)).
  * 3. Capped: at most [maxMembersPerServer] members per roster, [maxServersPerAccount] rosters per
  *    environment + account and [maxServers] in total, least recently written first.
  */
@@ -149,7 +150,7 @@ internal class RaftServerMembersDurableStore(
         }
     }
 
-    /** Session end (sign-out): every roster leaves with the session; in-flight writes are fenced. */
+    /** Every roster; in-flight writes are fenced. */
     suspend fun clearAll() {
         mutex.withLock {
             epochValue += 1L

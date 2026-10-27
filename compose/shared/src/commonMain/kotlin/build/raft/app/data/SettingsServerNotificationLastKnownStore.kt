@@ -9,8 +9,8 @@ import kotlinx.serialization.json.Json
  * error) instead of inventing a default. Written on every successful fetch and successful update.
  *
  * Lives in the last-known copy family ([RaftLastCountsPersistStorage]): keys carry `:user:<id>:server:<id>`,
- * other users' copies are never touched, and [clearAll] runs from the provider's auth-terminal cleanup
- * (sign-out / account switch) with the other last-known copies. Unlike the Home/Activity copies the value is a
+ * other users' copies are never touched, and sign-out keeps them so the same user sees the value
+ * again (owner decision 2026-10-27, see AccountLocalData). Unlike the Home/Activity copies the value is a
  * setting, not a feed, so it does not age out; only the servers bound is kept.
  */
 class SettingsServerNotificationLastKnownStore(
@@ -53,7 +53,12 @@ class SettingsServerNotificationLastKnownStore(
         )
     }
 
-    /** Sign-out: removes every copy written on this device. */
+    /** Lost access to [serverId]: that server's copies ([userId] null = of every user). */
+    fun dropServer(serverId: String, userId: String? = null) {
+        storage.dropServer(serverId, userId)
+    }
+
+    /** Removes every copy written on this device. */
     fun clearAll() {
         storage.clearAll()
     }

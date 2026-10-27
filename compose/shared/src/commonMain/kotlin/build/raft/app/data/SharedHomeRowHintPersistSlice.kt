@@ -14,8 +14,9 @@ import kotlinx.serialization.Serializable
  * [SharedHomeContentState.Content.isDurableIdentityCache] is true and the row's own count is
  * still unknown, and disappear when the first network Home replaces the content.
  *
- * Previews are message content, so this lives under its own key family and is wiped by
- * [HomeRowHintPersistStorage.clearAll] when the auth session ends.
+ * Previews are message content, so this lives under its own key family, keyed by user and server:
+ * sign-out keeps them for the same user, and losing access to a server drops that server's copies
+ * ([AccountLocalData]).
  */
 @Serializable
 data class HomeRowRestoredHint(

@@ -93,7 +93,7 @@ class SharedHomeSavedListOfflineTest {
     }
 
     @Test
-    fun sessionResetKeepsStoredListButAuthTerminalWipeClearsIt() = runTest {
+    fun sessionResetKeepsStoredListButWipeAllClearsIt() = runTest {
         val device = Device(backgroundScope)
         val cache = device.savedStateCache()
         loadOnce(device, listOf(savedListRow("message-1")), cache)
@@ -102,7 +102,7 @@ class SharedHomeSavedListOfflineTest {
         cache.clear()
         assertEquals(listOf("saved:message-1"), device.storedKeys())
 
-        // Sign-out: the one offline-resource wipe takes the Saved list with it.
+        // wipeAll (sign-out no longer calls it: AccountLocalDataTest) takes the Saved list with it.
         device.offline.wipeAllAsync()
         runCurrent()
         assertNull(device.storedKeys())

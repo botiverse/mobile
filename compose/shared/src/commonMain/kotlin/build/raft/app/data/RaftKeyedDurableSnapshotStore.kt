@@ -22,7 +22,8 @@ import kotlin.concurrent.Volatile
  *    boundary fences writes: [clearAll] and the eviction calls advance [epoch]; a write captured
  *    under an older epoch is dropped. A server switch or a token refresh never moves the epoch.
  * 2. Lost access evicts: [evict] (403 / 404 on the entity), [evictServer] (removed from the
- *    server / server deleted) and [clearAll] (sign-out).
+ *    server / server deleted) and [clearAll] (sign-out keeps the rows: they are keyed by
+ *    environment + account (owner decision 2026-10-27, see AccountLocalData)).
  * 3. Capped: at most [maxRowsPerServer] rows per environment + account + server,
  *    [maxRowsPerAccount] per environment + account and [maxRows] in total, least recently written
  *    first.
@@ -113,7 +114,7 @@ internal class RaftKeyedDurableSnapshotStore<T>(
         }
     }
 
-    /** Session end (sign-out): every row leaves with the session; in-flight writes are fenced. */
+    /** Every row; in-flight writes are fenced. */
     suspend fun clearAll() {
         mutex.withLock {
             epochValue += 1L
