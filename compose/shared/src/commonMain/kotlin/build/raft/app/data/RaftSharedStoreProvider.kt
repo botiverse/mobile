@@ -99,6 +99,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
@@ -648,23 +649,31 @@ internal class RaftSharedStoreProvider private constructor(
         // Epoch + rebaseline above and the roster flight/cache retirement stay immediate; only the
         // roster refetch takes the reconnect jitter (Tenny 10-27, web #11453).
         val transport = ProcessPresenceTransportEpoch(connectionFamilyId = grant.connectionFamilyId, epoch = transportEpoch)
+        // Decided once for this connect: the pull below and the roster refetch's scope (agents only).
+        val syncOn = syncChangesPullAllowed(owner.serverId)
         val rosterDecision =
             presenceTransportRosterRefetch.onTransportRebaselined(
                 owner = owner,
                 transport = transport,
                 rebaselineResult = result,
+                agentsOnlyOnReconnect = syncOn,
             )
+        if (!syncOn) return
         // Incremental sync (mobile_sync_changes_v0): what changed during the outage. A RE-connect
         // pull waits 0–2 s and its snapshot reloads (first sync, reset) take the roster's 0–20 s.
         val reconnect = rosterDecision != RaftReconnectRefetchDecision.Immediate
-        requestSyncChangesPull(
-            serverId = owner.serverId,
-            trigger = "reconnect",
-            jitterSnapshots = reconnect,
-            jitterPull = reconnect,
-            // A RE-connect refetched only agents: a failed pull gets the full roster refetch back.
-            onFailed = if (reconnect) ({ presenceTransportRosterRefetch.onSyncPullFailed(owner, transport) }) else null,
-        )
+        val fallback: (() -> Unit)? =
+            if (reconnect) ({ presenceTransportRosterRefetch.onSyncPullFailed(owner, transport) }) else null
+        val requested =
+            requestSyncChangesPull(
+                serverId = owner.serverId,
+                trigger = "reconnect",
+                jitterSnapshots = reconnect,
+                jitterPull = reconnect,
+                // A RE-connect refetched only agents: a failed pull gets the full roster refetch back.
+                onFailed = fallback,
+            )
+        if (!requested) fallback?.invoke()
     }
 
     /** A full-list refetch standing in for a failed incremental pull: always after the reconnect jitter. */
@@ -701,6 +710,28 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /** Whether [requestSyncChangesPull] would pull [serverId] now (signed in, selected, flag on). */
+    private fun syncChangesPullAllowed(serverId: String): Boolean {
+        val scope = currentSyncScope(serverId) ?: return false
+        return scopesForServer(scope.serverId).isNotEmpty() && syncChangesEnabled(scope)
+    }
+
+    private val syncPullJobsLock = SynchronizedObject()
+    private val syncPullJobs = mutableMapOf<String, MutableSet<Job>>()
+
+    /**
+     * Server switch (Tenny 10-27): only the selected server pulls. A pull of a server no shell
+     * selects any more is cancelled (its cursor is only written after a page is applied, so the
+     * next pull of that server repeats at most one page).
+     */
+    private fun cancelUnselectedSyncPulls() {
+        val cancelled =
+            synchronized(syncPullJobsLock) {
+                syncPullJobs.filterKeys { scopesForServer(it).isEmpty() }.values.flatMap { it.toList() }
+            }
+        cancelled.forEach { it.cancel() }
+    }
+
     private fun currentSyncScope(serverId: String): RaftSyncScope? {
         val context = replyCacheAuthContext.value ?: return null
         return RaftSyncScope.of(context.environmentId, context.accountId, serverId)
@@ -735,10 +766,18 @@ internal class RaftSharedStoreProvider private constructor(
         val scope = currentSyncScope(serverId) ?: return false
         if (scopesForServer(scope.serverId).isEmpty()) return false
         if (!syncChangesEnabled(scope)) return false
-        threadSendScope.launch {
-            val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
-            if (result is RaftSyncPullResult.Failed && result.needsFullRefetchFallback) onFailed?.invoke()
-        }
+        val job =
+            threadSendScope.launch(start = CoroutineStart.LAZY) {
+                when (val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)) {
+                    is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
+                    // Stopped at the page cap with more waiting: go on in a follow-up pull.
+                    is RaftSyncPullResult.Synced ->
+                        if (result.truncated) requestSyncChangesPull(scope.serverId, trigger = "truncated_follow_up")
+                }
+            }
+        synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
+        job.invokeOnCompletion { synchronized(syncPullJobsLock) { syncPullJobs[scope.serverId]?.remove(job) } }
+        job.start()
         return true
     }
 
@@ -764,6 +803,12 @@ internal class RaftSharedStoreProvider private constructor(
                         .takeIf { it.status == SharedServerMembersLoadStatus.Loaded }
                         ?.server
                 }
+
+            override suspend fun supersedeRosterLoad(serverId: String, reason: String) {
+                replyCacheAuthContext.value?.ownerFor(serverId)?.let { owner ->
+                    processServerMembersCore.invalidate(owner = owner, reason = reason)
+                }
+            }
 
             override fun machineNames(serverId: String): Map<String, String> =
                 syncComputersStores(serverId).firstNotNullOfOrNull { store ->
@@ -873,7 +918,6 @@ internal class RaftSharedStoreProvider private constructor(
                 }.distinct()
             },
             isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
-            agentsOnlyOnReconnect = { serverId -> currentSyncScope(serverId)?.let(::syncChangesEnabled) == true },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
             warnLogger = sharedWarnLogger("SlockPresence", "presence_transport_rebaseline"),
         )
@@ -1331,6 +1375,7 @@ internal class RaftSharedStoreProvider private constructor(
                                 // A server switch fetches at once: a roster refetch still waiting for
                                 // the reconnect jitter of this server runs now.
                                 reconnectRefetchJitter.flushServer(serverId, reason = "server_selected")
+                                cancelUnselectedSyncPulls()
                                 var syncPullRequested = false
                                 refreshSelectedServerFeatureFlags {
                                     try {

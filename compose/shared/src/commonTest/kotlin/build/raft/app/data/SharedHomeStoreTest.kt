@@ -1943,6 +1943,95 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun syncRefreshReplacesALoadSentBeforeItInsteadOfJoiningIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+        logs.clear()
+        // A normal (socket) refresh is in flight, read before the sync change.
+        val blockedRefresh = api.blockNextChannels()
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, reason = "socket", serverId = ServerId("server-1"))
+            )
+        )
+        blockedRefresh.awaitStarted()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        RealtimeRefreshScope.Home,
+                        reason = "sync_changes",
+                        serverId = ServerId("server-1"),
+                        supersedesInFlightLoad = true
+                    )
+            )
+        )
+
+        assertContains(logs, "home_realtime_refresh_supersede scope=Home reason=sync_changes active=load")
+        // The fresh read answered while the older one is still held (it is cancelled, never published).
+        awaitCondition { api.calls.count { it == "channels:server-1" } == 1 }
+        blockedRefresh.release()
+        scope.cancel()
+    }
+
+    @Test
+    fun syncDirtyWhileHiddenReadsFreshOnVisibleInsteadOfJoiningTheOldLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val logs = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = source(api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        api.calls.clear()
+        val blockedRefresh = api.blockNextChannels()
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, reason = "socket", serverId = ServerId("server-1"))
+            )
+        )
+        blockedRefresh.awaitStarted()
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        RealtimeRefreshScope.Home,
+                        reason = "sync_changes",
+                        serverId = ServerId("server-1"),
+                        supersedesInFlightLoad = true
+                    )
+            )
+        )
+        logs.clear()
+
+        store.accept(SharedHomeIntent.SetSurfaceVisible(true))
+
+        assertContains(logs, "home_realtime_refresh_supersede scope=Home reason=visible_dirty_sync active=load")
+        // The fresh read answered while the older one is still held (it is cancelled, never published).
+        awaitCondition { api.calls.count { it == "channels:server-1" } == 1 }
+        blockedRefresh.release()
+        scope.cancel()
+    }
+
+    @Test
     fun clusteredRefreshRequiredEventsCoalesceHomeReload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = RecordingHomeApi()

@@ -202,6 +202,25 @@ class SharedServerMembersStoreSyncTest {
     }
 
     @Test
+    fun `a first roster load in flight when member rows arrive reads the server again`() = runTest {
+        val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann")))
+        val core = syncCore(repository)
+        val store = SharedServerMembersStore(memberRepository = repository, processCore = core)
+        val gate = CompletableDeferred<Unit>().also { repository.membersGate = it }
+        val firstLoad = async { store.refreshMembers(serverId) }
+        runCurrent()
+        repository.members = listOf(human("u-1", "Ann B"))
+
+        // The router's supersedeRosterLoad: no roster to patch, so the load in flight is retired.
+        core.invalidate(ProcessServerMembersOwner("local", "local", serverId.value), reason = "sync_changes")
+        gate.complete(Unit)
+        firstLoad.await()
+
+        assertEquals(listOf("Ann B"), store.currentServerMembers(serverId).map { it.displayName })
+        assertEquals(2, repository.memberCalls)
+    }
+
+    @Test
     fun `a failed reconnect pull falls back to the full roster refetch after the jitter`() = runTest {
         val repository = SyncRosterRepository(members = listOf(human("u-1", "Ann"), agent("a-1", "Bot")), agents = listOf(agent("a-1", "Bot")))
         val store = syncStore(repository)
@@ -254,24 +273,32 @@ class SharedServerMembersStoreSyncTest {
     private fun TestScope.syncStore(repository: SyncRosterRepository) =
         SharedServerMembersStore(memberRepository = repository, processCore = syncCore(repository))
 
+    /** [agentsOnly] is the provider's per-connect decision; each [connect] passes it. */
     private fun TestScope.rosterRefetch(
         store: SharedServerMembersStore,
         agentsOnly: Boolean,
         maxJitterMillis: Long = RECONNECT_REFETCH_JITTER_MAX_MILLIS,
-    ) =
+    ) = SyncRosterRefetch(
+        agentsOnly,
         PresenceTransportRosterRefetch(
             jitter =
                 RaftReconnectRefetchJitter(scope = backgroundScope, random = kotlin.random.Random(3), maxMillis = maxJitterMillis),
             invalidate = { _, _ -> },
             storesForServer = { listOf(store) },
-            agentsOnlyOnReconnect = { agentsOnly },
-        )
+        ),
+    )
 
-    private suspend fun connect(refetch: PresenceTransportRosterRefetch, epoch: Long) {
-        refetch.onTransportRebaselined(
+    private class SyncRosterRefetch(val agentsOnly: Boolean, val refetch: PresenceTransportRosterRefetch) {
+        fun onSyncPullFailed(owner: ProcessServerMembersOwner, transport: ProcessPresenceTransportEpoch) =
+            refetch.onSyncPullFailed(owner, transport)
+    }
+
+    private suspend fun connect(refetch: SyncRosterRefetch, epoch: Long) {
+        refetch.refetch.onTransportRebaselined(
             owner = ProcessServerMembersOwner("local", "local", serverId.value),
             transport = ProcessPresenceTransportEpoch(connectionFamilyId = "family-1", epoch = epoch),
             rebaselineResult = ProcessPresenceTransportRebaselineResult.Applied,
+            agentsOnlyOnReconnect = refetch.agentsOnly,
         )
     }
 

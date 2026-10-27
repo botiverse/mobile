@@ -13,6 +13,12 @@ internal interface RaftSyncStoreTargets {
     /** The loaded roster's server (null: no roster loaded; `server_member` rows wait for its load). */
     fun rosterServer(serverId: String): ServerSummary?
 
+    /**
+     * `server_member` rows arrived while no roster is loaded: a roster load in flight was read
+     * before them and must not win (Tenny 10-27); retire it so its waiters read the server again.
+     */
+    suspend fun supersedeRosterLoad(serverId: String, reason: String)
+
     /** Machine id -> name, for the computer label of `agent` rows. */
     fun machineNames(serverId: String): Map<String, String>
 
@@ -74,11 +80,15 @@ internal class RaftSyncChangesStoreRouter(
         val rosterDeletes = mutableListOf<Pair<MemberId, MemberKind>>()
         plan.deletesOf(RaftSyncRowEntity.ServerMember).forEach { rosterDeletes += MemberId(it) to MemberKind.Human }
         plan.deletesOf(RaftSyncRowEntity.Agent).forEach { rosterDeletes += MemberId(it) to MemberKind.Agent }
+        val memberRows = plan.upsertsOf(RaftSyncRowEntity.ServerMember)
         if (server != null) {
-            plan.upsertsOf(RaftSyncRowEntity.ServerMember).values.forEach { row ->
+            memberRows.values.forEach { row ->
                 val member = parseSharedServerMemberRow(row, server)
                 if (member == null) resnapshot += RaftSyncSnapshot.ServerMembers else rosterUpserts += member
             }
+        } else if (memberRows.isNotEmpty()) {
+            // No roster to patch: the load that brings it must be read after these rows.
+            targets.supersedeRosterLoad(serverId, reason)
         }
         val agentRows = plan.upsertsOf(RaftSyncRowEntity.Agent)
         if (agentRows.isNotEmpty()) {

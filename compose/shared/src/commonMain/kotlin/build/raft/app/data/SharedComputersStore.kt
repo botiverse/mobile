@@ -432,7 +432,9 @@ class SharedComputersStore internal constructor(
     /**
      * Incremental sync (`GET /api/sync/changes` `machine` rows, each a `machines` item of the list
      * endpoint): patch [serverId]'s machine list row by row instead of reloading it. A server whose
-     * list is not loaded is left alone (its next load reads the server). Returns whether it changed.
+     * list is not loaded is left alone (its next load reads the server), unless its first load is in
+     * flight: that one may have been read before these rows, so one more load follows it (Tenny
+     * 10-27). Returns whether it changed.
      */
     internal suspend fun applySyncedMachineRows(
         serverId: String,
@@ -443,11 +445,15 @@ class SharedComputersStore internal constructor(
         if (upserts.isEmpty() && deletes.isEmpty()) return false
         val owner = runCatchingPreservingCancellation { ownerProvider() }.getOrNull() ?: return false
         val durableEpoch = durableStore?.epoch ?: 0L
+        var firstLoadInFlight: Deferred<DataResult<ComputerListSummary>>? = null
         val record =
             mutex.withLock {
                 if (currentOwner != owner) return@withLock null
                 val current = _state.value.selectComputerServerSlice(key)
-                if (!current.hasSnapshot) return@withLock null
+                if (!current.hasSnapshot) {
+                    firstLoadInFlight = loads[key]
+                    return@withLock null
+                }
                 val releaseNotes = current.machines.firstNotNullOfOrNull { it.latestComputerReleaseNotes }
                 val incoming =
                     upserts
@@ -476,7 +482,17 @@ class SharedComputersStore internal constructor(
                 setServerSliceLocked(key, next)
                 logger("shared_computers_sync_apply serverId=$key upserts=${incoming.size} deletes=${deletes.size}")
                 next.toDurableRecord()
-            } ?: return false
+            }
+        if (record == null) {
+            firstLoadInFlight?.let { first ->
+                logger("shared_computers_sync_reload_after_first_load serverId=$key")
+                scope.launch {
+                    first.join()
+                    ensureComputersForServer(serverId = key, force = true, priority = DataRequestPriority.Background)
+                }
+            }
+            return false
+        }
         val store = durableStore
         val durableKey = owner.durableKey(key)
         if (store != null && durableKey != null) store.write(durableKey, record, durableEpoch)

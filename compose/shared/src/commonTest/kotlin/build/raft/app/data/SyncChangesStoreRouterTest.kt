@@ -28,6 +28,10 @@ class SyncChangesStoreRouterTest {
 
         override fun machineNames(serverId: String): Map<String, String> = names
 
+        override suspend fun supersedeRosterLoad(serverId: String, reason: String) {
+            calls += "roster_supersede"
+        }
+
         override suspend fun applyRosterRows(serverId: String, upserts: List<MemberProfile>, deletes: List<Pair<MemberId, MemberKind>>) {
             calls += "roster_rows"
             rosterUpserts += upserts
@@ -97,13 +101,15 @@ class SyncChangesStoreRouterTest {
     }
 
     @Test
-    fun `member rows wait for the roster load when none is loaded but deletes still apply`() = runTest {
+    fun `member rows retire the roster load in flight when none is loaded but deletes still apply`() = runTest {
         targets.server = null
         apply(
             syncUpsert(1, "server_member", "u-2", """{"userId":"u-2","name":"ann"}"""),
             syncDelete(2, "server_member", "u-3"),
         )
         assertTrue(targets.rosterUpserts.isEmpty())
+        // The roster's first load may have been read before the rows: it must not win.
+        assertEquals("roster_supersede", targets.calls.first())
         assertEquals(listOf(MemberId("u-3") to MemberKind.Human), targets.rosterDeletes)
     }
 
