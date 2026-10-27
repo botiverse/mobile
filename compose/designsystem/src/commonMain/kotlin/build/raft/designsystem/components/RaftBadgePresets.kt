@@ -187,12 +187,14 @@ fun RaftRuntimeChip(
     showCpuIcon: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    RaftBadge(
+    RaftBadgeFrame(
         text = text,
-        modifier = modifier,
+        // Web `RUNTIME_CHIP_CLASS` on the soft `information` Badge: Space Mono at 400.
+        look =
+            raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
+                .copy(mono = true, weight = FontWeight.Normal),
         appearance = RaftBadgeAppearance.Soft,
-        variant = RaftBadgeVariant.Information,
-        machineType = true,
+        modifier = modifier,
         icon = if (showCpuIcon) ({ RaftGlyphIcon(RaftGlyph.Cpu, size = 14.dp) }) else null,
         trailing = trailing,
     )

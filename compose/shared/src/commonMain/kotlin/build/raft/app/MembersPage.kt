@@ -10280,7 +10280,8 @@ internal fun MembersAgentComputerInfoRows(
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(top = MembersInfoBlockGap),
                     horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                    verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY)
+                    verticalArrangement = Arrangement.spacedBy(MembersInfoStatusGapY),
+                    itemVerticalAlignment = Alignment.CenterVertically
                 ) {
                     // web `agent-computer-connection`: <StatusDot> (Status md, 10px) then the
                     // word on the DescriptionDetails callout, `foreground`. The pixel is
@@ -10296,14 +10297,18 @@ internal fun MembersAgentComputerInfoRows(
                             if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
                         ),
                         style = membersInfoValueStyle(),
-                        color = RaftTheme.colors.foreground
+                        color = RaftTheme.colors.foreground,
+                        // Grotesk and Space Mono sit differently in the same 20dp line box: the
+                        // words share a baseline, as inline spans do on the web.
+                        modifier = Modifier.alignByBaseline()
                     )
                     // web `agent-computer-version`: <span class="font-mono"> on the callout. The
                     // separator is layout text inside the mono span, not part of any i18n string.
                     RaftText(
                         text = "· " + statusRow.runLabel.localized(),
                         style = membersInfoValueStyle(mono = true),
-                        color = RaftTheme.colors.foreground
+                        color = RaftTheme.colors.foreground,
+                        modifier = Modifier.alignByBaseline()
                     )
                 }
             }

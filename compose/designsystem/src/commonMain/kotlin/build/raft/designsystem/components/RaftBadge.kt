@@ -171,9 +171,6 @@ internal fun raftBadgeLook(
  * (13dp solid, 14dp otherwise) with [LocalRaftContentColor] set to the badge ink.
  * [trailing] follows the label 4dp further out (web `ml-1`), at its own size: a runtime
  * label's account-usage [RaftStatusDot] (`sm`).
- *
- * [machineType] sets the label in Space Mono `text-mono-meta` at 400, as the web does for
- * text a machine writes inside a badge (a runtime or model id); see [RaftRuntimeChip].
  */
 @Composable
 fun RaftBadge(
@@ -182,13 +179,33 @@ fun RaftBadge(
     appearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
     variant: RaftBadgeVariant = RaftBadgeVariant.Default,
     enabled: Boolean = true,
-    machineType: Boolean = false,
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val base = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors)
-    // Web `font-mono text-mono-meta font-normal` on a Badge (AgentDetailPanel `RUNTIME_CHIP_CLASS`).
-    val look = if (machineType) base.copy(mono = true, weight = FontWeight.Normal) else base
+    RaftBadgeFrame(
+        text = text,
+        look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
+        appearance = appearance,
+        modifier = modifier,
+        icon = icon,
+        trailing = trailing,
+    )
+}
+
+/**
+ * The Badge chrome around a resolved [look]. Internal: a preset that needs a look raft-ui
+ * spells as a Badge plus classes (the runtime chip's `font-mono text-mono-meta font-normal`)
+ * adjusts [look] here instead of widening [RaftBadge]'s public API.
+ */
+@Composable
+internal fun RaftBadgeFrame(
+    text: String,
+    look: RaftBadgeLook,
+    appearance: RaftBadgeAppearance,
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     val typography = RaftTheme.typography
     val textStyle: TextStyle =
         (if (look.mono) typography.monoMeta else typography.caption).copy(
