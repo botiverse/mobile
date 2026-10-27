@@ -17,7 +17,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -40,7 +40,9 @@ import build.raft.app.cmp.host.RaftCmpHost
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
     val top = navigator.pages.lastOrNull() ?: return
     Box(
-        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        // Bubbling, not preview: a focused popup, menu or suggestion list that handles Esc itself
+        // (closing) wins over going back.
+        Modifier.fillMaxSize().onKeyEvent { event ->
             val back =
                 event.type == KeyEventType.KeyDown &&
                     (event.key == Key.Escape || (event.isMetaPressed && event.key == Key.LeftBracket))

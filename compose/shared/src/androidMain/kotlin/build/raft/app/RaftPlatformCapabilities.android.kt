@@ -25,6 +25,8 @@ internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
 
+internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
+
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false
 
 internal actual fun raftPlatformSupportsBackgroundRealtime(): Boolean = true

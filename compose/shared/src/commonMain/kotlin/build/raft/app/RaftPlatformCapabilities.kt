@@ -29,6 +29,13 @@ internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
 /** iOS is currently the only host with a native right-edge Forward recognizer. */
 internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
 
+/**
+ * Default of the "Enter sends" composer preference (an explicit choice in settings wins). Desktop:
+ * on, like the web on a fine pointer (Enter / Cmd+Enter send, Shift+Enter inserts a newline, Enter
+ * while an IME composes commits the conversion). Phones keep Enter as a newline.
+ */
+internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
+
 /** Sign in with Apple is a product capability of the iOS host only. */
 internal expect fun raftPlatformSupportsAppleSignIn(): Boolean
 

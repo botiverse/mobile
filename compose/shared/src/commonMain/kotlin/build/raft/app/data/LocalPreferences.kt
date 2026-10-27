@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.raftPlatformComposerEnterSendsByDefault
 import build.raft.app.resources.raftSystemResourceLocale
 import build.raft.app.resources.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
@@ -471,7 +472,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readComposerSendKeyEnabledSync(): Boolean =
-        store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false)
+        store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, raftPlatformComposerEnterSendsByDefault())
 
     override suspend fun readComposerSendKeyEnabled(): Boolean =
         readComposerSendKeyEnabledSync()
