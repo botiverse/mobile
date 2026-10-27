@@ -2069,6 +2069,67 @@ class RaftMarkdownTest {
     }
 
     @Test
+    fun selfMentionChipPaddingTapOpensTheMentionNotTheBody() {
+        // task #wg-mobile:#9: the sticker's painted padding is reserved by gap placeholders outside
+        // the mention's link; a tap there used to fall through to the body and open the thread.
+        val body = "Captured the Android visual artifact for\n@artin and queued React parity."
+        var mentionOpens = 0
+        var bodyClicks = 0
+        val annotated =
+            buildRaftMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    raftMarkdownAnnotator(
+                        content = body,
+                        highlightedMentions = setOf("artin"),
+                        isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin")),
+                        onOpenTag = { mentionOpens++ },
+                    ),
+            )
+        val mention = annotated.getLinkAnnotations(0, annotated.length).single { it.item is LinkAnnotation.Clickable }
+        assertEquals("@artin", annotated.text.substring(mention.start, mention.end))
+        val chipGaps =
+            annotated.getStringAnnotations("androidx.compose.foundation.text.inlineContent", 0, annotated.length)
+                .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) }
+                .filter { gap -> gap.end == mention.start - 1 || gap.start == mention.end + 1 }
+        assertEquals(2, chipGaps.size, "the sticker reserves its padding on both sides")
+
+        val resolved = annotated.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick { bodyClicks++ }
+
+        val resolvedLinks = resolved.getLinkAnnotations(0, resolved.length)
+        // The chip's own link (range and styles) is untouched.
+        assertTrue(resolvedLinks.any { it.start == mention.start && it.end == mention.end && it.item == mention.item })
+        chipGaps.forEach { gap ->
+            val covering = resolvedLinks.filter { it.start <= gap.start && gap.end <= it.end }
+            val link = covering.single().item
+            link.linkInteractionListener?.onClick(link)
+        }
+        assertEquals(2, mentionOpens, "each painted padding side opens the mention")
+        assertEquals(0, bodyClicks, "a tap on the chip must not reach the body (thread open)")
+        // Text around the chip still opens the body.
+        val plain = resolvedLinks.single { it.start == 0 }.item
+        plain.linkInteractionListener?.onClick(plain)
+        assertEquals(1, bodyClicks)
+        assertEquals(2, mentionOpens)
+    }
+
+    @Test
+    fun chipGapLinksLeaveTextWithoutChipsAlone() {
+        val body = "plain @someone and [a link](https://example.test)"
+        val annotated =
+            buildRaftMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    raftMarkdownAnnotator(
+                        content = body,
+                        isTagValid = validThreadMarkdownTags(knownMentions = setOf("someone")),
+                    ),
+            )
+
+        assertTrue(annotated.withRaftInlineChipGapLinks() === annotated)
+    }
+
+    @Test
     fun markdownLinkProtectionHandlesEscapesAndNestedParentheses() {
         val body =
             "[PR #42 with \\] label](https://example.test/path_(preview)#fragment) outside #43"

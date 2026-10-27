@@ -1379,7 +1379,8 @@ private object RaftMarkdownTextProvider : TextProvider {
         }
         val resolvedText =
             remember(styledText, bodyClick) {
-                styledText.withRaftMarkdownBodyClick(bodyClick)
+                // A chip's painted padding taps as the chip, never as the body (task #wg-mobile:#9).
+                styledText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
             }
         val resolvedInlineContent =
             remember(resolvedText, inlineContent, permalinkContent, appLinkContent) {
