@@ -760,6 +760,9 @@
     <string name="thread_action_card_prompt_text_empty">エージェントのプロンプトには追加されません。このアプリには「使用するタイミング」がありません。</string>
     <string name="thread_action_card_execute_failed">操作を実行できませんでした</string>
     <string name="thread_action_card_form_required">このカードは更新されました。会話を更新してもう一度お試しください。</string>
+    <string name="thread_action_card_feedback_rate_limited_one">フィードバックの送信回数が多すぎます。入力内容は保持されています。1 分後にもう一度お試しください。</string>
+    <string name="thread_action_card_feedback_rate_limited_other">フィードバックの送信回数が多すぎます。入力内容は保持されています。%1$d 分後にもう一度お試しください。</string>
+    <string name="thread_action_card_feedback_rate_limited_later">フィードバックの送信回数が多すぎます。入力内容は保持されています。しばらくしてからもう一度お試しください。</string>
     <string name="thread_action_card_already_executed_by">%1$s がすでに完了しました。</string>
     <string name="thread_action_card_already_executed">すでに他のメンバーが完了しました。</string>
     <string name="thread_action_card_frozen_closed">チャンネルの変換中のため、このカードは凍結されています。</string>

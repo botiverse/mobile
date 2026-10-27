@@ -50,4 +50,35 @@ class RaftStringDescResolutionTest {
         assertTrue("isn't installed" in text, text)
         assertFalse('\\' in text, text)
     }
+
+    /** A feedback card's 429 `feedback_rate_limited` (botiverse/slock 7799cc436) reads in the app language, not the server's English. */
+    @Test
+    fun aFeedbackRateLimitReadsInTheAppLanguage() {
+        val expected =
+            mapOf(
+                "en" to listOf(
+                    "Feedback is being sent too frequently. What you entered is kept; try again in 30 minutes.",
+                    "Feedback is being sent too frequently. What you entered is kept; try again in 1 minute.",
+                    "Feedback is being sent too frequently. What you entered is kept; try again later.",
+                ),
+                "zh-CN" to listOf(
+                    "反馈提交过于频繁。已填写的内容已保留，请在 30 分钟后重试。",
+                    "反馈提交过于频繁。已填写的内容已保留，请在 1 分钟后重试。",
+                    "反馈提交过于频繁。已填写的内容已保留，请稍后重试。",
+                ),
+                "ja" to listOf(
+                    "フィードバックの送信回数が多すぎます。入力内容は保持されています。30 分後にもう一度お試しください。",
+                    "フィードバックの送信回数が多すぎます。入力内容は保持されています。1 分後にもう一度お試しください。",
+                    "フィードバックの送信回数が多すぎます。入力内容は保持されています。しばらくしてからもう一度お試しください。",
+                ),
+            )
+        expected.forEach { (tag, texts) ->
+            StringDesc.localeType = StringDesc.LocaleType.Custom(tag)
+            val actual =
+                listOf(1800L, 45L, null).map { wait ->
+                    threadActionCardSpecErrorDesc(ThreadActionCardSpecError.FeedbackRateLimited(wait))?.resolve()
+                }
+            assertEquals(texts, actual, "locale $tag")
+        }
+    }
 }

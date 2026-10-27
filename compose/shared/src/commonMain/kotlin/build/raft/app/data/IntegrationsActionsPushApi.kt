@@ -323,7 +323,10 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
                 code = contractCode,
                 retryable = code >= 500,
                 serverMessage = serverMessage,
-                serverCode = envelope?.errorCode?.takeIf { it.isNotBlank() },
+                // The feedback limiter's 429 (shared with POST /api/product-feedback) names it `code`
+                // (`feedback_rate_limited`); everything else under handleError says `errorCode`.
+                serverCode = (envelope?.errorCode?.takeIf { it.isNotBlank() } ?: envelope?.code?.takeIf { it.isNotBlank() }),
+                retryAfterSeconds = if (code == 429) retryAfterHeaderSeconds() else null,
                 serverFields =
                     buildMap {
                         // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
@@ -467,11 +470,16 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 
 // ── Wire DTOs ──
 
-/** routes/actions.ts `handleError`: `{ error, errorCode }` (an `ActionCardError`'s status, code and message). */
+/**
+ * routes/actions.ts `handleError`: `{ error, errorCode }` (an `ActionCardError`'s status, code and
+ * message). A feedback card's form submit over the per-person feedback limit gets the limiter's own
+ * 429 `{ error, code: "feedback_rate_limited" }` plus `Retry-After` (botiverse/slock 7799cc436).
+ */
 @Serializable
 private data class ActionErrorEnvelopeDto(
     val error: String? = null,
     val errorCode: String? = null,
+    val code: String? = null,
     @SerialName("current_text_revision_id")
     val currentTextRevisionId: String? = null,
 )

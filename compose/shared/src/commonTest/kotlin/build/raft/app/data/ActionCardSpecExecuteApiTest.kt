@@ -45,8 +45,13 @@ class ActionCardSpecExecuteApiTest {
         override suspend fun testPush() = unused()
     }
 
-    private suspend fun execute(code: Int, body: String): DataResult<ActionCardExecuteOutcome> {
-        val response = if (code in 200..299) HomeNetworkResponse(code, bodyText = body) else HomeNetworkResponse(code, bodyText = null, errorBodyText = body)
+    private suspend fun execute(code: Int, body: String, headers: Map<String, List<String>> = emptyMap()): DataResult<ActionCardExecuteOutcome> {
+        val response =
+            if (code in 200..299) {
+                HomeNetworkResponse(code, bodyText = body, responseHeaders = headers)
+            } else {
+                HomeNetworkResponse(code, bodyText = null, errorBodyText = body, responseHeaders = headers)
+            }
         return RaftIntegrationsActionsPushApiClient(ExecuteTransport(response))
             .executeActionCardSpec(MessageId("m-1"), buildExecuteActionBody(expectedState = "prepared", expectedConfirmationVersion = 2))
     }
@@ -136,5 +141,31 @@ class ActionCardSpecExecuteApiTest {
             assertEquals("Nope", error.serverMessage, "$code")
         }
         assertNull((execute(500, "oops") as? DataResult.Content)?.data)
+    }
+
+    /**
+     * botiverse/slock 7799cc436: a feedback card's form over the per-person feedback limit gets the
+     * limiter's 429 `{ error, code: "feedback_rate_limited" }` plus `Retry-After`; the server may
+     * also (or instead) name it `errorCode`. Every shape reads as the same server code.
+     */
+    @Test
+    fun aFeedbackRateLimit429ReadsItsCodeFromCodeOrErrorCodeAndItsRetryAfter() = runTest {
+        val message = "Too many feedback submissions. Please try again later."
+        for (body in listOf(
+            """{"error":"$message","code":"feedback_rate_limited"}""",
+            """{"error":"$message","errorCode":"feedback_rate_limited"}""",
+            """{"error":"$message","errorCode":"feedback_rate_limited","code":"feedback_rate_limited"}""",
+        )) {
+            val error = assertIs<DataResult.Error>(execute(429, body, mapOf("retry-after" to listOf("1800"))), body).error
+            assertEquals("feedback_rate_limited", error.serverCode, body)
+            assertEquals(message, error.serverMessage, body)
+            assertEquals(1800L, error.retryAfterSeconds, body)
+            assertFalse(error.retryable, body)
+        }
+        val noHeader = assertIs<DataResult.Error>(execute(429, """{"error":"$message","code":"feedback_rate_limited"}""")).error
+        assertNull(noHeader.retryAfterSeconds)
+        // errorCode wins when both are there and differ; a non-429 never carries a wait.
+        val both = assertIs<DataResult.Error>(execute(409, """{"error":"x","errorCode":"A","code":"B"}""", mapOf("Retry-After" to listOf("5")))).error
+        assertEquals("A" to null, both.serverCode to both.retryAfterSeconds)
     }
 }
