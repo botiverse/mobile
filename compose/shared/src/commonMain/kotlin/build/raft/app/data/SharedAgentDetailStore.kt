@@ -131,7 +131,11 @@ internal data class SharedAgentIssueReportRequest(
     val includeLiveActivity: Boolean = true,
     val includeActivityHistory: Boolean = true,
     val includeRuntimeTranscript: Boolean = false,
-    val liveActivity: List<AgentActivityEntry> = emptyList()
+    val liveActivity: List<AgentActivityEntry> = emptyList(),
+    val title: String = "",
+    val locale: String = "en",
+    val includeMachineLogTail: Boolean = false,
+    val canIncludeMachineLog: Boolean = false
 )
 
 internal interface SharedAgentDetailActions {
@@ -149,6 +153,10 @@ internal interface SharedAgentDetailActions {
     fun copyDiagnostics(diagnostics: String)
 
     suspend fun reportIssue(request: SharedAgentIssueReportRequest): DataResult<AgentIssueReportResult>
+
+    /** Re-files the ticket of an uploaded report whose ticket failed; returns the ticket id. */
+    suspend fun retryIssueTicket(request: AgentIssueTicketRequest): DataResult<String> =
+        DataResult.Error(ScreenError("agent_issue_ticket_failed"))
 
     suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
 }

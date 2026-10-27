@@ -144,7 +144,14 @@ private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
     }
 
 /** Language and region of the catalog [localeType] selects ("" = no region). */
-internal data class RaftResourceLocale(val language: String, val region: String)
+internal data class RaftResourceLocale(val language: String, val region: String) {
+    /** BCP 47 tag of the catalog (`en`, `zh-CN`, `ja`), as web's react-intl locale. */
+    val languageTag: String get() = if (region.isEmpty()) language else "$language-$region"
+}
+
+/** The UI language the app's strings currently resolve in, as a BCP 47 tag (`en`, `zh-CN`, `ja`). */
+internal fun raftCurrentUiLocaleTag(): String =
+    raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).languageTag.ifBlank { "en" }
 
 /**
  * The system's preferred languages, most preferred first, as BCP 47 tags (Android: the locale
