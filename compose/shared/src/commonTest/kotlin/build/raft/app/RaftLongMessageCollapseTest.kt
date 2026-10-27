@@ -273,22 +273,22 @@ class RaftLongMessageCollapseTest {
     }
 
     @Test
-    fun globalDefaultsOnButAnExplicitOffIsKept() {
+    fun globalDefaultsOffButAnExplicitChoiceIsKept() {
+        // Web #10275 (artin 2026-10-27): long messages show in full unless a person turns collapsing on.
         val fresh = RaftLongMessageCollapsePreferenceStore(InMemoryRaftKeyValueStore())
-        assertTrue(fresh.readGlobalEnabled())
+        assertFalse(fresh.readGlobalEnabled())
+        val optedIn = RaftLongMessageCollapsePreferenceStore(globalOnStore())
+        assertTrue(optedIn.readGlobalEnabled())
         val optedOut =
             RaftLongMessageCollapsePreferenceStore(
-                InMemoryRaftKeyValueStore(
-                    // Persisted key of the global switch (unchanged since the old implementation).
-                    mapOf("chatLayout:long_message_collapse_enabled" to "false")
-                )
+                InMemoryRaftKeyValueStore(mapOf(GlobalCollapseKey to "false"))
             )
         assertFalse(optedOut.readGlobalEnabled())
     }
 
     @Test
     fun perConversationOverrideIsKeyedByServerAndChannel() = runBlocking {
-        val kv = InMemoryRaftKeyValueStore()
+        val kv = globalOnStore() // these cases start from a global ON switch
         val store = RaftLongMessageCollapsePreferenceStore(kv)
         val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
 
@@ -315,7 +315,7 @@ class RaftLongMessageCollapseTest {
 
     @Test
     fun globalChangeVoidsOverridesAndTheyStayVoidWhenGlobalChangesBack() = runBlocking {
-        val kv = InMemoryRaftKeyValueStore()
+        val kv = globalOnStore() // these cases start from a global ON switch
         val store = RaftLongMessageCollapsePreferenceStore(kv)
         val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
         store.setConversationEnabled("srv", "ch", enabled = false) // global on, channel off
@@ -339,7 +339,7 @@ class RaftLongMessageCollapseTest {
     fun bareOnOffOverridesFromTheFirstReleaseStayLiveAtRevisionZero() = runBlocking {
         val kv =
             InMemoryRaftKeyValueStore(
-                mapOf(raftLongMessageCollapseOverrideKey("srv", "ch") to "off")
+                mapOf(GlobalCollapseKey to "true", raftLongMessageCollapseOverrideKey("srv", "ch") to "off")
             )
         val store = RaftLongMessageCollapsePreferenceStore(kv)
         assertEquals(false, store.readChannelOverride("srv", "ch"))
@@ -354,7 +354,7 @@ class RaftLongMessageCollapseTest {
 
     @Test
     fun voidedOverrideIsIgnoredEvenIfNeverReadBetweenTwoGlobalFlips() = runBlocking {
-        val kv = InMemoryRaftKeyValueStore()
+        val kv = globalOnStore() // these cases start from a global ON switch
         val store = RaftLongMessageCollapsePreferenceStore(kv)
         val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
         store.setConversationEnabled("srv", "ch", enabled = false)
@@ -377,7 +377,7 @@ class RaftLongMessageCollapseTest {
 
     @Test
     fun conversationWithoutIdsHasNoOverride() {
-        val store = RaftLongMessageCollapsePreferenceStore(InMemoryRaftKeyValueStore())
+        val store = RaftLongMessageCollapsePreferenceStore(globalOnStore())
         val result = store.setConversationEnabled(null, "ch", enabled = false)
         assertNull(result.channelOverride)
         assertTrue(result.effective)
@@ -414,4 +414,10 @@ class RaftLongMessageCollapseTest {
         assertEquals("a".repeat(9) + "…", preview)
         assertNull(raftForwardPreviewTruncatedText("short", lineLimit = 8, charLimit = 10))
     }
+
+    /** The global switch stored ON (no revision bump), as a person who turned collapsing on has it. */
+    private fun globalOnStore() = InMemoryRaftKeyValueStore(mapOf(GlobalCollapseKey to "true"))
 }
+
+/** Persisted key of the global switch (unchanged since the old implementation). */
+private const val GlobalCollapseKey = "chatLayout:long_message_collapse_enabled"
