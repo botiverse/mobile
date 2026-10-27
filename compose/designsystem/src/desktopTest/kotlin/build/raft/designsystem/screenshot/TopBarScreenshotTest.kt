@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,6 +26,10 @@ import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSearchTrigger
 import build.raft.designsystem.components.RaftTopBar
 import build.raft.designsystem.components.RaftWorkspaceButton
@@ -81,7 +86,7 @@ class TopBarScreenshotTest {
         }
 
     @Composable
-    private fun Bar(width: Dp, currentKey: String, name: String? = null) {
+    private fun Bar(width: Dp, currentKey: String, name: String? = null, arrows: Boolean = false) {
         val current = servers.first { it.key == currentKey }
         var stripShown by remember { mutableStateOf(true) }
         val otherUnread = servers.any { it.key != currentKey && it.unread }
@@ -113,8 +118,40 @@ class TopBarScreenshotTest {
                 )
             },
             center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = width) },
+            centerLeading =
+                if (arrows) {
+                    {
+                        RaftIconButton(onClick = {}, tooltip = "Back", variant = RaftButtonVariant.OnFrame) {
+                            RaftGlyphIcon(RaftGlyph.ChevronRight, Modifier.rotate(180f), size = 20.dp)
+                        }
+                        RaftIconButton(onClick = {}, tooltip = "Forward", variant = RaftButtonVariant.OnFrame, enabled = false) {
+                            RaftGlyphIcon(RaftGlyph.ChevronRight, size = 20.dp)
+                        }
+                    }
+                } else {
+                    null
+                },
+            leadingMinWidth = RaftWorkspaceButtonDefaults.MinWidth,
         )
     }
+
+    /**
+     * The centre-leading slot (the app's history arrows): two 36dp on-frame icon buttons 8dp
+     * before the centred search, outside its width. At 1100dp and 840dp the search stays at the
+     * bar's middle; at 700dp the workspace button would get less than its narrowest, so the
+     * arrows and the search move toward the end together and the search narrows from its start.
+     */
+    @Test
+    fun topBarCenterLeading() =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("top_bar_center_leading_${appearance.name.lowercase()}", appearance, settleFrames = 2) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Bar(width = 1100.dp, currentKey = "b", arrows = true)
+                    Bar(width = 840.dp, currentKey = "b", name = "Botiverse Research Group", arrows = true)
+                    Bar(width = 700.dp, currentKey = "b", name = "Botiverse Research Group", arrows = true)
+                }
+            }
+        }
 
     @Test
     fun searchTrigger() =

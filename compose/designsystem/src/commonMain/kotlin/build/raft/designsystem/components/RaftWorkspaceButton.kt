@@ -37,6 +37,12 @@ object RaftWorkspaceButtonDefaults {
     /** The name's cap while the workspace strip shows beside the button (web AppTopBar `max-w-[120px]`). */
     val NameMaxWidthBesideStrip: Dp = 120.dp
     internal val ChevronSize: Dp = 16.dp
+
+    /** The least the name keeps when the bar is short of room (a few letters, then an ellipsis). */
+    val NameMinWidth: Dp = 48.dp
+
+    /** The button at its narrowest: avatar, [NameMinWidth] of name, chevron, its insets. */
+    val MinWidth: Dp = ContentInset * 2 + AvatarSize + AvatarNameGap + NameMinWidth + NameChevronGap + ChevronSize
 }
 
 /**

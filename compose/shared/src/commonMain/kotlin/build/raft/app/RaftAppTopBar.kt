@@ -9,8 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -33,11 +31,13 @@ import build.raft.designsystem.theme.RaftTheme
 /**
  * The wide layout's top bar (artin task #8; web AppTopBar, raft-design page-structure.md), above
  * the rail and the content:
- * - leading: Back and Forward through what the layout showed ([history], Slack desktop's history
- *   arrows; disabled at either end), then the current server's [RaftWorkspaceButton], which opens the server panel
+ * - leading: the current server's [RaftWorkspaceButton], which opens the server panel
  *   ([onWorkspaceClick]; [serverMenuOpen] keeps its press fill), then the workspace strip of
  *   every server's avatar, where a tap on another server switches to it ([onServerPick]);
- * - centre: the search field ([RaftSearchTrigger]), which opens search ([onSearchClick]);
+ * - centre: Back and Forward through what the layout showed ([history], Slack desktop's history
+ *   arrows; disabled at either end) just before the search field ([RaftSearchTrigger]), which
+ *   opens search ([onSearchClick]). The search stays centred on the bar; the arrows sit 8dp
+ *   before it, outside its width ([RaftTopBar]'s `centerLeading`);
  * - trailing: the notification bell ([bell], web TopBarGlobalActions' NotificationTrigger
  *   `top-bar`). The web shows Working now before it; the app has no Working now summary yet.
  *
@@ -59,7 +59,7 @@ internal fun RaftAppShellTopBar(
     bell: RaftAppShellTopBarState? = null,
     /** A tap on the bell, before it toggles (the shell closes the server panel). */
     onBellToggle: () -> Unit = {},
-    /** The Back / Forward arrows at the leading edge; null draws none. */
+    /** The Back / Forward arrows just before the search field; null draws none. */
     history: RaftAppShellTopBarHistory? = null,
 ) {
     val unreadDescription = stringResource(Res.string.tab_activity_unread_dot)
@@ -69,10 +69,6 @@ internal fun RaftAppShellTopBar(
             modifier = modifier,
             topInset = topSafeArea,
             leading = {
-                if (history != null) {
-                    RaftAppShellTopBarHistoryButtons(history)
-                    Spacer(Modifier.width(RaftAppSpacing.Xs))
-                }
                 if (currentServer != null) {
                     var stripShown by remember { mutableStateOf(true) }
                     val otherUnread = homeServerSwitcherHasOtherUnread(currentServer.id, servers)
@@ -139,6 +135,10 @@ internal fun RaftAppShellTopBar(
                 }
             },
             center = { RaftSearchTrigger(label = searchLabel, onClick = onSearchClick, windowWidth = windowWidth) },
+            // artin 2026-10-27: the arrows sit just before the search field, outside its width, so
+            // the search stays centred; on a short bar they move with it, never over the workspace.
+            centerLeading = history?.let { { RaftAppShellTopBarHistoryButtons(it) } },
+            leadingMinWidth = if (currentServer != null) RaftWorkspaceButtonDefaults.MinWidth else 0.dp,
             trailing = {
                 if (bell != null) {
                     RaftAppTopBarNotificationBell(
