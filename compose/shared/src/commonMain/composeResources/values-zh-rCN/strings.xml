@@ -76,6 +76,7 @@
     <string name="common_yes">是</string>
     <string name="common_no">否</string>
     <string name="common_loading">加载中…</string>
+    <string name="common_refreshing">正在刷新</string>
     <string name="common_copied">已复制</string>
     <string name="common_copy">复制</string>
     <string name="common_play">播放</string>

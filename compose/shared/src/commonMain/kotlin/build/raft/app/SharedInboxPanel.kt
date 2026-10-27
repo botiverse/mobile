@@ -111,6 +111,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.raftHeaderRefreshIndicatorVisible
+import build.raft.app.components.rememberRaftDelayedIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -738,17 +740,20 @@ internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
  */
 private val sharedActivityDiagnosticsSequence = atomic(0L)
 
-@Suppress("UNUSED_PARAMETER")
+/**
+ * Which refresh chrome the Activity page asks for. A refresh the user did not pull
+ * ([SharedActivityState.silentRefreshing]: re-entry, resume, realtime / sync reconcile, server
+ * switch over cached rows) shows the header's top-right indicator (artin 10-27); the user's pull
+ * shows the pull indicator alone, never the header one too (artin task #22). The header indicator
+ * is further delayed and held by [rememberRaftDelayedIndicatorVisible] so a quick reload never
+ * flashes it.
+ */
 internal fun activityRefreshPresentation(
-    refreshing: Boolean,
+    silentRefreshing: Boolean,
     pullRefreshing: Boolean
 ): ActivityRefreshPresentation =
     ActivityRefreshPresentation(
-        // Background/re-entry baselines preserve loaded content and must not
-        // present as a continuously refreshing page. Only the user's explicit
-        // pull gesture owns visible refresh chrome, and that chrome is the pull
-        // indicator alone: the header spinner would show it twice (artin task #22).
-        headerRefreshing = false,
+        headerRefreshing = raftHeaderRefreshIndicatorVisible(refreshing = silentRefreshing, pullRefreshing = pullRefreshing),
         pullRefreshing = pullRefreshing
     )
 
@@ -943,7 +948,10 @@ private fun SharedActivityPanelContent(
     conversationListPending: Boolean = false,
     scrollToTopRequest: Int = 0
 ) {
-    val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
+    val refreshPresentation = activityRefreshPresentation(state.silentRefreshing, state.pullRefreshing)
+    // Delayed and held so a quick silent reload never flashes; a pull hides it at once.
+    val headerRefreshIndicatorVisible =
+        rememberRaftDelayedIndicatorVisible(refreshPresentation.headerRefreshing) && !refreshPresentation.pullRefreshing
     // task #232 (#2224 review blocker 1): the panel owns per-filter scroll
     // states, so it must also own title-tap scroll-to-top — a caller-held
     // LazyListState attaches to no list here and dies silently (the parameter
@@ -983,7 +991,7 @@ private fun SharedActivityPanelContent(
             onClose = onClose,
             mainTab = mainTab,
             topSafeAreaPadding = topSafeAreaPadding,
-            refreshing = refreshPresentation.headerRefreshing,
+            refreshing = headerRefreshIndicatorVisible,
             onTitleClick = {
                 scrollToTopScope.launch { scrollSelectedPageToTop() }
             }
@@ -1173,7 +1181,7 @@ private fun SharedActivityBodyContent(
 }
 
 @Composable
-private fun SharedActivityHeader(
+internal fun SharedActivityHeader(
     totalCount: Int,
     totalUnreadCount: Int,
     onClose: (() -> Unit)?,
@@ -1430,7 +1438,6 @@ private fun SharedActivityList(
         )
     }
     val latestOnIntent by rememberUpdatedState(onIntent)
-    val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     // Viewport recovery (#997) is only armed right after the panel becomes
     // active again (returning from read navigation) or the app returns to the
     // foreground, and disarms as soon as the reader starts scrolling. A data
@@ -1976,7 +1983,7 @@ private fun SharedActivityList(
                 )
     ) {
         RaftPullToRefreshBox(
-            isRefreshing = refreshPresentation.pullRefreshing,
+            isRefreshing = pullRefreshing,
             onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -2609,9 +2616,8 @@ private fun SharedActivityRefreshableStateBody(
     listState: LazyListState,
     onAction: () -> Unit = {}
 ) {
-    val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     RaftPullToRefreshBox(
-        isRefreshing = refreshPresentation.pullRefreshing,
+        isRefreshing = pullRefreshing,
         onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
     ) {

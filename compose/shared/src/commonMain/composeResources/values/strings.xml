@@ -76,6 +76,7 @@
     <string name="common_yes">Yes</string>
     <string name="common_no">No</string>
     <string name="common_loading">Loading…</string>
+    <string name="common_refreshing">Refreshing</string>
     <string name="common_copied">Copied</string>
     <string name="common_copy">Copy</string>
     <string name="common_play">Play</string>

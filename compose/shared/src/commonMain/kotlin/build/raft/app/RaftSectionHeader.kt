@@ -367,11 +367,17 @@ internal fun RaftMainTabPageHeader(
     )
 }
 
+/** A page header's top-right refresh spinner; screen readers hear "Refreshing". */
 @Composable
 internal fun RaftHeaderRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
-    RaftIconSpinner(modifier = modifier, size = LoadingSpinnerSize, color = RaftColor.TextBlack)
+    RaftIconSpinner(
+        modifier = modifier,
+        size = LoadingSpinnerSize,
+        color = RaftColor.TextBlack,
+        contentDescription = stringResource(Res.string.common_refreshing)
+    )
 }
 
 /**

@@ -394,35 +394,24 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityOnlyExplicitPullRefreshOwnsVisibleRefreshChrome() {
-        // artin task #22: the pull indicator is the only chrome; the header spinner never doubles it.
+    fun activitySilentRefreshShowsHeaderIndicatorAndPullShowsOnlyThePullIndicator() {
+        // artin 10-27: a refresh the user did not pull shows the header's top-right indicator.
         assertEquals(
-            ActivityRefreshPresentation(
-                headerRefreshing = false,
-                pullRefreshing = true
-            ),
-            activityRefreshPresentation(refreshing = true, pullRefreshing = true)
+            ActivityRefreshPresentation(headerRefreshing = true, pullRefreshing = false),
+            activityRefreshPresentation(silentRefreshing = true, pullRefreshing = false)
+        )
+        // artin task #22: a pull shows the pull indicator only, never the header one too.
+        assertEquals(
+            ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = true),
+            activityRefreshPresentation(silentRefreshing = false, pullRefreshing = true)
         )
         assertEquals(
-            ActivityRefreshPresentation(
-                headerRefreshing = false,
-                pullRefreshing = false
-            ),
-            activityRefreshPresentation(refreshing = true, pullRefreshing = false)
+            ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = true),
+            activityRefreshPresentation(silentRefreshing = true, pullRefreshing = true)
         )
         assertEquals(
-            ActivityRefreshPresentation(
-                headerRefreshing = false,
-                pullRefreshing = false
-            ),
-            activityRefreshPresentation(refreshing = false, pullRefreshing = false)
-        )
-        assertEquals(
-            ActivityRefreshPresentation(
-                headerRefreshing = false,
-                pullRefreshing = true
-            ),
-            activityRefreshPresentation(refreshing = false, pullRefreshing = true)
+            ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = false),
+            activityRefreshPresentation(silentRefreshing = false, pullRefreshing = false)
         )
     }
 
