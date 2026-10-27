@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.RaftPullToRefreshStyle
+import build.raft.app.data.PlatformFile
 
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
@@ -42,6 +43,15 @@ internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
  * Menu preference. Phones keep long-press and "Select text" behind that preference.
  */
 internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
+
+/**
+ * Desktop paste into the composer (web MessageInput `handlePaste`): whether the system clipboard
+ * holds files or an image, and those as attachments. Phones paste text only (false / empty).
+ */
+internal expect fun raftPlatformClipboardHasAttachments(): Boolean
+
+/** Blocking clipboard read (an image is written to a PNG); call off the UI thread. */
+internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
 
 /** Sign in with Apple is a product capability of the iOS host only. */
 internal expect fun raftPlatformSupportsAppleSignIn(): Boolean

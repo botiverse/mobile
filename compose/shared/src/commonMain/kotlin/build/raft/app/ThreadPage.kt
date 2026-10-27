@@ -13212,6 +13212,19 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                ThreadComposerPasteAttachmentsAction -> {
+                    // Desktop paste of files / an image: straight into the tray, as the web
+                    // composer's paste does (no annotation editor).
+                    coroutineScope.launch {
+                        if (composerSurface.sendChannelId == null) {
+                            bridge.toast(attachmentPickerUnavailableLabel)
+                            return@launch
+                        }
+                        val files = withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() }
+                        bridge.log("thread_attachment_paste files=${files.size}")
+                        if (files.isNotEmpty()) uploadComposerAttachmentFiles(files)
+                    }
+                }
                 ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
                     // Freeze the session's image policy at picker admission.  The picker may
                     // complete after a recomposition (or a new toggle event), but its result must

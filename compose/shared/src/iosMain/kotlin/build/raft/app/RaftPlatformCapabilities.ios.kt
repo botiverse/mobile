@@ -10,6 +10,7 @@ import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
 import build.raft.app.components.RaftPullToRefreshStyle
+import build.raft.app.data.PlatformFile
 
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Cupertino
@@ -35,6 +36,10 @@ internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = 
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
+
+internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
+
+internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = true
 
