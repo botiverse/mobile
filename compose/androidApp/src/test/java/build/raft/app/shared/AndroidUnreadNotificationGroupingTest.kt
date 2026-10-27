@@ -375,6 +375,26 @@ class AndroidUnreadNotificationGroupingTest {
     }
 
     @Test
+    fun aPostToAnotherConversationBetweenTheReadAndItsClearDoesNotKeepTheReadOne() {
+        AndroidUnreadNotificationPoster.installConversationReadListener(context)
+        val listener = RaftConversationReadHost.listener!!
+        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
+        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
+
+        // #general is read; before the queued clear runs, a push for another conversation posts.
+        listener.onConversationRead("server-1", "channel-1")
+        post(fcm(channelId = "dm-1", messageId = "m-3", body = "yo", title = "Bob"))
+        runBackgroundTasks()
+
+        // The ordering is per conversation: #general is still cleared, the DM stays, the summary counts it.
+        assertEquals(
+            listOf("Bob"),
+            conversations().map { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString() }
+        )
+        assertEquals(1, summaryOf("server-1")!!.notification.number)
+    }
+
+    @Test
     fun aDeferredSummaryUpdateAfterAClearCountsOnlyWhatIsLeft() {
         post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
         post(fcm(channelId = "dm-1", messageId = "m-2", body = "yo", title = "Bob"))
