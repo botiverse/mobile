@@ -19,6 +19,11 @@ import kotlinx.coroutines.launch
  * A first connect fetches at once; a reconnect waits the client's 0–20 s delay. While it waits,
  * presence shows the last roster plus every live presence push of the new socket; a member whose
  * state changed during the outage and who sends no push stays stale until the refetch.
+ *
+ * Incremental sync on for the server ([agentsOnlyOnReconnect], `mobile_sync_changes_v0`): a
+ * RE-connect refetches only `/agents` ([SharedServerMembersStore.refreshAgents]), still through
+ * [jitter]. Agent online state is not in the change log; humans, machines and channel rosters are
+ * (Ray / Tenny 10-27). A first connect keeps the full refetch.
  */
 internal class PresenceTransportRosterRefetch(
     private val jitter: RaftReconnectRefetchJitter,
@@ -27,6 +32,8 @@ internal class PresenceTransportRosterRefetch(
     private val storesForServer: (serverId: String) -> List<SharedServerMembersStore>,
     /** False once the owner's binding is gone (sign-out / account switch while waiting). */
     private val isCurrentOwner: (ProcessServerMembersOwner) -> Boolean = { true },
+    /** Read when a RE-connect refetch runs: true when incremental sync covers the server's lists. */
+    private val agentsOnlyOnReconnect: (serverId: String) -> Boolean = { false },
     private val logger: (String) -> Unit = {},
     private val warnLogger: (String) -> Unit = {},
 ) {
@@ -40,29 +47,48 @@ internal class PresenceTransportRosterRefetch(
             jitter.onConnected(
                 session = RaftReconnectSession(owner.environmentId, owner.accountId, owner.serverId),
                 source = SOURCE,
-            ) { refetch(owner, transport, rebaselineResult) }
-        if (decision == RaftReconnectRefetchDecision.Immediate) refetch(owner, transport, rebaselineResult)
+            ) { refetch(owner, transport, rebaselineResult, reconnect = true) }
+        if (decision == RaftReconnectRefetchDecision.Immediate) {
+            refetch(owner, transport, rebaselineResult, reconnect = false)
+        }
         return decision
+    }
+
+    /**
+     * The incremental pull that stood in for the roster refetch of this (re)connect failed or timed
+     * out: the full roster refetch runs instead, always after the reconnect jitter (Tenny 10-27). It
+     * replaces an agents-only refetch still waiting for this server (one entry per source and server).
+     */
+    fun onSyncPullFailed(owner: ProcessServerMembersOwner, transport: ProcessPresenceTransportEpoch) {
+        jitter.scheduleDelayed(serverId = owner.serverId, source = SOURCE) {
+            refetch(owner, transport, ProcessPresenceTransportRebaselineResult.Current, reconnect = false)
+        }
     }
 
     private suspend fun refetch(
         owner: ProcessServerMembersOwner,
         transport: ProcessPresenceTransportEpoch,
         rebaselineResult: ProcessPresenceTransportRebaselineResult,
+        reconnect: Boolean,
     ) {
         if (!isCurrentOwner(owner)) {
             logger("presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} result=owner_retired")
             return
         }
         val stores = storesForServer(owner.serverId)
+        val agentsOnly = reconnect && agentsOnlyOnReconnect(owner.serverId)
         logger(
             "presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} " +
-                "result=${rebaselineResult.name} stores=${stores.size}"
+                "result=${rebaselineResult.name} stores=${stores.size} refetch=${if (agentsOnly) "agents" else "roster"}"
         )
         coroutineScope {
             stores.forEach { store ->
                 launch {
                     try {
+                        if (agentsOnly) {
+                            store.refreshAgents(serverId = ServerId(owner.serverId), reason = REASON)
+                            return@launch
+                        }
                         // Roster refill first, then peer-server agents of joint channels (not on
                         // this roster; their facts come back from the channel-members refetch).
                         store.refreshAfterPresenceTransportConnected(

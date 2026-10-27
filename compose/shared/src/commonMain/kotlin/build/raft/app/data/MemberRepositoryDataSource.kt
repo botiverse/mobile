@@ -584,6 +584,19 @@ class RealMemberRepository(
 
     override fun cachedMembers(serverId: ServerId): List<MemberProfile> = cachedMembersProvider(serverId)
 
+    override suspend fun getServerAgents(priority: DataRequestPriority, serverId: ServerId): DataResult<List<MemberProfile>> {
+        sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.settingsAgents(priority, serverId) },
+            source = "server_agents_only",
+            mapper = { bodyText ->
+                parseSharedSettingsAgentsAsMembers(bodyText)
+                    ?: throw IllegalStateException("Agents response missing agent array")
+            }
+        )
+    }
+
     override suspend fun getMemberProfile(
         priority: DataRequestPriority,
         memberId: MemberId,

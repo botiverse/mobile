@@ -108,6 +108,37 @@ internal class RaftReconnectRefetchJitter(
         return decision
     }
 
+    /**
+     * A full-list refetch that must never run at once, whatever the session: the fallback of an
+     * incremental pull that failed or timed out (every client fails together during a server
+     * incident, Tenny 10-27). Joins the client's running wait like a reconnect, or starts one.
+     */
+    fun scheduleDelayed(serverId: String, source: String, refetch: suspend () -> Unit): RaftReconnectRefetchDecision {
+        val id = serverId.trim()
+        val entryKey = "$source|$id"
+        var started: Batch? = null
+        var delayMillis = 0L
+        var sources = source
+        val decision =
+            synchronized(lock) {
+                val existing = batch
+                val target = existing ?: Batch(reconnectRefetchJitterMillis(random, maxMillis))
+                target.entries[entryKey] = Entry(id, source, refetch)
+                delayMillis = target.delayMillis
+                sources = target.sourcesLabelLocked()
+                if (existing != null) return@synchronized RaftReconnectRefetchDecision.Coalesced
+                batch = target
+                started = target
+                RaftReconnectRefetchDecision.Delayed
+            }
+        logger(
+            "reconnect_refetch_jitter decision=${decision.name.lowercase()} serverId=$id " +
+                "delayMs=$delayMillis sources=$sources trigger=fallback"
+        )
+        started?.let(::startTimer)
+        return decision
+    }
+
     /** The user switched to [serverId]: a server switch fetches at once, so its waiting refetches run now. */
     fun flushServer(serverId: String, reason: String) {
         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
