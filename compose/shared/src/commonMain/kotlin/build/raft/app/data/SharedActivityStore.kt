@@ -46,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -1641,6 +1642,12 @@ class SharedActivityStore internal constructor(
                 if (refresh) lastResetLoadStartedAtMillis = startedAtMillis
                 foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
+                // This load owns the background flag now: a superseded background load's own
+                // clean-up below is fenced off by the generation.
+                val backgroundRefreshing = refresh && backgroundRefresh && current.snapshot != null
+                if (_state.value.backgroundRefreshing != backgroundRefreshing) {
+                    _state.update { state -> state.copy(backgroundRefreshing = backgroundRefreshing) }
+                }
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
@@ -1921,6 +1928,14 @@ class SharedActivityStore internal constructor(
                             generation = generation,
                             pullRefresh = pullRefresh
                         )
+                    } finally {
+                        if (backgroundRefresh) {
+                            synchronized(realtimeOwnerLock) {
+                                if (generation == loadGeneration && _state.value.backgroundRefreshing) {
+                                    _state.update { state -> state.copy(backgroundRefreshing = false) }
+                                }
+                            }
+                        }
                     }
                 }.also { loadJob = it }
             }
@@ -3720,6 +3735,12 @@ data class SharedActivityState(
     val loading: Boolean = false,
     val refreshing: Boolean = false,
     val pullRefreshing: Boolean = false,
+    /**
+     * A background load (realtime reconcile, sync-triggered or periodic refresh) is reading the
+     * list behind rows already shown. It never sets [refreshing], so the page keeps its rows and
+     * error state; only the header's refresh indicator follows it ([silentRefreshing]).
+     */
+    val backgroundRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
     val loadMoreErrorCode: String? = null,
@@ -3749,6 +3770,15 @@ data class SharedActivityState(
         get() = snapshot?.hasMore == true
     val nextOffset: Int?
         get() = snapshot?.nextOffset
+
+    /**
+     * A refresh the user did not pull is reading behind the rows shown: open / re-entry / resume,
+     * server or filter switch over cached rows, realtime or sync reconcile (artin 10-27). The
+     * header shows its refresh indicator for it; a user pull owns the refresh chrome alone (the
+     * pull indicator, artin task #22), so this is false while [pullRefreshing].
+     */
+    val silentRefreshing: Boolean
+        get() = !pullRefreshing && (refreshing || backgroundRefreshing)
 }
 
 /**
