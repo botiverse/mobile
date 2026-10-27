@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -231,6 +235,108 @@ class ProcessRealtimeIngressCoordinatorTest {
         assertEquals(2, acks.size, acks.toString())
         assertTrue(roomsJoined.isEmpty(), "a join ack is never a rooms:joined")
         scope.cancel()
+    }
+
+    /**
+     * Reconnect jitter (Tenny 10-27, web #11453), wired as the provider wires it: the roster refetch of a
+     * presence transport RE-connect waits the client's 0–20 s delay, while the same socket's message
+     * catch-up (`sync:resume:response`) is delivered at once. The first connect fetches immediately and
+     * the pre-connect roster cache is retired immediately on every connect.
+     */
+    @Test
+    fun reconnectDelaysTheRosterRefetchButNotTheMessageCatchUp() = runTest {
+        val auth = FakeAuthStore()
+        val registry =
+            RealtimeAuthorityRegistry(
+                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
+                processInstanceId = "process-ingress-test",
+            )
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
+        provider.start(backgroundScope)
+        provider.registerScope("process-realtime-host", "process-owner")
+        auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+        runCurrent()
+        val authority = assertNotNull(provider.authorityFlow("process-realtime-host").value)
+        val domainOwner =
+            SharedRealtimeDomainEventOwner(
+                cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
+                runIfCurrentGrant = provider::runIfCurrentGrant,
+                runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
+            )
+        val deliveredSeqs = mutableListOf<Pair<Long, Long>>()
+        domainOwner.registerGuardedActiveThreadSink(
+            RealtimeGuardedActiveThreadSink { _, event ->
+                RealtimeCursorPolicy.appliedSeqForEvent(event).takeIf { it > 0L }?.let { deliveredSeqs += it to currentTime }
+            },
+        )
+        val bus = FakeEventBus()
+        val rosterFetches = mutableListOf<Long>()
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = { _, serverId ->
+                    rosterFetches += currentTime
+                    DataResult.Content(
+                        MemberSnapshot(
+                            build.raft.app.model.ServerSummary(id = serverId, name = "A", slug = "a"),
+                            emptyList(),
+                        )
+                    )
+                },
+                scope = backgroundScope,
+            )
+        val store = SharedServerMembersStore(memberRepository = PresenceNoopMemberRepository, processCore = core)
+        val invalidations = mutableListOf<Long>()
+        val jitterSeed = 11
+        val rosterRefetch =
+            PresenceTransportRosterRefetch(
+                jitter = RaftReconnectRefetchJitter(scope = backgroundScope, random = kotlin.random.Random(jitterSeed)),
+                invalidate = { owner, reason ->
+                    invalidations += currentTime
+                    core.invalidate(owner, reason)
+                },
+                storesForServer = { listOf(store) },
+            )
+        ProcessRealtimeIngressCoordinator(
+            events = RaftRealtimeEvents(bus),
+            authorityProvider = provider,
+            authorityFlow = provider.authorityFlow("process-realtime-host"),
+            domainOwner = domainOwner,
+            authStore = auth,
+            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+            mapper = RealtimeEventMapper(),
+            nativeHost = FakeNativeHost(),
+            scope = backgroundScope,
+            onPresenceTransportConnected = { grant, epoch ->
+                rosterRefetch.onTransportRebaselined(
+                    owner = ProcessServerMembersOwner(grant.environmentId, grant.principalId, grant.serverId),
+                    transport = ProcessPresenceTransportEpoch(grant.connectionFamilyId, epoch),
+                    rebaselineResult = ProcessPresenceTransportRebaselineResult.Applied,
+                )
+            },
+        ).start()
+        runCurrent()
+
+        bus.post(RaftRealtimeNotifyContract.EventName, presenceTransportEnvelope(authority, epoch = 3L))
+        runCurrent()
+        assertEquals(listOf(0L), rosterFetches, "the first connect fetches the roster at once")
+
+        val delayMs = reconnectRefetchJitterMillis(kotlin.random.Random(jitterSeed))
+        bus.post(RaftRealtimeNotifyContract.EventName, presenceTransportEnvelope(authority, epoch = 4L))
+        bus.post(
+            RaftRealtimeNotifyContract.EventName,
+            eventEnvelope(
+                authority,
+                RealtimeSocketEvents.SyncResumeResponse,
+                "{\"messages\":[],\"currentSeq\":42,\"hasMore\":false}",
+            ),
+        )
+        runCurrent()
+        assertEquals(listOf(42L to 0L), deliveredSeqs, "message catch-up is not delayed")
+        assertEquals(listOf(0L, 0L), invalidations, "the pre-connect roster is retired on every connect")
+        assertEquals(listOf(0L), rosterFetches, "the reconnect roster refetch waits for the jitter")
+
+        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
+        assertEquals(listOf(0L, delayMs), rosterFetches, "the roster refetches once the jitter delay ends")
     }
 
     private fun eventEnvelope(
