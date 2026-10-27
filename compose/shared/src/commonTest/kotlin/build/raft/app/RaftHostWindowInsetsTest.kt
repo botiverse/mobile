@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
+import build.raft.designsystem.components.RaftSafeAreaInsets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -229,13 +230,34 @@ class RaftHostWindowInsetsTest {
     }
 
     @Test
-    fun nestedShellsPadOnlyWhatIsLeft() {
-        val window = RaftHorizontalSafeArea(left = 0.dp, right = 59.dp)
-        // The page shell pads the whole inset; an embedded child page inside it pads nothing more.
-        assertEquals(window, window.remainingAfter(RaftHorizontalSafeArea.Zero))
-        assertEquals(RaftHorizontalSafeArea.Zero, window.remainingAfter(window))
-        // A side tab bar band wider than the inset only adds the difference.
-        val withBar = window.union(RaftHorizontalSafeArea(right = 100.dp))
-        assertEquals(RaftHorizontalSafeArea(right = 41.dp), withBar.remainingAfter(window))
+    fun sideTabBarBandJoinsTheWindowInsetPerEdge() {
+        val window = RaftHorizontalSafeArea(left = 59.dp, right = 0.dp)
+        // A left tab bar wider than the inset wins on its edge; the other edge keeps the inset.
+        val withBar = window.union(RaftHorizontalSafeArea(left = 80.dp))
+        assertEquals(RaftHorizontalSafeArea(left = 80.dp, right = 0.dp), withBar)
+        // What the page shell hands to the design system (physical edges, never negative).
+        assertEquals(RaftSafeAreaInsets(left = 80.dp, right = 0.dp), withBar.toDesignSystemInsets())
+        assertEquals(RaftSafeAreaInsets.Zero, RaftHorizontalSafeArea(left = (-4).dp).toDesignSystemInsets())
+    }
+
+    @Test
+    fun sheetPresentedPageKeepsItsHeaderMargin() {
+        val sheet =
+            raftHostWindowInsetsFromEvent(
+                JSONObject(
+                    """{"statusBarHeightPx":"0.000","navigationBarHeightPx":"102.000","safeAreaLeftPx":"0",""" +
+                        """"safeAreaRightPx":"0","statusBarHidden":false,"presentedAsSheet":true}"""
+                )
+            )
+        assertTrue(sheet.presentedAsSheet)
+        // The sheet's own top safe area is 0; the header keeps its margin off the sheet's edge.
+        assertEquals(RaftSheetHeaderTopMargin, resolveRaftLiveTopSafeArea(sheet, 3f))
+        // A larger real inset is kept.
+        assertEquals(20.dp, resolveRaftLiveTopSafeArea(sheet.copy(topPx = 60f), 3f))
+        // Not a sheet (the Android payload has no such field): 0 means 0.
+        val page = raftHostWindowInsetsFromEvent(JSONObject("""{"statusBarHeightPx":"0","navigationBarHeightPx":"48"}"""))
+        assertEquals(false, page.presentedAsSheet)
+        assertEquals(0.dp, resolveRaftLiveTopSafeArea(page, 3f))
+        assertEquals(32.dp, resolveRaftLiveTopSafeArea(page.copy(topPx = 96f), 3f))
     }
 }

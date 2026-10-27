@@ -1,5 +1,8 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
@@ -194,7 +197,21 @@ internal fun RaftAppShellSurface(
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
                             leadingNavigation?.invoke()
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        // The rail beside it takes the start safe area (its frame
+                                        // bleeds to the edge); the content starts past the rail.
+                                        .then(
+                                            if (leadingNavigation != null) {
+                                                Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                            ) {
                                 CompositionLocalProvider(
                                     LocalRaftAppShellBodyTopBanner provides bodyTopBanner
                                 ) {
@@ -410,6 +427,7 @@ private fun RaftAppShellNetworkBanner() {
                 .fillMaxWidth()
                 .height(28.dp)
                 .background(RaftColor.AccentRed)
+                .raftSafeAreaHorizontalPadding()
                 .padding(horizontal = RaftAppSpacing.Md),
         contentAlignment = Alignment.CenterStart
     ) {

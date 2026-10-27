@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -127,7 +128,7 @@ internal fun SharedSettingsServerContent(
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showProfileCard) {

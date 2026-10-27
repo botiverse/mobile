@@ -135,6 +135,9 @@ fun RaftTabStrip(
                 RaftTabs(
                     Modifier
                         .onPlaced { strip.content = it }
+                        // The canvas and seam run edge to edge; the tabs start past the
+                        // horizontal safe area (and scroll under it, like any content).
+                        .raftSafeAreaHorizontalPadding()
                         .padding(horizontal = 16.dp, vertical = if (variant == RaftTabsVariant.Default) 8.dp else 0.dp),
                     variant = variant,
                     content = content,

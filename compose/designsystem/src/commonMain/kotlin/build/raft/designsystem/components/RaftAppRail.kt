@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -88,9 +89,12 @@ fun RaftAppRail(
     Row(modifier.fillMaxHeight()) {
         Column(
             Modifier
-                .width(RaftAppRailDefaults.Width)
                 .fillMaxHeight()
-                .background(colors.layerFrame),
+                .background(colors.layerFrame)
+                // On the island's side in landscape the frame grows to the screen edge and the
+                // items keep their 56dp column past the safe area.
+                .raftSafeAreaHorizontalPadding(WindowInsetsSides.Start)
+                .width(RaftAppRailDefaults.Width),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundOnFrame) {

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
@@ -22885,6 +22886,9 @@ internal fun ThreadComposerDock(
         Box(
             modifier =
                 Modifier.fillMaxWidth()
+                    // The dock's canvas runs edge to edge; the composer box keeps out of the
+                    // horizontal safe area.
+                    .raftSafeAreaHorizontalPadding()
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
         ) { composer() }
@@ -22909,6 +22913,7 @@ private fun ThreadInlineSearchBar(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
@@ -25843,6 +25848,8 @@ private fun ThreadMessageCardContent(
                     // raft-ui `MessageItem` root: the row wash spans the whole
                     // row and the content sits at px-2 py-2 inside it.
                     .background(rowFill)
+                    // The wash runs edge to edge; the message stays out of the safe area.
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
@@ -33624,6 +33631,7 @@ internal fun ThreadShareSelectionToolbar(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .raftSafeAreaHorizontalPadding()
                     .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp + bottomSafeArea),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)

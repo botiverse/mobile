@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -4777,6 +4778,8 @@ private fun HomeTitlebar(
                 Modifier
                     .padding(top = topSafeArea)
                     .height(RaftAppSize.PageHeaderContentHeight)
+                    // The frame runs edge to edge; the identity and bell stay in the safe area.
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = RaftAppSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)

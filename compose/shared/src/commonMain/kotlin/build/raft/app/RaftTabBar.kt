@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
@@ -213,7 +214,8 @@ internal fun RaftVerticalTabBar(
     sectionStartPadding: Dp = 6.dp,
     itemStartPadding: Dp = 14.dp
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    // Sticker items on the page's canvas: the whole list stays out of the horizontal safe area.
+    Column(modifier = modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
         var lastSection: String? = null
         items.forEachIndexed { index, item ->
             if (item.section != null && item.section != lastSection) {

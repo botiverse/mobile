@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 @Composable
 internal fun RaftEmptyState(
@@ -37,6 +38,8 @@ internal fun RaftEmptyState(
             modifier
                 .fillMaxSize()
                 .background(RaftColor.SurfaceWhite)
+                // The surface runs edge to edge; the message is centred in the safe area.
+                .raftSafeAreaHorizontalPadding()
                 .padding(RaftAppSpacing.Xl),
         contentAlignment = Alignment.Center
     ) {

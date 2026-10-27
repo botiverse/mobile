@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
@@ -745,7 +746,8 @@ private fun SharedTasksLoadedBodyContent(
                         LazyRow(
                             state = backSwipeRowState,
                             userScrollEnabled = backSwipeRow.userScrollEnabled,
-                            modifier = Modifier.then(backSwipeRow.modifier).fillMaxSize(),
+                            // The board's columns are cards: they keep out of the safe area.
+                            modifier = Modifier.then(backSwipeRow.modifier).fillMaxSize().raftSafeAreaHorizontalPadding(),
                             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                             contentPadding = PaddingValues(RaftAppSpacing.Md)
                         ) {
@@ -814,7 +816,8 @@ private fun SharedTasksLoadedBodyContent(
                         } else {
                             LazyColumn(
                                 state = listModeListState,
-                                modifier = Modifier.fillMaxSize(),
+                                // Task cards on the canvas: the list keeps out of the safe area.
+                                modifier = Modifier.fillMaxSize().raftSafeAreaHorizontalPadding(),
                                 contentPadding =
                                     PaddingValues(
                                         start = RaftAppSpacing.Md,
@@ -1183,6 +1186,7 @@ private fun SharedTasksToolbar(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {

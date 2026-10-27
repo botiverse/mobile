@@ -452,9 +452,18 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     BOOL statusBarHidden = window.windowScene.statusBarManager.isStatusBarHidden;
     NSString *windowId = [_pageData[RaftHostWindowIdKey] isKindOfClass:NSString.class]
         ? _pageData[RaftHostWindowIdKey] : RaftPageWindowId(_raftControllerToken);
+    // The content of a page or form sheet (the router presents pages in a navigation controller):
+    // its own top safe area is about 0, so shared keeps the sheet's header off its top edge. A
+    // sheet that adapts to full screen (compact height) is not one.
+    UIViewController *presented = self.navigationController ?: self;
+    BOOL presentedAsSheet = presented.presentingViewController != nil &&
+        presented.presentationController.presentedView != nil &&
+        !CGRectEqualToRect(presented.presentationController.presentedView.frame, window.bounds) &&
+        [RaftIosWindowInsetsPublisher isSheetStyle:presented.modalPresentationStyle];
     NSDictionary *payload = [_raftWindowInsetsPublisher nextPayloadWithInsets:view.safeAreaInsets
                                                                         scale:scale
                                                               statusBarHidden:statusBarHidden
+                                                             presentedAsSheet:presentedAsSheet
                                                                      windowId:windowId];
     if (payload == nil) {
         return;

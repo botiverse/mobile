@@ -135,6 +135,9 @@ fun RaftListRowGroup(
     CompositionLocalProvider(LocalRaftSurfaceColor provides colors.layerCard) {
         Column(
             modifier
+                // An inset card is content: it stays out of the horizontal safe area, and its
+                // rows (which consume it here) do not pad it again.
+                .raftSafeAreaHorizontalPadding()
                 .clip(shape)
                 .background(colors.layerCard, shape)
                 .border(RaftStroke.Hairline, colors.lineHairline, shape),
@@ -231,7 +234,6 @@ fun RaftListRow(
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
                 .then(if (menuOpen && !selected) Modifier.background(colors.fillRowOpen) else Modifier)
                 .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), 0.dp)
-                .then(if (divider && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
                 .raftInsetFocusOutline(focused, colors.foreground)
                 .then(
                     if (onClick != null) {
@@ -246,6 +248,10 @@ fun RaftListRow(
                         Modifier
                     },
                 )
+                // The washes above run edge to edge; the content (and the divider, which starts
+                // where the text starts) stays out of the horizontal safe area.
+                .raftSafeAreaHorizontalPadding()
+                .then(if (divider && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = align,

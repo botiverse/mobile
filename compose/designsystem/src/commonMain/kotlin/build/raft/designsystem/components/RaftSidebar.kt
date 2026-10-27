@@ -290,6 +290,9 @@ private fun RaftSidebarItemLayout(
     ) {
         Row(
             modifier
+                // The row is a rounded sticker (an inset pill), not a full-width wash: it stays
+                // out of the horizontal safe area as a whole.
+                .raftSafeAreaHorizontalPadding()
                 .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
@@ -607,7 +610,7 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
-    RaftSectionEyebrow(title, modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 6.dp))
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 6.dp))
 }
 
 /**
@@ -665,7 +668,7 @@ fun RaftSidebarSectionHeader(
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {

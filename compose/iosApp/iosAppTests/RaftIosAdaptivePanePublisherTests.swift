@@ -60,12 +60,14 @@ final class RaftIosWindowInsetsPublisherTests: XCTestCase {
     private func payload(
         _ insets: UIEdgeInsets,
         scale: CGFloat = 3,
-        statusBarHidden: Bool = false
+        statusBarHidden: Bool = false,
+        presentedAsSheet: Bool = false
     ) -> [String: Any] {
         RaftIosWindowInsetsPublisher.payload(
             insets: insets,
             scale: scale,
             statusBarHidden: statusBarHidden,
+            presentedAsSheet: presentedAsSheet,
             windowId: "ios:page:test"
         ) as? [String: Any] ?? [:]
     }
@@ -78,14 +80,27 @@ final class RaftIosWindowInsetsPublisherTests: XCTestCase {
         XCTAssertEqual(values["safeAreaLeftPx"] as? String, "0.000")
         XCTAssertEqual(values["safeAreaRightPx"] as? String, "0.000")
         XCTAssertEqual(values["statusBarHidden"] as? Bool, false)
+        XCTAssertEqual(values["presentedAsSheet"] as? Bool, false)
         XCTAssertEqual(values["slockWindowId"] as? String, "ios:page:test")
         XCTAssertEqual(
             Set(values.keys),
             Set([
                 "statusBarHeightPx", "navigationBarHeightPx", "safeAreaLeftPx", "safeAreaRightPx",
-                "statusBarHidden", "slockWindowId",
+                "statusBarHidden", "presentedAsSheet", "slockWindowId",
             ])
         )
+    }
+
+    func testSheetPageReportsItsOwnZeroTopAndTheSheetFact() {
+        // A page sheet's content: the sheet's own top safe area is 0, not the status bar.
+        let values = payload(UIEdgeInsets(top: 0, left: 0, bottom: 34, right: 0), presentedAsSheet: true)
+
+        XCTAssertEqual(values["statusBarHeightPx"] as? String, "0.000")
+        XCTAssertEqual(values["presentedAsSheet"] as? Bool, true)
+        XCTAssertTrue(RaftIosWindowInsetsPublisher.isSheetStyle(.pageSheet))
+        XCTAssertTrue(RaftIosWindowInsetsPublisher.isSheetStyle(.formSheet))
+        XCTAssertFalse(RaftIosWindowInsetsPublisher.isSheetStyle(.fullScreen))
+        XCTAssertFalse(RaftIosWindowInsetsPublisher.isSheetStyle(.overFullScreen))
     }
 
     func testLandscapeLeftAndRightKeepTheSensorHousingOnItsPhysicalEdge() {

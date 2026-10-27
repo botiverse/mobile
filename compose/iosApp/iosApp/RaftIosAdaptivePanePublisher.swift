@@ -67,17 +67,19 @@ final class RaftIosWindowInsetsPublisher: NSObject {
     private var latest: NSDictionary?
 
     /// The payload for [insets], or nil when it equals the last one returned (deduplicated).
-    @objc(nextPayloadWithInsets:scale:statusBarHidden:windowId:)
+    @objc(nextPayloadWithInsets:scale:statusBarHidden:presentedAsSheet:windowId:)
     func nextPayload(
         insets: UIEdgeInsets,
         scale: CGFloat,
         statusBarHidden: Bool,
+        presentedAsSheet: Bool,
         windowId: String
     ) -> NSDictionary? {
         let payload = Self.payload(
             insets: insets,
             scale: scale,
             statusBarHidden: statusBarHidden,
+            presentedAsSheet: presentedAsSheet,
             windowId: windowId
         )
         guard payload != latest else { return nil }
@@ -86,11 +88,15 @@ final class RaftIosWindowInsetsPublisher: NSObject {
     }
 
     /// Payload keys: `statusBarHeightPx` (top), `navigationBarHeightPx` (bottom),
-    /// `safeAreaLeftPx`, `safeAreaRightPx`, `statusBarHidden`, `slockWindowId`.
+    /// `safeAreaLeftPx`, `safeAreaRightPx`, `statusBarHidden`, `presentedAsSheet`,
+    /// `slockWindowId`. `presentedAsSheet` is a fact too: the page is the content of a sheet
+    /// (page or form sheet), whose own top safe area is about 0; shared keeps the sheet header
+    /// off the sheet's top edge.
     static func payload(
         insets: UIEdgeInsets,
         scale: CGFloat,
         statusBarHidden: Bool,
+        presentedAsSheet: Bool = false,
         windowId: String
     ) -> NSDictionary {
         [
@@ -99,8 +105,20 @@ final class RaftIosWindowInsetsPublisher: NSObject {
             "safeAreaLeftPx": pixelString(insets.left, scale: scale),
             "safeAreaRightPx": pixelString(insets.right, scale: scale),
             "statusBarHidden": statusBarHidden,
+            "presentedAsSheet": presentedAsSheet,
             "slockWindowId": windowId,
         ]
+    }
+
+    /// Whether a controller presented with [style] shows as a sheet over its presenter (and not
+    /// full screen). `.automatic` resolves to a page sheet for the pages the router presents.
+    static func isSheetStyle(_ style: UIModalPresentationStyle) -> Bool {
+        switch style {
+        case .pageSheet, .formSheet, .automatic:
+            return true
+        default:
+            return false
+        }
     }
 
     /// The attach-time pageData seed (`safeAreaTop` / `safeAreaBottom` / `safeAreaLeft` /

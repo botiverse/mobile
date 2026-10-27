@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.LocalRaftSafeAreaInsets
+import build.raft.designsystem.components.RaftSafeAreaInsets
 
 private const val KEY_NATIVE_SAFE_AREA_INSETS_ARE_PIXELS = "slockNativeSafeAreaInsetsArePixels"
 private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
@@ -65,7 +67,29 @@ internal data class RaftHostWindowInsetValues(
     val statusBarHidden: Boolean?,
     val leftPx: Float = 0f,
     val rightPx: Float = 0f,
+    /**
+     * The page is the content of a sheet (iOS page or form sheet): [topPx] is the sheet's own top
+     * safe area, about 0, so [raftTopSafeAreaPadding] keeps [RaftSheetHeaderTopMargin] above the
+     * header instead.
+     */
+    val presentedAsSheet: Boolean = false,
 )
+
+/**
+ * The top margin a sheet-presented page keeps above its header: the sheet's top edge is not the
+ * screen's, its own top safe area is about 0, and the header must not touch it. The same margin
+ * as a page under a hidden status bar.
+ */
+internal val RaftSheetHeaderTopMargin: Dp = RaftAppSpacing.Md
+
+/**
+ * The top inset of a page from a live host [values] snapshot, in dp: [RaftSheetHeaderTopMargin]
+ * at least for a sheet-presented page, otherwise the host value as is (0 means 0).
+ */
+internal fun resolveRaftLiveTopSafeArea(values: RaftHostWindowInsetValues, density: Float): Dp {
+    val top = if (density > 0f) (values.topPx.coerceAtLeast(0f) / density).dp else 0.dp
+    return if (values.presentedAsSheet) maxOf(top, RaftSheetHeaderTopMargin) else top
+}
 
 /**
  * Parses one `slockWindowInsetsChanged` payload: `statusBarHeightPx` (top),
@@ -80,6 +104,7 @@ internal fun raftHostWindowInsetsFromEvent(eventData: JSONObject): RaftHostWindo
             if (eventData.has("statusBarHidden")) eventData.optBoolean("statusBarHidden") else null,
         leftPx = eventData.insetPx("safeAreaLeftPx"),
         rightPx = eventData.insetPx("safeAreaRightPx"),
+        presentedAsSheet = eventData.optBoolean("presentedAsSheet", false),
     )
 
 private fun JSONObject.insetPx(key: String): Float =
@@ -213,12 +238,12 @@ internal fun raftTopSafeAreaPadding(): Dp {
     val statusBarHidden =
         live?.statusBarHidden ?: params.optBoolean(KEY_STATUS_BAR_HIDDEN, false)
     if (statusBarHidden) return RaftAppSpacing.Md
-    // A live host snapshot is authoritative (it replaces, so 0 means 0). The
-    // renderer-native and attach-time params are fallbacks for windows with no
-    // host measurement.
+    // A live host snapshot is authoritative (it replaces, so 0 means 0), except that a
+    // sheet-presented page keeps its header off the sheet's top edge. The renderer-native and
+    // attach-time params are fallbacks for windows with no host measurement.
+    if (live != null) return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
     val hostInsetPx =
-        live?.topPx
-            ?: maxOf(
+        maxOf(
                 params.safeAreaPx("safeAreaTop"),
                 params.safeAreaPx("statusBarHeight"),
             ).takeIf { it > 0f }
@@ -279,13 +304,6 @@ internal data class RaftHorizontalSafeArea(val left: Dp = 0.dp, val right: Dp = 
     fun union(other: RaftHorizontalSafeArea): RaftHorizontalSafeArea =
         RaftHorizontalSafeArea(maxOf(left, other.left), maxOf(right, other.right))
 
-    /** Per edge, what is left of this once [applied] has been padded already (never negative). */
-    fun remainingAfter(applied: RaftHorizontalSafeArea): RaftHorizontalSafeArea =
-        RaftHorizontalSafeArea(
-            (left - applied.left).coerceAtLeast(0.dp),
-            (right - applied.right).coerceAtLeast(0.dp),
-        )
-
     val isZero: Boolean get() = left <= 0.dp && right <= 0.dp
 
     companion object {
@@ -332,27 +350,38 @@ internal fun raftStartSafeAreaPadding(): Dp = raftHorizontalSafeArea().start(Loc
 internal fun raftEndSafeAreaPadding(): Dp = raftHorizontalSafeArea().end(LocalLayoutDirection.current)
 
 /**
- * The horizontal safe area enclosing shells have already padded. A nested shell (an embedded
- * child page) pads only what is left, so the inset is applied once per window.
+ * The window's horizontal safe area as the enclosing page shells know it (the union of their
+ * [RaftHorizontalSafeAreaShell.required]). A [Modal] is its own full-window layer and pads all of
+ * it itself.
  */
-internal val LocalRaftAppliedHorizontalSafeArea = compositionLocalOf { RaftHorizontalSafeArea.Zero }
+internal val LocalRaftWindowHorizontalSafeArea = compositionLocalOf { RaftHorizontalSafeArea.Zero }
 
 /**
  * What the nearest [RaftHorizontalSafeAreaShell] padded itself: a full-bleed background inside it
- * ([raftBleedHorizontalSafeArea]) extends back out by this much.
+ * ([raftBleedHorizontalSafeArea]) extends back out by this much. Zero inside a page (a page shell
+ * does not pad); the safe area a [Modal] pads inside its window.
  */
 internal val LocalRaftHorizontalSafeAreaBleed = compositionLocalOf { RaftHorizontalSafeArea.Zero }
 
+/** The design-system form of the safe area ([LocalRaftSafeAreaInsets]). */
+internal fun RaftHorizontalSafeArea.toDesignSystemInsets(): RaftSafeAreaInsets =
+    RaftSafeAreaInsets(left = left.coerceAtLeast(0.dp), right = right.coerceAtLeast(0.dp))
+
 /**
- * Pads [content] by the horizontal safe area so no content or control sits under the sensor
- * housing or a side status bar. Every shared page gets it from the page host
- * (`RaftPagerHost`), and every [Modal] for its own window, so pages need no per-page edits.
+ * The horizontal safe area for [content] (Apple's rule: backgrounds run edge to edge, content gets
+ * out of the way).
  *
- * [required] is the safe area of the window [content] draws in. [windowRoot] is true for a
- * surface that starts a new window (a modal dialog), which pads the full [required]; otherwise
- * only what enclosing shells have not padded yet. The padded amount is consumed from
- * `WindowInsets`, so a nested `WindowInsets.safeDrawing` reader does not pad it again.
- * Backgrounds that should run edge to edge use [raftBleedHorizontalSafeArea].
+ * A page ([windowRoot] false) is NOT padded: its backgrounds (the canvas, a header frame, a list's
+ * selection wash, the composer surface) reach the screen edge. The safe area goes to descendants
+ * as [LocalRaftSafeAreaInsets], and the shared building blocks pad only their content with it
+ * (`raftSafeAreaHorizontalPadding`: the page header and top bar, list and sidebar rows, the
+ * composer, empty and loading states). That padding consumes it like `WindowInsets`, so an
+ * embedded child page inside an already padded container does not pad again, and a child page
+ * shell nested in this one provides the same window inset.
+ *
+ * A [Modal] ([windowRoot] true) is a full-window layer that holds menus, dialogs and sheets: it
+ * keeps padding the whole [required] and consumes it, and a scrim bleeds back over the strips
+ * ([raftBleedHorizontalSafeArea] with [LocalRaftHorizontalSafeAreaBleed]).
  */
 @Composable
 internal fun RaftHorizontalSafeAreaShell(
@@ -360,14 +389,15 @@ internal fun RaftHorizontalSafeAreaShell(
     windowRoot: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val applied = if (windowRoot) RaftHorizontalSafeArea.Zero else LocalRaftAppliedHorizontalSafeArea.current
-    val padding = required.remainingAfter(applied)
+    val window = if (windowRoot) required else LocalRaftWindowHorizontalSafeArea.current.union(required)
+    val padding = if (windowRoot) required else RaftHorizontalSafeArea.Zero
     val paddingValues = PaddingValues.Absolute(left = padding.left, right = padding.right)
     // Always the same node, whatever the insets: a rotation must not reset the page's state.
     Box(Modifier.fillMaxSize().padding(paddingValues).consumeWindowInsets(paddingValues)) {
         CompositionLocalProvider(
-            LocalRaftAppliedHorizontalSafeArea provides applied.union(required),
+            LocalRaftWindowHorizontalSafeArea provides window,
             LocalRaftHorizontalSafeAreaBleed provides padding,
+            LocalRaftSafeAreaInsets provides window.toDesignSystemInsets(),
         ) {
             content()
         }

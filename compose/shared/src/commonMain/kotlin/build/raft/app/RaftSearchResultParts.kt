@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
@@ -144,7 +145,7 @@ internal fun RaftSearchSectionHeading(
     style: TextStyle,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxWidth().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp)) {
+    Box(modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp)) {
         RaftText(
             text = label,
             style = style,
@@ -162,7 +163,7 @@ internal fun RaftSearchSectionHeading(
  */
 @Composable
 internal fun RaftSearchSummary(text: String, typography: RaftTypography, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(start = RaftSearchMetrics.Inset, top = 8.dp, end = RaftSearchMetrics.Inset)) {
+    Box(modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 8.dp, end = RaftSearchMetrics.Inset)) {
         RaftText(
             text = text,
             style = typography.footnote,
