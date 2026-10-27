@@ -139,11 +139,11 @@ final class RaftIosWindowInsetsPublisherTests: XCTestCase {
         let publisher = RaftIosWindowInsetsPublisher()
         let insets = UIEdgeInsets(top: 0, left: 59, bottom: 21, right: 0)
 
-        XCTAssertNotNil(publisher.nextPayload(insets: insets, scale: 3, statusBarHidden: true, windowId: "w"))
-        XCTAssertNil(publisher.nextPayload(insets: insets, scale: 3, statusBarHidden: true, windowId: "w"))
+        XCTAssertNotNil(publisher.nextPayload(insets: insets, scale: 3, statusBarHidden: true, presentedAsSheet: false, windowId: "w"))
+        XCTAssertNil(publisher.nextPayload(insets: insets, scale: 3, statusBarHidden: true, presentedAsSheet: false, windowId: "w"))
         // Rotating to the other landscape moves the inset to the right edge: a new payload.
         let rotated = UIEdgeInsets(top: 0, left: 0, bottom: 21, right: 59)
-        let payload = publisher.nextPayload(insets: rotated, scale: 3, statusBarHidden: true, windowId: "w")
+        let payload = publisher.nextPayload(insets: rotated, scale: 3, statusBarHidden: true, presentedAsSheet: false, windowId: "w")
             as? [String: Any]
         XCTAssertEqual(payload?["safeAreaRightPx"] as? String, "177.000")
     }
