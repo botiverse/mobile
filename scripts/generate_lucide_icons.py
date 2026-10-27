@@ -101,7 +101,6 @@ LUCIDE_ICONS = [
     "code",
     "columns-3",
     "copy",
-    "cpu",
     "credit-card",
     "crop",
     "dices",

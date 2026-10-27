@@ -436,8 +436,8 @@ class DisplayComponentScreenshotTest {
                     RaftText("Wug", style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold))
                     RaftAgentTag()
                     RaftRuntimeChip("Claude Code")
-                    // The app leads it with Lucide `cpu`; the `info` glyph stands in for it here.
-                    RaftRuntimeChip("Built-in Pi", icon = { RaftGlyphIcon(RaftGlyph.Info, size = 14.dp) })
+                    RaftRuntimeChip("Built-in Pi", showCpuIcon = true)
+                    RaftRuntimeChip("Codex", trailing = { RaftStatusDot(variant = RaftStatusVariant.Success, size = RaftStatusSize.Sm) })
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Caption("State chips", Modifier.width(96.dp))

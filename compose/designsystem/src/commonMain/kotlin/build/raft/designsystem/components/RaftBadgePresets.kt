@@ -173,26 +173,27 @@ fun RaftAgentTag(modifier: Modifier = Modifier, text: String = "agent") {
 }
 
 /**
- * The runtime chip (raft-ui `.rf-runtime`, web AgentDetailPanel `RUNTIME_CHIP_CLASS`): the
- * soft `information` Badge in machine type, `font-mono text-mono-meta font-normal`, so a
- * runtime name ("Claude Code", "Built-in Pi") reads as what a machine runs, not as a word.
- * The agent profile hero leads it with Lucide `cpu` in [icon] (14dp, badge ink); the Runtime
- * row of the config section leaves it out. [trailing] is the account-usage light.
+ * The runtime chip, after the web AgentDetailPanel `RUNTIME_CHIP_CLASS`: the soft
+ * `information` Badge in machine type (`font-mono text-mono-meta font-normal`), so a runtime
+ * name ("Claude Code", "Built-in Pi") reads as what a machine runs, not as a word.
+ * [showCpuIcon] leads it with Lucide `cpu` (14dp, badge ink), as the profile hero does
+ * (`agent-profile-runtime-chip`); the Runtime row of the config section leaves it out.
+ * [trailing] is the account-usage light (web `RuntimeAccountUsageChip`: Status `sm`, `ml-1`).
  */
 @Composable
 fun RaftRuntimeChip(
     text: String,
     modifier: Modifier = Modifier,
-    icon: (@Composable () -> Unit)? = null,
+    showCpuIcon: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    RaftBadgeFrame(
+    RaftBadge(
         text = text,
-        look =
-            raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
-                .copy(mono = true, weight = FontWeight.Normal),
         modifier = modifier,
-        icon = icon,
+        appearance = RaftBadgeAppearance.Soft,
+        variant = RaftBadgeVariant.Information,
+        machineType = true,
+        icon = if (showCpuIcon) ({ RaftGlyphIcon(RaftGlyph.Cpu, size = 14.dp) }) else null,
         trailing = trailing,
     )
 }

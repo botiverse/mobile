@@ -171,6 +171,9 @@ internal fun raftBadgeLook(
  * (13dp solid, 14dp otherwise) with [LocalRaftContentColor] set to the badge ink.
  * [trailing] follows the label 4dp further out (web `ml-1`), at its own size: a runtime
  * label's account-usage [RaftStatusDot] (`sm`).
+ *
+ * [machineType] sets the label in Space Mono `text-mono-meta` at 400, as the web does for
+ * text a machine writes inside a badge (a runtime or model id); see [RaftRuntimeChip].
  */
 @Composable
 fun RaftBadge(
@@ -179,34 +182,18 @@ fun RaftBadge(
     appearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
     variant: RaftBadgeVariant = RaftBadgeVariant.Default,
     enabled: Boolean = true,
+    machineType: Boolean = false,
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    RaftBadgeFrame(
-        text = text,
-        look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
-        modifier = modifier,
-        tabularFigures = appearance == RaftBadgeAppearance.Solid,
-        icon = icon,
-        trailing = trailing,
-    )
-}
-
-/** The badge chrome around a resolved [look]; presets that adjust the look draw through it. */
-@Composable
-internal fun RaftBadgeFrame(
-    text: String,
-    look: RaftBadgeLook,
-    modifier: Modifier = Modifier,
-    tabularFigures: Boolean = false,
-    icon: (@Composable () -> Unit)? = null,
-    trailing: (@Composable () -> Unit)? = null,
-) {
+    val base = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors)
+    // Web `font-mono text-mono-meta font-normal` on a Badge (AgentDetailPanel `RUNTIME_CHIP_CLASS`).
+    val look = if (machineType) base.copy(mono = true, weight = FontWeight.Normal) else base
     val typography = RaftTheme.typography
     val textStyle: TextStyle =
         (if (look.mono) typography.monoMeta else typography.caption).copy(
             fontWeight = look.weight,
-            fontFeatureSettings = if (tabularFigures) "tnum" else null,
+            fontFeatureSettings = if (appearance == RaftBadgeAppearance.Solid) "tnum" else null,
         )
     val shape = RoundedCornerShape(look.radius)
     Row(

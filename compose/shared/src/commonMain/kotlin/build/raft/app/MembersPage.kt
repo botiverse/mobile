@@ -9303,6 +9303,7 @@ private fun AgentStatus?.membersStatusBadgeVariant(): RaftBadgeVariant =
     }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
@@ -9376,10 +9377,13 @@ internal fun MembersAgentProfileHeader(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.raftCopyable(member.detailHandle)
                 )
-                Row(
+                // Web `mt-2 flex flex-wrap items-center gap-1.5`: a long runtime name wraps to
+                // its own line instead of being cut.
+                FlowRow(
                     modifier = Modifier.padding(top = RaftAppSpacing.Sm),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
                 ) {
                     val appBot = member.appBotIdentityOrNull()
                     if (appBot != null) {
@@ -9400,10 +9404,11 @@ internal fun MembersAgentProfileHeader(
                     }
                     if (runtimeId != null && appBot == null) {
                         // Web `agent-profile-runtime-chip`: the DS runtime chip led by Lucide `cpu`.
+                        val runtimeLabel = getRuntimeDisplayName(runtimeId)
                         RaftRuntimeChip(
-                            text = getRuntimeDisplayName(runtimeId),
-                            modifier = Modifier.raftCopyable(getRuntimeDisplayName(runtimeId)),
-                            icon = { RaftContentLucideIcon(RaftLucideIconName.Cpu, size = 14.dp) }
+                            text = runtimeLabel,
+                            modifier = Modifier.raftCopyable(runtimeLabel),
+                            showCpuIcon = true
                         )
                     }
                 }
@@ -11204,9 +11209,12 @@ internal fun MembersAgentRuntimeConfigRows(
         }
         if (modelLabel != null) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_model), copyText = modelLabel) {
-                MembersAgentRuntimeChip(
-                    label = modelLabel,
-                    kind = MembersAgentRuntimeChipKind.Model
+                // The model id in machine type on the neutral wash.
+                RaftBadge(
+                    text = modelLabel,
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Default,
+                    machineType = true
                 )
             }
         }
@@ -11222,17 +11230,19 @@ internal fun MembersAgentRuntimeConfigRows(
             ) != null
         ) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_reasoning)) {
-                MembersAgentRuntimeChip(
-                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(Res.string.member_label_default),
-                    kind = MembersAgentRuntimeChipKind.Reasoning
+                RaftBadge(
+                    text = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(Res.string.member_label_default),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Primary
                 )
             }
         }
         if (supportsRuntimeFastMode(runtimeId)) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_mode)) {
-                MembersAgentRuntimeChip(
-                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
-                    kind = MembersAgentRuntimeChipKind.Mode
+                RaftBadge(
+                    text = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Warning
                 )
             }
         }
