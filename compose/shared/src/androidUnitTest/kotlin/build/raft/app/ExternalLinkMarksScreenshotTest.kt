@@ -19,7 +19,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * raft-ui 0.26 (#758), links that leave Raft end in ↗, light and dark:
- * - Settings > About: the Open Raft row (the web app in the system browser) ends in ↗;
+ * - Settings > About: the Source code row (github.com/botiverse/mobile, FSL-1.1-ALv2) ends in ↗,
+ *   as does Open Raft (the web app in the system browser), now just below the fold;
  * - the in-app browser's load error: Open in System Browser with ↗ in its trailing icon's place.
  * A 390dp-wide phone. Reports land in `build/reports/home-screenshots/`; verify / record as
  * [RaftRobolectricScreenshot].
@@ -67,7 +68,7 @@ private fun AboutFixture() {
         updateCheck = null,
         actionState = null,
         onCopyBuild = {},
-        onOpenRaft = {},
+        onOpenUrl = {},
         onCheckHandsUpdate = {},
         onOpenSourceLicenses = {},
         onCopyEnvironmentInfo = {},

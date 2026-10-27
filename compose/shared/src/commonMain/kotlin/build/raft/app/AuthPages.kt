@@ -550,7 +550,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
-                    onOpenRaft = { url -> linkNavigator.open(url) },
+                    onOpenUrl = { url -> linkNavigator.open(url) },
                     onCheckHandsUpdate = {
                         bridgeCallScope.launch {
                             developerState =

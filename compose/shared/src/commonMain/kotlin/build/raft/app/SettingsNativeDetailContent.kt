@@ -653,7 +653,7 @@ internal fun SettingsNativeDetailPageContent(
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
                     webUrl = sharedSettingsResolvedWebBaseUrl(settingsState.developer.configuredWebBaseUrlOrNull()),
-                    onOpenRaft = { url -> settingsCapabilities.openUrl(url) },
+                    onOpenUrl = { url -> settingsCapabilities.openUrl(url) },
                     onCheckHandsUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckHandsUpdate)
                     },

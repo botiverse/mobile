@@ -31,7 +31,7 @@ internal fun SharedSettingsAboutContent(
     onCopyBuild: (String) -> Unit,
     onCopyValue: ((String) -> Unit)? = null,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
-    onOpenRaft: (String) -> Unit,
+    onOpenUrl: (String) -> Unit,
     onCheckHandsUpdate: () -> Unit,
     onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
@@ -101,7 +101,8 @@ internal fun SharedSettingsAboutContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
-            "openSlock" -> onOpenRaft(value.orEmpty().ifBlank { webUrl })
+            "openSlock", SETTINGS_ABOUT_SOURCE_CODE_ACTION ->
+                settingsAboutExternalUrl(action, value, webUrl)?.let(onOpenUrl)
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
@@ -113,6 +114,24 @@ internal fun SharedSettingsAboutContent(
 }
 
 internal const val SETTINGS_ABOUT_FEEDBACK_ACTION = "sendFeedback"
+internal const val SETTINGS_ABOUT_SOURCE_CODE_ACTION = "openSourceCode"
+
+/** The app's own source repository, opened from Settings › About › Source code. */
+internal const val RAFT_MOBILE_SOURCE_CODE_URL = "https://github.com/botiverse/mobile"
+
+/**
+ * The app's license: the Functional Source License 1.1, which converts to Apache 2.0 after two
+ * years. It is source-available, not OSI open source, so the row says "Source code".
+ */
+internal const val RAFT_MOBILE_SOURCE_LICENSE = "FSL-1.1-ALv2"
+
+/** The URL an About row opens in the system browser, or null for rows that don't leave Raft. */
+internal fun settingsAboutExternalUrl(action: String, value: String?, webUrl: String): String? =
+    when (action) {
+        "openSlock" -> value.orEmpty().ifBlank { webUrl }
+        SETTINGS_ABOUT_SOURCE_CODE_ACTION -> value.orEmpty().ifBlank { RAFT_MOBILE_SOURCE_CODE_URL }
+        else -> null
+    }
 
 internal fun settingsAboutDeveloperShortcutRows(
     environmentTitle: String,
@@ -197,6 +216,7 @@ internal data class SettingsAboutPayloadCopy(
     val checkUpdateDetail: String = "Checks for a newer mobile build and opens the installer when available.",
     val checking: String = "Checking",
     val check: String = "Check",
+    val sourceCode: String = "Source code",
     val licenses: String = "Open Source Licenses",
     val licensesDetail: String = "Review third-party libraries included in the app package.",
     val open: String = "Open",
@@ -226,6 +246,7 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         checkUpdateDetail = stringResource(Res.string.settings_about_check_update_detail, raftPlatformProductName()),
         checking = stringResource(Res.string.settings_about_state_checking),
         check = stringResource(Res.string.settings_about_action_check),
+        sourceCode = stringResource(Res.string.settings_about_source_code),
         licenses = stringResource(Res.string.settings_open_source_licenses_title),
         licensesDetail = stringResource(Res.string.settings_about_licenses_detail, raftPlatformProductName()),
         open = stringResource(Res.string.settings_state_open),
@@ -304,6 +325,19 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     )
                                 )
                             }
+                            add(
+                                RaftSharedSettingsRow(
+                                    key = SETTINGS_ABOUT_SOURCE_CODE_ACTION,
+                                    iconName = RaftLucideIconName.Code,
+                                    title = copy.sourceCode,
+                                    detail = RAFT_MOBILE_SOURCE_LICENSE,
+                                    value = RAFT_MOBILE_SOURCE_CODE_URL,
+                                    status = copy.open,
+                                    enabled = true,
+                                    copyValue = RAFT_MOBILE_SOURCE_CODE_URL,
+                                    external = true
+                                )
+                            )
                             add(
                                 RaftSharedSettingsRow(
                                     key = "openSourceLicenses",
