@@ -2149,6 +2149,8 @@ internal class RaftSharedStoreProvider private constructor(
                     session.servers.any { server -> server.id == owner.serverId }
             },
             onPrediction = { prediction ->
+                // The user read it here: its system notification (Android) goes too.
+                RaftConversationReadHost.conversationRead(prediction.owner.serverId, prediction.channelId.value)
                 activityUnreadSummaryStore.invalidate(
                     prediction.owner.toProcessActivityUnreadOwner(),
                     reason = "read_prediction:${prediction.revision}"

@@ -6,6 +6,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
 import build.raft.app.toRaftSurfaceKind
+import kotlin.concurrent.Volatile
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean,
@@ -313,3 +314,23 @@ fun buildSystemUnreadNotificationRequestFromPush(
 
 fun SystemUnreadNotificationRequest.conversationKindWireValue(): String? =
     conversationKind?.toRaftSurfaceKind()
+
+/**
+ * The conversation [channelId] of [serverId] was read in the app (opened, scrolled to its end or
+ * marked read: every path goes through the process read receipt coordinator), so the platform can
+ * drop the system notification it posted for that conversation's unread messages.
+ */
+fun interface RaftConversationReadListener {
+    fun onConversationRead(serverId: String, channelId: String)
+}
+
+/** Installed by the platform host (androidApp); while null, nothing is told about reads. */
+object RaftConversationReadHost {
+    @Volatile
+    var listener: RaftConversationReadListener? = null
+
+    internal fun conversationRead(serverId: String, channelId: String) {
+        val listener = listener ?: return
+        runCatching { listener.onConversationRead(serverId, channelId) }
+    }
+}

@@ -24,6 +24,8 @@ import kotlinx.coroutines.withContext
  * - [RaftAndroidWebViewHooks.mainDocumentProvider]: release notes main documents from
  *   [RaftReleaseNotesDocumentCache] (the Kuikly sandbox WebView's disk cache), called by the
  *   WebView off the main thread.
+ * - [build.raft.app.data.RaftConversationReadHost.listener]: a conversation read in the app clears
+ *   its unread notification ([AndroidUnreadNotificationPoster.clearConversation]).
  *
  * The WebView `<input type=file>` hook (`RaftWebViewFileChooserHost`) is implemented by the page
  * host Activity, [RaftCmpActivity].
@@ -59,6 +61,7 @@ internal object RaftAndroidHostHooks {
                 close = { read.close() },
             )
         }
+        AndroidUnreadNotificationPoster.installConversationReadListener(appContext)
         val releaseNotesDocuments = RaftReleaseNotesDocumentCache(appContext)
         RaftAndroidWebViewHooks.mainDocumentProvider = { url ->
             releaseNotesDocuments.loadForWebView(url)?.let { document ->

@@ -123,8 +123,14 @@ internal data class UnreadConversationHistory(
     }
 }
 
-/** One conversation as its server's group summary lists it. */
+/**
+ * One conversation as its server's group summary lists it. [notificationId] identifies the
+ * conversation; [channelId] is the Android notification channel it was posted on, which the summary
+ * reuses (see [AndroidUnreadNotificationPoster.summaryChannelId]).
+ */
 internal data class UnreadSummaryEntry(
+    val notificationId: Int,
+    val channelId: String,
     val title: String,
     val latestLine: String,
     val count: Int,
@@ -132,13 +138,14 @@ internal data class UnreadSummaryEntry(
 )
 
 /**
- * Conversations posted by this process in the last [freshWindowMillis].
+ * Conversations posted, and conversations cleared, by this process in the last [freshWindowMillis].
  *
- * `NotificationManager.notify` is asynchronous: the notification posted a moment ago may not be in
- * `activeNotifications` yet. A burst of pushes (FCM flushing what queued while the phone was offline)
- * would then read a stale history and lose messages, and the summary would miss the newest
- * conversation. Within the window this process's own record wins; after it the tray is the truth, so a
- * conversation the user dismissed starts over.
+ * `NotificationManager.notify` and `cancel` are asynchronous: the notification posted a moment ago may
+ * not be in `activeNotifications` yet, and the one cancelled a moment ago may still be. A burst of
+ * pushes (FCM flushing what queued while the phone was offline) would then read a stale history and
+ * lose messages, the summary would miss the newest conversation, and a conversation just read in the
+ * app would start again from the messages the user already read. Within the window this process's
+ * own record wins; after it the tray is the truth, so a conversation the user dismissed starts over.
  */
 internal class UnreadRecentPosts(
     private val freshWindowMillis: Long = 5_000L,
@@ -152,15 +159,33 @@ internal class UnreadRecentPosts(
     )
 
     private val posts = mutableMapOf<Int, Post>()
+    private val cleared = mutableMapOf<Int, Long>()
 
     fun record(notificationId: Int, serverId: String, history: UnreadConversationHistory, entry: UnreadSummaryEntry) {
         prune()
+        cleared.remove(notificationId)
         posts[notificationId] = Post(serverId, history, entry, clock())
     }
 
+    /**
+     * What the conversation shows according to this process: its recent post, [UnreadConversationHistory.EMPTY]
+     * when it was just cleared (whatever the tray still lists), or null to ask the tray.
+     */
     fun history(notificationId: Int): UnreadConversationHistory? {
         prune()
+        if (notificationId in cleared) return UnreadConversationHistory.EMPTY
         return posts[notificationId]?.history
+    }
+
+    fun has(notificationId: Int): Boolean {
+        prune()
+        return notificationId in posts
+    }
+
+    /** The conversation was just cancelled or dismissed: a tray that still lists it is stale. */
+    fun isCleared(notificationId: Int): Boolean {
+        prune()
+        return notificationId in cleared
     }
 
     fun entries(serverId: String): Map<Int, UnreadSummaryEntry> {
@@ -168,23 +193,61 @@ internal class UnreadRecentPosts(
         return posts.filterValues { it.serverId == serverId }.mapValues { it.value.entry }
     }
 
-    /** Drops every conversation not in [notificationIds]: the ones the tray no longer shows. */
-    fun retainOnly(notificationIds: Set<Int>) {
-        posts.keys.retainAll(notificationIds)
+    /** The conversation was read in the app or dismissed: forget it and ignore the tray's copy for a while. */
+    fun clear(notificationId: Int) {
+        prune()
+        posts.remove(notificationId)
+        cleared[notificationId] = clock()
+    }
+
+    /**
+     * Drops every conversation not in [notificationIds] (the ones the tray no longer shows), except one
+     * posted in the last [graceMillis]: `notify` may not have reached the tray yet, and dropping it would
+     * restart its count. Returns the servers of the conversations kept only by that grace: the caller
+     * must check them again once it is over, or a conversation tapped open (auto-cancel, no delete
+     * intent) right after its post would keep its summary forever.
+     */
+    fun retainOnly(notificationIds: Set<Int>, graceMillis: Long = RETAIN_GRACE_MILLIS): Set<String> {
+        val now = clock()
+        val keptByGrace = mutableSetOf<String>()
+        posts.entries.removeAll { (id, post) ->
+            if (id in notificationIds) return@removeAll false
+            val young = now - post.atMillis <= graceMillis
+            if (young) keptByGrace += post.serverId
+            !young
+        }
+        return keptByGrace
+    }
+
+    /** Forgets everything (tests: one test's posts are not the next one's). */
+    fun reset() {
+        posts.clear()
+        cleared.clear()
     }
 
     private fun prune() {
         val now = clock()
         posts.entries.removeAll { now - it.value.atMillis > freshWindowMillis }
+        cleared.entries.removeAll { now - it.value > freshWindowMillis }
+    }
+
+    companion object {
+        const val RETAIN_GRACE_MILLIS = 1_000L
     }
 }
 
 /**
- * The delete intent of every conversation notification: the user swiped one away, so its server's
- * summary is recounted, or removed with the last conversation instead of lingering on its own.
+ * The delete intent of every conversation notification: the user swiped one away, so it is forgotten
+ * and its server's summary is recounted, or removed with the last conversation instead of lingering on
+ * its own.
  */
 class RaftUnreadNotificationDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
+        val notificationId = intent?.getIntExtra(EXTRA_NOTIFICATION_ID, 0) ?: 0
+        AndroidUnreadNotificationPoster.onConversationDismissed(context, notificationId.takeIf { it != 0 })
+    }
+
+    internal companion object {
+        const val EXTRA_NOTIFICATION_ID = "build.raft.app.unread.dismissedNotificationId"
     }
 }
