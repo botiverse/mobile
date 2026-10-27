@@ -938,7 +938,11 @@ private fun agentMigrationSkipReason(reason: String): String =
 
 /** The computers a move can go to: attached computers other than the agent's own. */
 internal fun agentMigrationTargets(inputs: AgentMigrationSectionInputs): List<AgentMigrationComputer> =
-    inputs.computers.filter { it.isComputer && it.id != inputs.sourceMachineId }
+    inputs.computers
+        .filter { it.isComputer && it.id != inputs.sourceMachineId }
+        // The order of every computer list (`inComputerListOrder`, web `orderSidebarMachineIds`):
+        // the viewer's own computers first, each group keeping the server's order (artin 10-27).
+        .sortedBy { if (it.attachedByCurrentUser) 0 else 1 }
 
 /**
  * Web AgentMigrationDialog's pick: the [choice] if it is offered, else the first computer; the
@@ -949,10 +953,14 @@ internal fun agentMigrationResolvedTarget(
     targets: List<AgentMigrationComputer>,
     hostedAvailable: Boolean
 ): String? =
-    when {
-        hostedAvailable && (choice == HOSTED_TARGET_CHOICE || targets.isEmpty()) -> HOSTED_TARGET_CHOICE
-        targets.any { it.id == choice } -> choice
-        else -> targets.firstOrNull()?.id
+    // Web `selectableTargetComputers`: only an online computer can be chosen (the server refuses an
+    // offline target, TARGET_COMPUTER_OFFLINE); one that goes offline falls back to the first online.
+    targets.filter { it.online }.let { selectable ->
+        when {
+            hostedAvailable && (choice == HOSTED_TARGET_CHOICE || selectable.isEmpty()) -> HOSTED_TARGET_CHOICE
+            selectable.any { it.id == choice } -> choice
+            else -> selectable.firstOrNull()?.id
+        }
     }
 
 /**
@@ -969,7 +977,7 @@ private fun AgentMigrationStartDialog(
 ) {
     val targets = remember(inputs.computers, inputs.sourceMachineId) { agentMigrationTargets(inputs) }
     var choice by remember(targets, initialTarget) {
-        mutableStateOf(targets.firstOrNull { it.id == initialTarget }?.id ?: targets.firstOrNull()?.id)
+        mutableStateOf(targets.firstOrNull { it.online && it.id == initialTarget }?.id ?: targets.firstOrNull { it.online }?.id)
     }
     val selected = agentMigrationResolvedTarget(choice, targets, inputs.hostedAvailable)
     // Read here: the sheet's content is hosted outside the page, where the local does not reach.

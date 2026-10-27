@@ -167,6 +167,8 @@ internal fun AgentMigrationTargetList(
             RaftChoiceListItem(
                 value = computer.id,
                 label = computer.name,
+                // Web: an offline computer can't receive the agent, so it shows but can't be chosen.
+                enabled = computer.online,
                 descriptions =
                     listOfNotNull(
                         quotaLines[computer.id]?.let { agentMigrationQuotaLine(it) },

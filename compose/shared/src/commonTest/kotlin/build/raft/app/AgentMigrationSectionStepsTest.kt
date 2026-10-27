@@ -95,8 +95,8 @@ class AgentMigrationSectionStepsTest {
         val computers =
             listOf(
                 AgentMigrationComputer("m-source", "artin-debian-agent", isComputer = true),
-                AgentMigrationComputer("m-a", "Maria", isComputer = true),
-                AgentMigrationComputer("m-b", "Cindy MacAir", isComputer = true),
+                AgentMigrationComputer("m-a", "Maria", isComputer = true, online = true),
+                AgentMigrationComputer("m-b", "Cindy MacAir", isComputer = true, online = true),
                 AgentMigrationComputer("m-hosted", "Cloud runner", isComputer = false)
             )
         val targets = agentMigrationTargets(inputs(computers))
@@ -108,6 +108,35 @@ class AgentMigrationSectionStepsTest {
         // No other computer: the cloud when offered, else nothing to start.
         assertEquals(HOSTED_TARGET_CHOICE, agentMigrationResolvedTarget(null, emptyList(), hostedAvailable = true))
         assertEquals(null, agentMigrationResolvedTarget(null, emptyList(), hostedAvailable = false))
+    }
+
+    @Test
+    fun targetsFollowTheComputerListOrder() {
+        val computers =
+            listOf(
+                AgentMigrationComputer("m-other", "Someone else's", isComputer = true, online = true),
+                AgentMigrationComputer("m-mine", "Mine", isComputer = true, online = true, attachedByCurrentUser = true),
+                AgentMigrationComputer("m-other2", "Another", isComputer = true, online = true)
+            )
+        val targets = agentMigrationTargets(inputs(computers))
+        assertEquals(listOf("m-mine", "m-other", "m-other2"), targets.map { it.id })
+        assertEquals("m-mine", agentMigrationResolvedTarget(null, targets, hostedAvailable = false))
+    }
+
+    @Test
+    fun anOfflineComputerCannotBeTheTargetLikeTheWebDialog() {
+        val offlineFirst =
+            listOf(
+                AgentMigrationComputer("m-off", "Offline box", isComputer = true, online = false),
+                AgentMigrationComputer("m-on", "Online box", isComputer = true, online = true)
+            )
+        // Picked or not, the offline one falls back to the first online computer.
+        assertEquals("m-on", agentMigrationResolvedTarget("m-off", offlineFirst, hostedAvailable = false))
+        assertEquals("m-on", agentMigrationResolvedTarget(null, offlineFirst, hostedAvailable = false))
+        val allOffline = listOf(AgentMigrationComputer("m-off", "Offline box", isComputer = true, online = false))
+        // Only offline computers: the cloud when offered, else nothing to start.
+        assertEquals(HOSTED_TARGET_CHOICE, agentMigrationResolvedTarget(null, allOffline, hostedAvailable = true))
+        assertEquals(null, agentMigrationResolvedTarget("m-off", allOffline, hostedAvailable = false))
     }
 
     private fun inputs(computers: List<AgentMigrationComputer>) =
