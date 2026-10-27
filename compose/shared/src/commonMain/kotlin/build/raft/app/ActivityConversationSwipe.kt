@@ -66,6 +66,7 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeEdgeWidth
 import build.raft.designsystem.gesture.raftBackSwipeRegion
+import build.raft.designsystem.gesture.LocalRaftScrollInProgress
 import build.raft.designsystem.gesture.raftClaimsHorizontalDragFirst
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -118,6 +119,9 @@ import kotlinx.coroutines.launch
  *   (2) x |dy|, toward the start when the row has end buttons or its start button is open, toward the end
  *   when it has a start button or its end buttons are open. Any movement past the touch slop that is not on track for that hands the gesture to the list and
  *   locks the swipe out for the rest of that pointer stream ([ActivitySwipeDragPolicy]).
+ * - A touch while the list still flings (LocalRaftScrollInProgress at the down) only stops the list:
+ *   the row claims nothing from that gesture, and the list holds the filter pager off it too
+ *   (raftHoldsHorizontalDragsWhileScrolling). iOS and RecyclerView do the same (artin, #proj-mobile:34aed863).
  * - Filter pager: the rows sit in the Activity filter TabPager, whose drag would otherwise claim at 1x the
  *   touch slop, before the row's gate (iOS 1.15.5: the list slid toward the next filter, the row never
  *   opened). The row registers [raftClaimsHorizontalDragFirst] with its claim distance (0 in its edge
@@ -805,6 +809,8 @@ internal fun ActivitySwipeActionsBox(
     val currentOnToggleRead by rememberUpdatedState(onToggleRead)
     val currentOpenSide by rememberUpdatedState(openSide)
     val currentHasStart by rememberUpdatedState(hasStart)
+    // Whether the list around the row is still moving (a fling), read at each gesture's down.
+    val listScrolling by rememberUpdatedState(LocalRaftScrollInProgress.current)
     var widthPx by remember { mutableIntStateOf(0) }
     // At rest the row follows the list: open on a side, or closed (another row opened, a tap elsewhere,
     // a scroll, Back).
@@ -860,6 +866,9 @@ internal fun ActivitySwipeActionsBox(
             .pointerInput(gestureKey, isLtr, buttonsWidthPx, startButtonWidthPx, doneEnabled, startEdgePx, endEdgePx) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
+                    // A touch on a list that still flings only stops it (iOS, RecyclerView): this
+                    // gesture is never a swipe. The row sees the down before the list stops.
+                    if (listScrolling()) return@awaitEachGesture
                     val slop = viewConfiguration.touchSlop
                     val atDown = reveal.value
                     val policy =

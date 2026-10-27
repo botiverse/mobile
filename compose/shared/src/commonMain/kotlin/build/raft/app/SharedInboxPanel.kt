@@ -21,6 +21,8 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeContentState
 import androidx.compose.runtime.Immutable
+import build.raft.designsystem.gesture.LocalRaftScrollInProgress
+import build.raft.designsystem.gesture.raftHoldsHorizontalDragsWhileScrolling
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.data.InboxSnapshot
@@ -1975,94 +1977,100 @@ private fun SharedActivityList(
             onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
             modifier = Modifier.fillMaxSize(),
         ) {
-            LazyColumn(
-                state = listState,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
-                        .padding(top = 4.dp)
-            ) {
-                // One compact row per conversation (web ThreadsInbox `layout="list"`).
-                // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
-                // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
-                // theme token with the rest of Activity's dark-mode pass.
-                items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
-                    when (entry) {
-                        is ActivityConversationListEntry.Row -> {
-                            val item = entry.item
-                            val model =
-                                remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
-                                    item.activityConversationRowModel(
-                                        context = conversationList.context,
-                                        selectedFilter = selectedFilter,
-                                        senderProfiles = senderProfiles,
-                                        dmPeerNames = dmPeerNames,
-                                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                                    )
-                                }
-                            ActivityConversationListRow(
-                                item = item,
-                                model = model,
-                                divider = entry.divider,
-                                selected = selectedItemKey == item.key,
-                                menuOpen = activeMenuItem?.key == item.key,
-                                timeContext = timeContext,
-                                agentStatusResolver = conversationList.agentStatusResolver,
-                                canMarkDone = item.activityShowsDoneAction(),
-                                openGestureKey =
-                                    remember(item, renderedPresentationGeneration, renderedPresentationOwnerIdentity) {
-                                        item.activityOpenGestureKey(
-                                            presentationGeneration = renderedPresentationGeneration,
-                                            presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+            // A touch while the list still flings only stops it: neither a row's swipe nor the filter
+            // pager takes that gesture (artin, #proj-mobile:34aed863; iOS / RecyclerView behaviour).
+            val listScrolling = remember(listState) { { listState.isScrollInProgress } }
+            CompositionLocalProvider(LocalRaftScrollInProgress provides listScrolling) {
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .raftHoldsHorizontalDragsWhileScrolling(listScrolling)
+                            // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
+                            .padding(top = 4.dp)
+                ) {
+                    // One compact row per conversation (web ThreadsInbox `layout="list"`).
+                    // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
+                    // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
+                    // theme token with the rest of Activity's dark-mode pass.
+                    items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
+                        when (entry) {
+                            is ActivityConversationListEntry.Row -> {
+                                val item = entry.item
+                                val model =
+                                    remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
+                                        item.activityConversationRowModel(
+                                            context = conversationList.context,
+                                            selectedFilter = selectedFilter,
+                                            senderProfiles = senderProfiles,
+                                            dmPeerNames = dmPeerNames,
+                                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                                         )
-                                    },
-                                captureMenuAnchor = !listState.isScrollInProgress,
-                                onOpen = { openRow(item.key) },
-                                onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
-                                onSwipeDone = { swipeRowDone(item.key) },
-                                swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
-                                onSwipeEnd = { swipeRowEnd(item.key) },
-                                onSwipeToggleRead = { swipeRowToggleRead(item.key) },
-                                accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
-                                onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },
-                                swipeOpenSide = swipeOpenRow.openSide(item.key),
-                                onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
-                                onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
-                            )
-                        }
-                    }
-                }
-                if (showLoadMoreFooter) {
-                    item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
-                        val shouldRequest = activityShouldRequestLoadMore(
-                            hasMore = snapshot.hasMore,
-                            refreshing = refreshing,
-                            loadingMore = loadingMore,
-                            loadMoreErrorCode = loadMoreErrorCode
-                        )
-                        // The footer is the tail sentinel. Entering composition is a stronger and
-                        // more portable signal than observing LazyList layoutInfo: the latter did not
-                        // emit on the affected Kuikly/Android build, leaving the user at the end of
-                        // the first page with neither a request nor failure feedback (task #539).
-                        // Keep page appends stable so one composed footer cannot cascade through every
-                        // remaining page. A refresh is different: it replaces the appended tail with
-                        // the first page while this keyed footer can remain composed. Re-key on the
-                        // refresh lifecycle so its terminal transition can request the lost tail again.
-                        LaunchedEffect(refreshing) {
-                            if (shouldRequest) {
-                                latestOnIntent(SharedActivityIntent.LoadMore)
+                                    }
+                                ActivityConversationListRow(
+                                    item = item,
+                                    model = model,
+                                    divider = entry.divider,
+                                    selected = selectedItemKey == item.key,
+                                    menuOpen = activeMenuItem?.key == item.key,
+                                    timeContext = timeContext,
+                                    agentStatusResolver = conversationList.agentStatusResolver,
+                                    canMarkDone = item.activityShowsDoneAction(),
+                                    openGestureKey =
+                                        remember(item, renderedPresentationGeneration, renderedPresentationOwnerIdentity) {
+                                            item.activityOpenGestureKey(
+                                                presentationGeneration = renderedPresentationGeneration,
+                                                presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                            )
+                                        },
+                                    captureMenuAnchor = !listState.isScrollInProgress,
+                                    onOpen = { openRow(item.key) },
+                                    onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
+                                    onSwipeDone = { swipeRowDone(item.key) },
+                                    swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
+                                    onSwipeEnd = { swipeRowEnd(item.key) },
+                                    onSwipeToggleRead = { swipeRowToggleRead(item.key) },
+                                    accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
+                                    onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },
+                                    swipeOpenSide = swipeOpenRow.openSide(item.key),
+                                    onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
+                                    onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
+                                )
                             }
                         }
-                        when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
-                            ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
-                            ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
-                            ActivityLoadMoreFooterMode.Retry ->
-                                SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
+                    }
+                    if (showLoadMoreFooter) {
+                        item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
+                            val shouldRequest = activityShouldRequestLoadMore(
+                                hasMore = snapshot.hasMore,
+                                refreshing = refreshing,
+                                loadingMore = loadingMore,
+                                loadMoreErrorCode = loadMoreErrorCode
+                            )
+                            // The footer is the tail sentinel. Entering composition is a stronger and
+                            // more portable signal than observing LazyList layoutInfo: the latter did not
+                            // emit on the affected Kuikly/Android build, leaving the user at the end of
+                            // the first page with neither a request nor failure feedback (task #539).
+                            // Keep page appends stable so one composed footer cannot cascade through every
+                            // remaining page. A refresh is different: it replaces the appended tail with
+                            // the first page while this keyed footer can remain composed. Re-key on the
+                            // refresh lifecycle so its terminal transition can request the lost tail again.
+                            LaunchedEffect(refreshing) {
+                                if (shouldRequest) {
+                                    latestOnIntent(SharedActivityIntent.LoadMore)
+                                }
+                            }
+                            when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
+                                ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
+                                ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
+                                ActivityLoadMoreFooterMode.Retry ->
+                                    SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
+                            }
                         }
                     }
+                    item { Spacer(Modifier.height(bottomContentPadding)) }
                 }
-                item { Spacer(Modifier.height(bottomContentPadding)) }
             }
         }
         if (stableOrderEnabled && updateTracking.pendingCount > 0) {

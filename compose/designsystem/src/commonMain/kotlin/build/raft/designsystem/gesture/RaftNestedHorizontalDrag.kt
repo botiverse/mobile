@@ -5,6 +5,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -154,6 +155,26 @@ fun Modifier.raftClaimsHorizontalDragFirst(
     enabled: Boolean = true,
     claimDistancePxAt: (local: Offset, size: IntSize) -> Float,
 ): Modifier = if (enabled) this then RaftNestedDragElement(claimDistancePxAt) else this
+
+/**
+ * Marks a vertical scroller ([isScrolling]: its `isScrollInProgress`) inside a horizontal scroller: a
+ * gesture that goes down on it while it still moves (a fling) only stops it, as on iOS (UIScrollView)
+ * and Android (RecyclerView): the enclosing horizontal scroller takes no drag from that gesture
+ * (its slop for that gesture is infinite). Its items read [LocalRaftScrollInProgress] (provide it
+ * with the same [isScrolling]) so a row that swipes sideways itself lets that gesture go too.
+ */
+fun Modifier.raftHoldsHorizontalDragsWhileScrolling(isScrolling: () -> Boolean): Modifier =
+    raftClaimsHorizontalDragFirst { _, _ -> raftScrollHoldDistance(isScrolling()) }
+
+/**
+ * Whether the vertical scroller around this content is moving, read at a gesture's down: content
+ * with its own sideways drag claims nothing from a gesture that went down while it was (that touch
+ * only stops the scroll). Always false outside a scroller that provides it.
+ */
+val LocalRaftScrollInProgress = compositionLocalOf<() -> Boolean> { { false } }
+
+/** The claim distance of a vertical scroller: none at rest, all of it while it moves. */
+internal fun raftScrollHoldDistance(scrolling: Boolean): Float = if (scrolling) Float.POSITIVE_INFINITY else 0f
 
 private data class RaftNestedDragElement(
     val claimDistancePxAt: (Offset, IntSize) -> Float,
