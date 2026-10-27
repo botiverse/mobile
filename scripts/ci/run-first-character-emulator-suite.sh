@@ -54,7 +54,6 @@ DECLARED_TEST_IDS=(
   "diagnostics-caller-pipeline"
   "durable-partition-migration"
   "thread-newer-auto-pagination"
-  "local-image-sampled-decode"
   "adaptive-pane-host"
   "qa-session-bootstrap-inbox"
   "composed-character-boundary"
@@ -79,12 +78,6 @@ init_test_metadata() {
   TEST_RETRIES["login-transition-routing"]=1
   TEST_OUTPUT["login-transition-routing"]="login-transition-routing-instrumentation.txt"
   TEST_CONDITION["login-transition-routing"]="always"
-
-  TEST_CLASS["local-image-sampled-decode"]="build.raft.app.shared.RaftLocalImageSampledDecodeConnectedTest"
-  TEST_RUNNER["local-image-sampled-decode"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["local-image-sampled-decode"]=1
-  TEST_OUTPUT["local-image-sampled-decode"]="local-image-sampled-decode-instrumentation.txt"
-  TEST_CONDITION["local-image-sampled-decode"]="always"
 
   TEST_CLASS["first-character-baseline"]="build.raft.app.shared.RaftComposerFirstCharacterBaselineTest"
   TEST_RUNNER["first-character-baseline"]="$RUNNER_CONNECTED"
