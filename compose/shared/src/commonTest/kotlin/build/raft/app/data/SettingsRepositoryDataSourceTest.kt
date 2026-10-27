@@ -738,6 +738,26 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun failedServerNotificationUpdateLeavesStoredCopyUnchanged() = runBlocking {
+        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
+        val network =
+            FakeSettingsNetworkClient(
+                notificationSettingsJson = """{"serverPushMuted":true,"serverPushMode":"none"}""",
+                notificationSettingsPatchResponseCode = 503,
+            )
+        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
+        assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings())
+        assertEquals(ServerPushMode.None, lastKnown.read("user-1", "server-1")?.mode)
+
+        val result = repository.setServerNotificationMode(ServerPushMode.All)
+
+        assertFalse(result is DataResult.Content)
+        // The PATCH reached the server and failed: the stored copy keeps the last confirmed value.
+        assertEquals(1, network.notificationSettingsBodies.size)
+        assertEquals(ServerPushMode.None, lastKnown.read("user-1", "server-1")?.mode)
+    }
+
+    @Test
     fun failedServerNotificationFetchShowsStoredMutedReadOnly() = runBlocking {
         val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
         RealSettingsRepository(
@@ -1397,6 +1417,7 @@ class SettingsRepositoryDataSourceTest {
         private val removeMemberJson: String = commandJson,
         private val leaveServerJson: String = commandJson,
         private val machinesResponseCode: Int? = null,
+        private val notificationSettingsPatchResponseCode: Int? = null,
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200,
@@ -1608,6 +1629,11 @@ class SettingsRepositoryDataSourceTest {
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })
+                normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" &&
+                    notificationSettingsPatchResponseCode != null -> {
+                    notificationSettingsBodies += bodyText.orEmpty()
+                    response("{}", notificationSettingsPatchResponseCode)
+                }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" -> {
                     notificationSettingsBodies += bodyText.orEmpty()
                     if (bodyText?.contains("serverPushMode") == true || bodyText?.contains("serverPushMuted") == true) {
