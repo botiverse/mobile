@@ -123,8 +123,10 @@ fun RaftTaskStatusBadge(
     val shape = RoundedCornerShape(RaftRadius.Chip)
     val clickable = onClick != null && enabled
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val pressed = clickable && raftIsPressed(source)
-    val focused = clickable && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val isFocused = raftIsFocused(source)
+    val pressed = clickable && isPressed
+    val focused = clickable && isFocused
     Row(
         modifier =
             modifier
