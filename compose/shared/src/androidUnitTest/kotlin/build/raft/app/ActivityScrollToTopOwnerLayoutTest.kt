@@ -62,7 +62,7 @@ class ActivityScrollToTopOwnerLayoutTest {
     private fun scrollToTop(harness: Harness, owner: ActivityScrollToTopOwner?) {
         CoroutineScope(AndroidUiDispatcher.Main).launch {
             if (owner != null) {
-                harness.listState.animateActivityScrollToTop(owner)
+                harness.listState.animateActivityScrollToTop(owner, ActivityScrollToTopSource.Title)
             } else {
                 harness.listState.animateScrollToTopExpressive()
             }
@@ -82,7 +82,8 @@ class ActivityScrollToTopOwnerLayoutTest {
 
     @Test
     fun `a landed scroll-to-top keeps the list at the top when the head row moves down`() {
-        val owner = ActivityScrollToTopOwner()
+        val lines = mutableListOf<String>()
+        val owner = ActivityScrollToTopOwner(log = { lines += it })
         val harness = mount(owner)
         scrollToTop(harness, owner)
         harness.items.value = rows.headMovedDown()
@@ -90,6 +91,12 @@ class ActivityScrollToTopOwnerLayoutTest {
         assertEquals(0, harness.listState.firstVisibleItemIndex)
         assertEquals(0, harness.listState.firstVisibleItemScrollOffset)
         assertEquals("row1", harness.listState.layoutInfo.visibleItemsInfo.first().key)
+        // The feedback zip shows the correction and where the list had been carried.
+        val correction = lines.map(::parseScrollToTopLogLine).single { it.first == "activity_scroll_to_top_hold_correct" }
+        assertEquals("layout", correction.second["via"])
+        assertEquals("20", correction.second["fromIndex"])
+        val start = lines.map(::parseScrollToTopLogLine).first { it.first == "activity_scroll_to_top_start" }
+        assertEquals("40", start.second["fromIndex"])
     }
 
     @Test

@@ -949,15 +949,15 @@ private fun SharedActivityPanelContent(
     val scrollToTopScope = rememberCoroutineScope()
     // Head tap and bottom-tab re-tap both scroll the selected filter's page back to the top, like the
     // other tabs (the unread walk was removed, artin 2026-10-23).
-    suspend fun scrollSelectedPageToTop() {
+    suspend fun scrollSelectedPageToTop(source: ActivityScrollToTopSource) {
         activityScrollToTopTarget(state.selectedFilter, pageListStates)
-            .animateActivityScrollToTop(activityScrollToTopTarget(state.selectedFilter, pageTopOwners))
+            .animateActivityScrollToTop(activityScrollToTopTarget(state.selectedFilter, pageTopOwners), source)
     }
     // Bottom-tab double tap targets the same list the title tap does (the selected filter's page).
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
-            scrollSelectedPageToTop()
+            scrollSelectedPageToTop(ActivityScrollToTopSource.Tab)
         }
     }
     Column(
@@ -971,7 +971,7 @@ private fun SharedActivityPanelContent(
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = {
-                scrollToTopScope.launch { scrollSelectedPageToTop() }
+                scrollToTopScope.launch { scrollSelectedPageToTop(ActivityScrollToTopSource.Title) }
             }
         )
         RaftAppShellBodyTopBanner()
@@ -1475,7 +1475,14 @@ private fun SharedActivityList(
     // Hands b205bd89: after an explicit scroll-to-top landed, the owner holds the top edge until
     // the reader scrolls, so a change that moves the head row down cannot carry the list with it.
     fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
-        if (anchorTop || listState.activityHeldTopOwnsChange(scrollToTopOwner)) {
+        val heldTopOwnsChange = !anchorTop && listState.activityHeldTopOwnsChange(scrollToTopOwner)
+        if (heldTopOwnsChange) {
+            // Diagnostics: where LazyList would have carried the list (the old head's new index).
+            val previousHead = previousItems.firstOrNull()?.key
+            val headIndex = if (previousHead == null) -1 else nextItems.indexOfFirst { it.key == previousHead }
+            if (headIndex > 0) scrollToTopOwner.logHoldCorrection(via = "change", fromIndex = headIndex)
+        }
+        if (anchorTop || heldTopOwnsChange) {
             if (newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet()
             listState.requestScrollToItem(0)
         } else {
@@ -1669,7 +1676,7 @@ private fun SharedActivityList(
     }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
-            listState.animateActivityScrollToTop(scrollToTopOwner)
+            listState.animateActivityScrollToTop(scrollToTopOwner, ActivityScrollToTopSource.Pill)
         }
     }
     ActivityScrollToTopOwnerEffect(listState, scrollToTopOwner)

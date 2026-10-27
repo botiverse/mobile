@@ -33,7 +33,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  *   scroll state before it pins; the pin is a same-snapshot `requestScrollToItem(0)` to the
  *   owned edge, never a numeric index taken from an earlier layout.
  */
-internal class ActivityScrollToTopOwner {
+internal class ActivityScrollToTopOwner(
+    /** Diagnostics sink (feedback zip); payload is positions, generations and reasons only. */
+    private val log: (String) -> Unit = { message -> raftLogInfo(ActivityScrollToTopLogTag, message) },
+) {
     private var generation: Long = 0L
 
     /** The generation that owns the top edge (animating or landed); null when nobody does. */
@@ -50,19 +53,42 @@ internal class ActivityScrollToTopOwner {
         get() = ownedGeneration != null && animatingGeneration == null
 
     /** A new explicit scroll-to-top request; replaces any earlier one. */
-    fun begin(): Long {
+    fun begin(
+        source: ActivityScrollToTopSource = ActivityScrollToTopSource.Title,
+        fromIndex: Int = -1,
+        fromOffset: Int = 0,
+    ): Long {
         generation += 1
         heldHeadKey = null
         ownedGeneration = generation
         animatingGeneration = generation
+        log(
+            "activity_scroll_to_top_start source=${source.wire} generation=$generation " +
+                "fromIndex=$fromIndex fromOffset=$fromOffset"
+        )
         return generation
     }
 
     fun isCurrent(requestGeneration: Long): Boolean = ownedGeneration == requestGeneration
 
     /** The request's animation reached the top. */
-    fun landed(requestGeneration: Long) {
-        if (animatingGeneration == requestGeneration) animatingGeneration = null
+    fun landed(requestGeneration: Long, index: Int = -1, offset: Int = 0) {
+        if (animatingGeneration != requestGeneration) return
+        animatingGeneration = null
+        log("activity_scroll_to_top_end generation=$requestGeneration index=$index offset=$offset")
+    }
+
+    /** A request whose animation returned after a newer request or a retire: it does nothing. */
+    fun stale(requestGeneration: Long) {
+        log("activity_scroll_to_top_stale generation=$requestGeneration current=${ownedGeneration ?: "none"}")
+    }
+
+    /** The held top moved the list back to index 0 (or kept it there through a data change). */
+    fun logHoldCorrection(via: String, fromIndex: Int, fromOffset: Int = 0) {
+        log(
+            "activity_scroll_to_top_hold_correct generation=${ownedGeneration ?: "none"} via=$via " +
+                "fromIndex=$fromIndex fromOffset=$fromOffset"
+        )
     }
 
     /**
@@ -70,8 +96,16 @@ internal class ActivityScrollToTopOwner {
      * (its generation is current); otherwise another scroll did (a drag, a fling, another
      * programmatic owner), and the top edge is no longer this owner's.
      */
-    fun interrupted(requestGeneration: Long) {
-        if (ownedGeneration == requestGeneration) retire()
+    fun interrupted(requestGeneration: Long, index: Int = -1, offset: Int = 0) {
+        val superseded = ownedGeneration != requestGeneration
+        val reason =
+            when {
+                !superseded -> "other_scroll"
+                ownedGeneration == null -> "retired"
+                else -> "superseded"
+            }
+        log("activity_scroll_to_top_cancel generation=$requestGeneration reason=$reason index=$index offset=$offset")
+        if (!superseded) retire(ActivityScrollToTopRetireReason.OtherScroll)
     }
 
     internal fun heldHeadKeyForPolicy(): Any? = heldHeadKey
@@ -82,16 +116,44 @@ internal class ActivityScrollToTopOwner {
 
     /** Observed scroll progress: a scroll that is not this owner's own animation is the reader's. */
     fun onScrollInProgress(scrolling: Boolean) {
-        if (scrolling && animatingGeneration == null && ownedGeneration != null) retire()
+        if (scrolling && animatingGeneration == null && ownedGeneration != null) {
+            retire(ActivityScrollToTopRetireReason.ReaderScroll)
+        }
     }
 
     /** The reader or another viewport replacement owns the viewport now. */
-    fun retire() {
+    fun retire(
+        reason: ActivityScrollToTopRetireReason = ActivityScrollToTopRetireReason.Explicit,
+        index: Int = -1,
+        offset: Int = 0,
+    ) {
+        ownedGeneration?.let { owned ->
+            log("activity_scroll_to_top_retire generation=$owned reason=${reason.wire} index=$index offset=$offset")
+        }
         generation += 1
         heldHeadKey = null
         ownedGeneration = null
         animatingGeneration = null
     }
+}
+
+internal const val ActivityScrollToTopLogTag = "SlockHomeActivity"
+
+/** What asked for the scroll-to-top (diagnostics only). */
+internal enum class ActivityScrollToTopSource(val wire: String) {
+    Title("title"),
+    Tab("tab"),
+    Pill("pill"),
+}
+
+internal enum class ActivityScrollToTopRetireReason(val wire: String) {
+    /** A scroll in progress that was not the owner's own animation (drag, fling, pull). */
+    ReaderScroll("reader_scroll"),
+    /** The first row changed or sat at a partial offset without a scroll being observed. */
+    ReaderMoved("reader_moved"),
+    /** Another scroll cancelled the owner's animation. */
+    OtherScroll("other_scroll"),
+    Explicit("explicit"),
 }
 
 /**
@@ -117,7 +179,8 @@ internal fun ActivityScrollToTopOwner.observeHeldLayout(
     ).also { action ->
         when (action) {
             ActivityHeldTopAction.None -> recordHeldHead(firstVisibleItemKey)
-            ActivityHeldTopAction.Retire -> retire()
+            ActivityHeldTopAction.Retire ->
+                retire(ActivityScrollToTopRetireReason.ReaderMoved, firstVisibleItemIndex, firstVisibleItemScrollOffset)
             ActivityHeldTopAction.Pin -> Unit
         }
     }
@@ -144,16 +207,24 @@ internal fun activityHeldTopAction(
 internal suspend fun ActivityScrollToTopOwner.runScrollToTop(
     scrollToTop: suspend () -> Unit,
     pinTopIfOwned: () -> Unit,
+    source: ActivityScrollToTopSource = ActivityScrollToTopSource.Title,
+    position: () -> Pair<Int, Int> = { -1 to 0 },
 ) {
-    val requestGeneration = begin()
+    val (fromIndex, fromOffset) = position()
+    val requestGeneration = begin(source, fromIndex, fromOffset)
     try {
         scrollToTop()
     } catch (cancelled: CancellationException) {
-        interrupted(requestGeneration)
+        val (index, offset) = position()
+        interrupted(requestGeneration, index, offset)
         throw cancelled
     }
-    if (!isCurrent(requestGeneration)) return
-    landed(requestGeneration)
+    if (!isCurrent(requestGeneration)) {
+        stale(requestGeneration)
+        return
+    }
+    val (index, offset) = position()
+    landed(requestGeneration, index, offset)
     pinTopIfOwned()
 }
 
@@ -170,15 +241,20 @@ internal fun activityScrollToTopShouldPin(
     holdsTop && !scrollInProgress && !activityListParkedAtTop(firstVisibleItemIndex, firstVisibleItemScrollOffset)
 
 /** The explicit Activity scroll-to-top: the expressive animation, owned by [owner]. */
-internal suspend fun LazyListState.animateActivityScrollToTop(owner: ActivityScrollToTopOwner) {
+internal suspend fun LazyListState.animateActivityScrollToTop(
+    owner: ActivityScrollToTopOwner,
+    source: ActivityScrollToTopSource,
+) {
     owner.runScrollToTop(
         scrollToTop = { animateScrollToTopExpressive() },
-        pinTopIfOwned = { pinActivityTopIfOwned(owner) },
+        pinTopIfOwned = { pinActivityTopIfOwned(owner, via = "landing") },
+        source = source,
+        position = { firstVisibleItemIndex to firstVisibleItemScrollOffset },
     )
 }
 
 /** Same-snapshot pin to the owned top edge; a no-op unless [owner] holds it and nobody scrolls. */
-internal fun LazyListState.pinActivityTopIfOwned(owner: ActivityScrollToTopOwner) {
+internal fun LazyListState.pinActivityTopIfOwned(owner: ActivityScrollToTopOwner, via: String) {
     if (
         activityScrollToTopShouldPin(
             holdsTop = owner.holdsTop,
@@ -187,6 +263,7 @@ internal fun LazyListState.pinActivityTopIfOwned(owner: ActivityScrollToTopOwner
             firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
         )
     ) {
+        owner.logHoldCorrection(via, firstVisibleItemIndex, firstVisibleItemScrollOffset)
         requestScrollToItem(0)
     }
 }
@@ -230,7 +307,7 @@ internal fun ActivityScrollToTopOwnerEffect(listState: LazyListState, owner: Act
                         firstVisibleItemScrollOffset = layout.firstVisibleItemScrollOffset,
                         firstVisibleItemKey = layout.firstVisibleItemKey,
                     )
-                if (action == ActivityHeldTopAction.Pin) listState.pinActivityTopIfOwned(owner)
+                if (action == ActivityHeldTopAction.Pin) listState.pinActivityTopIfOwned(owner, via = "layout")
             }
     }
 }

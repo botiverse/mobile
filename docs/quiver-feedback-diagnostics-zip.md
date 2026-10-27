@@ -118,6 +118,7 @@ Useful tags/events by area:
 | Home / shell state | `SlockHomeShell` `shared_home_shell` (`selectedConversation`, `selectedTopAction`), `app_shell_child_tab_dispatch` (tab switches) |
 | Thread open / nav | `SlockKuikly` `thread_reply_open`, `thread_reply_chip_click`, `thread_start` (note `surface=thread` vs `surface=channel`, `parentChannelId`, `parentMessageId`) |
 | Activity / inbox | `SlockSharedActivity` / `shared_activity` (`inbox_parse_*`) |
+| Activity scroll-to-top | `SlockHomeActivity` `activity_scroll_to_top_start` (`source=title\|tab\|pill`, `fromIndex`), `_end` (landed `index`), `_cancel` / `_retire` (`reason`), `_stale`, `_hold_correct` (`via=change\|layout`, `fromIndex` the list was carried to) |
 | Thread load / data | `thread_conversation_repository`, `thread_api`, `thread_refresh_result` |
 | Realtime | `SlockRealtimeDomain` `realtime_domain_accept*` |
 

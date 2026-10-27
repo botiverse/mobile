@@ -138,6 +138,73 @@ class ActivityScrollToTopOwnerTest {
     }
 
     @Test
+    fun `diagnostics record start, end, hold correction, cancel and retire with their reasons`() = runTest {
+        val lines = mutableListOf<String>()
+        val owner = ActivityScrollToTopOwner(log = { lines += it })
+        var index = 37
+        launch {
+            owner.runScrollToTop(
+                scrollToTop = { delay(100); index = 0 },
+                pinTopIfOwned = {},
+                source = ActivityScrollToTopSource.Tab,
+                position = { index to 0 },
+            )
+        }
+        advanceUntilIdle()
+        owner.observeHeldLayout(false, 0, 0, "row0")
+        owner.logHoldCorrection(via = "layout", fromIndex = 20)
+        owner.observeHeldLayout(false, 4, 30, "row4")
+
+        val second = launch {
+            owner.runScrollToTop(scrollToTop = { delay(300) }, pinTopIfOwned = {}, source = ActivityScrollToTopSource.Title)
+        }
+        advanceTimeBy(50)
+        second.cancel()
+        advanceUntilIdle()
+
+        val events = lines.map(::parseScrollToTopLogLine)
+        assertEquals(
+            listOf(
+                "activity_scroll_to_top_start",
+                "activity_scroll_to_top_end",
+                "activity_scroll_to_top_hold_correct",
+                "activity_scroll_to_top_retire",
+                "activity_scroll_to_top_start",
+                "activity_scroll_to_top_cancel",
+                "activity_scroll_to_top_retire",
+            ),
+            events.map { it.first },
+        )
+        assertEquals("tab", events[0].second["source"])
+        assertEquals("37", events[0].second["fromIndex"])
+        assertEquals("0", events[1].second["index"])
+        assertEquals("20", events[2].second["fromIndex"])
+        assertEquals("layout", events[2].second["via"])
+        assertEquals("reader_moved", events[3].second["reason"])
+        assertEquals("title", events[4].second["source"])
+        assertEquals("other_scroll", events[5].second["reason"])
+        assertEquals(events[4].second["generation"], events[5].second["generation"])
+    }
+
+    @Test
+    fun `a superseded request logs a stale completion and never an end`() = runTest {
+        val lines = mutableListOf<String>()
+        val owner = ActivityScrollToTopOwner(log = { lines += it })
+        val firstAnimation = CompletableDeferred<Unit>()
+        launch { owner.runScrollToTop(scrollToTop = { firstAnimation.await() }, pinTopIfOwned = {}) }
+        runCurrent()
+        launch { owner.runScrollToTop(scrollToTop = { delay(200) }, pinTopIfOwned = {}) }
+        runCurrent()
+        firstAnimation.complete(Unit)
+        advanceUntilIdle()
+        val events = lines.map(::parseScrollToTopLogLine)
+        val stale = events.single { it.first == "activity_scroll_to_top_stale" }
+        assertEquals("1", stale.second["generation"])
+        assertEquals("2", stale.second["current"])
+        assertEquals(listOf("2"), events.filter { it.first == "activity_scroll_to_top_end" }.map { it.second["generation"] })
+    }
+
+    @Test
     fun `an explicit retire without a successor invalidates the pending request`() = runTest {
         val owner = ActivityScrollToTopOwner()
         var pins = 0
@@ -148,4 +215,14 @@ class ActivityScrollToTopOwnerTest {
         assertEquals(0, pins)
         assertFalse(owner.holdsTop)
     }
+}
+
+/** One diagnostics line: its event (first token) and its key=value fields. */
+internal fun parseScrollToTopLogLine(line: String): Pair<String, Map<String, String>> {
+    val tokens = line.split(' ')
+    return tokens.first() to
+        tokens.drop(1).mapNotNull { token ->
+            val eq = token.indexOf('=')
+            if (eq <= 0) null else token.substring(0, eq) to token.substring(eq + 1)
+        }.toMap()
 }
