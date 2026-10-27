@@ -246,7 +246,7 @@ fun RaftDialog(
  * - [rowActions] instead of [actions]: two short actions side by side, 8dp apart (pass each
  *   `Modifier.weight(1f)`, size `Lg`), as the web Select Text sheet's Copy and Quote
  *   (`DrawerActions className="flex-row *:flex-1"`). Not for a ghost action: side by side
- *   it has no frame.
+ *   it has no frame. Pass [actions] or [rowActions], never both: both throw.
  * - [onClose]: raft-ui DrawerClose, the ghost × named [closeLabel] at the end of the title
  *   row, pulled into the corner so it doesn't make the header taller (as [RaftDialogHeader]).
  */
@@ -297,6 +297,7 @@ internal fun RaftSheetSurfaceImpl(
     closeLabel: String = "",
     rowActions: (@Composable RowScope.() -> Unit)? = null,
 ) {
+    require(actions == null || rowActions == null) { "RaftSheet takes actions or rowActions, not both" }
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
@@ -387,6 +388,7 @@ private val RaftSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
  * from the bottom (240ms, `ease-slide`), the one overlay that moves; it closes without
  * the slide. Back, a tap on the scrim and, with [showClose], the header's × call
  * [onDismissRequest]; keep a button in the sheet too, never only the gesture. Swipe to dismiss and snap points are not ported.
+ * [actions] and [rowActions] are as on [RaftSheetSurface]: one or the other, never both (throws).
  */
 @Composable
 fun RaftSheet(

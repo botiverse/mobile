@@ -300,7 +300,7 @@
     <string name="thread_action_copy_link">Copy Link</string>
     <string name="thread_action_copy_markdown">Copy Markdown</string>
     <string name="thread_action_select_text">Select Text</string>
-    <string name="thread_select_text_hint">Long-press to select text</string>
+    <string name="thread_select_text_hint">Press and hold to select text.</string>
     <string name="thread_text_selection_copy_selection">Copy selection</string>
     <string name="thread_text_selection_select_all">Select All</string>
     <string name="thread_new_message_menu_reply">Reply</string>
