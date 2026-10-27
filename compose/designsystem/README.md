@@ -113,6 +113,13 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   `RaftTheme.themeId` / `RaftTheme.decor` (`LocalRaftThemeId` / `LocalRaftThemeDecor`) read
   it. A theme changes only the frame, sidebar, surfaces and (Boring) brand; `selected` and
   `you` stay yellow in every theme.
+- **Theme decor.** A decorated theme (all but Raft and Boring) with `decor` on paints its
+  pixel art on the frame, as raft-ui `frame-decor-top` / `frame-decor-rail` do:
+  `Modifier.raftThemeDecor(RaftThemeDecorSlot.Top | Rail)` draws behind the element's content,
+  never laid out or touched. `RaftTopBar` draws the 190x48 strip 72dp from its end from a
+  1024dp window (its `windowWidth`); `RaftAppRail` draws the 48x112 strip under its
+  destinations. The art (`tokens/RaftThemeDecorArt.g.kt`) is generated from raft-ui
+  `themes.css` by `tools/design-tokens/gen_theme_decor.py`.
 - **Strings.** The module has no string resources. The few words the components write
   themselves (the "(optional)" label marker, the dialog's "Close", a text field's "Clear",
   a busy button's and spinner's "Loading") come from `LocalRaftStrings` (`RaftStrings`,
