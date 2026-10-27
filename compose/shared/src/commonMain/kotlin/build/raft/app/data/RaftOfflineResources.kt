@@ -27,9 +27,10 @@ import kotlin.concurrent.Volatile
  *
  * One process-wide [RaftOfflineResourceCache] owns every resource's durable rows, in ONE
  * `localSnapshotEntity` scope, so:
- * - sign-out / account switch wipes every resource with one call ([wipeAll], registered once in the
- *   provider's auth-terminal cleanup); a new resource needs no cleanup wiring of its own, and rows of a
- *   resource this process never instantiated go too;
+ * - sign-out / account switch keeps every row (rows are keyed by account, so only the same account
+ *   reads them again) and only fences in-flight writes ([fenceInFlightWrites]) (owner decision 2026-10-27, see AuthTerminalLocalDataReset);
+ *   [wipeAll] removes every resource with one call, rows of a resource this process never
+ *   instantiated included;
  * - lost access to a server wipes that server's rows of every resource ([wipeServer]).
  *
  * A resource ([resource]) is keyed by environment + account + server + resource name + params
@@ -75,6 +76,14 @@ internal class RaftOfflineResourceCache(
     fun wipeAllAsync() {
         generationValue += 1L
         scope.launch { mutex.withLock { runLogged("wipe_all") { rows.deleteAll() } } }
+    }
+
+    /**
+     * Sign-out keeps every row (they are keyed by account; owner decision 2026-10-27): only writes of keys
+     * minted before this call (an in-flight request of the signed-out session) are fenced.
+     */
+    fun fenceInFlightWrites() {
+        generationValue += 1L
     }
 
     /** Lost access to [serverId] ([accountId] null = every account): that server's rows of every resource. */

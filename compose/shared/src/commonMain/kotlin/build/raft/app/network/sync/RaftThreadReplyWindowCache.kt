@@ -51,7 +51,8 @@ private data class RaftStoredThreadReplyWindow(
  *
  * Reads are memoized per page for the process; writes are write-behind on [scope] and always
  * persist the merged (disk + memory) page so a partial in-memory view never clobbers older
- * entries. The principal is part of the page key, and [clearAll] runs on auth-session end.
+ * entries. The principal is part of the page key, so on sign-out only the memory
+ * is dropped ([clearMemory]) and the same account reads its pages again (owner decision 2026-10-27, see AuthTerminalLocalDataReset).
  */
 internal class RaftThreadReplyWindowCache(
     private val storage: RaftThreadReplyWindowStorage,
@@ -125,6 +126,19 @@ internal class RaftThreadReplyWindowCache(
             diskWipePending = true
         }
         scope.launch { ioMutex.withLock { wipeDiskIfPendingLocked() } }
+    }
+
+    /**
+     * Sign-out: drops the in-memory windows (and the old session's pending write-behind flushes) but keeps
+     * the disk pages; their keys carry the principal, so only the same account reads them again.
+     */
+    fun clearMemory() {
+        synchronized(lock) {
+            clearGeneration += 1
+            pages.clear()
+            loadedPageKeys.clear()
+            dirtyPageKeys.clear()
+        }
     }
 
     /** Must run under [ioMutex]: every disk read or write first completes a pending wipe. */

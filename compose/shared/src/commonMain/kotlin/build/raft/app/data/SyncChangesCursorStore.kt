@@ -47,8 +47,8 @@ private val syncCursorJson = Json {
  * The `GET /api/sync/changes` cursor per (environment, account, server), on disk so a cold start
  * pulls only what changed since the last session.
  *
- * Same lifetime as the other account caches: [clearAll] on auth terminal cleanup (sign-out / auth
- * loss), [clearServer] when the account loses a server. A missing cursor means "first sync"
+ * Same lifetime as the other account caches: kept on sign-out with the account's stored data
+ * (owner decision 2026-10-27, see AuthTerminalLocalDataReset), [clearServer] when the account loses a server. A missing cursor means "first sync"
  * (snapshots, then pull), so clearing is always safe.
  */
 class RaftSyncCursorStore(

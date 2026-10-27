@@ -15,8 +15,8 @@ internal const val RaftLastCountsMaxServersPerUser: Int = 5
  * Durable storage for the last-known copies shown before the network answers (the Home row
  * counts and previews, the Activity first pages): the MVI persist keys of one family, with the
  * limits of the web's `lastCounts.ts` (slock #11156):
- * - every key it writes is recorded in an index with its save time, so [clearAll] (sign-out)
- *   removes the whole family without key enumeration (MMKV access is get/put only);
+ * - every key it writes is recorded in an index with its save time, so [clearAll]
+ *   removes the whole family (sign-out keeps the per-user copies (owner decision 2026-10-27, see AuthTerminalLocalDataReset)) without key enumeration (MMKV access is get/put only);
  * - a copy older than [maxAgeMillis] reads as absent and is removed;
  * - per user, the copies of at most [maxServersPerUser] servers are kept; a save drops every key
  *   of that user's least recently saved servers. Other users' copies are never touched.

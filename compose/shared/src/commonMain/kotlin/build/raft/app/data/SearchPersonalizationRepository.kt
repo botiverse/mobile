@@ -184,8 +184,8 @@ internal class PersistentSearchPersonalizationRepository(
         }
 
     /**
-     * Sign-out: recent searches and frequent people / channels are the account's, so none outlives
-     * the session (the other per-account caches leave on the same auth-terminal cleanup).
+     * Every scope of every account. Sign-out keeps them: scopes are keyed by (server, principal)
+     * (owner decision 2026-10-27, see AuthTerminalLocalDataReset).
      */
     suspend fun clearAll() {
         searchPersonalizationStorageMutex.withLock {

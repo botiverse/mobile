@@ -528,6 +528,23 @@ internal class RaftSharedStoreProvider private constructor(
     /** Agent detail pages (data-layer plan step 5): memory-only, per-server LRU. */
     internal val agentDetailCache: RaftAgentDetailCache = RaftKeyedSnapshotCache()
 
+    /** Sign-out: in-memory state resets, the account's stored data stays (see the class). */
+    private val authTerminalLocalDataReset =
+        AuthTerminalLocalDataReset(
+            homeSavedStateCache = homeSavedStateCache,
+            offlineResourceCache = offlineResourceCache,
+            memberAvatarRefStore = memberAvatarRefStore,
+            jointConnectionsCache = { jointConnectionsCache },
+            agentDetailCache = agentDetailCache,
+            replyWindowCache = threadDurableLastKnownReader.replyWindowCache,
+            threadPayloadStore = threadPayloadStore,
+            clearViewerMemoryCaches = {
+                // App link previews and consent answers, and Artifact summaries: per viewer, session only.
+                if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
+                if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
+            },
+        )
+
     /**
      * The process auth binding (environment, account) right now, for synchronous first-frame cache
      * reads; null before the binding is known.
@@ -1114,43 +1131,9 @@ internal class RaftSharedStoreProvider private constructor(
             val selectionReceipts = selectedServerStores.captureActiveServerSelectionReceipts()
             val committed =
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
-                    ProcessAttachmentAuthScopes.retireAccount()
-                    homeSavedStateCache.clear()
-                    // Every offline resource (the Saved list, ...): one wipe for all of them, every account.
-                    offlineResourceCache.wipeAllAsync()
-                    // Cached previews are message content: they leave with the session. Losing a
-                    // successor's hints to a late terminal event only costs one cold-start hint.
-                    homeRowHintPersistStorage.clearAll()
-                    // Task #164: the Activity first pages (row previews) are last-known copies
-                    // too: same lifetime (web lastCounts logout clear). The Activity badge counts
-                    // leave through activityUnreadSummaryStore.invalidateAll on AuthSessionEvent.Cleared.
-                    SharedActivityPersistStorage(sharedPreferenceStore).clearAll()
-                    // Workspace notification preferences are the viewer's last-known settings: same lifetime.
-                    settingsServerNotificationLastKnownStore.clearAll()
-                    // Avatar references are account-visible directory data: same lifetime.
-                    memberAvatarRefStore.clearAll()
-                    // Durable rosters (data-layer plan step 3): same lifetime; the epoch bump inside
-                    // fences any roster write still in flight.
-                    serverMembersDurableStore.clearAllAsync()
-                    // Step 5 caches: machines, joint connections, agent details.
-                    computersDurableStore.clearAllAsync()
-                    // Incremental sync cursors: same lifetime (the next sign-in starts with a first sync).
-                    syncCursorStore.clearAll()
-                    threadSendScope.launch {
-                        jointConnectionsCache.clearAll()
-                        agentDetailCache.clearAll()
-                        // Recent searches and frequent people / channels (#45): same lifetime.
-                        searchPersonalizationRepository.clearAll()
-                    }
-                    // Reply previews are message content: same lifetime (page keys are also
-                    // principal-scoped, so a successor never reads them in the meantime).
-                    threadDurableLastKnownReader.replyWindowCache?.clearAll()
-                    // In-memory channel / thread timelines: same lifetime as the reply previews.
-                    threadPayloadStore.clearAll()
-                    // App link previews and consent answers are the viewer's: same lifetime.
-                    if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
-                    // Artifact summaries are per viewer: same lifetime.
-                    if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
+                    // Sign-out keeps the account's stored data (keyed by account; owner decision
+                    // 2026-10-27) and resets every in-memory copy: see AuthTerminalLocalDataReset.
+                    authTerminalLocalDataReset.run()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal

@@ -98,7 +98,18 @@ internal class RaftKeyedSnapshotCache<T : Any, D>(
         durable?.evictServer(server, account)
     }
 
-    /** Sign-out: memory and disk leave with the session. */
+    /**
+     * Sign-out: the in-memory entries leave with the session; the durable rows stay (they are keyed by
+     * environment + account, so only the same account reads them again).
+     */
+    fun clearMemory() {
+        synchronized(lock) {
+            memoryEpoch += 1L
+            entries.clear()
+        }
+    }
+
+    /** Memory and disk. */
     suspend fun clearAll() {
         synchronized(lock) {
             memoryEpoch += 1L
