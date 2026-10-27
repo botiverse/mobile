@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import android.net.Uri
+import android.os.Bundle
+import android.service.notification.StatusBarNotification
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -62,28 +65,12 @@ internal object AndroidUnreadNotificationPoster {
         if (isNotificationChannelBlocked(appContext, channelId)) {
             return mapOf("status" to "error", "code" to "channel_blocked", "channelId" to channelId)
         }
-        val notificationKey =
-            request.optString("notificationKey").takeIf { it.isNotBlank() }
-                ?: "${request.optString("serverId")}:${request.optString("threadId")}:${request.optString("messageId")}"
-        val notificationId = stableNotificationId(notificationKey)
-        val contentIntent = unreadNotificationContentIntent(appContext, request, notificationId)
         return runCatching {
-            NotificationManagerCompat.from(appContext)
-                .notify(
-                    notificationId,
-                    buildUnreadNotification(
-                        context = appContext,
-                        channelId = channelId,
-                        request = request,
-                        previewMode = currentPushPreviewMode(),
-                        contentIntent = contentIntent
-                    )
-                )
-            mapOf(
-                "status" to "ok",
-                "code" to "posted",
-                "notificationId" to notificationId,
-                "channelId" to channelId
+            postGroupedUnreadNotification(
+                context = appContext,
+                channelId = channelId,
+                request = request,
+                previewMode = currentPushPreviewMode()
             )
         }.getOrElse { error ->
             mapOf(
@@ -94,13 +81,177 @@ internal object AndroidUnreadNotificationPoster {
         }
     }
 
+    private val groupingLock = Any()
+    private val recentPosts = UnreadRecentPosts()
+
     /**
-     * The tray notification for one unread request. Both entry points build it here: FCM
-     * (`RaftFirebaseMessagingService`, possibly already redacted by the server) and the local realtime
-     * path (`AndroidAppScopeRealtimeHostContext`, raw content, the only path on devices without GMS).
-     * [previewMode] is the device's choice from [KeyValuePushPreviewModePreferenceStore]; the title,
-     * the collapsed text and the expanded big text all use the same resolved text, and the lock
-     * screen gets a content-free public version.
+     * Posts [request] into its conversation notification and refreshes its server's group summary
+     * (see [AndroidUnreadNotificationGrouping] for the shape). The gates (server, permission, channel)
+     * are the caller's. Serialized: FCM and the local realtime path post from different threads, and
+     * each post reads the conversation's history before it replaces it.
+     */
+    @SuppressLint("MissingPermission") // hasNotificationPermission is checked by the caller.
+    internal fun postGroupedUnreadNotification(
+        context: Context,
+        channelId: String,
+        request: JSONObject,
+        previewMode: PushPreviewMode,
+        whenMillis: Long = System.currentTimeMillis(),
+        contentIntent: (notificationId: Int) -> PendingIntent? = { id ->
+            unreadNotificationContentIntent(context.applicationContext, request, id)
+        }
+    ): Map<String, Any> = synchronized(groupingLock) {
+        val appContext = context.applicationContext
+        val serverId = request.optString("serverId").trim()
+        val conversationKey = AndroidUnreadNotificationGrouping.conversationKey(request)
+        val notificationId = AndroidUnreadNotificationGrouping.conversationNotificationId(conversationKey)
+        val previous =
+            recentPosts.history(notificationId)
+                ?: activeUnreadNotifications(appContext)
+                    .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG && it.id == notificationId }
+                    ?.let { UnreadConversationHistory.readFrom(it.notification.extras) }
+                ?: UnreadConversationHistory.EMPTY
+        val notification =
+            buildUnreadNotification(
+                context = appContext,
+                channelId = channelId,
+                request = request,
+                previewMode = previewMode,
+                contentIntent = contentIntent(notificationId),
+                whenMillis = whenMillis,
+                previous = previous,
+                deleteIntent = unreadNotificationDismissIntent(appContext)
+            )
+        NotificationManagerCompat.from(appContext)
+            .notify(AndroidUnreadNotificationGrouping.CONVERSATION_TAG, notificationId, notification)
+        val history = UnreadConversationHistory.readFrom(notification.extras)
+        recentPosts.record(
+            notificationId = notificationId,
+            serverId = serverId,
+            history = history,
+            entry =
+                UnreadSummaryEntry(
+                    title = notification.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE).orEmpty(),
+                    latestLine = history.lines.lastOrNull().orEmpty(),
+                    count = history.count,
+                    postedAtMillis = whenMillis
+                )
+        )
+        refreshServerSummary(appContext, serverId)
+        mapOf(
+            "status" to "ok",
+            "code" to "posted",
+            "notificationId" to notificationId,
+            "channelId" to channelId,
+            "count" to history.count
+        )
+    }
+
+    /**
+     * Cancels every group summary left without a conversation and recounts the others. A summary is
+     * only removed with its children when the user swipes the whole group; a conversation tapped open
+     * (auto-cancel) or swiped on its own leaves the summary behind, which Android then shows as a
+     * stale standalone notification. Called when a conversation notification is dismissed
+     * ([RaftUnreadNotificationDismissReceiver]) and when the app comes to the foreground, which is
+     * where a tap on a conversation notification lands.
+     */
+    fun refreshUnreadGroupSummaries(context: Context) {
+        val appContext = context.applicationContext
+        runCatching {
+            synchronized(groupingLock) {
+                val active = activeUnreadNotifications(appContext)
+                // Whatever is not in the tray by now was dismissed: the post itself is long done.
+                recentPosts.retainOnly(
+                    active.filter { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG }.map { it.id }.toSet()
+                )
+                val serverIds =
+                    active
+                        .mapNotNull { it.notification.extras?.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID) }
+                        .toSet()
+                for (serverId in serverIds) refreshServerSummary(appContext, serverId, onlyIfChanged = true)
+            }
+        }
+    }
+
+    /**
+     * Must hold [groupingLock]. Only re-posts a summary that has conversations, which were themselves
+     * posted with the permission; without it Android drops the post. [onlyIfChanged] leaves a posted
+     * summary that already has the right count alone (the foreground refresh runs on every resume).
+     */
+    @SuppressLint("MissingPermission")
+    private fun refreshServerSummary(context: Context, serverId: String, onlyIfChanged: Boolean = false) {
+        val summaryId = AndroidUnreadNotificationGrouping.summaryNotificationId(serverId)
+        val entries = unreadSummaryEntries(context, serverId)
+        val manager = NotificationManagerCompat.from(context)
+        if (entries.isEmpty()) {
+            manager.cancel(AndroidUnreadNotificationGrouping.SUMMARY_TAG, summaryId)
+            return
+        }
+        if (onlyIfChanged) {
+            val posted =
+                activeUnreadNotifications(context)
+                    .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG && it.id == summaryId }
+            if (posted != null && posted.notification.number == entries.sumOf { it.count }) return
+        }
+        manager.notify(
+            AndroidUnreadNotificationGrouping.SUMMARY_TAG,
+            summaryId,
+            buildUnreadGroupSummary(
+                context = context,
+                serverId = serverId,
+                entries = entries,
+                contentIntent = unreadSummaryContentIntent(context, summaryId)
+            )
+        )
+    }
+
+    /**
+     * The conversations of [serverId] still in the tray, newest first, plus the ones this process
+     * posted a moment ago that `activeNotifications` may not list yet ([UnreadRecentPosts]).
+     */
+    private fun unreadSummaryEntries(context: Context, serverId: String): List<UnreadSummaryEntry> {
+        val fromTray =
+            activeUnreadNotifications(context)
+                .filter {
+                    it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG &&
+                        it.notification.extras?.getString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID) == serverId
+                }
+                .associate { posted ->
+                    val extras = posted.notification.extras
+                    val history = UnreadConversationHistory.readFrom(extras)
+                    posted.id to
+                        UnreadSummaryEntry(
+                            title = extras.getString(AndroidUnreadNotificationGrouping.EXTRA_TITLE).orEmpty(),
+                            latestLine = history.lines.lastOrNull().orEmpty(),
+                            count = history.count.coerceAtLeast(1),
+                            postedAtMillis = posted.notification.`when`
+                        )
+                }
+        return (fromTray + recentPosts.entries(serverId)).values.sortedByDescending { it.postedAtMillis }
+    }
+
+    private fun activeUnreadNotifications(context: Context): List<StatusBarNotification> =
+        runCatching {
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .activeNotifications
+                .filter {
+                    it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG ||
+                        it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG
+                }
+        }.getOrDefault(emptyList())
+
+    /**
+     * The tray notification of one conversation, with [request] as its newest message. Both entry
+     * points build it here: FCM (`RaftFirebaseMessagingService`, possibly already redacted by the
+     * server) and the local realtime path (`AndroidAppScopeRealtimeHostContext`, raw content, the only
+     * path on devices without GMS). [previewMode] is the device's choice from
+     * [KeyValuePushPreviewModePreferenceStore]; the title, the collapsed text and every listed message
+     * use resolved text, and the lock screen gets a content-free public version.
+     *
+     * [previous] is what the conversation's notification already shows. With one message the
+     * expanded view is that message's big text; with more it lists the recent ones (InboxStyle), the
+     * collapsed text stays the newest, and the count is the notification number and the summary line.
+     * The history rides in the extras for the next message ([UnreadConversationHistory]).
      */
     internal fun buildUnreadNotification(
         context: Context,
@@ -109,7 +260,9 @@ internal object AndroidUnreadNotificationPoster {
         previewMode: PushPreviewMode,
         contentIntent: PendingIntent?,
         strings: PushPreviewStrings = AndroidResourcePushPreviewStrings(context),
-        whenMillis: Long = System.currentTimeMillis()
+        whenMillis: Long = System.currentTimeMillis(),
+        previous: UnreadConversationHistory = UnreadConversationHistory.EMPTY,
+        deleteIntent: PendingIntent? = null
     ): Notification {
         val appContext = context.applicationContext
         val text =
@@ -120,28 +273,104 @@ internal object AndroidUnreadNotificationPoster {
                 defaultTitle = appContext.getString(R.string.app_name),
                 defaultBody = appContext.getString(R.string.notification_unread_default_text)
             )
+        val history = previous.appended(request.optString("messageId"), text.body)
+        val countText =
+            appContext.resources.getQuantityString(R.plurals.notification_unread_message_count, history.count, history.count)
+        val serverId = request.optString("serverId").trim()
         val publicVersion =
             NotificationCompat.Builder(appContext, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(text.publicTitle)
-                .setContentText(text.publicBody)
+                .setContentText(if (history.count > 1) countText else text.publicBody)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setWhen(whenMillis)
                 .setShowWhen(true)
                 .build()
+        val style =
+            if (history.count > 1) {
+                NotificationCompat.InboxStyle()
+                    .setSummaryText(countText)
+                    .also { inbox -> history.lines.forEach { inbox.addLine(it) } }
+            } else {
+                NotificationCompat.BigTextStyle().bigText(text.body)
+            }
+        val extras =
+            Bundle().apply {
+                putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId)
+                putString(AndroidUnreadNotificationGrouping.EXTRA_CONVERSATION_KEY, AndroidUnreadNotificationGrouping.conversationKey(request))
+                putString(AndroidUnreadNotificationGrouping.EXTRA_TITLE, text.title)
+                history.writeTo(this)
+            }
         return NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(text.title)
             .setContentText(text.body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text.body))
+            .setStyle(style)
+            .setNumber(history.count)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
+            .setGroup(AndroidUnreadNotificationGrouping.groupKey(serverId))
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
             .setWhen(whenMillis)
             .setShowWhen(true)
             .setContentIntent(contentIntent)
+            .setDeleteIntent(deleteIntent)
             .setAutoCancel(true)
+            .addExtras(extras)
+            .build()
+    }
+
+    /**
+     * The group summary of one server: what Android shows for the bundle where it renders one (the
+     * collapsed group on older launchers, wearables), and what keeps the server's conversations
+     * together. It lists each conversation with its newest message, newest first, and counts every
+     * unread message across them. It never alerts (`GROUP_ALERT_CHILDREN`): the conversation that
+     * changed already did.
+     */
+    internal fun buildUnreadGroupSummary(
+        context: Context,
+        serverId: String,
+        entries: List<UnreadSummaryEntry>,
+        contentIntent: PendingIntent?
+    ): Notification {
+        val appContext = context.applicationContext
+        val total = entries.sumOf { it.count }
+        val countText =
+            appContext.resources.getQuantityString(R.plurals.notification_unread_message_count, total, total)
+        val appName = appContext.getString(R.string.app_name)
+        val inbox =
+            NotificationCompat.InboxStyle()
+                .setBigContentTitle(appName)
+                .setSummaryText(countText)
+        entries.take(AndroidUnreadNotificationGrouping.MAX_LINES).forEach { entry ->
+            inbox.addLine(listOf(entry.title, entry.latestLine).filter { it.isNotBlank() }.joinToString(": "))
+        }
+        val publicVersion =
+            NotificationCompat.Builder(appContext, UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(appName)
+                .setContentText(countText)
+                .build()
+        return NotificationCompat.Builder(appContext, UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(appName)
+            .setContentText(countText)
+            .setStyle(inbox)
+            .setNumber(total)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setGroup(AndroidUnreadNotificationGrouping.groupKey(serverId))
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+            .setOnlyAlertOnce(true)
+            .setWhen(entries.maxOfOrNull { it.postedAtMillis } ?: System.currentTimeMillis())
+            .setShowWhen(true)
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .addExtras(Bundle().apply { putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId) })
             .build()
     }
 
@@ -241,6 +470,30 @@ internal object AndroidUnreadNotificationPoster {
         )
     }
 
+    /** A tap on a server's summary opens the app where it was: the summary has no single conversation. */
+    private fun unreadSummaryContentIntent(context: Context, summaryId: Int): PendingIntent? {
+        val intent =
+            context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_PUSH_NOTIFICATION)
+            } ?: return null
+        return PendingIntent.getActivity(
+            context,
+            summaryId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /** Fired when the user dismisses a conversation, so its server's summary is recounted or removed. */
+    private fun unreadNotificationDismissIntent(context: Context): PendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            0,
+            Intent(context, RaftUnreadNotificationDismissReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
         val appContext = context.applicationContext
         val basePageData =
@@ -281,15 +534,6 @@ internal object AndroidUnreadNotificationPoster {
             "mention" -> UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
             else -> UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID
         }
-
-    private fun stableNotificationId(key: String): Int {
-        val hash = key.hashCode()
-        return if (hash == Int.MIN_VALUE) {
-            Int.MAX_VALUE
-        } else {
-            kotlin.math.abs(hash).coerceAtLeast(1)
-        }
-    }
 
     internal fun SystemUnreadNotificationRequest.toJson(): JSONObject =
         JSONObject()

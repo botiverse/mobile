@@ -285,6 +285,11 @@
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
     <string name="notification_unread_default_text">You have a new unread message.</string>
+    <!-- Count of unread messages stacked in one conversation notification, and in a server's group summary. -->
+    <plurals name="notification_unread_message_count">
+        <item quantity="one">%1$d new message</item>
+        <item quantity="other">%1$d new messages</item>
+    </plurals>
     <string name="push_preview_hidden_title" translatable="false">Raft</string>
     <string name="push_preview_hidden_message">You have a new message</string>
     <string name="push_preview_hidden_mention">You were mentioned</string>

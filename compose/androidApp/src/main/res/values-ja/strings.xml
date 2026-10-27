@@ -285,6 +285,9 @@
     <string name="settings_notification_channel_name">設定のテスト通知</string>
     <string name="settings_notification_channel_description">モバイル設定からのローカルテスト通知。</string>
     <string name="notification_unread_default_text">新しい未読メッセージがあります。</string>
+    <plurals name="notification_unread_message_count">
+        <item quantity="other">%1$d 件の新しいメッセージ</item>
+    </plurals>
     <string name="push_preview_hidden_message">新しいメッセージがあります</string>
     <string name="push_preview_hidden_mention">メンションされました</string>
     <string name="push_preview_sender_only_message">%1$s さんからメッセージが届きました</string>
