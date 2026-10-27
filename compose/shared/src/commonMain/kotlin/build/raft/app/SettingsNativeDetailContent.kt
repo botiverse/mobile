@@ -16,6 +16,8 @@ import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.ServerPublicVisibilityRepository
+import build.raft.app.data.ServerAppearanceRepository
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SERVER_ACTION_PROFILE_SAVE
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.SharedAuthDataSource
@@ -189,6 +191,9 @@ internal fun SettingsNativeDetailScreen() {
         timeContext = null,
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
+        serverAppearanceRepository = environment.serverAppearanceRepository,
+        authStore = environment.authStore,
+        onOpenBillingPage = { pager.openSettingsBillingPage(environment.storeScope) },
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
@@ -227,6 +232,10 @@ internal fun SettingsNativeDetailPageContent(
     diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     serverPublicVisibilityRepository: ServerPublicVisibilityRepository? = null,
+    /** With [authStore], drives Appearance's "Theme on {server}"; null hides it. */
+    serverAppearanceRepository: ServerAppearanceRepository? = null,
+    authStore: RaftAuthSessionStore? = null,
+    onOpenBillingPage: () -> Unit = {},
     webBaseUrl: String = "",
     onLogout: () -> Unit
 ) {
@@ -475,7 +484,18 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsNativeDetailPage.Appearance ->
+            SettingsNativeDetailPage.Appearance -> {
+                val serverTheme =
+                    if (serverAppearanceRepository != null && authStore != null) {
+                        rememberSettingsServerThemeBinding(
+                            repository = serverAppearanceRepository,
+                            authStore = authStore,
+                            onToast = settingsCapabilities::bridgeToast,
+                            onOpenBilling = onOpenBillingPage,
+                        )
+                    } else {
+                        null
+                    }
                 SettingsAppearanceContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
@@ -491,8 +511,10 @@ internal fun SettingsNativeDetailPageContent(
                             )
                         )
                     },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
+                    serverTheme = serverTheme,
                 )
+            }
             SettingsNativeDetailPage.Server -> {
                 val currentServer = session?.currentServerSummary()
                 val publicAccess =
