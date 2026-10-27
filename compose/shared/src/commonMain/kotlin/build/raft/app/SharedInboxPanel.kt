@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactWebUrl
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
@@ -2461,11 +2462,21 @@ internal fun Modifier.activityRowGestures(
 ): Modifier {
     val rootAnchor = remember(gestureKey) { RaftLiveRootAnchorRef(identity = gestureKey) }
     val currentOnPressedChange by rememberUpdatedState(onPressedChange)
+    // The long press that opens the row's menu buzzes, as a message's does (RaftHaptics, #proj-mobile #50).
+    val haptics = rememberRaftHaptics()
+    // Same identity as onOpenMenu itself, so the callbacks compare equal across recompositions as before.
+    val openMenu =
+        remember(haptics, onOpenMenu) {
+            { anchor: RaftPopoverAnchor ->
+                haptics.longPress()
+                onOpenMenu(anchor)
+            }
+        }
     val gestureOwner =
         rememberRaftGestureOwner(
             surface = "activity-row",
             semanticIdentity = gestureKey,
-            callbacks = ActivityRowGestureCallbacks(onClick, onOpenMenu, rootAnchor)
+            callbacks = ActivityRowGestureCallbacks(onClick, openMenu, rootAnchor)
         )
     val anchored =
         this

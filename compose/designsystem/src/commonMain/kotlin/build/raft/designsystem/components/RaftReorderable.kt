@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -19,7 +20,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
@@ -34,7 +34,6 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -343,7 +342,7 @@ fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: Scrol
 }
 
 /**
- * One row of a reorderable column, under [key]: a 500ms hold lifts it (a haptic tick, the
+ * One row of a reorderable column, under [key]: a 500ms hold lifts it (a long-press buzz, a tick at each slot it passes, the
  * `shadow-float` card on `layer-popover`), moving drags it, letting go commits a changed order
  * through [onOrderChange]. A tap stays the row's own click; a hold let go without moving
  * clicks nothing. Screen readers get [moveUpLabel] / [moveDownLabel] actions. Put it first on
@@ -359,7 +358,7 @@ fun Modifier.raftReorderableItem(
     enabled: Boolean = true,
 ): Modifier {
     if (!enabled) return this
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberRaftHaptics()
     val commit by rememberUpdatedState(onOrderChange)
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val lifted = state.liftedKey == key
@@ -421,7 +420,7 @@ fun Modifier.raftReorderableItem(
                     held = true
                 }
                 if (!held || !state.lift(key)) return@awaitEachGesture
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptics.longPress()
                 var lastY = rootY(down.position) ?: 0f
                 state.fingerY = lastY
                 try {
@@ -441,7 +440,10 @@ fun Modifier.raftReorderableItem(
                         }
                         val y = rootY(change.position) ?: continue
                         state.fingerY = y
+                        val before = state.order
                         state.dragBy(y - lastY)
+                        // A tick each time the lifted row takes another slot (RaftHaptics.tick).
+                        if (state.order != before) haptics.tick()
                         lastY = y
                     }
                 } finally {

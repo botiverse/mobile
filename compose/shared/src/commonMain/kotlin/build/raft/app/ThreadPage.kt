@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.transfer.RaftTransferMeter
@@ -25555,6 +25556,8 @@ private fun ThreadMessageCardContent(
     val compactTimestampLabel = data.compactTimestampLabel
     val onShowActions = callbacks.onShowActions
     val onLongPressMenuOpened = callbacks.onLongPressMenuOpened
+    // The long press that opens a message's menu buzzes (RaftHaptics.longPress, #proj-mobile #50).
+    val haptics = rememberRaftHaptics()
     val onOpenMember = callbacks.onOpenMember
     val onExternalAuthor = callbacks.onExternalAuthor
     val onOpenThread = callbacks.onOpenThread
@@ -25860,6 +25863,7 @@ private fun ThreadMessageCardContent(
                                 )
                             },
                             onShowActions = { anchor ->
+                                haptics.longPress()
                                 onShowActions(anchor)
                                 onLongPressMenuOpened()
                             },

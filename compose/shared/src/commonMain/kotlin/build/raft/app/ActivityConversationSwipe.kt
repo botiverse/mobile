@@ -51,7 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.rememberRaftActivitySwipeHaptic
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.data.InboxItem
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityMarkAction
@@ -800,8 +800,9 @@ internal fun ActivitySwipeActionsBox(
     val reveal = remember(gestureKey) { Animatable(restReveal(openSide)) }
     // True while a finger drives the row or a Done is completing: the row then owns its reveal.
     var busy by remember(gestureKey) { mutableStateOf(false) }
-    val fullDoneTick = rememberRaftActivitySwipeHaptic()
-    val currentFullDoneTick by rememberUpdatedState(fullDoneTick)
+    // Crossing into full Done is a gesture threshold (RaftHaptics): both platforms buzz now, iOS too.
+    val haptics = rememberRaftHaptics()
+    val currentHaptics by rememberUpdatedState(haptics)
     val scope = rememberCoroutineScope()
     val currentOnOpenChange by rememberUpdatedState(onOpenChange)
     val currentOnDone by rememberUpdatedState(onDone)
@@ -960,7 +961,7 @@ internal fun ActivitySwipeActionsBox(
                                 )
                             change.consume()
                             if (tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))) {
-                                currentFullDoneTick.tick()
+                                currentHaptics.threshold()
                             }
                             scope.launch { reveal.snapTo(target) }
                         }
