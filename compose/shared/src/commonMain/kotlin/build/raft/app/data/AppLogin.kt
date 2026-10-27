@@ -99,6 +99,15 @@ internal class AppLoginCoordinator(
 /** [AppLoginCoordinator.complete] result for a callback that belongs to an earlier, replaced attempt. */
 internal const val APP_LOGIN_STALE_CALLBACK = "stale"
 
+/**
+ * [RaftWebLoginCompletion] status while an accepted callback is being exchanged: the sign-in page
+ * keeps showing "Signing in…" instead of treating the return to the app as a cancel.
+ */
+internal const val APP_LOGIN_CALLBACK_RECEIVED = "callback_received"
+
+/** [RaftWebLoginCompletion] status for a browser sheet that closed without a callback (iOS cancel). */
+internal const val APP_LOGIN_BROWSER_CLOSED = "browser_closed"
+
 internal object RaftAppLogin {
     private val coordinator by lazy {
         AppLoginCoordinator(

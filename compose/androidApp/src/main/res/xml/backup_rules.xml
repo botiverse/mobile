@@ -7,7 +7,8 @@
     installation id make two devices share one session family, and the server then signs one of
     them out after the other refreshes. Excluded: the auth session, auth/push installation ids,
     push registration, login handoff state, the account-bound message database and per-device
-    state. Still backed up: UI preferences (MMKV slockLocal) and the API environment choice.
+    state (MMKV slockDeviceState and others). Still backed up: UI preferences (MMKV slockLocal)
+    and the API environment choice.
     Caches (cacheDir) and noBackupFilesDir are never backed up.
 -->
 <full-backup-content>
@@ -30,6 +31,9 @@
     <!-- per-device network recovery latch -->
     <exclude domain="file" path="mmkv/slockNetworkRecovery" />
     <exclude domain="file" path="mmkv/slockNetworkRecovery.crc" />
+    <!-- per-install state that must not outlive the install (e.g. "asked for notification permission") -->
+    <exclude domain="file" path="mmkv/slockDeviceState" />
+    <exclude domain="file" path="mmkv/slockDeviceState.crc" />
     <!-- widget state (account data, per-device widget ids) -->
     <exclude domain="file" path="mmkv/slock_status_widget" />
     <exclude domain="file" path="mmkv/slock_status_widget.crc" />

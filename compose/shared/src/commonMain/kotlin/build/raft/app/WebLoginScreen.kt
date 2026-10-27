@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -10,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.APP_LOGIN_BROWSER_CLOSED
 import build.raft.app.data.APP_LOGIN_STALE_CALLBACK
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
@@ -25,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -47,18 +52,44 @@ internal fun WebLoginScreen(
         bridge = bridge,
         routeScope = RaftInAppBrowserRouteScope.Unscoped,
     )
-    var starting by remember { mutableStateOf(false) }
+    val attempt =
+        remember(scope) {
+            WebLoginAttempt(
+                scope,
+                endsOnResume = raftPlatformWebLoginEndsOnResume(),
+                logger = { raftLogInfo("SlockAppLogin", it) },
+            )
+        }
     var failed by remember { mutableStateOf(false) }
     var staleCallback by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, attempt) {
+        // Coming back from the browser without a callback (cancelled, tab closed) re-enables the button.
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> attempt.onPaused()
+                    Lifecycle.Event.ON_RESUME -> attempt.onResumed()
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val completion by RaftWebLoginCompletion.status.collectAsState()
     LaunchedEffect(completion) {
-        when (completion) {
+        val status = completion
+        attempt.onCompletion(status)
+        when (status) {
             "app_shell", "choose_server" -> {
                 // The exchange may have written the session through another store instance (no shell yet when
                 // the callback arrived); read it again for a moment instead of failing on the first miss.
                 when (val session = awaitStoredSession { auth.currentSession() }) {
                     is SharedAuthResult.Success -> pager.openPostAuthRoute(session.data)
-                    else -> failed = true
+                    else -> {
+                        failed = true
+                        attempt.onSessionMissing()
+                    }
                 }
                 RaftWebLoginCompletion.clear()
             }
@@ -70,52 +101,85 @@ internal fun WebLoginScreen(
                 staleCallback = true
                 RaftWebLoginCompletion.clear()
             }
+            APP_LOGIN_BROWSER_CLOSED -> RaftWebLoginCompletion.clear()
         }
     }
+    WebLoginContent(
+        consentAccepted = consentAccepted,
+        pending = attempt.pending,
+        error =
+            when {
+                failed -> stringResource(Res.string.auth_web_login_failed)
+                staleCallback -> stringResource(Res.string.auth_web_login_stale_callback)
+                else -> null
+            },
+        hintHost = webLoginHintHost(webUrl),
+        onConsentChange = { consentAccepted = it },
+        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
+        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
+        onSignIn = {
+            startWebLoginWithConsent(consentAccepted, attempt.pending) {
+                if (!attempt.tryBegin()) return@startWebLoginWithConsent
+                failed = false
+                staleCallback = false
+                RaftWebLoginCompletion.clear()
+                scope.launch {
+                    val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
+                    val opened = result is DataResult.Content
+                    failed = !opened
+                    attempt.onBrowserOpened(opened)
+                }
+            }
+        },
+        onOpenPrivateDeployment = onOpenPrivateDeployment,
+    )
+}
+
+/**
+ * The sign-in page's form. While [pending] the button reads "Signing in…" and ignores taps, and
+ * the self-hosted entry is disabled too, so a second request cannot start.
+ */
+@Composable
+internal fun WebLoginContent(
+    consentAccepted: Boolean,
+    pending: Boolean,
+    error: String?,
+    hintHost: String,
+    onConsentChange: (Boolean) -> Unit,
+    onOpenTerms: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onSignIn: () -> Unit,
+    onOpenPrivateDeployment: () -> Unit,
+) {
     AuthScaffold(
         contentScrollable = true,
         scrollContentVerticalArrangement = Arrangement.Center,
     ) {
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {
-            AuthError(
-                when {
-                    failed -> stringResource(Res.string.auth_web_login_failed)
-                    staleCallback -> stringResource(Res.string.auth_web_login_stale_callback)
-                    else -> null
-                }
-            )
+            AuthError(error)
             AuthTermsAgreement(
                 checked = consentAccepted,
-                onCheckedChange = { consentAccepted = it },
-                onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
-                onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
+                onCheckedChange = onConsentChange,
+                onOpenTerms = onOpenTerms,
+                onOpenPrivacy = onOpenPrivacy,
             )
             AuthActionButton(
-                text = stringResource(Res.string.auth_web_login_button),
+                text =
+                    stringResource(
+                        if (pending) Res.string.auth_web_login_button_pending else Res.string.auth_web_login_button
+                    ),
                 tone = AuthButtonTone.Pink,
-                enabled = consentAccepted && !starting,
-                loading = starting,
-                onClick = {
-                    startWebLoginWithConsent(consentAccepted, starting) {
-                        starting = true
-                        failed = false
-                        staleCallback = false
-                        RaftWebLoginCompletion.clear()
-                        scope.launch {
-                            try {
-                                val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
-                                failed = result !is DataResult.Content
-                            } finally {
-                                starting = false
-                            }
-                        }
-                    }
-                },
+                // Busy, not unavailable (Kirby #3820): while pending the button keeps its pink and ink
+                // with a spinner before "Signing in…"; `loading` is what ignores the taps.
+                enabled = consentAccepted || pending,
+                loading = pending,
+                busySpinner = true,
+                onClick = onSignIn,
             )
             Text(
                 // Follows the current environment: the official web app by default, the private web address once set.
-                text = stringResource(Res.string.auth_web_login_hint, webLoginHintHost(webUrl)),
+                text = stringResource(Res.string.auth_web_login_hint, hintHost),
                 modifier = Modifier.fillMaxWidth(),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 textAlign = TextAlign.Center,
@@ -123,6 +187,7 @@ internal fun WebLoginScreen(
             AuthTextLink(
                 text = stringResource(Res.string.auth_web_login_private_entry),
                 onClick = onOpenPrivateDeployment,
+                enabled = !pending,
             )
         }
     }

@@ -562,6 +562,12 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 
+    /** The host's raw `getNotificationPermissionStatus` code (`permission_*`), or null without one. */
+    suspend fun loadSystemNotificationPermissionCode(): String? =
+        settingsCapability(buildJsonObject { put("action", "getNotificationPermissionStatus") })
+            ?.optString("code")
+            ?.takeIf(String::isNotBlank)
+
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
         systemNotificationAction("requestNotificationPermission")
 

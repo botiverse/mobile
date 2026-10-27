@@ -457,6 +457,8 @@ final class RaftIosMobileOAuthHost: NSObject,
                         "SlockIosAppLogin",
                         "app_login_session_ended reason=\(cancelled ? "cancelled" : "failed")"
                     )
+                    // The sign-in page shows "Signing in…" until a callback or this.
+                    RaftAppLoginBridge.shared.reportBrowserClosed()
                 }
             }
             authSession.presentationContextProvider = self

@@ -934,6 +934,54 @@ const val PUSH_PREVIEW_MODE_DEFAULT = "full"
 const val PUSH_PREVIEW_MODE_UNREADABLE = "hidden"
 
 /**
+ * Whether the app already asked for the system notification permission on its own (once, after
+ * sign-in; artin 10-27). Kept across sign-outs: the automatic prompt never repeats, Settings ›
+ * Notifications stays the way to ask again.
+ *
+ * Install state, not a UI preference: it lives in [RAFT_DEVICE_STATE_MMKV_NAMESPACE], which
+ * backup and device transfer never copy (a restored "asked" without the permission, which is not
+ * restored, would never ask again; sindresorhus #3820).
+ */
+interface NotificationPermissionPromptPreferenceStore {
+    fun readAutoPromptAskedSync(): Boolean
+    fun markAutoPromptAsked()
+
+    /** The request never reached the system (no activity to show it on): the next launch may ask. */
+    fun clearAutoPromptAsked()
+}
+
+class KeyValueNotificationPermissionPromptPreferenceStore(
+    private val store: SharedPreferenceStore
+) : NotificationPermissionPromptPreferenceStore {
+    override fun readAutoPromptAskedSync(): Boolean =
+        store.getBoolean(NOTIFICATION_PERMISSION_AUTO_PROMPT_ASKED_KEY, defaultValue = false)
+
+    override fun markAutoPromptAsked() {
+        store.putBoolean(NOTIFICATION_PERMISSION_AUTO_PROMPT_ASKED_KEY, true)
+    }
+
+    override fun clearAutoPromptAsked() {
+        store.putString(NOTIFICATION_PERMISSION_AUTO_PROMPT_ASKED_KEY, null)
+    }
+}
+
+/**
+ * App-scope namespace for state that belongs to this install of the app on this device and must
+ * not come back from a backup or a device transfer (Android excludes it in both backup rule
+ * files). Not for UI preferences, which stay in the backed-up [RaftLocalPreferenceStore] namespace.
+ */
+const val RAFT_DEVICE_STATE_MMKV_NAMESPACE = "slockDeviceState"
+
+/** The [RAFT_DEVICE_STATE_MMKV_NAMESPACE] store. Only hosts that install it may call this (Android, desktop). */
+fun raftDeviceStateKeyValueStore(): SharedPreferenceStore =
+    RaftSharedKeyValueStoreProvider.create(
+        namespace = RAFT_DEVICE_STATE_MMKV_NAMESPACE,
+        storageName = "device state"
+    ).store
+
+const val NOTIFICATION_PERMISSION_AUTO_PROMPT_ASKED_KEY = "notifications:permission_auto_prompt_asked"
+
+/**
  * Task #22: the agent-profile tab order the user set (on web or here) for each server, kept so the
  * profile's first frame already shows that order. The server copy stays canonical; this is only the
  * last known value, refreshed on every sidebar-order load or save.

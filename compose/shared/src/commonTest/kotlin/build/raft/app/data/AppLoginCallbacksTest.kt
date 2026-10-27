@@ -60,4 +60,47 @@ class AppLoginCallbacksTest {
         assertEquals(false, RaftAppLoginBridge.completeCallback("raft://login/callback", " ", "c", ""))
         assertTrue(APP_LOGIN_RETURN_URIS.all { it.endsWith("://login/callback") })
     }
+
+    private class CompletionStatus {
+        var value: String? = null
+        val writes = mutableListOf<String?>()
+        val marker = AppLoginCompletionMarker({ value }, { value = it; writes += it }, { value = null; writes += null })
+    }
+
+    @Test fun aDuplicateCallbackNeverOverwritesASuccessfulSignIn() {
+        // sindresorhus #3820: the first callback signed in; "back to app" tapped again sends a second.
+        val status = CompletionStatus()
+        status.marker.callbackAccepted()
+        status.marker.callbackFinished("app_shell")
+        status.marker.callbackAccepted()
+        assertEquals("app_shell", status.value, "the duplicate must not replace the success")
+        status.marker.callbackFinished("ignored")
+        assertEquals("app_shell", status.value)
+        assertEquals(listOf<String?>(APP_LOGIN_CALLBACK_RECEIVED, "app_shell"), status.writes)
+    }
+
+    @Test fun anIgnoredDuplicateWhileTheFirstIsStillExchangingKeepsTheMarker() {
+        val status = CompletionStatus()
+        status.marker.callbackAccepted()
+        status.marker.callbackAccepted()
+        status.marker.callbackFinished("ignored") // the duplicate found no request on file
+        assertEquals(APP_LOGIN_CALLBACK_RECEIVED, status.value, "the first is still being exchanged")
+        status.marker.callbackFinished("choose_server")
+        assertEquals("choose_server", status.value)
+
+        val lone = CompletionStatus()
+        lone.marker.callbackAccepted()
+        lone.marker.callbackFinished("ignored")
+        assertNull(lone.value, "a lone ignored callback clears its marker")
+    }
+
+    @Test fun aCallbackAfterTheBrowserClosedStillMarksItself() {
+        val status = CompletionStatus()
+        status.marker.browserClosed()
+        assertEquals(APP_LOGIN_BROWSER_CLOSED, status.value)
+        status.marker.callbackAccepted()
+        assertEquals(APP_LOGIN_CALLBACK_RECEIVED, status.value)
+        status.marker.browserClosed()
+        assertEquals(APP_LOGIN_CALLBACK_RECEIVED, status.value, "browser closed never overwrites a callback")
+    }
 }

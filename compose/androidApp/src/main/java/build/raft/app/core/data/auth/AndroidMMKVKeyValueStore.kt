@@ -3,6 +3,7 @@ package build.raft.app.core.data.auth
 import android.content.Context
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_STORAGE_KEY
@@ -230,7 +231,8 @@ internal val androidAppScopeSharedKeyValueNamespaces: List<String> =
         SharedApiEnvironmentStore.Namespace,
         RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE,
         RAFT_APP_LOGIN_MMKV_NAMESPACE,
-        RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
+        RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE,
+        RAFT_DEVICE_STATE_MMKV_NAMESPACE
     )
 
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
