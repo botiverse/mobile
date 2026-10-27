@@ -22,6 +22,8 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
@@ -199,16 +201,27 @@ class SharedHomeDataSource(
     /**
      * The last machine list read, per account + server (sync-on Home reloads reuse it). Overwritten
      * by every network read; dropped by [dropHeldMachines] on any machine change, so a reuse never
-     * outlives a change it did not read.
+     * outlives a change it did not read. Guarded by [heldMachinesLock] with [heldMachinesDrops].
      */
     private var lastMachines: Pair<String, ComputerListSummary>? = null
 
     /**
+     * Bumped by every [dropHeldMachines]. A read that started before a drop may have been answered
+     * before the change; it must not become the held list when it lands after the drop.
+     */
+    private var heldMachinesDrops = 0L
+    private val heldMachinesLock = SynchronizedObject()
+
+    /**
      * A machine changed (`machine:status` and the other Machines-scope pushes, sync `machine` rows,
-     * the sync machines refresh): the next Home reload reads `/servers/:id/machines` again.
+     * the sync machines refresh): the next Home reload reads `/servers/:id/machines` again, and a
+     * read already in flight is not held.
      */
     internal fun dropHeldMachines() {
-        lastMachines = null
+        synchronized(heldMachinesLock) {
+            heldMachinesDrops += 1
+            lastMachines = null
+        }
     }
 
     private suspend fun loadNotificationsFromSources(homeReload: Boolean): DataResult<List<SharedHomeNotification>> {
@@ -259,10 +272,11 @@ class SharedHomeDataSource(
                 ?.getNotificationPreference()
                 ?.offlineComputerAlertsEnabled == true
         val cacheKey = "${session.user.id}|${serverId.value}"
-        val reusable =
-            lastMachines?.takeIf { (key, _) ->
-                homeReload && key == cacheKey && serverMembersStore?.incrementalSyncCovers(serverId) == true
-            }?.second
+        val syncCovers = homeReload && serverMembersStore?.incrementalSyncCovers(serverId) == true
+        val (reusable, dropsAtRead) =
+            synchronized(heldMachinesLock) {
+                lastMachines?.takeIf { (key, _) -> syncCovers && key == cacheKey }?.second to heldMachinesDrops
+            }
         if (reusable != null) {
             diagnosticsLogger("home_machine_notifications serverId=${serverId.value} source=held network=false reason=incremental_sync")
             return DataResult.Content(
@@ -271,7 +285,9 @@ class SharedHomeDataSource(
         }
         return when (val result = client.machines(serverId)) {
             is DataResult.Content -> {
-                lastMachines = cacheKey to result.data
+                synchronized(heldMachinesLock) {
+                    if (heldMachinesDrops == dropsAtRead) lastMachines = cacheKey to result.data
+                }
                 DataResult.Content(
                     result.data.toSharedHomeMachineNotifications(
                         offlineComputerAlertsEnabled = offlineComputerAlertsEnabled
