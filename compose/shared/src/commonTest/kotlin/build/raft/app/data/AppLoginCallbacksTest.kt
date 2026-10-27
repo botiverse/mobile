@@ -19,12 +19,9 @@ class AppLoginCallbacksTest {
         }
     }
 
-    @Test fun parsesTheMacAppCallback() {
-        assertEquals(
-            AppLoginCallback("raft-mac://login/callback", "req-1", "abc", ""),
-            parseAppLoginCallback("raft-mac://login/callback?requestId=req-1&code=abc"),
-        )
-        assertNull(parseAppLoginCallback("raft-mac://oauth/callback?requestId=req-1&code=abc"))
+    @Test fun theOldComposeDesktopSchemeIsNotACallback() {
+        assertNull(parseAppLoginCallback("raft-mac://login/callback?requestId=req-1&code=abc"))
+        assertNull(parseAppLoginCallback("raft://oauth/callback?requestId=req-1&code=abc"))
     }
 
     @Test fun decodesPercentEscapesAndKeepsPlusLiteral() {

@@ -17,12 +17,11 @@ Data (key-value stores, database, caches) lives in `~/Library/Application Suppor
 ## Sign-in
 
 "Sign in to Raft" uses the same browser handoff as the mobile apps: the server's app-login
-request with `returnUri = raft-mac://login/callback`, approved in the browser. The packaged macOS
-app declares its own `raft-mac` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
-open-URI handler. It does not use `raft`: the Electron "Raft Desktop" app registers that scheme
-(its sign-in and `raft://v1/...` notification links) and macOS hands a scheme to only one app, so
-`raft://` callbacks went to Raft Desktop. The server must allow `raft-mac://login/callback`
-(slock `appLoginService.ts`, or `APP_LOGIN_RETURN_URIS` where that is set). Elsewhere (and for
+request with `returnUri = raft://login/callback`, approved in the browser. The packaged macOS
+app declares the `raft` URL scheme (`CFBundleURLTypes`), so the callback reaches the app's
+open-URI handler. The Electron "Raft Desktop" app registers `raft` too, and macOS hands a scheme
+to only one app: with both installed, sign-in may land in Raft Desktop (uninstall it). The
+server allows `raft://login/callback` (slock `appLoginService.ts`). Elsewhere (and for
 `./gradlew :desktopApp:run`) start the app again with the callback URL as its argument: the second
 launch hands it to the running app and exits.
 

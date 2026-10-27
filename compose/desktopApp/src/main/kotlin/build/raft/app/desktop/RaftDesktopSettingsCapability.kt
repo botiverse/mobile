@@ -20,9 +20,8 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object RaftDesktopSettingsCapability {
     /**
-     * One of the server's allowed app-login return URIs (exact match). The Mac app's own scheme:
-     * the Electron "Raft Desktop" app also registers `raft://`, and macOS handed `raft://` sign-in
-     * callbacks to it instead of this app.
+     * One of the server's allowed app-login return URIs (exact match), the release apps' `raft`
+     * (see [RaftDesktopLoginCallbacks] for Raft Desktop also claiming it).
      */
     const val APP_LOGIN_RETURN_URI = "${RaftDesktopLoginCallbacks.SCHEME}://login/callback"
 

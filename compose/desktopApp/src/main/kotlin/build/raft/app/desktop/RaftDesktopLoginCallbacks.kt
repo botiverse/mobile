@@ -17,22 +17,22 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
- * Browser sign-in callbacks (`raft-mac://login/callback?...`).
+ * Browser sign-in callbacks (`raft://login/callback?...`).
  *
- * - macOS: the packaged app declares the `raft-mac` URL scheme (Info.plist, see build.gradle.kts);
- *   macOS delivers the URL to the running app's open-URI handler. Not `raft`: the Electron
- *   "Raft Desktop" app registers that scheme (for its sign-in and `raft://v1/...` notification
- *   links), and macOS gives a scheme to only one app.
+ * - macOS: the packaged app declares the `raft` URL scheme (Info.plist, see build.gradle.kts);
+ *   macOS delivers the URL to the running app's open-URI handler. The Electron "Raft Desktop" app
+ *   registers `raft` too and macOS gives a scheme to only one app: with both installed, sign-in
+ *   may land in Raft Desktop.
  * - Elsewhere (and development runs) a URL handler starts the app again with the URL as an
- *   argument: a second instance forwards its `raft-mac://` arguments to the running one over a
+ *   argument: a second instance forwards its `raft://login/callback` arguments to the running one over a
  *   loopback socket and exits, so the waiting sign-in completes. The running instance writes its
  *   port and a random 32-byte secret to an owner-only (0600) file in the data dir; a forward must
  *   present the secret (compared in constant time), so another local user cannot inject callbacks.
  */
 object RaftDesktopLoginCallbacks {
     /** The URL scheme this app registers (Info.plist `CFBundleURLSchemes`, build.gradle.kts). */
-    const val SCHEME = "raft-mac"
-    private const val PREFIX = "$SCHEME://"
+    const val SCHEME = "raft"
+    private const val PREFIX = "$SCHEME://login/callback"
     private const val MAX_LINES = 8
     private const val MAX_LINE_CHARS = 4_096
     private const val SOCKET_TIMEOUT_MILLIS = 2_000
@@ -55,7 +55,7 @@ object RaftDesktopLoginCallbacks {
         callbacks.forEach(::accept)
     }
 
-    /** The arguments / forwarded lines that are this app's callbacks (`raft-mac://`, not `raft://`). */
+    /** The arguments / forwarded lines that are this app's callbacks (`raft://login/callback`, not other `raft://` links). */
     internal fun callbackArguments(values: List<String>): List<String> = values.filter { it.startsWith(PREFIX) }
 
     fun accept(uri: String) {

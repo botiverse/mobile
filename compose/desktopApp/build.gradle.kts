@@ -61,11 +61,11 @@ compose.desktop {
                 // Not the iOS app's build.raft.app: on Apple Silicon the iOS app can be installed too.
                 bundleID = "build.raft.app.desktop"
                 appCategory = "public.app-category.productivity"
-                // Browser sign-in returns to raft-mac://login/callback (an app-login return URI the
-                // server allows); macOS hands it to the app's open-URI handler. Not `raft`: the
-                // Electron "Raft Desktop" app registers it (sign-in and raft://v1/... notification
-                // links) and macOS gives each scheme to one app. Keep in sync with
-                // RaftDesktopLoginCallbacks.SCHEME.
+                // Browser sign-in returns to raft://login/callback (an app-login return URI the
+                // server allows); macOS hands it to the app's open-URI handler. The Electron "Raft
+                // Desktop" app registers `raft` too and macOS gives a scheme to one app, so the two
+                // don't sign in side by side (artin 10-27: Electron uninstalled, `raft-mac` too ugly).
+                // Keep in sync with RaftDesktopLoginCallbacks.SCHEME.
                 infoPlist {
                     extraKeysRawXml =
                         """
@@ -75,7 +75,7 @@ compose.desktop {
                             <key>CFBundleURLName</key>
                             <string>build.raft.app.desktop.login</string>
                             <key>CFBundleURLSchemes</key>
-                            <array><string>raft-mac</string></array>
+                            <array><string>raft</string></array>
                           </dict>
                         </array>
                         """.trimIndent()
