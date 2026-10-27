@@ -1,11 +1,14 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftStaleReason
 import build.raft.app.data.RaftStaleRecoveryMaxDelayMillis
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionFixture
@@ -28,12 +31,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -212,6 +217,117 @@ class SharedThreadUnreadThreadJumpTest {
         } finally {
             scopeJob.cancelAndJoin()
         }
+    }
+
+    /**
+     * artin: a jump to an unread thread prewarms that thread's replies — exactly one `Background`
+     * reply fetch — and opening the thread afterwards renders from the prewarm with no second fetch.
+     */
+    @Test
+    fun anUnreadThreadJumpPrewarmsTheThreadOnceInTheBackgroundAndTheOpenReusesIt() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val logs = mutableListOf<String>()
+        val dataSource = prewarmDataSource(repository, scope)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = { logs += it },
+                initialPayload = channelWindow(),
+            )
+
+        try {
+            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
+            advanceUntilIdle()
+
+            assertEquals("m1", store.state.value.payload.focusedMessageId)
+            assertEquals(listOf(ChannelId(ChannelIdValue) to MessageId("m1")), repository.replyRequests)
+            assertEquals(listOf(DataRequestPriority.Background), repository.replyPriorities)
+            assertTrue(logs.any { it.startsWith("thread_prewarm reason=unread_jump result=success thread=thread-m parent=m1") }, "$logs")
+
+            val opened =
+                dataSource.fetchThreadPayload(
+                    basePayload = SharedThreadStoreTestFixtures.replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
+                    reusePrewarm = true,
+                )
+
+            assertEquals("reply body", assertIs<DataResult.Content<RaftThreadScreenPayload>>(opened).data.messages.last().body)
+            assertEquals(1, repository.replyRequests.size, "the open reuses the prewarm instead of fetching again")
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun repeatedJumpsToTheSameUnreadThreadDoNotDuplicateItsPrewarm() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val release = CompletableDeferred<Unit>()
+        repository.releaseReply = release
+        val store = SharedThreadStore(dataSource = prewarmDataSource(repository, scope), scope = scope, initialPayload = channelWindow())
+
+        try {
+            // A second tap while the prewarm is in flight joins it.
+            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
+            advanceUntilIdle()
+            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
+            advanceUntilIdle()
+            assertEquals(1, repository.replyRequests.size)
+
+            release.complete(Unit)
+            advanceUntilIdle()
+            // A tap after it finished finds the thread already warm.
+            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat", prewarmThreadChannelId = "thread-m1"))
+            advanceUntilIdle()
+            assertEquals(1, repository.replyRequests.size)
+            assertEquals(listOf(DataRequestPriority.Background), repository.replyPriorities)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun aJumpWithoutAnUnreadThreadPrewarmsNothing() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val store = SharedThreadStore(dataSource = prewarmDataSource(repository, scope), scope = scope, initialPayload = channelWindow())
+
+        try {
+            store.dispatch(SharedThreadIntent.JumpToMessage("m1", switchToTab = "chat"))
+            advanceUntilIdle()
+
+            assertTrue(repository.replyRequests.isEmpty())
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /** A data source wired as the channel page's: the app's shared payload store and server selection. */
+    private fun TestScope.prewarmDataSource(
+        repository: ReplyThreadAccessConversationRepositoryRecorder,
+        scope: CoroutineScope,
+    ): SharedThreadDataSource {
+        val sessionStore =
+            InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1", selectedServerId = ServerIdValue))
+        return testSharedThreadDataSource(
+            storeScope = scope,
+            networkApi = SharedThreadStoreTest.FakeThreadApi(),
+            sessionStore = sessionStore,
+            selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("unread-thread-prewarm", ServerIdValue)),
+            conversationRepository = repository,
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            payloadStore =
+                SharedThreadPayloadStore(
+                    scope = scope,
+                    prewarmStartIntervalMillis = 0L,
+                    foregroundLoadGate = SharedThreadStoreTestFixtures.run { virtualForegroundLoadGate() },
+                    prewarmStartTimeSource = testScheduler.timeSource,
+                ),
+        )
     }
 
     private fun repository() =

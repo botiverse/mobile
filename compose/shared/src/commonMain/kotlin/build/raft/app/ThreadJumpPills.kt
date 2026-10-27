@@ -117,6 +117,11 @@ internal data class ThreadUnreadThreadJump(
     val count: Int,
     /** The parent message to focus. */
     val targetMessageId: String,
+    /**
+     * The unread thread under [targetMessageId]: the jump prewarms its replies in the background
+     * (artin: opening the thread right after the jump renders at once).
+     */
+    val targetThreadChannelId: String,
 )
 
 /**
@@ -226,6 +231,8 @@ internal fun projectThreadUnreadThreadJump(
     }
     var nearestBelowIndex: Int? = null
     var earliestAboveIndex: Int? = null
+    // The unread thread each loaded candidate index stands for (the pill prewarms its replies).
+    val threadByIndex = HashMap<Int, String>()
     // Unloaded parents, ordered by parent time (unknown last), as web orders the followed list.
     var unloadedBelow: ThreadUnreadThreadParent? = null
     var unloadedAbove: ThreadUnreadThreadParent? = null
@@ -236,6 +243,7 @@ internal fun projectThreadUnreadThreadJump(
         val parent = unloadedParents[threadId]
         val index = loadedIndexByThread[threadId] ?: parent?.let { messageIndexById[it.parentMessageId] }
         if (index != null) {
+            threadByIndex.getOrPut(index) { threadId }
             when (threadJumpPlacement(index, visibleMessageIndexes)) {
                 ThreadJumpPlacement.Above ->
                     if (earliestAboveIndex == null || index < earliestAboveIndex) earliestAboveIndex = index
@@ -253,11 +261,15 @@ internal fun projectThreadUnreadThreadJump(
     }
     // A loaded parent below is nearer than any newer unloaded one; an unloaded parent above is
     // older (higher) than every loaded one.
-    val nextTarget = nearestBelowIndex?.let { messages[it].messageId } ?: unloadedBelow?.parentMessageId
-    val earliestTarget = unloadedAbove?.parentMessageId ?: earliestAboveIndex?.let { messages[it].messageId }
+    fun loadedTarget(index: Int) = messages[index].messageId to threadByIndex.getValue(index)
+    fun unloadedTarget(parent: ThreadUnreadThreadParent) = parent.parentMessageId to parent.threadChannelId
+    val nextTarget = nearestBelowIndex?.let(::loadedTarget) ?: unloadedBelow?.let(::unloadedTarget)
+    val earliestTarget = unloadedAbove?.let(::unloadedTarget) ?: earliestAboveIndex?.let(::loadedTarget)
     return when {
-        nextTarget != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nextTarget)
-        earliestTarget != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestTarget)
+        nextTarget != null ->
+            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nextTarget.first, nextTarget.second)
+        earliestTarget != null ->
+            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestTarget.first, earliestTarget.second)
         else -> null
     }
 }
