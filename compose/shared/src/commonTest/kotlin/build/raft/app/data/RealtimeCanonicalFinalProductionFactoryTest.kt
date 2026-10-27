@@ -34,7 +34,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
 
     @Test
     fun providerFactoryConfiguredInjectionExposesOneGatewayAndLazyRouter() {
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             assertNotNull(fixture.provider.canonicalFinalRegistrationDirectoryOrNull())
             assertSame(
@@ -49,16 +49,16 @@ class RealtimeCanonicalFinalProductionFactoryTest {
     }
 
     @Test
-    fun ownerFactoryWithDefaultProviderInstallsOldLaneAndKeepsLegacy() = runBlocking {
+    fun ownerFactoryWithDefaultProviderCommitsNothingAndKeepsLegacy() = runBlocking {
         var checks = 0
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(configured = false, lane = lane { checks += 1; true })
+        val fixture = CanonicalFinalGatewayFixture(configured = false, commitStep = finalizableStep { checks += 1 })
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
             )
             assertTrue(fixture.owner.accept(fixture.grant(), canonicalEvent(), "factory-old"))
-            assertEquals(listOf(1, 1), listOf(checks, legacy))
+            assertEquals(listOf(0, 1), listOf(checks, legacy))
         } finally {
             fixture.close()
         }
@@ -67,15 +67,14 @@ class RealtimeCanonicalFinalProductionFactoryTest {
     @Test
     fun legacyAndShellOwnerFactoriesShareConfiguredProviderGateway() = runBlocking {
         var final = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             val secondOwner =
                 createSharedRealtimeDomainEventOwner(
                     tasksDataStore = null,
                     cursorStore = null,
                     authorityProvider = fixture.provider,
-                    currentGrantMessageShadowCommitLane = lane("m2") { true },
-                )
+                ).also { owner -> owner.installCanonicalFinalCommitStep(finalizableStep()) }
             fixture.effects.mount(
                 fixture.grant().scopeLeaseId,
                 "server-a",

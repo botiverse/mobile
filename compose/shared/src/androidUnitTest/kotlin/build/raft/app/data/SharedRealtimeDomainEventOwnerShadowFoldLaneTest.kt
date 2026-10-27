@@ -1,7 +1,6 @@
 /* T2 REDs for legacy partition denial plus the existing reaction-shadow preservation gates. */
 package build.raft.app.data
 
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -20,18 +19,13 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
-import build.raft.app.network.sync.FoldPersistFrame
-import build.raft.app.network.sync.FoldPersistenceAdapter
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
-import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.PartitionDenialReason
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,13 +69,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         runBlocking { flags.prefetch(ServerId(serverId)) }
         return flags
-    }
-
-    private fun freshDatabase(): RaftSqlDatabase {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
-        driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        return RaftSqlDatabase(driver)
     }
 
     private fun ownerWith(lane: SyncCoreMessageShadowFoldLane): Pair<SharedRealtimeDomainEventOwner, MutableList<Pair<String, RealtimeEvent>>> {
@@ -158,37 +145,20 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         ),
     )
 
-    private class RecordingAdapter : FoldPersistenceAdapter {
-        val appliedFrames = mutableListOf<FoldPersistFrame>()
-
-        override suspend fun applyFrame(frame: FoldPersistFrame) {
-            appliedFrames += frame
-        }
-
-        override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = RestoredFoldState(emptyList(), null)
-    }
-
-    private fun recordingLane(
-        logs: MutableList<String>,
-        adapter: RecordingAdapter = RecordingAdapter(),
-    ) = SyncCoreMessageShadowFoldLane(
+    private fun recordingLane(logs: MutableList<String>) = SyncCoreMessageShadowFoldLane(
         featureFlags = resolvedFlags(enabled = true),
-        adapter = adapter,
-        scope = CoroutineScope(Dispatchers.Unconfined),
         logger = logs::add,
     )
 
     @Test
     fun legacyOwnerDeniesExactlyOneCanonicalFrameWithoutPersistingAndKeepsSinkByteEqual() {
         val logs = mutableListOf<String>()
-        val adapter = RecordingAdapter()
-        val lane = recordingLane(logs, adapter)
+        val lane = recordingLane(logs)
         val (owner, homeEvents) = ownerWith(lane)
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
         owner.accept(serverId, event, source = "app_shell")
 
-        assertTrue(adapter.appliedFrames.isEmpty(), "legacy path without principal must never persist")
         assertEquals<List<Pair<String, RealtimeEvent>>>(
             listOf(serverId to event),
             homeEvents,
@@ -207,8 +177,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     @Test
     fun nonMessageAndMessageWithoutCanonicalCarryProduceZeroDenialAndZeroPersist() {
         val logs = mutableListOf<String>()
-        val adapter = RecordingAdapter()
-        val lane = recordingLane(logs, adapter)
+        val lane = recordingLane(logs)
         val (owner, homeEvents) = ownerWith(lane)
         val heartbeat = Heartbeat(seq = 1L)
         val messageWithoutCarry = messageNewWithCanonical(id = "m-no-carry", seq = 2L).copy(decodedCanonical = null)
@@ -218,7 +187,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         owner.accept(serverId, messageWithoutCarry, source = "app_shell")
         owner.accept(serverId, resume, source = "app_shell")
 
-        assertTrue(adapter.appliedFrames.isEmpty())
         assertTrue(logs.none { it.contains("sync_core_partition_persist_denied") })
         assertEquals<List<Pair<String, RealtimeEvent>>>(
             listOf(serverId to messageWithoutCarry, serverId to resume),
@@ -229,14 +197,12 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     @Test
     fun legacyOwnerTreatsCanonicalMessageUpdatedAsEligibleAndDeniesExactlyOnce() {
         val logs = mutableListOf<String>()
-        val adapter = RecordingAdapter()
-        val lane = recordingLane(logs, adapter)
+        val lane = recordingLane(logs)
         val (owner, homeEvents) = ownerWith(lane)
         val event = messageUpdatedWithCanonical(id = "m-updated", seq = 3L)
 
         owner.accept(serverId, event, source = "app_shell")
 
-        assertTrue(adapter.appliedFrames.isEmpty())
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
         assertEquals(1, logs.size)
         assertTrue(logs.single().contains("sync_core_partition_persist_denied"))
@@ -278,47 +244,18 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
-    fun narrowMessageLaneDerivesScopeFromCanonicalPayload() {
-        val logs = mutableListOf<String>()
-        val adapter = RecordingAdapter()
-        val lane = recordingLane(logs, adapter)
-        val decoded = requireNotNull(messageNewWithCanonical(id = "m1", seq = 1).decodedCanonical)
-        val partition = scopeKey.partition
-
-        val method = lane.javaClass.getDeclaredMethod(
-            "foldAndPersist",
-            DurablePartitionKey::class.java,
-            CanonicalMessageCarry::class.java,
-            Boolean::class.javaPrimitiveType,
-            String::class.java,
-        )
-        method.invoke(lane, partition, decoded, false, "epoch-a")
-
-        val frame = adapter.appliedFrames.single()
-        assertEquals(partition, frame.scope.partition)
-        assertEquals(decoded.row.channelId, frame.scope.scopeId)
-        assertEquals("channel", frame.scope.scopeKind)
-    }
-
-    @Test
     fun shadowLaneIsInvisibleToSinksRegardlessOfFlag() {
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
-        val laneOn = SyncCoreMessageShadowFoldLane.create(
+        val laneOn = SyncCoreMessageShadowFoldLane(
             featureFlags = resolvedFlags(enabled = true),
-            sqlDatabase = freshDatabase(),
-            now = { 100L },
-            scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (ownerOn, homeEventsOn) = ownerWith(laneOn)
         ownerOn.accept(serverId, event, source = "app_shell")
 
-        val laneOff = SyncCoreMessageShadowFoldLane.create(
+        val laneOff = SyncCoreMessageShadowFoldLane(
             featureFlags = resolvedFlags(enabled = false),
-            sqlDatabase = freshDatabase(),
-            now = { 100L },
-            scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (ownerOff, homeEventsOff) = ownerWith(laneOff)

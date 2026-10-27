@@ -11,19 +11,12 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.network.sync.CanonicalFinalPreparedCommitStep
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
-import build.raft.app.network.sync.CommittedMessageScopeSnapshot
-import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.DurablePartitionKey
-import build.raft.app.network.sync.FoldPersistFrame
-import build.raft.app.network.sync.FoldPersistenceAdapter
-import build.raft.app.network.sync.LegacyRealtimeDedupKey
-import build.raft.app.network.sync.RestoredFoldState
+import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
-import build.raft.app.network.sync.StrictMessageRestoreResult
-import build.raft.app.network.sync.StrictMessageScopeSnapshotReader
-import build.raft.app.network.sync.SyncScopeKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -48,32 +41,32 @@ import kotlin.test.assertTrue
 
 class RealtimeCanonicalFinalOwnerGatewayTest {
     @Test
-    fun nullGatewaySelectedKeepsOldT3ThenLegacy() = runBlocking {
+    fun nullGatewaySelectedRunsLegacyWithoutAnyCommit() = runBlocking {
         var checks = 0
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(configured = false, lane = lane { checks += 1; true })
+        val fixture = CanonicalFinalGatewayFixture(configured = false, commitStep = finalizableStep { checks += 1 })
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
             )
             assertTrue(fixture.owner.accept(fixture.grant(), canonicalEvent(), "null-selected"))
-            assertEquals(listOf(1, 1, 0), listOf(checks, legacy, fixture.sidecar.debugSnapshot().reserveCount))
+            assertEquals(listOf(0, 1, 0), listOf(checks, legacy, fixture.sidecar.debugSnapshot().reserveCount))
         } finally {
             fixture.close()
         }
     }
 
     @Test
-    fun nullGatewayBackgroundKeepsOldT3ThenLegacy() = runBlocking {
+    fun nullGatewayBackgroundRunsLegacyWithoutAnyCommit() = runBlocking {
         var checks = 0
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(configured = false, lane = lane { checks += 1; true })
+        val fixture = CanonicalFinalGatewayFixture(configured = false, commitStep = finalizableStep { checks += 1 })
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeUnreadProjection = { _, _ -> legacy += 1 }),
             )
             assertTrue(fixture.owner.acceptHomeUnreadProjection(fixture.grant(), canonicalEvent(), "null-background"))
-            assertEquals(listOf(1, 1, 0), listOf(checks, legacy, fixture.sidecar.debugSnapshot().reserveCount))
+            assertEquals(listOf(0, 1, 0), listOf(checks, legacy, fixture.sidecar.debugSnapshot().reserveCount))
         } finally {
             fixture.close()
         }
@@ -89,7 +82,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
             var final = 0
             val snapshot =
                 if (flags == null) ServerFeatureFlagSnapshot.Unresolved else snapshot(flags.first, flags.second)
-            val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot, lane = lane { checks += 1; flags?.first == true })
+            val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot, commitStep = finalizableStep { checks += 1 })
             try {
                 fixture.owner.registerGuardedSinks(
                     RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
@@ -109,8 +102,8 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
             listOf(
                 Actual(true, 0, 1, 0, 0),
                 Actual(true, 0, 1, 0, 0),
-                Actual(true, 1, 1, 0, 0),
-                Actual(true, 0, 0, 1, 1),
+                Actual(true, 0, 1, 0, 0),
+                Actual(true, 1, 0, 1, 1),
                 Actual(true, 0, 1, 0, 0),
             ),
             actual,
@@ -122,7 +115,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
         var selectedFinal = 0
         var unreadFinal = 0
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeUnreadProjection = { _, _ -> legacy += 1 }),
@@ -148,7 +141,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
 
     @Test
     fun preparedWithoutHandlesFinalizableReturnsTrueWithoutRouter() = runBlocking {
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             assertTrue(fixture.owner.accept(fixture.grant(), canonicalEvent(), "zero-handles"))
             assertEquals(0, fixture.integration.routerConstructionCount())
@@ -161,7 +154,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     @Test
     fun preparedLegacyFallbackRunsExactLegacyOnce() = runBlocking {
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = prewriteLane())
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = prewriteStep())
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
@@ -176,7 +169,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     @Test
     fun preparedIndeterminateReturnsFalseWithoutLegacy() = runBlocking {
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = indeterminateLane())
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = indeterminateStep())
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
@@ -192,7 +185,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     fun preparedCancellationPropagatesWithoutLegacy() = runBlocking {
         val cancellation = CancellationException("prepared-cancel")
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = cancellationLane(cancellation))
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = cancellationStep(cancellation))
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
@@ -205,7 +198,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
         }
 
         val ordinary = IllegalStateException("legacy-throw")
-        val ordinaryFixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = prewriteLane())
+        val ordinaryFixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = prewriteStep())
         try {
             ordinaryFixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> throw ordinary }),
@@ -223,7 +216,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     fun reserveWaitThenGrantStaleRunsCommitFinalAndLegacyW0() = runBlocking {
         var final = 0
         var legacy = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true }, capacity = 1)
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep(), capacity = 1)
         try {
             fixture.owner.registerGuardedSinks(
                 RealtimeGuardedDomainEventSinks(applyHomeShell = { _, _ -> legacy += 1 }),
@@ -249,7 +242,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     @Test
     fun postCommitRotateKeepsDurableButReturnsFalseBeforeFinal() = runBlocking {
         var final = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             fixture.effects.mount(
                 fixture.grant().scopeLeaseId,
@@ -271,7 +264,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     @Test
     fun callerCancellationAfterPublishDoesNotCancelSharedItem() = runBlocking {
         val final = mutableListOf<String>()
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = laneForIds("m1", "m2"))
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             fixture.effects.mount(
                 fixture.grant().scopeLeaseId,
@@ -296,7 +289,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
     fun sameRawReplayRepairsOnlyReplacementInTypedRankWithoutInternalRetry() = runBlocking {
         val order = mutableListOf<String>()
         var failed = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), lane = lane { true })
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
         try {
             val grant = fixture.grant()
             fixture.effects.mount(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalSinkSurfaceKey.AppShellDomain) {
@@ -326,7 +319,7 @@ class RealtimeCanonicalFinalOwnerGatewayTest {
 internal class CanonicalFinalGatewayFixture(
     configured: Boolean = true,
     initialSnapshot: ServerFeatureFlagSnapshot = snapshot(true, true),
-    lane: CurrentGrantMessageShadowCommitLane = lane { true },
+    commitStep: CanonicalFinalPreparedCommitStep = finalizableStep(),
     capacity: Int = 4,
 ) {
     var snapshot: ServerFeatureFlagSnapshot = initialSnapshot
@@ -373,8 +366,7 @@ internal class CanonicalFinalGatewayFixture(
             tasksDataStore = null,
             cursorStore = null,
             authorityProvider = provider,
-            currentGrantMessageShadowCommitLane = lane,
-        )
+        ).also { owner -> owner.installCanonicalFinalCommitStep(commitStep) }
     val effects = RealtimeCanonicalFinalSinkLifecycleEffects(provider)
 
     init {
@@ -447,62 +439,25 @@ internal fun snapshot(t3: Boolean, t4: Boolean) =
         values = mapOf(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY to t3, T4_KEY to t4),
     )
 
-internal fun lane(
-    id: String = "m1",
-    isEnabled: () -> Boolean,
-): CurrentGrantMessageShadowCommitLane {
-    val input = canonicalInput(id)
-    return CurrentGrantMessageShadowCommitLane(
-        strictReader =
-            StrictMessageScopeSnapshotReader { scope ->
-                StrictMessageRestoreResult.Valid(CommittedMessageScopeSnapshot(scope, listOf(input.row), null))
-            },
-        isEnabledForServer = { isEnabled() },
-    )
-}
-
-internal fun laneForIds(vararg ids: String): CurrentGrantMessageShadowCommitLane {
-    val rows = ids.map { id -> canonicalInput(id).row }
-    return CurrentGrantMessageShadowCommitLane(
-        strictReader =
-            StrictMessageScopeSnapshotReader { scope ->
-                StrictMessageRestoreResult.Valid(CommittedMessageScopeSnapshot(scope, rows, null))
-            },
-        isEnabledForServer = { true },
-    )
-}
-
-internal fun prewriteLane() =
-    CurrentGrantMessageShadowCommitLane(
-        strictReader = StrictMessageScopeSnapshotReader { throw IllegalStateException("prewrite") },
-        isEnabledForServer = { true },
-    )
-
-internal fun indeterminateLane() =
-    CurrentGrantMessageShadowCommitLane(
-        strictReader =
-            StrictMessageScopeSnapshotReader { scope ->
-                StrictMessageRestoreResult.Valid(CommittedMessageScopeSnapshot(scope, emptyList(), null))
-            },
-        persistence = throwingPersistence(IllegalStateException("commit-unknown")),
-        isEnabledForServer = { true },
-    )
-
-internal fun cancellationLane(cancellation: CancellationException) =
-    CurrentGrantMessageShadowCommitLane(
-        strictReader =
-            StrictMessageScopeSnapshotReader { scope ->
-                StrictMessageRestoreResult.Valid(CommittedMessageScopeSnapshot(scope, emptyList(), null))
-            },
-        persistence = throwingPersistence(cancellation),
-        isEnabledForServer = { true },
-    )
-
-private fun throwingPersistence(failure: Throwable) =
-    object : FoldPersistenceAdapter {
-        override suspend fun applyFrame(frame: FoldPersistFrame) { throw failure }
-        override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = RestoredFoldState(emptyList(), null)
+/** T4 commit-step fakes: each answers one prepared disposition (the V1 lane that produced them is gone). */
+internal fun finalizableStep(onCommit: () -> Unit = {}) =
+    CanonicalFinalPreparedCommitStep { _, _, _ ->
+        onCommit()
+        PreparedCurrentGrantMessageCommitDisposition.FinalizableDurableNoChange
     }
+
+internal fun prewriteStep() =
+    CanonicalFinalPreparedCommitStep { _, _, _ ->
+        PreparedCurrentGrantMessageCommitDisposition.LegacyFallback.DefinitelyPrewrite("IllegalStateException")
+    }
+
+internal fun indeterminateStep() =
+    CanonicalFinalPreparedCommitStep { _, _, _ ->
+        PreparedCurrentGrantMessageCommitDisposition.Indeterminate.CommitOutcomeUnknown("IllegalStateException")
+    }
+
+internal fun cancellationStep(cancellation: CancellationException) =
+    CanonicalFinalPreparedCommitStep { _, _, _ -> throw cancellation }
 
 internal fun canonicalInput(id: String = "m1") =
     CanonicalMessageFoldInput.from(
