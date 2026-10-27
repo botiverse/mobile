@@ -7,6 +7,8 @@ import android.widget.TextView
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,7 +34,15 @@ actual fun RaftNativeSelectableText(
     text: String,
     style: TextStyle,
     modifier: Modifier,
+    selection: RaftNativeTextSelection?,
 ) {
+    val viewHolder = remember { arrayOfNulls<TextView>(1) }
+    DisposableEffect(selection) {
+        selection?.reader = {
+            viewHolder[0]?.let { view -> raftNativeSelectedSlice(view.text ?: "", view.selectionStart, view.selectionEnd) }.orEmpty()
+        }
+        onDispose { selection?.reader = null }
+    }
     val density = LocalDensity.current
     val typeface =
         style.fontFamily?.let { family ->
@@ -61,7 +71,7 @@ actual fun RaftNativeSelectableText(
                 setPadding(0, 0, 0, 0)
                 // System-owned selection: platform handles + floating toolbar incl. PROCESS_TEXT.
                 setTextIsSelectable(true)
-            }
+            }.also { viewHolder[0] = it }
         },
         modifier =
             modifier

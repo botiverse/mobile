@@ -255,6 +255,7 @@ LUCIDE_ICONS = [
     "square-terminal",
     "store",
     "terminal",
+    "text-quote",
     "triangle-alert",
     "trash",
     "trash-2",

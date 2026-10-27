@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +40,7 @@ actual fun RaftNativeSelectableText(
     text: String,
     style: TextStyle,
     modifier: Modifier,
+    selection: RaftNativeTextSelection?,
 ) {
     val fontSizePt = style.fontSize.ptOrNull() ?: 17.0
     val lineHeightPt = style.lineHeight.ptOrNull(fontSizePt)
@@ -46,6 +48,15 @@ actual fun RaftNativeSelectableText(
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
     // One UITextView instance serves as both the rendered view and the height measurer.
     val textView = remember { raftSelectableUITextView() }
+    DisposableEffect(selection, textView) {
+        selection?.reader = {
+            val current = textView.text.orEmpty()
+            textView.selectedRange.useContents {
+                raftNativeSelectedSlice(current, location.toInt(), (location + length).toInt())
+            }
+        }
+        onDispose { selection?.reader = null }
+    }
     val attributed =
         remember(text, fontName, fontSizePt, lineHeightPt, color) {
             textView.attributedText = raftAttributedText(text, fontName, fontSizePt, lineHeightPt, color)

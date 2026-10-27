@@ -34,6 +34,7 @@ internal fun ThreadNewMessageMenuTool.productMessageAction(
         ThreadNewMessageMenuTool.FollowThread -> if (isThreadFollowed) RaftMessageAction.UnfollowThread else RaftMessageAction.FollowThread
         ThreadNewMessageMenuTool.TaskStatus -> if (isTaskDone) RaftMessageAction.TaskReopen else RaftMessageAction.TaskDone
         ThreadNewMessageMenuTool.ConvertToTask -> RaftMessageAction.ConvertToTask
+        ThreadNewMessageMenuTool.SelectText -> RaftMessageAction.SelectText
         ThreadNewMessageMenuTool.SelectAll -> null
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -876,6 +877,53 @@ class InteractiveComponentScreenshotTest {
                             modifier = Modifier.height(320.dp),
                         ) {}
                     }
+                }
+            }
+        }
+
+    /**
+     * [RaftSheetSurface] with the header × (raft-ui DrawerClose) and two actions side by side
+     * (`rowActions`), as the web Select Text sheet: Copy and Quote, outline, `Lg`, each with its
+     * icon. Next to it the × with a long title that wraps.
+     */
+    @Test
+    fun sheetCloseRowActions() =
+        capture("sheet_close_row_actions") {
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.width(358.dp)) {
+                    Caption("× and row actions", Modifier.padding(bottom = 12.dp))
+                    RaftSheetSurface(
+                        title = "Select Text",
+                        // The window caps a sheet at 82% of its height; a fixture bounds it here.
+                        modifier = Modifier.heightIn(max = 360.dp),
+                        description = "Long-press to select text",
+                        onClose = {},
+                        rowActions = {
+                            RaftButton(
+                                "Copy",
+                                {},
+                                Modifier.weight(1f),
+                                size = RaftButtonSize.Lg,
+                                leadingIcon = { RaftGlyphIcon(RaftGlyph.Copy, size = 16.dp) },
+                            )
+                            RaftButton("Quote", {}, Modifier.weight(1f), size = RaftButtonSize.Lg)
+                        },
+                    ) {
+                        RaftText("Ada · 10:42", style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+                        RaftText("Ship the **sheet** today.\n\n- Copy\n- Quote", style = RaftTheme.typography.body)
+                    }
+                }
+                Column(Modifier.width(358.dp)) {
+                    Caption("× with a long title", Modifier.padding(bottom = 12.dp))
+                    RaftSheetSurface(
+                        title = "A long sheet title that wraps onto a second line",
+                        modifier = Modifier.heightIn(max = 360.dp),
+                        onClose = {},
+                        rowActions = {
+                            RaftButton("Copy", {}, Modifier.weight(1f), size = RaftButtonSize.Lg)
+                            RaftButton("Quote", {}, Modifier.weight(1f), size = RaftButtonSize.Lg)
+                        },
+                    )
                 }
             }
         }

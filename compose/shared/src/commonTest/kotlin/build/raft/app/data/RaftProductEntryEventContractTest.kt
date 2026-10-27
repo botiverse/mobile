@@ -21,6 +21,9 @@ class RaftProductEntryEventContractTest {
         const val PinnedSlockSha = "36b076b0ca196bbeccd695c05d4df5a587e6602e"
         const val PinnedBaseSlockSha = "3e959613eeeaa80607e826792c1f72bd17459191"
 
+        /** botiverse/slock #11467 head: `MESSAGE_ACTIONS` gained `select_text` after `copy_markdown`. */
+        const val PinnedSelectTextSlockSha = "27f555f166a5f51e8758d8e10549751db15f4429"
+
         /** `APP_CLIENTS` = web + desktop + the native clients. */
         val AppClients = setOf("web", "desktop", "android", "ios", "harmonyos")
 
@@ -30,7 +33,7 @@ class RaftProductEntryEventContractTest {
             setOf(
                 "open_menu", "open_reaction_picker", "react_quick", "reply_in_thread", "follow_thread", "unfollow_thread",
                 "task_done", "task_reopen", "create_task", "convert_to_task",
-                "copy_link", "copy_markdown", "forward", "select", "save", "unsave", "translate",
+                "copy_link", "copy_markdown", "select_text", "forward", "select", "save", "unsave", "translate",
                 "mention_sender", "copy_sender_name", "copy_sender_handle",
                 "copy_text", "pin", "unpin", "mark_unread", "edit", "delete", "report",
             )
@@ -97,6 +100,7 @@ class RaftProductEntryEventContractTest {
     fun pinnedShasMatchProductionConstants() {
         assertEquals(PinnedSlockSha, RAFT_PRODUCT_ENTRY_EVENTS_SLOCK_SHA)
         assertEquals(PinnedBaseSlockSha, RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA)
+        assertEquals(PinnedSelectTextSlockSha, RAFT_PRODUCT_EVENTS_SELECT_TEXT_SLOCK_SHA)
     }
 
     @Test

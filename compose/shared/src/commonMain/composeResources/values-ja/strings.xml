@@ -302,6 +302,7 @@
     <string name="thread_action_copy_link">リンクをコピー</string>
     <string name="thread_action_copy_markdown">Markdown をコピー</string>
     <string name="thread_action_select_text">テキストを選択</string>
+    <string name="thread_select_text_hint">長押ししてテキストを選択</string>
     <string name="thread_text_selection_copy_selection">選択部分をコピー</string>
     <string name="thread_text_selection_select_all">すべて選択</string>
     <string name="thread_new_message_menu_reply">返信</string>

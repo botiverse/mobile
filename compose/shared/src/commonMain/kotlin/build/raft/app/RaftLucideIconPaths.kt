@@ -1880,6 +1880,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m4 17 6-6-6-6"),
                     ),
                 )
+            RaftLucideIconName.TextQuote ->
+                RaftLucideIconSpec(
+                    "text-quote",
+                    listOf(
+                        RaftLucidePathSpec("M17 5H3"),
+                        RaftLucidePathSpec("M21 12H8"),
+                        RaftLucidePathSpec("M21 19H8"),
+                        RaftLucidePathSpec("M3 12v7"),
+                    ),
+                )
             RaftLucideIconName.TriangleAlert ->
                 RaftLucideIconSpec(
                     "triangle-alert",

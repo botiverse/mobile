@@ -17,10 +17,30 @@ import androidx.compose.ui.text.TextStyle
  *   intrinsic height for the offered width.
  *
  * Height wraps the text (safe inside a `LazyColumn` item); width fills the incoming constraints.
+ * [selection], when given, reads what the reader has selected in the platform view at the moment
+ * it is asked (the Select Text sheet's Copy and Quote).
  */
 @Composable
 expect fun RaftNativeSelectableText(
     text: String,
     style: TextStyle,
     modifier: Modifier = Modifier,
+    selection: RaftNativeTextSelection? = null,
 )
+
+/**
+ * The live selection of a [RaftNativeSelectableText]: the platform view registers its reader
+ * while it is shown. [selectedText] is "" when nothing is selected or the view is gone.
+ */
+class RaftNativeTextSelection {
+    internal var reader: (() -> String)? = null
+
+    fun selectedText(): String = reader?.invoke().orEmpty()
+}
+
+/** The [start, end) slice of [text] a platform selection covers, or "" for none / a caret. */
+internal fun raftNativeSelectedSlice(text: CharSequence, start: Int, end: Int): String {
+    val from = minOf(start, end).coerceIn(0, text.length)
+    val to = maxOf(start, end).coerceIn(0, text.length)
+    return if (to > from) text.subSequence(from, to).toString() else ""
+}

@@ -204,9 +204,8 @@ internal val LocalThreadInPlaceTextSelectionHost =
     staticCompositionLocalOf<ThreadInPlaceTextSelectionHost?> { null }
 
 /**
- * The text the "Select Text" page offers for a message (`ThreadMessageTextSelectionDialog` binds
- * `message.body`) and the menu's Copy action
- * copies. A whole-message in-place copy must match it.
+ * The text the Select Text sheet offers for a message (`ThreadMessageSelectTextSheet` binds
+ * `message.body`) and the menu's Copy action copies. A whole-message in-place copy must match it.
  */
 internal fun threadMessageSelectionSourceText(message: RaftThreadMessageItem): String = message.body
 
@@ -240,20 +239,6 @@ internal fun threadInPlaceSelectionCopyText(
 }
 
 /**
- * Reply quote for an in-place selection (artin, 2026-10-21): Reply on a partial selection quotes
- * just the picked text (the same text Copy copies) in the reply composer; a whole-message or
- * empty selection returns null so Reply stays the plain message Reply.
- */
-internal fun threadInPlaceSelectionReplyQuote(
-    selectedTexts: List<String>,
-    selectableTexts: List<String>,
-): String? {
-    if (threadInPlaceSelectionCoversAll(selectedTexts, selectableTexts)) return null
-    val text = threadInPlaceSelectionCopyText(selectedTexts, selectableTexts, fullMessageText = null)
-    return formatThreadMessageQuote(text).takeIf { it.isNotBlank() }
-}
-
-/**
  * What the page-level Compact menu needs from a selection: Copy copies the selection, Select All
  * extends it, and every other message action calls [dismiss] (clear selection + menu) first.
  */
@@ -264,8 +249,6 @@ internal class ThreadInPlaceSelectionMenuRequest(
     val dismiss: () -> Unit,
     /** Read inside the menu so it switches between full and partial as the handles move. */
     val coversAll: () -> Boolean = { true },
-    /** Markdown quote of a partial selection for Reply; null for a whole-message selection. */
-    val replyQuote: () -> String? = { null },
 )
 
 /**
@@ -273,7 +256,8 @@ internal class ThreadInPlaceSelectionMenuRequest(
  * - the whole message selected (the long-press default): every message action, reactions
  *   included, and Copy copies the message;
  * - part of the message selected: only Copy (the selected text), Reply and Select All, since
- *   reactions and the other tools act on the whole message, not on the picked text.
+ *   reactions and the other tools act on the whole message, not on the picked text. Reply only
+ *   opens the thread (mobile DRI, 2026-10-27); quoting goes through Select Text > Quote.
  * The Select tool and the More chevron are hidden in both.
  */
 internal fun threadInPlaceSelectionMenuAvailability(
@@ -542,9 +526,6 @@ internal fun ThreadInPlaceSelectableBody(
                     },
                     coversAll = {
                         threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
-                    },
-                    replyQuote = {
-                        threadInPlaceSelectionReplyQuote(controller.selectedTexts(), controller.selectableTexts())
                     }
                 )
             }
