@@ -4,8 +4,12 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
+import build.raft.app.data.AgentDetailSnapshot
+import build.raft.app.data.AgentDetailSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * artin 612602c0: returning from background reconnects presence, which publishes status=null
@@ -73,6 +77,15 @@ class MembersRuntimeEditorSessionTest {
         assertEquals(MembersRuntimeEditorDialog.None, dialog(steady(), editing = false))
         assertEquals(MembersRuntimeEditorDialog.None, dialog(steady().copy(deleted = true)))
         assertEquals(MembersRuntimeEditorDialog.None, dialog(steady().copy(canManage = false)))
+    }
+
+    /**
+     * Decision-function coverage only: in production an account/server switch nulls the live
+     * authority (kept open above) and the save path's authority checks fence it; no caller
+     * hands this a non-null authority for another owner.
+     */
+    @Test
+    fun decisionRejectsANonNullAuthorityForAnotherOwner() {
         assertEquals(
             MembersRuntimeEditorDialog.None,
             dialog(steady().copy(authority = opened.copy(accountId = "account-2")))
@@ -94,5 +107,64 @@ class MembersRuntimeEditorSessionTest {
             MembersRuntimeEditorDialog.Legacy,
             dialog(steady().copy(runtimeStatusResolved = false), formV2Declined = true)
         )
+    }
+
+    private fun agentDetail(creatorId: String?, deletedAt: String? = null) =
+        AgentDetailSnapshot(
+            agentId = MemberId("agent-1"),
+            summary = AgentDetailSummary(id = "agent-1", name = "Agent One", creatorId = creatorId, deletedAt = deletedAt),
+            directMessages = emptyList(),
+            reminders = emptyList(),
+            activity = emptyList()
+        )
+
+    /** The creator (not a server admin) — the right comes from the detail's creatorId. */
+    private fun creatorCanManage(
+        currentDetail: AgentDetailSnapshot?,
+        lastContentDetail: AgentDetailSnapshot?,
+        refreshTransient: Boolean
+    ) = membersRuntimeEditorCanManage(
+        currentDetail = currentDetail,
+        lastContentDetail = lastContentDetail,
+        refreshTransient = refreshTransient
+    ) { detail ->
+        membersRouteCanManageAgent(
+            allowsPrivateAgentSurfaces = true,
+            canManageSettings = false,
+            currentUserId = "creator-1",
+            detail = detail
+        )
+    }
+
+    @Test
+    fun creatorKeepsTheEditorWhileADetailRefreshFailsOrIsInFlight() {
+        val lastGood = agentDetail(creatorId = "creator-1")
+        assertTrue(creatorCanManage(currentDetail = lastGood, lastContentDetail = lastGood, refreshTransient = false))
+        // Refresh Error / Loading-without-content: the page's detail is null, the store keeps it.
+        val failedRefresh = creatorCanManage(currentDetail = null, lastContentDetail = lastGood, refreshTransient = true)
+        assertTrue(failedRefresh)
+        assertEquals(
+            MembersRuntimeEditorDialog.FormV2,
+            dialog(steady().copy(canManage = failedRefresh, authority = null))
+        )
+    }
+
+    @Test
+    fun freshDetailWithoutTheManageRightClosesTheEditor() {
+        val lastGood = agentDetail(creatorId = "creator-1")
+        val otherCreator =
+            creatorCanManage(currentDetail = agentDetail(creatorId = "someone-else"), lastContentDetail = lastGood, refreshTransient = false)
+        assertFalse(otherCreator)
+        assertEquals(MembersRuntimeEditorDialog.None, dialog(steady().copy(canManage = otherCreator)))
+        // A fresh detail wins over the remembered one even mid-refresh.
+        assertFalse(
+            creatorCanManage(currentDetail = agentDetail(creatorId = "someone-else"), lastContentDetail = lastGood, refreshTransient = true)
+        )
+        // Deleted in the fresh detail.
+        assertFalse(
+            creatorCanManage(currentDetail = agentDetail(creatorId = "creator-1", deletedAt = "2026-10-27T00:00:00Z"), lastContentDetail = lastGood, refreshTransient = false)
+        )
+        // A terminal (non-transient) state with no detail does not reuse the remembered one.
+        assertFalse(creatorCanManage(currentDetail = null, lastContentDetail = lastGood, refreshTransient = false))
     }
 }
