@@ -134,7 +134,7 @@ jobs:
           # $RUNNER_TEMP/git-credentials-*.config file referenced through
           # includeIf.gitdir:* entries, not as a local extraheader. Drop those
           # includes and delete the credential files too.
-          git config --local --name-only --get-regexp '^includeif\.gitdir:.*\.path$' 2>/dev/null \
+          { git config --local --name-only --get-regexp '^includeif\.gitdir:.*\.path$' 2>/dev/null || true; } \
             | sort -u \
             | while IFS= read -r key; do
                 git config --local --unset-all "$key" || true
