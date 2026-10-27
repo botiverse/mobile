@@ -1,16 +1,12 @@
 package build.raft.app.desktop
 
-import build.raft.app.data.APP_LOGIN_RETURN_URIS
-import build.raft.app.data.parseAppLoginCallback
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 class RaftDesktopLoginCallbacksTest {
     @Test fun `the Mac app returns to its own raft-mac scheme`() {
+        // The shared allowlist and parser are covered by AppLoginCallbacksTest (commonTest).
         assertEquals("raft-mac://login/callback", RaftDesktopSettingsCapability.APP_LOGIN_RETURN_URI)
-        assertEquals(true, RaftDesktopSettingsCapability.APP_LOGIN_RETURN_URI in APP_LOGIN_RETURN_URIS)
-        assertNotNull(parseAppLoginCallback("${RaftDesktopSettingsCapability.APP_LOGIN_RETURN_URI}?requestId=r&code=c"))
     }
 
     @Test fun `only raft-mac arguments are callbacks and raft links belong to Raft Desktop`() {
