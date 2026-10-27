@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.RaftRuntimeChip
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
@@ -165,12 +169,15 @@ internal fun RuntimeAccountUsageLoad?.runtimeAccountUsageNeedsAttention(): Boole
             }
     }
 
-/** Maps the usage read state to the Web-aligned inline status dot. */
-internal fun membersRuntimeUsageStatusColor(
+/**
+ * Maps the usage read state to the inline usage light: web `RuntimeAccountUsageChip`
+ * `<Status size="sm" variant={attention ? "warning" : "success"}>`; none when not offered.
+ */
+internal fun membersRuntimeUsageStatusVariant(
     offered: Boolean,
     attention: Boolean
-): Color? =
-    if (!offered) null else if (attention) RaftColor.AccentOrange else RaftColor.AccentLime
+): RaftStatusVariant? =
+    if (!offered) null else if (attention) RaftStatusVariant.Warning else RaftStatusVariant.Success
 
 /**
  * Runtime chip of the agent's Runtime Config section. For runtimes that report account usage
@@ -206,27 +213,35 @@ internal fun MembersAgentRuntimeUsageChip(
     }
     val offered = key != null && load.offersRuntimeAccountUsage()
     val attention = offered && load.runtimeAccountUsageNeedsAttention()
-    val statusColor = membersRuntimeUsageStatusColor(offered, attention)
+    val statusVariant = membersRuntimeUsageStatusVariant(offered, attention)
     // The click handler is always attached and the modifier chain never changes shape (Kuikly
     // keeps stale native props when a modifier is removed); whether a tap opens the card is
     // decided inside the handler.
-    MembersAgentRuntimeChip(
-        label = label,
-        kind = MembersAgentRuntimeChipKind.Runtime,
-        statusColor = statusColor,
-        // Web `RuntimeAccountUsageChip`: the attention state is the dot's accessible name only.
-        // It used to be a sibling Text, which the caller's value Box stacked on top of the chip.
-        statusDescription =
-            when {
-                !offered -> null
-                attention -> stringResource(Res.string.member_runtime_usage_attention)
-                else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
-            },
+    val statusDescription =
+        when {
+            !offered -> null
+            attention -> stringResource(Res.string.member_runtime_usage_attention)
+            else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
+        }
+    RaftRuntimeChip(
+        text = label,
         // Long press copies the runtime name (never the usage status); a tap opens usage.
         modifier = Modifier.raftCopyable(label) {
             access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
             if (offered) dialogOpen = true
-        }
+        },
+        // Web `RuntimeAccountUsageChip`: Status `sm` after the label (`ml-1`); the attention
+        // state is the light's accessible name only, never drawn as text.
+        trailing =
+            statusVariant?.let { variant ->
+                {
+                    RaftStatusDot(
+                        variant = variant,
+                        size = RaftStatusSize.Sm,
+                        contentDescription = statusDescription
+                    )
+                }
+            }
     )
     // Read before the dialog: its content is rehosted in a separate native window where page
     // composition locals are not retained.

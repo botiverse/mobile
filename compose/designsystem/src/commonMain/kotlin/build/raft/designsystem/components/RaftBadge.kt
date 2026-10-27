@@ -182,7 +182,30 @@ fun RaftBadge(
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors)
+    RaftBadgeFrame(
+        text = text,
+        look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
+        appearance = appearance,
+        modifier = modifier,
+        icon = icon,
+        trailing = trailing,
+    )
+}
+
+/**
+ * The Badge chrome around a resolved [look]. Internal: a preset that needs a look raft-ui
+ * spells as a Badge plus classes (the runtime chip's `font-mono text-mono-meta font-normal`)
+ * adjusts [look] here instead of widening [RaftBadge]'s public API.
+ */
+@Composable
+internal fun RaftBadgeFrame(
+    text: String,
+    look: RaftBadgeLook,
+    appearance: RaftBadgeAppearance,
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     val typography = RaftTheme.typography
     val textStyle: TextStyle =
         (if (look.mono) typography.monoMeta else typography.caption).copy(

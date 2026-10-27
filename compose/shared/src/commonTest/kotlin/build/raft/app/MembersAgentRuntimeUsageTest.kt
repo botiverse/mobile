@@ -15,6 +15,7 @@ import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.model.ServerId
+import build.raft.designsystem.components.RaftStatusVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -60,9 +61,9 @@ class MembersAgentRuntimeUsageTest {
 
     @Test
     fun runtimeUsageStatusDotMatchesWebHealthSemantics() {
-        assertNull(membersRuntimeUsageStatusColor(offered = false, attention = false))
-        assertEquals(RaftColor.AccentLime, membersRuntimeUsageStatusColor(offered = true, attention = false))
-        assertEquals(RaftColor.AccentOrange, membersRuntimeUsageStatusColor(offered = true, attention = true))
+        assertNull(membersRuntimeUsageStatusVariant(offered = false, attention = false))
+        assertEquals(RaftStatusVariant.Success, membersRuntimeUsageStatusVariant(offered = true, attention = false))
+        assertEquals(RaftStatusVariant.Warning, membersRuntimeUsageStatusVariant(offered = true, attention = true))
     }
 
     @Test

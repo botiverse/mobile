@@ -100,6 +100,14 @@ enum class RaftGlyph(internal vararg val paths: String) {
             "a2 2 0 0 1 2 2z",
     ),
 
+    /** Lucide `cpu`: the agent profile's runtime chip ([RaftRuntimeChip]). */
+    Cpu(
+        "M12 20v2", "M12 2v2", "M17 20v2", "M17 2v2", "M2 12h2", "M2 17h2", "M2 7h2",
+        "M20 12h2", "M20 17h2", "M20 7h2", "M7 20v2", "M7 2v2",
+        "M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+        "M9 8h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z",
+    ),
+
     /** Lucide `file`: a forwarded file's attachment chip (raft-ui MessageForwardedBundleAttachment). */
     File(
         "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12" +

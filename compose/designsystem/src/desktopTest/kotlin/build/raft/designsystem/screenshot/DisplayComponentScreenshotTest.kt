@@ -52,6 +52,7 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftRuntimeChip
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -434,7 +435,9 @@ class DisplayComponentScreenshotTest {
                     Caption("Agent", Modifier.width(96.dp))
                     RaftText("Wug", style = RaftTheme.typography.body.copy(fontWeight = FontWeight.SemiBold))
                     RaftAgentTag()
-                    RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information)
+                    RaftRuntimeChip("Claude Code")
+                    RaftRuntimeChip("Built-in Pi", showCpuIcon = true)
+                    RaftRuntimeChip("Codex", trailing = { RaftStatusDot(variant = RaftStatusVariant.Success, size = RaftStatusSize.Sm) })
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Caption("State chips", Modifier.width(96.dp))
