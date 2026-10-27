@@ -825,6 +825,8 @@ internal fun RaftModalCompactMemberRow(
     cacheServerId: String? = null,
     // raft-ui Avatar `type`: [raftAvatarFallbackFill] of the member's kind.
     avatarFill: Color = RaftColor.AccentLavender,
+    // Right after the name (6dp): the App Bot badge.
+    titleBadge: (@Composable () -> Unit)? = null,
     onClick: () -> Unit = {}
 ) {
     val rowBackground =
@@ -868,7 +870,8 @@ internal fun RaftModalCompactMemberRow(
             channelPageStyle = channelPageStyle,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId,
-            avatarFill = avatarFill
+            avatarFill = avatarFill,
+            titleBadge = titleBadge
         )
     }
 }
@@ -900,7 +903,8 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject?,
     cacheServerId: String?,
-    avatarFill: Color = RaftColor.AccentLavender
+    avatarFill: Color = RaftColor.AccentLavender,
+    titleBadge: (@Composable () -> Unit)? = null
 ) {
     // Selected rows sit on the yellow sticker fill: ink type in both modes.
     val onSticker = selected && enabled
@@ -929,6 +933,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
+                titleBadge?.invoke()
                 val badge = sourceBadgeLabel?.takeIf { it.isNotBlank() }
                 if (badge != null) {
                     Box(

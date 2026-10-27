@@ -803,6 +803,10 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
                 raftMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
             }
         }
+    val memberAppBotResolver =
+        remember(sharedStores.serverMembersStore, payload.currentServerId) {
+            raftMemberAppBotResolver(sharedStores.serverMembersStore, payload.currentServerId)
+        }
     val serverMembersState by sharedStores.serverMembersStore.state.collectAsState()
     val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? =
         remember(serverMembersState, payload.currentServerId) {
@@ -924,6 +928,7 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         },
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
+        memberAppBotResolver = memberAppBotResolver,
         pinnedMemberProfileResolver = pinnedMemberProfileResolver,
         diagnosticsLogger = bridge::log
     )
@@ -1692,6 +1697,8 @@ internal fun RaftStructuralHomeShell(
     onLeaveChannel: (String) -> Unit = {},
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    // botiverse/slock #11273: which DM peers are App Bots (the Bot badge, no presence or runtime).
+    memberAppBotResolver: RaftMemberAppBotResolver = EmptyRaftMemberAppBotResolver,
     pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
@@ -1706,6 +1713,7 @@ internal fun RaftStructuralHomeShell(
     // are designsystem sidebar parts, so the shell sits in the designsystem theme (left
     // unindented to keep this delegation's diff small).
     RaftDesignSystemTheme {
+    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
     RaftStructuralHomeShellContent(
         modifier = modifier,
         data =
@@ -1815,6 +1823,7 @@ internal fun RaftStructuralHomeShell(
         bottomContentPadding = bottomContentPadding,
         listPositionServerId = listPositionServerId,
     )
+    }
     }
 }
 
@@ -7168,8 +7177,9 @@ private fun HomeSidebarSortRow(
                     // real (pixel) avatar from the resolver/cache, the agent status pixel.
                     val memberId = item.presenceMemberId
                     val isAgent = item.peerType.equals("agent", ignoreCase = true)
+                    val isAppBot = rememberRaftMemberAppBot(memberId?.takeIf { isAgent }) != null
                     DirectMessageAvatar(
-                        agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() },
+                        agentMemberId = raftHomeDmPresenceAgentId(memberId, isAgent = isAgent, isAppBot = isAppBot),
                         agentStatusResolver = agentStatusResolver,
                         avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId),
                         avatarLabel = item.name.ifBlank { item.avatarLabel },
@@ -7194,7 +7204,7 @@ private fun HomeSidebarSortRow(
  * of the row). [menuOpen]: this row's long-press menu is open.
  */
 @Composable
-private fun HomeSidebarDirectMessageRow(
+internal fun HomeSidebarDirectMessageRow(
     name: String,
     avatarLabel: String,
     modifier: Modifier = Modifier,
@@ -7216,10 +7226,14 @@ private fun HomeSidebarDirectMessageRow(
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val badge = homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = unreadCount, muted = muted))
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
+    // botiverse/slock #11273 (web `DmRow` / `AgentDmRow`): an App Bot's name carries the Bot
+    // badge; it shows no status pixel and no runtime or activity meta.
+    val appBot = rememberRaftMemberAppBot(memberId?.takeIf { isAgent })
     // The agent's status is read only inside the avatar-dot and trailing-meta leaves below, so
     // an agent:activity push recomposes those two leaves, not the whole row.
-    val agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() }
-    val trailingSlots = raftHomeDmTrailingSlots(badge = badge.label, hasDraft = hasDraft, isAgent = agentMemberId != null)
+    val agentMemberId = raftHomeDmPresenceAgentId(memberId, isAgent = isAgent, isAppBot = appBot != null)
+    val trailingSlots =
+        raftHomeDmTrailingSlots(badge = badge.label, hasDraft = hasDraft, isAgent = agentMemberId != null, isAppBot = appBot != null)
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val title = remember(name) { homeSidebarUserContentName(name) }
@@ -7234,7 +7248,20 @@ private fun HomeSidebarDirectMessageRow(
             onLongClick = longClick.onLongClick,
             onLongClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) },
             menuOpen = menuOpen,
-            titleTrailing = mutedIcon?.let { icon -> @Composable { HomeSidebarLucideIcon(icon, HomeSidebarMetaIconSize) } },
+            titleTrailing =
+                if (appBot != null || mutedIcon != null) {
+                    {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (appBot != null) RaftAppBotBadge(identity = appBot, botName = title.text)
+                            mutedIcon?.let { icon -> HomeSidebarLucideIcon(icon, HomeSidebarMetaIconSize) }
+                        }
+                    }
+                } else {
+                    null
+                },
             variant = RaftSidebarItemVariant.Peer,
             leading = {
                 DirectMessageAvatar(

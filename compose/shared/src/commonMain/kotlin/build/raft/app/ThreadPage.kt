@@ -5141,6 +5141,12 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
+    // botiverse/slock #11273: App Bots in the roster and the Add Members panel carry the Bot
+    // badge and no presence line.
+    val memberAppBotResolver = remember(serverMembersStore, route.serverId) {
+        raftMemberAppBotResolver(serverMembersStore, route.serverId.value)
+    }
+    CompositionLocalProvider(LocalRaftMemberAppBotResolver provides memberAppBotResolver) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadMembersPageContent(
             members = members, filteredMembers = filteredMembers, filteredExternal = filteredExternal,
@@ -5247,6 +5253,7 @@ private fun ThreadMembersPageScreen() {
                 onConfirm = ::confirmRemoveMember
             )
         }
+    }
     }
 }
 
@@ -34119,7 +34126,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
 }
 
 @Composable
-private fun ThreadMembersPagerRow(
+internal fun ThreadMembersPagerRow(
     member: RaftThreadMemberItem,
     divider: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
@@ -34128,7 +34135,10 @@ private fun ThreadMembersPagerRow(
     onOpen: (RaftThreadMemberItem) -> Unit,
     onRemove: (RaftThreadMemberItem) -> Unit
 ) {
-    val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+    // web `ChannelMemberRow` / `AgentActivityInfo`: an App Bot has no presence (it would read
+    // "Offline" forever); the Bot badge follows its name instead.
+    val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
+    val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
@@ -34160,6 +34170,7 @@ private fun ThreadMembersPagerRow(
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
         badges = listOfNotNull(serverBadge, roleBadge),
+        titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
         divider = divider,
         removing = removing,
         removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
@@ -34288,10 +34299,13 @@ private fun ThreadAddMemberModal(
                                     adding = adding,
                                     alreadyJoined = alreadyJoined
                                 )
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            // web `ChannelMembers` add panel: an App Bot gets the Bot badge, no light.
+                            val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
+                            val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
                             val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
                                 ?: member.modalAvatarWireValue()
                             RaftModalCompactMemberRow(
+                                titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
                                 title = member.displayName,
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
@@ -34333,10 +34347,13 @@ private fun ThreadAddMemberModal(
                                     adding = adding,
                                     alreadyJoined = alreadyJoined
                                 )
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                            // web `ChannelMembers` add panel: an App Bot gets the Bot badge, no light.
+                            val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
+                            val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
                             val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
                                 ?: member.modalAvatarWireValue()
                             RaftModalCompactMemberRow(
+                                titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
                                 title = member.displayName,
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
@@ -34569,6 +34586,10 @@ private fun RaftThreadMemberItem.modalAvatarWireValue(): String? =
 // The name the initials come from; never the member id (no name shows the placeholder icon).
 private fun RaftThreadMemberItem.modalAvatarLabel(): String =
     listOf(displayName, handle).map(String::trim).firstOrNull { it.isNotEmpty() && it != id } ?: avatarLabel
+
+/** The agent whose App Bot identity a channel member / add-member row shows; null for people. */
+internal fun RaftThreadMemberItem.threadMemberAppBotLookupId(): String? =
+    id.trim().takeIf { kind.equals("agent", ignoreCase = true) && it.isNotBlank() }
 
 internal fun threadMembersRosterSubtitle(
     memberKind: String,

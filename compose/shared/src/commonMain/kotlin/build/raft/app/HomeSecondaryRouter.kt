@@ -876,6 +876,10 @@ private fun HomeSearchRouterContent(
                 raftMemberAvatarResolver(environment.serverMembersStore, searchServerId)
             }
         }
+    val memberAppBotResolver =
+        remember(environment.serverMembersStore, searchServerId) {
+            raftMemberAppBotResolver(environment.serverMembersStore, searchServerId)
+        }
     LaunchedEffect(environment.serverMembersStore, searchServerId) {
         val serverId = searchServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -938,6 +942,7 @@ private fun HomeSearchRouterContent(
         cacheServerId = searchServerId,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
+        memberAppBotResolver = memberAppBotResolver,
         computerDirectory = computerDirectory,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,

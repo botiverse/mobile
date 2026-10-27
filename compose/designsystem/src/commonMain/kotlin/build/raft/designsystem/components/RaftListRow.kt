@@ -154,7 +154,8 @@ fun RaftListRowGroup(
  *
  * - [leading]: a 35dp avatar or tile, or a 20dp icon (drawn in ink-3).
  * - Text column: [title] 16/24 semibold on one line (bold when [RaftRowTone.Unread]) with
- *   [meta] (the time, Space Mono 12 ink-3) after it; [subtitle] on its own line in Space
+ *   [titleTrailing] right after the name (6dp; a Bot badge; the name truncates first) and
+ *   [meta] (the time, Space Mono 12 ink-3) at the end; [subtitle] on its own line in Space
  *   Mono 12 ink-3, 2dp under the title (4dp with [alignTop]); [description] (the preview,
  *   or a setting's consequence with [wrapDescription], up to [descriptionMaxLines]) in 14/20 ink-2, then at most one
  *   [badge] at the end of that line.
@@ -203,6 +204,7 @@ fun RaftListRow(
     text: RaftListRowText = RaftListRowText.Default,
     titleCopyText: String? = null,
     subtitleCopyText: String? = null,
+    titleTrailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -259,14 +261,35 @@ fun RaftListRow(
             if (leading != null) Box(endModifier, contentAlignment = Alignment.Center) { leading() }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftText(
-                        title,
-                        modifier = Modifier.weight(1f).raftCopyable(titleCopyText),
-                        style = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight),
-                        color = inks.ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    val titleStyle = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight)
+                    if (titleTrailing == null) {
+                        RaftText(
+                            title,
+                            modifier = Modifier.weight(1f).raftCopyable(titleCopyText),
+                            style = titleStyle,
+                            color = inks.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        // The name and what follows it (a Bot badge), 6dp apart: the slot is
+                        // measured first, so only the name truncates.
+                        Row(
+                            Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RaftText(
+                                title,
+                                modifier = Modifier.weight(1f, fill = false).raftCopyable(titleCopyText),
+                                style = titleStyle,
+                                color = inks.ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            titleTrailing()
+                        }
+                    }
                     if (meta != null) RaftListRowMeta(meta)
                 }
                 if (subtitle != null) {

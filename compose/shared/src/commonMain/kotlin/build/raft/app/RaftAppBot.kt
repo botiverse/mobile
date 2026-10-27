@@ -78,12 +78,17 @@ internal fun raftAppBotBadgeLabel(appName: String?, botName: String?): RaftAppBo
  * The Bot badge after an App Bot's name: raft-ui `Badge appearance="soft" variant="muted"`, as
  * web `AppBotBadge` draws it. Screen readers also hear "Created by the <App> app" (the web
  * tooltip; a phone has no hover).
+ *
+ * [appearance] [RaftBadgeAppearance.Outline] is web `AppBotBadge appearance="outline"`: for a
+ * row that tags each result's kind with an outline badge (search results), so the Bot tag
+ * reads as one of them (outline, default variant).
  */
 @Composable
 internal fun RaftAppBotBadge(
     identity: RaftAppBotIdentity,
     botName: String?,
     modifier: Modifier = Modifier,
+    appearance: RaftBadgeAppearance = RaftBadgeAppearance.Soft,
 ) {
     val text =
         when (val label = raftAppBotBadgeLabel(identity.appName, botName)) {
@@ -95,8 +100,8 @@ internal fun RaftAppBotBadge(
     RaftBadge(
         text = text,
         modifier = modifier.clearAndSetSemantics { contentDescription = description },
-        appearance = RaftBadgeAppearance.Soft,
-        variant = RaftBadgeVariant.Muted,
+        appearance = appearance,
+        variant = if (appearance == RaftBadgeAppearance.Outline) RaftBadgeVariant.Default else RaftBadgeVariant.Muted,
     )
 }
 
