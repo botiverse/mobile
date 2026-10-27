@@ -38,7 +38,9 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1776,6 +1778,11 @@ class SharedActivityStore internal constructor(
                                 )
                             }
                         }
+                        // Hands b91f94e5: the rows never wait for the member list. It runs beside
+                        // the inbox read on the store scope (a superseded load does not cancel the
+                        // shared members flight); on a server switch it took 11s and held the new
+                        // server's rows behind the old server's cached ones.
+                        val senderProfilesLoad = scope.async { loadSenderProfiles(serverId) }
                         val result =
                             if (refresh) {
                                 loadCanonicalDepth(serverId, filter, refreshLimit)
@@ -1825,12 +1832,17 @@ class SharedActivityStore internal constructor(
                             )
                             return@launch
                         }
-                        val senderProfiles = loadSenderProfiles(serverId)
+                        val readySenderProfiles = if (senderProfilesLoad.isCompleted) senderProfilesLoad.await() else null
                         val applied =
                             synchronized(realtimeOwnerLock) {
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
+                                    // The owner was reset above when the server changed, so the
+                                    // fallback is this server's profiles known so far.
+                                    val senderProfiles =
+                                        readySenderProfiles
+                                            ?: (_state.value.senderProfiles + currentSenderProfiles(serverId))
                                     applyLoadResult(
                                         result = result,
                                         server = server,
@@ -1851,6 +1863,9 @@ class SharedActivityStore internal constructor(
                                 durationMs = startedAt.elapsedNow().inWholeMilliseconds
                             )
                             return@launch
+                        }
+                        if (readySenderProfiles == null) {
+                            applyLateSenderProfiles(intent, serverId, userId, senderProfilesLoad)
                         }
                         ensureDmPeerNames()
                         logActivityLoad(
@@ -3385,6 +3400,29 @@ class SharedActivityStore internal constructor(
             ?.id
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+
+    /**
+     * The rows went out before the member list (Hands b91f94e5); its profiles join the rows
+     * when it lands, as long as the store still shows that server for that user. Off the load
+     * job, so a late member list never holds a later refresh back.
+     */
+    private fun applyLateSenderProfiles(
+        intent: SharedActivityIntent,
+        serverId: ServerId,
+        userId: String,
+        senderProfilesLoad: Deferred<Map<String, SharedActivitySenderProfile>>
+    ) {
+        diagnosticsLogger("store_load domain=activity phase=sender_profiles_pending serverId=${serverId.value}")
+        scope.launch {
+            val profiles = senderProfilesLoad.await()
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (current.ownerServerId != serverId.value || current.ownerUserId != userId) return@synchronized
+                val merged = current.senderProfiles + profiles
+                if (merged != current.senderProfiles) reduceState(intent, current.copy(senderProfiles = merged))
+            }
+        }
+    }
 
     private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
