@@ -147,6 +147,9 @@ kotlin {
                 // Message code blocks (artin task #20 lane K): keyword/string/comment/number
                 // ranges, coloured with raft-ui tokens in markdown/RaftMarkdownCodeHighlight.kt.
                 implementation(libs.snipme.highlights)
+                // Offline-first resources (persistence audit item 4): Store5 stream / fetcher over the
+                // localSnapshotEntity source of truth (data/RaftOfflineResources.kt).
+                implementation(libs.store5)
 
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.coroutines.core)

@@ -12259,6 +12259,7 @@ private fun SharedThreadRouteContentContent(
                             ?: false
                     val nextSaved = !previousSaved
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
+                    val savedOwnerSession = currentSession
                     coroutineScope.launch {
                         val result =
                             if (nextSaved) {
@@ -12267,7 +12268,18 @@ private fun SharedThreadRouteContentContent(
                                 dataSource.unsaveMessage(itemId)
                             }
                         when (result) {
-                            is DataResult.Content -> Unit
+                            is DataResult.Content -> {
+                                // A confirmed unsave leaves the Saved list's stored copy (a save shows up
+                                // with the list's next refresh: the row needs the server's saved entry).
+                                val savedServerId = savedOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+                                if (!nextSaved && savedOwnerSession != null && savedServerId != null) {
+                                    sharedStores.homeSavedStateCache.recordMessageUnsaved(
+                                        serverId = savedServerId,
+                                        userId = savedOwnerSession.user.id,
+                                        messageId = MessageId(itemId),
+                                    )
+                                }
+                            }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))

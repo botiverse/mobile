@@ -42,6 +42,11 @@ hrmLatex = "1.6.1"
 # dev.snipme:highlights: message code block syntax colours (artin task #20 lane K). Pure Kotlin
 # Multiplatform (jvm + iosArm64/iosSimulatorArm64 klibs), Apache-2.0.
 snipmeHighlights = "1.1.0"
+# MobileNativeFoundation Store5: offline-first resources (fetcher + SqlDelight-backed source of truth,
+# RaftOfflineResources.kt). Apache-2.0; android/jvm/iosArm64/iosSimulatorArm64 klibs; built against
+# kotlinx-coroutines / serialization 1.11.0 and atomicfu 0.33.0 (the app's versions). 5.1 is the
+# maintained line (5.0.0 is from 2023); beta01 is its latest release.
+store5 = "5.1.0-beta01"
 androidsvg = "1.4"
 mmkv = "2.4.3"
 firebaseBom = "35.1.0"
@@ -114,6 +119,7 @@ coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil"
 coil-gif = { group = "io.coil-kt.coil3", name = "coil-gif", version.ref = "coil" }
 hrm-latex-renderer = { group = "io.github.huarangmeng", name = "latex-renderer", version.ref = "hrmLatex" }
 snipme-highlights = { group = "dev.snipme", name = "highlights", version.ref = "snipmeHighlights" }
+store5 = { group = "org.mobilenativefoundation.store", name = "store5", version.ref = "store5" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }

@@ -6,6 +6,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resolveInboxAnchorMessageId
 import androidx.lifecycle.ViewModel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
 
 private const val HomeSavedPageSize = 100
@@ -68,6 +70,18 @@ internal class SharedHomeSearchSavedStore(
     private var searchOpened = false
     private var authEventsJob: Job? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
+    // The Saved list's first page through the offline resource (stored copy first, then the network).
+    private val savedListStore: RaftOfflineResourceStore<Unit, SavedListRecord>? by lazy {
+        savedStateCache?.savedList?.store { key ->
+            when (val result = savedRepository.loadInitial(ServerId(key.serverId), HomeSavedPageSize)) {
+                is DataResult.Content -> DataResult.Content(result.data.toSavedListRecord())
+                // Nothing saved is a fact too: stored as the empty list.
+                is DataResult.Empty -> DataResult.Content(SavedListRecord(items = emptyList(), totalCount = 0, hasMore = false))
+                is DataResult.Error -> DataResult.Error(result.error)
+                is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+            }
+        }
+    }
     private val savedOrderRanks = mutableMapOf<MessageId, Long>()
     private var nextSavedOrderRank = 0L
 
@@ -499,25 +513,62 @@ internal class SharedHomeSearchSavedStore(
                     val owner = SavedStateOwner(serverId, session.user.id)
                     if (!isActiveSavedRequest(requestToken)) return@launch
                     adoptSavedOwner(owner)
-                    if (refresh && !previous.loaded && previous.items.isEmpty()) {
-                        savedStateCache?.read(serverId.value, session.user.id)?.let { cached ->
-                            if (!isActiveSavedRequest(requestToken)) return@let
-                            synchronizeSavedOrderRanks(cached.items, replace = true)
-                            _state.value =
-                                _state.value.copy(
-                                    saved =
-                                        cached.copy(
-                                            items = cached.items.withoutSavedMessages(excludedMessageIds),
-                                            totalCount = cached.totalCount.withExcludedSavedCount(cached.items, excludedMessageIds),
-                                            loading = false,
-                                            refreshing = true,
-                                            pullRefreshing = false,
-                                            loadingMore = false,
-                                            errorCode = null,
-                                            noPermissionCode = null
+                    val coldOpen = refresh && !previous.loaded && previous.items.isEmpty()
+                    var seeded = false
+                    fun seedStandIn(cached: SharedHomeSavedPanelState) {
+                        if (seeded || !isActiveSavedRequest(requestToken)) return
+                        seeded = true
+                        synchronizeSavedOrderRanks(cached.items, replace = true)
+                        _state.value =
+                            _state.value.copy(
+                                saved =
+                                    cached.copy(
+                                        items = cached.items.withoutSavedMessages(excludedMessageIds),
+                                        totalCount = cached.totalCount.withExcludedSavedCount(cached.items, excludedMessageIds),
+                                        loaded = true,
+                                        empty = cached.items.isEmpty(),
+                                        loading = false,
+                                        refreshing = true,
+                                        pullRefreshing = false,
+                                        loadingMore = false,
+                                        errorCode = null,
+                                        noPermissionCode = null
+                                    )
+                            )
+                    }
+                    if (coldOpen) {
+                        savedStateCache?.read(serverId.value, session.user.id)?.let(::seedStandIn)
+                    }
+                    val durableKey = if (refresh) savedStateCache?.savedList?.key(session.user.id, serverId.value, Unit) else null
+                    val durableStore = savedListStore
+                    if (durableKey != null && durableStore != null) {
+                        // Stale-while-revalidate: the stored first page (cold open only), then the network.
+                        durableStore.revalidate(durableKey).collect { emission ->
+                            when (emission) {
+                                is RaftOfflineEmission.StandIn ->
+                                    if (coldOpen) {
+                                        seedStandIn(
+                                            SharedHomeSavedPanelState(
+                                                items = emission.value.items,
+                                                totalCount = emission.value.totalCount,
+                                                hasMore = emission.value.hasMore,
+                                                nextOffset = emission.value.nextOffset,
+                                            )
                                         )
-                                )
+                                    }
+                                is RaftOfflineEmission.Fresh ->
+                                    finishSavedLoad(
+                                        DataResult.Content(emission.value.toSnapshot(serverId)),
+                                        refresh, owner, excludedMessageIds, requestToken, startedAt
+                                    )
+                                is RaftOfflineEmission.Failed ->
+                                    finishSavedLoad(
+                                        emission.result.asSavedSnapshotFailure(),
+                                        refresh, owner, excludedMessageIds, requestToken, startedAt
+                                    )
+                            }
                         }
+                        return@launch
                     }
                     val result =
                         if (refresh) {
@@ -525,23 +576,7 @@ internal class SharedHomeSearchSavedStore(
                         } else {
                             savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomeSavedPageSize)
                         }
-                    if (isActiveSavedRequest(requestToken)) {
-                        applySavedResult(
-                            result = result,
-                            append = !refresh,
-                            owner = owner,
-                            excludedMessageIds = excludedMessageIds
-                        )
-                        diagnosticsLogger(
-                            "store_load domain=saved refresh=$refresh append=${!refresh} " +
-                                "result=${result.savedDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                        )
-                    } else {
-                        diagnosticsLogger(
-                            "store_load domain=saved refresh=$refresh append=${!refresh} result=stale_request " +
-                                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                        )
-                    }
+                    finishSavedLoad(result, refresh, owner, excludedMessageIds, requestToken, startedAt)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -552,6 +587,33 @@ internal class SharedHomeSearchSavedStore(
                     )
                 }
             }
+    }
+
+    private fun finishSavedLoad(
+        result: DataResult<SavedSnapshot>,
+        refresh: Boolean,
+        owner: SavedStateOwner,
+        excludedMessageIds: Set<MessageId>,
+        requestToken: Long,
+        startedAt: TimeSource.Monotonic.ValueTimeMark,
+    ) {
+        if (isActiveSavedRequest(requestToken)) {
+            applySavedResult(
+                result = result,
+                append = !refresh,
+                owner = owner,
+                excludedMessageIds = excludedMessageIds
+            )
+            diagnosticsLogger(
+                "store_load domain=saved refresh=$refresh append=${!refresh} " +
+                    "result=${result.savedDiagnosticsResult()} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        } else {
+            diagnosticsLogger(
+                "store_load domain=saved refresh=$refresh append=${!refresh} result=stale_request " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        }
     }
 
     private fun scheduleSearchRefresh() {
@@ -931,7 +993,15 @@ internal class SharedHomeSearchSavedStore(
         scope.launch {
             try {
                 when (savedRepository.unsaveMessage(owner.serverId, messageId)) {
-                    is DataResult.Content -> completeSavedUnsave(messageId)
+                    is DataResult.Content -> {
+                        completeSavedUnsave(messageId)
+                        // Confirmed: the stored list loses the row too (a failed unsave leaves it).
+                        savedStateCache?.savedList?.let { resource ->
+                            resource.key(owner.userId, owner.serverId.value, Unit)?.let { key ->
+                                resource.update(key) { record -> record.withoutMessage(messageId) }
+                            }
+                        }
+                    }
                     is DataResult.Empty -> rollbackSavedUnsave(messageId, "saved_unsave_empty")
                     is DataResult.Error -> rollbackSavedUnsave(messageId, "saved_unsave_failed")
                     is DataResult.NoPermission -> rollbackSavedUnsave(messageId, "saved_unsave_no_permission")
@@ -1352,7 +1422,25 @@ private fun Int.withExcludedSavedCount(
     return (this - excludedCount).coerceAtLeast(0)
 }
 
-class SharedHomeSavedStateCache {
+private fun DataResult<SavedListRecord>.asSavedSnapshotFailure(): DataResult<SavedSnapshot> =
+    when (this) {
+        is DataResult.Content -> DataResult.Error(ScreenError(code = "saved_unexpected_content", retryable = true))
+        is DataResult.Empty -> DataResult.Empty(reason)
+        is DataResult.Error -> DataResult.Error(error)
+        is DataResult.NoPermission -> DataResult.NoPermission(blocker)
+    }
+
+/**
+ * The Saved list last shown, per (server, user): the in-memory copy a re-opened panel starts from (with its
+ * optimistic unsaves). [savedList] is the durable offline resource behind it (first page per user + server,
+ * [SavedListResourceSpec]) so a cold start or an offline open still shows the list; it is wiped with every
+ * other offline resource on auth-terminal cleanup, not by [clear] (a session reset / server switch).
+ */
+class SharedHomeSavedStateCache internal constructor(
+    internal val savedList: RaftOfflineResource<Unit, SavedListRecord>?,
+) {
+    constructor() : this(null)
+
     private var ownerKey: String? = null
     private var state: SharedHomeSavedPanelState? = null
 
@@ -1374,6 +1462,28 @@ class SharedHomeSavedStateCache {
             )
     }
 
+    /**
+     * A confirmed unsave (the server answered): the row leaves the in-memory copy and the stored list. Not
+     * called for a failed unsave, so the stored list keeps the row.
+     */
+    suspend fun recordMessageUnsaved(serverId: String, userId: String, messageId: MessageId) {
+        val current = state
+        if (current != null && ownerKey == savedStateCacheKey(serverId, userId)) {
+            val remaining = current.items.filterNot { it.savedMessageIdOrNull() == messageId }
+            if (remaining.size != current.items.size) {
+                state =
+                    current.copy(
+                        items = remaining,
+                        totalCount = (current.totalCount - (current.items.size - remaining.size)).coerceAtLeast(0),
+                        empty = remaining.isEmpty(),
+                    )
+            }
+        }
+        val resource = savedList ?: return
+        val key = resource.key(accountId = userId, serverId = serverId, params = Unit) ?: return
+        resource.update(key) { record -> record.withoutMessage(messageId) }
+    }
+
     fun clear() {
         ownerKey = null
         state = null
@@ -1385,6 +1495,58 @@ class SharedHomeSavedStateCache {
         }
     }
 }
+
+/** The stored Saved list: the first page as the panel showed it (`GET channels/saved`). */
+@Serializable
+internal data class SavedListRecord(
+    val items: List<InboxItem>,
+    val totalCount: Int,
+    val hasMore: Boolean,
+    val nextOffset: Int? = null,
+) {
+    fun withoutMessage(messageId: MessageId): SavedListRecord {
+        val remaining = items.filterNot { it.savedMessageIdOrNull() == messageId }
+        if (remaining.size == items.size) return this
+        return copy(items = remaining, totalCount = (totalCount - (items.size - remaining.size)).coerceAtLeast(0))
+    }
+
+    fun toSnapshot(serverId: ServerId): SavedSnapshot =
+        SavedSnapshot(
+            server = ServerSummary(id = serverId, name = ""),
+            items = items,
+            totalCount = totalCount,
+            hasMore = hasMore,
+            nextOffset = nextOffset,
+        )
+}
+
+internal fun SavedSnapshot.toSavedListRecord(): SavedListRecord =
+    SavedListRecord(items = items, totalCount = totalCount, hasMore = hasMore, nextOffset = nextOffset)
+
+/**
+ * The Saved list as an offline resource: one value per user + server (the panel's first page), kept until
+ * replaced or wiped (it is the user's own bookmarks, always shown as a refreshing stand-in), at most
+ * [SavedListMaxServersPerAccount] servers per account.
+ */
+internal val SavedListResourceSpec: RaftOfflineResourceSpec<Unit, SavedListRecord> =
+    RaftOfflineResourceSpec(
+        name = "saved_list",
+        version = 1,
+        serializer = SavedListRecord.serializer(),
+        paramsId = { "" },
+        maxEntriesPerAccount = SavedListMaxServersPerAccount,
+        maxBytesPerEntry = 4 * 1024 * 1024,
+        fit = { record ->
+            if (record.items.size <= HomeSavedPageSize) {
+                record
+            } else {
+                // A list grown by load-more keeps its first page; the rest continues from the row count.
+                record.copy(items = record.items.take(HomeSavedPageSize), hasMore = true, nextOffset = null)
+            }
+        },
+    )
+
+internal const val SavedListMaxServersPerAccount = 8
 
 private fun savedStateCacheKey(serverId: String, userId: String): String =
     "${serverId.trim()}:${userId.trim()}"
