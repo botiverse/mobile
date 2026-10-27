@@ -1,9 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
+import build.raft.app.data.realtime.ToolStuckDto
 import build.raft.app.data.realtime.WakeCrashLoopDto
+import build.raft.app.data.realtime.toAgentToolStuck
 import build.raft.app.data.realtime.toAgentWakeCrashLoop
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
@@ -626,7 +629,9 @@ internal data class AgentSummary(
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
     val activityDetailKind: String? = null,
     /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
-    val wakeCrashLoop: AgentWakeCrashLoop? = null
+    val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
+    val toolStuck: AgentToolStuck? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -660,7 +665,8 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         deletedAt = deletedAt,
         lastSeenAt = lastSeenAt,
         activityDetailKind = activityDetailKind,
-        wakeCrashLoop = wakeCrashLoop
+        wakeCrashLoop = wakeCrashLoop,
+        toolStuck = toolStuck
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -876,6 +882,8 @@ private data class AgentWireDto(
     val activityDetailKind: String? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with `activityDetailKind` `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `ToolStuckActivityDiagnostic`, served with any activity while the agent is stuck. */
+    val toolStuck: ToolStuckDto? = null,
 )
 
 @Serializable
@@ -925,7 +933,8 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         deletedAt = deletedAt,
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
-        wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind)
+        wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),
+        toolStuck = toolStuck.toAgentToolStuck()
     )
 }
 

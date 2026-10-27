@@ -8,6 +8,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
@@ -328,6 +329,8 @@ data class SharedServerMemberStatus(
     val activityToolName: String? = null,
     /** Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
+    val toolStuck: AgentToolStuck? = null,
     /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
     val runtime: String? = null,
     /**
@@ -443,6 +446,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             detailKind = presenceFact.detailKind,
             activityToolName = presenceFact.activityToolName,
             wakeCrashLoop = presenceFact.wakeCrashLoop,
+            toolStuck = presenceFact.toolStuck,
             runtime = this?.agentRuntimeOrNull(),
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.

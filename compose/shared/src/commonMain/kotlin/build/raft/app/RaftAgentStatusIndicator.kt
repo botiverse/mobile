@@ -6,6 +6,7 @@ import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -36,7 +37,9 @@ internal data class RaftAgentStatusIndicatorState(
     /** The agent's runtime id (web `agent.runtime`); null when unknown. */
     val runtime: String? = null,
     /** Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked`. */
-    val wakeCrashLoop: AgentWakeCrashLoop? = null
+    val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
+    val toolStuck: AgentToolStuck? = null
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -135,7 +138,8 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         detailKind = detailKind,
         activityToolName = activityToolName,
         runtime = runtime,
-        wakeCrashLoop = wakeCrashLoop
+        wakeCrashLoop = wakeCrashLoop,
+        toolStuck = toolStuck
     )
 
 /**

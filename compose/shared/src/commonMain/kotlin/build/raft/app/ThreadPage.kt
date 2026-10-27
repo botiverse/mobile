@@ -17045,8 +17045,12 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
 
 @Composable
 private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
-    // SSOT audit: the same localized caption as every other live-status surface.
-    val label = state.localizedMemberStatusLabel()
+    // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
+    // warning colour, not as a plain "busy". Otherwise the same localized caption as every
+    // other live-status surface (SSOT audit).
+    val toolStuck = state.visibleToolStuck()
+    val label = if (toolStuck != null) localizedAgentToolStuckText(toolStuck) else state.localizedMemberStatusLabel()
+    val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(
         modifier =
             Modifier
@@ -17064,10 +17068,10 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
             text = label,
             style =
                 RaftType.Caption.copy(
-                    color = RaftColor.ForegroundHint,
+                    color = labelColor,
                     fontFamily = RaftMonoFamily
                 ),
-            color = RaftColor.ForegroundHint,
+            color = labelColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

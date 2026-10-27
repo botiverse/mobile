@@ -18,6 +18,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
@@ -656,7 +657,40 @@ private data class AgentActivityDto(
     val serverSeq: Long? = null,
     /** Shared `WakeCrashLoopActivityDiagnostic`, sent with detailKind `wake_crash_loop_blocked`. */
     val wakeCrashLoop: WakeCrashLoopDto? = null,
+    /** Shared `ToolStuckActivityDiagnostic`, on every frame while the agent is stuck on a tool call. */
+    val toolStuck: ToolStuckDto? = null,
 )
+
+/** Shared `ToolStuckActivityDiagnostic` (botiverse/slock packages/shared/src/index.ts, #10409). */
+@Serializable
+internal data class ToolStuckDto(
+    val toolName: String? = null,
+    val toolDetailKind: String? = null,
+    val startedAtMs: Long? = null,
+    val quietSinceMs: Long? = null,
+    val thresholdMs: Long? = null,
+    val queuedMessages: Int? = null,
+)
+
+/** The stuck report, or null without a tool name or quiet start (not shown then). */
+internal fun ToolStuckDto?.toAgentToolStuck(
+    frameServerMillis: Long? = null,
+    receivedAtMs: Long = 0L,
+): AgentToolStuck? {
+    if (this == null) return null
+    val tool = toolName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val quietSince = quietSinceMs ?: startedAtMs ?: return null
+    return AgentToolStuck(
+        toolName = tool,
+        toolDetailKind = toolDetailKind?.trim()?.takeIf { it.isNotEmpty() },
+        startedAtMs = startedAtMs ?: quietSince,
+        quietSinceMs = quietSince,
+        thresholdMs = (thresholdMs ?: 0L).coerceAtLeast(0L),
+        queuedMessages = (queuedMessages ?: 0).coerceAtLeast(0),
+        quietMillisAtFrame = frameServerMillis?.let { (it - quietSince).coerceAtLeast(0L) },
+        receivedAtMs = receivedAtMs,
+    )
+}
 
 /**
  * The fields of shared `WakeCrashLoopActivityDiagnostic` the client shows (botiverse/slock
@@ -1140,6 +1174,12 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         activityToolName = projectedActivity.toolName,
         serverSeq = serverSeq,
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
+        toolStuck =
+            toolStuck.toAgentToolStuck(
+                // The server stamps the frame with its own clock in epoch ms.
+                frameServerMillis = (timestamp as? JsonPrimitive)?.contentOrNull?.toLongOrNull(),
+                receivedAtMs = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+            ),
         activityEntries = entries.toRealtimeAgentActivityEntries(
             agentId = agentId,
             timestamp = timestamp,

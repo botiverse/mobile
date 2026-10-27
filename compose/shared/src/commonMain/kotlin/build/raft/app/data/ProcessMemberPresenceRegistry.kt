@@ -481,7 +481,10 @@ internal class ProcessMemberPresenceRegistry {
                         detailKind = if (event.statusLabel != null) event.detailKind else previous.detailKind,
                         activityToolName =
                             if (event.statusLabel != null) event.activityToolName else previous.activityToolName,
-                        wakeCrashLoop = if (event.statusLabel != null) event.wakeCrashLoop else previous.wakeCrashLoop
+                        wakeCrashLoop = if (event.statusLabel != null) event.wakeCrashLoop else previous.wakeCrashLoop,
+                        // agent:seen is not an activity frame; only an activity frame without
+                        // `toolStuck` means "not stuck".
+                        toolStuck = if (event.statusLabel != null) event.toolStuck else previous.toolStuck
                     )
                 } else {
                     event
@@ -985,5 +988,6 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
         detailKind == previous.detailKind &&
         activityToolName == previous.activityToolName &&
         wakeCrashLoop == previous.wakeCrashLoop &&
+        toolStuck == previous.toolStuck &&
         kind == previous.kind &&
         lastSeenAt == previous.lastSeenAt

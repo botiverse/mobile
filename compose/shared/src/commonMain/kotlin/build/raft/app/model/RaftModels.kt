@@ -920,7 +920,12 @@ data class MemberPresenceUpdated(
      * Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked` (the
      * `wakeCrashLoop` carrier of `agent:activity`); null for every other status.
      */
-    val wakeCrashLoop: AgentWakeCrashLoop? = null
+    val wakeCrashLoop: AgentWakeCrashLoop? = null,
+    /**
+     * The agent is stuck on one tool call (the `toolStuck` carrier of `agent:activity`). The daemon
+     * attaches it to every frame while that is true, so a frame without it means "not stuck".
+     */
+    val toolStuck: AgentToolStuck? = null
 ) : RealtimeEvent
 
 /**
@@ -938,6 +943,29 @@ data class AgentWakeCrashLoop(
     val pausedAtMemoryLimit: Boolean
         get() = lastExitReason == "memory_limit"
 }
+
+/**
+ * The agent is stuck on one tool call: no output for the daemon's threshold, so new messages queue
+ * behind it (shared `ToolStuckActivityDiagnostic`, botiverse/slock #10409; shown since web #10446).
+ * Not tied to a detail kind. Times are the agent's Computer clock (ms).
+ */
+@Serializable
+data class AgentToolStuck(
+    val toolName: String,
+    val toolDetailKind: String? = null,
+    val startedAtMs: Long = 0L,
+    val quietSinceMs: Long,
+    val thresholdMs: Long = 0L,
+    val queuedMessages: Int = 0,
+    /**
+     * How long the call had been quiet when the server sent this frame (the frame's server
+     * `timestamp` minus [quietSinceMs]), and when this device received it ([receivedAtMs], its
+     * own clock). The shown minutes add the time since receipt, so this device's clock never
+     * meets the agent's Computer clock (Lagoon's review). Null: not known (a REST snapshot).
+     */
+    val quietMillisAtFrame: Long? = null,
+    val receivedAtMs: Long = 0L
+)
 
 @Serializable
 data class RealtimeRefreshRequired(
