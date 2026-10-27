@@ -6,15 +6,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
@@ -33,7 +40,9 @@ import build.raft.app.cmp.host.RaftCmpHost
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
     val top = navigator.pages.lastOrNull() ?: return
     Box(
-        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        // Bubbling, not preview: a focused popup, menu or suggestion list that handles Esc itself
+        // (closing) wins over going back.
+        Modifier.fillMaxSize().onKeyEvent { event ->
             val back =
                 event.type == KeyEventType.KeyDown &&
                     (event.key == Key.Escape || (event.isMetaPressed && event.key == Key.LeftBracket))
@@ -65,8 +74,21 @@ private fun RaftDesktopPageContent(navigator: RaftDesktopNavigator, page: RaftDe
                 events = page.events,
             )
         }
-    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        RaftCmpRoot(args = page.args, host = host)
+    // Window facts for the adaptive layout (rail + split panes at >= 840dp): the page's size,
+    // republished on every resize. A page under the top one is 0x0 and publishes nothing.
+    val publisher = remember { RaftDesktopAdaptivePanePublisher(page.events::send) }
+    val density = LocalDensity.current.density
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    // After the first composition is applied, i.e. after the page subscribed to page.events.
+    LaunchedEffect(size, density) {
+        if (publisher.publish(size.width, size.height, density)) {
+            log("adaptive pane page=${page.args.pageName} widthPx=${size.width} heightPx=${size.height} density=$density")
+        }
+    }
+    Box(Modifier.fillMaxSize().onSizeChanged { size = it }) {
+        CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+            RaftCmpRoot(args = page.args, host = host)
+        }
     }
 }
 

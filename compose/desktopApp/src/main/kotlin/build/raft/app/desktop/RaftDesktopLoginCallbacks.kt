@@ -17,17 +17,22 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
- * Browser sign-in callbacks (`raft://login/callback?...`).
+ * Browser sign-in callbacks (`raft-mac://login/callback?...`).
  *
- * - macOS: the packaged app declares the `raft` URL scheme (Info.plist, see build.gradle.kts);
- *   macOS delivers the URL to the running app's open-URI handler.
+ * - macOS: the packaged app declares the `raft-mac` URL scheme (Info.plist, see build.gradle.kts);
+ *   macOS delivers the URL to the running app's open-URI handler. Not `raft`: the Electron
+ *   "Raft Desktop" app registers that scheme (for its sign-in and `raft://v1/...` notification
+ *   links), and macOS gives a scheme to only one app.
  * - Elsewhere (and development runs) a URL handler starts the app again with the URL as an
- *   argument: a second instance forwards its `raft://` arguments to the running one over a
+ *   argument: a second instance forwards its `raft-mac://` arguments to the running one over a
  *   loopback socket and exits, so the waiting sign-in completes. The running instance writes its
  *   port and a random 32-byte secret to an owner-only (0600) file in the data dir; a forward must
  *   present the secret (compared in constant time), so another local user cannot inject callbacks.
  */
 object RaftDesktopLoginCallbacks {
+    /** The URL scheme this app registers (Info.plist `CFBundleURLSchemes`, build.gradle.kts). */
+    const val SCHEME = "raft-mac"
+    private const val PREFIX = "$SCHEME://"
     private const val MAX_LINES = 8
     private const val MAX_LINE_CHARS = 4_096
     private const val SOCKET_TIMEOUT_MILLIS = 2_000
@@ -36,7 +41,7 @@ object RaftDesktopLoginCallbacks {
 
     /** Call first in main: may forward [args] to a running instance and exit this process. */
     fun install(args: Array<String>) {
-        val callbacks = args.filter { it.startsWith("raft://") }
+        val callbacks = callbackArguments(args.asList())
         if (forwardToRunningInstance(callbacks)) {
             println("RaftDesktop: forwarded ${callbacks.size} callback(s) to the running instance")
             exitProcess(0)
@@ -49,6 +54,9 @@ object RaftDesktopLoginCallbacks {
         }.onFailure { log("login callbacks: no open-URI handler (${it::class.simpleName})") }
         callbacks.forEach(::accept)
     }
+
+    /** The arguments / forwarded lines that are this app's callbacks (`raft-mac://`, not `raft://`). */
+    internal fun callbackArguments(values: List<String>): List<String> = values.filter { it.startsWith(PREFIX) }
 
     fun accept(uri: String) {
         val accepted = RaftAppLoginBridge.completeCallbackUri(uri)
@@ -97,7 +105,7 @@ object RaftDesktopLoginCallbacks {
                             log("login callbacks: forward rejected")
                             return@use
                         }
-                        lines.drop(1).filter { line -> line.startsWith("raft://") }.forEach(::accept)
+                        callbackArguments(lines.drop(1)).forEach(::accept)
                     }
                 }
             }

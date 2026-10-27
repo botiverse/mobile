@@ -4,6 +4,7 @@ import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
 import build.raft.app.components.RaftPullToRefreshStyle
+import build.raft.app.data.PlatformFile
 
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Material
@@ -24,6 +25,16 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
+
+internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
+
+internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
+
+internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
+
+internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()
+
+internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false
 

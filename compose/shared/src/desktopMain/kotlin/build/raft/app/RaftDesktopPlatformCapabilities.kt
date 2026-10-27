@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.components.RaftPullToRefreshStyle
+import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftDesktopClipboardAttachments
 import java.text.BreakIterator
 import java.util.Locale
 
@@ -20,6 +22,16 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
+
+internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = true
+
+internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = true
+
+internal actual fun raftPlatformClipboardHasAttachments(): Boolean = RaftDesktopClipboardAttachments.available()
+
+internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = RaftDesktopClipboardAttachments.read()
+
+internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 16f
 
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = false
 

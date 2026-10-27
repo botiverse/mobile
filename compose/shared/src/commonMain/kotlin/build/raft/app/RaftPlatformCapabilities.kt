@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.RaftPullToRefreshStyle
+import build.raft.app.data.PlatformFile
 
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
@@ -28,6 +29,35 @@ internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
 
 /** iOS is currently the only host with a native right-edge Forward recognizer. */
 internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
+
+/**
+ * Default of the "Enter sends" composer preference (an explicit choice in settings wins). Desktop:
+ * on, like the web on a fine pointer (Enter / Cmd+Enter send, Shift+Enter inserts a newline, Enter
+ * while an IME composes commits the conversion). Phones keep Enter as a newline.
+ */
+internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
+
+/**
+ * Message text is selectable with the pointer (drag, double-click a word, Cmd+C), like the web:
+ * desktop turns on the in-place selection (ThreadInPlaceTextSelection.kt) without the New Message
+ * Menu preference. Phones keep long-press and "Select text" behind that preference.
+ */
+internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
+
+/**
+ * Desktop paste into the composer (web MessageInput `handlePaste`): whether the system clipboard
+ * holds files or an image, and those as attachments. Phones paste text only (false / empty).
+ */
+internal expect fun raftPlatformClipboardHasAttachments(): Boolean
+
+/** Blocking clipboard read (an image is written to a PNG); call off the UI thread. */
+internal expect fun raftPlatformReadClipboardAttachments(): List<PlatformFile>
+
+/**
+ * Least space under the conversation composer. Phones: 0 (their padding follows the safe area /
+ * keyboard). Desktop has neither, so it keeps the web composer's 16dp (`safe-bottom`, 1rem).
+ */
+internal expect fun raftPlatformComposerMinimumBottomPaddingDp(): Float
 
 /** Sign in with Apple is a product capability of the iOS host only. */
 internal expect fun raftPlatformSupportsAppleSignIn(): Boolean

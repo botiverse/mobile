@@ -1941,6 +1941,12 @@ private val ThreadHeaderActionLabelMinWidth = 44.dp
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
 // raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line.
 private val ThreadHeaderEdgeInset = RaftBackButtonDefaults.EdgeInset
+
+/**
+ * The side edge of a conversation shown as the detail pane of a split: web `COMPOSER_EDGE_CLASS`
+ * (`px-5`, composerHost.ts) for the composer frame, and the header title's start when Back is gone.
+ */
+private val ThreadSplitDetailEdgeInset = 20.dp
 // The inline search bar keeps its own compact controls (former 30dp head action, 16dp glyph)
 // so the 44dp header PanelAction does not inflate the bar under the search field.
 private val ThreadInlineSearchActionSize = 30.dp
@@ -1986,7 +1992,9 @@ private object ThreadReactionGlyphDiagnostics {
 internal fun threadComposerBottomPadding(
     keyboardInsetDp: Float,
     bottomSafeArea: Dp,
-    keyboardInsetExcludesBottomSafeArea: Boolean = false
+    keyboardInsetExcludesBottomSafeArea: Boolean = false,
+    // Desktop (no safe area, no keyboard): the web composer's `safe-bottom` 1rem under the card.
+    minimumBottomPadding: Dp = raftPlatformComposerMinimumBottomPaddingDp().dp
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
     // When the keyboard height already contains the bottom safe area (iOS keyboard frame), the
@@ -2000,7 +2008,7 @@ internal fun threadComposerBottomPadding(
         } else {
             maxOf(keyboardInset, bottomSafeArea)
         }
-    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset
+    return maxOf(ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset, minimumBottomPadding)
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
@@ -11401,10 +11409,11 @@ private fun SharedThreadRouteContentContent(
         // at all — the base array is used by identity, so the production
         // provider scope is unchanged by P1.
         // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
+        // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
         val inPlaceTextSelectionHost =
             remember(newMessageMenuEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
-                    enabled = newMessageMenuEnabled,
+                    enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
                     copyText = { text ->
                         bridge.copyToPasteboard(text)
                         bridge.toast(copiedLabel)
@@ -13222,6 +13231,19 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                ThreadComposerPasteAttachmentsAction -> {
+                    // Desktop paste of files / an image: straight into the tray, as the web
+                    // composer's paste does (no annotation editor).
+                    coroutineScope.launch {
+                        if (composerSurface.sendChannelId == null) {
+                            bridge.toast(attachmentPickerUnavailableLabel)
+                            return@launch
+                        }
+                        val files = withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() }
+                        bridge.log("thread_attachment_paste files=${files.size}")
+                        if (files.isNotEmpty()) uploadComposerAttachmentFiles(files)
+                    }
+                }
                 ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
                     // Freeze the session's image policy at picker admission.  The picker may
                     // complete after a recomposition (or a new toggle event), but its result must
@@ -14597,6 +14619,7 @@ private fun ThreadDeferredLoadingRouteContent(
                     activityMutedIndicatorVisible = false,
                     memberAvatarResolver = memberAvatarResolver,
                     showActions = false,
+                    showBack = !threadInSplitDetailPane(),
                     onBack = onBack,
                     onOpenInChannel = {},
                     onOpenMemberProfile = {},
@@ -15952,6 +15975,7 @@ private fun ThreadPageContentContent(
                     activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    showBack = !threadInSplitDetailPane(),
                     onBack = onBack,
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
@@ -16191,6 +16215,7 @@ private fun ThreadPageContentContent(
                 }
             } else if (showComposerForSelectedTab) {
                 ThreadComposerDock(
+                    edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
                     // Bottom padding follows WindowInsets.ime in the layout phase of the
                     // same frame; composerKeyboardInsetDp (two frames late) only feeds the
                     // page's decision state (see RaftThreadImeLayout.kt).
@@ -16581,6 +16606,8 @@ internal fun ThreadPageHeader(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
     showActions: Boolean = true,
+    /** False for a channel / DM shown as the detail pane of a split (list on its left), as on web desktop. */
+    showBack: Boolean = true,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
@@ -16649,7 +16676,7 @@ internal fun ThreadPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
-        contentStartPadding = ThreadHeaderEdgeInset,
+        contentStartPadding = if (showBack) ThreadHeaderEdgeInset else ThreadSplitDetailEdgeInset,
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
         // without one the title keeps the default end padding instead of running to the edge.
         contentEndPadding = if (showHeaderActions) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
@@ -16657,7 +16684,9 @@ internal fun ThreadPageHeader(
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
             // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
-            RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+            if (threadHeaderShowsBack(showBack, headerDisplay.surfaceKind)) {
+                RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+            }
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -22847,12 +22876,16 @@ private fun ThreadMessagesListContent(
  * seam above it: on the web the composer's own box sits on the canvas.
  */
 @Composable
-internal fun ThreadComposerDock(composerModifier: Modifier = Modifier, composer: @Composable () -> Unit) {
+internal fun ThreadComposerDock(
+    composerModifier: Modifier = Modifier,
+    edgePadding: Dp = RaftAppSpacing.Sm,
+    composer: @Composable () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
         Box(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(start = RaftAppSpacing.Sm, top = 12.dp, end = RaftAppSpacing.Sm)
+                    .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
         ) { composer() }
     }
@@ -23355,6 +23388,30 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
  * Deleting `!originMeasured ||` collapses this back to the intermittent form; see
  * `ThreadMenuShellHostPredicateTest`.
  */
+/**
+ * Back in a conversation header. A channel / DM that is the detail pane of a split has the list on
+ * its left and nothing to go back to (web desktop has no Back there); a reply thread keeps it (it
+ * returns to its channel), and single-pane pages always keep it.
+ */
+internal fun threadHeaderShowsBack(showBack: Boolean, surfaceKind: String): Boolean =
+    showBack || surfaceKind == RaftThreadSurfaceKind.ReplyThread
+
+/**
+ * True when this conversation is the detail pane of a split: an adaptive detail page laid out right
+ * of the window's left edge. A single-pane page (phones open threads through the same adaptive
+ * workspace, full width) and a page not measured yet count as not split, so Back never flickers off.
+ */
+internal fun threadSplitDetailPane(adaptiveDetailPage: Boolean, originMeasured: Boolean, windowOriginX: Float): Boolean =
+    adaptiveDetailPage && originMeasured && windowOriginX > 0f
+
+@Composable
+internal fun threadInSplitDetailPane(): Boolean {
+    val params = LocalActivity.current.pageData.params
+    if (params.optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY).isBlank()) return false
+    val origin = RaftChildPageOriginRegistry.stateFor(raftChildPageOriginKey(THREAD_PAGE, params))
+    return threadSplitDetailPane(adaptiveDetailPage = true, originMeasured = origin.measured, windowOriginX = origin.windowOrigin.x)
+}
+
 internal fun threadMenuUsesShellHost(
     adaptiveDetailPage: Boolean,
     originMeasured: Boolean,

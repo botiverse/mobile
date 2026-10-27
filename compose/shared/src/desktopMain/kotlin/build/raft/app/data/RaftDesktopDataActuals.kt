@@ -46,8 +46,8 @@ private class DesktopSqliteReadOnlyFile(private val file: RandomAccessFile) : Sq
 /** In-process only, as on Android: no platform listener consumes app-scope events. */
 internal actual fun createRaftPlatformEventBus(): RaftEventBus = RaftEnhancedNotifyCenter
 
-// TODO(desktop): attachment uploads (file picker -> fileRef) are not wired on desktop yet.
-internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver? = null
+// Pasted files and images (fileRef = absolute path). TODO(desktop): a file picker.
+internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver? = RaftDesktopPlatformFileResolver()
 
 /**
  * Posts a host event to the shared app-scope bus on the UI thread (Android:

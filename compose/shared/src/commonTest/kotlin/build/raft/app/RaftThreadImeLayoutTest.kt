@@ -223,4 +223,13 @@ class RaftThreadImeLayoutTest {
             ),
         )
     }
+
+    @Test
+    fun desktopComposerKeepsTheWebBottomGapWithNoSafeArea() {
+        assertEquals(16.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 0.dp, minimumBottomPadding = 16.dp))
+        assertEquals(
+            threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 0.dp),
+            threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 16.dp),
+        )
+    }
 }

@@ -84,6 +84,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -2914,6 +2923,9 @@ internal fun ThreadComposerContentLeaf(
                                     min = ThreadComposerTextFieldMinHeight,
                                     max = ThreadComposerTextFieldMaxHeight
                                 )
+                                .threadComposerPasteAttachments {
+                                    onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
+                                }
                         )
                     }
                     if (state.hookLabels.isNotEmpty()) {
@@ -5075,4 +5087,37 @@ internal fun threadComposerSuggestionTrigger(
         detectRaftComposerSuggestionTrigger(text, cursor)
     } else {
         RaftComposerSuggestionTrigger.None
+    }
+
+internal const val ThreadComposerPasteAttachmentsAction = "pasteAttachments"
+
+/** Cmd+V (Ctrl+V off macOS) with no Shift / Alt: the paste shortcut. */
+internal fun threadComposerIsPasteShortcut(
+    keyDown: Boolean,
+    key: Key,
+    meta: Boolean,
+    ctrl: Boolean,
+    shift: Boolean,
+    alt: Boolean,
+): Boolean = keyDown && key == Key.V && (meta || ctrl) && !shift && !alt
+
+/**
+ * Desktop paste of files / an image (web MessageInput `handlePaste`): when the clipboard holds
+ * them, the paste shortcut attaches them ([onPaste]) instead of pasting text. Plain text, and
+ * every phone ([raftPlatformClipboardHasAttachments] is false there), paste as before.
+ */
+private fun Modifier.threadComposerPasteAttachments(onPaste: () -> Unit): Modifier =
+    onPreviewKeyEvent { event ->
+        val shortcut =
+            threadComposerIsPasteShortcut(
+                keyDown = event.type == KeyEventType.KeyDown,
+                key = event.key,
+                meta = event.isMetaPressed,
+                ctrl = event.isCtrlPressed,
+                shift = event.isShiftPressed,
+                alt = event.isAltPressed,
+            )
+        if (!shortcut || !raftPlatformClipboardHasAttachments()) return@onPreviewKeyEvent false
+        onPaste()
+        true
     }
