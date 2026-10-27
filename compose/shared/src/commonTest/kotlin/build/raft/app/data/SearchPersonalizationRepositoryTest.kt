@@ -62,7 +62,7 @@ class SearchPersonalizationRepositoryTest {
     }
 
     @Test
-    fun dropServerRemovesOnlyThatServerAndClearAllRemovesEverything() = runBlocking {
+    fun dropServerRemovesOnlyThatServerOfThatAccountAndClearAllRemovesEverything() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         val repository = PersistentSearchPersonalizationRepository(store)
         val removedA = SearchPersonalizationOwner("server-gone", "user-a")
@@ -74,9 +74,13 @@ class SearchPersonalizationRepositoryTest {
         repository.recordSuccessfulOpen(removedB, "roadmap", null, now)
         repository.recordSuccessfulOpen(kept, "release", entity, now)
 
-        repository.dropServer(" server-gone ", now + 1)
+        // Only user-a lost the server: user-b on the same device keeps its searches there.
+        repository.dropServer(" server-gone ", " user-a ", now + 1)
         assertEquals(emptyList(), repository.read(removedA, now + 1).history)
         assertEquals(emptyMap(), repository.read(removedA, now + 1).usage)
+        assertEquals(listOf("roadmap"), repository.read(removedB, now + 1).history)
+
+        repository.dropServer("server-gone", principalId = null, nowMillis = now + 1)
         assertEquals(emptyList(), repository.read(removedB, now + 1).history)
         assertEquals(listOf("release"), repository.read(kept, now + 1).history)
         assertTrue(store.getString("search:personalization:v1").orEmpty().contains("server-kept"))
