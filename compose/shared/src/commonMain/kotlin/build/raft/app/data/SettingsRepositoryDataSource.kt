@@ -2086,14 +2086,33 @@ class RealSettingsRepository(
         }
     }
 
+    /**
+     * Realtime refresh (`notification_prefs:updated` with a server mode): refetches [serverId]'s workspace
+     * notification preference for the signed-in account at background priority. The fetch writes the
+     * last-known copy on success. A session that no longer belongs to [expectedUserId] (the account the
+     * event arrived for) is not refreshed.
+     */
+    suspend fun refreshServerNotificationPreferences(
+        expectedUserId: String,
+        serverId: String,
+    ): DataResult<SettingsServerNotificationPreferences> {
+        val session = sessionStore.readSession() ?: return authRequired()
+        val cleanServerId = serverId.trim().takeIf { it.isNotBlank() }
+        if (session.user.id != expectedUserId || cleanServerId == null) {
+            return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        }
+        return fetchServerNotificationPreferences(session.user.id, cleanServerId, DataRequestPriority.Background)
+    }
+
     private suspend fun fetchServerNotificationPreferences(
         userId: String,
         serverId: String,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
     ): DataResult<SettingsServerNotificationPreferences> =
         executeTypedSettings(
             source = "settings_server_notification_settings",
             contractCode = "settings_server_notification_settings_contract_mismatch",
-            block = { networkClient.settingsNotificationSettings(DataRequestPriority.Visible, serverId) },
+            block = { networkClient.settingsNotificationSettings(priority, serverId) },
             errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
             mapper = { bodyText ->
                 parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)

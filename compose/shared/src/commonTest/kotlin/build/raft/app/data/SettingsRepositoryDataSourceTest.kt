@@ -738,6 +738,38 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun realtimeRefreshWritesStoredCopyAtBackgroundPriorityForTheSignedInAccount() = runBlocking {
+        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
+        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false,"serverPushMode":"mentions"}""")
+        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
+
+        // No Settings page involved: the refetch alone refreshes the stored copy, for any of the viewer's servers.
+        assertIs<DataResult.Content<SettingsServerNotificationPreferences>>(
+            repository.refreshServerNotificationPreferences(expectedUserId = "user-1", serverId = "server-2")
+        )
+
+        assertEquals(ServerPushMode.Mentions, lastKnown.read("user-1", "server-2")?.mode)
+        assertEquals(listOf("GET servers/server-2/notification-settings Background"), network.requestLog)
+    }
+
+    @Test
+    fun realtimeRefreshForAnotherAccountDoesNotFetch() = runBlocking {
+        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
+        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true,"serverPushMode":"none"}""")
+        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
+
+        // The event arrived under user-2's grant but user-1 is signed in now: nothing is fetched or stored.
+        assertFalse(
+            repository.refreshServerNotificationPreferences(expectedUserId = "user-2", serverId = "server-1")
+                is DataResult.Content
+        )
+
+        assertTrue(network.requestLog.isEmpty())
+        assertNull(lastKnown.read("user-1", "server-1"))
+        assertNull(lastKnown.read("user-2", "server-1"))
+    }
+
+    @Test
     fun failedServerNotificationUpdateLeavesStoredCopyUnchanged() = runBlocking {
         val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
         val network =
@@ -1489,6 +1521,8 @@ class SettingsRepositoryDataSourceTest {
         val avatarFileNames = mutableListOf<String>()
         val providerLinkProviderIds = mutableListOf<String>()
         val providerLinkBodies = mutableListOf<String>()
+        /** Every request as `METHOD path priority`. */
+        val requestLog = mutableListOf<String>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -1499,6 +1533,7 @@ class SettingsRepositoryDataSourceTest {
             bodyText: String?
         ): HomeNetworkResponse {
             val normalized = path.trim('/')
+            requestLog += "$method $normalized $priority"
             return when {
                 normalized == "auth/me" && method == "GET" ->
                     response(accountJson)

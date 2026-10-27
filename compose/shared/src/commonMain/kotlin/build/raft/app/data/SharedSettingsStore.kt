@@ -2026,6 +2026,8 @@ class SharedSettingsStore(
     private var loadJob: Job? = null
     private val pendingMachineRealtimeIds = LinkedHashSet<String>()
     private var machineRealtimeDrainActive = false
+    private var serverNotificationRealtimeDrainActive = false
+    private var serverNotificationRealtimeReloadPending = false
     private var computerRestartGeneration = 0L
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
@@ -2922,11 +2924,16 @@ class SharedSettingsStore(
     }
 
     /**
-     * #79: realtime event bridge for the Settings surface. Only handles
-     * `RealtimeRefreshScope.Machines` events; other scopes are ignored here
-     * because SharedHomeStore already drains them for the home / members /
-     * agent detail surfaces. Behavior:
+     * #79: realtime event bridge for the Settings surface. Handles
+     * `RealtimeRefreshScope.Machines` events, `computer:restart:done` and the
+     * viewer's server notification preference (`notification_prefs:updated`
+     * with a server mode); other events are ignored here because
+     * SharedHomeStore already drains them for the home / members / agent
+     * detail surfaces. Behavior:
      *
+     * - Active route is Notifications and the event names this store's
+     *   server: refetch the page (single-flight; the last-known copy is
+     *   written by the repository on success).
      * - Active route is ComputerDetail and the event's subjectId matches the
      *   open machineId: reload the detail snapshot so status / daemonVersion /
      *   runtimes / lastHeartbeat reflect the latest server state.
@@ -2937,11 +2944,25 @@ class SharedSettingsStore(
     private suspend fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
         if (event is ServerNotificationPreferencesChanged) {
             if (event.serverId.value != serverId) return
-            when (_state.value.route.destination) {
-                SharedSettingsDestination.Notifications ->
+            if (_state.value.route.destination != SharedSettingsDestination.Notifications) return
+            // The payload is not trusted: the open page refetches the viewer's own preference. A burst of
+            // events coalesces into the in-flight reload plus at most one follow-up.
+            if (serverNotificationRealtimeDrainActive) {
+                serverNotificationRealtimeReloadPending = true
+                diagnosticsLogger("settings_server_notification_realtime_coalesce serverId=$serverId")
+                return
+            }
+            serverNotificationRealtimeDrainActive = true
+            try {
+                do {
+                    serverNotificationRealtimeReloadPending = false
+                    if (_state.value.route.destination != SharedSettingsDestination.Notifications) break
                     dataSource.loadMobile().preservingPendingServerNotificationMode()
                         .applyToState(SharedSettingsDestination.Notifications) { copy(mobile = it) }
-                else -> Unit
+                } while (serverNotificationRealtimeReloadPending)
+            } finally {
+                serverNotificationRealtimeDrainActive = false
+                serverNotificationRealtimeReloadPending = false
             }
             return
         }

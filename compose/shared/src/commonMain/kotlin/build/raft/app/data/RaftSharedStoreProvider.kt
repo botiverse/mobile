@@ -48,6 +48,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
@@ -1561,6 +1562,31 @@ internal class RaftSharedStoreProvider private constructor(
             sessions = raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() },
             selectedServerId = flowOf(null),
         )
+
+    /**
+     * Wires the viewer's `notification_prefs:updated` (server mode) push to a background, single-flight
+     * refetch of that server's preference for the grant's account; the repository writes the last-known
+     * copy on success, so the copy stays current while no Settings page is open.
+     */
+    internal fun installServerNotificationPreferencesRealtimeRefresh() {
+        val repository =
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = sharedInfoLogger("SlockSettingsRepository", "server_notification_realtime_refresh"),
+                warningLogger = sharedWarnLogger("SlockSettingsRepository", "server_notification_realtime_refresh"),
+                serverNotificationLastKnownStore = settingsServerNotificationLastKnownStore,
+            )
+        val refresher =
+            ServerNotificationPreferencesRealtimeRefresher(
+                scope = RaftStoreThreading.newScope(),
+                refresh = { principalId, serverId ->
+                    repository.refreshServerNotificationPreferences(principalId, serverId)
+                },
+                logger = sharedInfoLogger("SlockSettingsRealtime", "server_notification_realtime_refresh"),
+            )
+        realtimeDomainEventOwner.installServerNotificationPreferencesSink(refresher::onEvent)
+    }
 
     /** Wears the process-level look app-wide until an app shell takes over ([followServerTheme]). */
     internal fun followProcessServerTheme() {
@@ -3247,6 +3273,7 @@ internal class RaftSharedStoreProvider private constructor(
             )
             return provider.also {
                 provider.followProcessServerTheme()
+                provider.installServerNotificationPreferencesRealtimeRefresh()
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
                 RaftPushRegistrationLifecycle.observeSessionEvents(
                     source = authStore.authSessionEvents,
@@ -3528,6 +3555,18 @@ internal class SharedRealtimeDomainEventOwner(
         serverAppearanceSink = sink
     }
 
+    // `notification_prefs:updated` with a server mode is emitted to the viewer's own user room. Process entry
+    // only, like the appearance sink: it refreshes the viewer's last-known workspace notification preference
+    // under the grant's account whether or not a Settings page is mounted.
+    private var serverNotificationPreferencesSink:
+        (suspend (principalId: String, serverId: String, event: ServerNotificationPreferencesChanged) -> Unit)? = null
+
+    fun installServerNotificationPreferencesSink(
+        sink: suspend (principalId: String, serverId: String, event: ServerNotificationPreferencesChanged) -> Unit,
+    ) {
+        serverNotificationPreferencesSink = sink
+    }
+
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
     }
@@ -3634,6 +3673,9 @@ internal class SharedRealtimeDomainEventOwner(
             )
             if (acceptedEvent is ServerAppearanceUpdated && acceptedEvent.serverId.value == serverId) {
                 serverAppearanceSink?.invoke(grant.principalId, acceptedEvent)
+            }
+            if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {
+                serverNotificationPreferencesSink?.invoke(grant.principalId, serverId, acceptedEvent)
             }
         }
 

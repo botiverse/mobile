@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -2072,6 +2073,85 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun realtimeServerNotificationBurstReloadsTheOpenPageOncePlusOneFollowUp() = runTest {
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = backgroundScope
+            )
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+        val first = BlockingCall()
+        repository.mobileBlock = first
+        fun changed(version: Long) =
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ServerNotificationPreferencesChanged(
+                        serverId = ServerId("server-1"),
+                        serverPushMode = ServerPushMode.None.wireName,
+                        prefsVersion = version
+                    )
+            )
+
+        val drain = launch { store.accept(changed(2)) }
+        first.awaitStarted()
+        repository.mobileBlock = null
+        repeat(4) { store.accept(changed(3L + it)) }
+        assertEquals(listOf("mobile"), repository.calls)
+        // The newest value comes from the follow-up GET, never from the payload.
+        repository.mobileResult =
+            DataResult.Content(
+                mobileSnapshot().copy(serverNotificationMode = ServerPushMode.None.toSettingsMobileSelectionSnapshot())
+            )
+        first.release()
+        drain.join()
+
+        assertEquals(listOf("mobile", "mobile"), repository.calls)
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.None.wireName, mobile.serverNotificationMode.selectedKey)
+    }
+
+    @Test
+    fun realtimeServerNotificationOfAnotherServerOrClosedPageDoesNotReload() = runTest {
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = backgroundScope
+            )
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = ServerNotificationPreferencesChanged(ServerId("server-2"), ServerPushMode.None.wireName, 2)
+            )
+        )
+        assertEquals(emptyList(), repository.calls)
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Appearance))
+        repository.calls.clear()
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = ServerNotificationPreferencesChanged(ServerId("server-1"), ServerPushMode.None.wireName, 3)
+            )
+        )
+        assertEquals(emptyList(), repository.calls)
+    }
+
+    @Test
     fun realtimeMachineUpdateDoesNotReloadWhenOpenMachineIdDoesNotMatch() = runBlocking {
         // #79: when the user is on a different computer's detail page, a
         // machine:updated event for some other machine must not trigger a
@@ -3564,8 +3644,11 @@ class SharedSettingsStoreTest {
             return DataResult.Content(SettingsServerActionResult(success = true))
         }
 
+        var mobileBlock: BlockingCall? = null
+
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
+            mobileBlock?.consume()
             return mobileResult
         }
 
