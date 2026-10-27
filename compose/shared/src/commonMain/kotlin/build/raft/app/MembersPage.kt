@@ -6046,6 +6046,7 @@ private fun MembersDetailContent(
     val diagnosticsCopied = stringResource(Res.string.member_action_diagnostics_copied)
     val issueReported = stringResource(Res.string.member_action_issue_reported)
     val issueReportTitle = stringResource(Res.string.member_report_issue_title_for_agent, member.displayName)
+    val issueTicketRetryFailed = stringResource(Res.string.member_report_issue_retry_ticket_failed)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
@@ -6173,6 +6174,9 @@ private fun MembersDetailContent(
     var issueReportReceipt by remember(member.id.value) { mutableStateOf<AgentIssueReportResult?>(null) }
     var issueReportReferenceCopied by remember(member.id.value) { mutableStateOf(false) }
     var issueTicketRetrying by remember(member.id.value) { mutableStateOf(false) }
+    // Set before the launch: a second tap in the same frame must not file a second ticket (every
+    // submit gets a new submission id, so the server's dedup can't catch it).
+    var issueReportSubmitting by remember(member.id.value) { mutableStateOf(false) }
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
@@ -6450,58 +6454,63 @@ private fun MembersDetailContent(
     }
     fun submitIssueReport(selection: MembersAgentIssueReportSelection, canIncludeMachineLog: Boolean) {
         val callback = onReportAgentIssue
-        if (diagnosticInFlight != null) return
+        if (diagnosticInFlight != null || issueReportSubmitting) return
         if (agentDetailActions == null && callback == null) {
             onUnavailableAction(issueReportingUnavailable)
             return
         }
+        issueReportSubmitting = true
         scope.launch {
-            diagnosticActionState =
-                MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
-            val request =
-                SharedAgentIssueReportRequest(
-                    description = selection.description.trim(),
-                    diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState),
-                    includeRecentMessages = selection.includeRecentMessages,
-                    includeLiveActivity = selection.includeLiveActivity,
-                    includeActivityHistory = selection.includeActivityHistory,
-                    includeRuntimeTranscript = selection.includeRuntimeTranscript,
-                    liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty(),
-                    title = issueReportTitle,
-                    locale = raftCurrentUiLocaleTag(),
-                    includeMachineLogTail = selection.includeMachineLogTail,
-                    canIncludeMachineLog = canIncludeMachineLog
-                )
-            val result =
-                if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                    sharedAgentDetailStore.reportIssue(request, agentDetailActions)
-                } else {
-                    try {
-                        requireNotNull(callback).invoke(request)
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (_: Throwable) {
-                        DataResult.Error(ScreenError("agent_issue_report_failed"))
+            try {
+                diagnosticActionState =
+                    MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
+                val request =
+                    SharedAgentIssueReportRequest(
+                        description = selection.description.trim(),
+                        diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState),
+                        includeRecentMessages = selection.includeRecentMessages,
+                        includeLiveActivity = selection.includeLiveActivity,
+                        includeActivityHistory = selection.includeActivityHistory,
+                        includeRuntimeTranscript = selection.includeRuntimeTranscript,
+                        liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty(),
+                        title = issueReportTitle,
+                        locale = raftCurrentUiLocaleTag(),
+                        includeMachineLogTail = selection.includeMachineLogTail,
+                        canIncludeMachineLog = canIncludeMachineLog
+                    )
+                val result =
+                    if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                        sharedAgentDetailStore.reportIssue(request, agentDetailActions)
+                    } else {
+                        try {
+                            requireNotNull(callback).invoke(request)
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            DataResult.Error(ScreenError("agent_issue_report_failed"))
+                        }
                     }
+                val error =
+                    when (result) {
+                        is DataResult.Content -> null
+                        is DataResult.Empty -> ScreenError(result.reason.name, retryable = false)
+                        is DataResult.Error -> result.error
+                        is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false)
+                    }
+                diagnosticActionState =
+                    MembersAgentDiagnosticActionState(
+                        actionKey = "report",
+                        inProgress = false,
+                        error = error,
+                        successLabel = issueReported.takeIf { error == null }
+                    )
+                if (result is DataResult.Content) {
+                    reportIssueDialogOpen = false
+                    issueReportReceipt = result.data
+                    issueReportReferenceCopied = false
                 }
-            val error =
-                when (result) {
-                    is DataResult.Content -> null
-                    is DataResult.Empty -> ScreenError(result.reason.name, retryable = false)
-                    is DataResult.Error -> result.error
-                    is DataResult.NoPermission -> ScreenError(result.blocker.code, retryable = false)
-                }
-            diagnosticActionState =
-                MembersAgentDiagnosticActionState(
-                    actionKey = "report",
-                    inProgress = false,
-                    error = error,
-                    successLabel = issueReported.takeIf { error == null }
-                )
-            if (result is DataResult.Content) {
-                reportIssueDialogOpen = false
-                issueReportReceipt = result.data
-                issueReportReferenceCopied = false
+            } finally {
+                issueReportSubmitting = false
             }
         }
     }
@@ -7004,7 +7013,9 @@ private fun MembersDetailContent(
                                 scope.launch {
                                     try {
                                         val retried = requireNotNull(retryActions).retryIssueTicket(ticketRequest)
-                                        if (retried is DataResult.Content && issueReportReceipt?.reportId == receipt.reportId) {
+                                        if (retried !is DataResult.Content) {
+                                            onUnavailableAction(issueTicketRetryFailed)
+                                        } else if (issueReportReceipt?.reportId == receipt.reportId) {
                                             issueReportReceipt = receipt.copy(ticketId = retried.data)
                                         }
                                     } finally {

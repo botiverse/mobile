@@ -1072,6 +1072,7 @@
     <string name="member_report_issue_ticket_failed">The report was uploaded, but we couldn't open a feedback ticket for it. Share the reference below with the Raft team.</string>
     <string name="member_report_issue_view_ticket">View Ticket</string>
     <string name="member_report_issue_retry_ticket">Retry Ticket</string>
+    <string name="member_report_issue_retry_ticket_failed">Couldn\'t open the ticket. Try again.</string>
     <string name="member_report_issue_retrying_ticket">Retrying…</string>
     <string name="member_report_issue_transcript_requested">The agent's computer was asked for its session record. This screen can't tell whether one was found.</string>
     <string name="member_report_issue_transcript_request_failed">Session record request failed.</string>

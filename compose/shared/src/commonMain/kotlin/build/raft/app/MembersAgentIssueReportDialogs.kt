@@ -3,8 +3,6 @@ package build.raft.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -92,7 +90,7 @@ internal fun MembersAgentIssueReportDialog(
     var machineLogTailChoice by remember(agentName) { mutableStateOf<Boolean?>(null) }
     val includeMachineLogTail = membersAgentIssueMachineLogTailChecked(machineLogTailChoice, canIncludeMachineLog)
     RaftUnifiedDialog(
-        title = stringResource(Res.string.member_report_issue_title).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_report_issue_title),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
@@ -328,7 +326,6 @@ private fun MembersAgentIssueReportReferenceRow(
  * ticket was filed, else the warning, report reference, Copy and Retry Ticket; the session-record
  * request outcome; View Ticket (when [onViewTicket] can open it) and Done.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MembersAgentIssueReportReceiptDialog(
     receipt: AgentIssueReportResult,
@@ -343,7 +340,7 @@ internal fun MembersAgentIssueReportReceiptDialog(
     val typography = RaftTheme.typography
     val ticketId = receipt.ticketId
     RaftUnifiedDialog(
-        title = stringResource(Res.string.member_report_issue_success_title).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_report_issue_success_title),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -391,53 +388,49 @@ internal fun MembersAgentIssueReportReceiptDialog(
                 )
             }
             if (ticketId == null) {
-                RaftCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RaftBanner(
-                            description = stringResource(Res.string.member_report_issue_ticket_failed),
-                            status = RaftBannerStatus.Warning,
-                            size = RaftBannerSize.Sm
-                        )
-                        RaftSectionEyebrow(text = stringResource(Res.string.member_report_issue_reference_label))
-                        MembersAgentIssueReportReferenceRow(
-                            label = stringResource(Res.string.member_report_issue_report_id),
-                            value = receipt.reportId
-                        )
-                        MembersAgentIssueReportReferenceRow(
-                            label = stringResource(Res.string.member_report_issue_server_id),
-                            value = receipt.serverId
-                        )
-                        // Web: outline (default) md buttons inside the reference card; they wrap on narrow widths.
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                // Kirby 10-27: no card around the warning; the reference and one row of buttons follow
+                // it, the main action (Retry Ticket) first.
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RaftBanner(
+                        description = stringResource(Res.string.member_report_issue_ticket_failed),
+                        status = RaftBannerStatus.Warning,
+                        size = RaftBannerSize.Sm
+                    )
+                    RaftSectionEyebrow(text = stringResource(Res.string.member_report_issue_reference_label))
+                    MembersAgentIssueReportReferenceRow(
+                        label = stringResource(Res.string.member_report_issue_report_id),
+                        value = receipt.reportId
+                    )
+                    MembersAgentIssueReportReferenceRow(
+                        label = stringResource(Res.string.member_report_issue_server_id),
+                        value = receipt.serverId
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (onRetryTicket != null && receipt.ticketRequest != null) {
                             RaftButton(
                                 text =
-                                    if (referenceCopied) {
-                                        stringResource(Res.string.member_report_issue_reference_copied)
+                                    if (ticketRetrying) {
+                                        stringResource(Res.string.member_report_issue_retrying_ticket)
                                     } else {
-                                        stringResource(Res.string.member_report_issue_copy_reference)
+                                        stringResource(Res.string.member_report_issue_retry_ticket)
                                     },
                                 variant = RaftButtonVariant.Default,
                                 size = RaftButtonSize.Md,
-                                onClick = onCopyReference
+                                enabled = !ticketRetrying,
+                                onClick = onRetryTicket
                             )
-                            if (onRetryTicket != null && receipt.ticketRequest != null) {
-                                RaftButton(
-                                    text =
-                                        if (ticketRetrying) {
-                                            stringResource(Res.string.member_report_issue_retrying_ticket)
-                                        } else {
-                                            stringResource(Res.string.member_report_issue_retry_ticket)
-                                        },
-                                    variant = RaftButtonVariant.Default,
-                                    size = RaftButtonSize.Md,
-                                    enabled = !ticketRetrying,
-                                    onClick = onRetryTicket
-                                )
-                            }
                         }
+                        RaftButton(
+                            text =
+                                if (referenceCopied) {
+                                    stringResource(Res.string.member_report_issue_reference_copied)
+                                } else {
+                                    stringResource(Res.string.member_report_issue_copy_reference)
+                                },
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            onClick = onCopyReference
+                        )
                     }
                 }
             }

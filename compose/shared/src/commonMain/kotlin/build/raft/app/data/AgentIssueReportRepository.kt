@@ -356,15 +356,24 @@ internal class AgentIssueReportRepository(
         reportId: String,
         body: AgentIssueTranscriptRequest
     ): AgentIssueTranscriptRequestState {
+        // Never throws: it runs beside the ticket in one coroutineScope, and a failure here must not
+        // cancel the ticket (a "failed" report submitted again would file a second ticket).
         val response =
-            withTimeoutOrNull(AGENT_ISSUE_TRANSCRIPT_CONFIRM_CAP_MILLIS) {
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = "servers/${serverId.value}/machines/$machineId/agents/$agentId/feedback/$reportId/transcript",
-                    method = "POST",
-                    serverIdOverride = serverId,
-                    bodyText = agentIssueRequestJson.encodeToString(body)
-                )
+            try {
+                withTimeoutOrNull(AGENT_ISSUE_TRANSCRIPT_CONFIRM_CAP_MILLIS) {
+                    networkClient.request(
+                        priority = DataRequestPriority.Foreground,
+                        path = "servers/${serverId.value}/machines/$machineId/agents/$agentId/feedback/$reportId/transcript",
+                        method = "POST",
+                        serverIdOverride = serverId,
+                        bodyText = agentIssueRequestJson.encodeToString(body)
+                    )
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger("agent_issue_report_transcript_exception type=${throwable::class.simpleName}")
+                null
             }
         logger("agent_issue_report_transcript code=${response?.code ?: "timeout"}")
         return agentIssueTranscriptRequestState(response)
