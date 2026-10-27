@@ -21,11 +21,15 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const dump = JSON.parse(execFileSync("python3", [join(here, "gen_tokens.py"), "--dump-json"], { encoding: "utf8", maxBuffer: 1 << 26 }));
-// raft-ui (0.7 to 0.18): one "raft" family; the root carries `.light` or `.dark`.
-const roots = {
-  raftLight: { cls: "light" },
-  raftDark: { cls: "dark" },
-};
+// The root carries `.light` or `.dark` (the mode) and, for every theme but the
+// default `raft`, `data-theme="<id>"` (raft-ui themes.css), as the Web sets them.
+// dump.themes is keyed "<id>Light" / "<id>Dark" ("raftLight", "boringDark"...).
+const roots = Object.fromEntries(
+  Object.keys(dump.themes).map((key) => {
+    const [, id, mode] = key.match(/^(.*)(Light|Dark)$/);
+    return [key, { cls: mode.toLowerCase(), theme: id === "raft" ? null : id }];
+  }),
+);
 
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const page = await browser.newPage();
@@ -34,8 +38,9 @@ const themes = {};
 for (const [name, root] of Object.entries(roots)) {
   themes[name] = await page.evaluate(({ root, tokens }) => {
     const html = document.documentElement;
-    html.removeAttribute("data-theme");
     html.className = root.cls;
+    if (root.theme) html.setAttribute("data-theme", root.theme);
+    else html.removeAttribute("data-theme");
     const probe = document.getElementById("probe");
     const canvas = document.createElement("canvas");
     canvas.width = 2;

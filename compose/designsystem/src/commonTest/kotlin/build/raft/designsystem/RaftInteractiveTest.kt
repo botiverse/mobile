@@ -95,8 +95,8 @@ class RaftValueSelectionTest {
         assertEquals(light.foregroundInverse, look.mark)
         listOf(light, dark).forEach { colors ->
             listOf(true, false).forEach { enabled ->
-                assertNotEquals(RaftUiPalette.brand, raftCheckboxLook(true, enabled, colors).fill)
-                assertNotEquals(RaftUiPalette.brand, raftRadioLook(true, enabled, colors).fill)
+                assertNotEquals(RaftUiPalette.selected, raftCheckboxLook(true, enabled, colors).fill)
+                assertNotEquals(RaftUiPalette.selected, raftRadioLook(true, enabled, colors).fill)
             }
         }
     }
@@ -130,7 +130,7 @@ class RaftSwitchLookTest {
     @Test
     fun onIsABrandStickerWithTheDieCutEdgeInDark() {
         val on = raftSwitchLook(checked = true, enabled = true, colors = light)
-        assertEquals(RaftUiPalette.brand, on.track)
+        assertEquals(RaftUiPalette.selected, on.track)
         assertEquals(RaftUiPalette.stickerInk, on.trackEdge)
         assertEquals(RaftUiPalette.stickerInk, on.thumbRing)
         assertEquals(0f, on.dieCut.alpha)
@@ -158,7 +158,7 @@ class RaftNavigationItemTest {
     @Test
     fun theSelectedTabOrSegmentIsTheActiveSticker() {
         val active = raftStickerItemLook(active = true, enabled = true, colors = dark)
-        assertEquals(RaftUiPalette.brand, active.fill)
+        assertEquals(RaftUiPalette.selected, active.fill)
         assertEquals(RaftUiPalette.stickerInk, active.edge)
         assertEquals(RaftUiPalette.stickerInk, active.ink)
         assertTrue(active.dieCut.alpha > 0f)

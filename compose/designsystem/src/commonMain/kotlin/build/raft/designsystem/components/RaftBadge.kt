@@ -86,7 +86,7 @@ internal fun raftBadgeLook(
                         when (variant) {
                             RaftBadgeVariant.Default -> RaftUiPalette.stickerPaper
                             RaftBadgeVariant.Muted -> RaftUiPalette.inactive
-                            RaftBadgeVariant.Primary -> RaftUiPalette.brand
+                            RaftBadgeVariant.Primary -> colors.brand // follows the theme (Boring Gray grays it)
                             RaftBadgeVariant.Information -> RaftUiPalette.info
                             RaftBadgeVariant.Accent -> RaftUiPalette.attention
                             RaftBadgeVariant.Success -> RaftUiPalette.success

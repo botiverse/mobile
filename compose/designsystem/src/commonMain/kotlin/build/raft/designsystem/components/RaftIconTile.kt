@@ -65,7 +65,7 @@ fun RaftIconTile(
 
 /**
  * The sticker tile of app update, report-success and empty states: an icon on a block of
- * colour ([fill], a palette colour such as `RaftUiPalette.brand`), sticker radius, the
+ * colour ([fill], a palette colour such as `RaftUiPalette.selected`), sticker radius, the
  * 1.5dp `sticker-ink` edge and ink, and the die-cut edge in dark. raft-ui has no part for
  * it; it is the IconTile shape made a sticker.
  */

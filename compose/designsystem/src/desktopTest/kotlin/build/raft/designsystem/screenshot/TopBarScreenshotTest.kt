@@ -213,7 +213,7 @@ class TopBarScreenshotTest {
             RaftText(
                 entry.name.take(1),
                 style = RaftTheme.typography.caption.copy(fontSize = if (size > 20.dp) 13.sp else 10.sp, lineHeight = if (size > 20.dp) 13.sp else 10.sp),
-                color = RaftUiPalette.brand,
+                color = RaftUiPalette.selected,
             )
         }
     }

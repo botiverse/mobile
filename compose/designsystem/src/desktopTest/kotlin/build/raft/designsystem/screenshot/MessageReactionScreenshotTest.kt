@@ -135,7 +135,7 @@ class MessageReactionScreenshotTest {
 
     /** A 16dp emoji stand-in: a face in [fill] with an ink edge and eyes. */
     @Composable
-    private fun Face(fill: Color = RaftUiPalette.brand) {
+    private fun Face(fill: Color = RaftUiPalette.selected) {
         Canvas(Modifier.size(16.dp).padding(1.dp)) {
             val ink = RaftUiPalette.stickerInk
             drawCircle(fill)

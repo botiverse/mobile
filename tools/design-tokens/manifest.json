@@ -17,6 +17,11 @@
       "origin": "npm:@botiverse/raft-ui@0.37.0/dist/foundation.css",
       "sha256": "a82f6e5ffffc2bf8ee866599053267895614e5dcb52b19bfe297d0a2aa8cf433"
     },
+    "raftUiThemes": {
+      "path": "source/raft-ui-0.37.0/themes.css",
+      "origin": "npm:@botiverse/raft-ui@0.37.0/dist/themes.css",
+      "sha256": "d676bb4b3ad783cfbe81a1428939d76783f2bee1b9ed1ec5d3913e661b65093d"
+    },
     "web": {
       "path": "source/raft-web/index.css",
       "origin": "botiverse/slock@6924ec3a016ebfc956d58863f81046d59d07c05c:packages/web/src/index.css",

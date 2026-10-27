@@ -106,7 +106,8 @@ object RaftMessageActionCardDefaults {
 enum class RaftMessageActionCardStatusTone(internal val color: Color) {
     /** `bg-inactive`: nothing to do (View only, Declined, Paused). */
     Neutral(RaftUiPalette.inactive),
-    Primary(RaftUiPalette.brand),
+    /** Raft yellow in every theme, as [RaftStatusVariant.Primary]: a status light ignores the theme. */
+    Primary(RaftUiPalette.selected),
     Information(RaftUiPalette.info),
 
     /** `bg-attention`, the pink pixel: the card waits on the reader (Confirm again). */

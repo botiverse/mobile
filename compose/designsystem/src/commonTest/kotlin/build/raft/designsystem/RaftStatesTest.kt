@@ -72,7 +72,7 @@ class RaftActiveStickerTest {
     @Test
     fun activeIsABrandStickerWithAnInkEdgeAndInkType() {
         val look = raftActiveStickerLook(active = true, colors = light)
-        assertEquals(RaftUiPalette.brand, look.fill)
+        assertEquals(RaftUiPalette.selected, look.fill)
         assertEquals(RaftUiPalette.stickerInk, look.edge)
         assertEquals(RaftUiPalette.stickerInk, look.ink)
         assertEquals(RaftUiPalette.stickerPressed, look.pressOverlay)

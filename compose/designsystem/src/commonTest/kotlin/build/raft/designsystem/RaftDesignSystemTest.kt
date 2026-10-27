@@ -15,6 +15,7 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -72,7 +73,7 @@ class RaftBadgeLookTest {
     @Test
     fun solidIsAnInkEdgedStickerWithAnOuterRingOnlyInDark() {
         val primary = raftBadgeLook(RaftBadgeAppearance.Solid, RaftBadgeVariant.Primary, enabled = true, colors = light)
-        assertEquals(RaftUiPalette.brand, primary.fill)
+        assertEquals(light.brand, primary.fill)
         assertEquals(RaftUiPalette.stickerInk, primary.ink)
         assertEquals(20.dp, primary.height)
         assertEquals(1.5.dp, primary.edgeWidth)
@@ -119,7 +120,9 @@ class RaftBadgeLookTest {
             assertEquals(RaftUiPalette.selected, raftSwitchLook(checked = true, enabled = true, colors = colors).track)
             assertEquals(RaftUiPalette.selected, raftStepLook(RaftStepStatus.Process, colors).fill)
         }
-        assertEquals(RaftUiPalette.brand, RaftUiPalette.selected)
-        assertEquals(RaftUiPalette.brand, RaftUiPalette.you)
+        assertEquals(light.brand, RaftUiPalette.selected)
+        assertEquals(light.brand, RaftUiPalette.you)
+        // A theme that grays the brand (Boring Gray) keeps them yellow.
+        assertNotEquals(RaftUiThemeColors.BoringLight.brand, RaftUiPalette.selected)
     }
 }
