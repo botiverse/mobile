@@ -9,8 +9,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Return URIs the browser login may hand back to. Must match the server's allowlist
- * (slock `appLoginService.ts`): release builds use `raft`, the internal channels their own scheme,
- * and the Mac app (`:desktopApp`) `raft-mac` (the Electron Raft Desktop also claims `raft://`).
+ * (slock `appLoginService.ts`): release builds and the Compose desktop app (`:desktopApp`) use
+ * `raft`, the internal channels their own scheme.
  */
 val APP_LOGIN_RETURN_URIS: Set<String> =
     setOf(
@@ -18,7 +18,6 @@ val APP_LOGIN_RETURN_URIS: Set<String> =
         "raft-alpha://login/callback",
         "raft-beta://login/callback",
         "raft-debug://login/callback",
-        "raft-mac://login/callback",
     )
 
 /** One browser login callback: a [requestId] plus exactly one of [code] or [error]. */
