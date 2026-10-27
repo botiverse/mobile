@@ -81,5 +81,9 @@ private val FCM_UNREAD_NOTIFICATION_KEYS =
         "previewMode",
         "titleKey",
         "bodyKey",
-        "bodyArgs"
+        "bodyArgs",
+        // Task v2 task-reply pushes (slock #11445): open the task conversation on tap.
+        "taskId",
+        "taskConversationChannelId",
+        "taskMessageId"
     )

@@ -544,6 +544,9 @@ private const val AppShellNotificationParentChannelIdKey = "slockNotificationPar
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
 private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
+private const val AppShellNotificationTaskIdKey = "slockNotificationTaskId"
+private const val AppShellNotificationTaskConversationChannelIdKey = "slockNotificationTaskConversationChannelId"
+private const val AppShellNotificationTaskMessageIdKey = "slockNotificationTaskMessageId"
 /** WindowNavigationIntent.source of an external message link (#proj-mobile #25/#26). */
 internal const val MessageLinkNavigationSource = "message_link"
 private const val MessageLinkServerNamePlaceholder = "__raft_message_link_server__"
@@ -14685,7 +14688,9 @@ internal data class AppShellNotificationThreadLaunchRequest(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val conversationKind: ConversationKind? = null,
-    val category: String? = null
+    val category: String? = null,
+    /** Task v2: the push names the task conversation the reply was written in ([RaftTaskConversationPushTarget]). */
+    val taskConversation: RaftTaskConversationPushTarget? = null,
 )
 
 internal fun notificationLaunchHomeContentReady(
@@ -14709,7 +14714,13 @@ private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotifi
             parentChannelId = optString(AppShellNotificationParentChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentMessageId = optString(AppShellNotificationParentMessageIdKey).trim().takeIf { it.isNotBlank() },
             conversationKind = parseConversationKindOrNull(optString(AppShellNotificationKindKey)),
-            category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() }
+            category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() },
+            taskConversation =
+                parseRaftTaskConversationPushTarget(
+                    taskId = optString(AppShellNotificationTaskIdKey),
+                    taskConversationChannelId = optString(AppShellNotificationTaskConversationChannelIdKey),
+                    taskMessageId = optString(AppShellNotificationTaskMessageIdKey),
+                ),
         )
     }
     return legacyAppShellNotificationThreadLaunchRequest()

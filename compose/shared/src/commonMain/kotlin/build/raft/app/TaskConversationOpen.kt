@@ -4,7 +4,9 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.topLevelThreadId
 
@@ -99,4 +101,44 @@ internal fun buildTaskOpenLaunchPayload(
     } else {
         null
     }
+}
+
+/**
+ * Task v2 push routing: the task-conversation fields of a task reply push (slock #11445, APNs custom
+ * payload top level next to `channelId`, and FCM data). The push keeps `kind` / `channelId` /
+ * `messageId` (parent channel + anchor) for older apps and adds:
+ * - `taskId`: the task;
+ * - `taskConversationChannelId`: the conversation the reply was written in (the reader's local one);
+ * - `taskMessageId`: the reply's own message id.
+ * Without `taskConversationChannelId` the push routes exactly as before.
+ */
+internal object RaftTaskConversationPushFields {
+    const val TaskId = "taskId"
+    const val TaskConversationChannelId = "taskConversationChannelId"
+    const val TaskMessageId = "taskMessageId"
+}
+
+internal data class RaftTaskConversationPushTarget(
+    val conversationChannelId: ChannelId,
+    val taskId: TaskId?,
+    val taskMessageId: MessageId?,
+)
+
+/**
+ * The single parse point of the task-conversation push fields ([RaftTaskConversationPushFields]),
+ * fed by each platform's notification-open payload (Android `RaftCmpActivity`, iOS `iOSApp.swift`).
+ * TODO(task-v2): field names follow slock #11445 (not merged yet); re-verify against
+ * `packages/server/src/services/pushService.ts` once it lands.
+ */
+internal fun parseRaftTaskConversationPushTarget(
+    taskId: String?,
+    taskConversationChannelId: String?,
+    taskMessageId: String?,
+): RaftTaskConversationPushTarget? {
+    val conversation = taskConversationChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return RaftTaskConversationPushTarget(
+        conversationChannelId = ChannelId(conversation),
+        taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
+        taskMessageId = taskMessageId?.trim()?.takeIf { it.isNotBlank() }?.let(::MessageId),
+    )
 }

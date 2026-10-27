@@ -2980,6 +2980,11 @@ internal open class RaftCmpActivity :
         internal const val KEY_APP_SHELL_NOTIFICATION_PARENT_MESSAGE_ID = "slockNotificationParentMessageId"
         internal const val KEY_APP_SHELL_NOTIFICATION_KIND = "slockNotificationKind"
         internal const val KEY_APP_SHELL_NOTIFICATION_CATEGORY = "slockNotificationCategory"
+        // Task v2 task-reply push (slock #11445); parsed in shared `parseRaftTaskConversationPushTarget`.
+        internal const val KEY_APP_SHELL_NOTIFICATION_TASK_ID = "slockNotificationTaskId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_TASK_CONVERSATION_CHANNEL_ID =
+                "slockNotificationTaskConversationChannelId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_TASK_MESSAGE_ID = "slockNotificationTaskMessageId"
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
@@ -3184,6 +3189,15 @@ internal open class RaftCmpActivity :
             }
             request.optTrimmedString("category")?.let { category ->
                 appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_CATEGORY, category)
+            }
+            request.optTrimmedString("taskConversationChannelId")?.let { conversationId ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_TASK_CONVERSATION_CHANNEL_ID, conversationId)
+                request.optTrimmedString("taskId")?.let { taskId ->
+                    appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_TASK_ID, taskId)
+                }
+                request.optTrimmedString("taskMessageId")?.let { taskMessageId ->
+                    appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_TASK_MESSAGE_ID, taskMessageId)
+                }
             }
             return appShellPageData.withAndroidHostPageData(PAGE_APP_SHELL)
         }
