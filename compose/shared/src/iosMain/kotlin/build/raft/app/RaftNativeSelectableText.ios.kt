@@ -50,12 +50,15 @@ actual fun RaftNativeSelectableText(
     val lineHeightPt = style.lineHeight.ptOrNull(fontSizePt)
     val fontName = style.raftIosFontName()
     val color = style.color.takeIf { it != Color.Unspecified } ?: Color.Black
-    // The rendered UITextView. Two safeguards against the TextKit 2 stale-fragment bug
-    // that drew the text twice (see raftSelectableUITextView):
+    // The rendered UITextView, with its NSTextStorage kept alive by the stack holder (see
+    // raftSelectableUITextView: storage → layoutManager is the only strong edge, so the
+    // storage would dealloc if nothing held it). Two safeguards against the TextKit 2
+    // stale-fragment bug that drew the text twice:
     // 1) the view stack is TextKit 1, so layout invalidation is complete;
     // 2) height is measured on a separate throwaway instance, so the displayed view is
     //    never laid out at a foreign width.
-    val textView = remember { raftSelectableUITextView() }
+    val stack = remember { raftSelectableUITextView() }
+    val textView = stack.view
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
     val handleColor = LocalTextSelectionColors.current.handleColor
@@ -78,7 +81,10 @@ actual fun RaftNativeSelectableText(
         val widthPt = constraints.maxWidth.toDouble() / density.density
         val heightPt =
             remember(attributed, widthPt) {
+                // The stack keeps the measuring view's storage alive for the call; it is
+                // dropped when the remember block leaves composition.
                 raftMeasuringTextView(attributed)
+                    .view
                     .sizeThatFits(CGSizeMake(widthPt, Double.MAX_VALUE))
                     .useContents { height }
             }
@@ -97,11 +103,19 @@ private fun Color.toUIColor(): UIColor =
     UIColor.colorWithRed(red = red.toDouble(), green = green.toDouble(), blue = blue.toDouble(), alpha = alpha.toDouble())
 
 /**
+ * Keeps a TextKit 1 UITextView's NSTextStorage alive. In UIKit's ownership graph the view
+ * holds its text container, but container → layoutManager and layoutManager → textStorage
+ * are both weak; only the storage owns the layout manager. Returning just the view would
+ * let the storage (and with it the layout manager) dealloc as soon as the factory returns.
+ */
+private class RaftSelectableTextStack(val view: UITextView, val storage: NSTextStorage)
+
+/**
  * Off-screen UITextView used only for sizeThatFits measuring. Kept identical in configuration to
  * the on-screen view so the measured height matches what the displayed view wraps to.
  */
-private fun raftMeasuringTextView(attributed: NSAttributedString): UITextView =
-    raftSelectableUITextView().apply { attributedText = attributed }
+private fun raftMeasuringTextView(attributed: NSAttributedString): RaftSelectableTextStack =
+    raftSelectableUITextView().also { it.view.attributedText = attributed }
 
 /**
  * Non-editable, selectable, non-scrolling text view: the system edit menu owns
@@ -112,7 +126,7 @@ private fun raftMeasuringTextView(attributed: NSAttributedString): UITextView =
  * changes and leaves the old fragment rendered under the new one — the sheet's text drew
  * twice with two different wrappings (iOS-only). TextKit 1 re-lays out cleanly.
  */
-private fun raftSelectableUITextView(): UITextView {
+private fun raftSelectableUITextView(): RaftSelectableTextStack {
     val storage = NSTextStorage()
     val layoutManager = NSLayoutManager()
     val container =
@@ -123,13 +137,15 @@ private fun raftSelectableUITextView(): UITextView {
         }
     storage.addLayoutManager(layoutManager)
     layoutManager.addTextContainer(container)
-    return UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), textContainer = container).apply {
-        setEditable(false)
-        setSelectable(true)
-        setScrollEnabled(false)
-        textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
-        backgroundColor = UIColor.clearColor
-    }
+    val view =
+        UITextView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0), textContainer = container).apply {
+            setEditable(false)
+            setSelectable(true)
+            setScrollEnabled(false)
+            textContainerInset = UIEdgeInsetsMake(0.0, 0.0, 0.0, 0.0)
+            backgroundColor = UIColor.clearColor
+        }
+    return RaftSelectableTextStack(view = view, storage = storage)
 }
 
 private fun raftAttributedText(
