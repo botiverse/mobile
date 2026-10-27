@@ -3,7 +3,11 @@
 > **Superseded (2026-10-09).** Agent Git identity, push, review and merge now go
 > through Stamp; see "Agent Git identity comes from Stamp" and "Protected `main`"
 > in `AGENTS.md`. The `@mail.build` sign-off rule and the guarded merge wrappers
-> below are kept for history only.
+> below are kept for history only. The wrapper scripts themselves
+> (`guarded-*-merge.sh`, `guarded-merge-preflight.sh`,
+> `check-merge-command-policy.sh`, `validate-*commit-message.sh`) and their
+> self-tests were deleted on 2026-10-27; commands below that call them no
+> longer run.
 
 > **Status (2026-09-19):** the `Commit Sign-off` CI check, the `commit-msg` git
 > hook, `scripts/check-commit-signoff.sh`, `scripts/check-landed-commit-signoff.sh`

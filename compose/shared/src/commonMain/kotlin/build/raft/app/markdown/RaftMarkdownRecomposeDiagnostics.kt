@@ -9,9 +9,9 @@ import androidx.compose.runtime.remember
 // re-execution of the calling composition scope, so this counts real
 // recompositions — including the "global validity/label lambda identity churn
 // pierces every row" class that signature-keyed LaunchedEffect markers cannot
-// see (#1055 post-device review finding ②). The gate checker
-// (scripts/perf/check_thread_open_contract.mjs) asserts tag-less rows stay at
-// n=1 across members 0→N hydration.
+// see (#1055 post-device review finding ②). Tag-less rows are expected to stay
+// at n=1 across members 0→N hydration (the task #304 log checker that asserted
+// this was removed in 2026-10 as unused).
 //
 // Marker: thread_markdown_body_recompose key=<performanceKey> n=<count> bodyLen=<len>
 // Only the first RaftMarkdownRecomposeLogCap recompositions log (proving a
