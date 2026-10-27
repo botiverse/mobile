@@ -22921,7 +22921,16 @@ internal fun ThreadComposerDock(
     edgePadding: Dp = RaftAppSpacing.Sm,
     composer: @Composable () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                // The whole dock belongs to the focused composer: its margins and the keyboard lift
+                // under the card (composerModifier) are outside the composer's own region, and a tap
+                // there counted as outside and closed the keyboard (artin, dm 59d04ff4).
+                .retainInputFocusForInteractions()
+                .background(RaftColor.Canvas)
+    ) {
         Box(
             modifier =
                 Modifier.fillMaxWidth()
