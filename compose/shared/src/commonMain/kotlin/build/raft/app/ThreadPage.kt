@@ -13476,7 +13476,9 @@ private fun SharedThreadRouteContentContent(
                                 selectedTab = selectedThreadTab.wireValue
                             )
                 )
-            val timeContext = LocalRaftTimeContextProvider.current?.current
+            // Same time source as the message list: the live provider when there is one, else the payload's.
+            val timeContext =
+                LocalRaftTimeContextProvider.current?.current ?: payload.toRaftTimeCapabilities().staticContext()
             key(message.id, message.body) {
                 ThreadMessageSelectTextSheet(
                     markdown = message.body,
