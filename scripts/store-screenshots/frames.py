@@ -66,40 +66,40 @@ LANGS = ["en", "zh-Hans", "ja"]
 SCENES = [
     ("01-chat", YELLOW, {
         "en": ("Your [AI teammates], in every channel", "Mention an agent and it gets to work, right in the conversation."),
-        "zh-Hans": ("[AI 队友]，就在你的频道里", "@ 一下 Agent，它就在对话里开工。"),
-        "ja": ("[AI チームメイト]が、どのチャンネルにも", "エージェントにメンションすれば、会話の中ですぐ動き出します。"),
+        "zh-Hans": ("[AI 队友]，|就在你的频道里", "@ 一下 Agent，|它就在对话里开工。"),
+        "ja": ("[AI チームメイト]が、|どのチャンネルにも", "エージェントに|メンションすれば、|会話の中で|すぐ動き出します。"),
     }),
     ("02-activity", PINK, {
         "en": ("Never miss what [needs you]", "Mentions, replies and task updates in one Activity inbox."),
-        "zh-Hans": ("需要你的，[都在动态里]", "提及、回复和任务进展，一处看完。"),
-        "ja": ("[あなた宛て]を見逃さない", "メンション、返信、タスクの進捗をアクティビティにまとめて。"),
+        "zh-Hans": ("需要你的，|[都在动态里]", "提及、|回复和任务进展，|一处看完。"),
+        "ja": ("[あなた宛て]を|見逃さない", "メンション、|返信、|タスクの進捗を|アクティビティに|まとめて。"),
     }),
     ("03-agents", CYAN, {
         "en": ("Your [agent team], at a glance", "Each agent's role and live status, grouped by the computer it runs on."),
-        "zh-Hans": ("你的 [Agent 团队]，一目了然", "每个 Agent 的分工和实时状态，按所在计算机分组。"),
-        "ja": ("[エージェントチーム]をひと目で", "役割とリアルタイムの状態を、動いているコンピューターごとに。"),
+        "zh-Hans": ("你的 [Agent 团队]，|一目了然", "每个 Agent 的|分工和实时状态，|按所在计算机分组。"),
+        "ja": ("[エージェントチーム]を|ひと目で", "役割と|リアルタイムの状態を、|動いている|コンピューターごとに。"),
     }),
     ("04-tasks", LIME, {
         "en": ("Tasks your agents [pick up and finish]", "To do, in progress, in review, done, and who is on each one."),
-        "zh-Hans": ("任务交给 Agent，[认领到完成]", "待办、进行中、审核中、已完成，谁在做一清二楚。"),
-        "ja": ("エージェントが[引き受けて、やり遂げる]", "未着手・進行中・レビュー中・完了。担当者もひと目で。"),
+        "zh-Hans": ("任务交给 Agent，|[认领到完成]", "待办、|进行中、|审核中、|已完成，|谁在做一清二楚。"),
+        "ja": ("エージェントが|[引き受けて、やり遂げる]", "未着手・|進行中・|レビュー中・|完了。|担当者も|ひと目で。"),
     }),
     ("05-computers", LAVENDER, {
         "en": ("Run agents on [your own computers]", "Connect your machines; your agents run right there."),
-        "zh-Hans": ("Agent 跑在[你自己的计算机]上", "连上你自己的机器，Agent 就在上面运行。"),
-        "ja": ("エージェントは[自分のコンピューター]で", "手元のマシンをつなげば、エージェントはそこで動きます。"),
+        "zh-Hans": ("Agent 跑在|[你自己的计算机]上", "连上你自己的机器，|Agent 就在上面运行。"),
+        "ja": ("エージェントは|[自分のコンピューター]で", "手元のマシンを|つなげば、|エージェントは|そこで動きます。"),
     }),
     ("06-home", ORANGE, {
         "en": ("Your team and its agents, [in your pocket]", "Channels, DMs and threads, wherever you are."),
-        "zh-Hans": ("团队和 Agent，[随身带着]", "频道、私信、讨论串，随时跟进。"),
-        "ja": ("チームとエージェントを[ポケットに]", "チャンネル、DM、スレッドをどこからでも。"),
+        "zh-Hans": ("团队和 Agent，|[随身带着]", "频道、|私信、|讨论串，|随时跟进。"),
+        "ja": ("チームと|エージェントを|[ポケットに]", "チャンネル、|DM、|スレッドを|どこからでも。"),
     }),
 ]
 
 FEATURE = {
     "en": ("Your [AI teammates], in every channel", "Chat, tasks and agents in one place"),
-    "zh-Hans": ("[AI 队友]，就在你的频道里", "频道、任务和 Agent，都在一处"),
-    "ja": ("[AI チームメイト]が、どのチャンネルにも", "チャット、タスク、エージェントをひとつに"),
+    "zh-Hans": ("[AI 队友]，|就在你的频道里", "频道、|任务和 Agent，|都在一处"),
+    "ja": ("[AI チームメイト]が、|どのチャンネルにも", "チャット、|タスク、|エージェントを|ひとつに"),
 }
 
 
@@ -130,7 +130,14 @@ def mono(lang):
 
 
 def mark(text, cls):
-    return html.escape(text).replace("[", f'<span class="{cls}">').replace("]", "</span>")
+    """[x] is the highlight. "|" separates CJK phrases: each phrase is unbreakable (nowrap) and
+    the only line-break opportunities are between phrases (<wbr>), so a CJK line never breaks
+    inside a phrase. Text without "|" (English) wraps normally."""
+    def one(seg):
+        return html.escape(seg).replace("[", f'<span class="{cls}">').replace("]", "</span>")
+    if "|" not in text:
+        return one(text)
+    return "<wbr>".join(f'<span class="ph">{one(seg)}</span>' for seg in text.split("|"))
 
 
 def edge_color(png, bottom=False):
@@ -143,7 +150,7 @@ def edge_color(png, bottom=False):
 # the drawn status bar and home indicator; all device metrics scale with --u (px per app dp).
 FIT_JS = """
 <script>
-(function(){
+document.fonts.ready.then(function(){
   // A highlight never wraps: shrink the headline until no line sticks out of its column.
   const h=document.querySelector('h1');
   for(let i=0;i<30&&h.scrollWidth>h.clientWidth+1;i++){h.style.fontSize=(parseFloat(getComputedStyle(h).fontSize)*0.95)+'px';}
@@ -164,7 +171,7 @@ FIT_JS = """
   d.querySelector('.screen').style.borderRadius=(c.radiusDp*u)+'px';
   document.documentElement.style.setProperty('--u', u+'px');
   document.documentElement.style.setProperty('--sh', c.shadow+'px');
-})();
+});
 </script>"""
 
 
@@ -213,7 +220,7 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h):
         cls = "u"
     if landscape:
         layout = f"""body{{flex-direction:row}}
-.top{{width:{0.36*w:.0f}px;flex:none;display:flex;flex-direction:column;justify-content:center;padding:0 0 0 {80*s:.0f}px}}"""
+.top{{width:{0.36*w:.0f}px;flex:none;display:flex;flex-direction:column;justify-content:center;padding:0 {24*s:.0f}px 0 {80*s:.0f}px}}"""
     else:
         layout = f".top{{padding:{92*s:.0f}px {72*s:.0f}px 0}}"
     return f"""<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><style>
@@ -222,7 +229,7 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h):
 html,body{{width:{w}px;height:{h}px;overflow:hidden}}
 body{{font-family:{sans(lang)};color:{INK};display:flex;flex-direction:column;{bg}}}
 .top{{word-break:{'auto-phrase' if lang == 'ja' else 'normal'}}}
-h1{{text-wrap:balance}} p{{text-wrap:pretty}}
+h1{{text-wrap:balance}} p{{text-wrap:pretty}} .ph{{white-space:nowrap}}
 {layout}
 .top{{text-align:{align}}}
 .kicker{{display:inline-block;align-self:flex-start;font-family:{mono(lang)};font-weight:700;font-size:{24*s:.0f}px;letter-spacing:{1*s:.1f}px;
@@ -244,7 +251,7 @@ p{{margin-top:{30*s:.0f}px;font-size:{33*s:.0f}px;line-height:1.4;font-weight:50
 .hb{{height:calc(var(--u)*{fit['hbDp']});flex:none;display:flex;align-items:center;justify-content:center}}
 .hb i{{display:block;width:calc(var(--u)*{200 if tablet else 134});height:calc(var(--u)*5);border-radius:calc(var(--u)*3);background:{INK}}}
 </style></head><body>
-<div class="top">{kicker}<h1>{mark(headline, cls)}</h1><p>{html.escape(sub)}</p></div>
+<div class="top">{kicker}<h1>{mark(headline, cls)}</h1><p>{mark(sub, 'm')}</p></div>
 <div class="stage"><div class="device" data-fit='{__import__("json").dumps(fit)}'><div class="screen">
 <div class="sb" style="background:{top_color}"><span>9:41</span><span class="sbi"><i class="sig"></i><i class="wifi"></i><i class="bat"></i></span></div>
 <img src="file://{shot}">
@@ -261,6 +268,7 @@ def feature_page(style, lang, chat_shot, activity_shot):
 {FONTS_CSS}
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{width:1024px;height:500px;overflow:hidden}}
+.ph{{white-space:nowrap}}
 body{{font-family:{sans(lang)};color:{INK};background:{CREAM};
  background-image:radial-gradient(rgba(20,17,17,.13) 1.6px,transparent 2px);background-size:26px 26px;position:relative}}
 .logo{{position:absolute;left:56px;top:62px;width:300px}}
@@ -272,13 +280,14 @@ p{{position:absolute;left:56px;top:372px;font-family:{mono(lang)};font-weight:70
 .c1{{left:610px;top:56px;transform:rotate(-5deg);box-shadow:10px 10px 0 {PINK},10px 10px 0 5px {INK}}}
 .c2{{left:770px;top:110px;transform:rotate(6deg);box-shadow:10px 10px 0 {CYAN},10px 10px 0 5px {INK}}}
 </style></head><body>
-<img class="logo" src="file://{LOGO}"><h1>{mark(headline, 'm')}</h1><p>{html.escape(sub)}</p>
+<img class="logo" src="file://{LOGO}"><h1>{mark(headline, 'm')}</h1><p>{mark(sub, 'm')}</p>
 <div class="card c1"><img src="file://{activity_shot}"></div><div class="card c2"><img src="file://{chat_shot}"></div>
 </body></html>"""
     return f"""<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><style>
 {FONTS_CSS}
 *{{box-sizing:border-box;margin:0;padding:0}}
 html,body{{width:1024px;height:500px;overflow:hidden}}
+.ph{{white-space:nowrap}}
 body{{font-family:{sans(lang)};color:{INK};background:{YELLOW};position:relative}}
 .logo{{position:absolute;left:64px;top:84px;width:280px}}
 h1{{position:absolute;left:64px;top:196px;width:{540 if not cjk else 580}px;font-weight:700;font-size:{46 if not cjk else 40}px;line-height:1.15;letter-spacing:-1px}}
@@ -288,7 +297,7 @@ p{{position:absolute;left:64px;top:372px;font-size:24px;font-weight:500;color:#4
 .screen{{width:100%;height:100%;border-radius:34px;overflow:hidden;background:#fff}}
 .screen img{{width:100%;display:block}}
 </style></head><body>
-<img class="logo" src="file://{LOGO}"><h1>{mark(headline, 'u')}</h1><p>{html.escape(sub)}</p>
+<img class="logo" src="file://{LOGO}"><h1>{mark(headline, 'u')}</h1><p>{mark(sub, 'm')}</p>
 <div class="phone"><div class="screen"><img src="file://{chat_shot}"></div></div>
 </body></html>"""
 
