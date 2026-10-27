@@ -62,8 +62,19 @@ enum class RaftSyncSnapshot(val wireName: String) {
     companion object {
         private val byWireName = entries.associateBy { it.wireName }
 
-        /** Null for a snapshot name this client does not know (a newer server); the caller skips it. */
+        /** Null for a snapshot name this client does not know (a newer server). */
         fun fromWire(name: String?): RaftSyncSnapshot? = name?.let(byWireName::get)
+
+        /**
+         * The snapshots a `reset` / scope change names. A name this client does not know (a newer
+         * server) means retake every snapshot (contract, Tenny 10-27): skipping it would advance
+         * the cursor past data the client never reloaded.
+         */
+        fun setFromWire(names: List<String?>): Set<RaftSyncSnapshot> {
+            val known = LinkedHashSet<RaftSyncSnapshot>()
+            names.forEach { name -> known += fromWire(name) ?: return All }
+            return known
+        }
 
         /** Every snapshot this client takes on a first sync. */
         val All: Set<RaftSyncSnapshot> = entries.toSet()
@@ -225,7 +236,7 @@ fun parseSyncChangesPage(bodyText: String): RaftSyncChangesPage? {
         reset = wire.reset?.let { reset ->
             RaftSyncReset(
                 reason = reset.reason,
-                snapshots = reset.snapshots.mapNotNullTo(LinkedHashSet()) { RaftSyncSnapshot.fromWire(it) },
+                snapshots = RaftSyncSnapshot.setFromWire(reset.snapshots),
             )
         },
         skippedUnknownEntities = skipped,
@@ -280,7 +291,7 @@ private fun parseScopeChange(element: JsonObject, seq: Long, id: String, op: Str
         }
     val snapshots =
         (element["snapshots"] as? JsonArray)
-            ?.mapNotNullTo(LinkedHashSet()) { RaftSyncSnapshot.fromWire((it as? JsonPrimitive)?.contentOrNull) }
+            ?.let { names -> RaftSyncSnapshot.setFromWire(names.map { (it as? JsonPrimitive)?.contentOrNull }) }
             .orEmpty()
     return when {
         // A scope kind or op this client does not know: retake everything the scope may hold.
