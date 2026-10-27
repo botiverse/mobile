@@ -1812,7 +1812,7 @@ data class SettingsMobileSnapshot(
     val pushNotifications: SettingsMobileToggleSnapshot,
     val muteServer: SettingsMobileToggleSnapshot,
     val serverNotificationMode: SettingsMobileSelectionSnapshot =
-        ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false),
+        unknownServerNotificationModeSelectionSnapshot(),
     /**
      * Message-preview choice for push notifications on this device. Kept as the three-state enum
      * rather than a toggle so the UI can render one choice per mode; availability is separate so an
@@ -2044,6 +2044,26 @@ fun ServerPushMode.toSettingsMobileSelectionSnapshot(
                 SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
             },
         available = available
+    )
+
+/**
+ * The workspace notification mode when neither the server nor a last-known copy answered: no option is
+ * selected (the UI must not imply "All") and the control is unavailable, so the user cannot flip a value
+ * they cannot see.
+ */
+fun unknownServerNotificationModeSelectionSnapshot(
+    detail: String = "Workspace notification settings could not be loaded."
+): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = "",
+        selectedLabel = "",
+        statusLabel = "Unavailable",
+        detail = detail,
+        options =
+            ServerPushMode.entries.map { mode ->
+                SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
+            },
+        available = false
     )
 
 data class SettingsMobileToggleSnapshot(

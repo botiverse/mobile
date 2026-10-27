@@ -570,6 +570,10 @@ private fun SettingsServerNotificationModeCard(
                 )
             }
         }
+        if (!preference.available) {
+            // The live value did not load: the rows show the last-known mode (or none), read-only.
+            SettingsFormDetailText(stringResource(Res.string.settings_notifications_mode_unavailable))
+        }
         if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }

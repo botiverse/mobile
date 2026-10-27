@@ -151,6 +151,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                                 sharedStores.messageBodyFontSizeStore.acceptAuthoritative(ownerKey, snapshot)
                             }
                         },
+                        serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
                     ),
                 serverMembersStore = serverMembersStore,
                 // Data-layer plan step 5: the shell's owner-fenced, durable machine cache.

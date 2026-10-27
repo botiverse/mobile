@@ -2928,6 +2928,7 @@ private fun RaftAppShellReadyContent(
                         sharedStores.messageBodyFontSizeStore.acceptAuthoritative(ownerKey, snapshot)
                     }
                 },
+                serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
             )
         }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }

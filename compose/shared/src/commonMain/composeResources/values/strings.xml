@@ -2046,6 +2046,7 @@
     <string name="settings_notifications_mode_mentions_detail">Notify only when a message directly mentions you, including expanded group mentions.</string>
     <string name="settings_notifications_mode_none">Nothing</string>
     <string name="settings_notifications_mode_none_detail">Do not send push notifications from this workspace, even for mentions.</string>
+    <string name="settings_notifications_mode_unavailable">The workspace notification setting could not be loaded. It can be changed once it loads.</string>
     <string name="settings_computers_loading">Loading computers</string>
     <string name="settings_computers_loading_detail">Fetching connected machines from this server.</string>
     <string name="settings_computers_error_load">Couldn't load computers</string>
