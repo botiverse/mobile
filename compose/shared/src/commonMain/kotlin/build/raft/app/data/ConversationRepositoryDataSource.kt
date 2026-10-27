@@ -1092,6 +1092,38 @@ class RealConversationRepository private constructor(
             networkClient.unfollowThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
         }
 
+    override suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> =
+        threadAction(conversationChannelId, source = "task_conversation_follow") {
+            networkClient.followThread(DataRequestPriority.Foreground, conversationChannelId.toThreadActionBody())
+        }
+
+    override suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
+        val context = currentContext() ?: return authRequired()
+        val response =
+            try {
+                networkClient.request(
+                    priority = DataRequestPriority.Visible,
+                    path = "channels/${conversationChannelId.value}",
+                    serverIdOverride = context.server.id,
+                )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                return DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+            }
+        if (!response.isSuccessful) {
+            return DataResult.Error(
+                ScreenError(code = "task_conversation_ref_${response.code}", retryable = response.code >= 500)
+            )
+        }
+        val ref = parseTaskConversationChannelDetail(response.bodyText.orEmpty())
+        warningLogger(
+            "task_conversation_ref channelId=${conversationChannelId.value} " +
+                "resolved=${ref != null}"
+        )
+        return ref?.let { DataResult.Content(it) } ?: DataResult.Empty(EmptyReason.NoMessages)
+    }
+
     override suspend fun markThreadDone(
         threadChannelId: ChannelId,
         frontier: InboxDoneFrontier

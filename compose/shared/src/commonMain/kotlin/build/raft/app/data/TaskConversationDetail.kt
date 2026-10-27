@@ -25,7 +25,8 @@ internal data class TaskConversationChannelDetailWireDto(
     val taskId: String? = null,
 )
 
-internal data class TaskConversationChannelRef(
+/** A task conversation's parent context: the task and the (local) channel that holds it. */
+data class TaskConversationChannelRef(
     val conversationChannelId: ChannelId,
     val parentChannelId: ChannelId,
     val taskId: TaskId,

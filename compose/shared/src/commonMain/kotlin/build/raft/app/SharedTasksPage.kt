@@ -88,6 +88,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1589,8 +1591,33 @@ private fun SharedTaskCard(
                     borderWidth = RaftAppStroke.Thin,
                     anchorPlacement = RaftAnchorPlacement.BottomEnd
                 )
+                task.taskCardReplyCount()?.let { count ->
+                    Spacer(Modifier.weight(1f))
+                    SharedTaskReplyCount(count)
+                }
             }
         }
+    }
+}
+
+/**
+ * Task v2: the size of the task's own conversation (web TaskChipList `ReplyCount`): only a task with
+ * its own conversation and at least one reply; a pre-v2 task talks in its host message's thread.
+ */
+internal fun TaskSummary.taskCardReplyCount(): Int? =
+    conversationReplyCount.takeIf { conversationChannelId != null && it > 0 }
+
+/** web `ReplyCount`: a 12dp `message-square` then the count in `text-mono-meta` `foreground-hint`. */
+@Composable
+private fun SharedTaskReplyCount(count: Int) {
+    val description = stringResource(Res.string.tasks_reply_count_description, count)
+    Row(
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftLucideIcon(RaftLucideIconName.MessageSquare, Modifier.size(12.dp), color = raftArgbHex(RaftColor.ForegroundHint))
+        Text(text = count.toString(), style = SharedTaskMonoMetaStyle, color = RaftColor.ForegroundHint, maxLines = 1)
     }
 }
 

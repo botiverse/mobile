@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.data.InboxItem
-import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.activityDoneRequestFrontier
@@ -184,8 +183,8 @@ internal enum class ActivitySwipeEndAction {
  * InboxContextMenu (slock packages/web/src/components/thread/InboxContextMenu.tsx):
  *
  * - a followed thread row (`kind == "thread" && isFollowing !== false`): Unfollow. Task conversations are
- *   thread rows there too (`unfollowTaskConversation`, the same `/channels/threads/unfollow` route); on
- *   mobile a task-conversation row offers Done only for now (its Follow/Undo would need a parent message).
+ *   thread rows there too (`unfollowTaskConversation`, the same `/channels/threads/unfollow` route, and
+ *   its Undo follows by the conversation's own id).
  * - a channel row whose channel is joined and has a user-reachable Activity mute that is off
  *   (`canToggleActivityMute`): Mute Activity. [mutedByChannelId] holds exactly those channels
  *   ([activityMuteByChannelId]); an unknown or unjoined channel is absent and gets no Mute button, not a guess.
@@ -194,8 +193,6 @@ internal enum class ActivitySwipeEndAction {
  */
 internal fun InboxItem.activitySwipeEndAction(mutedByChannelId: Map<String, Boolean>): ActivitySwipeEndAction? =
     when {
-        // Task v2 (P0): no Unfollow on a task conversation row; its Undo (Follow) is parent-message keyed.
-        isTaskConversation -> null
         isFollowedActivityThread -> ActivitySwipeEndAction.UnfollowThread
         kind == InboxItemKind.Channel && mutedByChannelId[channelId.value] == false -> ActivitySwipeEndAction.MuteActivity
         else -> null
@@ -295,8 +292,6 @@ internal enum class ActivitySwipeSide {
 internal fun InboxItem.activitySwipeStartButton(): ActivitySwipeButton? =
     when {
         isUnfollowedActivityThread -> null
-        // Task v2 (P0): read/unread is not wired for task conversation rows (its menu has no toggle).
-        isTaskConversation -> null
         unreadCount > 0 -> ActivitySwipeButton.Read
         else -> ActivitySwipeButton.Unread
     }

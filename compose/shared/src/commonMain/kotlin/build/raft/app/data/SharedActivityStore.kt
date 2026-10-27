@@ -2907,11 +2907,14 @@ class SharedActivityStore internal constructor(
         val target = currentItem ?: item
         scope.launch {
             val parentMessageId = target.parentMessageId
+            val taskConversationId = target.threadChannelId?.takeIf { target.isTaskConversation }
             val result = try {
-                if (parentMessageId == null) {
-                    DataResult.Error(ScreenError("activity_parent_message_missing"))
-                } else {
-                    conversationRepository.followThread(parentMessageId)
+                when {
+                    // Task v2 (web `followActivityThread`): a task conversation has no parent
+                    // message; it is followed by its own (local) channel id.
+                    taskConversationId != null -> conversationRepository.followTaskConversation(taskConversationId)
+                    parentMessageId == null -> DataResult.Error(ScreenError("activity_parent_message_missing"))
+                    else -> conversationRepository.followThread(parentMessageId)
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error

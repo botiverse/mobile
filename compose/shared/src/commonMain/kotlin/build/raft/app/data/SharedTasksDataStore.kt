@@ -209,13 +209,17 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
             outcome = SharedTaskFactFoldOutcome.Conflict
         )
     }
-    val selectedFact = if (acceptsIncoming) incomingFact else currentFact
-    val nextFacts = if (acceptsIncoming) canonicalTaskFacts + (incoming.id to selectedFact) else canonicalTaskFacts
+    val selectedFact =
+        (if (acceptsIncoming) incomingFact else currentFact).withViewerConversationFollow(incomingFact, currentFact)
+    // A viewer-local follow value from the incoming copy updates the fact even when its revision
+    // does not win (the channel list after a `task:created` of the same revision).
+    val factChanged = acceptsIncoming || selectedFact != currentFact
+    val nextFacts = if (factChanged) canonicalTaskFacts + (incoming.id to selectedFact) else canonicalTaskFacts
     val nextConflicts = if (acceptsIncoming) canonicalConflicts - incoming.id else canonicalConflicts
     val reprojectedServerSnapshots =
-        if (acceptsIncoming) serverSnapshots.reprojectServerTask(selectedFact, nextRoutes) else serverSnapshots
+        if (factChanged) serverSnapshots.reprojectServerTask(selectedFact, nextRoutes) else serverSnapshots
     val reprojectedChannelSnapshots =
-        if (acceptsIncoming) channelSnapshots.reprojectChannelTask(selectedFact, nextRoutes) else channelSnapshots
+        if (factChanged) channelSnapshots.reprojectChannelTask(selectedFact, nextRoutes) else channelSnapshots
     val nextState =
         copy(
             canonicalTaskFacts = nextFacts,
@@ -229,6 +233,17 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
         projectedTask = selectedFact.withTaskProjectionRoute(route),
         outcome = if (acceptsIncoming) SharedTaskFactFoldOutcome.Accepted else SharedTaskFactFoldOutcome.StaleIgnored
     )
+}
+
+/**
+ * `conversationFollowed` is the reader's own follow state, not a revision-owned task fact: only the
+ * channel task list (`GET /tasks/channel/:id`, `withConversationFollowed`) sends it. `task:created`
+ * / `task:updated` frames go to the whole audience and the server board and the status / assign
+ * answers omit it, so a copy without it keeps the value already known instead of erasing it.
+ */
+private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, current: TaskSummary?): TaskSummary {
+    val followed = incoming.conversationFollowed ?: current?.conversationFollowed
+    return if (conversationFollowed == followed) this else copy(conversationFollowed = followed)
 }
 
 private fun Long?.compareTaskRevision(existing: Long?): Int =
@@ -467,7 +482,8 @@ private fun SharedTasksDataStoreState.commitStatusMutationResponse(
         } else {
             task.revision
         }
-    val committedFact = task.copy(revision = committedRevision).withoutTaskProjectionRoute()
+    val committedFact =
+        task.copy(revision = committedRevision).withoutTaskProjectionRoute().withViewerConversationFollow(task, currentFact)
     val canonicalState =
         copy(
             canonicalTaskFacts = canonicalTaskFacts + (permit.taskId to committedFact),
@@ -540,6 +556,8 @@ private fun SharedTasksDataStoreState.removeTaskState(
         canonicalConflicts = canonicalConflicts - taskId
     )
 }
+
+private const val CountedReplyKeyLimit = 512
 
 internal class SharedTasksDataStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
@@ -1060,6 +1078,38 @@ internal class SharedTasksDataStore(
      * Synchronous fixture seam for stores without an owner provider. Production realtime deletion
      * uses [removeTaskForCurrentOwner] so an old-account callback cannot clear current data.
      */
+    /** Reply ids already counted ([bumpTaskConversationReplyCount]), oldest first; bounded. */
+    private val countedReplyKeys = ArrayDeque<String>()
+    private val countedReplyKeySet = mutableSetOf<String>()
+
+    /**
+     * Task v2 (web `bumpTaskConversationReplyCount`): a reply in task [taskId]'s own conversation
+     * (`message:new` with `conversationContext.channelType = "task"`) adds one to its
+     * `conversationReplyCount` until the next task list carries the server's count. The server sends
+     * no `task:updated` for a reply. Each [messageId] counts once (the frame can reach both the
+     * conversation's room and the reader's own room); a task not loaded here is left alone.
+     */
+    suspend fun bumpTaskConversationReplyCount(serverId: String, taskId: TaskId, messageId: MessageId): Boolean {
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return false
+        return loadMutex.withLock {
+            val fact = state.value.canonicalTaskFacts[taskId] ?: return@withLock false
+            val key = "$normalizedServerId:${messageId.value}"
+            if (!countedReplyKeySet.add(key)) return@withLock false
+            countedReplyKeys.addLast(key)
+            while (countedReplyKeys.size > CountedReplyKeyLimit) countedReplyKeySet.remove(countedReplyKeys.removeFirst())
+            val bumped = fact.copy(conversationReplyCount = fact.conversationReplyCount + 1)
+            val current = state.value
+            state.value =
+                current.copy(
+                    canonicalTaskFacts = current.canonicalTaskFacts + (taskId to bumped),
+                    serverSnapshots = current.serverSnapshots.reprojectServerTask(bumped, current.taskProjectionRoutes),
+                    channelSnapshots = current.channelSnapshots.reprojectChannelTask(bumped, current.taskProjectionRoutes),
+                )
+            true
+        }
+    }
+
     fun removeTask(serverId: String, taskId: TaskId) {
         if (ownerIdentityProvider != null) return
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return

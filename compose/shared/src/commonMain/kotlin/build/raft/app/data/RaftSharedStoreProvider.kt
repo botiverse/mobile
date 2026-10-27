@@ -50,6 +50,8 @@ import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageType
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
@@ -4052,6 +4054,15 @@ internal class SharedRealtimeDomainEventOwner(
             }
         }
         when (this) {
+            is MessageNew -> {
+                // Task v2: a reply in a task's own conversation moves its reply count (web
+                // socketBridge `applyTaskConversationReply`); lifecycle lines do not count.
+                val context = message.conversationContext
+                val taskId = context?.taskId
+                if (context?.channelKind == ConversationKind.Task && taskId != null && message.messageType != MessageType.System) {
+                    store.bumpTaskConversationReplyCount(serverId, taskId, message.id)
+                }
+            }
             is TaskCreated -> tasks.forEach { task -> patch(task) }
             is TaskUpdated -> patch(task)
             is TaskDeleted -> {

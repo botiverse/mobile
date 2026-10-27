@@ -267,6 +267,21 @@ interface ConversationRepository {
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
+
+    /**
+     * Task v2: follow a task's conversation (`POST /channels/threads/follow {threadChannelId}`,
+     * slock `routes/channels.ts`): it has no parent message, so the conversation names itself.
+     * Unfollow is [unfollowThread], keyed by the conversation id like a thread's.
+     */
+    suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> =
+        DataResult.Error(ScreenError(code = "task_conversation_follow_unsupported", retryable = false))
+
+    /**
+     * Task v2: the task and parent channel of a task conversation (`GET /channels/:id`, a
+     * `type: "task"` row). [DataResult.Empty] when the channel is not a task conversation.
+     */
+    suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> =
+        DataResult.Error(ScreenError(code = "task_conversation_ref_unsupported", retryable = false))
     suspend fun markThreadDone(
         threadChannelId: ChannelId,
         frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy

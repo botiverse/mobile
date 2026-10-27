@@ -508,7 +508,9 @@ data class MessageConversationContext(
     val channelKind: ConversationKind? = null,
     val parentMessageId: MessageId? = null,
     val parentChannelId: ChannelId? = null,
-    val parentChannelKind: ConversationKind? = null
+    val parentChannelKind: ConversationKind? = null,
+    /** Task v2: the task a `channelType: "task"` conversation belongs to (slock `buildFrontendConversationContext`). */
+    val taskId: TaskId? = null,
 )
 
 @Serializable
@@ -748,6 +750,12 @@ data class TaskSummary(
     val conversationReplyCount: Int = 0,
     /** A pre-message orphan task: neither a host message nor a conversation. */
     val isLegacy: Boolean = false,
+    /**
+     * Task v2: whether the reader follows the task's conversation as seen through this surface
+     * (slock `routes/tasks.ts` `withConversationFollowed`, joint: the local projection). Only the
+     * per-reader task lists carry it; `task:*` realtime frames do not, so null = unknown.
+     */
+    val conversationFollowed: Boolean? = null,
 )
 
 // Inbox Models
@@ -857,7 +865,11 @@ data class TaskCreated(val tasks: List<TaskSummary>) : RealtimeEvent
 data class TaskUpdated(val task: TaskSummary) : RealtimeEvent
 
 @Serializable
-data class TaskDeleted(val taskId: TaskId) : RealtimeEvent
+/**
+ * `task:deleted` (slock `taskRealtimeEvents.ts`). [conversationChannelId]: task v2, the task's
+ * conversation as this surface saw it (joint: its local projection), deleted with the task.
+ */
+data class TaskDeleted(val taskId: TaskId, val conversationChannelId: ChannelId? = null) : RealtimeEvent
 
 @Serializable
 data class RealtimeAgentActivityDetail(

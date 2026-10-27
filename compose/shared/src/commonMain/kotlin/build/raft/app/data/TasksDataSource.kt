@@ -1293,6 +1293,8 @@ internal data class TaskWireDto(
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
     val isLegacy: Boolean? = null,
+    // Per reader (slock `routes/tasks.ts` `withConversationFollowed`): sent on v2 tasks only.
+    val conversationFollowed: Boolean? = null,
 )
 
 /**
@@ -1300,7 +1302,22 @@ internal data class TaskWireDto(
  * than a host message's thread. A DTO without the v2 fields (older server) is pre-v2.
  */
 internal fun TaskWireDto.isTaskV2Conversation(): Boolean =
+    isTaskV2Conversation(isLegacy, conversationAnchored, conversationChannelId)
+
+/** Web `isTaskV2Task` over the raw DTO fields (task lists and `task:*` realtime frames share it). */
+internal fun isTaskV2Conversation(isLegacy: Boolean?, conversationAnchored: Boolean?, conversationChannelId: String?): Boolean =
     isLegacy != true && (conversationAnchored == true || !conversationChannelId.isNullOrBlank())
+
+/**
+ * The message a task may be opened as: a v2 task's `messageId` is the task id (compatibility
+ * fallback), never a message, so only its real host message (pre-v2 discussion) counts.
+ */
+internal fun taskOpenableMessageId(id: String, messageId: String?, hostMessageId: String?, taskV2: Boolean): MessageId? =
+    if (taskV2) {
+        hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+    } else {
+        (messageId ?: id).let(::MessageId)
+    }
 
 internal fun TaskWireDto.toTaskSummary(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
@@ -1309,12 +1326,7 @@ internal fun TaskWireDto.toTaskSummary(
     val taskV2 = isTaskV2Conversation()
     // A v2 task's `messageId` is the task id (compatibility fallback), never a message: only the
     // real host message (pre-v2 discussion) may be opened as a message / thread parent.
-    val resolvedMessageId =
-        if (taskV2) {
-            hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
-        } else {
-            (messageId ?: id).let(::MessageId)
-        }
+    val resolvedMessageId = taskOpenableMessageId(id, messageId, hostMessageId, taskV2)
     val resolvedThreadId = threadId?.let(::ThreadId)
     val resolvedStatus = status.strictTaskStatusOrNull("task_wire", diagnostics) ?: return null
     return TaskSummary(
@@ -1341,6 +1353,7 @@ internal fun TaskWireDto.toTaskSummary(
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
+        conversationFollowed = conversationFollowed,
     )
 }
 

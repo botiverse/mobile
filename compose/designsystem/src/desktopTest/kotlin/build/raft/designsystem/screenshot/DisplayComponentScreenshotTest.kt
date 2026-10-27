@@ -102,6 +102,11 @@ import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftTaskStatus
+import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftPickerTriggerSize
+import build.raft.designsystem.components.RaftTaskStatusBadge
+import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftStep
 import build.raft.designsystem.components.RaftStepStatus
 import build.raft.designsystem.components.RaftSteps
@@ -608,6 +613,55 @@ class DisplayComponentScreenshotTest {
                         RaftStatusDot(presence = presence)
                         RaftText(presence.word, style = RaftTheme.typography.footnote)
                     }
+                }
+            }
+        }
+
+    /**
+     * raft-ui TaskStatusBadge: the five statuses at `default` (22dp) and `sm` (20dp), then the
+     * status editor's trigger (chevron) at rest for every status (each in its own `-soft`
+     * wash), then one trigger forced pressed (the only darker chip) and a read-only (disabled)
+     * trigger.
+     */
+    @Test
+    fun taskStatusBadge() =
+        capture("task_status_badge") {
+            val labels =
+                mapOf(
+                    RaftTaskStatus.Todo to "Todo",
+                    RaftTaskStatus.InProgress to "In Progress",
+                    RaftTaskStatus.InReview to "In Review",
+                    RaftTaskStatus.Done to "Done",
+                    RaftTaskStatus.Closed to "Closed",
+                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                RaftTaskStatusBadgeSize.entries.forEach { size ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Caption(size.name, Modifier.width(40.dp))
+                        labels.forEach { (status, label) -> RaftTaskStatusBadge(status = status, text = label, size = size) }
+                    }
+                }
+                // Editable at rest: every status keeps its own -soft wash (no overlay).
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Caption("Edit", Modifier.width(40.dp))
+                    labels.forEach { (status, label) -> RaftTaskStatusBadge(status = status, text = label, onClick = {}) }
+                }
+                // Only while pressed does fill-pressed darken the wash; read-only (enabled = false) keeps the rest look.
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Caption("Press", Modifier.width(40.dp))
+                    StateCell(pressed = true) {
+                        RaftTaskStatusBadge(status = RaftTaskStatus.InReview, text = "In Review", onClick = {})
+                    }
+                    Caption("Off")
+                    RaftTaskStatusBadge(status = RaftTaskStatus.Done, text = "Done", onClick = {}, enabled = false)
+                }
+                // Beside the status, the assignee picker at the chip size: same 22dp box and radius.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Caption("Pair", Modifier.width(40.dp))
+                    RaftTaskStatusBadge(status = RaftTaskStatus.InProgress, text = "In Progress", onClick = {})
+                    RaftPickerTriggerButton("@Wug", {}, hasValue = true, size = RaftPickerTriggerSize.Chip)
+                    RaftPickerTriggerButton("Unassigned", {}, size = RaftPickerTriggerSize.Chip)
+                    RaftPickerTriggerButton("@Wug", {}, hasValue = true, enabled = false, showIndicator = false, size = RaftPickerTriggerSize.Chip)
                 }
             }
         }

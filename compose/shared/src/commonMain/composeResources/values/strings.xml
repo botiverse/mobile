@@ -1560,6 +1560,12 @@
     <string name="tasks_status_in_review">In Review</string>
     <string name="tasks_status_done">Done</string>
     <string name="tasks_status_closed">Closed</string>
+    <string name="tasks_reply_count_description">Messages in this task: %1$d</string>
+    <string name="tasks_status_reopen_to_todo">Reopen to Todo</string>
+    <string name="task_conversation_follow">Follow Task</string>
+    <string name="task_conversation_unfollow">Unfollow Task</string>
+    <string name="task_conversation_deleted">This task was deleted</string>
+    <string name="task_conversation_follow_failed">Couldn't update following for this task</string>
     <string name="tasks_label_title">Task title</string>
     <string name="tasks_action_add_another">Add another</string>
     <string name="auth_label_email">Email</string>

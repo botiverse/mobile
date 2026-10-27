@@ -282,6 +282,13 @@ internal class FakeConversationRepository : ConversationRepository {
         return followResult
     }
 
+    val followedTaskConversationIds = mutableListOf<ChannelId>()
+
+    override suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> {
+        followedTaskConversationIds += conversationChannelId
+        return followResult
+    }
+
     override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
         unfollowedThreadChannelIds += threadChannelId
         unfollowGate?.await()

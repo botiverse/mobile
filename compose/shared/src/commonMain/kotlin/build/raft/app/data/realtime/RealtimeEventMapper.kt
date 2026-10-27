@@ -68,6 +68,8 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
+import build.raft.app.data.isTaskV2Conversation
+import build.raft.app.data.taskOpenableMessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -233,7 +235,12 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.TaskUpdated ->
                 decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskDeleted ->
-                decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
+                decodeOrNull(TaskDeletedDto.serializer(), element)?.let {
+                    TaskDeleted(
+                        taskId = TaskId(it.taskId),
+                        conversationChannelId = it.conversationChannelId?.trim()?.takeIf(String::isNotBlank)?.let(::ChannelId),
+                    )
+                }
             RealtimeSocketEvents.AgentSeen ->
                 decodeOrNull(AgentSeenDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivity ->
@@ -466,6 +473,8 @@ private data class ConversationContextWireDto(
     val parentMessageId: String? = null,
     val parentChannelId: String? = null,
     val parentChannelType: String? = null,
+    // task v2 conversations only (slock messageService.ts `buildFrontendConversationContext`)
+    val taskId: String? = null,
 )
 
 @Serializable
@@ -599,6 +608,16 @@ private data class TaskInfoWireDto(
     val claimedByName: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    // slock `taskService.ts` task projection (`task:updated` carries the full projected DTO,
+    // `projectTaskCreated` the same v2 fields): without them a realtime fold turned a v2 task back
+    // into a pre-v2 one (its id as a message id, no conversation, no reply count).
+    val description: String? = null,
+    val readOnlyReason: String? = null,
+    val hostMessageId: String? = null,
+    val conversationChannelId: String? = null,
+    val conversationAnchored: Boolean? = null,
+    val conversationReplyCount: Int? = null,
+    val isLegacy: Boolean? = null,
 )
 
 @Serializable
@@ -617,6 +636,7 @@ private data class TaskUpdatedDto(
 private data class TaskDeletedDto(
     val channelId: String? = null,
     val taskId: String,
+    val conversationChannelId: String? = null,
 )
 
 @Serializable
@@ -887,6 +907,7 @@ private fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
+        taskId = taskId?.trim()?.takeIf { it.isNotBlank() && parseConversationKindOrNull(channelType) == ConversationKind.Task }?.let(::TaskId),
     )
     return context.takeIf {
         it.channelKind != null ||
@@ -1054,7 +1075,9 @@ private fun TaskInfoWireDto.toDomain(
     diagnostics: (String) -> Unit,
 ): TaskSummary? {
     val resolvedStatus = status.strictTaskStatusOrNull("realtime_task", diagnostics) ?: return null
-    val resolvedMessageId = (messageId ?: id).let(::MessageId)
+    val taskV2 = isTaskV2Conversation(isLegacy, conversationAnchored, conversationChannelId)
+    val resolvedMessageId = taskOpenableMessageId(id, messageId, hostMessageId, taskV2)
+    val resolvedReadOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() }
     return TaskSummary(
         id = TaskId(id),
         revision = revision,
@@ -1070,7 +1093,15 @@ private fun TaskInfoWireDto.toDomain(
         creator = memberFrom(type = createdByType, id = createdById, name = createdByName, diagnostics = diagnostics),
         channelName = channelName,
         updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
-        canClaim = true,
+        canClaim = resolvedReadOnlyReason == null,
+        description = description?.trim()?.takeIf { it.isNotBlank() },
+        readOnlyReason = resolvedReadOnlyReason,
+        channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        conversationAnchored = taskV2,
+        conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
+        isLegacy = isLegacy == true,
     )
 }
 
