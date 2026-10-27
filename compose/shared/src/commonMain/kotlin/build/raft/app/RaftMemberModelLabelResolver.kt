@@ -72,6 +72,9 @@ internal fun SharedServerMembersState.currentMemberModelLabel(
 
 internal fun build.raft.app.model.MemberProfile.modelLabel(): String? {
     if (kind != build.raft.app.model.MemberKind.Agent) return null
+    // An App Bot runs no model: `agents.model` keeps the column default (botiverse/slock #11273
+    // MessageItem `isAppBotSender`). Its row carries the Bot badge instead.
+    if (!managedByAppInstallId.isNullOrBlank()) return null
     val rawModel = model?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return getModelLabel(runtimeId = roleDescription.orEmpty(), modelId = rawModel)
 }

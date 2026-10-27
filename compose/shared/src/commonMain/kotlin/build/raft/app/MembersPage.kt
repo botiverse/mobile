@@ -2579,7 +2579,9 @@ internal fun MembersPageContent(
 
     val membersPayload =
         payload.copy(
-            members = localMembers,
+            // botiverse/slock #11295: the directory keeps an App Bot removed from this server
+            // (`inMemberLists: false`) so its old messages resolve; the list leaves it out.
+            members = localMembers.filter { it.isListedInMembers() },
             agentPanelTabOrder = agentPanelTabOrder,
             showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
         )
@@ -9327,8 +9329,24 @@ private fun MembersAgentProfileHeader(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    MemberKindBadge(member.kind)
-                    if (runtimeId != null) {
+                    val appBot = member.appBotIdentityOrNull()
+                    if (appBot != null) {
+                        // botiverse/slock #11273 profile hero: an App Bot is a Bot from its App,
+                        // not an "Agent", and runs on no runtime.
+                        RaftAppBotBadge(identity = appBot, botName = appBot.appName)
+                        appBot.appName?.let { appName ->
+                            RaftText(
+                                text = stringResource(Res.string.member_label_bot_from_app, appName),
+                                style = typography.footnote,
+                                color = colors.foregroundMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else {
+                        MemberKindBadge(member.kind)
+                    }
+                    if (runtimeId != null && appBot == null) {
                         RaftBadge(
                             text = getRuntimeDisplayName(runtimeId),
                             appearance = RaftBadgeAppearance.Soft,
@@ -9342,7 +9360,9 @@ private fun MembersAgentProfileHeader(
                 // offline while the label beside it says Unknown, the disagreement
                 // RaftAgentStatusIndicator's own contract forbids. Render no light until
                 // something authoritative arrives (task #253/#256).
-                RaftBadge(
+                // An App Bot renders no presence (web: always-offline on a signal that does
+                // not apply to it).
+                if (member.managedByAppInstallId.isNullOrBlank()) RaftBadge(
                     text = statusLabel,
                     appearance = RaftBadgeAppearance.Soft,
                     variant = agentStatusObservedState?.status.membersStatusBadgeVariant(),
@@ -14462,6 +14482,8 @@ private fun MembersListRow(
             membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest
     val youSuffix = stringResource(Res.string.member_label_you_suffix)
     val guestLabel = stringResource(Res.string.channel_member_role_guest)
+    // botiverse/slock #11273 `MemberAgentRow`: an App Bot's name carries the Bot badge.
+    val appBot = remember(member) { member.appBotIdentityOrNull() }
     RaftSidebarItem(
         title = member.displayName,
         modifier = modifier,
@@ -14476,12 +14498,13 @@ private fun MembersListRow(
             )
         },
         titleTrailing =
-            if (isSelf || isGuest) {
+            if (isSelf || isGuest || appBot != null) {
                 {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (appBot != null) RaftAppBotBadge(identity = appBot, botName = member.displayName)
                         if (isSelf) {
                             // `ml-1 font-normal text-foreground-hint` (sticker ink when selected).
                             RaftText(

@@ -139,8 +139,26 @@ private data class WireAgent(
     val lastSeenAt: String? = null,
     /** slock `agents.managedByAppInstallId` (app-managed bot); null/absent for ordinary agents and guest projections. */
     val managedByAppInstallId: String? = null,
+    /**
+     * App Bots only (botiverse/slock #11273): the owning App, joined install -> OAuth client on
+     * `GET /agents` and `GET /agents/:id` for non-guests; `null` when the join found no row.
+     */
+    val managedByApp: WireManagedByApp? = null,
+    /**
+     * App Bots only (botiverse/slock #11295): `false` while the Bot is removed from this server.
+     * The directory keeps it so its old messages still resolve; absent on ordinary agents.
+     */
+    val inMemberLists: Boolean? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
+)
+
+/** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
+@Serializable
+private data class WireManagedByApp(
+    val clientId: String? = null,
+    val name: String? = null,
+    val logoUrl: String? = null,
 )
 
 @Serializable
@@ -828,6 +846,8 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
+        managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
+        inMemberLists = inMemberLists,
         model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
