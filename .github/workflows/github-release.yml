@@ -1,0 +1,70 @@
+name: GitHub Release
+
+# One GitHub Release per shipped version, built from what Hands shipped:
+# the signed Android APK from the published `main` release (SHA-256 checked against
+# Hands) and the three-language notes for Android and iOS; iOS gets its TestFlight
+# build number, no IPA. See scripts/github_release_from_hands.py.
+#
+# The `v*` tag is pushed at release closeout, after the Hands release is published.
+# If it was pushed earlier, rerun with workflow_dispatch once the release is live.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag, e.g. v1.16.1"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create or update GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+
+      - name: Prepare notes and APK from Hands
+        env:
+          HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
+          HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
+          HANDS_ANDROID_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          HANDS_IOS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
+        run: python3 scripts/github_release_from_hands.py --tag "${TAG}" --out release-out
+        # macOS: when the Mac app joins the release train, download its dmg here and
+        # pass --dmg <path>; the script adds a macOS section and the asset.
+
+      - name: Create or update the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t ASSETS < <(jq -r '.assets[]' release-out/manifest.json)
+          VERSION="$(jq -r .version release-out/manifest.json)"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --title "Raft ${VERSION}" --notes-file release-out/body.md
+            gh release upload "${TAG}" "${ASSETS[@]}" --clobber
+          else
+            gh release create "${TAG}" --verify-tag --title "Raft ${VERSION}" \
+              --notes-file release-out/body.md "${ASSETS[@]}"
+          fi
+          {
+            echo "### GitHub Release ${TAG}"
+            echo
+            echo "$(gh release view "${TAG}" --json url -q .url)"
+            echo
+            printf -- '- `%s`\n' "${ASSETS[@]##*/}"
+          } >> "${GITHUB_STEP_SUMMARY}"
