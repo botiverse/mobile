@@ -53,6 +53,14 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.sha }}
 
+      - name: Pin Xcode
+        # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
+        # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
+        # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
+        env:
+          XCODE_APP_PATH: /Applications/Xcode_26.6.app
+        run: bash scripts/ci/select_ios_xcode.sh
+
       - name: Record actual product source
         shell: bash
         env:
