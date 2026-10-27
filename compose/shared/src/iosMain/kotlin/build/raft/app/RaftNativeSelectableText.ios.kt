@@ -57,7 +57,7 @@ actual fun RaftNativeSelectableText(
     val surfaceColor = LocalRaftSurfaceColor.current
     val backgroundColor =
         remember(surfaceColor) {
-            surfaceColor.takeIf { it != Color.Unspecified }?.toUIColor() ?: UIColor.systemBackgroundColor
+            surfaceColor.takeIf { it != Color.Unspecified }?.toUIColor() ?: UIColor.whiteColor
         }
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
