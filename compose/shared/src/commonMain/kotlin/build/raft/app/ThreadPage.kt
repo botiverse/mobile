@@ -11391,10 +11391,11 @@ private fun SharedThreadRouteContentContent(
         // at all — the base array is used by identity, so the production
         // provider scope is unchanged by P1.
         // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
+        // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
         val inPlaceTextSelectionHost =
             remember(newMessageMenuEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
-                    enabled = newMessageMenuEnabled,
+                    enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
                     copyText = { text ->
                         bridge.copyToPasteboard(text)
                         bridge.toast(copiedLabel)

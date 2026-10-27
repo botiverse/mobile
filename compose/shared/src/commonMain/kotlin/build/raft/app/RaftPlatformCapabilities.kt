@@ -36,6 +36,13 @@ internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
  */
 internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
 
+/**
+ * Message text is selectable with the pointer (drag, double-click a word, Cmd+C), like the web:
+ * desktop turns on the in-place selection (ThreadInPlaceTextSelection.kt) without the New Message
+ * Menu preference. Phones keep long-press and "Select text" behind that preference.
+ */
+internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
+
 /** Sign in with Apple is a product capability of the iOS host only. */
 internal expect fun raftPlatformSupportsAppleSignIn(): Boolean
 

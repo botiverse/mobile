@@ -34,6 +34,8 @@ internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = 
 
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
 
+internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
+
 internal actual fun raftPlatformSupportsAppleSignIn(): Boolean = true
 
 internal actual fun raftPlatformSupportsBackgroundRealtime(): Boolean = false
