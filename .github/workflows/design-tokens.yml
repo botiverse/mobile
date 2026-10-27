@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Self-test generator
         run: python3 tools/design-tokens/gen_tokens.py --self-test
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Resolve pinned Lucide checkout
         id: lucide
@@ -60,7 +60,7 @@ jobs:
           PY
 
       - name: Restore pinned Lucide checkout
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/slock-lucide
           key: lucide-${{ steps.lucide.outputs.commit }}

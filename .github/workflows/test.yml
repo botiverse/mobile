@@ -72,7 +72,7 @@ jobs:
       # blobs a step reads at another commit (the gitlink gate's .gitmodules)
       # are fetched on demand with the persisted checkout credentials.
       - name: Checkout exact event source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           filter: blob:none
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload gitlink carry-in audit
         if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: gitlink-carry-in-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
           path: |
@@ -274,7 +274,7 @@ jobs:
       SLOCK_VISUAL_FIXTURES: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup CI environment
         uses: ./.github/actions/setup-env
@@ -316,7 +316,7 @@ jobs:
         run: scripts/check_server_activity_unread_fixture.sh
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -456,7 +456,7 @@ jobs:
 
       - name: Upload design system screenshot diffs
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: designsystem-screenshot-diffs
           path: compose/designsystem/build/reports/screenshots/
@@ -467,7 +467,7 @@ jobs:
       # uploaded on every run so the images (and new goldens) are reviewable without Gradle.
       - name: Upload shared Home screenshots
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: shared-home-screenshots
           path: compose/shared/build/reports/home-screenshots/
@@ -500,7 +500,7 @@ jobs:
 
       - name: Upload Android connected-test APKs
         if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: android-connected-test-apks
           path: |
@@ -511,7 +511,7 @@ jobs:
 
       - name: Upload shared atomic-sink test APK
         if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: android-shared-atomic-sink-test-apk
           path: compose/shared/build/outputs/apk/androidTest/debug/*.apk
@@ -520,7 +520,7 @@ jobs:
 
       - name: Upload unit test reports
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: android-unit-test-reports
           path: |
@@ -554,7 +554,7 @@ jobs:
       # (the instrumentation gates were previously hardcoded `grep 'OK (N tests)'`
       # count pins that broke whenever a case was added to a gated class).
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Self-test instrumentation assertion helper
         shell: bash
@@ -601,13 +601,13 @@ jobs:
           packages: platform-tools
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
       - name: Download shared atomic-sink test APK
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: android-shared-atomic-sink-test-apk
           path: android-shared-atomic-sink-test-apk
@@ -660,7 +660,7 @@ jobs:
 
       - name: Upload instrumentation output
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: first-character-baseline-instrumentation
           path: |
@@ -727,7 +727,7 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Self-test instrumentation assertion helper
         shell: bash
@@ -742,7 +742,7 @@ jobs:
           packages: platform-tools
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
@@ -786,7 +786,7 @@ jobs:
 
       - name: Upload API ${{ matrix.api-level }} attachment evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
           path: |
@@ -814,7 +814,7 @@ jobs:
       # embedded in this workflow as a 160-line heredoc because the job had no
       # checkout).
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -822,7 +822,7 @@ jobs:
           packages: platform-tools
 
       - name: Download connected-test APKs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
@@ -861,7 +861,7 @@ jobs:
 
       - name: Upload canonical-final actual-host evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: canonical-final-actual-host-evidence
           path: |
@@ -909,7 +909,7 @@ jobs:
     timeout-minutes: 75
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
@@ -920,7 +920,7 @@ jobs:
         run: bash scripts/ci/select_ios_xcode.sh
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -1161,7 +1161,7 @@ jobs:
 
       - name: Upload xcodebuild log
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ios-compile-xcodebuild-log-${{ github.run_id }}
           path: |
@@ -1196,7 +1196,7 @@ jobs:
       - ios
     steps:
       - name: Checkout aggregate verifier
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Runs in the SAME job as the gate on purpose. The verifier carries a selfTest behind
       # `--self-test`, and nothing invoked it — so the expectation table could drift from

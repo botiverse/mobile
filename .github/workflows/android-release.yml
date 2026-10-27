@@ -242,7 +242,7 @@ jobs:
       share_ttl_seconds: ${{ steps.p.outputs.share_ttl_seconds }}
     steps:
       - name: Checkout release contract helpers
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - id: p
         shell: bash
@@ -330,7 +330,7 @@ jobs:
       hands_artifact_build_id: ${{ steps.hands-artifacts.outputs.build_id }}
     steps:
       - name: Checkout workflow base
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
@@ -354,7 +354,7 @@ jobs:
             scripts/verify_android_native_symbols.sh
 
       - name: Checkout immutable product source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || github.sha }}
@@ -377,7 +377,7 @@ jobs:
           echo "source_sha=${ACTUAL}" >> "$GITHUB_OUTPUT"
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -670,7 +670,7 @@ jobs:
 
       - name: Upload signed AAB and verification receipt
         if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-aab
           path: signed-aab/
@@ -679,7 +679,7 @@ jobs:
 
       - name: Upload APK as workflow artifact
         id: upload-apk
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ steps.sign.outputs.apk_path }}
@@ -689,7 +689,7 @@ jobs:
       - name: Upload R8 mapping as workflow artifact
         # Enables server-side crash deobfuscation: the publish job attaches
         # this as a proguard-mapping build asset.
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/mapping.txt
@@ -697,7 +697,7 @@ jobs:
           retention-days: 14
 
       - name: Upload exact native symbols as workflow artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-native-symbols
           path: ${{ steps.native-symbols.outputs.archive }}
@@ -760,12 +760,12 @@ jobs:
       SLOCK_REQUIRE_ANDROID_SYMBOLS: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download signed APK
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/
@@ -774,13 +774,13 @@ jobs:
         # Restored to the exact path the publish helper probes; absent for
         # variants without minification.
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact_name }}-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
 
       - name: Download exact native symbols
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact_name }}-native-symbols
           path: dist/native-symbols/
@@ -963,9 +963,9 @@ jobs:
       EXPECTED_UPLOAD_CERT_SHA256: 5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1
     steps:
       - name: Checkout signing implementation
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Setup JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -1046,7 +1046,7 @@ jobs:
           # Evidence only: Hands cannot replace a sealed bundle at the same
           # versionCode. Publication needs a higher versionCode and normal build.
       - name: Upload signed repair and evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: android-aab-sign-repair-${{ github.run_id }}
           path: |

@@ -24,7 +24,7 @@ jobs:
     steps:
       # exact-bound: check out the PR HEAD (not the synthetic merge ref) and
       # record the SHA so reviewers can bind this run to the frozen exact.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Assert head exact
@@ -40,7 +40,7 @@ jobs:
           node scripts/perf/test_thread_open_contract.mjs --keep checker-fixtures | tee checker-selftest.txt
       - name: Upload fixtures and results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: checker-selftest
           path: |
