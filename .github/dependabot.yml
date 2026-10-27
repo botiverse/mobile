@@ -20,10 +20,13 @@ updates:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
       # Kotlin, KSP and Compose Multiplatform are released against each other; bump together by hand.
-      - dependency-name: org.jetbrains.kotlin*
+      # (exact prefixes: a bare "org.jetbrains.kotlin*" would also swallow org.jetbrains.kotlinx)
+      - dependency-name: "org.jetbrains.kotlin:*"
+      - dependency-name: "org.jetbrains.kotlin.*"
       - dependency-name: com.google.devtools.ksp*
       - dependency-name: org.jetbrains.compose*
       - dependency-name: androidx.compose.runtime:runtime
+      - dependency-name: "org.jetbrains.androidx.*"
       # Raft-published artifacts (maven.artifacts.botiverse.dev): released from their own repos.
       - dependency-name: build.raft.*
       - dependency-name: build.hands*
@@ -39,7 +42,10 @@ updates:
       kotlinx-ktor:
         patterns: ["org.jetbrains.kotlinx*", "io.ktor*"]
       test:
-        patterns: ["junit*", "org.robolectric*", "com.squareup.okhttp3:mockwebserver3"]
+        patterns: ["junit*", "org.robolectric*"]
+      # okhttp and mockwebserver3 share one catalog version (okhttpTransport): one PR.
+      okhttp:
+        patterns: ["com.squareup.okhttp3*"]
       libraries:
         patterns: ["*"]
 
