@@ -2935,6 +2935,27 @@ class SharedServerMembersStore internal constructor(
         }
     }
 
+    /**
+     * Incremental sync (`channel_member` rows / the `channel_members` snapshot): refetch the current
+     * owner's LOADED channel rosters of [serverId], only [channelIds] when given. A channel nobody
+     * opened has no roster here and is not fetched.
+     */
+    internal suspend fun refreshLoadedChannelMembers(
+        serverId: ServerId,
+        channelIds: Set<String>?,
+        reason: String
+    ): Int {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return 0
+        val loaded =
+            currentOwnerChannelMemberSlices(ServerId(serverKey))
+                .filter { it.status == SharedServerMembersLoadStatus.Loaded }
+                .map { it.channelId }
+                .filter { channelIds == null || it in channelIds }
+                .distinct()
+        loaded.forEach { channelId -> refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason) }
+        return loaded.size
+    }
+
     private suspend fun refreshChannelMembersBestEffort(
         serverId: ServerId,
         channelId: ChannelId,

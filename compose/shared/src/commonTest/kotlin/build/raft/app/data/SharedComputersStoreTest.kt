@@ -348,6 +348,39 @@ class SharedComputersStoreTest {
         assertFalse(store.state.value.selectComputerPickerSlice("shared-server").hasSnapshot)
     }
 
+    @Test
+    fun syncedMachineRowsPatchTheLoadedListWithoutAFetch() = runBlocking {
+        val api = RecordingComputersApi()
+        val store = store(api)
+        store.ensureComputerPickerForServer("server-1")
+        val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "offline"))!!
+        val added = parseSyncedComputerRow(syncMachineRow("machine-2", "Build Box", "online"))!!
+
+        assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed, added), deletes = emptySet()))
+
+        val slice = store.state.value.selectComputerServerSlice("server-1")
+        assertEquals(listOf("machine-1" to "Maria Desktop", "machine-2" to "Build Box"), slice.machines.map { it.id to it.name })
+        assertEquals(2, slice.machineCount)
+        assertEquals(1, slice.onlineCount)
+        assertEquals(mapOf("machine-1" to "Maria Desktop", "machine-2" to "Build Box"), store.currentMachineNames("server-1"))
+
+        assertTrue(store.applySyncedMachineRows("server-1", emptyList(), deletes = setOf("machine-1")))
+        assertEquals(listOf("machine-2"), store.state.value.selectComputerServerSlice("server-1").machines.map { it.id })
+        // The same delete again changes nothing.
+        assertFalse(store.applySyncedMachineRows("server-1", emptyList(), deletes = setOf("machine-1")))
+        assertEquals(1, api.calls.size)
+    }
+
+    @Test
+    fun syncedMachineRowsLeaveAnUnloadedServerForItsLoad() = runBlocking {
+        val store = store(RecordingComputersApi())
+        val row = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Laptop", "online"))!!
+
+        assertFalse(store.applySyncedMachineRows("server-1", listOf(row), deletes = emptySet()))
+        assertFalse(store.state.value.selectComputerServerSlice("server-1").hasSnapshot)
+        assertNull(parseSyncedComputerRow(kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("m")) }))
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),
@@ -422,3 +455,9 @@ private const val machinesBody: String =
 
 private fun machinesBodyFor(machineId: String, machineName: String): String =
     """{"machines":[{"id":"$machineId","name":"$machineName","status":"online","runtimes":["codex"]}]}"""
+
+/** One `machines` item of `GET /api/servers/:id/machines` as a sync `machine` row carries it. */
+private fun syncMachineRow(id: String, name: String, status: String): kotlinx.serialization.json.JsonObject =
+    kotlinx.serialization.json.Json.parseToJsonElement(
+        """{"id":"$id","name":"$name","status":"$status","runtimes":["codex"],"agentCount":1}"""
+    ) as kotlinx.serialization.json.JsonObject
