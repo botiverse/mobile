@@ -12,6 +12,9 @@ import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.toJsonObject
 import build.raft.app.RaftAdaptivePanePagerEvent
+import build.raft.app.RaftSideColumnPosture
+import build.raft.app.RaftSideColumnScaffold
+import build.raft.app.toRaftSideColumnPosture
 import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
@@ -34,6 +37,13 @@ internal abstract class BasePager : ComposeContainer() {
         private set
     private var raftHasAppeared = false
 
+    /**
+     * iPhone Duo's side column (raft-design #859), from the host's adaptive-pane payload. Only a
+     * page with its own window places it ([RaftSideColumnScaffold]); an embedded child page sits
+     * inside its host's and inherits it.
+     */
+    private var raftSideColumnPosture by mutableStateOf(RaftSideColumnPosture.None)
+
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
@@ -52,11 +62,17 @@ internal abstract class BasePager : ComposeContainer() {
      * which keeps the non-production environment indicator above auth and product surfaces alike.
      */
     override fun setContent(content: @Composable () -> Unit) {
+        val embedded = pageData.params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false)
         super.setContent {
             RaftEnvironmentIndicatorHost(
                 enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
-                content = content,
-            )
+            ) {
+                if (embedded) {
+                    content()
+                } else {
+                    RaftSideColumnScaffold(posture = raftSideColumnPosture, content = content)
+                }
+            }
         }
     }
 
@@ -159,6 +175,7 @@ internal abstract class BasePager : ComposeContainer() {
     override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
         super.onReceivePagerEvent(pagerEvent, eventData)
         if (pagerEvent == RaftAdaptivePanePagerEvent) {
+            raftSideColumnPosture = eventData.toRaftSideColumnPosture()
             onRaftAdaptivePaneChanged(eventData)
         }
         if (pagerEvent == RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {
