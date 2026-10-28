@@ -92,6 +92,16 @@ class TaskConversationHeadScreenshotTest {
             }
         }
 
+    /**
+     * #proj-mobile:#69 (Kirby): a short conversation (two messages) after a swipe up asked the head
+     * away. The list stays bottom-anchored on the composer and the head folds only as far as the
+     * conversation fills its place: "Beginning of conversation" sits right under the head, with no
+     * blank gap under a folded bar. (This head is taller than its 60% share of the page, so its top,
+     * the title, was already out of view; the bar has not summarized because the head is still there.)
+     */
+    @Test
+    fun shortConversation() = capture("task.conversation.head.short", RaftAppAppearance.Light) { ShortTaskPage() }
+
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             CompositionLocalProvider(
@@ -102,6 +112,65 @@ class TaskConversationHeadScreenshotTest {
             }
         }
 }
+
+/** A task with two messages, as ThreadPage lays it out: the list tells the head how far it may fold. */
+@Composable
+private fun ShortTaskPage() {
+    val scrollState = remember { TaskHeadScrollState() }
+    // The reader swiped up: the head is asked all the way away.
+    androidx.compose.runtime.LaunchedEffect(scrollState.scrollsWithConversation, scrollState.heightPx) {
+        if (scrollState.scrollsWithConversation && scrollState.heightPx > 0f) scrollState.collapse()
+    }
+    val chrome =
+        TaskConversationHeaderChrome(
+            ref = "#raft-mobile:#7",
+            taskNumber = 7,
+            status = TaskStatus.InProgress,
+            assigneeName = "Lagoon",
+            assigneeKind = MemberKind.Agent,
+            summarized = scrollState.collapsed,
+            followed = true,
+            onToggleHeadFloat = {},
+            onViewInChannel = {},
+            onToggleFollow = {},
+        )
+    Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        TaskHeader(chrome)
+        TaskConversationHead(
+            model = HeadModel,
+            onSelectStatus = {},
+            onOpenAssignee = {},
+            onOpenSource = {},
+            onOpenEarlierDiscussion = {},
+            scrollState = scrollState,
+        )
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        androidx.compose.foundation.lazy.LazyColumn(
+            Modifier.weight(1f).fillMaxWidth().taskHeadConversationOverflow(scrollState, listState),
+            state = listState,
+            reverseLayout = true,
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
+        ) {
+            ShortMessages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
+            item(key = "beginning") {
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                    build.raft.designsystem.text.RaftText(
+                        stringResource(Res.string.thread_state_beginning_conversation),
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                }
+            }
+        }
+        Composer()
+    }
+}
+
+private val ShortMessages =
+    listOf(
+        message("m-s1", 1, "user-artin", "artin", MemberKind.Human, "Can you check the gap above the messages?"),
+        message("m-s2", 2, "agent-lagoon", "Lagoon", MemberKind.Agent, "On it."),
+    )
 
 @Composable
 private fun TaskPage(keyboardUp: Boolean, historyOpen: Boolean = true) {
@@ -151,25 +220,28 @@ private fun ColumnScope.Messages(earlier: Boolean = false) {
                 message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
             )
         ).reversed().forEach { item ->
-            item(key = item.id) {
-            ThreadMessageCard(
-                message = item,
-                messageBodyTextStyle = raftMessageBodyTextStyle("md"),
-                isMarkdownTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.UserMention },
-                timestampLabel = "9:${item.timestampLabel.substring(14, 16)}",
-                onShowActions = {},
-                onOpenMember = {},
-                onOpenThread = {},
-                onOpenTask = {},
-                onOpenTaskStatusMenu = {},
-                onToggleReaction = {},
-                onOpenAttachment = {},
-                onOpenMarkdownTag = { _, _ -> },
-                onOpenMarkdownUrl = {},
-            )
-            }
+            item(key = item.id) { MessageCard(item) }
         }
     }
+}
+
+@Composable
+private fun MessageCard(item: RaftThreadMessageItem) {
+    ThreadMessageCard(
+        message = item,
+        messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+        isMarkdownTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.UserMention },
+        timestampLabel = "9:${item.timestampLabel.substring(14, 16)}",
+        onShowActions = {},
+        onOpenMember = {},
+        onOpenThread = {},
+        onOpenTask = {},
+        onOpenTaskStatusMenu = {},
+        onToggleReaction = {},
+        onOpenAttachment = {},
+        onOpenMarkdownTag = { _, _ -> },
+        onOpenMarkdownUrl = {},
+    )
 }
 
 /** Earlier messages: once the head has scrolled away the list fills the page. */

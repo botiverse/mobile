@@ -57,6 +57,11 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.layout.layout
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.data.TaskConversationDetailsViewModel
@@ -287,13 +292,37 @@ internal val TaskHeadPinnedMinWidth = 600.dp
  * `TaskHeadPullDown`, slock #11722): [toggleFloat] on the bar; it closes on the bar again, a tap
  * outside it, a swipe up on it, Back / Escape, focus in the composer ([closeFloat]) and as soon as
  * the reader scrolls the messages ([connection]) or the head comes back in view.
+ *
+ * The list stays bottom-anchored like any chat, so the head folds only as far as the conversation
+ * has messages to show in its place ([foldLimitPx], from [minShownHeightPx]): a short
+ * conversation keeps the head in view rather than open a blank gap above its oldest message
+ * (Kirby, #proj-mobile:#69), as web's first row scrolls only as far as the list does.
  */
 @Stable
 internal class TaskHeadScrollState {
     var heightPx by mutableFloatStateOf(0f)
         internal set
-    var offsetPx by mutableFloatStateOf(0f)
-        private set
+    /** How far the head was moved away, before [foldLimitPx] holds it back. */
+    private var requestedOffsetPx by mutableFloatStateOf(0f)
+
+    /** How much of the head is out of view (from its top). */
+    val offsetPx: Float
+        get() = requestedOffsetPx.coerceAtMost(foldLimitPx).coerceAtLeast(0f)
+
+    /**
+     * How much of the head must stay on the page for the conversation below to fill the rest:
+     * the room the two share less the conversation's content, from the list's last layout
+     * ([Modifier.taskHeadConversationOverflow]). Negative infinity while the list has rows out of
+     * view. It does not change as the head folds or grows, only with the content or the room.
+     */
+    internal var minShownHeightPx by mutableFloatStateOf(Float.NEGATIVE_INFINITY)
+
+    /** The height the head took on the page in its last layout (set while measuring, not observed). */
+    internal var shownHeightPx: Float = 0f
+
+    /** How far the head may fold without the conversation leaving a gap above its oldest row. */
+    val foldLimitPx: Float
+        get() = taskHeadFoldLimitPx(heightPx, minShownHeightPx)
     var scrollsWithConversation by mutableStateOf(false)
         internal set
 
@@ -330,8 +359,8 @@ internal class TaskHeadScrollState {
     fun consume(delta: Float): Float {
         if (!scrollsWithConversation) return 0f
         val old = offsetPx
-        val next = (old - delta).coerceIn(0f, heightPx)
-        offsetPx = next
+        val next = (old - delta).coerceIn(0f, foldLimitPx)
+        requestedOffsetPx = next
         dropFloatIfInView()
         return old - next
     }
@@ -339,20 +368,20 @@ internal class TaskHeadScrollState {
     /** Out of view: the keyboard came up (the conversation keeps the room above it). */
     fun collapse() {
         // Before the head is measured, "all of it": [updateHeight] clamps it to the height.
-        if (scrollsWithConversation) offsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
+        if (scrollsWithConversation) requestedOffsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
     }
 
     /** Back in view. */
     fun expand() {
-        offsetPx = 0f
+        requestedOffsetPx = 0f
         floatRequested = false
     }
 
     internal fun updateHeight(height: Float) {
         if (height == heightPx) return
-        val wasCollapsed = collapsed
+        val wasCollapsed = scrollsWithConversation && heightPx > 0f && requestedOffsetPx >= heightPx - 0.5f
         heightPx = height
-        offsetPx = if (wasCollapsed) height else offsetPx.coerceIn(0f, height)
+        requestedOffsetPx = if (wasCollapsed) height else requestedOffsetPx.coerceIn(0f, height)
         dropFloatIfInView()
     }
 
@@ -368,6 +397,76 @@ internal class TaskHeadScrollState {
                 if (available.y > 0f) Offset(0f, consume(available.y)) else Offset.Zero
         }
 }
+
+/**
+ * How far the head may fold ([TaskHeadScrollState.foldLimitPx]): the conversation's viewport grows
+ * by what the head gives up and must not outgrow its content, so at least [minShownPx] of the
+ * head stays. Rows out of view (negative infinity): all the way. Never past the head, never below
+ * zero. A head taller than its share of the page shows only its top, so folding the hidden rest
+ * moves nothing and is allowed.
+ */
+internal fun taskHeadFoldLimitPx(heightPx: Float, minShownPx: Float): Float {
+    if (heightPx <= 0f) return 0f
+    return (heightPx - minShownPx).coerceIn(0f, heightPx)
+}
+
+/**
+ * [TaskHeadScrollState.minShownHeightPx] from one layout: the head showed [shownPx] and the list's
+ * content overflowed its viewport by [overflowPx] (infinite: rows out of view).
+ */
+internal fun taskHeadMinShownHeightPx(shownPx: Float, overflowPx: Float): Float =
+    if (overflowPx == Float.POSITIVE_INFINITY) Float.NEGATIVE_INFINITY else shownPx - overflowPx
+
+/**
+ * How much taller a bottom-anchored list's content is than its viewport: exact when every row is
+ * laid out, infinite while some are out of view (then it overflows by more than any head).
+ */
+internal fun taskHeadConversationOverflowPx(
+    totalRows: Int,
+    laidOutRowHeights: List<Int>,
+    rowSpacingPx: Int,
+    paddingPx: Int,
+    viewportPx: Int,
+): Float {
+    if (laidOutRowHeights.size < totalRows) return Float.POSITIVE_INFINITY
+    val content = laidOutRowHeights.sum() + rowSpacingPx * (totalRows - 1).coerceAtLeast(0) + paddingPx
+    return (content - viewportPx).toFloat()
+}
+
+private fun LazyListLayoutInfo.taskHeadConversationOverflowPx(): Float =
+    taskHeadConversationOverflowPx(
+        totalRows = totalItemsCount,
+        laidOutRowHeights = visibleItemsInfo.map { it.size },
+        rowSpacingPx = mainAxisItemSpacing,
+        paddingPx = beforeContentPadding + afterContentPadding,
+        viewportPx = viewportSize.height,
+    )
+
+/** The task head of the page around a conversation list, if it scrolls with it ([taskHeadConversationOverflow]). */
+internal val LocalTaskHeadScrollState = staticCompositionLocalOf<TaskHeadScrollState?> { null }
+
+/**
+ * On the conversation's list: after each of its layouts, tells the task head above it how much of
+ * it must stay for the content to fill the rest, so the head folds no further than the content can follow
+ * ([TaskHeadScrollState.foldLimitPx]). Reads the list's layout only; it never scrolls it.
+ */
+internal fun Modifier.taskHeadConversationOverflow(scrollState: TaskHeadScrollState?, listState: LazyListState): Modifier =
+    if (scrollState == null) {
+        this
+    } else {
+        layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            // The list has just measured, so its layout info is this frame's, and the head above
+            // was measured earlier in the same pass ([shownHeightPx]): read together they give the
+            // room both share. Not observed: they change on every measure and are not its inputs.
+            val minShown =
+                Snapshot.withoutReadObservation {
+                    taskHeadMinShownHeightPx(scrollState.shownHeightPx, listState.layoutInfo.taskHeadConversationOverflowPx())
+                }
+            if (minShown != Snapshot.withoutReadObservation { scrollState.minShownHeightPx }) scrollState.minShownHeightPx = minShown
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        }
+    }
 
 /**
  * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
@@ -446,7 +545,9 @@ internal fun TaskConversationHead(
                     // composer keep the rest; a taller head shows its top, the rest comes with the drag.
                     val visibleCap =
                         if (pageHeight.value.isFinite()) (pageHeight * TaskHeadPhoneMaxFraction).roundToPx() else placeable.height
-                    layout(placeable.width, (placeable.height - offset).coerceAtMost(visibleCap)) { placeable.place(0, -offset) }
+                    val shown = (placeable.height - offset).coerceAtMost(visibleCap)
+                    scrollState.shownHeightPx = shown.toFloat()
+                    layout(placeable.width, shown) { placeable.place(0, -offset) }
                 }
                 if (!scrollState.collapsed) TaskHeadDivider()
             } else {
