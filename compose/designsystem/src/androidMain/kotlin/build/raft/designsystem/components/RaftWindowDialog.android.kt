@@ -76,13 +76,18 @@ private fun View.copyRaftSystemBarsAppearanceFrom(host: Window) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         val hostAppearance = host.insetsController?.systemBarsAppearance ?: return
-        windowInsetsController?.setSystemBarsAppearance(hostAppearance and mask, mask)
+        val controller = windowInsetsController ?: return
+        // Only on a change: setting it relayouts the window, which must not feed a recomposition loop.
+        if ((controller.systemBarsAppearance and mask) != (hostAppearance and mask)) {
+            controller.setSystemBarsAppearance(hostAppearance and mask, mask)
+        }
     } else {
         val mask =
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
         val hostFlags = host.decorView.systemUiVisibility and mask
-        systemUiVisibility = (systemUiVisibility and mask.inv()) or hostFlags
+        val next = (systemUiVisibility and mask.inv()) or hostFlags
+        if (next != systemUiVisibility) systemUiVisibility = next
     }
 }
 
