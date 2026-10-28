@@ -27,6 +27,8 @@ class AuthenticatedProductRouteTest {
                 SETTINGS_STORAGE_PAGE,
                 SETTINGS_COMPUTERS_PAGE,
                 RELEASE_NOTES_PAGE,
+                // The in-app Artifact viewer: its own authenticated page (sign-out replaces it with login).
+                RAFT_ARTIFACT_VIEWER_PAGE,
             )
 
         assertEquals(expected, authenticatedProductRoutePageNames)
