@@ -927,8 +927,9 @@ private fun SharedTasksLoadedBodyContent(
             else -> Unit
         }
 
-        // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web.
-        statusMenuTask?.takeIf { it.readOnlyReason == null }?.let { task ->
+        // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web; nor does the
+        // stored offline stand-in before the network confirmed it.
+        statusMenuTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
             val updating = state.statusUpdatingTaskId == task.id.value
             val resolvedStatusAnchor =
                 statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
@@ -956,7 +957,7 @@ private fun SharedTasksLoadedBodyContent(
         // picker reuses the searchable filter sheet (stdrc msg=4c357cb1) — humans
         // first, then agents, "unassigned" sentinel always first and never filtered
         // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
-        assigneeMenuTask?.takeIf { it.readOnlyReason == null }?.let { task ->
+        assigneeMenuTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
             // The picker opens for the task whose assignee chip was tapped.
             assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
                 ?: return@let
@@ -1005,7 +1006,7 @@ private fun SharedTasksLoadedBodyContent(
             )
         }
 
-        if (createDialogOpen && createTasksChannelId != null) {
+        if (createDialogOpen && createTasksChannelId != null && !state.standIn) {
             TasksCreateDialog(
                 loading = createLoading,
                 errorCode = state.createErrorCode.takeIf { createFailureVisible && !createLoading },
