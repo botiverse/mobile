@@ -29,14 +29,14 @@ class RaftDropdownMenuSystemBarsTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    @Suppress("DEPRECATION")
     @Test
+    @Config(sdk = [34])
     fun anOpenMenuKeepsTheHostsDarkStatusBarIcons() {
         var popupRoot: View? = null
         val activity = activities.launch()
-        // The page asked for dark icons (Raft Yellow frame).
-        activity.window.decorView.systemUiVisibility =
-            activity.window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        val lightStatusBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+        // The page asked for dark icons (Raft Yellow frame), through the API 30+ controller.
+        assertNotNull(activity.window.insetsController).setSystemBarsAppearance(lightStatusBars, lightStatusBars)
         activity.setContent {
             RaftTheme {
                 RaftDropdownMenu(expanded = true, onDismissRequest = {}) {
@@ -47,9 +47,10 @@ class RaftDropdownMenuSystemBarsTest {
         repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50)) }
         val root = assertNotNull(popupRoot, "the menu's popup window")
         assertTrue(root !== activity.window.decorView, "the menu is its own window")
+        val popupAppearance = assertNotNull(root.windowInsetsController, "the popup window's controller").systemBarsAppearance
         assertTrue(
-            root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR != 0,
-            "the popup window keeps the host's dark status bar icons"
+            popupAppearance and lightStatusBars != 0,
+            "the popup window keeps the host's dark status bar icons (appearance=$popupAppearance)"
         )
     }
 
