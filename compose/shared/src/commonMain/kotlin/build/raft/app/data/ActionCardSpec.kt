@@ -13,7 +13,7 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock 1c807448 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381)
+ * Contract: botiverse/slock 7313a45e (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668)
  * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
@@ -47,7 +47,7 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form", "intent.upgrade_dialog",
-        "intent.feedback_ticket",
+        "intent.feedback_ticket", "intent.add_seats",
     )
 
 /**
@@ -68,7 +68,8 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // [raftAppActionCardCapabilities]). S0.3: intent.feedback_ticket, a done feedback card's "View in
 // Settings", which opens Settings › Feedback on the sender's ticket; shown only to the sender and
 // only for a ticket filed into this App (`showsFeedbackTicket`), else removed. Not
-// intent.upgrade_dialog: the App has no upgrade dialog for a card, so that button is "Open in web".
+// intent.upgrade_dialog or intent.add_seats: the App has no upgrade or add-seats dialog for a card, so
+// those buttons are "Open in web".
 val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
@@ -132,6 +133,9 @@ enum class ActionCardSpecIntent(val wire: String) {
     /** The sender's own ticket in Settings › Feedback, from the done card's `metadata.result`
      *  (`product-feedback`: `ticketId`, `source`); the card carries no ticket id. */
     FeedbackTicket("feedback_ticket"),
+
+    /** A seat request's owner flow (schemaVersion 5): a `seats:add` card's Add Seats. */
+    AddSeats("add_seats"),
     ;
 
     /** `intent.<wire>`. */
@@ -964,7 +968,7 @@ private object ActionCardSpecReader {
     private fun element(raw: JsonElement?, what: String): ActionCardSpecElement {
         val obj = raw.obj(what)
         return when (obj["type"].cardString()) {
-            "Stack" -> readCardStack(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad Stack")
+            "Stack" -> readCardStack(obj, CardUnknownKeys.Strip, readsRole = true) ?: invalid("$what: bad Stack")
             "RelativeTime" -> readCardRelativeTime(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad RelativeTime")
             "Duration" -> readCardDuration(obj, CardUnknownKeys.Strip) ?: invalid("$what: bad Duration")
             "Text" -> {

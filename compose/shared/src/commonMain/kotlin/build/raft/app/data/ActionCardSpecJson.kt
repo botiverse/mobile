@@ -93,7 +93,14 @@ private fun ActionCardSpecElement.toJsonObject(): JsonObject =
         is CardStack ->
             buildJsonObject {
                 put("type", "Stack")
-                put("props", buildJsonObject { put("direction", direction.wire); put("wrap", wrap) })
+                put(
+                    "props",
+                    buildJsonObject {
+                        put("direction", direction.wire)
+                        put("wrap", wrap)
+                        role?.let { put("role", it.wire) }
+                    },
+                )
                 children?.let { ids -> put("children", JsonArray(ids.map(::JsonPrimitive))) }
             }
         is CardRelativeTime -> element("RelativeTime") { put("at", at) }

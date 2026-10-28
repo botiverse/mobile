@@ -74,14 +74,26 @@ enum class CardStackDirection(val wire: String) {
 }
 
 /**
+ * What a Stack is on an action card (`action-card.v1` schemaVersion 6, `ACTION_CARD_SPEC_STACK_ROLES`),
+ * so the client draws it as that part of its card. Each role is on one [direction] only: a
+ * [Reason] column (the agent's own words: an optional muted label Text, then the note Text) and
+ * an [Actions] row (the card's buttons). Link cards have no role.
+ */
+enum class CardStackRole(val wire: String, val direction: CardStackDirection) {
+    Reason("reason", CardStackDirection.Column),
+    Actions("actions", CardStackDirection.Row),
+}
+
+/**
  * `Stack` (`cardStackElement`): [children] (element ids, at most 12) in order. [children] is null
  * when the card did not write the key (an empty Stack), which is not the same JSON as `[]`.
- * Only a row can [wrap].
+ * Only a row can [wrap]. [role] only on an action card, and only on its own direction.
  */
 data class CardStack(
     val direction: CardStackDirection = CardStackDirection.Column,
     val wrap: Boolean = false,
     val children: List<String>? = null,
+    val role: CardStackRole? = null,
 ) : ActionCardSpecDisplayElement {
     override val childIds: List<String> get() = children.orEmpty()
 }
@@ -261,8 +273,16 @@ enum class CardUnknownKeys {
     internal fun acceptsElement(obj: JsonObject): Boolean = if (this == Strip) "children" !in obj else obj.hasOnlyKeys(setOf("type", "props"))
 }
 
-/** `cardStackElement`: `{type: "Stack", props: {direction?, wrap?}, children?}`, or null. */
-internal fun readCardStack(obj: JsonObject, unknownKeys: CardUnknownKeys = CardUnknownKeys.Strict): CardStack? {
+/**
+ * `cardStackElement`: `{type: "Stack", props: {direction?, wrap?}, children?}`, or null. With
+ * [readsRole] (an action card read, schemaVersion 6) also `role`: kept when it is a known
+ * [CardStackRole] on its own direction, else dropped as an unknown icon is, and the Stack stays.
+ */
+internal fun readCardStack(
+    obj: JsonObject,
+    unknownKeys: CardUnknownKeys = CardUnknownKeys.Strict,
+    readsRole: Boolean = false,
+): CardStack? {
     if (!unknownKeys.accepts(obj, setOf("type", "props", "children"))) return null
     val props = obj["props"] as? JsonObject ?: return null
     if (!unknownKeys.accepts(props, setOf("direction", "wrap"))) return null
@@ -282,7 +302,14 @@ internal fun readCardStack(obj: JsonObject, unknownKeys: CardUnknownKeys = CardU
         } else {
             null
         }
-    return CardStack(direction, wrap, children)
+    val role =
+        if (readsRole) {
+            val raw = props["role"].cardString()
+            CardStackRole.entries.firstOrNull { it.wire == raw && it.direction == direction }
+        } else {
+            null
+        }
+    return CardStack(direction, wrap, children, role)
 }
 
 /** `cardRelativeTimeElement`: `{type: "RelativeTime", props: {at}}`, or null. */
