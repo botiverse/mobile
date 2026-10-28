@@ -2697,6 +2697,7 @@
     <string name="channel_member_role_admin">管理员</string>
     <string name="channel_member_role_guest">访客</string>
     <string name="member_row_status_online">在线</string>
+    <string name="member_row_status_likely_online">可能在线</string>
     <string name="member_row_status_offline">离线</string>
     <string name="member_row_status_idle">空闲</string>
     <string name="member_row_status_disconnected">已断开</string>

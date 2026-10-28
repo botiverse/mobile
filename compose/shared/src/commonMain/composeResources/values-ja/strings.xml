@@ -2697,6 +2697,7 @@
     <string name="channel_member_role_admin">管理者</string>
     <string name="channel_member_role_guest">ゲスト</string>
     <string name="member_row_status_online">オンライン</string>
+    <string name="member_row_status_likely_online">おそらくオンライン</string>
     <string name="member_row_status_offline">オフライン</string>
     <string name="member_row_status_idle">待機中</string>
     <string name="member_row_status_disconnected">切断</string>
