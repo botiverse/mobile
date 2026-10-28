@@ -26,6 +26,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.selected
@@ -584,6 +587,35 @@ fun RaftSidebarItemMarks(
             else -> RaftUnreadCount(count = unreadCount, threadCount = threadCount, contentDescription = countDescription)
         }
     }
+}
+
+/**
+ * Unread with no number (web `QuietUnreadDot`, botiverse/slock #11795): a conversation marked
+ * unread with nothing countable, at the end of a sidebar row or among an Activity row's marks.
+ * A square pixel, never a round dot: 6dp (`size-1.5`) with 2dp corners (`rounded-[2px]`) in
+ * `foreground-hint` (`sticker-ink` on a selected sidebar row), and no ink edge (unlike
+ * [RaftStatusDot]). An image to assistive technology, named by [contentDescription].
+ */
+@Composable
+fun RaftQuietUnreadDot(contentDescription: String?, modifier: Modifier = Modifier) {
+    val color = LocalRaftSidebarItemHint.current ?: RaftTheme.colors.foregroundHint
+    Box(
+        modifier
+            .size(RaftQuietUnreadDotMetrics.Edge)
+            .background(color, RoundedCornerShape(RaftQuietUnreadDotMetrics.Radius))
+            .clearAndSetSemantics {
+                if (contentDescription != null) {
+                    this.contentDescription = contentDescription
+                    role = Role.Image
+                }
+            },
+    )
+}
+
+/** [RaftQuietUnreadDot]'s pixel: `size-1.5 rounded-[2px]`. */
+internal object RaftQuietUnreadDotMetrics {
+    val Edge = 6.dp
+    val Radius = 2.dp
 }
 
 /**

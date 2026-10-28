@@ -1133,7 +1133,12 @@ data class PerReceiverReadStateScope(
     val scopeId: ChannelId,
     val maxReadSeq: Long?,
     val readStateVersion: Long,
-    val unreadCount: Int? = null
+    val unreadCount: Int? = null,
+    /**
+     * botiverse/slock #11795 (`emitReadStateUpdated[Bulk]`): the scope is marked unread with nothing
+     * countable ("unread, no number"). Sent only when true; a newer version without it clears the mark.
+     */
+    val markedUnread: Boolean = false
 )
 
 @Serializable

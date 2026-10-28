@@ -44,8 +44,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -178,6 +181,10 @@ class SharedActivityStore internal constructor(
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
+    private val _readToggleNotices = MutableSharedFlow<RaftReadToggleNotice>(extraBufferCapacity = 4)
+
+    /** One-shot notices of the row read toggles (the page shows them as a toast). */
+    val readToggleNotices: SharedFlow<RaftReadToggleNotice> = _readToggleNotices.asSharedFlow()
     internal val presentationStore = SharedActivityPresentationStore()
 
     private var loadJob: Job? = null
@@ -537,7 +544,7 @@ class SharedActivityStore internal constructor(
      */
     private fun retainReadRowLocked(intent: SharedActivityIntent, item: InboxItem) {
         val current = _state.value
-        if (current.selectedFilter.keepsReadActivityRows() || item.unreadCount <= 0) return
+        if (current.selectedFilter.keepsReadActivityRows() || !item.showsUnread) return
         if (item.key in current.retainedReadRowKeys) return
         reduceState(intent, current.copy(retainedReadRowKeys = current.retainedReadRowKeys + item.key))
     }
@@ -1533,6 +1540,15 @@ class SharedActivityStore internal constructor(
                         intent = SharedActivityIntent.ApplyRealtimeEvent(event)
                     )?.let(reconcileJobs::add)
                 }
+                // botiverse/slock #11795: the fact's "marked unread" flag, also at the version already
+                // held (Home shares these checkpoints and may have taken the fact first).
+                if (result == PerReceiverReadStateFactResult.Accepted || result == PerReceiverReadStateFactResult.Current) {
+                    projectRemoteMarkedUnreadLocked(
+                        channelId = readScope.scopeId.value,
+                        markedUnread = readScope.markedUnread,
+                        intent = SharedActivityIntent.ApplyRealtimeEvent(event)
+                    )?.let(reconcileJobs::add)
+                }
             }
         }
         reconcileJobs.forEach(Job::start)
@@ -1597,6 +1613,54 @@ class SharedActivityStore internal constructor(
                 "projected=${covered.size} reconcile=${uncovered.isNotEmpty()}"
         )
         return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked() else null
+    }
+
+    /**
+     * botiverse/slock #11795: an accepted read state's "marked unread" flag on this scope's rows. A mark
+     * shows the dot on a row with no count; a newer read state without it clears the dot, and in a
+     * filter that drops read rows a row left with nothing unread leaves (unless retained this visit).
+     * A mark for a scope Unread does not list yet asks for a background reconcile.
+     */
+    private fun projectRemoteMarkedUnreadLocked(
+        channelId: String,
+        markedUnread: Boolean,
+        intent: SharedActivityIntent
+    ): Job? {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val matching = snapshot.items.filter { item -> item.readReceiptChannelId()?.value == channelId }
+        if (matching.isEmpty()) {
+            return if (markedUnread && current.selectedFilter == InboxFilter.Unread) {
+                scheduleRealtimeBackgroundReconcileLocked()
+            } else {
+                null
+            }
+        }
+        if (matching.all { it.markedUnread == markedUnread }) return null
+        var removed = 0
+        val items =
+            snapshot.items.mapNotNull { item ->
+                when {
+                    item.readReceiptChannelId()?.value != channelId || item.markedUnread == markedUnread -> item
+                    !markedUnread && item.unreadCount <= 0 && !current.keepsReadRow(item.key) -> {
+                        removed += 1
+                        null
+                    }
+                    else -> item.copy(markedUnread = markedUnread)
+                }
+            }
+        diagnosticsLogger("activity_marked_unread_patch scopeId=$channelId marked=$markedUnread removed=$removed")
+        reduceState(
+            intent,
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = items,
+                        totalCount = (snapshot.totalCount - removed).coerceAtLeast(0)
+                    )
+            )
+        )
+        return null
     }
 
     internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
@@ -2817,13 +2881,17 @@ class SharedActivityStore internal constructor(
     private fun markAllRead() {
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
-        if (snapshot.totalUnreadCount <= 0) return
+        // A row marked unread with no count (botiverse/slock #11795) is read by it too.
+        if (snapshot.totalUnreadCount <= 0 && snapshot.items.none(InboxItem::markedUnread)) return
         val keepsRows = previous.selectedFilter.keepsReadActivityRows()
         val updatedSnapshot =
             snapshot.copy(
                 // The list does not change: every listed row stays, shown read, until the user
                 // moves on. In Unread they all join the rows retained for this visit (stdrc 10-23).
-                items = snapshot.items.map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) },
+                items =
+                    snapshot.items.map {
+                        it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false, markedUnread = false)
+                    },
                 totalCount = if (keepsRows) snapshot.totalCount else 0,
                 totalUnreadCount = 0
             )
@@ -3271,7 +3339,8 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markRead(item: InboxItem) {
-        if (item.isUnfollowedActivityThread || item.unreadCount <= 0) return
+        // A row marked unread with no count is read like any unread row: the read clears the mark.
+        if (item.isUnfollowedActivityThread || !item.showsUnread) return
         val previous = _state.value
         if (previous.snapshot == null) return
         val targetChannelId = item.readReceiptChannelId()
@@ -3303,7 +3372,7 @@ class SharedActivityStore internal constructor(
             if (keepsRow) {
                 retainedSnapshot.items.map { existing ->
                     if (existing.key == key) {
-                        existing.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                        existing.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false, markedUnread = false)
                     } else {
                         existing
                     }
@@ -3355,7 +3424,7 @@ class SharedActivityStore internal constructor(
             val snapshot = current.snapshot ?: return@synchronized
             val matchingUnread =
                 snapshot.items.filter { item ->
-                    item.unreadCount > 0 && item.readReceiptChannelId() == prediction.channelId
+                    item.showsUnread && item.readReceiptChannelId() == prediction.channelId
                 }
             readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
             if (matchingUnread.isEmpty()) return@synchronized
@@ -3373,7 +3442,7 @@ class SharedActivityStore internal constructor(
                     when {
                         item.key !in matchingKeys -> item
                         current.keepsReadRow(item.key) ->
-                            item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                            item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false, markedUnread = false)
                         else -> null
                     }
                 }
@@ -3484,6 +3553,14 @@ class SharedActivityStore internal constructor(
         )
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
+            if (result is DataResult.Content) {
+                // The read point moved back, or stayed and the conversation was marked unread: the next
+                // open must send its read again (that is what clears it), not reuse an acknowledgement.
+                readReceiptOwnerFactory
+                    ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
+                    ?.let { readOwner -> readReceiptCoordinator?.forgetAcknowledged(readOwner, targetChannelId) }
+                applyMarkUnreadOutcome(item, optimisticUnreadCount, targetChannelId, result.data)
+            }
             val owner =
                 readReceiptOwnerFactory
                     ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
@@ -3507,6 +3584,74 @@ class SharedActivityStore internal constructor(
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
             }
+        }
+    }
+
+    /**
+     * botiverse/slock #11792 / #11795: Mark as Unread's answer. A rewind keeps the row unread (the next
+     * load brings the exact count). A mark takes back the optimistic count and shows the dot, through
+     * the same version-ordered read state as its `read_state:updated` (an answer later than a newer
+     * read never brings the mark back). Nothing to mark takes the row back to read and says why.
+     */
+    private fun applyMarkUnreadOutcome(
+        item: InboxItem,
+        optimisticUnreadCount: Int,
+        targetChannelId: ChannelId,
+        result: ReadReceiptResult
+    ) {
+        val outcome = result.markUnreadOutcome()
+        diagnosticsLogger("activity_mark_unread_outcome key=${item.key} outcome=${outcome.name}")
+        if (outcome == MarkUnreadOutcome.Counted) return
+        val reconcileJob =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                val snapshot = current.snapshot ?: return@synchronized null
+                var restored = 0
+                val items =
+                    snapshot.items.map { existing ->
+                        // Only the optimistic count goes back: a message that arrived meanwhile keeps its count.
+                        if (existing.key == item.key && item.unreadCount <= 0 && existing.unreadCount == optimisticUnreadCount) {
+                            restored += optimisticUnreadCount
+                            existing.copy(unreadCount = item.unreadCount, firstUnreadMessageId = item.firstUnreadMessageId)
+                        } else {
+                            existing
+                        }
+                    }
+                if (restored > 0) {
+                    reduceState(
+                        SharedActivityIntent.MarkUnread(item),
+                        current.copy(
+                            snapshot =
+                                snapshot.copy(
+                                    items = items,
+                                    totalUnreadCount = (snapshot.totalUnreadCount - restored).coerceAtLeast(0)
+                                )
+                        )
+                    )
+                }
+                if (outcome != MarkUnreadOutcome.Marked) return@synchronized null
+                val serverId = current.ownerServerId?.takeIf { it.isNotBlank() } ?: return@synchronized null
+                val userId = current.ownerUserId?.takeIf { it.isNotBlank() } ?: return@synchronized null
+                val version = result.readStateVersion ?: return@synchronized null
+                val maxReadSeq = result.maxReadSeq ?: return@synchronized null
+                val fact =
+                    perReceiverStateVersionStore.applyOrObserveReadStateFact(
+                        serverId = ServerId(serverId),
+                        memberId = MemberId(userId),
+                        scopeId = targetChannelId,
+                        incomingVersion = version,
+                        incomingMaxReadSeq = maxReadSeq
+                    )
+                if (fact == PerReceiverReadStateFactResult.Stale) return@synchronized null
+                projectRemoteMarkedUnreadLocked(
+                    channelId = targetChannelId.value,
+                    markedUnread = true,
+                    intent = SharedActivityIntent.MarkUnread(item)
+                )
+            }
+        reconcileJob?.start()
+        if (outcome == MarkUnreadOutcome.NothingToMark) {
+            _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
         }
     }
 

@@ -23,6 +23,8 @@ import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
+import build.raft.app.data.isMarkedUnreadIn
+import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
@@ -2901,6 +2903,15 @@ private fun RaftAppShellReadyContent(
                 diagnostics = raftLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", RaftLogLevel.Debug),
             )
         }
+    // botiverse/slock #11792: the sidebar's Mark as Unread found nothing to mark; say why.
+    val markUnreadNothingMessage by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
+    LaunchedEffect(homeStore) {
+        homeStore.readToggleNotices.collect { notice ->
+            when (notice) {
+                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingMessage)
+            }
+        }
+    }
     val homeActivityReplyThreadPrewarmDataSource =
         remember(
             shellAuthStore,
@@ -10271,12 +10282,14 @@ private fun rememberProjectedDirectMessageItems(
             }
         }
     val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
+    val markedUnreadIds = snapshot?.markedUnreadIds.orEmpty()
     val conversationRowProjector =
-        remember(conversationDirectoryProjections, draftProjection, restoredRowHints) {
+        remember(conversationDirectoryProjections, draftProjection, restoredRowHints, markedUnreadIds) {
             SharedHomeConversationRowProjector(
                 directoryProjections = conversationDirectoryProjections,
                 draftProjection = draftProjection,
-                restoredRowHints = restoredRowHints
+                restoredRowHints = restoredRowHints,
+                markedUnreadIds = markedUnreadIds
             )
         }
     return remember(snapshot?.directMessages, conversationRowProjector) {
@@ -10646,12 +10659,19 @@ private fun SharedHomeScreen(
                     }
                 }
             val conversationRowProjector =
-                remember(conversationDirectoryProjections, draftProjection, restoredRowHints, threadUnreadByParent) {
+                remember(
+                    conversationDirectoryProjections,
+                    draftProjection,
+                    restoredRowHints,
+                    threadUnreadByParent,
+                    snapshot.markedUnreadIds
+                ) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
                         draftProjection = draftProjection,
                         restoredRowHints = restoredRowHints,
-                        threadUnreadByParent = threadUnreadByParent
+                        threadUnreadByParent = threadUnreadByParent,
+                        markedUnreadIds = snapshot.markedUnreadIds
                     )
                 }
             val servers =
@@ -14786,7 +14806,9 @@ internal data class SharedHomeConversationRowSeed(
     /** Unread summary `hasMention` (or a followed thread's), carried by the store. */
     val mentioned: Boolean = false,
     /** Followed threads under this channel with new replies, carried by the store. */
-    val followedThreadUnreadCount: Int = 0
+    val followedThreadUnreadCount: Int = 0,
+    /** Marked unread with no count ([HomeSnapshot.markedUnreadIds]), carried by the store. */
+    val markedUnread: Boolean = false
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -14798,7 +14820,9 @@ internal data class SharedHomeConversationRowProjector(
      * [HomeSnapshot.followedThreadUnread] folded per parent channel. Empty when the server gates the
      * thread mark off (web `thread_unread_badge_v0`), which hides both the count and the thread's @.
      */
-    val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap()
+    val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap(),
+    /** [HomeSnapshot.markedUnreadIds]: rows marked unread with no count (botiverse/slock #11795). */
+    val markedUnreadIds: Set<String> = emptySet()
 ) {
     fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
         // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
@@ -14808,7 +14832,8 @@ internal data class SharedHomeConversationRowProjector(
             conversation.toSharedHomeConversationRowSeed()
                 .copy(
                     mentioned = conversation.mentionCount > 0 || threadUnread?.hasMention == true,
-                    followedThreadUnreadCount = threadUnread?.count ?: 0
+                    followedThreadUnreadCount = threadUnread?.count ?: 0,
+                    markedUnread = conversation.isMarkedUnreadIn(markedUnreadIds)
                 )
                 .withRestoredHint(
                     // A known count (read prediction, realtime) is newer than anything restored.
@@ -14960,7 +14985,8 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         // sparse source (inbox) never carries guestVisible, so it may only add, not clear.
         guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true,
         mentioned = mentioned,
-        followedThreadUnreadCount = followedThreadUnreadCount
+        followedThreadUnreadCount = followedThreadUnreadCount,
+        markedUnread = markedUnread
     )
 }
 

@@ -18,6 +18,8 @@ import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftReadToggleNotice
+import build.raft.app.data.showsUnread
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.RaftProductEvents
@@ -486,6 +488,15 @@ internal fun SharedHomeActivityScreen(
     // selected, and it still receives every shell pageDidAppear tick. Refreshing then cost a
     // Foreground-lane inbox load plus a full Activity/Home identity republish on every return
     // from background for a list nobody sees; the `active` edge below refreshes it on entry.
+    // botiverse/slock #11792: the row's Mark as Unread found nothing to mark; say why.
+    val markUnreadNothingMessage by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
+    LaunchedEffect(activityStore) {
+        activityStore.readToggleNotices.collect { notice ->
+            when (notice) {
+                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingMessage)
+            }
+        }
+    }
     val latestActive by rememberUpdatedState(active)
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick, active = latestActive)) {
@@ -2310,7 +2321,8 @@ internal fun activityPresentationOwnerIdentity(
  * store's own acknowledgement still follows and is idempotent.
  */
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
-    if (unreadCount > 0 && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
+    // A row marked unread with no count (botiverse/slock #11795) is read on open too: that clears the mark.
+    if (showsUnread && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
         SharedActivityIntent.MarkRead(this)
     } else {
         null
@@ -2400,7 +2412,7 @@ internal fun activityRowActionWrite(item: InboxItem, actionId: String): Activity
 internal fun activityRowActionLabel(item: InboxItem, actionId: String): String =
     when (actionId) {
         "toggle-read" ->
-            if (item.unreadCount > 0) {
+            if (item.showsUnread) {
                 stringResource(Res.string.home_action_mark_as_read)
             } else {
                 stringResource(Res.string.home_action_mark_as_unread)
@@ -2417,7 +2429,7 @@ internal fun activityRowActionLabel(item: InboxItem, actionId: String): String =
 /** The row menu item's icon (web InboxContextMenu; Read / Unread as on the swipe's button, #793). */
 internal fun activityRowActionIcon(item: InboxItem, actionId: String): RaftLucideIconName =
     when (actionId) {
-        "toggle-read" -> if (item.unreadCount > 0) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
+        "toggle-read" -> if (item.showsUnread) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
         "done" -> RaftLucideIconName.Check
         "follow-thread", "unmute-activity" -> RaftLucideIconName.Bell
         "unfollow-thread", "mute-activity", "unfollow-object" -> RaftLucideIconName.BellOff

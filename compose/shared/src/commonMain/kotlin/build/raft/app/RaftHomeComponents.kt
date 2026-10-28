@@ -34,6 +34,7 @@ import build.raft.designsystem.components.RaftSidebarItemVariant
 import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarItemMarks
 import build.raft.designsystem.components.RaftSidebarItemMeta
+import build.raft.designsystem.components.RaftQuietUnreadDot
 import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftUnreadCount
@@ -281,7 +282,9 @@ internal data class HomeSidebarBadgeProjection(
     val label: String?,
     val tone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud,
     val hasUnread: Boolean = false,
-    val hasAttention: Boolean = false
+    val hasAttention: Boolean = false,
+    /** Unread with no number (marked unread, botiverse/slock #11795): the quiet dot instead of [label]. */
+    val markedUnreadDot: Boolean = false
 )
 
 internal data class HomeConversationBadgeInput(
@@ -289,7 +292,9 @@ internal data class HomeConversationBadgeInput(
     val joined: Boolean = true,
     val muted: Boolean = false,
     val mentionPierced: Boolean = false,
-    val followed: Boolean = false
+    val followed: Boolean = false,
+    /** Marked unread with nothing countable: unread with the quiet dot when there is no count. */
+    val markedUnread: Boolean = false
 )
 
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): RaftLucideIconName? =
@@ -406,7 +411,12 @@ data class RaftHomeConversationItem(
      * the row's `[thread] N` segment. Projected from the Home store's followed-thread unread when
      * the server enables `thread_unread_badge_v0`; 0 otherwise.
      */
-    val followedThreadUnreadCount: Int = 0
+    val followedThreadUnreadCount: Int = 0,
+    /**
+     * Marked unread with nothing countable (botiverse/slock #11795, [build.raft.app.data.HomeSnapshot.markedUnreadIds]):
+     * with no count the row shows the quiet unread dot (web `QuietUnreadDot`); a count wins over it.
+     */
+    val markedUnread: Boolean = false
 )
 
 data class RaftHomeServerDrawerSection(
@@ -2661,6 +2671,7 @@ private fun RaftStructuralHomeShellContent(
                                                         hasDraft = pinned?.hasDraft == true,
                                                         muted = pinned?.activityMuted == true,
                                                         unreadCount = pinned?.unreadCount ?: 0,
+                                                        markedUnread = pinned?.markedUnread == true,
                                                         selected = pinnedSelected,
                                                         menuOpen = pinnedMenuOpen,
                                                         onClick =
@@ -2702,6 +2713,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = pinned.activityMuted,
                                                         bridgeProvider = pinned.bridgeProvider,
                                                         unreadCount = pinned.unreadCount,
+                                                        markedUnread = pinned.markedUnread,
                                                         mentioned = pinned.mentioned,
                                                         followedThreadUnreadCount = pinned.followedThreadUnreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
@@ -2765,6 +2777,7 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = channel.activityMuted,
                                                     bridgeProvider = channel.bridgeProvider,
                                                     unreadCount = channel.unreadCount,
+                                                    markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
                                                     followedThreadUnreadCount = channel.followedThreadUnreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("joint", channel.id),
@@ -2827,6 +2840,7 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = channel.activityMuted,
                                                     bridgeProvider = channel.bridgeProvider,
                                                     unreadCount = channel.unreadCount,
+                                                    markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
                                                     followedThreadUnreadCount = channel.followedThreadUnreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("channel", channel.id),
@@ -2902,6 +2916,7 @@ private fun RaftStructuralHomeShellContent(
                                                     hasDraft = dm.hasDraft,
                                                     muted = dm.activityMuted,
                                                     unreadCount = dm.unreadCount,
+                                                    markedUnread = dm.markedUnread,
                                                     selected = dmSelected,
                                                     menuOpen = activePinMenuConversationId == dm.id && activeMenuSection == RaftHomeSortSection.DirectMessages,
                                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
@@ -2994,6 +3009,7 @@ private fun RaftStructuralHomeShellContent(
                                                         hasDraft = item.hasDraft,
                                                         muted = item.activityMuted,
                                                         unreadCount = item.unreadCount,
+                                                        markedUnread = item.markedUnread,
                                                         selected = customSelected,
                                                         menuOpen = customMenuOpen,
                                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
@@ -3008,6 +3024,7 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = item.activityMuted,
                                                         bridgeProvider = item.bridgeProvider,
                                                         unreadCount = item.unreadCount,
+                                                        markedUnread = item.markedUnread,
                                                         mentioned = item.mentioned,
                                                         followedThreadUnreadCount = item.followedThreadUnreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
@@ -4052,10 +4069,21 @@ internal fun formatHomeSidebarBadgeCount(count: Long): String? =
 
 internal fun homeConversationBadgeProjection(input: HomeConversationBadgeInput): HomeSidebarBadgeProjection {
     val label = formatHomeSidebarBadgeCount(input.unreadCount)
-    if (label == null) return HomeSidebarBadgeProjection(label = null)
     val loud =
         input.joined &&
             (!input.muted || input.mentionPierced || input.followed)
+    if (label == null) {
+        // web SidebarPeerRowBody / getChannelUnreadIndicatorState: marked unread with no count is
+        // unread (the row's menu offers Mark as Read) with the quiet dot; a count wins over it.
+        if (!input.markedUnread) return HomeSidebarBadgeProjection(label = null)
+        return HomeSidebarBadgeProjection(
+            label = null,
+            tone = if (loud) HomeSidebarBadgeTone.Loud else HomeSidebarBadgeTone.Quiet,
+            hasUnread = true,
+            hasAttention = loud,
+            markedUnreadDot = true
+        )
+    }
     return HomeSidebarBadgeProjection(
         label = label,
         tone = if (loud) HomeSidebarBadgeTone.Loud else HomeSidebarBadgeTone.Quiet,
@@ -4075,7 +4103,8 @@ internal fun RaftHomeConversationItem.homeConversationBadgeProjection(
             joined = joined,
             muted = muted,
             mentionPierced = mentionPierced,
-            followed = followed
+            followed = followed,
+            markedUnread = markedUnread
         )
     )
 
@@ -5875,6 +5904,7 @@ private fun HomeServerDrawerConversationRow(
                 hasDraft = item.hasDraft,
                 muted = item.activityMuted,
                 unreadCount = item.unreadCount,
+                markedUnread = item.markedUnread,
                 onClick = onClick.takeIf { enabled }
             )
         } else {
@@ -5886,6 +5916,7 @@ private fun HomeServerDrawerConversationRow(
                 muted = item.activityMuted,
                 bridgeProvider = item.bridgeProvider,
                 unreadCount = item.unreadCount,
+                markedUnread = item.markedUnread,
                 mentioned = item.mentioned,
                 followedThreadUnreadCount = item.followedThreadUnreadCount,
                 interactionIdentity = identity,
@@ -6549,6 +6580,13 @@ internal data class HomeChannelRowMarks(
     val loudThreadCount: Int,
     val quietLabel: String?,
     val showDraft: Boolean,
+    /**
+     * Marked unread with nothing counted (botiverse/slock #11795, web `showMarkedUnreadDot`): the
+     * quiet unread dot where a count would be, before the draft pencil.
+     */
+    val markedUnreadDot: Boolean = false,
+    /** web `unreadTone`: the unread name of a loud count, or of a marked row in a joined, unmuted channel. */
+    val unreadTone: Boolean = loudCount > 0 || loudThreadCount > 0,
 ) {
     val loud: Boolean
         get() = loudCount > 0 || loudThreadCount > 0
@@ -6561,18 +6599,22 @@ internal fun homeChannelRowMarks(
     joined: Boolean,
     muted: Boolean,
     hasDraft: Boolean,
+    markedUnread: Boolean = false,
 ): HomeChannelRowMarks {
     val unread = unreadCount.coerceAtLeast(0)
     val threads = followedThreadUnreadCount.coerceAtLeast(0)
     val hasUnread = unread > 0 || threads > 0
     val loud = hasUnread && joined && !muted
     val quiet = hasUnread && !loud
+    val markedUnreadDot = !hasUnread && markedUnread
     return HomeChannelRowMarks(
         mention = mentioned && joined,
         loudCount = if (loud) unread else 0,
         loudThreadCount = if (loud) threads else 0,
         quietLabel = if (quiet) formatHomeSidebarBadgeCount(if (unread > 0) unread else threads) else null,
-        showDraft = hasDraft && !hasUnread,
+        showDraft = hasDraft && !hasUnread && !markedUnreadDot,
+        markedUnreadDot = markedUnreadDot,
+        unreadTone = loud || (markedUnreadDot && joined && !muted),
     )
 }
 
@@ -6606,6 +6648,7 @@ private fun HomeSidebarChannelRow(
     joined: Boolean = true,
     muted: Boolean = false,
     unreadCount: Int = 0,
+    markedUnread: Boolean = false,
     mentioned: Boolean = false,
     followedThreadUnreadCount: Int = 0,
     hasDraft: Boolean = false,
@@ -6622,7 +6665,8 @@ private fun HomeSidebarChannelRow(
             mentioned = mentioned,
             joined = joined,
             muted = muted,
-            hasDraft = hasDraft
+            hasDraft = hasDraft,
+            markedUnread = markedUnread
         )
     val loudCount = marks.loudCount
     val loudThreadCount = marks.loudThreadCount
@@ -6644,10 +6688,16 @@ private fun HomeSidebarChannelRow(
         } else {
             null
         }
+    val markedUnreadDescription =
+        if (marks.markedUnreadDot) stringResource(Res.string.home_sidebar_marked_unread) else null
     val aside: (@Composable RowScope.() -> Unit)? =
         when {
             quietLabel != null -> {
                 { RaftSidebarItemMeta(quietLabel) }
+            }
+            // web ChannelRow `showMarkedUnreadDot`: unread with no count, before the draft pencil.
+            marks.markedUnreadDot -> {
+                { RaftQuietUnreadDot(contentDescription = markedUnreadDescription) }
             }
             showDraft -> {
                 { HomeSidebarLucideIcon(RaftLucideIconName.Pencil, HomeSidebarMetaIconSize) }
@@ -6665,7 +6715,7 @@ private fun HomeSidebarChannelRow(
         } else {
             aside
         }
-    val tone = homeConversationRowTone(muted = muted, joined = joined, selected = selected, loudUnread = marks.loud)
+    val tone = homeConversationRowTone(muted = muted, joined = joined, selected = selected, loudUnread = marks.unreadTone)
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val rowModifier = modifier.then(longClick.anchorModifier)
     val title = remember(name) { homeSidebarUserContentName(name) }
@@ -7178,6 +7228,7 @@ internal fun HomeSidebarDirectMessageRow(
     selected: Boolean = false,
     muted: Boolean = false,
     unreadCount: Int = 0,
+    markedUnread: Boolean = false,
     hasDraft: Boolean = false,
     interactionIdentity: String = "dm:${memberId.orEmpty()}:$name",
     menuOpen: Boolean = false,
@@ -7185,7 +7236,10 @@ internal fun HomeSidebarDirectMessageRow(
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
-    val badge = homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = unreadCount, muted = muted))
+    val badge =
+        homeConversationBadgeProjection(
+            HomeConversationBadgeInput(unreadCount = unreadCount, muted = muted, markedUnread = markedUnread)
+        )
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     // botiverse/slock #11273 (web `DmRow` / `AgentDmRow`): an App Bot's name carries the Bot
     // badge; it shows no status pixel and no runtime or activity meta.
@@ -7194,7 +7248,15 @@ internal fun HomeSidebarDirectMessageRow(
     // an agent:activity push recomposes those two leaves, not the whole row.
     val agentMemberId = raftHomeDmPresenceAgentId(memberId, isAgent = isAgent, isAppBot = appBot != null)
     val trailingSlots =
-        raftHomeDmTrailingSlots(badge = badge.label, hasDraft = hasDraft, isAgent = agentMemberId != null, isAppBot = appBot != null)
+        raftHomeDmTrailingSlots(
+            badge = badge.label,
+            hasDraft = hasDraft,
+            isAgent = agentMemberId != null,
+            isAppBot = appBot != null,
+            markedUnread = badge.markedUnreadDot
+        )
+    val markedUnreadDescription =
+        if (badge.markedUnreadDot) stringResource(Res.string.home_sidebar_marked_unread) else null
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val title = remember(name) { homeSidebarUserContentName(name) }
@@ -7245,6 +7307,8 @@ internal fun HomeSidebarDirectMessageRow(
                                         HomeSidebarBadgeTone.Loud -> RaftSidebarItemMarks(unreadCount = unreadCount, countDescription = null)
                                         HomeSidebarBadgeTone.Quiet -> RaftSidebarItemMeta(badge.label.orEmpty())
                                     }
+                                RaftHomeDmTrailingSlot.MarkedUnreadDot ->
+                                    RaftQuietUnreadDot(contentDescription = markedUnreadDescription)
                                 RaftHomeDmTrailingSlot.Draft -> HomeSidebarLucideIcon(RaftLucideIconName.Pencil, HomeSidebarMetaIconSize)
                                 RaftHomeDmTrailingSlot.AgentMeta ->
                                     DirectMessageAgentMeta(

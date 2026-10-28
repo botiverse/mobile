@@ -1902,6 +1902,8 @@
     <string name="home_action_unpin">Unpin</string>
     <string name="home_action_mark_as_read">Mark as Read</string>
     <string name="home_action_mark_as_unread">Mark as Unread</string>
+    <string name="home_sidebar_marked_unread">Marked as unread</string>
+    <string name="home_action_mark_unread_nothing">Nothing new from others here to mark unread.</string>
     <string name="home_action_mark_all_as_read">Mark All as Read</string>
     <string name="home_action_mute">Mute</string>
     <string name="home_action_unmute">Unmute</string>

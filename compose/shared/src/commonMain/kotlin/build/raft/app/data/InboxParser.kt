@@ -124,6 +124,24 @@ private fun JsonElement.latestActivitySeqOrNull(): String? {
     return pair.stringFieldOrNull("seq")?.takeIf(::isCanonicalActivitySeq)
 }
 
+/**
+ * The mark of an `InboxScopeReadFrontier` (botiverse/slock #11795,
+ * `packages/shared/src/inboxScopeReadFrontier.ts`): `{kind: "present", ..., markedUnread?: true}`.
+ * Read on its own so a malformed `latestActivity` never hides the mark, and a malformed mark never
+ * drops the row.
+ */
+@Serializable
+private data class WireInboxReadStateMark(
+    val kind: String? = null,
+    val markedUnread: Boolean? = null,
+)
+
+/** `readState.markedUnread`: only a present frontier that says `true` is marked. */
+private fun JsonElement.isMarkedUnreadFrontier(): Boolean =
+    runCatching { inboxJson.decodeFromJsonElement(WireInboxReadStateMark.serializer(), this) }
+        .getOrNull()
+        ?.let { it.kind == "present" && it.markedUnread == true } == true
+
 /** A JSON string value only: numbers, booleans, null and containers yield null. */
 private fun JsonObject.stringFieldOrNull(name: String): String? =
     (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -379,6 +397,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 contract = MemberKindWireContract.InboxActor,
             ),
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,
         firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
@@ -437,6 +456,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,
         firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),

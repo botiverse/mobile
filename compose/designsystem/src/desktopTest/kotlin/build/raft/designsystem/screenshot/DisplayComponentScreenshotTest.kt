@@ -90,6 +90,7 @@ import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSectionEyebrowIcon
+import build.raft.designsystem.components.RaftQuietUnreadDot
 import build.raft.designsystem.components.RaftSidebarGroupLabel
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
@@ -986,6 +987,45 @@ class DisplayComponentScreenshotTest {
                         ChannelRow("invites", RaftRowTone.Default, "Sent to", meta = "ada.lovelace@analytical-engine.example", divider = true)
                     }
                 }
+            }
+        }
+
+    /**
+     * The quiet unread pixel (web `QuietUnreadDot`, botiverse/slock #11795): a conversation marked
+     * unread with nothing counted, on its own and at the end of sidebar rows: a joined channel
+     * (unread name), a muted one, a selected one (`sticker-ink`), and a DM.
+     */
+    @Test
+    fun quietUnreadDot() =
+        capture("quiet_unread_dot") {
+            Column(Modifier.width(360.dp)) {
+                RaftQuietUnreadDot(contentDescription = "Marked as unread")
+                RaftSidebarChannelItem(
+                    "proj-mobile",
+                    onClick = {},
+                    tone = RaftRowTone.Unread,
+                    trailing = { RaftQuietUnreadDot(contentDescription = "Marked as unread") },
+                )
+                RaftSidebarChannelItem(
+                    "proj-connectors",
+                    onClick = {},
+                    tone = RaftRowTone.Muted,
+                    trailing = { RaftQuietUnreadDot(contentDescription = "Marked as unread") },
+                )
+                RaftSidebarChannelItem(
+                    "general",
+                    onClick = {},
+                    selected = true,
+                    trailing = { RaftQuietUnreadDot(contentDescription = "Marked as unread") },
+                )
+                RaftSidebarItem(
+                    "Cindy",
+                    onClick = {},
+                    tone = RaftRowTone.Unread,
+                    variant = RaftSidebarItemVariant.Peer,
+                    leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xxs, initials = "C") },
+                    trailing = { RaftQuietUnreadDot(contentDescription = "Marked as unread") },
+                )
             }
         }
 

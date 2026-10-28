@@ -317,6 +317,7 @@ fun parseRaftHome(
             serverPushMutedByServer = serverPushMutedByServer,
             serverUnreadSummaryAvailable = payload.serverUnreadSummaryAvailable,
             followedThreadUnread = payload.followedThreadUnread,
+            markedUnreadIds = payload.markedUnreadIds,
             // task #831: carry unread availability through so the Store keeps
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.

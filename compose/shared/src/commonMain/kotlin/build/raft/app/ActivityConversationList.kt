@@ -66,6 +66,7 @@ import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.isTaskConversation
+import build.raft.app.data.showsMarkedUnreadDot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedActivitySenderProfile
@@ -89,6 +90,7 @@ import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.RaftQuietUnreadDot
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -323,6 +325,11 @@ internal data class ActivityConversationRowModel(
     val showMentionMarker: Boolean,
     val unreadCount: Int,
     val showUnreadCount: Boolean,
+    /**
+     * Marked unread with nothing counted (botiverse/slock #11795, web `conversation-card-marked-unread`):
+     * the quiet unread dot where the count would be.
+     */
+    val showMarkedUnreadDot: Boolean = false,
     val hasDraft: Boolean,
     val taskNumber: Int?,
     val taskStatus: TaskStatus?,
@@ -494,6 +501,7 @@ internal fun InboxItem.activityConversationRowModel(
         }
     val muted = activityConversationMuted(context, dmPeer)
     val unread = unreadCount.coerceAtLeast(0)
+    val markedDot = showsMarkedUnreadDot
     return ActivityConversationRowModel(
         leadingKind = leadingKind,
         dmPeer = dmPeer,
@@ -513,10 +521,11 @@ internal fun InboxItem.activityConversationRowModel(
         sender = sender,
         preview = preview?.let(::markdownToPreview)?.takeIf { it.text.isNotBlank() },
         muted = muted,
-        strong = unread > 0 && !muted,
+        strong = (unread > 0 || markedDot) && !muted,
         showMentionMarker = selectedFilter != InboxFilter.Mentions && hasMention && unread > 0,
         unreadCount = unread,
         showUnreadCount = !muted && unread > 0,
+        showMarkedUnreadDot = !muted && markedDot,
         hasDraft = hasDraft,
         taskNumber = taskNumber.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskStatus != null },
         taskStatus = taskStatus.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskNumber != null },
@@ -1093,7 +1102,12 @@ private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeConte
 @Composable
 private fun ActivityConversationMarks(model: ActivityConversationRowModel, marksHeight: Dp) {
     val colors = RaftTheme.colors
-    if (!model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount && model.taskStatusMark == null) return
+    if (
+        !model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount &&
+        !model.showMarkedUnreadDot && model.taskStatusMark == null
+    ) {
+        return
+    }
     Row(
         modifier = Modifier.height(marksHeight),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1132,6 +1146,8 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
                     contentDescription =
                         stringResource(Res.string.activity_list_unread_count_description, model.unreadCount),
                 )
+            model.showMarkedUnreadDot ->
+                RaftQuietUnreadDot(contentDescription = stringResource(Res.string.home_sidebar_marked_unread))
         }
     }
 }

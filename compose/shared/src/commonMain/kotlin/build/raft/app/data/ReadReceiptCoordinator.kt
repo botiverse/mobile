@@ -127,6 +127,18 @@ class ReadReceiptCoordinator(
     }
 
     /**
+     * Forgets the read point acknowledged for ([owner], [channelId]), so the next read-to-seq goes out
+     * even at a seq already read. Mark as Unread calls it: the server's read point moved back, or stayed
+     * and the conversation was marked unread (botiverse/slock #11795); either way only a new read
+     * write reads it again, and a remembered acknowledgement would swallow that write.
+     */
+    fun forgetAcknowledged(owner: ReadReceiptOwner, channelId: ChannelId) {
+        synchronized(lock) {
+            acknowledgedSeqs.remove(ReadReceiptKey(owner, channelId))
+        }
+    }
+
+    /**
      * Revokes only one verified owner. Its queued/in-flight commands and optimistic overlay are discarded,
      * while other environments/accounts/servers continue independently.
      */
