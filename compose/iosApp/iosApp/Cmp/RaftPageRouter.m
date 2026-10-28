@@ -4,6 +4,8 @@
 #import <objc/runtime.h>
 
 static NSString *const RaftRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+/// Shared `RAFT_OPEN_WITHOUT_ANIMATION`: the page takes the place of what its source shows over itself.
+static NSString *const RaftRouterOpenWithoutAnimationKey = @"slockOpenWithoutAnimation";
 static char RaftRouterRetiredByLoginKey;
 
 static NSDictionary *RaftRouterIdentityPageData(NSDictionary *pageData) {
@@ -81,7 +83,8 @@ static BOOL RaftRouterBool(id value) {
             [viewControllers addObject:renderViewController];
             [navigationController setViewControllers:viewControllers animated:YES];
         } else {
-            [navigationController pushViewController:renderViewController animated:YES];
+            BOOL animated = !RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
+            [navigationController pushViewController:renderViewController animated:animated];
         }
         return;
     }

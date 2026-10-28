@@ -1,6 +1,35 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.viewmodel.compose.viewModel
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.SharedTasksDataStore
+import build.raft.app.data.SharedTasksEvent
+import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTasksViewModel
+import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.currentTaskSummary
+import build.raft.app.model.TaskStatus
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.components.RaftWindowDialogProperties
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +52,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.TaskConversationDetailsRepository
-import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.model.ChannelId
@@ -121,21 +149,39 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
         private set
     var errorText by mutableStateOf<String?>(null)
         private set
+
+    /**
+     * The first send created the conversation and its page is opening over this one: the pending
+     * page stays (its composer off) until the host is covered ([finishHandOff]), so the reader
+     * never sees the page underneath in between.
+     */
+    var handingOff by mutableStateOf(false)
+        private set
     private val drafts = mutableStateMapOf<String, String>()
     private val randomIds = mutableMapOf<String, String>()
 
     fun open(surface: TaskOpenSurface) {
         if (sending) return
         this.surface = surface
+        handingOff = false
         errorText = null
     }
 
-    /** Closes the sheet unless a send runs; the draft stays for the next open. */
+    /** Closes the page unless a send runs; the draft stays for the next open. */
     fun dismiss(): Boolean {
         if (sending) return false
         surface = null
+        handingOff = false
         errorText = null
         return true
+    }
+
+    /** The conversation page that the first send opened now covers the pending one: it goes. */
+    fun finishHandOff() {
+        if (!handingOff) return
+        handingOff = false
+        surface = null
+        errorText = null
     }
 
     fun draft(taskId: String): String = drafts[taskId].orEmpty()
@@ -145,12 +191,16 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
     }
 
     /**
-     * The store's copy of the open task: refreshes the sheet, or — when it no longer opens here
-     * (its conversation appeared) — closes it and returns the task for the caller to open.
+     * The store's copy of the open task: refreshes the page, or — when it no longer opens here
+     * (its conversation appeared) — closes it and returns the task for the caller to open. An
+     * older revision than the one shown is ignored (several stores feed it); while the first send
+     * hands off, the page it opens is already on its way.
      */
     fun onTaskChanged(fresh: TaskSummary?, taskV2Enabled: Boolean): TaskSummary? {
         val current = surface ?: return null
-        if (fresh == null || fresh.id != current.task.id || fresh == current.task) return null
+        if (fresh == null || fresh.id != current.task.id || fresh == current.task || handingOff) return null
+        val shownRevision = current.task.revision
+        if (fresh.revision != null && shownRevision != null && fresh.revision < shownRevision) return null
         return when (val next = fresh.taskOpenSurface(taskV2Enabled)) {
             null -> {
                 if (sending) return null
@@ -195,7 +245,7 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
                 is TaskConversationStart.Started -> {
                     drafts.remove(key)
                     randomIds.remove(key)
-                    surface = null
+                    handingOff = true
                     task to started.conversationChannelId
                 }
                 is TaskConversationStart.Failed -> {
@@ -209,7 +259,23 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
     }
 }
 
-/** Renders the flow's surface (the pending conversation or the legacy panel). */
+/**
+ * What a task page needs to change its task (web TaskProperties in the task dialog): the task
+ * channel's [SharedTasksViewModel], the one the conversation page's head writes through
+ * ([rememberTaskChannelTasksViewModel]), and the reader's role on the server for the gates.
+ */
+internal class TaskPageEditing(
+    val authStore: RaftAuthSessionStore,
+    val tasksDataSource: SharedTasksDataSource,
+    val tasksDataStore: SharedTasksDataStore?,
+    /** The reader's role on the task's server (owner / admin / member / guest); null = not known. */
+    val serverRole: String?,
+    /** A refused write's [SharedTasksEvent.OperationFailed] code, for the host's toast. */
+    val onFailed: (String) -> Unit = {},
+    val log: (String) -> Unit = {},
+)
+
+/** Renders the flow's surface (the pending task page or the legacy panel). */
 @Composable
 internal fun TaskOpenSurfaceHost(
     flow: TaskOpenSurfaceFlow,
@@ -217,148 +283,279 @@ internal fun TaskOpenSurfaceHost(
     /** Whether the reader is a member of the task's channel; null = not known here. */
     joined: (TaskSummary) -> Boolean? = { null },
     onJoin: (TaskSummary) -> Unit = {},
-    /** The pending sheet's head reads (history, source, earlier discussion); null reads nothing. */
+    /** The pending page's head reads (history, source, earlier discussion); null reads nothing. */
     detailsRepository: TaskConversationDetailsRepository? = null,
     serverId: String? = null,
     timeContext: RaftTimeContext? = null,
-    /** The task channel's members, so the sheet names people as the conversation page does. */
+    /** The task channel's members, so the page names people (and offers assignees) as the conversation page does. */
     membersStore: SharedServerMembersStore? = null,
+    /** Null: the head shows status and assignee as plain facts. */
+    editing: TaskPageEditing? = null,
+    /** The host page is on screen: once a page opened over it after the first send, the pending page goes. */
+    hostVisible: Boolean = true,
+    /** The task's conversation appeared (someone wrote first, `task:updated`): the caller opens it. */
+    onConversationArrived: (TaskSummary) -> Unit = {},
+    taskV2Enabled: Boolean = true,
 ) {
     when (val surface = flow.surface) {
-        is TaskOpenSurface.Pending ->
-            TaskConversationPendingSheet(
-                task = surface.task,
-                details = rememberTaskConversationDetails(surface.task, detailsRepository, serverId),
-                members = rememberTaskChannelMembers(membersStore, serverId, surface.task.channelId),
-                timeContext = timeContext,
-                sending = flow.sending,
-                errorText = flow.errorText,
-                joined = joined(surface.task),
-                draft = flow.draft(surface.task.id.value),
-                onDraftChange = { flow.onDraftChange(surface.task.id.value, it) },
-                onDismiss = { flow.dismiss() },
-                onSend = { text -> onSend(surface.task, text) },
-                onJoin = { onJoin(surface.task) },
-            )
+        is TaskOpenSurface.Pending -> {
+            val channelTasks =
+                editing?.let { rememberTaskChannelTasksViewModel(surface.task.channelId, it.authStore, it.tasksDataSource, it.tasksDataStore, it.log) }
+            val channelTasksState = channelTasks?.state?.collectAsState()?.value
+            val listed = channelTasksState?.currentTaskSummary(surface.task.id.value)
+            // The page follows the task channel's copy (an edit's optimistic value, its rollback, a
+            // `task:updated`), and gives way to the conversation once it exists.
+            LaunchedEffect(listed) {
+                flow.onTaskChanged(listed, taskV2Enabled)?.let(onConversationArrived)
+            }
+            val onFailed by rememberUpdatedState(editing?.onFailed)
+            LaunchedEffect(channelTasks) {
+                channelTasks?.uiEvents?.collect { event ->
+                    if (event is SharedTasksEvent.OperationFailed) onFailed?.invoke(event.code)
+                }
+            }
+            LaunchedEffect(flow.handingOff, hostVisible) {
+                if (!flow.handingOff) return@LaunchedEffect
+                // The conversation page is over this one now; where it opened in place (a wide
+                // layout's pane) the host stays visible, so it goes after the page had time to show.
+                if (hostVisible) delay(TaskPendingHandOffFallbackMs)
+                flow.finishHandOff()
+            }
+            val task = surface.task
+            val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
+            TaskPendingConversationWindow(
+                onBack = { flow.dismiss() },
+                sending = flow.sending || flow.handingOff,
+            ) {
+                TaskPendingConversationPage(
+                    task = task,
+                    details = rememberTaskConversationDetails(task, detailsRepository, serverId),
+                    members = rememberTaskChannelMembers(membersStore, serverId, task.channelId),
+                    timeContext = timeContext,
+                    serverRole = editing?.serverRole,
+                    editable = edits != null && channelTasksState?.standIn != true,
+                    statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
+                    sending = flow.sending || flow.handingOff,
+                    errorText = flow.errorText,
+                    joined = joined(task),
+                    draft = flow.draft(task.id.value),
+                    onDraftChange = { flow.onDraftChange(task.id.value, it) },
+                    onBack = { flow.dismiss() },
+                    onSend = { text -> onSend(task, text) },
+                    onJoin = { onJoin(task) },
+                    onUpdateStatus = { status -> edits?.updateStatus(task, status) },
+                    onAssign = { member -> edits?.assign(task, member) },
+                )
+            }
+        }
         is TaskOpenSurface.Legacy -> TaskLegacyPanelSheet(task = surface.task, onDismiss = { flow.dismiss() })
         null -> Unit
     }
 }
 
+/** How long the pending page stays after the first send when no page covered it (a wide layout's pane). */
+internal const val TaskPendingHandOffFallbackMs = 1_000L
+
 /**
- * A task conversation before its first message (web `TaskConversationDialog` with no conversation
- * yet): the conversation page's head read-only (title, description, facts, History) and the empty state ("No
- * discussion in this task yet", and for a pre-v2 task where its earlier discussion is) at the
- * top, and at the bottom what the conversation page has there, so nothing moves when the first
- * send opens it: the conversation composer (its own send button), or for a reader who has not
- * joined the task's channel web ThreadPanel's "Join Channel to Reply" ([joined] false; null =
- * not known here, the composer shows and a refusal comes back as [errorText]). Sending creates the
- * conversation; a refused send keeps the typed text. Attachments, mentions and Follow wait for
- * the conversation page.
+ * The task channel's [SharedTasksViewModel] (web `useChannelTasks`): the one store a task page's
+ * head reads its task from and writes status and assignee through, with the board's optimistic
+ * update, rollback and `task:updated` fold. The conversation page and the pending page share it
+ * (one key per channel). Null without a channel.
  */
 @Composable
-internal fun TaskConversationPendingSheet(
+internal fun rememberTaskChannelTasksViewModel(
+    channelId: ChannelId?,
+    authStore: RaftAuthSessionStore,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?,
+    log: (String) -> Unit,
+): SharedTasksViewModel? {
+    val viewModel =
+        channelId?.let { parentChannelId ->
+            viewModel(key = "task-conversation-tasks-${parentChannelId.value}") {
+                SharedTasksViewModel(
+                    authStore = authStore,
+                    dataSource = tasksDataSource,
+                    sharedTasksDataStore = tasksDataStore,
+                    scope = SharedTasksScope.Channel(parentChannelId),
+                    diagnosticsLogger = log,
+                )
+            }
+        }
+    LaunchedEffect(viewModel) { viewModel?.dispatch(SharedTasksRouteIntent.Start) }
+    return viewModel
+}
+
+/**
+ * A task head's writes (status and assignee), the same on every task page: the task channel's
+ * [SharedTasksViewModel] intents, so the conversation page and the pending page take one path.
+ */
+internal class TaskHeadEdits(private val dispatch: (SharedTasksRouteIntent) -> Unit) {
+    fun updateStatus(task: TaskSummary, status: TaskStatus) = dispatch(SharedTasksRouteIntent.UpdateStatus(task, status))
+
+    fun assign(task: TaskSummary, assignee: MemberProfile?) = dispatch(SharedTasksRouteIntent.AssignTask(task, assignee))
+}
+
+/** The page state of a task that has no conversation yet: nothing followed, nothing resolved. */
+internal fun TaskSummary.taskPendingHeaderState(): TaskConversationHeaderState =
+    TaskConversationHeaderState(conversationChannelId = conversationChannelId ?: ChannelId(""))
+
+/**
+ * The pending task page's window: full screen over the host page, as a page of its own. Back
+ * closes it unless a send runs.
+ */
+@Composable
+internal fun TaskPendingConversationWindow(onBack: () -> Unit, sending: Boolean, content: @Composable () -> Unit) {
+    RaftWindowDialog(
+        onDismissRequest = { if (!sending) onBack() },
+        properties = RaftWindowDialogProperties(drawScrim = false),
+    ) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))) {
+            content()
+        }
+    }
+}
+
+/**
+ * A task before its first message (web `TaskConversationDialog` with no conversation yet), drawn as
+ * the task conversation page it becomes, so nothing moves when the first send opens it:
+ * - the same top bar (the task's ref over "Task #N"; its status and assignee once the head has
+ *   scrolled away, [TaskConversationBarTitle]);
+ * - the same head ([TaskConversationHeadRoute]): title, description, facts and History, with the
+ *   Status and Assignee editors under the same gates (guest, read-only task, Done freezes the
+ *   assignee; [editable] false while there is no store to write to or it holds the offline
+ *   stand-in);
+ * - where the messages go, the empty state ("No discussion in this task yet", and for a pre-v2
+ *   task where its earlier discussion is);
+ * - the conversation composer at the bottom, or for a reader who has not joined the task's
+ *   channel "Join Channel to Reply" ([joined] false; null = not known here, the composer shows
+ *   and a refusal comes back as [errorText]).
+ * Sending creates the conversation; a refused send keeps the typed text. Attachments, mentions,
+ * Follow and the More menu wait for the conversation page.
+ */
+@Composable
+internal fun TaskPendingConversationPage(
     task: TaskSummary,
     details: TaskHeadDetailsHandle,
     members: List<MemberProfile>,
     timeContext: RaftTimeContext?,
+    serverRole: String?,
+    editable: Boolean,
+    statusUpdating: Boolean,
     sending: Boolean,
     errorText: String?,
     joined: Boolean?,
     draft: String,
     onDraftChange: (String) -> Unit,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     onSend: (String) -> Unit,
     onJoin: () -> Unit,
-) {
-    RaftDialogSheet(
-        onDismissRequest = { if (!sending) onDismiss() },
-        title = task.taskRefTitle(),
-        commitLabel = null,
-        onCommit = {},
-        closeEnabled = !sending,
-    ) {
-        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange,
-            task.taskPendingHeadModel(details.state, members, timeContext), details.retryHistory)
-    }
-}
-
-/** The pending conversation's body (the sheet's content; screenshot tests frame it themselves). */
-@Composable
-internal fun TaskConversationPendingBody(
-    task: TaskSummary,
-    sending: Boolean,
-    errorText: String?,
-    joined: Boolean?,
-    onSend: (String) -> Unit,
-    onJoin: () -> Unit,
+    onUpdateStatus: (TaskStatus) -> Unit,
+    onAssign: (MemberProfile?) -> Unit,
     modifier: Modifier = Modifier,
-    seedText: String = "",
-    onDraftChange: (String) -> Unit = {},
-    /** The conversation page's head, read-only (title, description, facts, History). */
-    head: TaskConversationHeadModel = task.taskPendingHeadModel(TaskConversationDetailsState(), emptyList(), null),
-    onRetryHistory: (() -> Unit)? = null,
+    headScrollState: TaskHeadScrollState = remember(task.id) { TaskHeadScrollState() },
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val state = task.taskPendingHeaderState()
+    val chrome =
+        task.taskConversationHeaderChrome(
+            state = state,
+            summarized = headScrollState.collapsed,
+            onBackToHead = { headScrollState.expand() },
+            onViewInChannel = {},
+            onToggleFollow = {},
+        )
+    val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     // The conversation page's canvas, so its composer dock sits on the same ground as there.
     Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
-        Column(
-            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // The conversation page's head, read-only: what the page shows once the first send opens it.
-            TaskHeadContent(head, onRetryHistory = onRetryHistory)
+        // The conversation page's top bar (ThreadPage's header for a task conversation).
+        RaftTopPageHeader(
+            title = task.taskRefTitle(),
+            backgroundColor = RaftColor.Canvas,
+            topSafeAreaOverride = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
+            contentStartPadding = RaftBackButtonDefaults.EdgeInset,
+            contentSpacing = ThreadHeaderContentSpacing,
+            titleLeadingContent = {
+                RaftBackButton(onClick = { if (!sending) onBack() }, label = stringResource(Res.string.common_back))
+            },
+            titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
+        )
+        Column(Modifier.fillMaxWidth().weight(1f).nestedScroll(headScrollState.connection)) {
+            TaskConversationHeadRoute(
+                task = task,
+                state = state,
+                details = details.state,
+                serverRole = serverRole,
+                statusUpdating = statusUpdating,
+                assigneeCandidates = members,
+                timeContext = timeContext,
+                onUpdateStatus = onUpdateStatus,
+                onAssign = onAssign,
+                // Source and Earlier discussion lead into the channel from the conversation page.
+                onOpenSource = null,
+                onOpenEarlierDiscussion = null,
+                scrollState = headScrollState,
+                keyboardUp = keyboardUp,
+                onRetryHistory = details.retryHistory,
+                editable = editable,
+            )
+            // Where the messages go: the empty state, and a refused send's words.
             Column(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                RaftText(
-                    text = stringResource(Res.string.task_conversation_empty_title),
-                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                )
-                if (task.hostMessageId != null) {
+                Column(
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     RaftText(
-                        text = stringResource(Res.string.task_conversation_empty_body),
-                        style = typography.callout,
-                        color = colors.foregroundMuted,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        text = stringResource(Res.string.task_conversation_empty_title),
+                        style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
                     )
+                    if (task.hostMessageId != null) {
+                        RaftText(
+                            text = stringResource(Res.string.task_conversation_empty_body),
+                            style = typography.callout,
+                            color = colors.foregroundMuted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
                 }
+                errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
             }
-            errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
         }
         if (joined == false) {
             ThreadJoinFooter(label = stringResource(Res.string.task_conversation_join_to_reply), onJoin = onJoin)
         } else {
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
             ThreadComposerDock {
-            ThreadComposerContent(
-                payload =
-                    RaftThreadComposerPayload(
-                        instanceId = "task-pending:${task.id.value}",
-                        seedText = seedText,
-                        placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
-                        enabled = !sending,
-                        attachmentActionsEnabled = false,
-                        originalImageOptionEnabled = false,
-                        showAsTaskToggle = false,
-                    ),
-                onEvent = { action, value, _, _ -> if (action == "change" && value != null) onDraftChange(value) },
-                onSendRequest = { request ->
-                    val text = request.value.text
-                    if (sending || text.isBlank()) {
-                        ThreadComposerSendAdmission.Rejected
-                    } else {
-                        onSend(text)
-                        // The text stays until the conversation page opens (a refused send keeps it).
-                        ThreadComposerSendAdmission.Deferred
-                    }
-                },
-                attachmentPreviewEnabled = false,
-            )
+                ThreadComposerContent(
+                    payload =
+                        RaftThreadComposerPayload(
+                            instanceId = "task-pending:${task.id.value}",
+                            seedText = draft,
+                            placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
+                            enabled = !sending,
+                            attachmentActionsEnabled = false,
+                            originalImageOptionEnabled = false,
+                            showAsTaskToggle = false,
+                        ),
+                    onEvent = { action, value, _, _ -> if (action == "change" && value != null) onDraftChange(value) },
+                    onSendRequest = { request ->
+                        val text = request.value.text
+                        if (sending || text.isBlank()) {
+                            ThreadComposerSendAdmission.Rejected
+                        } else {
+                            onSend(text)
+                            // The text stays until the conversation page opens (a refused send keeps it).
+                            ThreadComposerSendAdmission.Deferred
+                        }
+                    },
+                    attachmentPreviewEnabled = false,
+                )
             }
         }
     }

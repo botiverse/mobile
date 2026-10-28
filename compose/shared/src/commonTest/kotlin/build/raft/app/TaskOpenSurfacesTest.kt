@@ -128,7 +128,15 @@ class TaskOpenSurfacesTest {
         assertEquals(listOf("post:t-1", "post:t-1"), calls.filter { it.startsWith("post:") })
         assertEquals(listOf("conv-local" to "rid-1", "conv-local" to "rid-1"), sends, "same conversation, same randomId")
         assertEquals(listOf(ChannelId("conv-local")), opened)
+        // The pending page stays (composer off) until the conversation page covers it.
+        assertTrue(flow.handingOff)
+        assertEquals(preV2, flow.surface?.task)
+        // The conversation's own `task:updated` does not open it a second time.
+        val anchored = preV2.copy(conversationChannelId = ChannelId("conv-local"), conversationAnchored = true)
+        assertEquals(null, flow.onTaskChanged(anchored, taskV2Enabled = true), "the page it opens is already on its way")
+        flow.finishHandOff()
         assertEquals(null, flow.surface, "it gives way to the conversation page")
+        assertFalse(flow.handingOff)
         assertEquals("", flow.draft("t-1"))
 
         // The next draft gets a new id.
@@ -138,7 +146,7 @@ class TaskOpenSurfacesTest {
     }
 
     @Test
-    fun theOpenSheetFollowsItsTaskAndGivesWayWhenItsConversationAppears() {
+    fun theOpenPageFollowsItsTaskAndGivesWayWhenItsConversationAppears() {
         val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
         flow.open(TaskOpenSurface.Pending(preV2))
@@ -146,9 +154,12 @@ class TaskOpenSurfacesTest {
         // Another task's update, and the same copy: nothing changes.
         assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2")), taskV2Enabled = true))
         assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
-        // `task:updated` with a new status, still no conversation: the sheet shows the new copy.
-        val reviewed = preV2.copy(status = TaskStatus.InReview)
+        // `task:updated` with a new status, still no conversation: the page shows the new copy.
+        val reviewed = preV2.copy(status = TaskStatus.InReview, revision = 2L)
         assertEquals(null, flow.onTaskChanged(reviewed, taskV2Enabled = true))
+        assertEquals(reviewed, flow.surface?.task)
+        // A store still holding the older revision does not put the old status back.
+        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
         assertEquals(reviewed, flow.surface?.task)
         // Someone else wrote first: the conversation exists; the caller opens it.
         val anchored = reviewed.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
