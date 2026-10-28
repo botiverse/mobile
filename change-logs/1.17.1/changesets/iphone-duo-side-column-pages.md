@@ -3,7 +3,7 @@ type: improved
 area: app-shell
 platforms:
   - ios
-pull_request: TBD
+pull_request: 3890
 rollout: full
 ---
 
