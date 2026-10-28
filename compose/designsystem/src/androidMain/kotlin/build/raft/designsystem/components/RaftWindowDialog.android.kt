@@ -37,9 +37,18 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
         window.applyRaftTransparentSystemBars()
         onDispose {}
     }
-    // Keyed on isDark: an appearance change with the dialog open re-applies it.
-    DisposableEffect(window, isDark) {
-        window.applyRaftSystemBarsAppearance(isDark)
+    // The host activity's bar icons, not a guess from isDark: the page sets them from what it
+    // paints under the bars (a theme's frame can be dark in light mode: Space, Quest), and a
+    // dialog window that holds focus decides the icons (#3618, artin 2026-10-28). Keyed on
+    // isDark so an appearance change with the dialog open re-copies; isDark is the fallback
+    // when there is no host activity.
+    val hostWindow = LocalContext.current.raftActivity()?.window
+    DisposableEffect(window, isDark, hostWindow) {
+        if (hostWindow != null) {
+            window.decorView.copyRaftSystemBarsAppearanceFrom(hostWindow)
+        } else {
+            window.applyRaftSystemBarsAppearance(isDark)
+        }
         onDispose {}
     }
 }

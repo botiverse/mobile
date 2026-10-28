@@ -5,6 +5,8 @@ import android.view.View
 import androidx.activity.compose.setContent
 import androidx.compose.ui.platform.LocalView
 import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import java.time.Duration
 import kotlin.test.Test
@@ -48,6 +50,30 @@ class RaftDropdownMenuSystemBarsTest {
         assertTrue(
             root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR != 0,
             "the popup window keeps the host's dark status bar icons"
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun aDialogCopiesTheHostsIconsInsteadOfGuessingFromTheMode() {
+        var dialogRoot: View? = null
+        val activity = activities.launch()
+        // Light mode on a dark frame (Space, Quest): the page asked for LIGHT icons, so no flag.
+        activity.window.decorView.systemUiVisibility =
+            activity.window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+        activity.setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftWindowDialog(onDismissRequest = {}) {
+                    dialogRoot = LocalView.current.rootView
+                }
+            }
+        }
+        repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50)) }
+        val root = assertNotNull(dialogRoot, "the dialog window")
+        assertTrue(root !== activity.window.decorView, "the dialog is its own window")
+        assertTrue(
+            root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR == 0,
+            "the dialog keeps the host's light icons on a dark frame, light mode or not"
         )
     }
 }
