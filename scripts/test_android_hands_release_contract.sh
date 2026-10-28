@@ -117,6 +117,18 @@ ruby -e '
   raise "Hands upload step is not excluded for Play" unless hands_upload_if.include?("upload_android_artifacts") && hands_upload_if.include?("android_variant") && hands_upload_if.include?("play")
   artifact_step = release_steps.find { |step| step["name"] == "Upload signed AAB and verification receipt" }
   raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if").to_s.include?("needs.resolve.outputs.upload_android_artifacts")
+  # Every non-debug build keeps its signed AAB (Hands release builds: the backup bundle
+  # github-release.yml attaches), bound to the run APK by build-identity.json.
+  non_debug_gate = "needs.resolve.outputs.android_variant != " + 39.chr + "debug" + 39.chr
+  %w[locate-aab sign-aab].each do |id|
+    aab_step = release_steps.find { |step| step["id"] == id }
+    raise "#{id} does not run for every non-debug build" unless aab_step && aab_step.fetch("if").to_s.include?(non_debug_gate)
+  end
+  raise "signed AAB artifact is not kept for every non-debug build" unless artifact_step.fetch("if").to_s.include?(non_debug_gate)
+  raise "signed AAB artifact must be retained 90 days" unless artifact_step.fetch("with").fetch("retention-days") == 90
+  identity_index = release_steps.index { |step| step["name"] == "Record AAB build identity" }
+  raise "signed AAB lacks the build identity github-release.yml verifies" unless identity_index && identity_index > aab_sign_index &&
+    release_steps.fetch(identity_index).fetch("run").include?("signed-aab/build-identity.json")
   raise "uploader bypasses signed AAB" unless upload_env.fetch("AAB_PATH") == "${{ steps.sign-aab.outputs.aab_path }}"
   raise "upload pin is not derived from verified AAB" unless upload_env.fetch("UPLOAD_KEY_CERT_SHA256") == "${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}"
   raise "repair dispatch can schedule normal build" unless resolve_job.fetch("if").include?("inputs.aab_signing_repair == " + 39.chr + 39.chr)

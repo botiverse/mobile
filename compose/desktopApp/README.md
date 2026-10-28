@@ -51,6 +51,9 @@ Point the app at a local stack by seeding `<dataDir>/kv/slock_api_server_environ
 
 `.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) runs `:desktopApp:packageDmg`
 on a macOS runner and uploads the unsigned `.dmg` as the `raft-desktop-macos-dmg` artifact.
+It is also a reusable workflow: `github-release.yml` calls it for each `vX.Y.Z` tag (tag
+commit, version `X.Y.Z`, Blacksmith Mac) and attaches the dmg to the GitHub Release as
+`raft-macos-X.Y.Z.dmg`, marked unsigned / not notarized with first-launch steps.
 
 ## Signing and notarization (DevOps, macOS CI)
 

@@ -330,6 +330,15 @@ fi
 if [ "${SLOCK_HANDS_DRAFT:-0}" = "1" ]; then
   HANDS_ARGS+=(--draft)
 fi
+# Build provenance: the android-release.yml run that built and signed this APK (and kept
+# its signed AAB as an artifact). github-release.yml uses it to find that AAB.
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+  HANDS_ARGS+=(
+    --ci-provider github-actions
+    --ci-run-id "${GITHUB_RUN_ID}"
+    --ci-url "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  )
+fi
 if [ -f "${MAPPING_PATH}" ]; then
   HANDS_ARGS+=(--mapping "${MAPPING_PATH}")
 fi
