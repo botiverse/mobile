@@ -31,8 +31,9 @@ FOUNDATION_EXTERN UIView * _Nullable RaftIosNativeTabBarView(UIWindow * _Nullabl
 FOUNDATION_EXTERN CGFloat RaftIosNativeTabBarHeightPoints(UIWindow * _Nullable window);
 
 /// The camera (occlusion) and fold (division) regions the content must stay out of. Each entry is
-/// a dictionary in window points: `leftPt`, `topPt`, `widthPt`, `heightPt`.
-FOUNDATION_EXTERN NSArray<NSDictionary<NSString *, NSNumber *> *> *RaftIosReservedRegions(
+/// a dictionary in window points: `leftPt`, `topPt`, `widthPt`, `heightPt`, and `kind`
+/// ("occlusion", "division" or "unknown"), so the camera and the fold can be told apart.
+FOUNDATION_EXTERN NSArray<NSDictionary<NSString *, id> *> *RaftIosReservedRegions(
     UIWindow * _Nullable window);
 
 /// Runtime access to the UIKit APIs that exist only in the iOS 27.1 SDK.
@@ -45,6 +46,10 @@ FOUNDATION_EXTERN NSNumber * _Nullable RaftIosVerticalBarEdgeValue(
 /// The reserved-region kinds (`UIViewReservedRegionKind`), or an empty array when the SDK has
 /// none.
 FOUNDATION_EXTERN NSArray *RaftIosReservedRegionKinds(void);
+
+/// The name of a reserved region's kind: "occlusion" (the camera), "division" (the fold), or
+/// "unknown" for a kind this build does not know.
+FOUNDATION_EXTERN NSString *RaftIosReservedRegionKindName(id _Nullable kind);
 
 /// The active reserved regions of one kind, as `UIViewReservedRegion` objects.
 FOUNDATION_EXTERN NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view, id _Nullable kind);

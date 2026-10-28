@@ -46,7 +46,14 @@ internal data class RaftAdaptiveReservedRegion(
     val leftPt: Float,
     val topPt: Float,
     val widthPt: Float,
-    val heightPt: Float
+    val heightPt: Float,
+    /**
+     * What the region is: the camera's "occlusion", the fold's "division", or "unknown" when the
+     * host does not say. The two are not interchangeable - the camera is a corner the content
+     * must keep clear, the fold is a seam between the device's two halves - so the kind travels
+     * with the rectangle rather than being guessed from the geometry.
+     */
+    val kind: RaftAdaptiveReservedRegionKind = RaftAdaptiveReservedRegionKind.Unknown
 ) {
     fun isValid(): Boolean =
         widthPt > 0f && heightPt > 0f && leftPt.isFinite() && topPt.isFinite() &&
@@ -150,6 +157,25 @@ internal fun JSONObject.toRaftAdaptivePaneEventOrNull(): RaftAdaptivePaneEvent? 
     )
 }
 
+/** What a reserved region is. */
+internal enum class RaftAdaptiveReservedRegionKind {
+    /** The camera: the region is occluded by hardware. */
+    Occlusion,
+
+    /** The fold: the region is the seam between the device's two halves. */
+    Division,
+
+    /** The host did not say what the region is. */
+    Unknown
+}
+
+private fun String.toRaftAdaptiveReservedRegionKind(): RaftAdaptiveReservedRegionKind =
+    when (trim().lowercase()) {
+        "occlusion" -> RaftAdaptiveReservedRegionKind.Occlusion
+        "division" -> RaftAdaptiveReservedRegionKind.Division
+        else -> RaftAdaptiveReservedRegionKind.Unknown
+    }
+
 private fun String.toRaftAdaptiveSideColumn(): RaftAdaptiveSideColumn =
     when (trim().lowercase()) {
         "left" -> RaftAdaptiveSideColumn.Left
@@ -167,7 +193,8 @@ private fun JSONArray?.toRaftAdaptiveReservedRegions(): List<RaftAdaptiveReserve
                 leftPt = item.optDouble("leftPt", 0.0).toFloat(),
                 topPt = item.optDouble("topPt", 0.0).toFloat(),
                 widthPt = item.optDouble("widthPt", 0.0).toFloat(),
-                heightPt = item.optDouble("heightPt", 0.0).toFloat()
+                heightPt = item.optDouble("heightPt", 0.0).toFloat(),
+                kind = item.optString("kind").toRaftAdaptiveReservedRegionKind()
             )
         if (region.isValid()) {
             regions.add(region)

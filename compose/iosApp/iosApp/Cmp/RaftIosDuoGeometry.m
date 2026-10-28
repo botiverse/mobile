@@ -112,7 +112,7 @@ CGFloat RaftIosNativeTabBarHeightPoints(UIWindow * _Nullable window) {
 ///
 /// Each entry is a dictionary in window points: `leftPt`, `topPt`, `widthPt`, `heightPt`. Empty
 /// on systems without those regions (everything before iOS 27.1).
-NSArray<NSDictionary<NSString *, NSNumber *> *> *RaftIosReservedRegions(UIWindow * _Nullable window) {
+NSArray<NSDictionary<NSString *, id> *> *RaftIosReservedRegions(UIWindow * _Nullable window) {
     if (window == nil) {
         return @[];
     }
@@ -133,6 +133,9 @@ NSArray<NSDictionary<NSString *, NSNumber *> *> *RaftIosReservedRegions(UIWindow
                 @"topPt" : @(frame.origin.y),
                 @"widthPt" : @(frame.size.width),
                 @"heightPt" : @(frame.size.height),
+                // The kind tells the camera's occlusion apart from the fold's division, so
+                // shared can treat them differently.
+                @"kind" : RaftIosReservedRegionKindName(kind),
             }];
         }
     }

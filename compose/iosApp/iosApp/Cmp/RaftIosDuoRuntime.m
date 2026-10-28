@@ -61,6 +61,23 @@ NSArray *RaftIosReservedRegionKinds(void) {
     return kinds;
 }
 
+/// The name of a reserved region's kind: "occlusion" (the camera) or "division" (the fold).
+///
+/// The kind objects are class objects, so they are matched by identity against the two the
+/// runtime can produce. A kind this build does not know is reported as "unknown" rather than
+/// dropped, so a region is never silently lost.
+NSString *RaftIosReservedRegionKindName(id _Nullable kind) {
+    if (kind == nil) {
+        return @"unknown";
+    }
+    NSArray *kinds = RaftIosReservedRegionKinds();
+    NSUInteger index = [kinds indexOfObject:kind];
+    if (index == NSNotFound) {
+        return @"unknown";
+    }
+    return index == 0 ? @"occlusion" : @"division";
+}
+
 /// The active reserved regions of one kind, as `UIViewReservedRegion` objects.
 NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view, id _Nullable kind) {
     if (view == nil || kind == nil) {
