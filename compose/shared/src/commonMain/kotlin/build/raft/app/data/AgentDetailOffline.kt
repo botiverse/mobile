@@ -1,7 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.AgentToolStuck
-import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
@@ -31,8 +29,11 @@ internal class RaftOfflineKeyedSnapshotDurable<D : Any>(
 
     override suspend fun confirm(key: RaftDurableSnapshotKey, value: D) {
         val offlineKey = offlineKey(key, mintedAt = null) ?: return
-        // Stamped as a confirmed change even when nothing is stored yet; then stored.
-        if (!resource.update(offlineKey) { value }) resource.write(offlineKey, value)
+        // Stamped as a confirmed change (older in-flight answers are superseded) ...
+        if (resource.update(offlineKey) { value }) return
+        // ... and, with nothing stored yet, stored: the stamp is older than this write, a wipe since the
+        // first key was minted still fences it (that key's instant).
+        resource.write(offlineKey, value, startedAt = resource.fetchStarted())
     }
 
     override suspend fun evict(key: RaftDurableSnapshotKey) {
@@ -52,11 +53,13 @@ internal class RaftOfflineKeyedSnapshotDurable<D : Any>(
 }
 
 /**
- * The agent detail page as stored offline: an explicit WHITELIST of display fields (never a copy of the
- * whole snapshot). Never stored: environment variable values (names only), the runtime provider (it carries
- * the provider API key), app login client keys / return / manifest URLs, the activity log (free-form tool
- * input and output can carry secrets), DM message previews, and error / permission payloads. A field added
- * to the snapshot does not reach disk until it is added here on purpose.
+ * The agent detail page as stored offline: an explicit WHITELIST of display fields, all of them declared
+ * here (never a copy of the snapshot or of a domain type). Never stored: environment variable values (names
+ * only), the runtime provider (it carries the provider API key), app login client keys / return / manifest
+ * URLs, the activity log and the live activity text (`activity` / `activityDetail`: free-form agent output,
+ * e.g. its thinking), the stuck-tool / crash-loop banners (tool and exit details, device-clock times), DM
+ * message previews, and error / permission payloads. A field added to the snapshot does not reach disk
+ * until it is added here on purpose.
  */
 @Serializable
 internal data class StoredAgentDetail(
@@ -97,13 +100,8 @@ internal data class StoredAgentSummary(
     val createdAt: String? = null,
     val envVarNames: List<String> = emptyList(),
     val createdAgents: List<StoredAgentCreated> = emptyList(),
-    val activity: String? = null,
-    val activityDetail: String? = null,
     val deletedAt: String? = null,
     val lastSeenAt: String? = null,
-    val activityDetailKind: String? = null,
-    val wakeCrashLoop: AgentWakeCrashLoop? = null,
-    val toolStuck: AgentToolStuck? = null,
 )
 
 @Serializable
@@ -290,13 +288,8 @@ private fun AgentDetailSummary.toStored(): StoredAgentSummary =
         envVarNames = (envVarNames + envVars.keys).distinct(),
         createdAgents =
             createdAgents.map { StoredAgentCreated(it.id, it.name, it.displayName, it.avatarUrl, it.runtime, it.status, it.isExternal) },
-        activity = activity,
-        activityDetail = activityDetail,
         deletedAt = deletedAt,
         lastSeenAt = lastSeenAt,
-        activityDetailKind = activityDetailKind,
-        wakeCrashLoop = wakeCrashLoop,
-        toolStuck = toolStuck,
     )
 
 /** The stored record as a cached detail (a read-only stand-in: the page grants no edits from the cache). */
@@ -336,13 +329,8 @@ internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
                                 it.createdAgents.map { c ->
                                     AgentCreatedSummary(c.id, c.name, c.displayName, c.avatarUrl, c.runtime, c.status, c.isExternal)
                                 },
-                            activity = it.activity,
-                            activityDetail = it.activityDetail,
                             deletedAt = it.deletedAt,
                             lastSeenAt = it.lastSeenAt,
-                            activityDetailKind = it.activityDetailKind,
-                            wakeCrashLoop = it.wakeCrashLoop,
-                            toolStuck = it.toolStuck,
                         )
                     },
                 directMessages =

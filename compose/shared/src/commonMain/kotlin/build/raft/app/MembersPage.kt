@@ -339,6 +339,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -3041,13 +3042,25 @@ private class MemberDetailRouteProvider(
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
     val accountBinding: () -> Pair<String, String>? = { null },
-    /** Runs the agent detail cache's write-through of confirmed edits (outlives the callback that asks). */
-    private val cacheScope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+    /**
+     * Runs the agent detail cache's write-through of confirmed edits: the route's composition scope (cancelled
+     * with the route); a write-through already started finishes ([confirmCachedAgentDetailAsync]).
+     */
+    private val cacheScope: kotlinx.coroutines.CoroutineScope
 ) {
     /**
      * A confirmed edit of the shown agent (the server answered): the cached detail, in memory and on disk
      * (whitelisted record), follows the store's detail. Nothing cached / a cache replay: nothing to do.
      */
+    private fun confirmCachedAgentDetailAsync() {
+        if (!cacheScope.isActive) return
+        // Started at once and finished even if the route closes right after the edit (one bounded write).
+        cacheScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            // Off the main thread: one encode + SQL write.
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Default) { confirmCachedAgentDetail() }
+        }
+    }
+
     private suspend fun confirmCachedAgentDetail() {
         val cache = agentDetailCache ?: return
         val state = agentDetailStore.state.value
@@ -3483,7 +3496,7 @@ private class MemberDetailRouteProvider(
             )
         )
         // Confirmed profile / avatar edit: the cached page (memory and disk) follows.
-        cacheScope.launch { confirmCachedAgentDetail() }
+        confirmCachedAgentDetailAsync()
     }
 
     suspend fun runLifecycleAction(
@@ -3673,6 +3686,7 @@ private fun rememberMemberDetailRouteProvider(
     storeScopeOverride: RaftShellStoreScope? = null
 ): MemberDetailRouteProvider {
     val reportIssueFailedMessage = stringResource(Res.string.member_error_report_issue)
+    val cacheScope = rememberCoroutineScope()
     val sharedStores = remember { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     val storeScope = storeScopeOverride ?: remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
@@ -3792,6 +3806,7 @@ private fun rememberMemberDetailRouteProvider(
         agentControlsApi
     ) {
         MemberDetailRouteProvider(
+            cacheScope = cacheScope,
             computersOwner = { sharedStores.computersOwner(storeScope) },
             bridge = bridge,
             reportIssueFailedMessage = reportIssueFailedMessage,

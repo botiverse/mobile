@@ -514,11 +514,6 @@ internal class SharedAgentDetailStore(
         actions: SharedAgentDetailActions,
         workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult> {
-        // A cache replay (incl. the stored offline copy) is read-only until a fresh answer replaces it.
-        if (_state.value.detailFromCache && _state.value.agentId == agentId) {
-            logger("shared_agent_detail_store lifecycle_skip reason=cached_stand_in action=${action.actionKey}")
-            return DataResult.Error(ScreenError(AgentDetailStandInReadOnlyCode, retryable = true))
-        }
         dispatch(SharedAgentDetailIntent.StartLifecycleAction(action.actionKey))
         val result =
             try {
@@ -968,9 +963,6 @@ internal data class RaftCachedAgentDetail(
  * values, provider keys, client keys, activity or previews) so a cold / offline open paints the page
  * read-only while it refreshes.
  */
-/** A lifecycle action asked against a cached / stored stand-in (not yet refreshed): not sent. */
-internal const val AgentDetailStandInReadOnlyCode = "agent_detail_stand_in_read_only"
-
 internal typealias RaftAgentDetailCache = RaftKeyedSnapshotCache<RaftCachedAgentDetail, StoredAgentDetail>
 
 /** [RaftAgentDetailCache] backed by [resource] (null: memory only). */
