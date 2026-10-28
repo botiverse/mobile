@@ -3056,7 +3056,8 @@ private class MemberDetailRouteProvider(
         if (!cacheScope.isActive) return
         // Started at once and finished even if the route closes right after the edit (one bounded write).
         cacheScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-            withContext(kotlinx.coroutines.NonCancellable) { confirmCachedAgentDetail() }
+            // Off the main thread: one encode + SQL write.
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Default) { confirmCachedAgentDetail() }
         }
     }
 

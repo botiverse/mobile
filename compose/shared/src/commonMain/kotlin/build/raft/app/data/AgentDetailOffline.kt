@@ -31,8 +31,9 @@ internal class RaftOfflineKeyedSnapshotDurable<D : Any>(
         val offlineKey = offlineKey(key, mintedAt = null) ?: return
         // Stamped as a confirmed change (older in-flight answers are superseded) ...
         if (resource.update(offlineKey) { value }) return
-        // ... and, with nothing stored yet, stored under a key minted after that stamp.
-        offlineKey(key, mintedAt = null)?.let { resource.write(it, value) }
+        // ... and, with nothing stored yet, stored: the stamp is older than this write, a wipe since the
+        // first key was minted still fences it (that key's instant).
+        resource.write(offlineKey, value, startedAt = resource.fetchStarted())
     }
 
     override suspend fun evict(key: RaftDurableSnapshotKey) {
