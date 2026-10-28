@@ -149,7 +149,9 @@ private fun SettingsWebViewScreen() {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
     when (surface) {
-        SettingsWebViewSurface.Onboarding -> SettingsWebViewInvalidRoute(pager)
+        SettingsWebViewSurface.Onboarding,
+        // The Artifact viewer is its own page (RAFT_ARTIFACT_VIEWER_PAGE), never a Settings route.
+        SettingsWebViewSurface.ArtifactViewer -> SettingsWebViewInvalidRoute(pager)
         // Computers is a native page now; keep old settings-webview route payloads
         // (list, or one machine via settingsComputerId) compatible by rendering it here.
         SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()

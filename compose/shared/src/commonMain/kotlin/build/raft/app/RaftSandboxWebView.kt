@@ -19,6 +19,22 @@ internal data class RaftWebViewConfig(
     val injectedJavaScript: String,
     val allowedNavigationSchemes: Set<String>,
     val hostEventsEnabled: Boolean,
+    /**
+     * Origin lock (the Artifact viewer, Tenny's WebView rules): when set (`https://host[:port]`),
+     * every top-level document stays on this origin. A top-level navigation anywhere else is
+     * blocked and handed to [RaftWebViewEvents.onNavigationBlocked] (the system browser), the
+     * injected script runs only in top-level documents of this origin, and runtime scripts reach
+     * only such a document. Sub-frames (the content frame) load as the page asks, without any
+     * script or bridge of the host's. Null: the surface's own [allowNavigation] rules.
+     */
+    val mainFrameOrigin: String? = null,
+    /**
+     * Keeps the native WebView (and its document) when the composable leaves, under this key, so
+     * the next host with the same key gets it back at once ([RaftWebViewKeepAlive]). A different
+     * key, [RaftWebViewKeepAlive.clear] or the keep-alive time running out destroys it. Null:
+     * destroyed with the composable, as before.
+     */
+    val keepAliveKey: String? = null,
 )
 
 /**

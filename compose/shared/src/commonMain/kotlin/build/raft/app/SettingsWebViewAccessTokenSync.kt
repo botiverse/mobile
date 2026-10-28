@@ -24,6 +24,8 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Administration("administration"),
     ReleaseNotes("release-notes"),
     Feedback("feedback"),
+    /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */
+    ArtifactViewer("artifact-viewer"),
 }
 
 internal data class SettingsWebViewAuthSnapshot(

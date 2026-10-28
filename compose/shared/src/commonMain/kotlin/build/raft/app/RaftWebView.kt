@@ -126,7 +126,9 @@ internal fun RaftSandboxWebView(
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
-    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    mainFrameOrigin: String? = null,
+    keepAliveKey: String? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.onLoadCommit = onLoadCommit
@@ -148,7 +150,9 @@ internal fun RaftSandboxWebView(
             ephemeral,
             injectedJavaScript,
             allowedNavigationSchemesValue,
-            hostEventsEnabled
+            hostEventsEnabled,
+            mainFrameOrigin,
+            keepAliveKey
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -161,7 +165,9 @@ internal fun RaftSandboxWebView(
                 injectedJavaScript = injectedJavaScript,
                 allowedNavigationSchemes =
                     allowedNavigationSchemesValue.split(',').filter { it.isNotEmpty() }.toSet(),
-                hostEventsEnabled = hostEventsEnabled
+                hostEventsEnabled = hostEventsEnabled,
+                mainFrameOrigin = mainFrameOrigin,
+                keepAliveKey = keepAliveKey
             )
         }
     RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)

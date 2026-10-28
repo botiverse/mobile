@@ -89,6 +89,28 @@ class SharedArtifactSummaryStoreTest {
     }
 
     @Test
+    fun refreshAsksAgainWithinTheTtlAndAnUnavailableAnswerReplacesTheKeptOne() = runTest {
+        // The in-app Artifact viewer revalidates on every open: a kept Ok must not hide a 403/404.
+        var gone = false
+        val api = FakeApi { okAnswer(it, unavailable = if (gone) setOf("pt_a") else emptySet()) }
+        val store = store(api)
+        val target = ArtifactLinkTarget("pt_a")
+        store.request(server, listOf(target))
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertTrue(store.isFresh(server, target))
+        assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, listOf(target))["pt_a"])
+
+        gone = true
+        store.refresh(server, target)
+        assertTrue(!store.isFresh(server, target), "expired at once, still shown until the new answer")
+        assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, listOf(target))["pt_a"])
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertEquals(2, api.calls.size)
+        assertTrue(store.isFresh(server, target))
+        assertEquals(ArtifactSummaryAnswer.Unavailable, store.state.value.answersFor(server, listOf(target))["pt_a"])
+    }
+
+    @Test
     fun lookupsInOneWindowGoOutAsOneDedupedRequest() = runTest {
         val api = FakeApi { okAnswer(it, unavailable = setOf("pt_gone")) }
         val store = store(api)

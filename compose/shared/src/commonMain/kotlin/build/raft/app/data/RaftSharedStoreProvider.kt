@@ -565,6 +565,8 @@ internal class RaftSharedStoreProvider private constructor(
                 // App link previews and consent answers, and Artifact summaries: per viewer, session only.
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
+                // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
+                build.raft.app.RaftArtifactViewerMemory.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
         )

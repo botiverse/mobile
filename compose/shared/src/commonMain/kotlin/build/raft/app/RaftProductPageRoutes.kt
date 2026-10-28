@@ -82,7 +82,8 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         SettingsWebViewSurface.Feedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
         SettingsWebViewSurface.Computers -> RaftProductPageView(RaftPageRoute.Computers)
         SettingsWebViewSurface.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
-        SettingsWebViewSurface.Onboarding -> null
+        SettingsWebViewSurface.Onboarding,
+        SettingsWebViewSurface.ArtifactViewer -> null
     }
 
 /**
@@ -128,7 +129,8 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ChannelSettings,
         AuthenticatedProductRoute.JointChannelConnections,
         AuthenticatedProductRoute.ThreadForwardBundle,
-        AuthenticatedProductRoute.FilePreview -> null
+        AuthenticatedProductRoute.FilePreview,
+        AuthenticatedProductRoute.ArtifactViewer -> null
     }
 
 private val productPageRouteJson = Json { ignoreUnknownKeys = true }

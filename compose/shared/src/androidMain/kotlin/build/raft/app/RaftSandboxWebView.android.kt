@@ -3,6 +3,7 @@ package build.raft.app
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
@@ -67,14 +68,19 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     AndroidView(
-        factory = { context -> RaftAndroidSandboxWebView(context, events) },
+        factory = { context ->
+            config.keepAliveKey?.let { key -> RaftAndroidWebViewKeepAlive.take(key, context, events) }
+                ?: RaftAndroidSandboxWebView(MutableContextWrapper(context), events)
+        },
         modifier = modifier,
         update = { view ->
             view.events = events
             view.applyConfig(config)
             view.bindController(controller)
         },
-        onRelease = { view -> view.destroy() },
+        onRelease = { view ->
+            if (!RaftAndroidWebViewKeepAlive.park(view)) view.destroy()
+        },
     )
 }
 
@@ -118,6 +124,12 @@ internal class RaftAndroidSandboxWebView(
     private var pendingRuntimeJavaScript: String = ""
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled: Boolean = false
+    /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
+    private var mainFrameOrigin: String? = null
+    /** [RaftWebViewConfig.keepAliveKey]: parked past its page instead of destroyed. */
+    internal var keepAliveKey: String? = null
+        private set
+    internal val isDestroyed: Boolean get() = destroyed
     private var currentUrl: String = ""
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
@@ -146,7 +158,49 @@ internal class RaftAndroidSandboxWebView(
         updateInjectedJavaScript(config.injectedJavaScript)
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
+        mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
+        keepAliveKey = config.keepAliveKey
         updateSrc(config.url)
+    }
+
+    /** The kept document (keep-alive), as [RaftWebViewKeptDocument]. */
+    internal fun keptDocument(): RaftWebViewKeptDocument =
+        RaftWebViewKeptDocument(
+            src = src,
+            currentUrl = webView.url.orEmpty().ifBlank { currentUrl },
+            loaded = !currentIsLoading && lastSuccessfulUrl.isNotBlank(),
+        )
+
+    /**
+     * Keep-alive: runs [script] in the top-level document when it is a loaded document of
+     * [origin] (never a sub-frame: `evaluateJavascript` reaches the main frame only).
+     */
+    internal fun evaluateInTopDocument(origin: String, script: String): Boolean {
+        if (destroyed || !allowScripts || script.isBlank()) return false
+        val expected = raftDocumentStartScriptOriginRule(origin) ?: return false
+        val active = raftDocumentStartScriptOriginRule(webView.url.orEmpty()) ?: return false
+        if (active != expected || (mainFrameOrigin != null && active != mainFrameOrigin)) return false
+        if (currentIsLoading || lastSuccessfulUrl.isBlank()) return false
+        webView.evaluateJavascript(script, null)
+        return true
+    }
+
+    /** Keep-alive: detaches from the page that showed it; its callbacks go nowhere until taken again. */
+    internal fun detachForKeepAlive() {
+        boundController?.unbindCommandDispatcher(this)
+        boundController = null
+        events = RaftWebViewEvents()
+        (parent as? android.view.ViewGroup)?.removeView(this)
+        (context as? MutableContextWrapper)?.baseContext = context.applicationContext
+    }
+
+    /** Keep-alive: shown by a page again, in that page's [hostContext]. */
+    internal fun attachFromKeepAlive(hostContext: Context, nextEvents: RaftWebViewEvents) {
+        (context as? MutableContextWrapper)?.baseContext = hostContext
+        events = nextEvents
+        lastNavigationStateKey = ""
+        notifyNavigationState(force = true)
+        if (lastSuccessfulUrl.isNotBlank()) events.onLoadSuccess()
     }
 
     fun bindController(controller: RaftWebViewController) {
@@ -589,6 +643,7 @@ internal class RaftAndroidSandboxWebView(
         val sourceOrigin = raftDocumentStartScriptOriginRule(src)
         val activeOrigin = raftDocumentStartScriptOriginRule(activeUrl)
         if (sourceOrigin == null || activeOrigin != sourceOrigin ||
+            (mainFrameOrigin != null && activeOrigin != mainFrameOrigin) ||
             (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl))
         ) {
             Log.i(
@@ -638,7 +693,7 @@ internal class RaftAndroidSandboxWebView(
         currentTitle = ""
         currentProgress = 0
         currentIsLoading = false
-        if (!isNavigationSchemeAllowed(normalized)) {
+        if (!isNavigationSchemeAllowed(normalized) || !raftMainFrameOriginAllows(mainFrameOrigin, normalized)) {
             notifyNavigationState()
             notifyNavigationBlocked(normalized)
             return
@@ -693,6 +748,7 @@ internal class RaftAndroidSandboxWebView(
         val target = url ?: return true
         if (src.isBlank() && target == ABOUT_BLANK_URL) return false
         if (!isNavigationSchemeAllowed(target)) return true
+        if (!raftMainFrameOriginAllows(mainFrameOrigin, target)) return true
         if (allowNavigation) return false
         return !isAllowedMainDocumentUrl(target)
     }
@@ -759,6 +815,7 @@ internal class RaftAndroidSandboxWebView(
 
     private fun evaluateInjectedJavaScript() {
         if (destroyed) return
+        if (!isTopDocumentOnLockedOrigin()) return
         val script = injectedJavaScript.takeIf { allowScripts && it.isNotBlank() } ?: return
         webView.evaluateJavascript(script, null)
     }
@@ -828,6 +885,7 @@ internal class RaftAndroidSandboxWebView(
             }.orEmpty()
         val script = (bridge + "\n" + authScript).trim().takeIf { it.isNotBlank() } ?: return false
         val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return false
+        if (mainFrameOrigin != null && originRule != mainFrameOrigin) return false
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
         return runCatching {
             documentStartScriptHandler = WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(originRule))
@@ -849,7 +907,14 @@ internal class RaftAndroidSandboxWebView(
      * a fenced settings document (hostile page code could print the bearer into logcat).
      */
     private fun isRestrictedGenericMode(): Boolean =
-        allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
+        mainFrameOrigin != null ||
+            allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
+
+    /** True unless an origin lock is set and the top-level document is elsewhere. */
+    private fun isTopDocumentOnLockedOrigin(): Boolean {
+        val locked = mainFrameOrigin ?: return true
+        return raftDocumentStartScriptOriginRule(webView.url.orEmpty()) == locked
+    }
 
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
@@ -914,6 +979,15 @@ internal fun raftIsExactMainDocumentUrl(allowedUrl: String?, targetUrl: String):
         target.port == allowed.port &&
         target.path == allowed.path &&
         target.rawQuery == allowed.rawQuery
+}
+
+/**
+ * The origin lock ([RaftWebViewConfig.mainFrameOrigin]): with no lock every target passes; with
+ * one, only a document on exactly that origin (scheme, host, port) does.
+ */
+internal fun raftMainFrameOriginAllows(lockedOrigin: String?, targetUrl: String): Boolean {
+    val locked = lockedOrigin ?: return true
+    return raftDocumentStartScriptOriginRule(targetUrl) == locked
 }
 
 internal fun raftDocumentStartScriptOriginRule(targetUrl: String): String? =

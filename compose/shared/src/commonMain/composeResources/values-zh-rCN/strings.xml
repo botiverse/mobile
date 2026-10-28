@@ -3365,6 +3365,10 @@
     <string name="artifacts_activity_updated">%1$s 有更新</string>
     <string name="artifacts_activity_someone">有人</string>
     <string name="artifacts_activity_untitled">未命名的 Artifact</string>
+    <string name="artifacts_viewer_more">更多操作</string>
+    <string name="artifacts_viewer_unavailable_title">打不开这个 Artifact</string>
+    <string name="artifacts_viewer_unavailable_body">它不存在，或者你没有权限查看。</string>
+    <string name="artifacts_viewer_open_in_browser">在浏览器中打开</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">取消关注</string>
     <string name="activity_unfollowed_artifact">已取消关注 %1$s</string>

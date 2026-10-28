@@ -121,6 +121,8 @@ internal fun ThreadAppLinkCardPopoverHost(
         if (summary == null) return
         val uriHandler = LocalUriHandler.current
         val target = ArtifactLinkTarget(summary.id, openedArtifact.substringAfter(";version=", "").toIntOrNull())
+        // Open: the in-app viewer (header from this card at once); the browser only when no page can open.
+        val artifactOpener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(artifactWebBaseUrl, it)) }
         Modal(onWillDismiss = { cards.close() }) {
             RaftDesignSystemTheme {
                 ThreadAppLinkCardPopoverFrame(
@@ -136,7 +138,7 @@ internal fun ThreadAppLinkCardPopoverHost(
                                 text = stringResource(Res.string.thread_link_preview_open_link),
                                 onClick = {
                                     cards.close()
-                                    uriHandler.openUri(artifactWebUrl(artifactWebBaseUrl, target))
+                                    artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "chat_card")
                                 },
                                 variant = RaftButtonVariant.Default,
                             )

@@ -122,6 +122,23 @@ class SharedArtifactSummaryStore internal constructor(
         }
     }
 
+    /**
+     * Asks again for [target] in [serverId] now, whatever is kept (the Artifact viewer opening: a
+     * 403/404 must replace its screen). The kept answer stays shown until the new one lands.
+     */
+    fun refresh(serverId: String, target: ArtifactLinkTarget) {
+        val key = artifactSummaryKey(serverId, target)
+        mutableState.update { state ->
+            val entry = state.entries[key] ?: return@update state
+            state.copy(entries = state.entries + (key to entry.copy(expiresAtMillis = Long.MIN_VALUE)))
+        }
+        request(serverId, listOf(target))
+    }
+
+    /** Whether [target]'s answer in [serverId] is current (asked for and answered, not expired). */
+    fun isFresh(serverId: String, target: ArtifactLinkTarget): Boolean =
+        (mutableState.value.entries[artifactSummaryKey(serverId, target)]?.expiresAtMillis ?: Long.MIN_VALUE) > nowMillis()
+
     /** Drops every answer (sign-out, account or environment switch). An answer on its way is not kept. */
     fun clearAll() {
         synchronized(lock) {
