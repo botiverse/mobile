@@ -1227,6 +1227,8 @@ internal data class TaskWireDto(
     // surface resolves its local one via POST /tasks/:id/conversation); `conversationAnchored`
     // says the discussion is the task's own conversation (existing or created on first use).
     val hostMessageId: String? = null,
+    // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host).
+    val sourceMessageId: String? = null,
     val conversationChannelId: String? = null,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
@@ -1287,6 +1289,7 @@ internal fun TaskWireDto.toTaskSummary(
         readOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() },
         channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        sourceMessageId = sourceMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

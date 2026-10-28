@@ -138,6 +138,15 @@ const val ACTION_CARD_SPEC_FEATURE_FLAG_KEY: String = "action_card_spec"
 const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
 
 /**
+ * Task v2 (slock `packages/web/src/store/serverFeatureFlags.ts` `TASK_V2_CONVERSATIONS_FLAG_KEY`, the
+ * server's `TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY`): per server, default off. On, every task hangs
+ * as a row in the list under its source message and the composer drops "As Task" (tasks are created
+ * from a sent message). Off (or unresolved), a pre-v2 task keeps its single footer chip and the
+ * composer keeps "As Task"; a task made the v2 way still lists under its message (per task).
+ */
+const val TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY: String = "task_v2_conversations_v0"
+
+/**
  * Incremental sync (`GET /api/sync/changes`, botiverse/slock #11459) for the current server: on
  * reconnect, foreground and server select the client pulls what changed since its cursor and patches
  * the stores row by row. Mobile-only key, default OFF (server-unresolved evaluates false) so it is
@@ -167,6 +176,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ACTION_CARD_SPEC_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
+    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
 )
 
 /**

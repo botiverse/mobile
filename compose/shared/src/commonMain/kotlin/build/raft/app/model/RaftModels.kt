@@ -753,6 +753,12 @@ data class TaskSummary(
     val channelType: String? = null,
     /** Task v2: the pre-v2 host message (its thread is the earlier discussion); null for a v2 task. */
     val hostMessageId: MessageId? = null,
+    /**
+     * Task v2: the message the task hangs under (slock `taskService.ts` `sourceMessageId`: the
+     * message it was created from, or a pre-v2 task's host message). Null: none (a channel-only
+     * task) or an older server.
+     */
+    val sourceMessageId: MessageId? = null,
     /** Task v2: the task's CANONICAL conversation channel (`channels.type = 'task'`), when it exists. */
     val conversationChannelId: ChannelId? = null,
     /** Task v2: the discussion is the task's own conversation (exists, or is created on first use). */

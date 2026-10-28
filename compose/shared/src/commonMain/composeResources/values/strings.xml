@@ -1597,6 +1597,9 @@
     <string name="tasks_status_closed">Closed</string>
     <string name="tasks_reply_count_description">Messages in this task: %1$d</string>
     <string name="tasks_status_reopen_to_todo">Reopen to Todo</string>
+    <string name="tasks_source_list_open">Open task #%1$s: %2$s</string>
+    <string name="tasks_source_list_reply_count_one">1 message in this task</string>
+    <string name="tasks_source_list_reply_count_many">%1$d messages in this task</string>
     <string name="task_conversation_follow">Follow Task</string>
     <string name="task_conversation_unfollow">Unfollow Task</string>
     <string name="task_conversation_deleted">This task was deleted</string>

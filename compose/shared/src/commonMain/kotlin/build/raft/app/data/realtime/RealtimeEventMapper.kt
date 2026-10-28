@@ -620,6 +620,8 @@ private data class TaskInfoWireDto(
     val description: String? = null,
     val readOnlyReason: String? = null,
     val hostMessageId: String? = null,
+    // slock `projectTaskCreated` / the `task:updated` task DTO: the message the task hangs under.
+    val sourceMessageId: String? = null,
     val conversationChannelId: String? = null,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
@@ -1148,6 +1150,7 @@ private fun TaskInfoWireDto.toDomain(
         readOnlyReason = resolvedReadOnlyReason,
         channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        sourceMessageId = sourceMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

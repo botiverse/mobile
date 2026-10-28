@@ -143,6 +143,7 @@ import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -7986,6 +7987,16 @@ private fun SharedThreadRouteContentContent(
                     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
                 )
         }
+    // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
+    // source message and the composer drops "As Task".
+    val taskV2Enabled =
+        remember(featureFlagSnapshotRevision, currentServerId) {
+            currentServerId != null &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    ServerId(currentServerId),
+                    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
+                )
+        }
     // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
     // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
     val threadUnreadBadgeEnabled =
@@ -8262,12 +8273,28 @@ private fun SharedThreadRouteContentContent(
                 loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
+    val sourceTaskListsEnabled = payload.supportsChannelTasks()
     val linkedTasksProjection =
-        remember(taskProjectionSlice, serverTaskProjectionSlice, taskProjectionReferences) {
+        remember(
+            taskProjectionSlice,
+            serverTaskProjectionSlice,
+            taskProjectionReferences,
+            taskV2Enabled,
+            sourceTaskListsEnabled,
+            currentSession?.user?.id
+        ) {
             threadLinkedTasksProjection(
                 channelProjectionSlice = taskProjectionSlice,
                 serverProjectionSlice = serverTaskProjectionSlice,
                 references = taskProjectionReferences
+            ).copy(
+                sourceTaskLists =
+                    if (sourceTaskListsEnabled) {
+                        taskProjectionSlice.tasks.threadSourceTaskLists(taskV2Enabled)
+                    } else {
+                        emptyMap()
+                    },
+                viewerUserId = currentSession?.user?.id
             )
         }
     val taskAssigneeOptions =
@@ -12329,6 +12356,17 @@ private fun SharedThreadRouteContentContent(
                             pendingReactionKeys = pendingReactionKeys - reactionKey
                             pendingReactionVisuals = pendingReactionVisuals - reactionKey
                         }
+                    }
+                }
+                action == "openSourceTask" && !itemId.isNullOrBlank() -> {
+                    // Task v2: a row of the list under a message opens its task (web useOpenTask):
+                    // its own conversation, or a pre-v2 task's host thread.
+                    val task = linkedTasksProjection.sourceTaskById(itemId)
+                    if (task == null) {
+                        bridge.logWarn("thread_task_open_rejected reason=source_task_missing taskId=$itemId")
+                        bridge.toast(unableToOpenTaskLabel)
+                    } else {
+                        openCanonicalTask(task, "message_task_list")
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
@@ -22024,10 +22062,13 @@ private fun ThreadMessagesListContent(
                 }
                 val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
+                // Task v2: the list under the message replaces its single task chip (web MessageItem).
+                val sourceTasks = remember(message.id, linkedTasksProjection) { linkedTasksProjection.sourceTasksFor(message) }
                 val displayMessage =
-                    remember(message, linkedTasksProjection) {
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
                         val startedAt = TimeSource.Monotonic.markNow()
                         message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
                             .also {
                                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
                                 if (shouldLogThreadPerformance(durationMs)) {
@@ -22128,6 +22169,8 @@ private fun ThreadMessagesListContent(
                                 message = displayMessage,
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 replyMetadata = replyMetadata,
+                                sourceTasks = sourceTasks,
+                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
                                 hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
                                 actionCard = actionCard,
                                 messageIndex = absoluteMessageIndex,
@@ -25316,6 +25359,7 @@ private data class ThreadMessageCardData(
     val messageBodyTextStyle: TextStyle,
     val replyMetadata: ThreadReplyMetadata,
     val hasReplyDraft: Boolean,
+    val sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
     val actionCard: ThreadActionCard?,
     val messageIndex: Int,
     val highlightedMentions: Set<String>,
@@ -25359,6 +25403,7 @@ private data class ThreadMessageCardData(
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
 private class ThreadMessageCardCallbacks(
     val diagnosticsLogger: (String) -> Unit,
+    val onOpenSourceTask: (String) -> Unit = {},
     val agentStatusResolver: RaftAgentStatusResolver,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
@@ -25402,6 +25447,9 @@ fun ThreadMessageCard(
     messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
+    /** Task v2: the tasks listed under the message (web `TaskChipList`); tapping one opens it. */
+    sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
+    onOpenSourceTask: (String) -> Unit = {},
     actionCard: ThreadActionCard? = message.threadActionCard(),
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
@@ -25484,6 +25532,8 @@ fun ThreadMessageCard(
                 messageBodyTextStyle = messageBodyTextStyle,
                 replyMetadata = replyMetadata,
                 hasReplyDraft = hasReplyDraft,
+                // A retracted message keeps none of its content (web hides the list with it).
+                sourceTasks = if (retracted) emptyList() else sourceTasks,
                 actionCard = if (retracted) null else actionCard,
                 messageIndex = messageIndex,
                 highlightedMentions = highlightedMentions,
@@ -25522,6 +25572,7 @@ fun ThreadMessageCard(
         callbacks =
             ThreadMessageCardCallbacks(
                 diagnosticsLogger = diagnosticsLogger,
+                onOpenSourceTask = onOpenSourceTask,
                 agentStatusResolver = agentStatusResolver,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 isMarkdownTagValid = isMarkdownTagValid,
@@ -25569,6 +25620,8 @@ private fun ThreadMessageCardContent(
     val messageBodyTextStyle = data.messageBodyTextStyle
     val replyMetadata = data.replyMetadata
     val hasReplyDraft = data.hasReplyDraft
+    val sourceTasks = data.sourceTasks
+    val onOpenSourceTask = callbacks.onOpenSourceTask
     val actionCard = data.actionCard
     val messageIndex = data.messageIndex
     val diagnosticsLogger = callbacks.diagnosticsLogger
@@ -26446,8 +26499,21 @@ private fun ThreadMessageCardContent(
                         threadMessageTrailingSectionOrder(
                             hasMetaChips = hasFooterMeta,
                             hasInlineReplies = inlineReplyPresentation != null,
+                            hasSourceTasks = sourceTasks.isNotEmpty(),
                         ).forEach { section ->
                             when (section) {
+                                ThreadMessageTrailingSection.SourceTasks -> {
+                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                        ThreadMessageSourceTaskList(
+                                            tasks = sourceTasks,
+                                            memberAvatarResolver = memberAvatarResolver,
+                                            agentStatusResolver = agentStatusResolver,
+                                            onOpenTask = onOpenSourceTask,
+                                            // web `mt-1.5`: 6dp under the body (the column adds 4).
+                                            modifier = Modifier.padding(top = RaftAppSpacing.Xxs)
+                                        )
+                                    }
+                                }
                                 ThreadMessageTrailingSection.MetaChips -> {
                                     Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                         ThreadMessageFooterMeta(
@@ -29457,15 +29523,22 @@ internal fun RaftThreadMessageItem.hasThreadFooterMeta(
         reactions.any { it.count > 0 }
 
 internal enum class ThreadMessageTrailingSection {
+    SourceTasks,
     MetaChips,
     InlineReplies,
 }
 
+/**
+ * Below the body, in web MessageItem's order: the task list (task v2), then the footer chips
+ * (reactions, saved), then the replies, which stay the message's own discussion.
+ */
 internal fun threadMessageTrailingSectionOrder(
     hasMetaChips: Boolean,
     hasInlineReplies: Boolean,
+    hasSourceTasks: Boolean = false,
 ): List<ThreadMessageTrailingSection> =
     buildList {
+        if (hasSourceTasks) add(ThreadMessageTrailingSection.SourceTasks)
         if (hasMetaChips) add(ThreadMessageTrailingSection.MetaChips)
         if (hasInlineReplies) add(ThreadMessageTrailingSection.InlineReplies)
     }
@@ -30612,7 +30685,11 @@ private fun ThreadOriginCard(
             else -> {
                 timelineSlice.originMessage?.let { origin ->
                     val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(origin)
-                    val displayOrigin = origin.withLinkedTaskProjection(linkedTasksProjection)
+                    // Task v2 (web ThreadPanel `parentSourceTasks`): the parent's tasks list under it here too.
+                    val originSourceTasks = linkedTasksProjection.sourceTasksFor(origin)
+                    val displayOrigin =
+                        origin.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (originSourceTasks.isEmpty()) it else it.withoutLinkedTask() }
                     val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                     val originActionCard = if (contentExtrasVisible) origin.threadActionCard() else null
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
@@ -30627,6 +30704,8 @@ private fun ThreadOriginCard(
                                 message = displayOrigin,
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 hasReplyDraft = false,
+                                sourceTasks = originSourceTasks,
+                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
                                 actionCard = originActionCard,
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,

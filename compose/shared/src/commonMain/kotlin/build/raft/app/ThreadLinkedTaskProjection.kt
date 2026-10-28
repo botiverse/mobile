@@ -5,14 +5,93 @@ import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TasksUiState
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 
 internal data class ThreadLinkedTasksProjection(
     val authoritative: Boolean,
-    val lookup: Map<String, TaskSummary>
+    val lookup: Map<String, TaskSummary>,
+    /**
+     * Task v2: the tasks listed under each message (by message id), in task-number order
+     * ([threadSourceTaskLists]). A message here shows the list instead of its single task chip.
+     */
+    val sourceTaskLists: Map<String, List<TaskSummary>> = emptyMap(),
+    /** The reader's user id: an assignee who is the reader reads "You" in those lists. */
+    val viewerUserId: String? = null,
 )
+
+/**
+ * Task v2 (slock web ChatPanel `tasksByMessageId` / `taskListsByMessageId`, ThreadPanel
+ * `parentSourceTasks`): the tasks that hang under each message. A task hangs under its source
+ * message (`sourceMessageId`) when task v2 is on for the server or the task was made the v2 way,
+ * else under its pre-v2 host message; a channel-only task hangs under none. With the flag off only
+ * a message with a v2 task under it keeps its list, so a pre-v2 task keeps its single chip.
+ */
+internal fun List<TaskSummary>.threadSourceTaskLists(taskV2Enabled: Boolean): Map<String, List<TaskSummary>> {
+    val byMessage = LinkedHashMap<String, MutableList<TaskSummary>>()
+    forEach { task ->
+        if (task.isLegacy) return@forEach
+        val source = task.sourceMessageId?.value?.trim()?.takeIf { it.isNotBlank() }
+        val anchor =
+            if ((taskV2Enabled || task.conversationAnchored) && source != null) {
+                source
+            } else {
+                task.messageId?.value?.trim()?.takeIf { it.isNotBlank() && it != task.id.value }
+            } ?: return@forEach
+        byMessage.getOrPut(anchor) { mutableListOf() }.add(task)
+    }
+    return byMessage
+        .filterValues { list -> taskV2Enabled || list.any { it.conversationAnchored } }
+        .mapValues { (_, list) -> list.distinctBy { it.id }.sortedBy { it.taskNumber ?: Int.MAX_VALUE } }
+}
+
+/** The tasks listed under [message] (task v2), empty when it shows none. */
+internal fun ThreadLinkedTasksProjection.sourceTasksFor(message: RaftThreadMessageItem): List<ThreadMessageSourceTaskItem> =
+    sourceTaskLists[message.id].orEmpty().map { it.toThreadMessageSourceTaskItem(viewerUserId) }
+
+/** A task listed under a message, looked up by id (the row's tap names the task). */
+internal fun ThreadLinkedTasksProjection.sourceTaskById(taskId: String): TaskSummary? {
+    val key = taskId.trim().takeIf { it.isNotBlank() } ?: return null
+    return sourceTaskLists.values.firstNotNullOfOrNull { list -> list.firstOrNull { it.id.value == key } }
+}
+
+/**
+ * What one row of the list under a message shows (slock web `TaskChipList`): the number, the
+ * title, the size of the task's own conversation (none for a pre-v2 task, whose discussion is its
+ * host message's thread), the assignee and the status.
+ */
+internal data class ThreadMessageSourceTaskItem(
+    val taskId: String,
+    val taskNumber: Int?,
+    val title: String,
+    val status: TaskStatus,
+    val replyCount: Int,
+    val assigneeId: String?,
+    val assigneeKind: MemberKind?,
+    val assigneeName: String?,
+    /** The reader is the assignee (shown as "You"). */
+    val assigneeIsViewer: Boolean,
+)
+
+internal fun TaskSummary.toThreadMessageSourceTaskItem(viewerUserId: String?): ThreadMessageSourceTaskItem {
+    val person = assignee
+    val assigneeId = person?.id?.value?.trim()?.takeIf { it.isNotBlank() }
+    return ThreadMessageSourceTaskItem(
+        taskId = id.value,
+        taskNumber = taskNumber,
+        title = title,
+        status = status,
+        replyCount = taskCardReplyCount() ?: 0,
+        assigneeId = assigneeId,
+        assigneeKind = person?.kind,
+        assigneeName =
+            person?.let { threadLinkedTaskAssigneeDisplayName() ?: it.displayName.trim().removePrefix("@").ifBlank { null } },
+        assigneeIsViewer =
+            person?.kind == MemberKind.Human && assigneeId != null && assigneeId == viewerUserId?.trim(),
+    )
+}
 
 internal fun emptyThreadLinkedTasksProjection(): ThreadLinkedTasksProjection =
     ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())

@@ -1595,6 +1595,9 @@
     <string name="tasks_status_closed">已关闭</string>
     <string name="tasks_reply_count_description">任务里的讨论：%1$d 条</string>
     <string name="tasks_status_reopen_to_todo">重开为待办</string>
+    <string name="tasks_source_list_open">打开任务 #%1$s：%2$s</string>
+    <string name="tasks_source_list_reply_count_one">任务里有 1 条讨论</string>
+    <string name="tasks_source_list_reply_count_many">任务里有 %1$d 条讨论</string>
     <string name="task_conversation_follow">关注任务</string>
     <string name="task_conversation_unfollow">取消关注任务</string>
     <string name="task_conversation_deleted">该任务已被删除</string>

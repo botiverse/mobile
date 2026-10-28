@@ -243,7 +243,14 @@ private fun SharedTasksDataStoreState.foldCanonicalTask(
  */
 private fun TaskSummary.withViewerConversationFollow(incoming: TaskSummary, current: TaskSummary?): TaskSummary {
     val followed = incoming.conversationFollowed ?: current?.conversationFollowed
-    return if (conversationFollowed == followed) this else copy(conversationFollowed = followed)
+    // The message a task hangs under never changes; a copy without it (an older frame or answer)
+    // keeps the one already known, so the task does not drop out of the list under its message.
+    val source = sourceMessageId ?: incoming.sourceMessageId ?: current?.sourceMessageId
+    return if (conversationFollowed == followed && sourceMessageId == source) {
+        this
+    } else {
+        copy(conversationFollowed = followed, sourceMessageId = source)
+    }
 }
 
 private fun Long?.compareTaskRevision(existing: Long?): Int =
