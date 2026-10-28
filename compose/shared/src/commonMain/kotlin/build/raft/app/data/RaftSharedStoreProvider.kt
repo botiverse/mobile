@@ -1154,6 +1154,18 @@ internal class RaftSharedStoreProvider private constructor(
      * One ingest for every owner (message storage Phase 3a): its ordered worker and duplicate-delivery memory span
      * the process and shell entries. Declared before `init`, which installs the gateway that reads it.
      */
+    private val canonicalMessageV2ResumeIngest: CanonicalMessageV2ResumeIngest by lazy {
+        CanonicalMessageV2ResumeIngest(
+            tracker = canonicalMessageV2Canary,
+            generationEngine = canonicalMessageV2GenerationEngine,
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
+            },
+            // Lines already start with `canonical_v2_resume`.
+            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Resume"),
+        )
+    }
+
     private val canonicalMessageV2RealtimeIngest: CanonicalMessageV2RealtimeIngest by lazy {
         CanonicalMessageV2RealtimeIngest(
             tracker = canonicalMessageV2Canary,
@@ -1228,6 +1240,10 @@ internal class RaftSharedStoreProvider private constructor(
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeDomainEventOwner.installCanonicalMessageV2OwnerGateway(
             buildCanonicalMessageV2OwnerGateway(),
+        )
+        // Phase 3b: only the process owner saves the realtime applied seq, so only it stores resume replays.
+        realtimeDomainEventOwner.installCanonicalMessageV2ResumeGateway(
+            RealtimeResumeCanonicalMessageV2Gateway(canonicalMessageV2ResumeIngest),
         )
         realtimeAuthorityProvider.start(threadSendScope)
         ProcessRealtimeIngressCoordinator(
@@ -3608,6 +3624,7 @@ internal class SharedRealtimeDomainEventOwner(
     private var canonicalFinalCommitStep: CanonicalFinalPreparedCommitStep? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
     private var canonicalMessageV2OwnerGateway: CanonicalMessageV2OwnerGateway? = null
+    private var canonicalMessageV2ResumeGateway: RealtimeResumeCanonicalMessageV2Gateway? = null
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
@@ -3623,6 +3640,11 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installCanonicalMessageV2OwnerGateway(gateway: CanonicalMessageV2OwnerGateway) {
         canonicalMessageV2OwnerGateway = gateway
+    }
+
+    /** Message storage Phase 3b: stores a `sync:resume:response`'s messages before its applied seq is saved. */
+    fun installCanonicalMessageV2ResumeGateway(gateway: RealtimeResumeCanonicalMessageV2Gateway) {
+        canonicalMessageV2ResumeGateway = gateway
     }
 
     /** Task #167: forwards a new realtime transport epoch to the durable message canary. Caller checks the grant. */
@@ -3814,6 +3836,17 @@ internal class SharedRealtimeDomainEventOwner(
             ?: return runIfCurrentGrant(grant) {
                 legacyContinuation(grant.serverId, event, source)
             }
+        val resumeGateway = canonicalMessageV2ResumeGateway
+        if (event is SyncResumeResponse && resumeGateway != null) {
+            // Phase 3b: the replayed messages are stored (loose) before the legacy continuation saves the applied seq.
+            var commit: (suspend () -> Unit)? = null
+            val current = currentMessageRunner(grant) { commit = resumeGateway.captureUnderGrant(grant, event) }
+            if (!current) return false
+            commit?.let { runCanonicalMessageV2CommitFailOpen(grant, "resume currentSeq=${event.currentSeq}", it) }
+            return runIfCurrentGrant(grant) {
+                legacyContinuation(grant.serverId, event, source)
+            }
+        }
         val foldInput = event.canonicalMessageFoldInputOrNull()
         if (foldInput == null) {
             return runIfCurrentGrant(grant) {
@@ -3872,7 +3905,7 @@ internal class SharedRealtimeDomainEventOwner(
             commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch)
         }
         if (!current) return false
-        commit?.let { runCanonicalMessageV2CommitFailOpen(grant, foldInput, it) }
+        commit?.let { runCanonicalMessageV2CommitFailOpen(grant, "msg=${foldInput.row.id} seq=${foldInput.row.seq}", it) }
         return true
     }
 
@@ -3884,7 +3917,7 @@ internal class SharedRealtimeDomainEventOwner(
      */
     private suspend fun runCanonicalMessageV2CommitFailOpen(
         grant: RealtimeGrantRecord,
-        foldInput: CanonicalMessageFoldInput,
+        label: String,
         commit: suspend () -> Unit,
     ) {
         val failure = try {
@@ -3899,8 +3932,7 @@ internal class SharedRealtimeDomainEventOwner(
             "error=${throwable::class.simpleName ?: "unknown"}"
         }
         if (failure != null) {
-            val line = "canonical_v2_realtime outcome=display_only server=${grant.serverId} msg=${foldInput.row.id} " +
-                "seq=${foldInput.row.seq} reason=$failure"
+            val line = "canonical_v2_realtime outcome=display_only server=${grant.serverId} $label reason=$failure"
             guardedSinks?.log?.invoke(line) ?: sinks?.log?.invoke(line)
         }
     }
