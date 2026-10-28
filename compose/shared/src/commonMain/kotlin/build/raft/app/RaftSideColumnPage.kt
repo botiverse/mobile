@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.LocalRaftFrameInsets
+import build.raft.designsystem.components.RaftFrameInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -208,12 +210,11 @@ internal fun RaftSideColumnScaffold(
                 // column already keeps (the rest of a wider safe area still pads).
                 .consumeWindowInsets(PaddingValues.Absolute(left = left, right = right)),
         ) {
-            // TODO(iphone-duo, LocalRaftFrameInsets): when the design system's LocalRaftFrameInsets
-            // lands (sindresorhus), provide it here with the column's width on its physical edge
-            // (`right = posture.stripWidth` on the right) and, where a camera band crosses the top
-            // of the page, a top inset, so menus and toasts keep 8dp from the column and tooltips
-            // flip away from it (page-structure "Frame insets").
+            // The column is a frame inset (page-structure "Frame insets"): menus keep 8dp from it and
+            // tooltips flip away from it. Physical, never mirrored. The camera sits inside the column's
+            // own band, so the page has no top inset of its own.
             CompositionLocalProvider(
+                LocalRaftFrameInsets provides RaftFrameInsets(left = left, right = right),
                 LocalRaftSideColumnPosture provides posture,
                 LocalRaftSideColumnHost provides host,
                 content = content,
