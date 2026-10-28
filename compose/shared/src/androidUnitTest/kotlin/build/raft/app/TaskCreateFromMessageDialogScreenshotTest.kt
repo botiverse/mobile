@@ -47,7 +47,7 @@ class TaskCreateFromMessageDialogScreenshotTest {
             appearance,
             reportDir = "build/reports/home-screenshots",
             activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
+            root = { dialogFittedToItsWindow() },
         ) {
             Page {
                 TaskCreateFromMessageDialog(
@@ -73,5 +73,34 @@ class TaskCreateFromMessageDialogScreenshotTest {
                 object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
             }
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { RaftDesignSystemTheme { content() } }
+    }
+
+    /**
+     * The dialog window with its compose content measured to the window. The content (a
+     * full-window scrim with the dialog centred) sometimes measured a pixel taller than its window
+     * (1170x2533 under a 2532 window: always for dark, and for light depending on what the run's
+     * earlier tests left behind), so the same head passed one CI run and failed the next (run
+     * 40635290293; its light capture was the golden moved down one row). Measuring it to the
+     * window makes every capture the window's size, laid out for it.
+     */
+    private fun dialogFittedToItsWindow(): android.view.View? {
+        val decor = ShadowDialog.getLatestDialog()?.window?.decorView ?: return null
+        val content = findCompose(decor) ?: return decor
+        val parent = content.parent as? android.view.View ?: return decor
+        val exactly = android.view.View.MeasureSpec.EXACTLY
+        content.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.width, exactly),
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.height, exactly),
+        )
+        content.layout(0, 0, parent.width, parent.height)
+        return decor
+    }
+
+    private fun findCompose(view: android.view.View): android.view.View? {
+        if (view is androidx.compose.ui.platform.ViewRootForTest) return view
+        if (view is android.view.ViewGroup) {
+            for (index in 0 until view.childCount) findCompose(view.getChildAt(index))?.let { return it }
+        }
+        return null
     }
 }
