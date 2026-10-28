@@ -1,7 +1,6 @@
 package build.raft.designsystem.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -378,8 +378,6 @@ internal fun RaftSheetSurfaceImpl(
     }
 }
 
-/** raft `--ease-slide`. */
-private val RaftSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 
 /**
  * raft-ui 0.8.0 Drawer, bottom sheet: [RaftSheetSurface] at the bottom of the window over
@@ -432,7 +430,7 @@ internal fun RaftSheetWindow(
     val dismiss by rememberUpdatedState(onDismissRequest)
     RaftWindowDialog(onDismissRequest = onDismissRequest) {
         val slide = remember { Animatable(1f) }
-        LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftSheetEase)) }
+        LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide)) }
         Box(
             Modifier
                 .fillMaxSize()

@@ -1,6 +1,5 @@
 package build.raft.designsystem.components
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -42,6 +41,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isUnspecified
+import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -126,8 +126,6 @@ internal fun raftSwitchLook(checked: Boolean, enabled: Boolean, colors: RaftUiTh
 /** The 20dp box of a checkbox and a radio (`size-5`). */
 private val RaftCheckSize = 20.dp
 
-/** raft `--ease-slide`, the switch knob's slide. */
-private val RaftEaseSlide = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 
 /**
  * raft-ui 0.8.0 Checkbox: a 20dp box, sticker radius, 1.5dp edge. Checked is an ink
@@ -324,7 +322,7 @@ fun RaftSwitch(
     val isFocused = raftIsFocused(source)
     val focused = onCheckedChange != null && enabled && isFocused
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
-    val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(220, easing = RaftEaseSlide))
+    val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide))
     val toggle =
         if (onCheckedChange != null) {
             Modifier.triStateToggleable(
