@@ -193,19 +193,27 @@ internal class RaftOfflineResourceCache(
                 logger("offline_resource_update result=fenced")
                 return@withLock false
             }
-            // Stamped even with nothing stored: an older in-flight fetch must not write a pre-mutation value.
-            markChanged(rowId)
-            val current = readLocked(rowId, maxAgeMillis) ?: return@withLock false
+            val current = readLocked(rowId, maxAgeMillis)
+            if (current == null) {
+                // Stamped even with nothing stored: an older in-flight fetch must not write a pre-mutation value.
+                markChanged(rowId)
+                return@withLock false
+            }
             when (val next = change(current)) {
-                is RaftOfflineChange.Write -> writeLocked(rowId, parts, next.encoded, maxEntriesPerAccount)
+                is RaftOfflineChange.Write -> {
+                    markChanged(rowId)
+                    writeLocked(rowId, parts, next.encoded, maxEntriesPerAccount)
+                }
                 RaftOfflineChange.Remove -> {
+                    markChanged(rowId)
                     runLogged("delete") { rows.delete(listOf(rowId)) }
                     true
                 }
+                // Nothing changes for this row: not stamped (later writes of newer answers stay welcome).
+                RaftOfflineChange.Keep -> false
             }
         }
 
-    /** Deletes [rowId]; [confirmed]: a confirmed change (an older in-flight fetch cannot write it back). */
     /** Ids of every stored row [matches] accepts (e.g. one resource's rows of one account + server). */
     internal suspend fun rowIds(matches: (RaftOfflineRowId.Parts) -> Boolean): List<String> =
         mutex.withLock {
@@ -220,6 +228,7 @@ internal class RaftOfflineResourceCache(
             }
         }
 
+    /** Deletes [rowId]; [confirmed]: a confirmed change (an older in-flight fetch cannot write it back). */
     internal suspend fun delete(rowId: String, confirmed: Boolean) {
         mutex.withLock {
             drainWipes()
@@ -378,6 +387,9 @@ internal sealed interface RaftOfflineChange {
     data class Write(val encoded: String) : RaftOfflineChange
 
     data object Remove : RaftOfflineChange
+
+    /** Leave the row as it is (a change that does not concern it). */
+    data object Keep : RaftOfflineChange
 }
 
 /**
@@ -493,8 +505,14 @@ internal class RaftOfflineResource<P : Any, T : Any>(
         for (rowId in ids) {
             val done =
                 cache.update(rowId, cache.tick(), spec.maxAgeMillis, spec.maxEntriesPerAccount) { encoded ->
-                    val next = decodeOrNull(encoded)?.let(transform)
-                    next?.let(::encode)?.let { RaftOfflineChange.Write(it) } ?: RaftOfflineChange.Remove
+                    val current = decodeOrNull(encoded) ?: return@update RaftOfflineChange.Remove
+                    val next = transform(current)
+                    when {
+                        // Untouched rows are not stamped as changed.
+                        next == current -> RaftOfflineChange.Keep
+                        next == null -> RaftOfflineChange.Remove
+                        else -> encode(next)?.let { RaftOfflineChange.Write(it) } ?: RaftOfflineChange.Remove
+                    }
                 }
             if (done) changed += 1
         }

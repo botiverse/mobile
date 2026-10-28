@@ -691,22 +691,31 @@ class SharedServerMembersStore internal constructor(
         channelMembersMirror?.cancel()
     }
 
-    /**
-     * Realtime `channel:members-updated` for [channelId]: a list loaded here reloads (a viewer removed from
-     * the channel then gets the lost-access drop); a list held only on disk (or as a stand-in) is dropped,
-     * since the viewer may no longer belong to the channel; its next open loads afresh.
-     */
-    internal suspend fun applyChannelMembersUpdated(serverId: ServerId, channelId: ChannelId) {
-        val serverKey = serverId.value.normalizedServerMembersId() ?: return
-        val channelKey = channelId.value.normalizedServerMembersId() ?: return
-        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return
-        val scope = binding.scope(ChannelId(channelKey)) ?: return
+    /** This store holds [channelId]'s list as a loaded answer (not a stand-in) for its current owner. */
+    internal fun holdsLoadedChannel(serverId: ServerId, channelId: ChannelId): Boolean {
+        val scope = currentChannelScope(serverId, channelId) ?: return false
+        val binding = currentChannelMembersOwner(ServerId(scope.serverId)) ?: return false
         val slice = _state.value.channelMemberSlices[scope]?.takeIf { it.ownerWriteGeneration == binding.writeGeneration }
-        if (slice != null && slice.status == SharedServerMembersLoadStatus.Loaded && !slice.storedStandIn) {
-            refreshLoadedChannelMembers(ServerId(serverKey), setOf(channelKey), reason = "channel_members_updated")
-        } else {
-            channelMembersOffline?.forget(scope)
-        }
+        return slice != null && slice.status == SharedServerMembersLoadStatus.Loaded && !slice.storedStandIn
+    }
+
+    /** Reloads [channelId]'s list when it is loaded here (realtime `channel:members-updated`). */
+    internal suspend fun reloadLoadedChannel(serverId: ServerId, channelId: ChannelId) {
+        if (!holdsLoadedChannel(serverId, channelId)) return
+        val scope = currentChannelScope(serverId, channelId) ?: return
+        refreshLoadedChannelMembers(ServerId(scope.serverId), setOf(scope.channelId), reason = "channel_members_updated")
+    }
+
+    /** Drops [channelId]'s stored list (no store holds it loaded; the viewer may no longer belong to it). */
+    internal suspend fun forgetStoredChannel(serverId: ServerId, channelId: ChannelId) {
+        val scope = currentChannelScope(serverId, channelId) ?: return
+        channelMembersOffline?.forget(scope)
+    }
+
+    private fun currentChannelScope(serverId: ServerId, channelId: ChannelId): SharedServerChannelMembersScope? {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return null
+        val channelKey = channelId.value.normalizedServerMembersId() ?: return null
+        return currentChannelMembersOwner(ServerId(serverKey))?.scope(ChannelId(channelKey))
     }
 
     // task #136 read edges: state carries wire-truth rosters ONLY; presence
@@ -4327,3 +4336,23 @@ internal const val SharedServerMembersSupersededFlightRetries = 2
 
 /** Wait before the one retry of a failed reconnect roster refill (Hands 81ad5dae). */
 internal val SharedServerMembersPresenceRefillRetryDelay: Duration = 3.seconds
+
+/**
+ * Realtime `channel:members-updated` for [channelId] across every members store of the process: each store
+ * holding the list loaded reloads it (a viewer removed from the channel then gets the lost-access drop);
+ * only when NO store holds it loaded is the stored copy dropped (the viewer may no longer belong to the
+ * channel; its next open loads afresh). Decided over all stores so the order they are visited in never
+ * matters.
+ */
+internal suspend fun applyChannelMembersUpdated(
+    stores: List<SharedServerMembersStore>,
+    serverId: ServerId,
+    channelId: ChannelId,
+) {
+    val loaded = stores.filter { it.holdsLoadedChannel(serverId, channelId) }
+    if (loaded.isEmpty()) {
+        stores.firstOrNull()?.forgetStoredChannel(serverId, channelId)
+    } else {
+        loaded.forEach { it.reloadLoadedChannel(serverId, channelId) }
+    }
+}
