@@ -176,10 +176,13 @@ class SharedTasksDataSource(
 
 /**
  * Converts the canonical message row into a task and commits the result through
- * [SharedTasksDataStore]. The server keeps task identity equal to the converted
- * message id. A successful response without a task projection therefore performs
- * one bounded server-scope refresh and accepts success only when that exact id is
- * present; it never fabricates a task id or task number.
+ * [SharedTasksDataStore]. Since v1.4 the server creates a canonical `tasks` row with
+ * its OWN id and links it to the converted message through `messageId` /
+ * `hostMessageId` (slock `taskService.convertMessageToTask`), so the task is
+ * identified by that link, not by `task.id == messageId` (that only holds for
+ * pre-v1.4 message-tasks). A successful response without a task projection performs
+ * one bounded server-scope refresh and accepts success only when a task linked to
+ * this message is present; it never fabricates a task id or task number.
  */
 internal suspend fun convertMessageToCanonicalTask(
     serverId: ServerId?,
@@ -200,7 +203,7 @@ internal suspend fun convertMessageToCanonicalTask(
         }
     val responseTask = accepted.task
     if (responseTask != null) {
-        if (responseTask.id.value != messageId.value) {
+        if (!responseTask.isConversionOf(messageId)) {
             return DataResult.Error(
                 ScreenError(code = "tasks_convert_message_identity_mismatch", retryable = false)
             )
@@ -238,7 +241,7 @@ internal suspend fun convertMessageToCanonicalTask(
         }
     return when (refreshed) {
         is DataResult.Content -> {
-            val task = refreshed.data.tasks.firstOrNull { candidate -> candidate.id.value == messageId.value }
+            val task = refreshed.data.tasks.firstOrNull { candidate -> candidate.isConversionOf(messageId) }
                 ?: run {
                     diagnosticsLogger(
                         "tasks_convert_projection source=canonical_refresh_missing messageId=${messageId.value} " +
@@ -265,6 +268,16 @@ internal suspend fun convertMessageToCanonicalTask(
         is DataResult.NoPermission -> refreshed
     }
 }
+
+/**
+ * Whether [this] task is the result of converting [messageId]: linked through its host
+ * message (`messageId` / `hostMessageId`, the canonical v1.4+ shape where `id` is the
+ * task's own id), or a pre-v1.4 message-task whose id is the message id.
+ */
+internal fun TaskSummary.isConversionOf(messageId: MessageId): Boolean =
+    id.value == messageId.value ||
+        hostMessageId?.value == messageId.value ||
+        this.messageId?.value == messageId.value
 
 data class TaskCreateDraft(
     val title: String,
