@@ -17,6 +17,11 @@ For tag ``vX.Y.Z`` this resolves, from Hands:
   mismatching AAB is skipped with a warning; the APK still ships.
 - iOS: the highest-versionCode build of ``X.Y.Z``. No IPA is attached; the body names the
   TestFlight build number.
+- iOS Simulator app (with ``--ios-simulator-app`` and ``--commit``): the downloaded
+  ``ios-simulator-app-<run>`` artifact of ios-simulator-app.yml (``raft-ios-simulator.app.zip``,
+  a ditto zip of the ``.app``, plus ``metadata.json``). Attached as is, renamed, only when
+  metadata.json names the tag commit as source and Hands build commit, the default Xcode lane
+  and the zip's SHA-256; otherwise skipped with a warning.
 
 The body uses the release notes stored on the Hands releases (what users saw), in
 zh-CN / en / ja, one section per platform. A macOS section (unsigned dmg, first-launch
@@ -79,6 +84,22 @@ MACOS_FIRST_LAUNCH = {
         "1. dmg を開き、Raft を「アプリケーション」にドラッグします。\n"
         "2. 初回はブロックされます：システム設定 → プライバシーとセキュリティ で"
         "「このまま開く」をクリックします。"
+    ),
+}
+
+
+IOS_SIMULATOR_INSTALL = {
+    "zh-CN": (
+        "iOS 模拟器包（Xcode {xcode}，Debug，{archs}）：只能装在 Mac 的 iOS 模拟器里，不能装真机。"
+        "解压后 `xcrun simctl install booted {app}`。"
+    ),
+    "en": (
+        "iOS Simulator app (Xcode {xcode}, Debug, {archs}): for the iOS Simulator on a Mac only, "
+        "not for devices. Unzip, then `xcrun simctl install booted {app}`."
+    ),
+    "ja": (
+        "iOS シミュレータ用アプリ（Xcode {xcode}、Debug、{archs}）：Mac の iOS シミュレータ専用で、"
+        "実機にはインストールできません。解凍後 `xcrun simctl install booted {app}`。"
     ),
 }
 
@@ -406,11 +427,57 @@ def ios(version: str, hands: Hands, app_id: str) -> str:
     )
 
 
+def ios_simulator(version: str, out: Path, folder: Path, commit: str) -> tuple[str, Path] | None:
+    """Verify and stage the ios-simulator-app.yml artifact (see module doc)."""
+    try:
+        metadata = json.loads((folder / "metadata.json").read_text(encoding="utf-8"))
+        archive = folder / "raft-ios-simulator.app.zip"
+        zip_sha256 = sha256_of(archive)
+        with zipfile.ZipFile(archive) as bundle:
+            tops = {name.split("/", 1)[0] for name in bundle.namelist()}
+    except (OSError, ValueError, zipfile.BadZipFile) as error:
+        warn(f"unreadable iOS Simulator artifact ({error}); no Simulator app attached")
+        return None
+    apps = sorted(t for t in tops if t.endswith(".app"))
+    checks = {
+        "platform": (metadata.get("platform"), "ios-simulator"),
+        "dt_platform_name": (metadata.get("dt_platform_name"), "iphonesimulator"),
+        "source_commit (vs tag)": (metadata.get("source_commit"), commit),
+        "hands_build_commit (vs tag)": (metadata.get("hands_build_commit"), commit),
+        "xcode_lane": (metadata.get("xcode_lane"), "default"),
+        "artifact_sha256 (vs zip)": (metadata.get("artifact_sha256"), zip_sha256),
+        "one .app at the zip root": (len(apps), 1),
+    }
+    bad = [f"{label} {got!r} != {want!r}" for label, (got, want) in checks.items() if got != want]
+    if bad:
+        warn("iOS Simulator app does not match the tag, not attached: " + "; ".join(bad))
+        return None
+    asset = out / f"raft-ios-simulator-{version}-{commit[:7]}.zip"
+    shutil.copyfile(archive, asset)
+    # metadata.json does not record ARCHS; github-release.yml builds arm64 only.
+    install = {
+        lang: text.format(xcode=metadata.get("xcode_version") or "?", archs="arm64", app=apps[0])
+        for lang, text in IOS_SIMULATOR_INSTALL.items()
+    }
+    section = (
+        "### iOS Simulator app\n\n"
+        f"`{asset.name}` SHA-256 `{zip_sha256}`, built from `{commit[:7]}` "
+        f"(Xcode {metadata.get('xcode_version')}, iOS SDK {metadata.get('ios_sdk_version')}).\n\n"
+        f"{notes_block(install)}"
+    )
+    return section, asset
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tag", required=True, help="vX.Y.Z")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--dmg", type=Path, help="unsigned macOS dmg to attach (optional)")
+    parser.add_argument(
+        "--ios-simulator-app", type=Path,
+        help="downloaded ios-simulator-app-<run> artifact directory to attach (optional; needs --commit)",
+    )
+    parser.add_argument("--commit", default="", help="the tag's commit (40-hex)")
     parser.add_argument(
         "--aab-repo", default="",
         help="OWNER/REPO of android-release.yml runs; attach the APK's signed AAB (needs gh)",
@@ -421,6 +488,8 @@ def main() -> None:
     if not match:
         die(f"tag {args.tag} is not vX.Y.Z")
     version = match.group(1)
+    if args.ios_simulator_app and not re.fullmatch(r"[0-9a-f]{40}", args.commit):
+        die("--ios-simulator-app needs --commit <40-hex tag commit>")
     args.out.mkdir(parents=True, exist_ok=True)
     api = os.environ.get("HANDS_API") or "https://hands.build"
 
@@ -436,6 +505,12 @@ def main() -> None:
     )
 
     assets = [str(path) for path in android_assets]
+    if args.ios_simulator_app:
+        found = ios_simulator(version, args.out, args.ios_simulator_app, args.commit)
+        if found:
+            simulator_section, simulator_zip = found
+            ios_section += "\n" + simulator_section
+            assets.append(str(simulator_zip))
     sections = [android_section, ios_section]
     if args.dmg:
         macos_section, dmg = macos(version, args.out, args.dmg)

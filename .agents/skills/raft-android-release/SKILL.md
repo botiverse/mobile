@@ -93,7 +93,8 @@ scripts/finalize_android_hands_release.sh --release <draft-id> \
 Then push the annotated `vX.Y.Z` audit tag on the verified source commit
 (message: versionCode, Hands release id, APK SHA-256, CI run). The tag never
 rebuilds Android; it runs `github-release.yml` (GitHub Release: Hands APK, its
-signed AAB backup, unsigned macOS dmg built from the tag).
+signed AAB backup, unsigned macOS dmg and the iOS Simulator app (Xcode 27.1,
+Debug, arm64), both built from the tag).
 
 ## 7. Merge back and close
 

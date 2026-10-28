@@ -42,6 +42,34 @@ on:
           - xcode-27
           - xcode-27-xlarge
           - macos-latest
+  # github-release.yml builds the Simulator app of a release tag through this. Inside a call,
+  # github.run_id / github.sha / github.ref are the CALLER's: the artifact is
+  # ios-simulator-app-<caller run id>, the CI tools come from the caller's commit.
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: false
+        default: ""
+      archs:
+        type: string
+        required: false
+        default: "arm64"
+      xcode_app_path:
+        type: string
+        required: false
+        default: ""
+      macos_runner:
+        type: string
+        required: false
+        default: "xcode-27"
+      # Concurrency scope for callers. github.ref is the caller's (a tag, or the branch a
+      # release was dispatched from), so without it a call would share, and could hold or
+      # replace a pending run in, the on-demand group of that ref. Empty for dispatch/push.
+      concurrency_scope:
+        type: string
+        required: false
+        default: ""
   # workflow_dispatch only registers once this file reaches the default
   # branch; until then, pushing an edit of THIS FILE on a branch is the
   # trigger (scoped so ordinary source pushes never burn a macOS runner).
@@ -53,13 +81,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-simulator-app-${{ github.ref }}
+  group: ios-simulator-app-${{ github.ref }}${{ inputs.concurrency_scope && format('-{0}', inputs.concurrency_scope) || '' }}
   cancel-in-progress: false
 
 jobs:
   build-app:
     name: Build installable Simulator app
-    # push has no inputs: xcode-27 + the pinned Xcode 27.1.
+    # push has no inputs: xcode-27 + the pinned Xcode 27.1. workflow_call passes the same inputs.
     runs-on: ${{ inputs.macos_runner || 'xcode-27' }}
     timeout-minutes: 60
     steps:
@@ -102,7 +130,7 @@ jobs:
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
-        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane, e.g. the
+        # `xcode_app_path` (workflow_dispatch / workflow_call only) runs a deliberate other-Xcode lane, e.g. the
         # /Applications/Xcode_26.6.app fallback on macos-latest; empty keeps the pinned 27.1.
         env:
           XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}

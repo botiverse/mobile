@@ -215,8 +215,12 @@ trigger or a way to bypass the draft gate.
 Pushing the `vX.Y.Z` tag runs `github-release.yml`, which creates the GitHub
 Release from what Hands shipped: the published `main` APK, the signed AAB from
 the same CI run (a backup of the Hands build, not the Play build; skipped with a
-warning when the artifact is gone), iOS's TestFlight build number, and an
-unsigned, not notarized macOS dmg built from the tag's commit.
+warning when the artifact is gone), iOS's TestFlight build number, and, built
+from the tag's commit, an unsigned, not notarized macOS dmg and a zipped iOS
+Simulator `.app` (Xcode 27.1 on GitHub's `xcode-27` Mac, Debug, arm64; Simulator
+only, attached only when its `metadata.json` names the tag commit). A failed dmg
+or Simulator build releases the rest with a warning; rerun with
+`workflow_dispatch` to add it.
 
 ### 3.1 Upload the Play carrier through Hands' Google Play binding
 
