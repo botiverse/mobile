@@ -117,19 +117,24 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
     }
 
     @Test
-    fun aRefusedPageLeavesTheStoredWindowUnchanged() = withFreshDatabase { database ->
-        // The page carries a thread parent and the reply-count lookup fails: the conversion is refused
-        // as a whole, before the scope writer — the window on disk is exactly what it was.
-        val rig = Rig(database, threadSummariesBody = null)
-        runBlocking {
-            rig.enter(listOf(10L, 20L, 30L))
-            val before = assertNotNull(rig.coldStartReader().read(partition, "channel-1"))
-            rig.latest(adjacentPageOf(node("m100", 100, threadId = "thread-100"), node("m110", 110)), limit = 2)
-            val after = assertNotNull(rig.coldStartReader().read(partition, "channel-1"))
-            assertEquals(before.envelopes.map { it.fact.id }, after.envelopes.map { it.fact.id })
-            assertEquals(before.cursor, after.cursor)
-            assertTrue(rig.logs.last().endsWith("outcome=canonical_v2_thread_summaries_unavailable"), rig.logs.toString())
+    fun aRowThatCannotBeConvertedIsLeftOutAndTheRestOfThePageIsStored() = withFreshDatabase { database ->
+        // Phase 2b: the page carries a thread parent and the reply-count lookup fails. Only that row is left out (its
+        // seq excluded from the claim); the other row is stored. Twin: a page whose rows all convert stores both.
+        fun run(threadSummariesBody: String?) = withFreshDatabase { db ->
+            val rig = Rig(db, threadSummariesBody = threadSummariesBody)
+            runBlocking {
+                rig.enter(listOf(10L, 20L, 30L))
+                rig.latest(adjacentPageOf(node("m100", 100, threadId = "thread-100"), node("m110", 110)), limit = 2)
+                Triple(rig.onDiskSeqs(), rig.segments(), rig.logs.last())
+            }
         }
+        val (seqs, segments, log) = run(threadSummariesBody = null)
+        assertEquals(listOf(10L, 20L, 30L, 110L), seqs)
+        assertEquals(listOf(10L to 30L, 101L to 110L), segments, "the claim starts above the left-out seq 100")
+        assertTrue("left_out=1 reason=canonical_v2_thread_summaries_unavailable" in log, log)
+        val (allSeqs, allSegments, _) = run(threadSummariesBody = """{"m100":{"threadChannelId":"thread-100","replyCount":2}}""")
+        assertEquals(listOf(10L, 20L, 30L, 100L, 110L), allSeqs)
+        assertEquals(listOf(10L to 30L, 100L to 110L), allSegments)
     }
 
     private class Rig(private val database: RaftSqlDatabase, threadSummariesBody: String? = "{}") {

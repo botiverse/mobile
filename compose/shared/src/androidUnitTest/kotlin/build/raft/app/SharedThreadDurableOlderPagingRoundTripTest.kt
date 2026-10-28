@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.loadOnEnter
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.data.CanonicalMessageV2EnteredScopeLoader
 import build.raft.app.data.CanonicalMessageV2RestSnapshotFetcher

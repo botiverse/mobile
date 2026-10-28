@@ -64,6 +64,8 @@ sealed interface CanonicalMessageV2SnapshotLoadResult {
     data class Loaded(
         val frame: CanonicalMessageV2SnapshotFrame,
         val coverage: CanonicalMessageV2Coverage? = null,
+        /** Phase 2b: page rows that could not be stored; [coverage] is split around them. */
+        val excludedSeqs: Set<Long> = emptySet(),
     ) : CanonicalMessageV2SnapshotLoadResult
     data class Unavailable(val diagnostic: String) : CanonicalMessageV2SnapshotLoadResult
 }

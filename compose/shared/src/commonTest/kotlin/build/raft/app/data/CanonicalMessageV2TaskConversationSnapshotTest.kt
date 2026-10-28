@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 /**
  * Task v2: the enter snapshot of a task conversation (`GET /channels/{conv}` → `type: "task"` +
@@ -30,16 +31,15 @@ class CanonicalMessageV2TaskConversationSnapshotTest {
                 parentChannelId = "channel-1",
             )
 
-        val loaded =
-            assertIs<CanonicalMessageV2SnapshotLoadResult.Loaded>(
-                CanonicalMessageV2RestSnapshotFetcher(network).fetch(partition, "conv-1", expectedScopeKind = null)
-            ).frame
+        // Phase 2b: the kind (and a task's parent) comes from `channels/{id}` only when the page cannot name it.
+        val fetcher = CanonicalMessageV2RestSnapshotFetcher(network)
+        assertEquals("task" to "channel-1", fetcher.topLevelKind(partition, "conv-1"))
+        val page = assertNotNull(enteredPageFromBody("conv-1", canonicalV2TestPage(channelId = "conv-1")))
+        val rows = fetcher.convertPageRows(partition, "conv-1", "task", page.rawMessages, taskParentChannelId = "channel-1")
 
-        assertEquals("task", loaded.scope.scopeKind)
-        assertEquals("conv-1", loaded.scope.scopeId)
-        val context = assertIs<CanonicalConversationContextV2.TopLevel>(loaded.envelopes.single().context)
+        val context = assertIs<CanonicalConversationContextV2.TopLevel>(rows.envelopes.single().context)
         assertEquals(TopLevelScopeRefV2.Task(partition.serverId, "conv-1", "channel-1"), context.scope)
-        assertEquals(listOf("channels/conv-1", "messages/channel/conv-1"), network.paths)
+        assertEquals(listOf("channels/conv-1"), network.paths)
     }
 
     @Test
@@ -51,12 +51,7 @@ class CanonicalMessageV2TaskConversationSnapshotTest {
                 channelType = "task",
             )
 
-        val result = CanonicalMessageV2RestSnapshotFetcher(network).fetch(partition, "conv-1", expectedScopeKind = null)
-
-        assertEquals(
-            "canonical_v2_task_parent_missing",
-            assertIs<CanonicalMessageV2SnapshotLoadResult.Unavailable>(result).diagnostic,
-        )
+        assertEquals(null, CanonicalMessageV2RestSnapshotFetcher(network).topLevelKind(partition, "conv-1"))
         assertFalse("messages/channel/conv-1" in network.paths)
     }
 }

@@ -679,10 +679,12 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             insertOnly: Boolean,
             unknownFieldsByFactId: Map<String, Set<MessageAggregateField>>,
             runPartitionRetention: Boolean,
+            excludedSeqs: Set<Long>,
         ) = guarded {
             delegate.applyCoverage(
                 scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
                 runPartitionRetention,
+                excludedSeqs,
             )
         }
     }

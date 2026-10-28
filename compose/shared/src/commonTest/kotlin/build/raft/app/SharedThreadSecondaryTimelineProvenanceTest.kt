@@ -274,6 +274,14 @@ class SharedThreadSecondaryTimelineProvenanceTest {
     ) : ConversationRepository by delegate {
         var blockRefresh: Boolean = false
 
+        // Message storage Phase 2b: the store asks with captureRawMessagePage; route it to this fake's answer.
+        override suspend fun getThread(
+            threadId: ThreadId,
+            includeFollowedSummaries: Boolean,
+            limit: Int,
+            captureRawMessagePage: Boolean,
+        ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries, limit)
+
         override suspend fun getThread(
             threadId: ThreadId,
             includeFollowedSummaries: Boolean,

@@ -30,59 +30,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Task #390: entering a channel from an unread-activity item used to show a loading shell, then
- * fetch `messages/channel/` once for the durable baseline and AGAIN for the refresh — and if the
- * refresh lost the race (offline, slow network) the thread rendered "cannot load" over messages
- * the baseline load had already committed, i.e. the conversation looked lost. The store now
- * launches the entered-scope load before the offline first-frame read and waits (bounded by
- * `SharedThreadEnterBaselineAwaitMillis`) for it on that path only, so a committed baseline is the
- * first frame itself. The refresh still runs afterwards (it resolves access + canonical fields);
- * the "fetch exactly once" claim is that the baseline writer is the single fetch that produced
- * content, and that first frame never renders empty/loading over committed data.
+ * Task #390 / #18, since message storage Phase 2b: the entry's own page request is the durable write, so there is no
+ * separate baseline load to wait for. The first frame is the disk frame when there is one (read once), the plain loading
+ * shell when there is none (read once, no wait), and a memory candidate never reads disk.
  */
 class SharedThreadStoreEnterBaselineAwaitTest {
     @Test
-    fun baselineCommittedInsideTheAwaitWindowIsTheFirstFrameAndTheChannelIsFetchedOnce() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val reader = MutableFakeReader()
-        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
-        // Stands in for CanonicalMessageV2EnteredScopeLoader.loadAndCommit: the real one writes the
-        // snapshot into the durable partition through the generation engine; here the same effect is
-        // a frame the last-known reader will return when the store reads right after the wait.
-        val loader =
-            SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
-                reader.frames[partition] = frame("baseline body")
-            }
-        val logs = mutableListOf<String>()
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource(api = api, reader = reader, loader = loader, storeScope = backgroundScope),
-                scope = scope,
-                diagnosticsLogger = logs::add,
-            )
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        val payload = store.state.value.payload
-        assertEquals("content", payload.status)
-        assertTrue(payload.durableLastKnown)
-        assertEquals(listOf("baseline body"), payload.messages.map { it.body })
-        assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        // Task #18: the fake load commits synchronously on launch, so the first read already sees it.
-        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
-        assertFalse(logs.any { "thread_enter_baseline_await" in it }, "already on disk at the first read: no wait")
-        // The refresh ran too and failed offline — that is the one `messages/channel/` call the
-        // refresh path makes; the baseline load itself fetches through the loader, which the fake
-        // replaces with an in-memory commit (the real one is exercised in
-        // CanonicalMessageV2EnteredScopeLoaderTest).
-        assertEquals(1, api.channelMessageCalls)
-        scope.cancel()
-    }
-
-    @Test
-    fun loaderThatCommitsNothingLeavesTheOrdinaryLoadingShell() = runTest {
-        // Awaited, finished, wrote nothing (flag off / not a member / failed): the disk read then
-        // misses as it does today and the first frame is the plain loading shell — the await must
-        // not surface anything the baseline never committed.
+    fun anEmptyDiskIsReadOnceAndTheEntryNeverWaits() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         val loader = SharedThreadStoreEnteredScopeTest.FakeLoader()
@@ -97,40 +51,9 @@ class SharedThreadStoreEnterBaselineAwaitTest {
 
         val payload = store.state.value.payload
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        // Task #18: one read before the wait (the disk had no frame yet) and one after it.
-        assertEquals(List(2) { partition(ownerA) to "channel-1" }, reader.reads)
-        assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
+        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
+        assertFalse(logs.any { "thread_enter_baseline_await" in it }, logs.toString())
         assertFalse(payload.durableLastKnown)
-        assertTrue(payload.status != "content" || payload.messages.isEmpty(), payload.status)
-        scope.cancel()
-    }
-
-    @Test
-    fun baselineCommittedDuringTheWaitIsTheFirstFrameWhenTheDiskWasEmpty() = runTest {
-        // Task #390 path kept by task #18: nothing on disk at the first read, the load commits while the
-        // entry waits, and the second read's frame (not a loading shell) is the first frame.
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val reader = MutableFakeReader()
-        val loader =
-            SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
-                delay(50)
-                reader.frames[partition] = frame("baseline body")
-            }
-        val logs = mutableListOf<String>()
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource(reader = reader, loader = loader, storeScope = backgroundScope),
-                scope = scope,
-                diagnosticsLogger = logs::add,
-            )
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        val payload = store.state.value.payload
-        assertEquals("content", payload.status)
-        assertTrue(payload.durableLastKnown)
-        assertEquals(listOf("baseline body"), payload.messages.map { it.body })
-        assertEquals(List(2) { partition(ownerA) to "channel-1" }, reader.reads)
-        assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
         scope.cancel()
     }
 
@@ -142,8 +65,7 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
         reader.frames[partition(ownerA)] = frame("disk body")
-        val neverEnds = CompletableDeferred<Unit>()
-        val loader = SharedThreadStoreEnteredScopeTest.FakeLoader { _, _ -> neverEnds.await() }
+        val loader = SharedThreadStoreEnteredScopeTest.FakeLoader()
         val logs = mutableListOf<String>()
         val store =
             SharedThreadStore(
@@ -160,20 +82,17 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
         assertFalse(logs.any { "thread_enter_baseline_await" in it }, logs.toString())
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        assertFalse(neverEnds.isCompleted)
         scope.cancel()
     }
 
     @Test
     fun memoryCachedEntryNeverReadsDiskEvenWhenTheLoaderCommits() = runTest {
-        // The await + disk read live strictly inside the no-memory-candidate branch: a cached
-        // payload is newer by construction and the loader's write must not be observed this entry.
+        // The disk read lives strictly inside the no-memory-candidate branch: a cached payload is newer by
+        // construction, so a frame on disk is not read this entry.
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val reader = MutableFakeReader()
-        val loader =
-            SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
-                reader.frames[partition] = frame("baseline body")
-            }
+        reader.frames[partition(ownerA)] = frame("baseline body")
+        val loader = SharedThreadStoreEnteredScopeTest.FakeLoader()
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val dataSource = dataSource(api = api, reader = reader, loader = loader, storeScope = backgroundScope)
         assertNotNull(dataSource.readSession())

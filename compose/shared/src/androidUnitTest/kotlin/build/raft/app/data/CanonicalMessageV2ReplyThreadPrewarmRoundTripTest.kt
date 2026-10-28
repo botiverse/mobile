@@ -186,15 +186,17 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
     }
 
     @Test
-    fun prewarmDuringAnEnterOfTheSameThreadLeavesItToTheEnter() = withFreshDatabase { database ->
+    fun prewarmDuringAnEnterOfTheSameThreadIsWrittenAndTheEnterAddsItsPage() = withFreshDatabase { database ->
+        // Phase 2b: there is no enter in-flight set any more; the scope writer serializes the two writes and the
+        // enter's page is unioned with what the prewarm stored.
         val rig = Rig(database)
         runBlocking {
             rig.network.onPageRequested = {
-                // The enter is between its parent confirmation and its page.
+                // The thread store's own request is out.
                 rig.prewarm(replyPageArray(50, 60), limit = 30)
             }
             rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            assertTrue(rig.logs.any { skipped("enter_in_flight") in it }, rig.logs.toString())
+            assertTrue(rig.logs.none { skipped("enter_in_flight") in it }, rig.logs.toString())
             assertTrue(rig.logs.any { "canonical_v2_enter_snapshot server=server-1 scope=thread-1 scopeKind=thread outcome=committed facts=3" in it }, rig.logs.toString())
             assertEquals(listOf(50L, 60L, 70L), assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq })
         }

@@ -64,7 +64,7 @@ class CanonicalMessageV2ProductionBindingTest {
         )
         h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(
-            listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
+            listOf("messages/channel/channel-1", "channels/channel-1", "channels/channel-1/threads"),
             h.network.paths,
         )
         val frame = h.store.snapshots.single()

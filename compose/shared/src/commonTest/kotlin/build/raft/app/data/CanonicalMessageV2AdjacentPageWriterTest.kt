@@ -471,7 +471,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
             messageWindow: ChannelMessageWindow? = null,
-        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, messageWindow, false, null, stillCurrent)
+        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, messageWindow, false, null, null, stillCurrent)
     }
 
     /**
@@ -640,13 +640,14 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
         insertOnly: Boolean,
         unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
         runPartitionRetention: Boolean,
+        excludedSeqs: Set<Long>,
     ): CanonicalMessageV2StoreWriteResult {
         localRev += 1
         val scopeFacts = facts.getOrPut(scope) { mutableMapOf() }
         envelopes.forEach { scopeFacts[it.fact.id] = it }
-        val unioned = coverage?.let {
-            build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union(segments[scope].orEmpty(), it.toSegment(localRev))
-        } ?: segments[scope].orEmpty()
+        val unioned = coverage?.excluding(excludedSeqs).orEmpty().fold(segments[scope].orEmpty()) { acc, piece ->
+            build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union(acc, piece.toSegment(localRev))
+        }
         segments[scope] = unioned
         val written = coverageHeader(cursors[scope], unioned, scopeFacts.values, threadParent, envelopes)
         cursors[scope] = written

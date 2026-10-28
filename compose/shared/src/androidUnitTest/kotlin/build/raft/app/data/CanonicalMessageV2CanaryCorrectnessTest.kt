@@ -1724,9 +1724,10 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             insertOnly: Boolean,
             unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
             runPartitionRetention: Boolean,
+            excludedSeqs: Set<Long>,
         ): CanonicalMessageV2StoreWriteResult {
             snapshotWrites += 1
-            return delegate.applyCoverage(scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId, runPartitionRetention)
+            return delegate.applyCoverage(scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId, runPartitionRetention, excludedSeqs)
         }
         override suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean = delegate.containsFact(scope, factId)
     }
