@@ -5,12 +5,15 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftThemeDecorSlot
 import build.raft.designsystem.theme.raftThemeDecorArt
 import build.raft.designsystem.theme.raftThemeDecorShown
+import build.raft.designsystem.theme.raftThemeDecorTopEndOffset
+import build.raft.designsystem.theme.raftThemeDecorTopPlacement
 import build.raft.designsystem.tokens.RaftThemeId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -101,5 +104,42 @@ class RaftThemeDecorTest {
                 "bots $slot",
             )
         }
+    }
+
+    @Test
+    fun theTopStripKeeps72dpFromTheEndBesideFewActions() {
+        // No actions, or a bell (36dp + the bar's 12dp end padding): 72dp, as raft-ui's default.
+        assertEquals(72.dp, raftThemeDecorTopEndOffset(trailingOccupied = 0.dp, endInset = 0.dp))
+        assertEquals(72.dp, raftThemeDecorTopEndOffset(trailingOccupied = 48.dp, endInset = 0.dp))
+        assertEquals(72.dp, raftThemeDecorTopEndOffset(trailingOccupied = 56.dp, endInset = 0.dp), "exactly 16dp before")
+    }
+
+    @Test
+    fun theTopStripSits16dpBeforeWiderActions() {
+        // An avatar stack and two icon buttons reaching 141dp in: the strip ends 16dp before them.
+        assertEquals(157.dp, raftThemeDecorTopEndOffset(trailingOccupied = 141.dp, endInset = 0.dp))
+    }
+
+    @Test
+    fun theEndInsetMovesTheStripIn() {
+        // Windows' caption controls (138dp): right calc(72px + inset-end), and after the actions.
+        assertEquals(210.dp, raftThemeDecorTopEndOffset(trailingOccupied = 0.dp, endInset = 138.dp))
+        assertEquals(295.dp, raftThemeDecorTopEndOffset(trailingOccupied = 141.dp, endInset = 138.dp))
+        assertEquals(72.dp, raftThemeDecorTopEndOffset(trailingOccupied = 0.dp, endInset = (-4).dp), "no negative inset")
+    }
+
+    @Test
+    fun theTopStripDrawsOnlyWhenItFitsWhole() {
+        val art = 190.dp
+        // Room to the centre's end: 332dp at a 1024dp bar with a 360dp search field.
+        assertEquals(72.dp, raftThemeDecorTopPlacement(0.dp, 0.dp, centerEndOffset = 332.dp, artWidth = art))
+        assertEquals(142.dp, raftThemeDecorTopPlacement(126.dp, 0.dp, centerEndOffset = 332.dp, artWidth = art), "just fits")
+        assertNull(raftThemeDecorTopPlacement(127.dp, 0.dp, centerEndOffset = 332.dp, artWidth = art), "1dp short: skipped, never cut")
+        assertNull(raftThemeDecorTopPlacement(141.dp, 0.dp, centerEndOffset = 332.dp, artWidth = art), "actions at 1024dp")
+        // With a 138dp end inset the centre's end moves in too (the bar's content shrinks by it).
+        assertNull(raftThemeDecorTopPlacement(141.dp, 138.dp, centerEndOffset = 263.dp + 138.dp, artWidth = art))
+        assertEquals(295.dp, raftThemeDecorTopPlacement(141.dp, 138.dp, centerEndOffset = 504.dp, artWidth = art), "1280dp bar")
+        // Nothing measured at the centre: only the offset applies.
+        assertEquals(72.dp, raftThemeDecorTopPlacement(0.dp, 0.dp, centerEndOffset = Dp.Infinity, artWidth = art))
     }
 }
