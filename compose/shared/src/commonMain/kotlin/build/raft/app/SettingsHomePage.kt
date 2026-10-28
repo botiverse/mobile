@@ -6460,7 +6460,7 @@ private fun RaftAppShellReadyContent(
     val serverDrawerUserHeader = rememberRaftServerDrawerUserHeader(readySession)
     // "Open workspaces in separate app windows": another server opens in (or brings to front) its
     // own window, the way the Choose workspace page does; false means switch in place.
-    fun openServerInSeparateWindowIfEnabled(serverId: String, source: String): Boolean {
+    fun openServerInSeparateWindowIfEnabled(serverId: String, source: String, keepTab: String? = null): Boolean {
         val session = readySession ?: return false
         // The server this window shows now (the shell's selected server, else what Home renders,
         // else the session's) — never the launch-time scope server.
@@ -6482,11 +6482,12 @@ private fun RaftAppShellReadyContent(
                         environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
                         accountId = session.user.id,
                         serverId = serverId
-                    ).normalizedOrNull()
+                    ).normalizedOrNull(),
+                keepTab = keepTab
             ) ?: return false
         bridge.log(
             "app_shell_server_switch_new_window source=$source " +
-                "from=${currentServerId.orEmpty()} to=${serverId.trim()}"
+                "from=${currentServerId.orEmpty()} to=${serverId.trim()} tab=${keepTab.orEmpty()}"
         )
         pager.openAppShellReplacingCurrentPage(pageData)
         return true
@@ -6709,7 +6710,7 @@ private fun RaftAppShellReadyContent(
         serverMenuState.dismiss()
         val current = serverMenuModel?.currentServer?.id.orEmpty()
         val plan = appShellServerMenuSwitchPlan(current, serverId, selectedTab) ?: return
-        if (openServerInSeparateWindowIfEnabled(plan.serverId, source = "server_menu")) return
+        if (openServerInSeparateWindowIfEnabled(plan.serverId, source = "server_menu", keepTab = plan.tab)) return
         val homeServerId = appShellHomeListServerId(renderedServerId = renderedHomeServerId, readyServerId = readyServerId)
         pendingHomeServerSwitchId = plan.serverId.takeIf { it != homeServerId }
         observedHomeServerSwitchId = null
@@ -7589,7 +7590,7 @@ private fun RaftAppShellReadyContent(
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                                 },
                                 onOpenServerInSeparateWindow = { serverId ->
-                                    openServerInSeparateWindowIfEnabled(serverId, source = "home_switcher")
+                                    openServerInSeparateWindowIfEnabled(serverId, source = "home_switcher", keepTab = selectedTab)
                                 },
                                 onOpenSearch = {
                                     openSearchTab(source = "home_head")
@@ -8943,6 +8944,10 @@ internal fun raftMultiShellHostEnabled(): Boolean =
  * window and stale after in-place switches), the page data that opens (or brings to front) that
  * server's own window — the launch the Choose workspace page uses, minus replacing the source page.
  * Null means switch in place; so does an unknown current server.
+ *
+ * [keepTab] is the top-level tab the switch keeps (D1a, as the in-place switch does): the window
+ * opens on it (`slockInitialTab`, an intent, not product state) instead of the default Home. Null
+ * or "home" opens Home. Pushed pages are not carried.
  */
 internal fun appShellServerSwitchNewWindowPageDataOrNull(
     sourceStoreScope: RaftShellStoreScope,
@@ -8950,7 +8955,8 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
     sourceDocumentShell: Boolean,
     selectedServerId: String,
     multiShellHostEnabled: Boolean,
-    routeOwner: AuthenticatedRouteOwner?
+    routeOwner: AuthenticatedRouteOwner?,
+    keepTab: String? = null
 ): JSONObject? {
     if (routeOwner == null) return null
     val current = currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
@@ -8965,7 +8971,10 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
         suppressRestoreLanding = true,
         routeOwner = routeOwner,
         replaceCurrent = false
-    )
+    ).apply {
+        val tab = keepTab?.let(::retainedAppShellSelectedTab)
+        if (tab != null && tab != "home") put(AppShellInitialTabKey, tab)
+    }
 }
 
 internal fun isMultiShellCrossServerSelection(

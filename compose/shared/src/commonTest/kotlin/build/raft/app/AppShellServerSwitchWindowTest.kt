@@ -151,4 +151,49 @@ class AppShellServerSwitchWindowTest {
         assertNull(decide(sourceScope, currentServerId = null, picked = "server-b"))
         assertNull(decide(sourceScope, currentServerId = " ", picked = "server-b"))
     }
+    private fun switchOnTab(tab: String?, multiShellHostEnabled: Boolean = true) =
+        appShellServerSwitchNewWindowPageDataOrNull(
+            sourceStoreScope = sourceScope,
+            currentServerId = "server-a",
+            sourceDocumentShell = false,
+            selectedServerId = "server-b",
+            multiShellHostEnabled = multiShellHostEnabled,
+            routeOwner = owner("server-b"),
+            keepTab = tab,
+        )
+
+    @Test
+    fun switchOnActivityOpensTheNewServerWindowOnActivity() {
+        val pageData = assertNotNull(switchOnTab("activity"))
+
+        assertEquals("activity", pageData.optString("slockInitialTab"))
+        // The window the host opens reads it back as its launch tab, not the default Home.
+        assertEquals("activity", pageData.appShellLaunchSelection().selectedTab)
+    }
+
+    @Test
+    fun switchKeepsTheSameTabWithAndWithoutSeparateWindows() {
+        for (tab in listOf("activity", "tasks", "dms", "more")) {
+            val inPlace = assertNotNull(appShellServerMenuSwitchPlan("server-a", "server-b", tab))
+            val newWindow = assertNotNull(switchOnTab(tab))
+
+            assertEquals(tab, inPlace.tab)
+            assertEquals(inPlace.tab, newWindow.appShellLaunchSelection().selectedTab)
+        }
+    }
+
+    @Test
+    fun switchOnHomeOrWithoutATabOpensHomeAndAddsNoTabKey() {
+        for (tab in listOf("home", null, "not-a-tab")) {
+            val pageData = assertNotNull(switchOnTab(tab))
+
+            assertEquals(false, pageData.has("slockInitialTab"))
+            assertEquals("home", pageData.appShellLaunchSelection().selectedTab)
+        }
+    }
+
+    @Test
+    fun keptTabDoesNotTurnAnInPlaceSwitchIntoANewWindow() {
+        assertNull(switchOnTab("activity", multiShellHostEnabled = false))
+    }
 }
