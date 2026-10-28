@@ -4,7 +4,6 @@ import android.os.Looper
 import android.view.View
 import androidx.activity.compose.setContent
 import androidx.compose.ui.platform.LocalView
-import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -19,45 +18,20 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * artin (dm fff6fafe, 2026-10-28): opening the Activity filter menu turned the status bar icons
- * white on the yellow frame. A focusable popup is its own window on Android and, while it holds
- * focus, the bar icons follow its appearance; it must carry the host's light-bar flags.
+ * artin (dm fff6fafe, 2026-10-28): opening a menu or a dialog changed the status bar icons. A dialog
+ * window that holds focus decides the bar icons; since #3623 it guessed them from the mode instead of
+ * copying the host, which is wrong on a frame that is dark in light mode (Space, Quest). This fails on
+ * the old code.
  *
- * Runs on API 29 (systemUiVisibility): an API 34 run of these windows took the CI test JVM down.
- * Robolectric does not model the system's choice of which window drives the bar icons, so the
- * menu case only guards that the popup window carries the host's flags (it passes on the old
- * code too); the device check is artin's. The dialog case does fail on the old code: since
- * #3623 a dialog guessed its icons from the mode instead of copying the host.
+ * The menu half (RaftPopupWindowPolicy) has no test here: Robolectric does not model which window drives
+ * the bar icons, a popup test passed on the old code too, and an open RaftDropdownMenu hung the
+ * Robolectric run (60s watchdog). It is verified on a device.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
-class RaftDropdownMenuSystemBarsTest {
+class RaftWindowDialogSystemBarsTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
-
-    @Suppress("DEPRECATION")
-    @Test
-    fun anOpenMenuKeepsTheHostsDarkStatusBarIcons() {
-        var popupRoot: View? = null
-        val activity = activities.launch()
-        // The page asked for dark icons (Raft Yellow frame).
-        activity.window.decorView.systemUiVisibility =
-            activity.window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-        activity.setContent {
-            RaftTheme {
-                RaftDropdownMenu(expanded = true, onDismissRequest = {}) {
-                    popupRoot = LocalView.current.rootView
-                }
-            }
-        }
-        repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50)) }
-        val root = assertNotNull(popupRoot, "the menu's popup window")
-        assertTrue(root !== activity.window.decorView, "the menu is its own window")
-        assertTrue(
-            root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR != 0,
-            "the popup window keeps the host's dark status bar icons"
-        )
-    }
 
     @Suppress("DEPRECATION")
     @Test
