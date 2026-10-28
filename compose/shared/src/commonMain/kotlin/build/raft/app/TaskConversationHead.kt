@@ -1,5 +1,18 @@
 package build.raft.app
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftPullDownPanel
+import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,6 +42,10 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.graphics.compositeOver
@@ -264,7 +281,12 @@ internal val TaskHeadPinnedMinWidth = 600.dp
  * ([connection], on an ancestor of the message list): a drag towards newer messages slides it away
  * before the list scrolls; a drag back down brings it back only once the list is at its oldest
  * message, as the first row would. [collapsed]: out of view (the top bar then names the task's
- * state, and [expand] brings it back). Off a phone it stays pinned and none of this applies.
+ * state). Off a phone it stays pinned and none of this applies.
+ *
+ * While it is out of view, the top bar pulls it down over the messages ([floatOpen], web
+ * `TaskHeadPullDown`, slock #11722): [toggleFloat] on the bar; it closes on the bar again, a tap
+ * outside it, a swipe up on it, Back / Escape, focus in the composer ([closeFloat]) and as soon as
+ * the reader scrolls the messages ([connection]) or the head comes back in view.
  */
 @Stable
 internal class TaskHeadScrollState {
@@ -278,12 +300,39 @@ internal class TaskHeadScrollState {
     val collapsed: Boolean
         get() = scrollsWithConversation && heightPx > 0f && offsetPx >= heightPx - 0.5f
 
+    private var floatRequested by mutableStateOf(false)
+
+    /** The bottom edge of the pulled-down head in root coordinates (a press below it is outside). */
+    internal var floatBottomInRootPx: Float = 0f
+
+    /** The head pulled down from the top bar over the messages: only while it is out of view. */
+    val floatOpen: Boolean
+        get() = floatRequested && collapsed
+
+    /** The top bar's summary was tapped: pull the head down, or put it back up. */
+    fun toggleFloat() {
+        floatRequested = !floatOpen && collapsed
+    }
+
+    /** Puts the pulled-down head back up; true when it was open (Back took it). */
+    fun closeFloat(): Boolean {
+        val wasOpen = floatOpen
+        floatRequested = false
+        return wasOpen
+    }
+
+    /** Back in view, the head needs no panel (and one must not come back with the next scroll away). */
+    private fun dropFloatIfInView() {
+        if (!collapsed) floatRequested = false
+    }
+
     /** Moves the head by a drag [delta] (negative: up, away); returns the part it took. */
     fun consume(delta: Float): Float {
         if (!scrollsWithConversation) return 0f
         val old = offsetPx
         val next = (old - delta).coerceIn(0f, heightPx)
         offsetPx = next
+        dropFloatIfInView()
         return old - next
     }
 
@@ -293,9 +342,10 @@ internal class TaskHeadScrollState {
         if (scrollsWithConversation) offsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
     }
 
-    /** Back in view (the top bar's summary was tapped). */
+    /** Back in view. */
     fun expand() {
         offsetPx = 0f
+        floatRequested = false
     }
 
     internal fun updateHeight(height: Float) {
@@ -303,12 +353,16 @@ internal class TaskHeadScrollState {
         val wasCollapsed = collapsed
         heightPx = height
         offsetPx = if (wasCollapsed) height else offsetPx.coerceIn(0f, height)
+        dropFloatIfInView()
     }
 
     val connection: NestedScrollConnection =
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
-                if (available.y < 0f) Offset(0f, consume(available.y)) else Offset.Zero
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // The reader starts scrolling the messages: the pulled-down head goes back up (web).
+                if (source == NestedScrollSource.UserInput && available.y != 0f) floatRequested = false
+                return if (available.y < 0f) Offset(0f, consume(available.y)) else Offset.Zero
+            }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
                 if (available.y > 0f) Offset(0f, consume(available.y)) else Offset.Zero
@@ -361,7 +415,13 @@ internal fun TaskConversationHead(
         val pageHeight = maxHeight
         val phone = maxWidth < TaskHeadPinnedMinWidth
         SideEffect { scrollState.scrollsWithConversation = phone }
-        LaunchedEffect(phone, keyboardUp) { if (phone && keyboardUp) scrollState.collapse() }
+        LaunchedEffect(phone, keyboardUp) {
+            if (phone && keyboardUp) {
+                scrollState.collapse()
+                // Typing: the composer has focus, so the pulled-down head goes back up.
+                scrollState.closeFloat()
+            }
+        }
         Column(Modifier.fillMaxWidth()) {
             if (phone) {
                 // The head at its full height, shown from [offsetPx] down: it slides up under the top bar.
@@ -808,26 +868,43 @@ internal fun TaskConversationHeadRoute(
     onRetryHistory: (() -> Unit)? = null,
     /** False: status and assignee are plain facts whatever the role ([taskConversationHeadModel]). */
     editable: Boolean = true,
+    /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one in the conversation. */
+    floating: Boolean = false,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
     val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable)
+    val onOpenAssignee = {
+        if (model.bar.assigneeEditable) {
+            assigneeQuery = ""
+            assigneeSheetOpen = true
+        }
+    }
     RaftDesignSystemTheme {
-        TaskConversationHead(
-            model = model,
-            onSelectStatus = onUpdateStatus,
-            onOpenAssignee = {
-                if (model.bar.assigneeEditable) {
-                    assigneeQuery = ""
-                    assigneeSheetOpen = true
-                }
-            },
-            onOpenSource = onOpenSource,
-            onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-            scrollState = scrollState,
-            keyboardUp = keyboardUp,
-            onRetryHistory = onRetryHistory,
-        )
+        if (floating) {
+            val label = task.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: task.title
+            TaskHeadFloat(scrollState = scrollState, label = label) {
+                TaskHeadContent(
+                    model = model,
+                    onSelectStatus = onUpdateStatus,
+                    onOpenAssignee = onOpenAssignee,
+                    onOpenSource = onOpenSource,
+                    onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                    onRetryHistory = onRetryHistory,
+                )
+            }
+        } else {
+            TaskConversationHead(
+                model = model,
+                onSelectStatus = onUpdateStatus,
+                onOpenAssignee = onOpenAssignee,
+                onOpenSource = onOpenSource,
+                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+                scrollState = scrollState,
+                keyboardUp = keyboardUp,
+                onRetryHistory = onRetryHistory,
+            )
+        }
         if (assigneeSheetOpen && model.bar.assigneeEditable) {
             TaskConversationAssigneeSheet(
                 current = task.assignee,
@@ -934,20 +1011,25 @@ private fun TaskHeadDateTime.localized(): String {
 
 /**
  * The task conversation's top bar (web `TaskConversationBar`): the task's ref (`#channel:#7`, Space
- * Mono, muted) over "Task #7"; while the head is scrolled away ([summarized]) the second line also
- * names the task's status and assignee, and tapping it brings the head back. The More menu's View in
- * Channel and Follow / Unfollow Task go with it.
+ * Mono, muted) over "Task #7". While the head is scrolled away ([summarized]) the second line is
+ * "Task #7", the status badge, the assignee's face and a chevron (slock #11722): tapping the bar
+ * pulls the head down over the messages ([headFloatOpen]) and tapping it again puts it back. The
+ * More menu's View in Channel and Follow / Unfollow Task go with it.
  */
 @Immutable
 internal data class TaskConversationHeaderChrome(
     val ref: String,
     val taskNumber: Int?,
     val status: TaskStatus,
+    /** The assignee's name: the face's label for screen readers (the bar shows the face only). */
     val assigneeName: String?,
+    val assigneeKind: MemberKind? = null,
+    val assigneeAvatarWireValue: String? = null,
     val summarized: Boolean,
+    val headFloatOpen: Boolean = false,
     /** Null: not known yet (no Follow row). */
     val followed: Boolean?,
-    val onBackToHead: () -> Unit,
+    val onToggleHeadFloat: () -> Unit,
     val onViewInChannel: () -> Unit,
     val onToggleFollow: () -> Unit,
 )
@@ -955,7 +1037,8 @@ internal data class TaskConversationHeaderChrome(
 internal fun TaskSummary.taskConversationHeaderChrome(
     state: TaskConversationHeaderState,
     summarized: Boolean,
-    onBackToHead: () -> Unit,
+    headFloatOpen: Boolean,
+    onToggleHeadFloat: () -> Unit,
     onViewInChannel: () -> Unit,
     onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
 ): TaskConversationHeaderChrome {
@@ -965,9 +1048,12 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         taskNumber = taskNumber,
         status = status,
         assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
+        assigneeKind = assignee?.kind,
+        assigneeAvatarWireValue = assignee?.avatarWireValueForRenderedAvatar(),
         summarized = summarized,
+        headFloatOpen = headFloatOpen && summarized,
         followed = followed,
-        onBackToHead = onBackToHead,
+        onToggleHeadFloat = onToggleHeadFloat,
         onViewInChannel = onViewInChannel,
         onToggleFollow = { followed?.let(onToggleFollow) },
     )
@@ -982,28 +1068,112 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         chrome.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: chrome.ref
     // At large text the bar has room for one line: the task line keeps it.
     val refLine = LocalDensity.current.fontScale <= 1.3f
-    Column(modifier, verticalArrangement = Arrangement.Top) {
+    // The whole bar is the toggle while the head is away (web: the summary button; here the bar's
+    // title block, the ref line included, so a tap anywhere on it opens the head).
+    val focusManager = LocalFocusManager.current
+    val toggle =
+        if (chrome.summarized) {
+            val open = chrome.headFloatOpen
+            val onToggle = {
+                // Opening it takes focus off the composer (web moves focus into the panel).
+                if (!open) focusManager.clearFocus()
+                chrome.onToggleHeadFloat()
+            }
+            Modifier
+                .clip(RoundedCornerShape(RaftRadius.Control))
+                .clickable(role = Role.Button, onClick = onToggle)
+                .semantics(mergeDescendants = true) {
+                    if (open) collapse { onToggle(); true } else expand { onToggle(); true }
+                }
+        } else {
+            Modifier
+        }
+    Column(modifier.then(toggle), verticalArrangement = Arrangement.Top) {
         if (refLine) {
             RaftText(chrome.ref, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (chrome.summarized) {
-            val backToTop = stringResource(Res.string.task_head_back_to_top)
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(RaftRadius.Control))
-                    .clickable(role = Role.Button, onClick = chrome.onBackToHead)
-                    .semantics(mergeDescendants = true) { contentDescription = backToTop },
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftText(label, style = typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.foreground, maxLines = 1)
                 RaftTaskStatusBadge(chrome.status.raftTaskStatus(), chrome.status.localizedLabel(), size = RaftTaskStatusBadgeSize.Sm)
-                chrome.assigneeName?.let {
-                    RaftText(it, Modifier.weight(1f, fill = false), style = typography.subhead, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // The face only (Kirby: a cut name says less than the face), named for screen readers.
+                chrome.assigneeName?.let { name ->
+                    RaftAppAvatar(
+                        avatarWireValue = chrome.assigneeAvatarWireValue,
+                        label = name,
+                        modifier = Modifier.semantics { contentDescription = name },
+                        avatarSize = RaftAvatarSize.Xs.edge,
+                        fallbackFill = raftAvatarFallbackFill(chrome.assigneeKind),
+                    )
                 }
+                TaskBarChevron(open = chrome.headFloatOpen)
             }
         } else {
             RaftText(label, style = typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.foreground, maxLines = 1)
         }
     }
 }
+
+/** The bar's chevron: down, and up while the head is pulled down (turned with `ease-slide`). */
+@Composable
+private fun TaskBarChevron(open: Boolean) {
+    val reducedMotion = rememberRaftReducedMotion()
+    val turn by animateFloatAsState(
+        targetValue = if (open) 180f else 0f,
+        animationSpec = if (reducedMotion) snap() else tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide),
+        label = "task-bar-chevron",
+    )
+    RaftGlyphIcon(RaftGlyph.ChevronDown, Modifier.rotate(turn), size = 14.dp, color = RaftTheme.colors.foregroundHint)
+}
+
+/**
+ * The head pulled down from the top bar over the messages (web `TaskHeadPullDown`, slock #11722):
+ * the same title, description, facts and History as the head in the conversation, editable the
+ * same way, without losing the reader's place. Composed at the top of the box over the messages.
+ */
+@Composable
+internal fun TaskHeadFloat(
+    scrollState: TaskHeadScrollState,
+    label: String,
+    modifier: Modifier = Modifier,
+    reducedMotion: Boolean = rememberRaftReducedMotion(),
+    content: @Composable () -> Unit,
+) {
+    RaftPullDownPanel(
+        open = scrollState.floatOpen,
+        onDismiss = { scrollState.closeFloat() },
+        modifier = modifier.onGloballyPositioned { scrollState.floatBottomInRootPx = it.boundsInRoot().bottom },
+        paneTitle = label,
+        reducedMotion = reducedMotion,
+    ) {
+        Column(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)) {
+            content()
+        }
+    }
+}
+
+/**
+ * On the whole task page: a press anywhere outside the pulled-down head puts it back up, the
+ * composer and its buttons included (web: a tap anywhere outside closes it). The press still goes
+ * where the reader meant it. The top bar sits above the head, so a press there is not outside: the
+ * bar's own tap toggles the head.
+ */
+internal fun Modifier.taskHeadFloatOutsidePress(scrollState: TaskHeadScrollState): Modifier =
+    composed {
+        val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+        onGloballyPositioned { coordinates[0] = it }
+            .pointerInput(scrollState) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val layout = coordinates[0]?.takeIf { it.isAttached } ?: return@awaitEachGesture
+                    if (scrollState.floatOpen &&
+                        taskHeadFloatPressIsOutside(layout.localToRoot(down.position).y, scrollState.floatBottomInRootPx)
+                    ) {
+                        scrollState.closeFloat()
+                    }
+                }
+            }
+    }
+
+/** A press at [rootY] misses the pulled-down head whose bottom edge is at [floatBottomInRootPx]. */
+internal fun taskHeadFloatPressIsOutside(rootY: Float, floatBottomInRootPx: Float): Boolean = rootY > floatBottomInRootPx

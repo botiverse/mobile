@@ -53,6 +53,8 @@ import org.robolectric.annotation.GraphicsMode
  * here it is at the top. Then the same page while typing (the keyboard, stood in for by the
  * `fill-strong` block, folds the head away and the top bar names the task's status and assignee),
  * and at 2x text. Verify / record as [RaftRobolectricScreenshot].
+ *
+ * [TaskConversationHeadFloatScreenshotTest]: the head scrolled away and pulled down from the bar.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -110,9 +112,10 @@ private fun TaskPage(keyboardUp: Boolean, historyOpen: Boolean = true) {
             taskNumber = 7,
             status = TaskStatus.InProgress,
             assigneeName = "Lagoon",
+            assigneeKind = MemberKind.Agent,
             summarized = scrollState.collapsed,
             followed = true,
-            onBackToHead = {},
+            onToggleHeadFloat = {},
             onViewInChannel = {},
             onToggleFollow = {},
         )
@@ -136,13 +139,17 @@ private fun TaskPage(keyboardUp: Boolean, historyOpen: Boolean = true) {
 }
 
 @Composable
-private fun ColumnScope.Messages() {
+private fun ColumnScope.Messages(earlier: Boolean = false) {
     // As the page's list: newest at the bottom, older ones cut at the top when they do not fit.
     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = true) {
-        listOf(
-            message("m-1", 1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Pushed the head: on a phone it scrolls away with the conversation."),
-            message("m-2", 2, "user-artin", "artin", MemberKind.Human, "Looks right on my phone. Ship it."),
-            message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
+        (
+            if (earlier) EarlierMessages else emptyList()
+        ).plus(
+            listOf(
+                message("m-1", 1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Pushed the head: on a phone it scrolls away with the conversation."),
+                message("m-2", 2, "user-artin", "artin", MemberKind.Human, "Looks right on my phone. Ship it."),
+                message("m-3", 3, "agent-stamp", "Stamp", MemberKind.Agent, "PR #3873 is approved."),
+            )
         ).reversed().forEach { item ->
             item(key = item.id) {
             ThreadMessageCard(
@@ -164,6 +171,17 @@ private fun ColumnScope.Messages() {
         }
     }
 }
+
+/** Earlier messages: once the head has scrolled away the list fills the page. */
+private val EarlierMessages =
+    listOf(
+        message("m-e1", -6, "user-artin", "artin", MemberKind.Human, "Once the head is gone, how do I check the status?"),
+        message("m-e2", -5, "agent-lagoon", "Lagoon", MemberKind.Agent, "The bar keeps it: Task #7, the status and the assignee."),
+        message("m-e3", -4, "user-artin", "artin", MemberKind.Human, "And the description?"),
+        message("m-e4", -3, "agent-lagoon", "Lagoon", MemberKind.Agent, "Tap the bar: the head comes down over the messages."),
+        message("m-e5", -2, "user-artin", "artin", MemberKind.Human, "Without losing my place?"),
+        message("m-e6", -1, "agent-lagoon", "Lagoon", MemberKind.Agent, "Yes, nothing under it moves."),
+    )
 
 private fun message(id: String, seq: Long, authorId: String, author: String, kind: MemberKind, body: String) =
     RaftThreadMessageItem(
@@ -329,4 +347,107 @@ private object QuietEventBus : build.raft.app.data.RaftEventBus {
         build.raft.app.data.RealtimeSubscription {}
 
     override fun post(eventName: String, eventData: kotlinx.serialization.json.JsonObject, crossProcess: Boolean, source: String) = Unit
+}
+
+/**
+ * Task v2 on a phone once the head has scrolled away (slock #11722, Kirby's web `TaskHeadPullDown`):
+ * the top bar's compact line ("Task #7", the status badge, the assignee's face, a chevron) over
+ * the messages, then the head pulled down from it over them (`layer-canvas`, `shadow-float`, the
+ * `line-seam` hairline at its bottom; no scrim, the messages stay put). 360dp and 412dp, light and
+ * dark. Verify / record as [RaftRobolectricScreenshot].
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
+class TaskConversationHeadFloatScreenshotTest {
+    @get:org.junit.Rule
+    val activities = RobolectricComposeActivityRule()
+
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "task-head-float-screenshot"
+            pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
+
+    @Test
+    fun closedLight() = capture("task.conversation.head-float.closed", RaftAppAppearance.Light) { TaskFloatPage(open = false) }
+
+    @Test
+    fun closedDark() = capture("task.conversation.head-float.closed.dark", RaftAppAppearance.Dark) { TaskFloatPage(open = false) }
+
+    @Test
+    @Config(qualifiers = "w412dp-h800dp-xxhdpi")
+    fun closedWide() = capture("task.conversation.head-float.closed.w412", RaftAppAppearance.Light) { TaskFloatPage(open = false) }
+
+    @Test
+    fun openLight() = capture("task.conversation.head-float.open", RaftAppAppearance.Light) { TaskFloatPage(open = true) }
+
+    @Test
+    fun openDark() = capture("task.conversation.head-float.open.dark", RaftAppAppearance.Dark) { TaskFloatPage(open = true) }
+
+    @Test
+    @Config(qualifiers = "w412dp-h800dp-xxhdpi")
+    fun openWide() = capture("task.conversation.head-float.open.w412", RaftAppAppearance.Light) { TaskFloatPage(open = true) }
+
+    private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(livePager),
+                LocalThreadHeaderMenuEventBus provides QuietEventBus,
+            ) {
+                RaftDesignSystemTheme { content() }
+            }
+        }
+}
+
+/** The page as ThreadPage lays it out for a task: the head and the messages in a box the pulled-down head hangs in. */
+@Composable
+private fun TaskFloatPage(open: Boolean) {
+    val scrollState = remember { TaskHeadScrollState() }
+    // Scrolled away, as after reading down the conversation; then the bar is tapped.
+    androidx.compose.runtime.LaunchedEffect(scrollState.scrollsWithConversation) {
+        if (scrollState.scrollsWithConversation) scrollState.collapse()
+    }
+    androidx.compose.runtime.LaunchedEffect(scrollState.collapsed) {
+        if (open && scrollState.collapsed && !scrollState.floatOpen) scrollState.toggleFloat()
+    }
+    val chrome =
+        TaskConversationHeaderChrome(
+            ref = "#raft-mobile:#7",
+            taskNumber = 7,
+            status = TaskStatus.InProgress,
+            assigneeName = "Lagoon",
+            assigneeKind = MemberKind.Agent,
+            summarized = scrollState.collapsed,
+            headFloatOpen = scrollState.floatOpen,
+            followed = true,
+            onToggleHeadFloat = { scrollState.toggleFloat() },
+            onViewInChannel = {},
+            onToggleFollow = {},
+        )
+    Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        TaskHeader(chrome)
+        Box(Modifier.weight(1f).fillMaxWidth().taskHeadFloatOutsidePress(scrollState)) {
+            Column(Modifier.fillMaxSize()) {
+                TaskConversationHead(
+                    model = HeadModel,
+                    onSelectStatus = {},
+                    onOpenAssignee = {},
+                    onOpenSource = {},
+                    onOpenEarlierDiscussion = {},
+                    scrollState = scrollState,
+                )
+                Messages(earlier = true)
+            }
+            TaskHeadFloat(scrollState = scrollState, label = "Task #7", reducedMotion = true) {
+                TaskHeadContent(model = HeadModel, onOpenSource = {}, onOpenEarlierDiscussion = {})
+            }
+        }
+        Composer()
+    }
 }
