@@ -6851,8 +6851,10 @@ private fun RaftAppShellReadyContent(
 
     // artin task #8: the wide top bar's bell, and the sign to the list panes under it that they
     // have no head of their own.
-    val appShellTopBar = remember { RaftAppShellTopBarState() }
-    if (appShellTopBar.drawn == railWithoutTopBar) appShellTopBar.drawn = !railWithoutTopBar
+    // Starts with this layout's value, so the first frame's panes are right; later changes (the
+    // posture arriving, the window turning) land after composition (sindresorhus, #3906).
+    val appShellTopBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
         RaftAppShellSurface(

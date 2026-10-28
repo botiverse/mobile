@@ -25,6 +25,8 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.designsystem.tokens.stickerInkMedium
 
 // iPhone Duo's inner screen is the apps' desktop mode without the top bar (raft-design #859,
 // page-structure "Foldable phones" > "The inner screen"): the rail takes what the top bar held.
@@ -45,8 +47,9 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * server button): the current server's 40dp avatar tile, ink with its initial in yellow when it
  * has no image. It is the one server entry and opens the server panel ([onClick]). The attention
  * light shows when another server has unread items, the server tab's rule
- * ([appShellServerTabShowsAttention]). While the panel is [open], and under a press, the tile
- * wears `fill-frame-medium` over its whole face, as [RaftWorkspaceButton] does (Kirby 10-28).
+ * ([appShellServerTabShowsAttention]). The tile is an ink sticker: while the panel is [open], and
+ * under a press, it lays `sticker-ink-medium` (6% paper) over its whole face, image avatars too
+ * (raft-design #875, States "Medium on an ink sticker"; Kirby 10-28).
  */
 @Composable
 internal fun RaftAppRailServerTile(
@@ -88,7 +91,7 @@ internal fun RaftAppRailServerTile(
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(RaftTheme.colors.fillFrameMedium, RoundedCornerShape(RaftRadius.Sticker))
+                    .background(RaftUiPalette.stickerInkMedium, RoundedCornerShape(RaftRadius.Sticker))
             )
         }
     }

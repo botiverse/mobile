@@ -36,7 +36,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * iPhone Duo's side column (raft-design #859, page-structure "Foldable phones"), with a fake host
- * posture, light:
+ * posture:
  *  - outer screen, Home (466x678): the server switcher is the first header line, on paper, no
  *    yellow row; the bell (with its attention pixel) is the column's one page action, standing
  *    over the native tab bar's 260pt (a grey stand-in: iOS draws it); a camera band (the darker
@@ -50,9 +50,9 @@ import org.robolectric.annotation.GraphicsMode
  *    pixel) is in its footer above Settings; then the Home list under its 56dp "Home" head (no
  *    server switcher), whose seam lines up with the rail header's. Home alone; Home with the
  *    bell's popover open next to the rail; Home with the server panel open next to the tile (the
- *    tile in its open fill); a channel in the main area, where the column holds the history Back
+ *    tile in its open fill, `sticker-ink-medium`; also dark); a channel in the main area, where the column holds the history Back
  *    and the channel's actions, never destinations.
- * Verify / record as [RaftRobolectricScreenshot].
+ * Light, except the dark server-panel capture. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -85,6 +85,13 @@ class DuoSideColumnScreenshotTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
+    fun innerScreenLandscapeHomeServerPanelOpenDark() =
+        capture("duo.inner-landscape.home-server.dark", innerPosture, tabBarStandIn = 0.dp, RaftAppAppearance.Dark) {
+            WideShell(serverPanelOpen = true)
+        }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
     fun innerScreenLandscapeChannel() =
         capture("duo.inner-landscape.channel", innerPosture, tabBarStandIn = 0.dp) { WideShell(channelOpen = true) }
 
@@ -92,8 +99,9 @@ class DuoSideColumnScreenshotTest {
         name: String,
         posture: RaftSideColumnPosture,
         tabBarStandIn: Dp,
+        appearance: RaftAppAppearance = RaftAppAppearance.Light,
         content: @Composable () -> Unit,
-    ) = RaftRobolectricScreenshot.capture(name, RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
+    ) = RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
         val pager =
             remember {
                 object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
