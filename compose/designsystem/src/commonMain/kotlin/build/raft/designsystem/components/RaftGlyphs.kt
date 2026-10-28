@@ -31,6 +31,7 @@ import build.raft.designsystem.theme.RaftTheme
  */
 enum class RaftGlyph(internal vararg val paths: String) {
     ArrowLeft("m12 19-7-7 7-7", "M19 12H5"),
+    ArrowRight("M5 12h14", "m12 5 7 7-7 7"),
 
     /** Lucide `arrow-down`: the jump pills that go down the list. */
     ArrowDown("M12 5v14", "m19 12-7 7-7-7"),

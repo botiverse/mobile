@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -7281,6 +7282,9 @@ private fun RaftAppShellReadyContent(
                         }
                         TaskOpenSurfaceHost(
                             flow = tasksOpenSurfaceFlow,
+                            detailsRepository = remember(appShellNetworkClient) { TaskConversationDetailsRepository(appShellNetworkClient) },
+                            serverId = readyServerId,
+                            timeContext = threadTimeContext,
                             onSend = { task, text ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 if (serverId != null) {

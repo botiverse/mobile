@@ -3,6 +3,7 @@ package build.raft.designsystem.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.offset
@@ -40,6 +41,14 @@ enum class RaftDescriptionListDirection {
      * 358dp of list) each value sits 2dp under its label and 10dp above the next label.
      */
     Horizontal,
+
+    /**
+     * raft-ui `direction="inline"` (the task dialog's facts row): every fact on one wrapping
+     * row, its label and value side by side on one first baseline 12dp apart, 24dp between
+     * facts and 8dp between lines. A label never shrinks; a value takes what is left of its
+     * line and wraps inside it.
+     */
+    Inline,
 }
 
 /**
@@ -98,6 +107,13 @@ fun RaftDescriptionList(
     when (direction) {
         RaftDescriptionListDirection.Vertical ->
             Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) { VerticalScope.content() }
+        RaftDescriptionListDirection.Inline ->
+            // `flex flex-wrap items-baseline gap-x-6 gap-y-2`.
+            FlowRow(
+                modifier,
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) { InlineScope(this).content() }
         RaftDescriptionListDirection.Horizontal -> {
             val slots = remember(content) { HorizontalSlots(content) }
             SubcomposeLayout(modifier) { constraints ->
@@ -229,6 +245,42 @@ private object VerticalScope : RaftDescriptionListScope {
         Column(Modifier.semantics(mergeDescendants = true) {}) {
             DescriptionTerm(term, termAccessory)
             DescriptionDetails(28.dp, details)
+        }
+    }
+}
+
+/**
+ * One fact of an inline list: the label, then 12dp on its value (`items-baseline gap-3`), on the
+ * value's first baseline; the item sits on its line's first baseline too. The value has no
+ * 28dp row to centre in: a chip or a frameless trigger lines its text up with the label's.
+ */
+private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListScope {
+    @Composable
+    override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
+        with(row) {
+            Layout(
+                content = {
+                    DescriptionTerm(term, termAccessory)
+                    DescriptionDetails(0.dp, details)
+                },
+                modifier = Modifier.alignByBaseline().semantics(mergeDescendants = true) {},
+            ) { measurables, constraints ->
+                val (termMeasurable, detailsMeasurable) = measurables
+                val gapX = 12.dp.roundToPx()
+                val t = termMeasurable.measure(Constraints())
+                val valueMax =
+                    if (constraints.hasBoundedWidth) (constraints.maxWidth - t.width - gapX).coerceAtLeast(0) else Constraints.Infinity
+                val v = detailsMeasurable.measure(Constraints(maxWidth = valueMax))
+                val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
+                val vb = v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb
+                val baseline = max(tb, vb)
+                val tTop = baseline - tb
+                val vTop = baseline - vb
+                layout(t.width + gapX + v.width, max(tTop + t.height, vTop + v.height), mapOf(FirstBaseline to baseline)) {
+                    t.place(0, tTop)
+                    v.place(t.width + gapX, vTop)
+                }
+            }
         }
     }
 }

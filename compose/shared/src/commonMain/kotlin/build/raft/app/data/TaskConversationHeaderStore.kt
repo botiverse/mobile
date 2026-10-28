@@ -166,7 +166,9 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
             val previous = lastSeenTask
             val older = previous?.revision != null && seen.revision != null && seen.revision < previous.revision
             // A `task:updated` copy has no `conversationFollowed` (the reader's own): keep the known one.
-            val kept = if (seen.conversationFollowed == null) seen.copy(conversationFollowed = previous?.conversationFollowed) else seen
+            val followKept = if (seen.conversationFollowed == null) seen.copy(conversationFollowed = previous?.conversationFollowed) else seen
+            // Nor, from an older frame, `createdAt`: a fixed fact of the task, kept once known.
+            val kept = if (followKept.createdAt == null) followKept.copy(createdAt = previous?.createdAt) else followKept
             if (seen.id != ref?.taskId || older) this else copy(lastSeenTask = kept)
         }
         is TaskConversationHeaderIntent.FollowRefetched ->

@@ -788,6 +788,8 @@ data class TaskSummary(
      * per-reader task lists carry it; `task:*` realtime frames do not, so null = unknown.
      */
     val conversationFollowed: Boolean? = null,
+    /** The task DTO's `createdAt` (ISO), as the server sent it; null from a source without it. */
+    val createdAt: String? = null,
 )
 
 // Inbox Models
