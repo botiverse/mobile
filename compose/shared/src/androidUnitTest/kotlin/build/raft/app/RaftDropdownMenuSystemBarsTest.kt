@@ -29,13 +29,12 @@ import org.robolectric.annotation.Config
  * #3623 a dialog guessed its icons from the mode instead of copying the host.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [29])
+@Config(sdk = [34])
 class RaftDropdownMenuSystemBarsTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    @Config(sdk = [34])
     fun anOpenMenuKeepsTheHostsDarkStatusBarIcons() {
         var popupRoot: View? = null
         val activity = activities.launch()
@@ -59,14 +58,13 @@ class RaftDropdownMenuSystemBarsTest {
         )
     }
 
-    @Suppress("DEPRECATION")
     @Test
     fun aDialogCopiesTheHostsIconsInsteadOfGuessingFromTheMode() {
         var dialogRoot: View? = null
         val activity = activities.launch()
+        val lightStatusBars = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
         // Light mode on a dark frame (Space, Quest): the page asked for LIGHT icons, so no flag.
-        activity.window.decorView.systemUiVisibility =
-            activity.window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+        assertNotNull(activity.window.insetsController).setSystemBarsAppearance(0, lightStatusBars)
         activity.setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 RaftWindowDialog(onDismissRequest = {}) {
@@ -77,9 +75,10 @@ class RaftDropdownMenuSystemBarsTest {
         repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50)) }
         val root = assertNotNull(dialogRoot, "the dialog window")
         assertTrue(root !== activity.window.decorView, "the dialog is its own window")
+        val dialogAppearance = assertNotNull(root.windowInsetsController, "the dialog window's controller").systemBarsAppearance
         assertTrue(
-            root.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR == 0,
-            "the dialog keeps the host's light icons on a dark frame, light mode or not"
+            dialogAppearance and lightStatusBars == 0,
+            "the dialog keeps the host's light icons on a dark frame, light mode or not (appearance=$dialogAppearance)"
         )
     }
 }
