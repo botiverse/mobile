@@ -27,7 +27,14 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.encodeServerPublicGuestGateEvaluateBody
 import build.raft.app.data.parseSharedServerGuestGateEnabled
 import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftOfflineEmission
+import build.raft.app.data.RaftOfflineResource
+import build.raft.app.data.RaftOfflineResourceKey
+import build.raft.app.data.RaftOfflineResourceSpec
+import build.raft.app.data.RaftOfflineResourceStore
 import build.raft.app.data.RaftOwnerScopedBoundedCache
+import build.raft.app.data.StoredConversationDetailOwner
+import build.raft.app.data.StoredConversationDetails
 import build.raft.app.data.RaftOwnerScopedCacheOwner
 import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.app.data.SlackBridgeChannelPairingRepository
@@ -37,11 +44,16 @@ import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 
 /** Web `handleGuestVisibleChange`: `{ guestVisible: true }` or `{ guestVisible: false, guestJoinable: false }`. */
 internal fun channelSettingsGuestVisibleUpdate(visible: Boolean): ChannelGuestPolicyUpdate =
@@ -178,8 +190,38 @@ private data class ChannelSettingsSnapshotCacheResource(
     val channelId: String,
 )
 
+/**
+ * The channel settings as last loaded, stored per account + server + channel (offline resource,
+ * [ChannelSettingsResourceSpec]): a cold or offline open shows it read-only while the page refreshes, and a
+ * failed refresh keeps it. Members and the Slack pick are not stored (they come with the refresh).
+ */
+@Serializable
+internal data class ChannelSettingsRecord(
+    val channel: HomeChannelRow,
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot,
+    val canManage: Boolean,
+    val guestAccessEnabled: Boolean = false,
+)
+
+internal val ChannelSettingsResourceSpec: RaftOfflineResourceSpec<String, ChannelSettingsRecord> =
+    RaftOfflineResourceSpec(
+        name = "channel_settings",
+        version = 1,
+        serializer = ChannelSettingsRecord.serializer(),
+        paramsId = { channelId -> channelId },
+        maxEntriesPerAccount = 64,
+        maxBytesPerEntry = 256 * 1024,
+    )
+
+/**
+ * The settings snapshot last shown per owner + channel, in memory; [stored] is the durable offline resource
+ * behind it (and [storedDetails] the header's stored channel detail, which confirmed setting changes keep in
+ * step). Both are wiped with every other offline resource on sign-out / lost access.
+ */
 internal class ChannelSettingsSnapshotCache(
     maxEntries: Int = 64,
+    internal val stored: RaftOfflineResource<String, ChannelSettingsRecord>? = null,
+    internal val storedDetails: StoredConversationDetails? = null,
 ) {
     private val cache =
         RaftOwnerScopedBoundedCache<ChannelSettingsSnapshotCacheResource, ChannelSettingsSnapshot>(
@@ -557,6 +599,37 @@ internal class ChannelSettingsStore(
     private var loadJob: Job? = null
     private var actionJob: Job? = null
 
+    // The full snapshot of the last network answer (the stored record omits members and the Slack pick).
+    @Volatile
+    private var lastFetchedSnapshot: ChannelSettingsSnapshot? = null
+
+    // Stale-while-revalidate over the stored settings: the stored record first, then the network's.
+    private val storedSettingsStore: RaftOfflineResourceStore<String, ChannelSettingsRecord>? by lazy {
+        snapshotCache.stored?.store { _ ->
+            when (val result = runDataSourceCall(dataSource::load)) {
+                is DataResult.Content -> {
+                    lastFetchedSnapshot = result.data
+                    DataResult.Content(result.data.toRecord())
+                }
+                else -> result.withoutContent()
+            }
+        }
+    }
+
+    private val storedOwner: AuthenticatedRouteOwner? = owner.normalizedOrNull()
+
+    /** The stored settings' key, under the cache's current environment only (never another environment's). */
+    private fun storedSettingsKey(): RaftOfflineResourceKey<String>? {
+        val normalized = storedOwner ?: return null
+        val channelId = route.channelId.value.trim().takeIf { it.isNotEmpty() } ?: return null
+        return snapshotCache.stored
+            ?.key(normalized.accountId, normalized.serverId, channelId)
+            ?.takeIf { it.environmentId == normalized.environmentId }
+    }
+
+    private fun storedDetailOwner(): StoredConversationDetailOwner? =
+        storedOwner?.let { StoredConversationDetailOwner(it.environmentId, it.accountId, it.serverId) }
+
     fun dispatch(intent: ChannelSettingsIntent) {
         when (intent) {
             ChannelSettingsIntent.Load -> load(force = false)
@@ -691,10 +764,44 @@ internal class ChannelSettingsStore(
             } else {
                 previous.copy(refreshing = true, errorCode = null)
             }
+        val storedKey = storedSettingsKey()
+        val storedStore = storedSettingsStore
         loadJob =
             scope.launch {
-                val result = runDataSourceCall(dataSource::load)
-                if (requestGeneration != loadGeneration) return@launch
+                if (storedKey == null || storedStore == null) {
+                    val result = runDataSourceCall(dataSource::load)
+                    if (requestGeneration != loadGeneration) return@launch
+                    applyLoadResult(result)
+                    return@launch
+                }
+                storedStore.revalidate(storedKey).collect { emission ->
+                    if (requestGeneration != loadGeneration) return@collect
+                    when (emission) {
+                        // Cold / offline open: the stored settings, read-only, while the network answers.
+                        is RaftOfflineEmission.StandIn ->
+                            if (mutableState.value.channel == null && emission.value.channel.channelId == route.channelId) {
+                                mutableState.value = emission.value.toStandInState()
+                            }
+                        is RaftOfflineEmission.Fresh -> {
+                            val fetched = lastFetchedSnapshot?.takeIf { it.toRecord() == emission.value }
+                            applyLoadResult(DataResult.Content(fetched ?: emission.value.toSnapshot()))
+                        }
+                        is RaftOfflineEmission.Failed -> {
+                            val result = emission.result.withoutContent<ChannelSettingsRecord, ChannelSettingsSnapshot>()
+                            // Gone / not this channel: the stored copy goes too (lost access: the layer drops it).
+                            val gone =
+                                result is DataResult.Empty ||
+                                    (result is DataResult.Error && result.error.code == CHANNEL_SETTINGS_IDENTITY_MISMATCH)
+                            if (gone) snapshotCache.stored?.remove(storedKey)
+                            applyLoadResult(result)
+                        }
+                    }
+                }
+            }
+    }
+
+    private fun applyLoadResult(result: DataResult<ChannelSettingsSnapshot>) {
+        val previous = mutableState.value
                 mutableState.value =
                     when (result) {
                         is DataResult.Content ->
@@ -728,8 +835,38 @@ internal class ChannelSettingsStore(
                             terminalReadFailureState(result.reason.name)
                         }
                     }
-            }
     }
+
+    private fun ChannelSettingsSnapshot.toRecord(): ChannelSettingsRecord =
+        ChannelSettingsRecord(
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = canManage,
+            guestAccessEnabled = guestAccessEnabled,
+        )
+
+    /** The stored record as the page's snapshot; members and the Slack pick stay what the page holds. */
+    private fun ChannelSettingsRecord.toSnapshot(): ChannelSettingsSnapshot =
+        ChannelSettingsSnapshot(
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = canManage,
+            memberSlice = mutableState.value.memberSlice,
+            guestAccessEnabled = guestAccessEnabled,
+            slackBridge = mutableState.value.slackBridge,
+        )
+
+    private fun ChannelSettingsRecord.toStandInState(): ChannelSettingsState =
+        mutableState.value.copy(
+            status = ChannelSettingsLoadStatus.Content,
+            channel = channel,
+            sidebarOrder = sidebarOrder,
+            canManage = canManage,
+            guestAccessEnabled = guestAccessEnabled,
+            refreshing = true,
+            writeActionsEnabled = false,
+            errorCode = null,
+        )
 
     private fun ChannelSettingsSnapshot.toCachedState(): ChannelSettingsState =
         ChannelSettingsState(
@@ -937,6 +1074,37 @@ internal class ChannelSettingsStore(
         } else {
             next.toSnapshotOrNull()?.let { snapshot -> snapshotCache.put(owner, route, snapshot) }
         }
+        writeThroughStored(action, next)
+    }
+
+    /**
+     * Write-through of a confirmed change (the server answered) to the stored settings and the header's stored
+     * channel detail; a failed change never gets here. Runs to completion even when the page closes (Close).
+     */
+    private fun writeThroughStored(action: ChannelSettingsAction, next: ChannelSettingsState) {
+        val storedKey = storedSettingsKey()
+        val detailOwner = storedDetailOwner()
+        val stored = snapshotCache.stored
+        val details = snapshotCache.storedDetails
+        val channelId = route.channelId.value.trim()
+        val record = next.toSnapshotOrNull()?.toRecord()
+        val closed = next.effect == ChannelSettingsEffect.Close
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable) {
+                if (stored != null && storedKey != null) {
+                    if (closed || record == null) stored.remove(storedKey) else stored.update(storedKey) { record }
+                }
+                if (details != null && detailOwner != null) {
+                    if (next.closedWithAccessLost) {
+                        details.remove(detailOwner, channelId)
+                    } else {
+                        next.channel?.let { channel ->
+                            details.update(detailOwner, channelId) { detail -> detail.withConfirmedSettings(action, channel) }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun ChannelSettingsState.toSnapshotOrNull(): ChannelSettingsSnapshot? {
@@ -980,6 +1148,8 @@ internal class ChannelSettingsStore(
                 profileErrorCode = code.takeIf { action == ChannelSettingsAction.Profile },
                 effect = ChannelSettingsEffect.Failure(action, code, serverMessage),
             )
+        // The profile part was confirmed (only the Slack Bridge step failed): it writes through.
+        if (saved != null) writeThroughStored(ChannelSettingsAction.Profile, mutableState.value)
     }
 
     private fun authorityRejectedState(): ChannelSettingsState =
@@ -1055,4 +1225,22 @@ private fun <T, R> DataResult<T>.withoutContent(): DataResult<R> =
         is DataResult.Empty -> this
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
+    }
+
+/** The header's stored channel detail after a confirmed settings change (the fields that change shows). */
+private fun build.raft.app.model.ConversationSummary.withConfirmedSettings(
+    action: ChannelSettingsAction,
+    channel: HomeChannelRow,
+): build.raft.app.model.ConversationSummary =
+    when (action) {
+        ChannelSettingsAction.Mute -> copy(activityNotificationPreference = channel.activityNotificationPreference)
+        ChannelSettingsAction.Profile -> copy(name = channel.name, subtitle = channel.subtitle)
+        ChannelSettingsAction.Visibility -> copy(channelType = channel.channelType)
+        ChannelSettingsAction.GuestAccess -> copy(guestVisible = channel.guestVisible, guestJoinable = channel.guestJoinable)
+        ChannelSettingsAction.Archive -> copy(archived = true)
+        ChannelSettingsAction.Unarchive -> copy(archived = false)
+        ChannelSettingsAction.Pin,
+        ChannelSettingsAction.Delete,
+        ChannelSettingsAction.Disconnect,
+        ChannelSettingsAction.Leave -> this
     }

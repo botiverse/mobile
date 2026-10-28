@@ -411,9 +411,16 @@ internal class RaftOfflineResource<P : Any, T : Any>(
     private val spec: RaftOfflineResourceSpec<P, T>,
 ) {
     /** The key of ([accountId], [serverId], [params]) under the current environment, minted now. */
-    fun key(accountId: String, serverId: String, params: P): RaftOfflineResourceKey<P>? {
+    fun key(accountId: String, serverId: String, params: P): RaftOfflineResourceKey<P>? =
+        key(accountId, serverId, params, mintedAt = null)
+
+    /**
+     * The key for a request that started at [mintedAt] (from [fetchStarted]; null = now): wipes and confirmed
+     * changes after that instant win over the request's answer, however late it arrives.
+     */
+    fun key(accountId: String, serverId: String, params: P, mintedAt: Long?): RaftOfflineResourceKey<P>? {
         val (environment, account, server) = cache.mintKey(accountId, serverId) ?: return null
-        return RaftOfflineResourceKey(environment, account, server, params, mintedAt = cache.tick())
+        return RaftOfflineResourceKey(environment, account, server, params, mintedAt = mintedAt ?: cache.tick())
     }
 
     suspend fun read(key: RaftOfflineResourceKey<P>): T? {
@@ -461,7 +468,8 @@ internal class RaftOfflineResource<P : Any, T : Any>(
     fun store(fetch: suspend (RaftOfflineResourceKey<P>) -> DataResult<T>): RaftOfflineResourceStore<P, T> =
         RaftOfflineResourceStore(this, cache.storeScope, fetch)
 
-    internal fun fetchStarted(): Long = cache.tick()
+    /** Now, on the cache's clock: when a request starts (see [key] with `mintedAt`). */
+    fun fetchStarted(): Long = cache.tick()
 
     private fun decodeOrNull(encoded: String): T? =
         runCatching { ResourceJson.decodeFromString(spec.serializer, encoded) }.getOrNull()
