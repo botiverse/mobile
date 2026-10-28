@@ -413,12 +413,14 @@ class ServerAppearanceTest {
         )
         assertEquals("space", store.storedServer(serverA).theme)
 
-        // A payload naming another server than the grant's is ignored.
+        // The event goes to the member's user room, so it arrives on the socket of whichever
+        // server is open: a change on another of their servers lands on that stored server.
         owner.acceptProcessMutation(
             grant(serverA, "user-1"),
             ServerAppearanceUpdated(ServerId(serverB), theme = "food", themeDecor = true),
         )
-        assertNull(store.storedServer(serverB).theme)
+        assertEquals("food", store.storedServer(serverB).theme)
+        assertEquals("space", store.storedServer(serverA).theme)
 
         // Back to Raft Yellow; a payload without themeDecor keeps the stored decorations.
         owner.acceptProcessMutation(

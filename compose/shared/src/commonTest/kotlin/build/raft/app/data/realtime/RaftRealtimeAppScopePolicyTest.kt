@@ -517,6 +517,22 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
+    fun rawIngressKeepsUserScopedEventsAboutAnotherServer() {
+        val engine = RaftRealtimeAppScopeEngine()
+        val otherServer = """{"serverId":"server-b","theme":"space","themeDecor":true}"""
+
+        val appearance = engine.onRawEventForConnection("server-a", RealtimeSocketEvents.AppearanceUpdated, otherServer)
+        val planUpdate = engine.onRawEventForConnection("server-a", RealtimeSocketEvents.ServerPlanUpdated, otherServer)
+        val invalid =
+            engine.onRawEventForConnection("server-a", RealtimeSocketEvents.AppearanceUpdated, """{"serverId":42}""")
+
+        assertTrue(appearance.shouldFanOut)
+        assertEquals(ServerId("server-a"), appearance.serverId)
+        assertFalse(planUpdate.shouldFanOut)
+        assertFalse(invalid.shouldFanOut)
+    }
+
+    @Test
     fun rawIngressFailsClosedForBlankConnectionOrInvalidPresentServerId() {
         assertFalse(
             realtimePayloadServerGate(

@@ -3709,7 +3709,9 @@ internal class SharedRealtimeDomainEventOwner(
                 acceptedSource,
                 grant.presenceAdmission(presenceTransportEpoch)
             )
-            if (acceptedEvent is ServerAppearanceUpdated && acceptedEvent.serverId.value == serverId) {
+            // `appearance:updated` is per member, sent to their user room: it names whichever of their
+            // servers changed, not the connection's. The sink writes only the grant's account's servers.
+            if (acceptedEvent is ServerAppearanceUpdated) {
                 serverAppearanceSink?.invoke(grant.principalId, acceptedEvent)
             }
             if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {

@@ -418,7 +418,11 @@ class SocketIoRealtimeClient(
                 markInbound(eventName)
                 val payloadServerId = payload.serverIdOrNull()
                 val capturedServerId = capturedContext.serverId.value
-                if (payloadServerId != null && payloadServerId != capturedServerId) {
+                if (
+                    payloadServerId != null &&
+                    payloadServerId != capturedServerId &&
+                    eventName !in RealtimeSocketEvents.UserScopedServerEvents
+                ) {
                     logger(
                         "event_skip reason=server_mismatch eventName=$eventName payloadServerId=$payloadServerId connectedServerId=$capturedServerId payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                     )
