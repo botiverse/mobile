@@ -218,7 +218,7 @@ class ActivityConversationSwipeTest {
         val staleToken = first.pending!!.token
         // A second swipe commits the first row now and starts its own window.
         val second = first.swipe(row("b"))
-        assertEquals("a", second.commit?.key)
+        assertEquals("a", second.commit?.item?.key)
         assertEquals("b", second.state.hiddenKey)
 
         val stale = second.state.expire(staleToken)
@@ -228,7 +228,7 @@ class ActivityConversationSwipeTest {
         assertEquals("b", second.state.undo(staleToken).hiddenKey)
 
         val expired = second.state.expire(second.state.pending!!.token)
-        assertEquals("b", expired.commit?.key)
+        assertEquals("b", expired.commit?.item?.key)
         assertNull(expired.state.hiddenKey)
     }
 
@@ -244,7 +244,7 @@ class ActivityConversationSwipeTest {
     fun flushCommitsAWaitingDoneAndIsANoOpWhenIdle() {
         val pending = ActivitySwipeDoneUndoState().swipe(row("a")).state
         val flushed = pending.flush()
-        assertEquals("a", flushed.commit?.key)
+        assertEquals("a", flushed.commit?.item?.key)
         assertNull(flushed.state.hiddenKey)
         assertNull(flushed.state.flush().commit)
     }

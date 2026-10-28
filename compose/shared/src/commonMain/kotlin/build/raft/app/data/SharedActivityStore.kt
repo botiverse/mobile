@@ -322,7 +322,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone ->
                 if (intent.item.kind == InboxItemKind.Object) markObjectDone(intent.item) else markDone(intent.item)
-            is SharedActivityIntent.UnfollowThread -> unfollowThread(intent.item)
+            is SharedActivityIntent.UnfollowThread -> unfollowThread(intent)
             is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead ->
                 if (intent.item.kind == InboxItemKind.Object) markObjectRead(intent.item) else markRead(intent.item)
@@ -2874,13 +2874,23 @@ class SharedActivityStore internal constructor(
      * to the server-owned boolean and attention clearing; it never invents
      * unread/mention state when a row is followed again.
      */
-    private fun unfollowThread(item: InboxItem) {
+    private fun unfollowThread(intent: SharedActivityIntent.UnfollowThread) {
+        val item = intent.item
         if (!item.isThreadActivityItem() || item.isUnfollowedActivityThread) return
-        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
+        val state = _state.value
+        val heldItem = state.items.firstOrNull { it.key == item.key }
+        // A deferred Unfollow (Activity's Undo toast) can land after the list moved to another
+        // filter: still unfollow the swiped row, but only for the account and server it was listed for.
+        val sameListOwner =
+            intent.listOwnerUserId != null &&
+                intent.listOwnerServerId != null &&
+                intent.listOwnerUserId == state.ownerUserId &&
+                intent.listOwnerServerId == state.ownerServerId
+        val currentItem = heldItem ?: item.takeIf { sameListOwner } ?: return
         if (currentItem.isUnfollowedActivityThread) return
         if (!beginThreadFollowMutation(item.key)) return
         val previous = _state.value
-        updateThreadFollowProjection(item.key, following = false)
+        if (heldItem != null) updateThreadFollowProjection(item.key, following = false)
         scope.launch {
             val threadChannelId = currentItem.threadChannelId
             val result = try {
@@ -3899,7 +3909,16 @@ sealed interface SharedActivityIntent {
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
-    data class UnfollowThread(val item: InboxItem) : SharedActivityIntent
+    /**
+     * Unfollow [item]'s thread. A row the store no longer lists (a deferred Unfollow sent after the
+     * filter changed) is still unfollowed when [listOwnerUserId] / [listOwnerServerId] name the
+     * account and server the store holds now; without them, a row not held writes nothing.
+     */
+    data class UnfollowThread(
+        val item: InboxItem,
+        val listOwnerUserId: String? = null,
+        val listOwnerServerId: String? = null,
+    ) : SharedActivityIntent
     data class FollowThread(val item: InboxItem) : SharedActivityIntent
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
