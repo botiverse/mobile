@@ -471,7 +471,8 @@ internal fun TaskPendingConversationPage(
     // Back puts the pulled-down head back up before it leaves the page.
     RaftBackHandler(enabled = headScrollState.floatOpen, label = "task_pending_head_float") { headScrollState.closeFloat() }
     // The conversation page's canvas, so its composer dock sits on the same ground as there.
-    Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
+    // A press anywhere on the page outside the pulled-down head puts it back up, the composer included.
+    Column(modifier.fillMaxSize().background(colors.layerCanvas).taskHeadFloatOutsidePress(headScrollState)) {
         // The conversation page's top bar (ThreadPage's header for a task conversation).
         RaftTopPageHeader(
             title = task.taskRefTitle(),
@@ -484,9 +485,8 @@ internal fun TaskPendingConversationPage(
             },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
         )
-        // The same head pulled down from the bar as on the conversation page, once it has scrolled
-        // away; a press anywhere outside it puts it back up.
-        Box(Modifier.fillMaxWidth().weight(1f).taskHeadFloatOutsidePress(headScrollState)) {
+        // The same head pulled down from the bar as on the conversation page, once it has scrolled away.
+        Box(Modifier.fillMaxWidth().weight(1f)) {
         Column(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
             TaskConversationHeadRoute(
                 task = task,
