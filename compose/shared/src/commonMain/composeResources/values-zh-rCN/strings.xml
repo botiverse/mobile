@@ -340,6 +340,7 @@
     <string name="thread_action_reopen_task">重新打开任务</string>
     <string name="thread_action_mark_done">标记为完成</string>
     <string name="thread_action_convert_to_task">转为任务</string>
+    <string name="thread_action_create_task_from_message">从消息创建任务</string>
     <string name="thread_tab_chat">聊天</string>
     <string name="thread_tab_tasks">任务</string>
     <string name="thread_tab_files">文件</string>
@@ -1596,6 +1597,7 @@
     <string name="tasks_reply_count_description">任务里的讨论：%1$d 条</string>
     <string name="tasks_status_reopen_to_todo">重开为待办</string>
     <string name="tasks_source_list_open">打开任务 #%1$s：%2$s</string>
+    <string name="tasks_source_list_open_no_number">打开任务：%1$s</string>
     <string name="tasks_source_list_reply_count_one">任务里有 1 条讨论</string>
     <string name="tasks_source_list_reply_count_many">任务里有 %1$d 条讨论</string>
     <string name="task_conversation_follow">关注任务</string>
@@ -1783,6 +1785,11 @@
     <string name="tasks_create_multiple_hint">添加一个或多个任务标题。空行将被忽略。</string>
     <string name="tasks_create_action">创建</string>
     <string name="tasks_create_action_creating">正在创建…</string>
+    <string name="tasks_create_from_message_title_one">从消息创建任务</string>
+    <string name="tasks_create_from_message_title_many">从消息创建任务</string>
+    <string name="tasks_create_title_placeholder">任务 %1$d</string>
+    <string name="tasks_create_submit_many">创建 %1$d 个任务</string>
+    <string name="tasks_create_failed">创建任务失败</string>
     <string name="home_action_view">查看</string>
     <string name="home_action_retry">重试</string>
     <string name="home_section_servers">服务器</string>

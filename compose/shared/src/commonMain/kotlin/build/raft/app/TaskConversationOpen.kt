@@ -11,11 +11,15 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.topLevelThreadId
 
 /**
- * Task v2: where opening a task lands. Mirrors web `useOpenTask` / `directTaskConversationChannelId`
- * (slock `packages/web/src/components/task/useOpenTask.ts`, `utils/taskConversation.ts`), decided per
- * task (never by the `task_v2_conversations_v0` flag):
- * - a legacy orphan and a pre-v2 task (host message thread) keep the existing thread open;
- * - a v2 task whose canonical conversation is known and is local (not a joint surface) opens it;
+ * Task v2: where opening a task lands. Mirrors web `useOpenTask` / `opensAsTaskConversation` /
+ * `directTaskConversationChannelId` (slock `packages/web/src/components/task/useOpenTask.ts`,
+ * `utils/taskConversation.ts`):
+ * - a legacy orphan (server `isLegacy`: no host message, no conversation, not created to have one)
+ *   never opens a conversation;
+ * - with `task_v2_conversations_v0` off, a pre-v2 task (not `conversationAnchored`) keeps its host
+ *   message's thread; with the flag on every non-legacy task opens as its own conversation, a
+ *   pre-v2 one through `POST /tasks/:id/conversation`, which creates it;
+ * - a task whose canonical conversation is known and is local (not a joint surface) opens it;
  * - otherwise (anchored without a conversation yet, or a joint surface whose LOCAL conversation
  *   differs from the canonical one) `POST /tasks/:id/conversation` answers the local id first.
  */
@@ -27,14 +31,18 @@ internal sealed interface TaskOpenTarget {
     data object HostThread : TaskOpenTarget
 }
 
-internal fun TaskSummary.taskOpenTarget(): TaskOpenTarget {
-    if (isLegacy || !conversationAnchored) return TaskOpenTarget.HostThread
+internal fun TaskSummary.taskOpenTarget(taskV2Enabled: Boolean): TaskOpenTarget {
+    if (!opensAsTaskConversation(taskV2Enabled)) return TaskOpenTarget.HostThread
     val direct =
         conversationChannelId?.takeUnless {
             parseConversationKindOrNull(channelType) == ConversationKind.Joint
         }
     return direct?.let(TaskOpenTarget::Conversation) ?: TaskOpenTarget.ResolveConversation
 }
+
+/** Web `opensAsTaskConversation(task, taskV2Enabled)`: never for a legacy orphan; else with the flag on, or per task. */
+internal fun TaskSummary.opensAsTaskConversation(taskV2Enabled: Boolean): Boolean =
+    !isLegacy && (taskV2Enabled || conversationAnchored)
 
 /** The launch identity of a task conversation: a flat, root-less stream keyed by its channel id. */
 internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): ThreadLaunchConversationIdentity =
@@ -54,9 +62,10 @@ internal suspend fun resolveTaskOpenConversationChannelId(
     task: TaskSummary,
     serverId: String,
     tasksDataSource: SharedTasksDataSource,
+    taskV2Enabled: Boolean,
     log: (String) -> Unit = {},
 ): ChannelId? =
-    when (val target = task.taskOpenTarget()) {
+    when (val target = task.taskOpenTarget(taskV2Enabled)) {
         is TaskOpenTarget.Conversation -> target.conversationChannelId
         TaskOpenTarget.HostThread -> null
         TaskOpenTarget.ResolveConversation -> {
@@ -86,7 +95,7 @@ internal fun buildTaskOpenLaunchPayload(
 ): WireThreadLaunchPayload? {
     val conversationId =
         resolvedConversationChannelId
-            ?: (task.taskOpenTarget() as? TaskOpenTarget.Conversation)?.conversationChannelId
+            ?: (task.taskOpenTarget(taskV2Enabled = false) as? TaskOpenTarget.Conversation)?.conversationChannelId
     if (conversationId != null) {
         return buildStandaloneConversationThreadLaunchPayload(
             conversation = taskConversationLaunchIdentity(conversationId),
@@ -96,7 +105,7 @@ internal fun buildTaskOpenLaunchPayload(
         )
     }
     // A task resolved to no conversation still opens its pre-v2 host thread when it has one.
-    return if (task.taskOpenTarget() == TaskOpenTarget.HostThread || task.hostMessageId != null) {
+    return if (task.taskOpenTarget(taskV2Enabled = false) == TaskOpenTarget.HostThread || task.hostMessageId != null) {
         hostThreadPayload()
     } else {
         null

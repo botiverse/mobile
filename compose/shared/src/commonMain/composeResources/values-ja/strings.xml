@@ -342,6 +342,7 @@
     <string name="thread_action_reopen_task">タスクを再オープン</string>
     <string name="thread_action_mark_done">完了にする</string>
     <string name="thread_action_convert_to_task">タスクに変換</string>
+    <string name="thread_action_create_task_from_message">メッセージからタスクを作成</string>
     <string name="thread_tab_chat">チャット</string>
     <string name="thread_tab_tasks">タスク</string>
     <string name="thread_tab_files">ファイル</string>
@@ -1600,6 +1601,7 @@
     <string name="tasks_reply_count_description">このタスクのメッセージ：%1$d 件</string>
     <string name="tasks_status_reopen_to_todo">未着手に戻す</string>
     <string name="tasks_source_list_open">タスク #%1$s を開く：%2$s</string>
+    <string name="tasks_source_list_open_no_number">タスクを開く：%1$s</string>
     <string name="tasks_source_list_reply_count_one">このタスクに 1 件のメッセージ</string>
     <string name="tasks_source_list_reply_count_many">このタスクに %1$d 件のメッセージ</string>
     <string name="task_conversation_follow">タスクをフォロー</string>
@@ -1785,6 +1787,11 @@
     <string name="tasks_create_multiple_hint">1 件以上のタスクタイトルを追加してください。空の行は無視されます。</string>
     <string name="tasks_create_action">作成</string>
     <string name="tasks_create_action_creating">作成中…</string>
+    <string name="tasks_create_from_message_title_one">メッセージからタスクを作成</string>
+    <string name="tasks_create_from_message_title_many">メッセージからタスクを作成</string>
+    <string name="tasks_create_title_placeholder">タスク %1$d</string>
+    <string name="tasks_create_submit_many">タスク %1$d 件を作成</string>
+    <string name="tasks_create_failed">タスクを作成できませんでした</string>
     <string name="home_action_view">表示</string>
     <string name="home_action_retry">再試行</string>
     <string name="home_section_servers">サーバー</string>

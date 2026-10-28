@@ -698,6 +698,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
     val convertToTask: Boolean = false,
+    /** Task v2: the task slot reads "Create Task from Message" (web) instead of "Convert to Task". */
+    val createTaskFromMessage: Boolean = false,
     /** Shown for an in-place text selection: Copy copies the selection. */
     val selectionContext: Boolean = false,
     /** The in-place selection covers only part of the message: Copy reads "Copy selection" and Select All appears. */
@@ -759,7 +761,8 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         threadFollowed = replyMetadata.isThreadFollowed,
         taskStatus = taskStatus,
         taskDone = message.isThreadTaskDone(),
-        convertToTask = convertToTask
+        convertToTask = convertToTask,
+        createTaskFromMessage = createTaskFromMessage
     )
 
 internal fun threadMessageMetadataSlotLayout(
@@ -3818,6 +3821,8 @@ internal suspend fun openMarkdownTaskNumberPayload(
     currentTaskChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore?,
+    /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
+    taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null
 ): MarkdownTaskNumberOpenResult {
     return when (
@@ -3841,6 +3846,7 @@ internal suspend fun openMarkdownTaskNumberPayload(
                             task = resolution.task,
                             serverId = serverId.value,
                             tasksDataSource = tasksDataSource,
+                            taskV2Enabled = taskV2Enabled,
                         ),
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
@@ -3920,6 +3926,10 @@ internal fun RaftThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
         !surfaceKind.equals(RaftThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
         parentMessageId.isNullOrBlank() &&
         originParentMessageId.isNullOrBlank()
+
+/** Task v2: any sent, non-system message can have tasks created from it (several, too). */
+internal fun RaftThreadMessageItem.canCreateTaskFromMessage(): Boolean =
+    !isSystemMessage() && !hasLocalSendState()
 
 internal fun RaftThreadMessageItem.canConvertToTask(): Boolean =
     !isSystemMessage() &&
@@ -7331,6 +7341,10 @@ private fun SharedThreadRouteContentContent(
     }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Task v2: the message "Create Task from Message" is open for, and whether its create is in flight.
+    var createTaskSourceMessage by remember(threadInstanceKey) { mutableStateOf<TaskCreateSourceMessage?>(null) }
+    var createTaskFromMessagePending by remember(threadInstanceKey) { mutableStateOf(false) }
+    var createTaskFromMessageFailed by remember(threadInstanceKey) { mutableStateOf(false) }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var markdownReferencePending by remember(threadInstanceKey) {
         mutableStateOf(ThreadMarkdownReferencePendingState())
@@ -7660,6 +7674,7 @@ private fun SharedThreadRouteContentContent(
     val unableToDeleteChannelLabel = stringResource(Res.string.thread_error_delete_channel)
     val unableToConvertMessageLabel = stringResource(Res.string.thread_error_convert_message)
     val taskCreatedLabel = stringResource(Res.string.thread_feedback_task_created)
+    val unableToCreateTaskLabel = stringResource(Res.string.tasks_create_failed)
     val unsupportedTaskStatusLabel = stringResource(Res.string.thread_error_task_status_unsupported)
     val unableToUpdateTaskLabel = stringResource(Res.string.thread_error_update_task)
     val unableToUpdateAssigneeLabel = stringResource(Res.string.thread_error_update_assignee)
@@ -8294,7 +8309,8 @@ private fun SharedThreadRouteContentContent(
                     } else {
                         emptyMap()
                     },
-                viewerUserId = currentSession?.user?.id
+                viewerUserId = currentSession?.user?.id,
+                taskV2Enabled = taskV2Enabled
             )
         }
     val taskAssigneeOptions =
@@ -11385,7 +11401,7 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
-        if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+        if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
             // Task v2: the local conversation id comes from the server first.
             coroutineScope.launch {
                 openCanonicalTaskWith(
@@ -11396,6 +11412,7 @@ private fun SharedThreadRouteContentContent(
                             task = task,
                             serverId = currentServerId.orEmpty(),
                             tasksDataSource = tasksDataSource,
+                            taskV2Enabled = taskV2Enabled,
                             log = bridge::log,
                         ),
                 )
@@ -11403,6 +11420,61 @@ private fun SharedThreadRouteContentContent(
         } else {
             openCanonicalTaskWith(task, source, null)
         }
+    }
+
+    createTaskSourceMessage?.let { source ->
+        TaskCreateFromMessageDialog(
+            source = source,
+            submitting = createTaskFromMessagePending,
+            failed = createTaskFromMessageFailed,
+            onDismiss = {
+                if (!createTaskFromMessagePending) {
+                    createTaskSourceMessage = null
+                    createTaskFromMessageFailed = false
+                }
+            },
+            onSubmit = { titles ->
+                val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                if (serverId != null && !createTaskFromMessagePending) {
+                    createTaskFromMessagePending = true
+                    createTaskFromMessageFailed = false
+                    coroutineScope.launch {
+                        try {
+                            when (
+                                val result =
+                                    tasksDataSource.createTasksFromMessage(
+                                        serverId = ServerId(serverId),
+                                        channelId = source.channelId,
+                                        titles = titles,
+                                        sourceMessageId = source.messageId,
+                                    )
+                            ) {
+                                is DataResult.Content -> {
+                                    // The answer folds into the shared projection now; `task:created` agrees.
+                                    result.data.tasks.forEach { task -> tasksDataStore?.upsertTaskForCurrentOwner(serverId, task) }
+                                    bridge.log(
+                                        "thread_task_create_from_message result=content messageId=${source.messageId.value} " +
+                                            "tasks=${result.data.tasks.size}"
+                                    )
+                                    createTaskSourceMessage = null
+                                    bridge.toast(taskCreatedLabel)
+                                }
+                                else -> {
+                                    bridge.logWarn(
+                                        "thread_task_create_from_message result=${result::class.simpleName} " +
+                                            "messageId=${source.messageId.value}"
+                                    )
+                                    if (result is DataResult.NoPermission && routeAuthRequired(result)) return@launch
+                                    createTaskFromMessageFailed = true
+                                }
+                            }
+                        } finally {
+                            createTaskFromMessagePending = false
+                        }
+                    }
+                }
+            },
+        )
     }
 
     RaftForegroundBannerHost(
@@ -12479,6 +12551,7 @@ private fun SharedThreadRouteContentContent(
                                     currentTaskChannelId = taskChannelId,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = tasksDataStore,
+                                    taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
@@ -12865,6 +12938,22 @@ private fun SharedThreadRouteContentContent(
                             }
                         }
                     }
+                }
+                action == "convertMessageToTask" && !itemId.isNullOrBlank() && taskV2Enabled -> {
+                    // Task v2 (web MessageItem `openCreateFromMessage`): tasks are created FROM the
+                    // message (several, under it), never converted from it.
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
+                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canCreateTaskFromMessage() || taskChannelId == null) {
+                        bridge.toast(unableToCreateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    createTaskSourceMessage =
+                        TaskCreateSourceMessage(
+                            channelId = taskChannelId,
+                            messageId = MessageId(message.id),
+                            senderName = message.threadAvatarName().ifBlank { message.authorName },
+                            text = message.body,
+                        )
                 }
                 action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
                     if (itemId in pendingTaskConvertMessageIds) {
@@ -22064,7 +22153,13 @@ private fun ThreadMessagesListContent(
                 val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
                 // Task v2: the list under the message replaces its single task chip (web MessageItem).
-                val sourceTasks = remember(message.id, linkedTasksProjection) { linkedTasksProjection.sourceTasksFor(message) }
+                // In a reply thread only the parent message carries it (web ThreadPanel), never a reply.
+                val replyInThread =
+                    threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
                 val displayMessage =
                     remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
                         val startedAt = TimeSource.Monotonic.markNow()
@@ -22728,7 +22823,8 @@ private fun ThreadMessagesListContent(
                         translationState = translationState,
                         translationAvailable = translationStore != null
                     ),
-                taskConvertPending = message.id in pendingTaskConvertMessageIds
+                taskConvertPending = message.id in pendingTaskConvertMessageIds,
+                taskV2Enabled = linkedTasksProjection.taskV2Enabled
             ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
         // New Message Menu toggle: a text selection shows this same Compact menu in place
         // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
@@ -22783,7 +22879,8 @@ private fun ThreadMessagesListContent(
                                 translationState = translationState,
                                 translationAvailable = translationStore != null
                             ),
-                        taskConvertPending = message.id in pendingTaskConvertMessageIds
+                        taskConvertPending = message.id in pendingTaskConvertMessageIds,
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled
                     )
                 val closeActionMenu: () -> Unit = {
                     actionMessageId = null
@@ -22862,6 +22959,7 @@ private fun ThreadMessagesListContent(
                         showFollowAction = capabilities.follow,
                         showTaskStatusAction = capabilities.taskStatus,
                         showConvertToTaskAction = capabilities.convertToTask,
+                        createTaskFromMessage = capabilities.createTaskFromMessage,
                         showReactionActions = capabilities.quickReactions,
                         showCopyLinkAction = capabilities.copyLink,
                         showShareMessagesAction = capabilities.selectMessage,
@@ -26804,7 +26902,12 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
             } else {
                 Res.string.thread_action_mark_done
             }
-        ThreadNewMessageMenuTool.ConvertToTask -> Res.string.thread_action_convert_to_task
+        ThreadNewMessageMenuTool.ConvertToTask ->
+            if (availability.createTaskFromMessage) {
+                Res.string.thread_action_create_task_from_message
+            } else {
+                Res.string.thread_action_convert_to_task
+            }
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
     }
@@ -29847,7 +29950,9 @@ internal data class ThreadMessageMenuCapabilities(
     val taskStatus: Boolean,
     val convertToTask: Boolean,
     val cancelLocalSend: Boolean,
-    val deleteLocalSend: Boolean
+    val deleteLocalSend: Boolean,
+    /** Task v2: [convertToTask] is "Create Task from Message" (web CreateTaskDialog), not the legacy convert. */
+    val createTaskFromMessage: Boolean = false
 )
 
 internal fun threadMessageMenuCapabilities(
@@ -29856,7 +29961,13 @@ internal fun threadMessageMenuCapabilities(
     slice: ThreadTimelineSlice,
     writeActionsEnabled: Boolean,
     translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
-    taskConvertPending: Boolean = false
+    taskConvertPending: Boolean = false,
+    /**
+     * `task_v2_conversations_v0` (web MessageItem menu): a message's tasks are its list, never a
+     * single linked task, so there is no Mark as Done / Reopen here, and "Create Task from Message"
+     * replaces "Convert to Task" — offered on a message that already has tasks too.
+     */
+    taskV2Enabled: Boolean = false
 ): ThreadMessageMenuCapabilities {
     val localSend = message.hasLocalSendState()
     val system = message.isSystemMessage()
@@ -29887,7 +29998,8 @@ internal fun threadMessageMenuCapabilities(
                 threadFollowSurface &&
                 shouldShowThreadFollowAction(message, replyMetadata),
         taskStatus =
-            slice.showTaskStatusActions &&
+            !taskV2Enabled &&
+                slice.showTaskStatusActions &&
                 !localSend &&
                 !external &&
                 !message.taskId.isNullOrBlank(),
@@ -29895,9 +30007,10 @@ internal fun threadMessageMenuCapabilities(
             slice.canConvertMessagesToTasks &&
                 !taskConvertPending &&
                 !external &&
-                message.canConvertToTask(),
+                if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
-        deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend()
+        deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
+        createTaskFromMessage = taskV2Enabled
     )
 }
 
@@ -29920,6 +30033,8 @@ internal fun threadMessageMenuActions(
     translatePending: Boolean = false,
     showForwardAction: Boolean = false,
     showAddReactionAction: Boolean = false,
+    /** Task v2: the task item is "Create Task from Message". */
+    createTaskFromMessage: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -30065,10 +30180,15 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
-        if (showConvertToTaskAction && message.canConvertToTask()) {
+        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
             add(
                 ThreadMessageMenuAction(
-                    label = Res.string.thread_action_convert_to_task.desc(),
+                    label =
+                        if (createTaskFromMessage) {
+                            Res.string.thread_action_create_task_from_message.desc()
+                        } else {
+                            Res.string.thread_action_convert_to_task.desc()
+                        },
                     icon = RaftLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
@@ -30087,6 +30207,7 @@ private fun ThreadMessageActionMenu(
     showFollowAction: Boolean,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
+    createTaskFromMessage: Boolean = false,
     showReactionActions: Boolean,
     showCopyLinkAction: Boolean,
     showShareMessagesAction: Boolean,
@@ -30125,6 +30246,7 @@ private fun ThreadMessageActionMenu(
             showFollowAction,
             showTaskStatusAction,
             showConvertToTaskAction,
+            createTaskFromMessage,
             showCopyLinkAction,
             showShareMessagesAction,
             showCancelAction,
@@ -30157,6 +30279,7 @@ private fun ThreadMessageActionMenu(
                 showFollowAction = showFollowAction,
                 showTaskStatusAction = showTaskStatusAction,
                 showConvertToTaskAction = showConvertToTaskAction,
+                createTaskFromMessage = createTaskFromMessage,
                 showCopyLinkAction = showCopyLinkAction,
                 showShareMessagesAction = showShareMessagesAction,
                 showCancelAction = showCancelAction,

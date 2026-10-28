@@ -340,6 +340,7 @@
     <string name="thread_action_reopen_task">Reopen Task</string>
     <string name="thread_action_mark_done">Mark as Done</string>
     <string name="thread_action_convert_to_task">Convert to Task</string>
+    <string name="thread_action_create_task_from_message">Create Task from Message</string>
     <string name="thread_tab_chat">Chat</string>
     <string name="thread_tab_tasks">Tasks</string>
     <string name="thread_tab_files">Files</string>
@@ -1598,6 +1599,7 @@
     <string name="tasks_reply_count_description">Messages in this task: %1$d</string>
     <string name="tasks_status_reopen_to_todo">Reopen to Todo</string>
     <string name="tasks_source_list_open">Open task #%1$s: %2$s</string>
+    <string name="tasks_source_list_open_no_number">Open task: %1$s</string>
     <string name="tasks_source_list_reply_count_one">1 message in this task</string>
     <string name="tasks_source_list_reply_count_many">%1$d messages in this task</string>
     <string name="task_conversation_follow">Follow Task</string>
@@ -1783,6 +1785,11 @@
     <string name="tasks_create_multiple_hint">Add one or more task titles. Empty rows are ignored.</string>
     <string name="tasks_create_action">Create</string>
     <string name="tasks_create_action_creating">Creating…</string>
+    <string name="tasks_create_from_message_title_one">Create Task from Message</string>
+    <string name="tasks_create_from_message_title_many">Create Tasks from Message</string>
+    <string name="tasks_create_title_placeholder">Task %1$d</string>
+    <string name="tasks_create_submit_many">Create %1$d Tasks</string>
+    <string name="tasks_create_failed">Failed to create task</string>
     <string name="home_action_view">View</string>
     <string name="home_action_retry">Retry</string>
     <string name="home_section_servers">Servers</string>

@@ -25,8 +25,8 @@ import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -69,7 +69,8 @@ fun RaftTaskCompactList(
  * and the status badge grouped at the right. Where the row is too narrow for the title's 160dp
  * and the right group, the group wraps, whole, onto a second line, still at the right.
  *
- * The row is the button ([onClick]; [contentDescription] names it): at least 44dp high with
+ * The row is the button ([onClick]; [contentDescription], when given, is all a screen reader
+ * hears of it, as web's `aria-label`): at least 44dp high with
  * 12dp ends and 6dp above and below; press lays `fill-pressed` over the whole row. [divider]
  * draws the hairline above it (every row but the first). Texts share the row's first baseline;
  * marks (the avatar) are centred.
@@ -107,10 +108,13 @@ fun RaftTaskCompactRow(
                 .then(if (divider) Modifier.topHairline(colors.lineHairline) else Modifier)
                 .clickable(source, indication = null, role = Role.Button, onClick = onClick)
                 .then(
+                    // The row's label replaces its texts (web `aria-label` on the button): a screen
+                    // reader reads it once, not the label and then the title again.
                     if (contentDescription != null) {
-                        Modifier.semantics(mergeDescendants = true) {
+                        Modifier.clearAndSetSemantics {
                             this.contentDescription = contentDescription
                             role = Role.Button
+                            onClick { onClick(); true }
                         }
                     } else {
                         Modifier

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
@@ -7240,7 +7241,12 @@ private fun RaftAppShellReadyContent(
                                         compactConsecutiveMessages = compactConsecutiveMessages,
                                         resolvedConversationChannelId = resolvedConversationChannelId,
                                     )
-                                if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
+                                // Task v2 (web useOpenTask): with the flag on every non-legacy task opens as its conversation.
+                                val taskV2Enabled =
+                                    readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
+                                        sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+                                    } == true
+                                if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
                                     // Task v2: the local conversation id comes from the server first.
                                     appShellCoroutineScope.launch {
                                         val conversationId =
@@ -7248,6 +7254,7 @@ private fun RaftAppShellReadyContent(
                                                 task = task,
                                                 serverId = readyServerId.orEmpty(),
                                                 tasksDataSource = tasksDataSource,
+                                                taskV2Enabled = taskV2Enabled,
                                                 log = bridge::log,
                                             )
                                         openTaskLaunchPayload(buildLaunch(conversationId))

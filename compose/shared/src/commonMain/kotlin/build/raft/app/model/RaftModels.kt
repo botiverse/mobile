@@ -756,9 +756,14 @@ data class TaskSummary(
     /**
      * Task v2: the message the task hangs under (slock `taskService.ts` `sourceMessageId`: the
      * message it was created from, or a pre-v2 task's host message). Null: none (a channel-only
-     * task) or an older server.
+     * task, or [sourceMessageReported] false: an older server or frame).
      */
     val sourceMessageId: MessageId? = null,
+    /**
+     * The DTO carried `sourceMessageId` (even as null). Web reads an explicit null as "hangs under no
+     * message" and only a missing field as "fall back to the host message".
+     */
+    val sourceMessageReported: Boolean = false,
     /** Task v2: the task's CANONICAL conversation channel (`channels.type = 'task'`), when it exists. */
     val conversationChannelId: ChannelId? = null,
     /** Task v2: the discussion is the task's own conversation (exists, or is created on first use). */

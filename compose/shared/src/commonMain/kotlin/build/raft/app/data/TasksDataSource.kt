@@ -150,6 +150,33 @@ class SharedTasksDataSource(
         }
 
     /**
+     * Task v2 "Create Task from Message" (slock web `CreateTaskDialog` → taskStore `createTasks`):
+     * `POST /tasks/channel/:channelId` `{ tasks: [{ title, sourceMessageId }] }`, every task hanging
+     * under [sourceMessageId]. Blank titles are dropped here; none left is an Empty result.
+     */
+    suspend fun createTasksFromMessage(
+        serverId: ServerId,
+        channelId: ChannelId,
+        titles: List<String>,
+        sourceMessageId: MessageId,
+    ): DataResult<TaskSnapshot> {
+        val drafts = titles.map { it.trim() }.filter { it.isNotBlank() }.map { TaskCreateDraft(title = it, sourceMessageId = sourceMessageId) }
+        if (drafts.isEmpty()) return DataResult.Empty(EmptyReason.NoTasks)
+        return try {
+            typedApi.createTasks(
+                serverId = serverId,
+                channelId = channelId,
+                drafts = drafts,
+                priority = DataRequestPriority.Foreground
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
+        }
+    }
+
+    /**
      * Task v2 `POST /api/tasks/:taskId/conversation` (slock `routes/tasks.ts`): idempotently ensures the
      * task's conversation and answers this server's LOCAL conversation id (a joint surface's
      * projection, else the canonical one). 409 `task_v2_not_enabled` / `task_without_conversation`
@@ -268,7 +295,9 @@ internal suspend fun convertMessageToCanonicalTask(
 
 data class TaskCreateDraft(
     val title: String,
-    val description: String? = null
+    val description: String? = null,
+    /** Task v2 "Create Task from Message": the message the task hangs under. */
+    val sourceMessageId: MessageId? = null
 )
 
 private suspend fun RaftNetworkClient.serverTasks(
@@ -625,7 +654,10 @@ data class TaskStatusUpdateRequestBody(val status: String)
 @Serializable
 data class TaskCreateRequestBody(
     val title: String,
-    val description: String? = null
+    val description: String? = null,
+    // slock `routes/tasks.ts` POST /tasks/channel/:id item; omitted (explicitNulls = false) without one,
+    // as web `createTasks` sends `{ title }` then.
+    val sourceMessageId: String? = null
 )
 
 @Serializable
@@ -640,7 +672,8 @@ fun TaskStatus.toTaskStatusUpdateRequestBody(): TaskStatusUpdateRequestBody =
 fun TaskCreateDraft.toTaskCreateRequestBody(): TaskCreateRequestBody =
     TaskCreateRequestBody(
         title = title.trim(),
-        description = description?.trim()?.takeIf { it.isNotBlank() }
+        description = description?.trim()?.takeIf { it.isNotBlank() },
+        sourceMessageId = sourceMessageId?.value?.takeIf { it.isNotBlank() }
     )
 
 fun buildSharedTaskStatusBody(status: TaskStatus): String =
@@ -1227,8 +1260,9 @@ internal data class TaskWireDto(
     // surface resolves its local one via POST /tasks/:id/conversation); `conversationAnchored`
     // says the discussion is the task's own conversation (existing or created on first use).
     val hostMessageId: String? = null,
-    // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host).
-    val sourceMessageId: String? = null,
+    // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host
+    // server-side). The default marks a DTO without the field; an explicit null decodes as null.
+    val sourceMessageId: String? = TaskSourceMessageIdAbsent,
     val conversationChannelId: String? = null,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
@@ -1258,6 +1292,12 @@ internal fun taskOpenableMessageId(id: String, messageId: String?, hostMessageId
     } else {
         (messageId ?: id).let(::MessageId)
     }
+
+/** The default of a task DTO's `sourceMessageId` when the field is missing (never a real id). */
+internal const val TaskSourceMessageIdAbsent: String = "\u0000absent"
+
+internal fun String?.reportedSourceMessageId(): MessageId? =
+    this?.takeIf { it.isNotBlank() && it != TaskSourceMessageIdAbsent }?.let(::MessageId)
 
 internal fun TaskWireDto.toTaskSummary(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
@@ -1289,7 +1329,8 @@ internal fun TaskWireDto.toTaskSummary(
         readOnlyReason = readOnlyReason?.takeIf { it.isNotBlank() },
         channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        sourceMessageId = sourceMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        sourceMessageId = sourceMessageId.reportedSourceMessageId(),
+        sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
         conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

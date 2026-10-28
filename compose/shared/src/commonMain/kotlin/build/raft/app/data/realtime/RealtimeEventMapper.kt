@@ -3,6 +3,8 @@ package build.raft.app.data.realtime
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.data.TaskSourceMessageIdAbsent
+import build.raft.app.data.reportedSourceMessageId
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
@@ -620,8 +622,9 @@ private data class TaskInfoWireDto(
     val description: String? = null,
     val readOnlyReason: String? = null,
     val hostMessageId: String? = null,
-    // slock `projectTaskCreated` / the `task:updated` task DTO: the message the task hangs under.
-    val sourceMessageId: String? = null,
+    // slock `projectTaskCreated` / the `task:updated` task DTO: the message the task hangs under
+    // (default: the field is missing; an explicit null decodes as null).
+    val sourceMessageId: String? = TaskSourceMessageIdAbsent,
     val conversationChannelId: String? = null,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
@@ -1150,7 +1153,8 @@ private fun TaskInfoWireDto.toDomain(
         readOnlyReason = resolvedReadOnlyReason,
         channelType = channelType?.trim()?.takeIf { it.isNotBlank() },
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        sourceMessageId = sourceMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        sourceMessageId = sourceMessageId.reportedSourceMessageId(),
+        sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
         conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,

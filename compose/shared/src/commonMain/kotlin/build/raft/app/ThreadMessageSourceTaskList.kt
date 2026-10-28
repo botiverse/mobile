@@ -50,7 +50,12 @@ internal fun ThreadMessageSourceTaskList(
                     replyCount = task.replyCount,
                     replyCountDescription = replyCountDescription,
                     divider = index > 0,
-                    contentDescription = stringResource(Res.string.tasks_source_list_open, number, task.title),
+                    contentDescription =
+                        if (number.isEmpty()) {
+                            stringResource(Res.string.tasks_source_list_open_no_number, task.title)
+                        } else {
+                            stringResource(Res.string.tasks_source_list_open, number, task.title)
+                        },
                 )
             }
         }

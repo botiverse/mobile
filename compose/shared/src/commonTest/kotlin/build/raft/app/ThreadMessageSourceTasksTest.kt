@@ -39,14 +39,21 @@ class ThreadMessageSourceTasksTest {
                 parsed(taskJson(id = "t-11", number = 11, source = "msg-a")),
                 // A pre-v2 task: hosted by its message (the server's sourceMessageId is that host).
                 parsed(taskJson(id = "t-5", number = 5, source = "msg-b", host = "msg-b", anchored = false, conversation = null)),
-                // A v2 task with no source message (made in the channel's task list).
+                // A v2 task with no source message (made in the channel's task list): explicit null.
                 parsed(taskJson(id = "t-9", number = 9, source = null)),
+                // A pre-v2 task hosted by msg-a, beside its v2 tasks.
+                parsed(taskJson(id = "t-3", number = 3, source = "msg-a", host = "msg-a", anchored = false, conversation = null)),
+                // A legacy task (no host, no conversation) the server still names a source for.
+                parsed(taskJson(id = "t-2", number = 2, source = "msg-c", anchored = false, conversation = null, legacy = true)),
+                // An older DTO without the field: falls back to its host message even with the flag on.
+                parsed(taskJson(id = "t-7", number = 7, source = null, host = "msg-d", anchored = false, conversation = null, reportSource = false)),
             )
         // (flag, expected lists)
         listOf(
-            true to mapOf("msg-a" to listOf(11, 12), "msg-b" to listOf(5)),
-            // Flag off: only a message with a v2 task under it keeps its list; the pre-v2 host keeps its chip.
-            false to mapOf("msg-a" to listOf(11, 12)),
+            true to mapOf("msg-a" to listOf(3, 11, 12), "msg-b" to listOf(5), "msg-c" to listOf(2), "msg-d" to listOf(7)),
+            // Flag off: only a message with a v2 task under it keeps its list (the pre-v2 task beside
+            // them included); a message with only a pre-v2 task keeps its chip.
+            false to mapOf("msg-a" to listOf(3, 11, 12)),
         ).forEach { (flag, expected) ->
             val lists = tasks.threadSourceTaskLists(taskV2Enabled = flag)
             assertEquals(expected, lists.mapValues { (_, list) -> list.map { it.taskNumber } }, "taskV2=$flag")
@@ -56,8 +63,8 @@ class ThreadMessageSourceTasksTest {
         val projection = emptyThreadLinkedTasksProjection().copy(sourceTaskLists = tasks.threadSourceTaskLists(true))
         assertEquals("t-5", projection.sourceTaskById("t-5")?.id?.value)
         assertNull(projection.sourceTaskById("t-9"))
-        assertEquals(listOf("t-11", "t-12"), projection.sourceTasksFor(message("msg-a")).map { it.taskId })
-        assertTrue(projection.sourceTasksFor(message("msg-c")).isEmpty())
+        assertEquals(listOf("t-3", "t-11", "t-12"), projection.sourceTasksFor(message("msg-a")).map { it.taskId })
+        assertTrue(projection.sourceTasksFor(message("msg-z")).isEmpty())
     }
 
     @Test
@@ -111,7 +118,7 @@ class ThreadMessageSourceTasksTest {
         assertEquals(TaskStatus.InReview to "Codex-Android-DevOPS", row()?.let { it.status to it.assigneeName })
 
         // A copy without the field (an older frame) keeps the task under its message.
-        val done = frame(taskJson(id = "t-11", number = 11, source = null, status = "done", revision = 5))
+        val done = frame(taskJson(id = "t-11", number = 11, source = null, status = "done", revision = 5, reportSource = false))
         assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTaskForCurrentServer("server-1", done))
         assertEquals(TaskStatus.Done to null, row()?.let { it.status to it.assigneeName })
     }
@@ -144,16 +151,18 @@ class ThreadMessageSourceTasksTest {
         claimedId: String? = null,
         claimedName: String? = null,
         revision: Long = 3,
+        legacy: Boolean = false,
+        reportSource: Boolean = true,
     ): String =
         """
-        {"id":"$id","messageId":"${host ?: id}","hostMessageId":${host.json()},"sourceMessageId":${source.json()},
+        {"id":"$id","messageId":"${host ?: id}","hostMessageId":${host.json()},${if (reportSource) "\"sourceMessageId\":${source.json()}," else ""}
          "conversationReplyCount":$replies,"conversationChannelId":${conversation.json()},"conversationAnchored":$anchored,
          "channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":$number,
          "title":"Task $number","description":null,"status":"$status",
          "createdByType":"user","createdById":"user-1","createdByName":"artin","createdByHandle":"artin",
          "createdByMembershipStatus":"active","claimedByType":${claimedType.json()},"claimedById":${claimedId.json()},
          "claimedByName":${claimedName.json()},"claimedAt":null,"completedAt":null,
-         "createdAt":"2026-10-28T09:00:00.000Z","updatedAt":"2026-10-28T09:30:00.000Z","revision":$revision,"isLegacy":false}
+         "createdAt":"2026-10-28T09:00:00.000Z","updatedAt":"2026-10-28T09:30:00.000Z","revision":$revision,"isLegacy":$legacy}
         """.trimIndent()
 
     private fun message(id: String) = RaftThreadMessageItem(id = id, authorId = "user-1", authorName = "artin")
