@@ -26,6 +26,11 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | Nightly schedule | yes | yes | yes |
 | `workflow_dispatch` `scope=pr` / `scope=full` | yes / yes | no / yes | no / yes |
 
+iOS compile runs on Blacksmith with Xcode 27.0. A second lane, `iOS compile
+(Xcode 27.1)` on GitHub `xcode-27`, is added only on the full tier (full-ci PR,
+`release-*` push, nightly, `scope=full`) or when `compose/iosApp/**` changed on
+a run that compiles iOS (planner output `run_ios_xcode271`).
+
 So an ordinary PR never proves the iOS build. When your change can break
 Kotlin/Native or Swift (commonMain APIs, expect/actual, `compose/iosApp/**`,
 the realtime Swift list), run the full tier on your branch:
