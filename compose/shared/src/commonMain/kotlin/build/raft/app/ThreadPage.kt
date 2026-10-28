@@ -2410,7 +2410,9 @@ internal fun RaftThreadScreenPayload.threadActivityMuteState(
     // but must not rewrite what surface this page is.
     if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) return null
     val supported = projection?.activityMuteSupported ?: activityMuteSupported
-    if (!supported) return null
+    val muted = projection?.activityMuted ?: activityMuted
+    // Unmute stays reachable while muted even once mute is no longer offered (removed App bot DM).
+    if (!supported && !muted) return null
     val resolvedJoined = projection?.joined ?: joined
     if (surfaceKind != RaftThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
     val channelId =
@@ -2420,7 +2422,7 @@ internal fun RaftThreadScreenPayload.threadActivityMuteState(
             ?: return null
     return ThreadActivityMuteUiState(
         channelId = channelId,
-        muted = projection?.activityMuted ?: activityMuted,
+        muted = muted,
         supported = supported,
         muteFromSeq = projection?.muteFromSeq ?: muteFromSeq
     )
@@ -2429,8 +2431,7 @@ internal fun RaftThreadScreenPayload.threadActivityMuteState(
 internal fun RaftThreadScreenPayload.threadActivityMutedIndicatorVisible(
     projection: SharedConversationDirectoryProjection?
 ): Boolean {
-    val supported = projection?.activityMuteSupported ?: activityMuteSupported
-    return supported && (projection?.activityMuted ?: activityMuted)
+    return projection?.activityMuted ?: activityMuted
 }
 
 internal data class ThreadConversationPinTarget(

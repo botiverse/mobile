@@ -3948,7 +3948,9 @@ internal class SharedHomeStore(
             pinUpdateFailureCallback("Unable to update channel notifications: home not loaded")
             return
         }
-        if (!target.activityMuteSupported) {
+        // A muted conversation can always be unmuted, even once mute is no longer offered for it
+        // (an App bot DM after the bot was removed), so a mute can never get stuck.
+        if (!target.activityMuteSupported && !(target.activityMuted && !muted)) {
             pinUpdateFailureCallback("Unable to update channel notifications")
             return
         }
