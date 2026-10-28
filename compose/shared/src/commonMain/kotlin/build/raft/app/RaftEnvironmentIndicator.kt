@@ -38,6 +38,17 @@ internal const val RAFT_EMBEDDED_CHILD_PAGE_PARAM = "slockEmbeddedChildPage"
 private val RaftEnvironmentIndicatorMaxWidth = 144.dp
 private val RaftEnvironmentIndicatorEdgeMargin = 6.dp
 
+private var raftEnvironmentIndicatorHiddenForCapture = false
+
+/**
+ * Store-screenshot capture on a non-production server (e.g. a staging demo server): the host app
+ * hides the indicator for the whole process before the first page. iOS sets it from the
+ * `RaftHideEnvironmentIndicator` launch argument / user default; nothing persists it.
+ */
+fun setRaftEnvironmentIndicatorHiddenForCapture(hidden: Boolean) {
+    raftEnvironmentIndicatorHiddenForCapture = hidden
+}
+
 internal data class RaftEnvironmentIndicatorDragBounds(
     val hostWidthPx: Float,
     val hostHeightPx: Float,
@@ -58,7 +69,7 @@ internal fun RaftEnvironmentIndicatorHost(
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    if (!enabled) {
+    if (!enabled || raftEnvironmentIndicatorHiddenForCapture) {
         content()
         return
     }
