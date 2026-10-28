@@ -19,6 +19,31 @@ final class RaftIosAdaptivePanePublisher: NSObject {
 
     private var latest: Snapshot?
 
+    /// The physical side the vertical strip is drawn on, as the name shared expects:
+    /// "left", "right" or "none".
+    ///
+    /// UIKit's `verticalBarEdge` is a *logical* edge - "leading" or "trailing" - and in a
+    /// right-to-left language its trailing edge is the left of the screen. The side column is
+    /// laid out by physical side (the design system's column is placed on the Left or the
+    /// Right), so the host converts the logical edge into the physical side the strip is
+    /// actually drawn on. The host is the right place to do this: it knows the window's
+    /// effective layout direction.
+    ///
+    /// - Parameters:
+    ///   - verticalBarEdge: `UIVerticalBarEdge` as a number: 0 unspecified, 1 leading,
+    ///     2 trailing.
+    ///   - isRightToLeft: whether the window's effective layout direction is right-to-left.
+    @objc(physicalStripEdgeForVerticalBarEdge:rightToLeft:)
+    static func physicalStripEdge(verticalBarEdge: Int, rightToLeft: Bool) -> String {
+        // Only a leading or trailing edge places a bar; "unspecified" places none.
+        guard verticalBarEdge == 1 || verticalBarEdge == 2 else { return "none" }
+        let isLeading = verticalBarEdge == 1
+        // A leading edge is the left in a left-to-right language and the right in a
+        // right-to-left one.
+        let isOnLeft = isLeading != rightToLeft
+        return isOnLeft ? "left" : "right"
+    }
+
     /// The window facts the host owns, read once per publish.
     ///
     /// `sideColumn` says the window is in the iPhone Duo side-column shape: the outer (folded)

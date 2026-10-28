@@ -30,11 +30,11 @@ internal enum class RaftAdaptiveSideColumn {
     /** No side column: a horizontal top bar is used. */
     None,
 
-    /** A vertical strip on the leading (left) edge. */
-    Leading,
+    /** A vertical strip on the left of the window, whatever the language's reading direction. */
+    Left,
 
-    /** A vertical strip on the trailing (right) edge. */
-    Trailing
+    /** A vertical strip on the right of the window, whatever the language's reading direction. */
+    Right
 }
 
 /**
@@ -75,7 +75,11 @@ internal data class RaftAdaptivePaneEvent(
      * display held landscape). False for every other device and window size.
      */
     val sideColumn: Boolean = false,
-    /** Which edge the vertical strip sits on. */
+    /**
+     * Which side of the window the vertical strip sits on, as a physical side. The host reports
+     * the physical side, not the logical one: in a right-to-left language the system's trailing
+     * edge is the left of the screen, and the strip is laid out by physical side.
+     */
     val stripEdge: RaftAdaptiveSideColumn = RaftAdaptiveSideColumn.None,
     /** Width of the vertical strip, in points. */
     val stripWidthPt: Float = 0f,
@@ -148,8 +152,8 @@ internal fun JSONObject.toRaftAdaptivePaneEventOrNull(): RaftAdaptivePaneEvent? 
 
 private fun String.toRaftAdaptiveSideColumn(): RaftAdaptiveSideColumn =
     when (trim().lowercase()) {
-        "leading", "left" -> RaftAdaptiveSideColumn.Leading
-        "trailing", "right" -> RaftAdaptiveSideColumn.Trailing
+        "left" -> RaftAdaptiveSideColumn.Left
+        "right" -> RaftAdaptiveSideColumn.Right
         else -> RaftAdaptiveSideColumn.None
     }
 

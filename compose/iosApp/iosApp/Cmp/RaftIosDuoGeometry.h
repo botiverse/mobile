@@ -10,7 +10,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// bar. Shared decides what to do with that; the host only reports the facts.
 
 /// The edge the system places a vertical bar on, as the name shared expects
-/// ("leading", "trailing" or "none").
+/// ("left", "right" or "none").
+///
+/// The name is a *physical* side. The system's `verticalBarEdge` is a logical edge, and in a
+/// right-to-left language its "trailing" is the left of the screen; the strip is laid out by
+/// physical side, so the host converts the logical edge using the window's effective layout
+/// direction.
 FOUNDATION_EXTERN NSString *RaftIosSideColumnEdgeName(UIWindow * _Nullable window);
 
 /// Whether the system is in a shape where it places a vertical bar (the side column).

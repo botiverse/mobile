@@ -2,6 +2,8 @@
 
 #import "RaftIosDuoGeometry.h"
 
+#import "iosApp-Swift.h"
+
 /// iPhone Duo window facts the host reports to shared (the adaptive-pane contract).
 ///
 /// Apple's HIG for iPhone Duo moves the tool bar, the tab bar and the navigation buttons into one
@@ -19,19 +21,25 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /// The edge the system places a vertical bar on, as the name shared expects.
+///
+/// The edge is reported as a *physical* side - "left" or "right" - not as "leading" or
+/// "trailing". The system's `verticalBarEdge` is a logical edge: in a right-to-left language
+/// "trailing" is the left of the screen. The side column is laid out by physical side (the
+/// design system's column is placed on the Left or the Right), so a logical edge would put it on
+/// the wrong side in those languages. The host knows the window's effective layout direction, so
+/// it converts the system's logical edge into the physical side the strip is actually drawn on.
 NSString *RaftIosSideColumnEdgeName(UIWindow * _Nullable window) {
     NSNumber *edge = RaftIosVerticalBarEdgeValue(window.traitCollection);
     if (edge == nil) {
         return @"none";
     }
-    // UIVerticalBarEdge: 0 unspecified, 1 leading, 2 trailing.
-    if (edge.integerValue == 1) {
-        return @"leading";
-    }
-    if (edge.integerValue == 2) {
-        return @"trailing";
-    }
-    return @"none";
+    BOOL isRightToLeft =
+        [window effectiveUserInterfaceLayoutDirection] == UIUserInterfaceLayoutDirectionRightToLeft;
+    // The conversion from the system's logical edge to the physical side lives in Swift, where
+    // it is unit tested.
+    return [RaftIosAdaptivePanePublisher
+        physicalStripEdgeForVerticalBarEdge:edge.integerValue
+                                    rightToLeft:isRightToLeft];
 }
 
 /// Whether the system is in a shape where it places a vertical bar (the side column).
@@ -50,7 +58,7 @@ CGFloat RaftIosSideColumnWidthPoints(UIWindow * _Nullable window) {
     if (!RaftIosSideColumnIsActive(window)) {
         return 0;
     }
-    if ([RaftIosSideColumnEdgeName(window) isEqualToString:@"leading"]) {
+    if ([RaftIosSideColumnEdgeName(window) isEqualToString:@"left"]) {
         return window.safeAreaInsets.left;
     }
     return window.safeAreaInsets.right;

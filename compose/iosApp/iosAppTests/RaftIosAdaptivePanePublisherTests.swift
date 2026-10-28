@@ -66,6 +66,42 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         XCTAssertEqual(splitView?["heightPx"] as? Int, 2048)
     }
 
+    func testVerticalBarEdgeBecomesAPhysicalSide() {
+        // UIVerticalBarEdge: 0 unspecified, 1 leading, 2 trailing.
+        //
+        // The strip is laid out by physical side, so the host converts the system's logical
+        // edge. In a right-to-left language the logical "trailing" edge is the left of the
+        // screen, and reporting it as "trailing" would put the column on the wrong side.
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 0, rightToLeft: false),
+            "none"
+        )
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 0, rightToLeft: true),
+            "none"
+        )
+
+        // Left-to-right: leading is the left, trailing is the right.
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 1, rightToLeft: false),
+            "left"
+        )
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 2, rightToLeft: false),
+            "right"
+        )
+
+        // Right-to-left: the same logical edges are on the other physical sides.
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 1, rightToLeft: true),
+            "right"
+        )
+        XCTAssertEqual(
+            RaftIosAdaptivePanePublisher.physicalStripEdge(verticalBarEdge: 2, rightToLeft: true),
+            "left"
+        )
+    }
+
     func testSideColumnFactsArePublishedAsGiven() {
         let publisher = RaftIosAdaptivePanePublisher()
 
@@ -82,11 +118,11 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         // A side column: the strip's edge, width and the tab bar's height are published.
         let duo = publisher.nextPayload(
             widthPoints: 466, heightPoints: 678, scale: 3,
-            sideColumn: true, stripEdge: "trailing",
+            sideColumn: true, stripEdge: "right",
             stripWidthPoints: 54, nativeTabBarHeightPoints: 120, reservedRegions: []
         ) as? [String: Any]
         XCTAssertEqual(duo?["sideColumn"] as? Bool, true)
-        XCTAssertEqual(duo?["stripEdge"] as? String, "trailing")
+        XCTAssertEqual(duo?["stripEdge"] as? String, "right")
         XCTAssertEqual(duo?["stripWidthPt"] as? CGFloat, 54)
         XCTAssertEqual(duo?["nativeTabBarHeightPt"] as? CGFloat, 120)
     }
