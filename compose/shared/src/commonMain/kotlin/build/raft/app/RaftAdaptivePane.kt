@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 
 /**
@@ -11,8 +12,46 @@ internal data class RaftAdaptivePaneState(
     val heightPx: Int = 0,
     val density: Float = 1f,
     val posture: RaftAdaptivePanePosture = RaftAdaptivePanePosture.Unknown,
-    val layout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact
+    val layout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
+    val sideColumn: RaftAdaptiveSideColumn = RaftAdaptiveSideColumn.None
 )
+
+/**
+ * The side column the host lays out for the window: a vertical strip on one edge carrying
+ * navigation, page actions and the tab bar.
+ *
+ * iPhone Duo (iOS 27, HIG "designing for iPhone Duo"): with the device folded (outer display) or
+ * unfolded and held landscape, the system moves the tool bar, the tab bar and the navigation
+ * buttons into one vertical strip on the right edge; only the inner display held portrait goes
+ * back to a horizontal top bar. The host reports which shape the window is in, and the design
+ * system's side column component places the controls accordingly.
+ */
+internal enum class RaftAdaptiveSideColumn {
+    /** No side column: a horizontal top bar is used. */
+    None,
+
+    /** A vertical strip on the leading (left) edge. */
+    Leading,
+
+    /** A vertical strip on the trailing (right) edge. */
+    Trailing
+}
+
+/**
+ * A rectangle the host must keep interactive content out of, in window points: the front-facing
+ * camera's occlusion region and the fold's division region, as reported by UIKit
+ * (`UIView.reservedRegions(ofKind:)`). Empty on systems without those regions.
+ */
+internal data class RaftAdaptiveReservedRegion(
+    val leftPt: Float,
+    val topPt: Float,
+    val widthPt: Float,
+    val heightPt: Float
+) {
+    fun isValid(): Boolean =
+        widthPt > 0f && heightPt > 0f && leftPt.isFinite() && topPt.isFinite() &&
+            widthPt.isFinite() && heightPt.isFinite()
+}
 
 internal enum class RaftAdaptivePanePosture {
     Unknown,
@@ -30,7 +69,20 @@ internal data class RaftAdaptivePaneEvent(
     val widthPx: Int,
     val heightPx: Int,
     val density: Float,
-    val posture: RaftAdaptivePanePosture
+    val posture: RaftAdaptivePanePosture,
+    /**
+     * Whether the window is in the side-column shape (iPhone Duo: outer display, or the inner
+     * display held landscape). False for every other device and window size.
+     */
+    val sideColumn: Boolean = false,
+    /** Which edge the vertical strip sits on. */
+    val stripEdge: RaftAdaptiveSideColumn = RaftAdaptiveSideColumn.None,
+    /** Width of the vertical strip, in points. */
+    val stripWidthPt: Float = 0f,
+    /** Height the native tab bar takes at the bottom of the strip, in points (0 when there is none). */
+    val nativeTabBarHeightPt: Float = 0f,
+    /** Camera and fold regions to keep content out of, in points. */
+    val reservedRegions: List<RaftAdaptiveReservedRegion> = emptyList()
 )
 
 internal const val RaftAdaptivePanePagerEvent = "slockAdaptivePaneChanged"
@@ -66,7 +118,13 @@ internal fun reduceRaftAdaptivePane(
         heightPx = event.heightPx,
         density = event.density,
         posture = event.posture,
-        layout = layout
+        layout = layout,
+        sideColumn =
+            if (event.sideColumn) {
+                event.stripEdge
+            } else {
+                RaftAdaptiveSideColumn.None
+            }
     )
 }
 
@@ -79,8 +137,39 @@ internal fun JSONObject.toRaftAdaptivePaneEventOrNull(): RaftAdaptivePaneEvent? 
         widthPx = widthPx,
         heightPx = heightPx,
         density = density,
-        posture = optString("posture").toRaftAdaptivePanePosture()
+        posture = optString("posture").toRaftAdaptivePanePosture(),
+        sideColumn = optBoolean("sideColumn", false),
+        stripEdge = optString("stripEdge").toRaftAdaptiveSideColumn(),
+        stripWidthPt = optDouble("stripWidthPt", 0.0).toFloat(),
+        nativeTabBarHeightPt = optDouble("nativeTabBarHeightPt", 0.0).toFloat(),
+        reservedRegions = optJSONArray("reservedRegions").toRaftAdaptiveReservedRegions()
     )
+}
+
+private fun String.toRaftAdaptiveSideColumn(): RaftAdaptiveSideColumn =
+    when (trim().lowercase()) {
+        "leading", "left" -> RaftAdaptiveSideColumn.Leading
+        "trailing", "right" -> RaftAdaptiveSideColumn.Trailing
+        else -> RaftAdaptiveSideColumn.None
+    }
+
+private fun JSONArray?.toRaftAdaptiveReservedRegions(): List<RaftAdaptiveReservedRegion> {
+    if (this == null) return emptyList()
+    val regions = mutableListOf<RaftAdaptiveReservedRegion>()
+    for (index in 0 until length()) {
+        val item = optJSONObject(index) ?: continue
+        val region =
+            RaftAdaptiveReservedRegion(
+                leftPt = item.optDouble("leftPt", 0.0).toFloat(),
+                topPt = item.optDouble("topPt", 0.0).toFloat(),
+                widthPt = item.optDouble("widthPt", 0.0).toFloat(),
+                heightPt = item.optDouble("heightPt", 0.0).toFloat()
+            )
+        if (region.isValid()) {
+            regions.add(region)
+        }
+    }
+    return regions
 }
 
 private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =

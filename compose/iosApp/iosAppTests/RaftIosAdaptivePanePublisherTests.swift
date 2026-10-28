@@ -9,7 +9,12 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         let payload = publisher.nextPayload(
             widthPoints: 1024,
             heightPoints: 1366,
-            scale: 2
+            scale: 2,
+            sideColumn: false,
+            stripEdge: "none",
+            stripWidthPoints: 0,
+            nativeTabBarHeightPoints: 0,
+            reservedRegions: []
         ) as? [String: Any]
 
         XCTAssertEqual(payload?["widthPx"] as? Int, 2048)
@@ -18,20 +23,34 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         XCTAssertEqual(payload?["posture"] as? String, "flat")
         XCTAssertEqual(
             Set(payload?.keys.map { $0 } ?? []),
-            Set(["widthPx", "heightPx", "density", "posture"])
+            Set([
+                "widthPx", "heightPx", "density", "posture",
+                "sideColumn", "stripEdge", "stripWidthPt", "nativeTabBarHeightPt",
+                "reservedRegions",
+            ])
         )
     }
 
     func testDeduplicatesIdenticalFactsButPublishesRotationAndResize() {
         let publisher = RaftIosAdaptivePanePublisher()
 
-        XCTAssertNotNil(publisher.nextPayload(widthPoints: 1024, heightPoints: 1366, scale: 2))
-        XCTAssertNil(publisher.nextPayload(widthPoints: 1024, heightPoints: 1366, scale: 2))
+        XCTAssertNotNil(publisher.nextPayload(
+            widthPoints: 1024, heightPoints: 1366, scale: 2,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+        ))
+        XCTAssertNil(publisher.nextPayload(
+            widthPoints: 1024, heightPoints: 1366, scale: 2,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+        ))
 
         let landscape = publisher.nextPayload(
             widthPoints: 1366,
             heightPoints: 1024,
-            scale: 2
+            scale: 2,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
         ) as? [String: Any]
         XCTAssertEqual(landscape?["widthPx"] as? Int, 2732)
         XCTAssertEqual(landscape?["heightPx"] as? Int, 2048)
@@ -39,19 +58,97 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         let splitView = publisher.nextPayload(
             widthPoints: 683,
             heightPoints: 1024,
-            scale: 2
+            scale: 2,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
         ) as? [String: Any]
         XCTAssertEqual(splitView?["widthPx"] as? Int, 1366)
         XCTAssertEqual(splitView?["heightPx"] as? Int, 2048)
     }
 
+    func testSideColumnFactsArePublishedAsGiven() {
+        let publisher = RaftIosAdaptivePanePublisher()
+
+        // No side column: the window uses a horizontal top bar.
+        let none = publisher.nextPayload(
+            widthPoints: 402, heightPoints: 874, scale: 3,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+        ) as? [String: Any]
+        XCTAssertEqual(none?["sideColumn"] as? Bool, false)
+        XCTAssertEqual(none?["stripEdge"] as? String, "none")
+        XCTAssertEqual(none?["stripWidthPt"] as? CGFloat, 0)
+
+        // A side column: the strip's edge, width and the tab bar's height are published.
+        let duo = publisher.nextPayload(
+            widthPoints: 466, heightPoints: 678, scale: 3,
+            sideColumn: true, stripEdge: "trailing",
+            stripWidthPoints: 54, nativeTabBarHeightPoints: 120, reservedRegions: []
+        ) as? [String: Any]
+        XCTAssertEqual(duo?["sideColumn"] as? Bool, true)
+        XCTAssertEqual(duo?["stripEdge"] as? String, "trailing")
+        XCTAssertEqual(duo?["stripWidthPt"] as? CGFloat, 54)
+        XCTAssertEqual(duo?["nativeTabBarHeightPt"] as? CGFloat, 120)
+    }
+
+    func testReservedRegionsArePublishedAsWindowPointRects() {
+        let publisher = RaftIosAdaptivePanePublisher()
+
+        let payload = publisher.nextPayload(
+            widthPoints: 669, heightPoints: 951, scale: 3,
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0,
+            reservedRegions: [
+                ["leftPt": 645.0, "topPt": 0.0, "widthPt": 24.0, "heightPt": 951.0],
+                ["leftPt": 0.0, "topPt": 0.0, "widthPt": 669.0, "heightPt": 20.0],
+            ]
+        ) as? [String: Any]
+
+        let regions = payload?["reservedRegions"] as? [[String: NSNumber]]
+        XCTAssertEqual(regions?.count, 2)
+        XCTAssertEqual(regions?.first?["leftPt"] as? CGFloat, 645.0)
+        XCTAssertEqual(regions?.first?["heightPt"] as? CGFloat, 951.0)
+    }
+
     func testRejectsInvalidWindowFactsWithoutPoisoningDeduplication() {
         let publisher = RaftIosAdaptivePanePublisher()
 
-        XCTAssertNil(publisher.nextPayload(widthPoints: 0, heightPoints: 1366, scale: 2))
-        XCTAssertNil(publisher.nextPayload(widthPoints: 1024, heightPoints: .nan, scale: 2))
-        XCTAssertNil(publisher.nextPayload(widthPoints: 1024, heightPoints: 1366, scale: 0))
-        XCTAssertNotNil(publisher.nextPayload(widthPoints: 1024, heightPoints: 1366, scale: 2))
+        let plain: (
+            sideColumn: Bool, stripEdge: String,
+            stripWidthPoints: CGFloat, nativeTabBarHeightPoints: CGFloat,
+            reservedRegions: [[String: NSNumber]]
+        ) = (
+            sideColumn: false, stripEdge: "none",
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+        )
+        XCTAssertNil(publisher.nextPayload(
+            widthPoints: 0, heightPoints: 1366, scale: 2,
+            sideColumn: plain.sideColumn,
+            stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
+            nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
+            reservedRegions: plain.reservedRegions
+        ))
+        XCTAssertNil(publisher.nextPayload(
+            widthPoints: 1024, heightPoints: .nan, scale: 2,
+            sideColumn: plain.sideColumn,
+            stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
+            nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
+            reservedRegions: plain.reservedRegions
+        ))
+        XCTAssertNil(publisher.nextPayload(
+            widthPoints: 1024, heightPoints: 1366, scale: 0,
+            sideColumn: plain.sideColumn,
+            stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
+            nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
+            reservedRegions: plain.reservedRegions
+        ))
+        XCTAssertNotNil(publisher.nextPayload(
+            widthPoints: 1024, heightPoints: 1366, scale: 2,
+            sideColumn: plain.sideColumn,
+            stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
+            nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
+            reservedRegions: plain.reservedRegions
+        ))
     }
 }
 

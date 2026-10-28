@@ -10,15 +10,34 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let widthPx: Int
         let heightPx: Int
         let density: CGFloat
+        let sideColumn: Bool
+        let stripEdge: String
+        let stripWidthPt: CGFloat
+        let nativeTabBarHeightPt: CGFloat
+        let reservedRegions: [[String: NSNumber]]
     }
 
     private var latest: Snapshot?
 
-    @objc(nextPayloadWithWidthPoints:heightPoints:scale:)
+    /// The window facts the host owns, read once per publish.
+    ///
+    /// `sideColumn` says the window is in the iPhone Duo side-column shape: the outer (folded)
+    /// display, or the inner display held landscape. Apple's HIG for iPhone Duo moves the tool
+    /// bar, tab bar and navigation buttons into one vertical strip on the right edge in that
+    /// shape, and back to a horizontal top bar when the inner display is held portrait.
+    ///
+    /// The shape is decided from the window's size and the device, not from the hinge angle: the
+    /// hinge APIs (`UIHinge`) are iOS 27.1+ and the app still has to build against the 26.x SDK.
+    @objc(nextPayloadWithWidthPoints:heightPoints:scale:sideColumn:stripEdge:stripWidthPoints:nativeTabBarHeightPoints:reservedRegions:)
     func nextPayload(
         widthPoints: CGFloat,
         heightPoints: CGFloat,
-        scale: CGFloat
+        scale: CGFloat,
+        sideColumn: Bool,
+        stripEdge: String,
+        stripWidthPoints: CGFloat,
+        nativeTabBarHeightPoints: CGFloat,
+        reservedRegions: [[String: NSNumber]]
     ) -> NSDictionary? {
         guard widthPoints.isFinite,
               heightPoints.isFinite,
@@ -41,7 +60,12 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let snapshot = Snapshot(
             widthPx: Int(widthPixels),
             heightPx: Int(heightPixels),
-            density: scale
+            density: scale,
+            sideColumn: sideColumn,
+            stripEdge: stripEdge,
+            stripWidthPt: stripWidthPoints.isFinite ? max(0, stripWidthPoints) : 0,
+            nativeTabBarHeightPt: nativeTabBarHeightPoints.isFinite ? max(0, nativeTabBarHeightPoints) : 0,
+            reservedRegions: reservedRegions
         )
         guard snapshot != latest else { return nil }
         latest = snapshot
@@ -51,6 +75,11 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             "heightPx": snapshot.heightPx,
             "density": snapshot.density,
             "posture": "flat",
+            "sideColumn": snapshot.sideColumn,
+            "stripEdge": snapshot.stripEdge,
+            "stripWidthPt": snapshot.stripWidthPt,
+            "nativeTabBarHeightPt": snapshot.nativeTabBarHeightPt,
+            "reservedRegions": snapshot.reservedRegions,
         ]
     }
 }

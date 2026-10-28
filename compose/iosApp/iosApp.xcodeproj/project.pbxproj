@@ -34,6 +34,8 @@
 		A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */; };
+		A1D000012C0000000000001 /* RaftIosDuoGeometry.m in Sources */ = {isa = PBXBuildFile; fileRef = A1D000032C0000000000003 /* RaftIosDuoGeometry.m */; };
+		A1D000022C0000000000002 /* RaftIosDuoRuntime.m in Sources */ = {isa = PBXBuildFile; fileRef = A1D000042C0000000000004 /* RaftIosDuoRuntime.m */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
 		A39700010000000000000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39700020000000000000001 /* Localizable.strings */; };
 		A42100010000000000000001 /* RaftAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */; };
@@ -115,6 +117,9 @@
 		A53100020000000000000001 /* RaftIosTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarController.swift; sourceTree = "<group>"; };
 		A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMapping.swift; sourceTree = "<group>"; };
 		A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMappingTests.swift; sourceTree = "<group>"; };
+		A1D000032C0000000000003 /* RaftIosDuoGeometry.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoGeometry.m; sourceTree = "<group>"; };
+		A1D000042C0000000000004 /* RaftIosDuoRuntime.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoRuntime.m; sourceTree = "<group>"; };
+		A1D000062C0000000000006 /* RaftIosDuoGeometry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftIosDuoGeometry.h; sourceTree = "<group>"; };
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -329,6 +334,9 @@
 				A13700020000000000000002 /* RaftIosRealtimeLifecyclePolicyTests.swift */,
 				A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */,
 				A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */,
+				A1D000032C0000000000003 /* RaftIosDuoGeometry.m */,
+				A1D000042C0000000000004 /* RaftIosDuoRuntime.m */,
+				A1D000062C0000000000006 /* RaftIosDuoGeometry.h */,
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
 				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
 				A19300020000000000000001 /* RaftInteractivePopGestureTests.m */,
@@ -777,6 +785,8 @@
 				A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */,
 				A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */,
 				A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */,
+				A1D000012C0000000000001 /* RaftIosDuoGeometry.m in Sources */,
+				A1D000022C0000000000002 /* RaftIosDuoRuntime.m in Sources */,
 				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
 				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,
 				A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */,
