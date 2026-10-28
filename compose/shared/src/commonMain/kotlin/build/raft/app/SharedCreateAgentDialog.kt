@@ -1548,7 +1548,10 @@ internal fun SharedCreateAgentDialog(
                             action = {
                                 RaftBrutalActionButton(
                                     label = stringResource(Res.string.common_retry),
-                                    onClick = { v2LoadAttempt += 1 },
+                                    onClick = {
+                                        v2StaleReloads = 0
+                                        v2LoadAttempt += 1
+                                    },
                                     enabled = !submitting,
                                     leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,

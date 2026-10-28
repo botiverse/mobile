@@ -10371,8 +10371,10 @@ private fun MembersAgentRuntimeConfigSection(
             onUnavailableAction(runtimeEditingUnavailable)
             return
         }
+        // Set before launching: a second tap in the same frame (e.g. on the switch confirmation)
+        // must hit the guard above instead of sending a second PATCH.
+        savingRuntimeConfig = true
         scope.launch {
-            savingRuntimeConfig = true
             runtimeConfigError = null
             runtimeFormV2ErrorFields = emptySet()
             val result =

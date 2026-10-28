@@ -75,7 +75,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     var load by remember(access, agentId, machineId, selectedRuntimeId, loadAttempt, staleReloads) {
         mutableStateOf<MembersRuntimeFormV2EditLoad>(MembersRuntimeFormV2EditLoad.Loading)
     }
-    LaunchedEffect(access, agentId, machineId, selectedRuntimeId, loadAttempt, staleReloads) {
+    LaunchedEffect(access, agentId, machineId, runtimeId, selectedRuntimeId, loadAttempt, staleReloads) {
         load = loadMembersRuntimeFormV2Edit(access, machineId, agentId, runtimeId, selectedRuntimeId)
     }
     val loaded = (load as? MembersRuntimeFormV2EditLoad.Ready)?.loaded
@@ -134,7 +134,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                             action = {
                                 RaftBrutalActionButton(
                                     label = stringResource(Res.string.common_retry),
-                                    onClick = { loadAttempt += 1 },
+                                    onClick = {
+                                        staleReloads = 0
+                                        loadAttempt += 1
+                                    },
                                     enabled = !saving,
                                     leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
@@ -243,7 +246,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 pendingSwitchSubmit = null
                 onSave(submit, true)
             },
-            onCancel = { if (!saving) pendingSwitchSubmit = null }
+            onCancel = { pendingSwitchSubmit = null }
         )
     }
 }
