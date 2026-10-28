@@ -45,7 +45,9 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
     val hostWindow = LocalContext.current.raftActivity()?.window
     DisposableEffect(window, isDark, hostWindow) {
         if (hostWindow != null) {
-            window.decorView.copyRaftSystemBarsAppearanceFrom(hostWindow)
+            // The window's own controller, as before #3847 (the view-level one laid the dialog
+            // window out a row taller); only the values now come from the host.
+            window.applyRaftSystemBarsAppearance(hostWindow.raftSystemBarsAppearance())
         } else {
             window.applyRaftSystemBarsAppearance(isDark)
         }
@@ -69,6 +71,15 @@ private fun Context.raftActivity(): Activity? {
     }
     return null
 }
+
+/** The bar icons [this] window currently asks for. */
+private fun Window.raftSystemBarsAppearance(): RaftSystemBarsAppearance =
+    WindowCompat.getInsetsController(this, decorView).let { controller ->
+        RaftSystemBarsAppearance(
+            lightStatusBars = controller.isAppearanceLightStatusBars,
+            lightNavigationBars = controller.isAppearanceLightNavigationBars,
+        )
+    }
 
 /** Gives the window [this] root view sits in the host's light/dark bar icons. */
 @Suppress("DEPRECATION")
