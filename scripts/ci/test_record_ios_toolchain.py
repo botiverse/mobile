@@ -55,6 +55,25 @@ class RecordIosToolchainTest(unittest.TestCase):
         self.assertIn("opt-in (default is Xcode_26.6.app)", summary)
         self.assertIn("::warning::Built with Xcode_27.1.app", out)
 
+    def test_deliberate_release_lane_is_flagged_without_not_for_release(self):
+        output = Path(self.tmp.name) / "github-output"
+        self.env.update(FAKE_XCODE="27.1", FAKE_DEVICE_SDK="27.1", FAKE_SIM_SDK="27.1",
+                        XCODE_APP_PATH="/Applications/Xcode_27.1.app",
+                        RAFT_XCODE_LANE_DELIBERATE="1", GITHUB_OUTPUT=str(output))
+        out = self.run_script().stdout
+        self.assertIn("::warning::Deliberate opt-in Xcode lane: built with Xcode_27.1.app", out)
+        self.assertNotIn("Not for release", out)
+        self.assertIn("opt-in (default is Xcode_26.6.app)", self.summary.read_text())
+        self.assertEqual(output.read_text(),
+                         "xcode_version=27.1 (1A1)\nios_sdk_version=27.1\nxcode_lane=opt-in\n")
+
+    def test_default_lane_step_outputs(self):
+        output = Path(self.tmp.name) / "github-output"
+        self.env["GITHUB_OUTPUT"] = str(output)
+        self.run_script()
+        self.assertEqual(output.read_text(),
+                         "xcode_version=26.6 (1A1)\nios_sdk_version=26.5\nxcode_lane=default\n")
+
     def test_27_0_and_later_minor_tiers(self):
         self.env["FAKE_DEVICE_SDK"] = "27"
         self.run_script()

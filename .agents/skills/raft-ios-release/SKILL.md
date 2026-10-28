@@ -42,6 +42,14 @@ Inputs that matter:
 - `macos_runner` — `blacksmith-12vcpu-macos-latest` (default, 60 min timeout);
   `macos-latest-xlarge` (GitHub larger, billed) or `macos-latest` (7 GB;
   Kotlin/Native release link may OOM) only when Blacksmith is unavailable.
+- `xcode_app_path` — `/Applications/Xcode_26.6.app` (default, iOS 26.5 SDK:
+  letterboxed on iPhone Duo). For the iOS 27.1 SDK (iPhone Duo edge-to-edge)
+  dispatch `-f macos_runner=xcode-27-xlarge -f xcode_app_path=/Applications/Xcode_27.1.app`
+  (`xcode-27` is the 7 GB variant; `Xcode_27.1.0.app` is offered in case
+  `Xcode_27.1.app` turns out to be the symlink on that image). Only the `xcode-27*`
+  runners have Xcode 27.1; the resolve job fails any other pairing. GitHub-hosted
+  macOS minutes are billed. The build summary and Hands `build-metadata.json`
+  record `xcode_version`, `ios_sdk_version` and `xcode_lane=opt-in`.
 - `testflight_internal=true` — after the draft, upload to ASC and assign the
   internal group **Botiverse** only (never external/App Store/activation).
   Use it only when the owner or the train's standing directive asked for
