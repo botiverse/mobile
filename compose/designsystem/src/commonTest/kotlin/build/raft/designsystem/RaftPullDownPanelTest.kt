@@ -33,4 +33,13 @@ class RaftPullDownPanelTest {
         swipe.reset()
         assertFalse(swipe.onUnconsumed(-30f, 40f))
     }
+
+    @Test
+    fun `a drag that scrolled the content never closes the panel even past the threshold`() {
+        val swipe = RaftPullDownSwipe()
+        assertFalse(swipe.onUnconsumed(unconsumedY = 0f, thresholdPx = 40f, consumedY = -30f))
+        assertFalse(swipe.onUnconsumed(unconsumedY = -60f, thresholdPx = 40f))
+        swipe.reset()
+        assertTrue(swipe.onUnconsumed(unconsumedY = -60f, thresholdPx = 40f))
+    }
 }

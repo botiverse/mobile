@@ -88,7 +88,7 @@ fun RaftPullDownPanel(
         remember(swipe, thresholdPx) {
             object : NestedScrollConnection {
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                    if (source == NestedScrollSource.UserInput && swipe.onUnconsumed(available.y, thresholdPx)) {
+                    if (source == NestedScrollSource.UserInput && swipe.onUnconsumed(available.y, thresholdPx, consumed.y)) {
                         swipe.reset()
                         currentOnDismiss()
                     }
@@ -138,8 +138,18 @@ class RaftPullDownSwipe {
     var travelledPx: Float = 0f
         private set
 
-    /** [unconsumedY]: what the content left of a drag step (negative: up). True once up past [thresholdPx]. */
-    fun onUnconsumed(unconsumedY: Float, thresholdPx: Float): Boolean {
+    /** The content scrolled during this drag: the drag is the content's, it never closes the panel. */
+    var contentScrolled: Boolean = false
+        private set
+
+    /**
+     * [unconsumedY]: what the content left of a drag step (negative: up); [consumedY]: what it took.
+     * True once up past [thresholdPx], and only for a drag the content did not scroll at all: one
+     * long swipe that scrolls History to its end and runs on does not also close the panel.
+     */
+    fun onUnconsumed(unconsumedY: Float, thresholdPx: Float, consumedY: Float = 0f): Boolean {
+        if (consumedY != 0f) contentScrolled = true
+        if (contentScrolled) return false
         if (unconsumedY > 0f) travelledPx = 0f else travelledPx -= unconsumedY
         return travelledPx >= thresholdPx
     }
@@ -147,5 +157,6 @@ class RaftPullDownSwipe {
     /** The drag ended (or closed the panel). */
     fun reset() {
         travelledPx = 0f
+        contentScrolled = false
     }
 }
