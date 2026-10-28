@@ -18,6 +18,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// direction.
 FOUNDATION_EXTERN NSString *RaftIosSideColumnEdgeName(UIWindow * _Nullable window);
 
+/// Which of the iPhone Duo's displays the window is on: "duoOuter", "duoInner" or "other".
+FOUNDATION_EXTERN NSString *RaftIosDuoDisplayName(UIWindow * _Nullable window);
+
 /// Whether the system is in a shape where it places a vertical bar (the side column).
 FOUNDATION_EXTERN BOOL RaftIosSideColumnIsActive(UIWindow * _Nullable window);
 
@@ -43,13 +46,9 @@ FOUNDATION_EXTERN NSArray<NSDictionary<NSString *, id> *> *RaftIosReservedRegion
 FOUNDATION_EXTERN NSNumber * _Nullable RaftIosVerticalBarEdgeValue(
     UITraitCollection * _Nullable traits);
 
-/// The reserved-region kinds (`UIViewReservedRegionKind`), or an empty array when the SDK has
-/// none.
-FOUNDATION_EXTERN NSArray *RaftIosReservedRegionKinds(void);
-
-/// The name of a reserved region's kind: "occlusion" (the camera), "division" (the fold), or
-/// "unknown" for a kind this build does not know.
-FOUNDATION_EXTERN NSString *RaftIosReservedRegionKindName(id _Nullable kind);
+/// The reserved-region kinds by name: "occlusion" (the camera) and "division" (the fold). A kind
+/// the runtime does not have is absent, so the names stay paired with the right kinds.
+FOUNDATION_EXTERN NSDictionary<NSString *, id> *RaftIosReservedRegionKindsByName(void);
 
 /// The active reserved regions of one kind, as `UIViewReservedRegion` objects.
 FOUNDATION_EXTERN NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view, id _Nullable kind);

@@ -230,6 +230,10 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     self.view.backgroundColor = self.raftInitialBackgroundColor ?: UIColor.systemBackgroundColor;
     [self raftEmbedContentIfNeeded];
     [self.navigationController setNavigationBarHidden:YES animated:NO];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(raftTabBarDidLayout:)
+                                                 name:RaftIosTabBarController.didLayoutNotificationName
+                                               object:nil];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -237,6 +241,12 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftRefreshNavigationGeometry];
     [self raftPublishAdaptivePaneForCurrentBounds:@"layout"];
     [self raftPublishWindowInsets];
+}
+
+/// The native tab bar laid out: it decides how much of the iPhone Duo side column it takes, so
+/// the window facts are republished now that the bar's size is known.
+- (void)raftTabBarDidLayout:(NSNotification *)notification {
+    [self raftPublishAdaptivePaneForCurrentBounds:@"tabBarLayout"];
 }
 
 - (void)viewSafeAreaInsetsDidChange {
@@ -430,7 +440,8 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
                                                      stripEdge:RaftIosSideColumnEdgeName(window)
                                              stripWidthPoints:RaftIosSideColumnWidthPoints(window)
                                     nativeTabBarHeightPoints:RaftIosNativeTabBarHeightPoints(window)
-                                             reservedRegions:RaftIosReservedRegions(window)];
+                                             reservedRegions:RaftIosReservedRegions(window)
+                                                display:RaftIosDuoDisplayName(window)];
     if (payload == nil) {
         return;
     }
@@ -438,7 +449,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     NSString *message =
         [NSString stringWithFormat:
             @"ios_window_facts page=%@ widthPx=%@ heightPx=%@ density=%@ posture=flat hSizeClass=%ld vSizeClass=%ld "
-            @"sideColumn=%@ stripEdge=%@ stripWidthPt=%@ nativeTabBarHeightPt=%@ reservedRegions=%@ reason=%@",
+            @"sideColumn=%@ stripEdge=%@ stripWidthPt=%@ nativeTabBarHeightPt=%@ reservedRegions=%@ display=%@ reason=%@",
             _pageName ?: @"unknown",
             payload[@"widthPx"],
             payload[@"heightPx"],
@@ -450,6 +461,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
             payload[@"stripWidthPt"],
             payload[@"nativeTabBarHeightPt"],
             payload[@"reservedRegions"],
+            payload[@"display"],
             reason ?: @"unknown"];
     RaftIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
 }

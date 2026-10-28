@@ -40,42 +40,33 @@ NSNumber * _Nullable RaftIosVerticalBarEdgeValue(UITraitCollection * _Nullable t
     return @(raw);
 }
 
-/// The reserved-region kinds (`UIViewReservedRegionKind`), or an empty array when the SDK has
-/// none. The kinds are class objects, so they are created with the runtime too.
-NSArray *RaftIosReservedRegionKinds(void) {
+/// The reserved-region kinds by name: "occlusion" (the camera) and "division" (the fold).
+///
+/// The kinds are matched by name rather than by position. A kind this build's runtime does not
+/// have is simply absent from the dictionary, so a missing kind cannot shift the others: pairing
+/// the kinds to their names by index would report the fold as the camera whenever the camera's
+/// kind was missing.
+NSDictionary<NSString *, id> *RaftIosReservedRegionKindsByName(void) {
     Class kindClass = RaftIosClassNamed("UIViewReservedRegionKind");
     if (kindClass == nil) {
-        return @[];
+        return @{};
     }
-    NSMutableArray *kinds = [NSMutableArray array];
-    for (NSString *name in @[ @"occlusionRegionKind", @"divisionRegionKind" ]) {
-        SEL selector = NSSelectorFromString(name);
+    NSMutableDictionary<NSString *, id> *byName = [NSMutableDictionary dictionary];
+    NSDictionary<NSString *, NSString *> *selectors = @{
+        @"occlusion" : @"occlusionRegionKind",
+        @"division" : @"divisionRegionKind",
+    };
+    for (NSString *name in selectors) {
+        SEL selector = NSSelectorFromString(selectors[name]);
         if (![kindClass respondsToSelector:selector]) {
             continue;
         }
         id kind = [kindClass performSelector:selector];
         if (kind != nil) {
-            [kinds addObject:kind];
+            byName[name] = kind;
         }
     }
-    return kinds;
-}
-
-/// The name of a reserved region's kind: "occlusion" (the camera) or "division" (the fold).
-///
-/// The kind objects are class objects, so they are matched by identity against the two the
-/// runtime can produce. A kind this build does not know is reported as "unknown" rather than
-/// dropped, so a region is never silently lost.
-NSString *RaftIosReservedRegionKindName(id _Nullable kind) {
-    if (kind == nil) {
-        return @"unknown";
-    }
-    NSArray *kinds = RaftIosReservedRegionKinds();
-    NSUInteger index = [kinds indexOfObject:kind];
-    if (index == NSNotFound) {
-        return @"unknown";
-    }
-    return index == 0 ? @"occlusion" : @"division";
+    return byName;
 }
 
 /// The active reserved regions of one kind, as `UIViewReservedRegion` objects.

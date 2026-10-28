@@ -131,6 +131,30 @@ class RaftAdaptivePaneTest {
     }
 
     @Test
+    fun theDisplayIsParsedFromTheHostEnvelope() {
+        // The Duo's two displays are told apart by the host; shared reads which one the window is
+        // on so it can drop the top bar on the inner display even in portrait.
+        fun displayOf(raw: String?): RaftAdaptiveDisplay {
+            val json = JSONObject()
+            json.put("widthPx", 2007)
+            json.put("heightPx", 2853)
+            json.put("density", 3f)
+            json.put("posture", "flat")
+            if (raw != null) {
+                json.put("display", raw)
+            }
+            val event = json.toRaftAdaptivePaneEventOrNull()
+            return event?.display ?: RaftAdaptiveDisplay.Other
+        }
+
+        assertEquals(RaftAdaptiveDisplay.DuoOuter, displayOf("duoOuter"))
+        assertEquals(RaftAdaptiveDisplay.DuoInner, displayOf("duoInner"))
+        // A missing or unrecognised value is "other", not a guess.
+        assertEquals(RaftAdaptiveDisplay.Other, displayOf(null))
+        assertEquals(RaftAdaptiveDisplay.Other, displayOf("somethingElse"))
+    }
+
+    @Test
     fun nativeEnvelopeParsesOnlyCompleteWindowFacts() {
         val event =
             JSONObject()
