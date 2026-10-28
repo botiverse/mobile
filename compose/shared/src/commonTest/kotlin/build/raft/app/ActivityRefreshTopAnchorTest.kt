@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.data.InboxItem
+import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MessageId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -200,5 +204,56 @@ class ActivityRefreshTopAnchorTest {
         assertEquals(1, activityNewRowsAboveViewportCount(unseen, lazyKeys, firstVisibleItemIndex = 7))
         // Nothing landed is visible: the same set comes back (no state write).
         assertTrue(activityUnseenNewRowKeys(landed, setOf("c1", "c2")) === landed)
+    }
+
+    private fun row(key: String, lastMessage: String = "$key-m1", unread: Int = 0) =
+        InboxItem(
+            key = key,
+            kind = InboxItemKind.Channel,
+            channelId = ChannelId(key),
+            channelName = key,
+            unreadCount = unread,
+            lastMessageId = MessageId(lastMessage),
+        )
+
+    private val readRows = (1..8).map { row("r$it") }
+
+    @Test
+    fun `a reorder with no new activity arrives nothing, even when the unread head drops back`() {
+        // artin 2026-10-28: an unread head (the realtime order) and the served order disagree, so the
+        // head drops below rows the reader already scrolled past. Positionally r1..r5 now sit above
+        // the old head; none of them has new activity.
+        val unreadHead = row("seo", lastMessage = "seo-system", unread = 2)
+        val realtime = listOf(unreadHead) + readRows
+        val served = readRows.take(5) + unreadHead + readRows.drop(5)
+        assertEquals(setOf("r1", "r2", "r3", "r4", "r5"), activityNewTopRowKeys(realtime.map { it.key }, served.map { it.key }))
+        assertEquals(emptySet(), activityArrivedTopRowKeys(realtime, served))
+        // And back again: the head is the same row with the same latest message.
+        assertEquals(emptySet(), activityArrivedTopRowKeys(served, realtime))
+        // Read-state only (the head was read): nothing arrived either.
+        assertEquals(emptySet(), activityArrivedTopRowKeys(served, listOf(unreadHead.copy(unreadCount = 0)) + served.filterNot { it.key == "seo" }))
+    }
+
+    @Test
+    fun `new rows and rows with new activity arrive`() {
+        val previous = readRows
+        val next = listOf(row("n1"), readRows[3].copy(lastMessageId = MessageId("r4-m2")), row("n2")) +
+            readRows.filterNot { it.key == "r4" }
+        assertEquals(setOf("n1", "r4", "n2"), activityArrivedTopRowKeys(previous, next))
+        assertEquals(emptySet(), activityArrivedTopRowKeys(previous, previous + row("old-page")), "an append")
+        assertEquals(emptySet(), activityArrivedTopRowKeys(emptyList(), next), "first load")
+    }
+
+    @Test
+    fun `the pill key set grows only by arrived rows and clears at the top`() {
+        val previous = readRows
+        val reordered = readRows.take(4).reversed() + readRows.drop(4)
+        val none = emptySet<String>()
+        assertTrue(activityPillKeysAfterChange(none, previous, reordered, listAtTop = false) === none, "reorder: no write")
+        val withNew = listOf(row("n1"), row("n2")) + previous
+        assertEquals(setOf("n1", "n2"), activityPillKeysAfterChange(none, previous, withNew, listAtTop = false))
+        val kept = setOf("n1", "n2")
+        assertTrue(activityPillKeysAfterChange(kept, withNew, withNew + row("old-page"), listAtTop = false) === kept)
+        assertEquals(none, activityPillKeysAfterChange(kept, previous, withNew, listAtTop = true))
     }
 }

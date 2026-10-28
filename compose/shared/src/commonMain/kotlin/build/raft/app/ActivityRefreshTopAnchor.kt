@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.foundation.lazy.LazyListState
+import build.raft.app.data.InboxItem
+import build.raft.app.data.activityUpdateRevisionMessageId
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -97,6 +99,48 @@ internal fun activityNewTopRowKeys(previousKeys: List<String>, nextKeys: List<St
     if (previousHeadIndex >= 0) return nextKeys.subList(0, previousHeadIndex).toSet()
     val previous = previousKeys.toSet()
     return nextKeys.takeWhile { it !in previous }.toSet()
+}
+
+/**
+ * The rows that ARRIVED above the previous head: rows that were not listed before, or rows whose
+ * activity advanced (a new message / event, [activityUpdateRevisionMessageId]). This is what the
+ * "new activity" pill counts (artin 2026-10-28: "顶部明明就两个未读 … 往下拉的时候，已读也会被计算上").
+ *
+ * [activityNewTopRowKeys] is positional: every row above the old head's new index. When a change
+ * only REORDERS rows (e.g. the realtime order and a served page disagree about an unread head, so
+ * the head drops back below rows the reader already passed), that set is every row above the
+ * demoted head, read or unread, and the pill then counted each of them once scrolled past.
+ * A row with no new activity never arrived, wherever it moved to.
+ */
+internal fun activityArrivedTopRowKeys(previousItems: List<InboxItem>, nextItems: List<InboxItem>): Set<String> {
+    val moved = activityNewTopRowKeys(previousItems.map(InboxItem::key), nextItems.map(InboxItem::key))
+    if (moved.isEmpty()) return moved
+    val previousByKey = previousItems.associateBy(InboxItem::key)
+    return nextItems
+        .filter { item ->
+            if (item.key !in moved) return@filter false
+            val previous = previousByKey[item.key] ?: return@filter true
+            val revision = item.activityUpdateRevisionMessageId()
+            revision != null && revision != previous.activityUpdateRevisionMessageId()
+        }
+        .mapTo(linkedSetOf(), InboxItem::key)
+}
+
+/**
+ * The pill's key set after a list change, as settleTopEdge applies it in the same snapshot:
+ * cleared when the change keeps or anchors the list at the top ([listAtTop]), otherwise grown by
+ * the rows that arrived ([activityArrivedTopRowKeys]). Rows the reader merely scrolled past never
+ * enter it.
+ */
+internal fun activityPillKeysAfterChange(
+    current: Set<String>,
+    previousItems: List<InboxItem>,
+    nextItems: List<InboxItem>,
+    listAtTop: Boolean,
+): Set<String> {
+    if (listAtTop) return if (current.isEmpty()) current else emptySet()
+    val arrived = activityArrivedTopRowKeys(previousItems, nextItems)
+    return if (arrived.isEmpty() || current.containsAll(arrived)) current else current + arrived
 }
 
 /**
