@@ -16535,13 +16535,16 @@ private fun ThreadPageContentContent(
                     content = renderThreadTabContent
                 )
             } else {
-                renderThreadTabContent(
-                    selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                        // Task v2 on a phone: the head above moves with the conversation's scroll.
-                        .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
-                    true
-                )
+                // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
+                CompositionLocalProvider(LocalTaskHeadScrollState provides data.taskConversationHead) {
+                    renderThreadTabContent(
+                        selectedTab,
+                        Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
+                            // Task v2 on a phone: the head above moves with the conversation's scroll.
+                            .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
+                        true
+                    )
+                }
             }
             }
             if (payload.isTaskConversationSurface()) {
@@ -22250,10 +22253,18 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
+            val taskHeadScrollState = LocalTaskHeadScrollState.current
+            val taskHeadOverflowModifier =
+                remember(taskHeadScrollState, listState.raw) {
+                    Modifier.taskHeadConversationOverflow(taskHeadScrollState, listState.raw)
+                }
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    // Task v2: a short conversation stays bottom-anchored with the head in view
+                    // instead of a gap above its oldest row once the head folds (#proj-mobile:#69).
+                    .then(taskHeadOverflowModifier)
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.
