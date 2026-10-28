@@ -4,6 +4,8 @@ import build.raft.app.data.AgentResetMode
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftAgentsApi
 import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.SharedCreateAgentRuntimeOption
 import build.raft.app.data.buildSharedAgentProfileUpdateBody
 import build.raft.app.data.runtimeform.v2.BUILTIN_V2_FORM_JSON
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
@@ -68,7 +70,7 @@ class MembersRuntimeSwitchEntryTest {
     fun aSwitchedRuntimeLoadsThatRuntimesCreateFormWithoutTheAgent() = runBlocking {
         val computers = FormComputersApi()
         val agents = FormAgentsApi(editCode = 200)
-        val load = loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "builtin")
+        val load = loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "builtin", catalogWith("builtin" to true))
 
         val ready = assertIs<MembersRuntimeFormV2EditLoad.Ready>(load)
         assertEquals("builtin", ready.loaded.form.runtimeId)
@@ -80,7 +82,7 @@ class MembersRuntimeSwitchEntryTest {
     fun theAgentsOwnRuntimeLoadsItsEditForm() = runBlocking {
         val computers = FormComputersApi()
         val agents = FormAgentsApi(editCode = 503)
-        loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "codex")
+        loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "codex", catalogWith())
 
         assertEquals(listOf(AGENT), agents.editRequests)
         assertEquals(emptyList(), computers.formRequests)
@@ -88,7 +90,7 @@ class MembersRuntimeSwitchEntryTest {
 
     @Test
     fun anEditLoadFailureStaysInV2AsAFailureWithItsCode() = runBlocking {
-        val load = loadMembersRuntimeFormV2Edit(access(FormComputersApi(), FormAgentsApi(editCode = 503)), "m-1", AGENT, "codex", "codex")
+        val load = loadMembersRuntimeFormV2Edit(access(FormComputersApi(), FormAgentsApi(editCode = 503)), "m-1", AGENT, "codex", "codex", catalogWith())
         assertEquals(MembersRuntimeFormV2EditLoad.Failed("runtime_form_v2_http_503"), load)
     }
 
@@ -100,13 +102,14 @@ class MembersRuntimeSwitchEntryTest {
                 "m-1",
                 AGENT,
                 "codex",
-                "builtin"
+                "builtin",
+                unknownCatalog
             )
         assertEquals(MembersRuntimeFormV2EditLoad.Failed("runtime_form_v2_http_500"), load)
     }
 
     @Test
-    fun anEditOpenedOnV2NeverHandsOverToTheLegacyDialog() {
+    fun theV2EditorIsTheOnlyRuntimeEditor() {
         val authority =
             MembersAgentProfileEditAuthority(
                 memberId = AGENT,
@@ -128,11 +131,53 @@ class MembersRuntimeSwitchEntryTest {
             MembersRuntimeEditorDialog.FormV2,
             membersRuntimeEditorDialog(editing = true, opened = authority, openedFormV2 = true, live = live)
         )
-        // Only a session opened without v2 (flag off / no computer) uses the v1 dialog.
+        // Without v2 access (no loader or server) nothing opens; there is no v1 editor any more.
         assertEquals(
-            MembersRuntimeEditorDialog.Legacy,
+            MembersRuntimeEditorDialog.None,
             membersRuntimeEditorDialog(editing = true, opened = authority, openedFormV2 = false, live = live)
         )
+    }
+
+    @Test
+    fun anAgentWithoutAComputerIsUnavailableAndRequestsNothing() = runBlocking {
+        val computers = FormComputersApi()
+        val agents = FormAgentsApi(editCode = 200)
+        for (machine in listOf(null, " ")) {
+            assertEquals(
+                MembersRuntimeFormV2EditLoad.Unavailable,
+                loadMembersRuntimeFormV2Edit(access(computers, agents), machine, AGENT, "codex", "codex", catalogWith())
+            )
+        }
+        assertEquals(emptyList(), computers.formRequests)
+        assertEquals(emptyList(), agents.editRequests)
+    }
+
+    @Test
+    fun aSwitchToARuntimeWithoutTheV2MarkerIsUnavailableAndRequestsNoForm() = runBlocking {
+        val computers = FormComputersApi()
+        val agents = FormAgentsApi(editCode = 200)
+        assertEquals(
+            MembersRuntimeFormV2EditLoad.Unavailable,
+            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("gemini" to false))
+        )
+        // No row at all (not admitted for new agents on this computer): same.
+        assertEquals(
+            MembersRuntimeFormV2EditLoad.Unavailable,
+            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith())
+        )
+        assertEquals(emptyList(), computers.formRequests, "no endless retry against a form that does not exist")
+        assertEquals(emptyList(), agents.editRequests)
+    }
+
+    @Test
+    fun theSavingStateEndsOnEveryExit() = runBlocking {
+        var saving = true
+        membersRuntimeEditorSaving(setSaving = { saving = it }) { return@membersRuntimeEditorSaving }
+        assertFalse(saving, "an early return (stale authority after the request) ends saving")
+
+        saving = true
+        runCatching { membersRuntimeEditorSaving(setSaving = { saving = it }) { error("boom") } }
+        assertFalse(saving, "a failure ends saving")
     }
 
     @Test
@@ -205,6 +250,28 @@ class MembersRuntimeSwitchEntryTest {
         hasErrors: Boolean = false,
         saving: Boolean = false
     ) = membersRuntimeFormV2EditSaveEnabled(saving, formReady, runtimeSwitched, valuesChanged, hasErrors)
+
+    private fun catalogWith(vararg rows: Pair<String, Boolean>): suspend (String) -> SharedCreateAgentRuntimeCatalog? = { machineId ->
+        SharedCreateAgentRuntimeCatalog(
+            machineId = machineId,
+            options =
+                rows.map { (runtimeId, marker) ->
+                    SharedCreateAgentRuntimeOption(
+                        runtimeId = runtimeId,
+                        capabilityStatus = "available",
+                        admissionStatus = "available_for_new",
+                        admissionReason = null,
+                        current = false,
+                        availableForNew = true,
+                        manageableForCurrentAgent = false,
+                        canSelectInThisContext = true,
+                        runtimeFormV2 = marker
+                    )
+                }
+        )
+    }
+
+    private val unknownCatalog: suspend (String) -> SharedCreateAgentRuntimeCatalog? = { null }
 
     private fun access(computers: RaftComputersApi, agents: RaftAgentsApi) =
         RuntimeFormV2Access(RuntimeFormV2Loader(computers, agents), ServerId("server-1"))

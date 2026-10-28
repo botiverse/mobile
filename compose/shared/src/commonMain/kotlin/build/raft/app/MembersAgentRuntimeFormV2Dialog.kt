@@ -6,8 +6,8 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.DataResult
@@ -15,6 +15,9 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.data.RuntimeFormV2Availability
+import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.RUNTIME_FORM_V2_FORM_REVISION_STALE
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
@@ -27,15 +30,9 @@ import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
 import build.raft.app.model.getRuntimeDisplayName
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,13 +47,15 @@ import androidx.compose.ui.unit.sp
  * (`…/machines/:machineId/runtime-forms/v2/:runtimeId`, nothing prefilled, no secret to
  * keep); the switch counts as a change by itself and is confirmed before [onSave]
  * (which then starts a new session). A load failure shows a warning with Retry and
- * keeps Save disabled; there is no v1 fallback (task #8, retire runtime form v1).
+ * keeps Save disabled; there is no v1 fallback (task #8, retire runtime form v1). A
+ * runtime without a v2 form ([runtimeCatalog] row without the marker), or an agent with
+ * no computer ([machineId] null), shows "unavailable" instead, as web does.
  */
 @Composable
 internal fun MembersAgentRuntimeFormV2Dialog(
     access: RuntimeFormV2Access,
     agentId: MemberId,
-    machineId: String,
+    machineId: String?,
     runtimeId: String,
     machineRuntimeIds: List<String>,
     activeAgent: Boolean,
@@ -65,6 +64,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     errorFieldKeys: Set<String>,
     onDismiss: () -> Unit,
     onRuntimeSelected: () -> Unit,
+    /** The computer's runtime-options rows (for the switch target's v2 marker), or null if unknown. */
+    runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?,
     onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) -> Unit
 ) {
     var selectedRuntimeId by remember(access, agentId, machineId, runtimeId) { mutableStateOf(runtimeId) }
@@ -76,7 +77,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
         mutableStateOf<MembersRuntimeFormV2EditLoad>(MembersRuntimeFormV2EditLoad.Loading)
     }
     LaunchedEffect(access, agentId, machineId, runtimeId, selectedRuntimeId, loadAttempt, staleReloads) {
-        load = loadMembersRuntimeFormV2Edit(access, machineId, agentId, runtimeId, selectedRuntimeId)
+        load = loadMembersRuntimeFormV2Edit(access, machineId, agentId, runtimeId, selectedRuntimeId, runtimeCatalog)
     }
     val loaded = (load as? MembersRuntimeFormV2EditLoad.Ready)?.loaded
     var pendingSwitchSubmit by remember(access, agentId, machineId) { mutableStateOf<RuntimeFormV2SubmitBody?>(null) }
@@ -112,9 +113,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             hasErrors = errors.isNotEmpty()
         )
     val failureCode = (load as? MembersRuntimeFormV2EditLoad.Failed)?.code
+    val unavailable = load == MembersRuntimeFormV2EditLoad.Unavailable
 
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
-    val quotaMachine = RuntimeQuotaMachine(machineId, access = LocalMembersRuntimeAccountUsageAccess.current)
+    val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
@@ -125,6 +127,15 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+                if (unavailable) {
+                    item(key = "runtime-form-v2-unavailable") {
+                        RaftUiBanner(
+                            status = RaftUiBannerStatus.Warning,
+                            description = stringResource(Res.string.runtime_form_v2_unavailable),
+                            size = RaftUiBannerSize.Medium
+                        )
+                    }
+                }
                 if (failureCode != null) {
                     item(key = "runtime-form-v2-failure") {
                         RaftUiBanner(
@@ -162,7 +173,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         enabled = !saving,
                         quotaMachine = quotaMachine
                     ) {
-                        if (form == null && failureCode == null) {
+                        if (load == MembersRuntimeFormV2EditLoad.Loading) {
                             Text(
                                 text = stringResource(Res.string.agent_create_state_computers_loading),
                                 style = RaftType.Caption,
@@ -229,7 +240,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                                 runtimeId = submitting.form.runtimeId,
                                 formValues = runtimeFormV2Submission(submitting.form, values, submitting.sources)
                             )
-                        // A runtime switch resets the session: confirm it first, as web and the v1 editor do.
+                        // A runtime switch resets the session: confirm it first, as web does.
                         if (runtimeSwitched) pendingSwitchSubmit = submit else onSave(submit, false)
                     }
                 )
@@ -255,7 +266,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
 internal sealed interface MembersRuntimeFormV2EditLoad {
     data object Loading : MembersRuntimeFormV2EditLoad
     data class Ready(val loaded: RuntimeFormV2Loaded) : MembersRuntimeFormV2EditLoad
+    /** The load failed: a warning with Retry. */
     data class Failed(val code: String) : MembersRuntimeFormV2EditLoad
+    /** No form to load (no computer, or the runtime has no v2 form): a plain notice, no Retry. */
+    data object Unavailable : MembersRuntimeFormV2EditLoad
 }
 
 /** True when the Runtime select holds a runtime other than the agent's saved [agentRuntimeId]. */
@@ -272,20 +286,28 @@ internal fun membersRuntimeFormV2EditRuntimeSelection(currentRuntimeId: String, 
 /**
  * Loads the editor's form: the agent's own edit form while [selectedRuntimeId] is its saved
  * runtime, otherwise [selectedRuntimeId]'s create form (no agent id, as web after task #8).
- * Every failure is [MembersRuntimeFormV2EditLoad.Failed]; nothing falls back to v1.
+ * An agent without a computer, or a switch target whose runtime-options row has no v2 marker,
+ * is [MembersRuntimeFormV2EditLoad.Unavailable] (nothing is requested); every load failure is
+ * [MembersRuntimeFormV2EditLoad.Failed]. Nothing falls back to v1.
  */
 internal suspend fun loadMembersRuntimeFormV2Edit(
     access: RuntimeFormV2Access,
-    machineId: String,
+    machineId: String?,
     agentId: MemberId,
     agentRuntimeId: String,
-    selectedRuntimeId: String
+    selectedRuntimeId: String,
+    runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?
 ): MembersRuntimeFormV2EditLoad {
+    val computer = machineId?.trim()?.takeIf { it.isNotBlank() } ?: return MembersRuntimeFormV2EditLoad.Unavailable
     val result =
         if (membersRuntimeFormV2EditRuntimeSwitched(agentRuntimeId, selectedRuntimeId)) {
-            access.loader.loadCreate(access.serverId, machineId, selectedRuntimeId.trim())
+            val target = selectedRuntimeId.trim()
+            if (runtimeCatalog(computer).runtimeFormV2Availability(target) == RuntimeFormV2Availability.Unavailable) {
+                return MembersRuntimeFormV2EditLoad.Unavailable
+            }
+            access.loader.loadCreate(access.serverId, computer, target)
         } else {
-            access.loader.loadEdit(access.serverId, machineId, agentId)
+            access.loader.loadEdit(access.serverId, computer, agentId)
         }
     return when (result) {
         is DataResult.Content -> MembersRuntimeFormV2EditLoad.Ready(result.data)

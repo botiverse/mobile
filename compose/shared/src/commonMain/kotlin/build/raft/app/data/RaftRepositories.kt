@@ -979,26 +979,11 @@ data class AgentProfileUpdateRequest(
     val includeAvatarUrl: Boolean = false,
     val serverRole: String? = null,
     val includeServerRole: Boolean = false,
-    val runtimeConfig: build.raft.app.model.RuntimeConfig? = null,
-    val includeRuntimeConfig: Boolean = false,
-    /**
-     * Update-only Built-in secret retention. When true the wire body omits
-     * provider.apiKey; the server retains it only if provider identity still
-     * matches. This never recovers or serializes the existing write-only value.
-     */
-    val retainOmittedBuiltInProviderSecret: Boolean = false,
+    /** With [runtimeFormV2] only: how the agent picks the runtime change up. */
     val runtimeResetMode: AgentResetMode? = null,
     /**
-     * kimi-sdk (task #275): the exact runtime-form ref validated against the
-     * live catalog at save time. Emitted on the wire only together with a
-     * non-null runtimeConfig (see buildSharedAgentProfileUpdateBody); a null
-     * value keeps the legacy no-ref retention path.
-     */
-    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
-    /**
-     * Runtime form v2 edit: `formDefinitionRef {protocolVersion:2}` + `formValues`.
-     * Use with includeRuntimeConfig = false; a blank writeOnly field (sent as "")
-     * means "keep the stored value".
+     * Runtime form v2 edit (the only runtime editor): `formDefinitionRef {protocolVersion:2}` +
+     * `formValues`. A blank writeOnly field (sent as "") means "keep the stored value".
      */
     val runtimeFormV2: build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody? = null
 )

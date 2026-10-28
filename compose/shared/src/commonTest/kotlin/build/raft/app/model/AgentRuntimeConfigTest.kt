@@ -127,277 +127,6 @@ class AgentRuntimeConfigTest {
     }
 
     @Test
-    fun capabilityPredicatesAreCorrect() {
-        assertTrue(supportsRuntimeApiUrl("claude"))
-        assertFalse(supportsRuntimeApiUrl("codex"))
-        assertTrue(supportsRuntimeCommand("claude"))
-        assertFalse(supportsRuntimeCommand("codex"))
-        assertTrue(supportsRuntimeFastMode("claude"))
-        assertTrue(supportsRuntimeFastMode("codex"))
-        assertFalse(supportsRuntimeFastMode("opencode"))
-        assertTrue(supportsRuntimeCustomModelName("claude"))
-        assertTrue(supportsRuntimeCustomModelName("codex"))
-        assertTrue(supportsRuntimeCustomModelName("builtin"))
-        assertTrue(supportsRuntimeCustomModelName("copilot"))
-        assertTrue(supportsRuntimeCustomModelName("cursor"))
-        assertTrue(supportsRuntimeCustomModelName("pi"))
-        assertFalse(supportsRuntimeCustomModelName("opencode"))
-        assertFalse(supportsRuntimeCustomModelName("gemini"))
-        assertFalse(supportsRuntimeCustomModelName("antigravity"))
-        assertFalse(supportsRuntimeCustomModelName("machine-runtime"))
-        assertFalse(supportsRuntimeCustomModelName(""))
-        assertTrue(supportsRuntimeReasoningEffort("builtin"))
-        assertTrue(supportsRuntimeReasoningEffort("grok"))
-        assertFalse(supportsRuntimeReasoningEffort("opencode"))
-    }
-
-    @Test
-    fun reasoningReconciliationUsesTargetModelCapabilities() {
-        assertNull(
-            reconcileRuntimeReasoningEffort(
-                runtime = "claude",
-                model = "opus",
-                current = "ultra"
-            )
-        )
-        assertEquals(
-            "high",
-            reconcileRuntimeReasoningEffort(
-                runtime = "claude",
-                model = "opus",
-                current = "high"
-            )
-        )
-        assertEquals(
-            "medium",
-            reconcileRuntimeReasoningEffort(
-                runtime = "codex",
-                model = "gpt-5.6-luna",
-                current = "ultra"
-            )
-        )
-        assertEquals(
-            "ultra",
-            reconcileRuntimeReasoningEffort(
-                runtime = "codex",
-                model = "gpt-5.6-sol",
-                current = "ultra"
-            )
-        )
-    }
-
-    // ── buildRuntimeConfig ──
-
-    @Test
-    fun buildRuntimeConfigDefaultsToClaudePreset() {
-        val cfg = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false
-        )
-        assertEquals("claude", cfg.runtime)
-        assertEquals(RuntimeModelConfig.Preset("sonnet"), cfg.model)
-        assertEquals(RuntimeModeConfig.Default, cfg.mode)
-        // Mirrors React `buildRuntimeConfig` which emits provider: { kind: "default" }
-        // whenever the runtime supports API URL, even without an explicit provider URL.
-        assertEquals(RuntimeProviderConfig.Default, cfg.provider)
-    }
-
-    @Test
-    fun buildRuntimeConfigSwitchesToCustomModel() {
-        val cfg = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = true,
-            customModelName = "my-custom-sonnet"
-        )
-        assertEquals(RuntimeModelConfig.Custom("my-custom-sonnet"), cfg.model)
-    }
-
-    @Test
-    fun buildRuntimeConfigFastModeOnlyForSupportedRuntimes() {
-        val fastOnClaude = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false,
-            fastMode = true
-        )
-        assertEquals(RuntimeModeConfig.Fast, fastOnClaude.mode)
-
-        val fastOnOpencode = buildRuntimeConfig(
-            runtime = "opencode",
-            model = "default",
-            customModelMode = false,
-            fastMode = true
-        )
-        assertEquals(RuntimeModeConfig.Default, fastOnOpencode.mode)
-    }
-
-    @Test
-    fun buildRuntimeConfigCustomProviderOnlyForClaude() {
-        val claudeCustom = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false,
-            providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
-            providerApiUrl = "https://api.example.com",
-            providerApiKey = "sk_test_123"
-        )
-        assertEquals(
-            RuntimeProviderConfig.Custom("https://api.example.com", "sk_test_123"),
-            claudeCustom.provider
-        )
-
-        val codexDefault = buildRuntimeConfig(
-            runtime = "codex",
-            model = "gpt-5.4",
-            customModelMode = false,
-            providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
-            providerApiUrl = "https://api.example.com",
-            providerApiKey = "sk_test_123"
-        )
-        // codex does not support provider URL, so provider is null
-        assertNull(codexDefault.provider)
-    }
-
-    @Test
-    fun buildRuntimeConfigUsesConfiguredOrBuiltInPiProvider() {
-        val configured = buildRuntimeConfig(
-            runtime = "pi",
-            model = "default",
-            customModelMode = false,
-            piProviderId = "configured",
-            piProviderApiKey = "ignored"
-        )
-        assertEquals(RuntimeProviderConfig.Default, configured.provider)
-
-        val deepSeek = buildRuntimeConfig(
-            runtime = "pi",
-            model = "deepseek/deepseek-v4-pro",
-            customModelMode = false,
-            piProviderId = " deepseek ",
-            piProviderApiKey = " secret-value "
-        )
-        assertEquals(RuntimeProviderConfig.PiBuiltin("deepseek", "secret-value"), deepSeek.provider)
-    }
-
-    @Test
-    fun buildRuntimeConfigIncludesCommandOnlyForClaude() {
-        val claudeWithCmd = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false,
-            command = "/usr/local/bin/claude"
-        )
-        assertEquals("/usr/local/bin/claude", claudeWithCmd.command)
-
-        val codexWithCmd = buildRuntimeConfig(
-            runtime = "codex",
-            model = "gpt-5.4",
-            customModelMode = false,
-            command = "/usr/local/bin/codex"
-        )
-        assertNull(codexWithCmd.command)
-    }
-
-    @Test
-    fun buildRuntimeConfigIncludesReasoningOnlyForSupportedRuntimes() {
-        val codexConfig = buildRuntimeConfig(
-            runtime = "codex",
-            model = "gpt-5.4",
-            customModelMode = false,
-            reasoningEffort = "high"
-        )
-        assertEquals("high", codexConfig.reasoningEffort)
-
-        val claudeConfig = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false,
-            reasoningEffort = "high"
-        )
-        assertEquals("high", claudeConfig.reasoningEffort)
-
-        val grokConfig = buildRuntimeConfig(
-            runtime = "grok",
-            model = "default",
-            customModelMode = false,
-            reasoningEffort = "medium"
-        )
-        assertEquals("medium", grokConfig.reasoningEffort)
-
-        val builtInConfig = buildRuntimeConfig(
-            runtime = "builtin",
-            model = "default",
-            customModelMode = false,
-            reasoningEffort = "low"
-        )
-        assertEquals("low", builtInConfig.reasoningEffort)
-    }
-
-    @Test
-    fun buildRuntimeConfigFailsClosedAgainstTheSubmittedModelCapabilities() {
-        val claude =
-            buildRuntimeConfig(
-                runtime = "claude",
-                model = "opus",
-                customModelMode = false,
-                reasoningEffort = "ultra"
-            )
-        val luna =
-            buildRuntimeConfig(
-                runtime = "codex",
-                model = "gpt-5.6-luna",
-                customModelMode = false,
-                reasoningEffort = "ultra"
-            )
-        val sol =
-            buildRuntimeConfig(
-                runtime = "codex",
-                model = "gpt-5.6-sol",
-                customModelMode = false,
-                reasoningEffort = "ultra"
-            )
-        val live =
-            buildRuntimeConfig(
-                runtime = "codex",
-                model = "machine-codex",
-                customModelMode = false,
-                reasoningEffort = "ultra",
-                reasoningSupportedEfforts = listOf("low", "high", "max"),
-                reasoningDefaultEffort = "high"
-            )
-
-        assertNull(claude.reasoningEffort)
-        assertEquals("medium", luna.reasoningEffort)
-        assertEquals("ultra", sol.reasoningEffort)
-        assertEquals("high", live.reasoningEffort)
-    }
-
-    @Test
-    fun buildRuntimeConfigPreservesExplicitDefaultAcrossOpenSave() {
-        val initial =
-            RuntimeConfig(
-                runtime = "codex",
-                model = RuntimeModelConfig.Preset("gpt-5.6-sol"),
-                reasoningEffort = null
-            )
-        val saved =
-            buildRuntimeConfig(
-                runtime = initial.runtime,
-                model = (initial.model as RuntimeModelConfig.Preset).id,
-                customModelMode = false,
-                reasoningEffort = initial.reasoningEffort,
-                reasoningSupportedEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
-                reasoningDefaultEffort = "medium"
-            )
-
-        assertEquals(initial, saved)
-    }
-
-    // ── Plan limits ──
-
-    @Test
     fun freePlanLimitsAgentsToFive() {
         val limits = getEffectiveLimits(ServerPlan.free)
         assertEquals(5, limits.maxAgents)
@@ -411,18 +140,28 @@ class AgentRuntimeConfigTest {
         assertEquals(-1, limits.maxMachines)
     }
 
+    @Test
+    fun capabilityPredicatesAreCorrect() {
+        assertTrue(supportsRuntimeFastMode("claude"))
+        assertTrue(supportsRuntimeFastMode("codex"))
+        assertFalse(supportsRuntimeFastMode("opencode"))
+        assertTrue(supportsRuntimeReasoningEffort("builtin"))
+        assertTrue(supportsRuntimeReasoningEffort("grok"))
+        assertFalse(supportsRuntimeReasoningEffort("opencode"))
+    }
+
     // ── JSON round-trip ──
 
     @Test
     fun runtimeConfigJsonRoundTrips() {
-        val cfg = buildRuntimeConfig(
-            runtime = "claude",
-            model = "sonnet",
-            customModelMode = false,
-            fastMode = true,
-            reasoningEffort = "high",
-            envVars = mapOf("FOO" to "bar")
-        )
+        val cfg =
+            RuntimeConfig(
+                runtime = "claude",
+                model = RuntimeModelConfig.Preset("sonnet"),
+                mode = RuntimeModeConfig.Fast,
+                reasoningEffort = "high",
+                envVars = mapOf("FOO" to "bar")
+            )
         val json = Json.encodeToString(RuntimeConfig.serializer(), cfg)
         val decoded = Json.decodeFromString(RuntimeConfig.serializer(), json)
         assertEquals(cfg, decoded)

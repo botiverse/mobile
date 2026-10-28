@@ -75,25 +75,16 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // sync_core_messages_v1 joined on 2026-10-11: artin wants offline cache on by default (an offline cold
 // start or a server without the flag row used to read it as off).
 // mobile_thread_reverse_layout_v0 joined on 2026-10-12: artin wants the bottom-up thread list on by default.
-// runtime_form_v2_web joined on 2026-10-21: artin made runtime form v2 the default form (#wg-runtime-form);
-// an explicit server off still returns the v1 form, and a v2 load failure still falls back to v1.
+// runtime_form_v2_web (default on from 2026-10-21) is no longer read: runtime form v2 is the only form
+// (task #8, retire runtime form v1), so the server flag row can go once no client reads it.
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
     setOf(
         SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
         MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-        RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     )
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
 private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
-
-/**
- * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
- * web reads (slock `RUNTIME_FORM_V2_WEB_FLAG_KEY`), so one switch turns v2 on for every client.
- * On by default (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); an explicit server off, or a failure
- * of the v2 endpoints, uses the pinned v1 form unchanged.
- */
-const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
 /**
  * Agent Activity tab per-turn Overview (slock task #17). The same key the web reads (slock
@@ -167,7 +158,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-    RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,

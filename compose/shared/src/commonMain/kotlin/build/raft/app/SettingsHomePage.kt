@@ -9885,37 +9885,6 @@ private fun SharedMembersScreen(
                     )
                 }
             }
-            val createAgentRuntimeModelScope = rememberCoroutineScope()
-            var createAgentRuntimeModels by remember(serverId) {
-                mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
-            }
-            var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
-                mutableStateOf<Set<Pair<String, String>>>(emptySet())
-            }
-            val loadRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
-                onForegroundActivity("load_runtime_models")
-                val key = machineId.trim() to runtime.trim()
-                if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
-                    // no-op: the dialog keeps using the static runtime catalog fallback
-                } else if (!force && (key in createAgentRuntimeModels || key in createAgentRuntimeModelLoadsInFlight)) {
-                    // no-op: cached or already loading
-                } else {
-                    createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight + key
-                    createAgentRuntimeModelScope.launch {
-                        when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
-                            is DataResult.Content -> {
-                                createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
-                            }
-                            is DataResult.Empty -> Unit
-                            is DataResult.Error ->
-                                bridge.log("create_agent_runtime_models_failed source=shared_members code=${result.error.code}")
-                            is DataResult.NoPermission ->
-                                bridge.log("create_agent_runtime_models_blocked source=shared_members code=${result.blocker.code}")
-                        }
-                        createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight - key
-                    }
-                }
-            }
             // task #79: wire Settings → Members humans "+" invite flow.
             // Mirror the MembersPage.kt path: build a SharedMembersDataSource
             // on the fly from the host memberRepository + settingsRepository,
@@ -9960,9 +9929,6 @@ private fun SharedMembersScreen(
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
-                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
-                        }
                 if (result is DataResult.Content) {
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     val nextState =
@@ -10086,9 +10052,6 @@ private fun SharedMembersScreen(
                             createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                             createAgentLoadMachines = loadMachines,
                             createAgentRetryMachines = retryMachines,
-                            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-                            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-                            createAgentLoadRuntimeModels = loadRuntimeModels,
                             createAgentFormStore = createAgentFormStore,
                             createAgentServerId = serverId,
                             createAgentTakenAgentNames = current.members.takenAgentNames()

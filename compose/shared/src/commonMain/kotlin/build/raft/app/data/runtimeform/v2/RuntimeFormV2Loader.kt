@@ -54,7 +54,7 @@ private val runtimeFormV2ErrorJson = Json { ignoreUnknownKeys = true }
 /**
  * Loads v2 forms: create from `…/machines/:machineId/runtime-forms/v2/:runtimeId`,
  * edit from `GET /agents/:id/runtime-form`, then every option source the form
- * names. Any failure is returned as an error so the caller can fall back to v1.
+ * names. Any failure is returned as an error; the caller shows it with a Retry (there is no v1 form).
  */
 internal class RuntimeFormV2Loader(
     private val computers: RaftComputersApi,
@@ -149,7 +149,7 @@ internal class RuntimeFormV2Loader(
                 is DataResult.Content -> sources[sourceId] = source.data
                 // One source that fails to load (a non-2xx such as an offline 409, or a body this
                 // client cannot read) marks only its own field unavailable and retryable; the rest of
-                // the form still renders instead of the whole form falling back to v1.
+                // the form still renders instead of the whole form failing.
                 is DataResult.Error ->
                     // Auth / permission answers are real blockers for the whole form, not a gap in one field;
                     // a stale form revision means the whole form, not this source, must be refetched.

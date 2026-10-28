@@ -3704,9 +3704,7 @@ internal class SharedThreadDataSource(
     suspend fun commitAgentCreateActionCardFromDialog(
         messageId: String,
         card: ThreadActionCard,
-        submit: SharedCreateAgentDialogSubmit,
-        formStore: SharedCreateAgentFormStore?,
-        serverId: String?
+        submit: SharedCreateAgentDialogSubmit
     ): DataResult<ThreadActionCard> {
         if (!card.type.equals("agent:create", ignoreCase = true)) {
             return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
@@ -3716,12 +3714,7 @@ internal class SharedThreadDataSource(
         val coordinator = createAgentCoordinator
             ?: return DataResult.Error(ScreenError(code = "action_card_coordinator_missing", retryable = false))
 
-        val created =
-            coordinator
-                .createAgent(submit.toCreateAgentRequest())
-                .recoverRejectedCreateAgentFormOrRetry(formStore, serverId, submit) { retrySubmit ->
-                    coordinator.createAgent(retrySubmit.toCreateAgentRequest())
-                }
+        val created = coordinator.createAgent(submit.toCreateAgentRequest())
         return when (created) {
             is DataResult.Content -> {
                 val resultName = created.data.name.takeIf { it.isNotBlank() } ?: submit.name

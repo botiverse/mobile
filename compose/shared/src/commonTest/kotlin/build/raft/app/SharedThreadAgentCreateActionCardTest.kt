@@ -1,11 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedCreateAgentCoordinator
-import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.RaftAgentsApi
 import build.raft.app.data.RaftAgentsApiClient
@@ -16,49 +14,42 @@ import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
-import build.raft.app.model.RuntimeConfig
-import build.raft.app.model.RuntimeHostUserState
-import build.raft.app.model.RuntimeModelConfig
-import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class SharedThreadAgentCreateActionCardTest {
     @Test
-    fun dialogSubmitForwardsRuntimeContractAndMarksCardExecuted() = runPortableCoroutineTest {
+    fun dialogSubmitForwardsTheRuntimeFormV2AndMarksCardExecuted() = runPortableCoroutineTest {
         val agentsApi = RecordingCreateAgentApi()
         val actionsApi = RecordingActionCardApi()
         val computersApi = UnusedComputersApi()
         val dataSource = dataSource(agentsApi, actionsApi, computersApi)
-        val formRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
         val submit =
             SharedCreateAgentDialogSubmit(
                 name = "Noel",
                 description = "Helps with release review.",
                 machineId = "machine-2",
-                runtimeConfig =
-                    RuntimeConfig(
-                        runtime = "builtin",
-                        provider = RuntimeProviderConfig.Preset("deepseek", "secret-preset"),
-                        model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
-                        hostUserState = RuntimeHostUserState.Forbidden
-                    ),
-                formDefinitionRef = formRef
+                runtimeFormV2 =
+                    RuntimeFormV2SubmitBody(
+                        runtimeId = "builtin",
+                        formValues = buildJsonObject { put("providerId", JsonPrimitive("deepseek")) }
+                    )
             )
 
         val result =
             dataSource.commitAgentCreateActionCardFromDialog(
                 messageId = "m-card",
                 card = ThreadActionCard(type = "agent:create", name = "@Draft"),
-                submit = submit,
-                formStore = null,
-                serverId = "server-1"
+                submit = submit
             )
 
         val executed = assertIs<build.raft.app.data.DataResult.Content<ThreadActionCard>>(result).data
@@ -67,58 +58,15 @@ class SharedThreadAgentCreateActionCardTest {
         val body = Json.parseToJsonElement(agentsApi.createBodies.single()).jsonObject
         assertEquals("Noel", body.getValue("name").jsonPrimitive.content)
         assertEquals("machine-2", body.getValue("machineId").jsonPrimitive.content)
-        val runtime = body.getValue("runtimeConfig").jsonObject
-        assertEquals("builtin", runtime.getValue("runtime").jsonPrimitive.content)
-        assertEquals("deepseek/deepseek-v4-pro", runtime.getValue("model").jsonObject.getValue("id").jsonPrimitive.content)
+        assertEquals("builtin", body.getValue("runtime").jsonPrimitive.content)
+        assertTrue("runtimeConfig" !in body, "the server assembles the runtime config from the form")
         val ref = body.getValue("formDefinitionRef").jsonObject
-        assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
-        assertEquals("builtin-pi.create.v3", ref.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals(2, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
+        assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
+        assertEquals("deepseek", body.getValue("formValues").jsonObject.getValue("providerId").jsonPrimitive.content)
         assertEquals(1, actionsApi.markBodies.size)
     }
 
-    @Test
-    fun rejectedRuntimeFormUsesRecoveryWithoutReplayingCreateOrMarkingCardExecuted() = runPortableCoroutineTest {
-        val agentsApi =
-            RecordingCreateAgentApi(
-                response =
-                    HomeNetworkResponse(
-                        code = 409,
-                        bodyText =
-                            """{"error":"Runtime form definition is stale or invalid","issues":[{"code":"form_definition_ref_required","pointer":"/formDefinitionRef"}]}"""
-                    )
-            )
-        val actionsApi = RecordingActionCardApi()
-        val computersApi = UnusedComputersApi()
-        val dataSource = dataSource(agentsApi, actionsApi, computersApi)
-        val submit =
-            SharedCreateAgentDialogSubmit(
-                name = "Noel",
-                description = null,
-                machineId = "machine-2",
-                runtimeConfig =
-                    RuntimeConfig(
-                        runtime = "builtin",
-                        model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro")
-                    ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
-            )
-
-        val result =
-            dataSource.commitAgentCreateActionCardFromDialog(
-                messageId = "m-card",
-                card = ThreadActionCard(type = "agent:create", name = "@Noel"),
-                submit = submit,
-                formStore = null,
-                serverId = "server-1"
-            )
-
-        assertEquals(
-            AGENT_CREATE_FORM_REFRESH_FAILED,
-            assertIs<build.raft.app.data.DataResult.Error>(result).error.code
-        )
-        assertEquals(1, agentsApi.createBodies.size)
-        assertTrue(actionsApi.markBodies.isEmpty())
-    }
 
     private fun dataSource(
         agentsApi: RecordingCreateAgentApi,
