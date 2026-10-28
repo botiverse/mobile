@@ -30,6 +30,12 @@ import org.robolectric.Shadows.shadowOf
  *
  * Text rasterises differently from a phone, so these guard layout and colours against
  * regressions; cross-platform parity stays the connected capture's job.
+ *
+ * CJK goldens (zh-CN / ja qualifiers) are CI's render. Robolectric bundles the fonts, so the
+ * layout and the glyph forms match on every machine, but some Noto CJK glyphs rasterise a pixel
+ * differently on another host: 0.1–0.25% of a page's pixels, over the tolerance. Take those
+ * goldens from the CI run's `shared-home-screenshots` artifact (`<name>.actual.png`), not from a
+ * local record (settings.storage.zh's golden is CI's render too).
  */
 internal object RaftRobolectricScreenshot {
     private const val GOLDEN_DIR = "src/androidUnitTest/screenshots"

@@ -928,7 +928,7 @@ private fun raftComputerCreatedDate(createdAt: String?): String? {
     val context =
         LocalRaftTimeContextProvider.current?.current
             ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
-    return value.membersAgentCreatedDate(context).takeIf { it.isNotBlank() }
+    return value.membersLocalizedCreatedDateOrNull(context)
 }
 
 @Composable
