@@ -10555,6 +10555,18 @@ private fun MembersAgentRuntimeConfigSection(
     }
 }
 
+/**
+ * The "External agent setup" card (install the CLI, sign in, login token) on an agent's profile:
+ * only for an external agent the reader may manage, and never for an App Bot (an app install's
+ * agent is external on the server, but the app runs it). Web: `isExternalAgent && canManageAgent &&
+ * !agent.managedByAppInstallId` (AgentDetailPanel.tsx).
+ */
+internal fun membersShowsExternalAgentSetup(
+    external: Boolean,
+    canManage: Boolean,
+    managedByAppInstallId: String?,
+): Boolean = external && canManage && managedByAppInstallId.isNullOrBlank()
+
 @Composable
 private fun MembersExternalAgentSetupSection(
     agentId: MemberId,
@@ -10795,7 +10807,13 @@ private fun MembersAgentProfileTab(
             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
         )
 
-        if (member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime)) {
+        if (
+            membersShowsExternalAgentSetup(
+                external = member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime),
+                canManage = canManage,
+                managedByAppInstallId = member.managedByAppInstallId,
+            )
+        ) {
             MembersExternalAgentSetupSection(
                 agentId = member.id,
                 profileName = member.displayName,
