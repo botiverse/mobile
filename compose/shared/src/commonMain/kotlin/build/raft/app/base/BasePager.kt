@@ -15,6 +15,7 @@ import build.raft.app.RaftAdaptivePanePagerEvent
 import build.raft.app.RaftSideColumnPosture
 import build.raft.app.RaftSideColumnScaffold
 import build.raft.app.toRaftSideColumnPosture
+import build.raft.app.toRaftAdaptivePaneEventOrNull
 import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
@@ -175,7 +176,8 @@ internal abstract class BasePager : ComposeContainer() {
     override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
         super.onReceivePagerEvent(pagerEvent, eventData)
         if (pagerEvent == RaftAdaptivePanePagerEvent) {
-            raftSideColumnPosture = eventData.toRaftSideColumnPosture()
+            // A payload without window facts keeps the last posture, as the pane reducer does.
+            eventData.toRaftAdaptivePaneEventOrNull()?.let { raftSideColumnPosture = it.toRaftSideColumnPosture() }
             onRaftAdaptivePaneChanged(eventData)
         }
         if (pagerEvent == RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {

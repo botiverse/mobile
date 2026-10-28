@@ -4,7 +4,6 @@ import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.RaftFrameInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -26,7 +25,6 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
@@ -43,31 +41,18 @@ import build.raft.designsystem.components.RaftSideColumnKeepOut
 // a pushed page, then at most two page actions and a ⋯; on a top-level page the actions over the
 // host's native (icon-only) tab bar. Off Duo nothing here draws or measures anything.
 
-/** A rect the system keeps for itself, in window points (= dp), physical edges. */
-@Immutable
-internal data class RaftReservedRegion(
-    val left: Dp,
-    val top: Dp,
-    val right: Dp,
-    val bottom: Dp,
-    val kind: Kind = Kind.Occlusion,
-) {
-    /** UIKit's `UIView.ReservedRegion` kinds: the camera (occlusion) or the fold (division). */
-    enum class Kind { Occlusion, Division }
-}
-
 /**
- * The host's side-column facts for this window (iOS `RaftIosAdaptivePanePublisher`, in the
- * `slockAdaptivePaneChanged` payload; see [toRaftSideColumnPosture]). The default, [None], is
- * every Android window, every iPhone and iPad, and an iPhone Duo held where the system keeps no
- * column: pages lay out as they always have.
+ * The side-column facts for this window, mapped from the host's [RaftAdaptivePaneEvent] by
+ * [toRaftSideColumnPosture] (one model: the event is the only reader of the payload). The default,
+ * [None], is every Android window, every iPhone and iPad, and an iPhone Duo held where the system
+ * keeps no column: pages lay out as they always have.
  *
- * - [sideColumn]: the system keeps a column on the camera's side (the outer screen; the inner
- *   screen held sideways).
+ * - [sideColumn]: the system keeps a column (the outer screen; the inner screen held sideways).
  * - [stripEdge]: the column's PHYSICAL edge; it never mirrors in right-to-left.
  * - [stripWidth]: the column's width, its hairline included.
  * - [nativeTabBarHeight]: the native tab bar standing at the column's foot (0 when none).
- * - [reservedRegions]: the camera and the fold, window rects (empty on iOS 27.0).
+ * - [keepOut]: the reserved regions (camera, fold) that cross the column, as vertical bands from
+ *   the window's top, top first.
  */
 @Immutable
 internal data class RaftSideColumnPosture(
@@ -75,59 +60,43 @@ internal data class RaftSideColumnPosture(
     val stripEdge: RaftSideActionColumnSide = RaftSideActionColumnSide.Right,
     val stripWidth: Dp = RaftSideActionColumnDefaults.Width,
     val nativeTabBarHeight: Dp = 0.dp,
-    val reservedRegions: List<RaftReservedRegion> = emptyList(),
+    val keepOut: List<RaftSideColumnKeepOut> = emptyList(),
 ) {
-    /**
-     * The [reservedRegions] that cross a column [stripWidth] wide on [stripEdge] of a
-     * [windowWidth] window whose top is at the window's top, as the column's keep-out bands.
-     */
-    fun keepOutBands(windowWidth: Dp): List<RaftSideColumnKeepOut> {
-        val columnLeft = if (stripEdge == RaftSideActionColumnSide.Right) windowWidth - stripWidth else 0.dp
-        val columnRight = columnLeft + stripWidth
-        return reservedRegions
-            .filter { it.right > columnLeft && it.left < columnRight && it.bottom > it.top }
-            .sortedBy { it.top }
-            .map { RaftSideColumnKeepOut(top = it.top.coerceAtLeast(0.dp), bottom = it.bottom) }
-    }
-
     companion object {
         val None = RaftSideColumnPosture()
     }
 }
 
 /**
- * Reads the side-column facts from the host's adaptive-pane payload. Keys (points, physical):
- * `sideColumn` (bool), `stripEdge` ("right" / "left"), `stripWidth`, `nativeTabBarHeight`, and
- * `reservedRegions`: an array of `{x, y, width, height, kind}` with `kind` "occlusion" or
- * "division". A payload without `sideColumn: true` (every host today) is [RaftSideColumnPosture.None].
+ * The column from the host's window facts (points = dp). No column unless [sideColumn] is set and
+ * [stripEdge] is a side: `left` / `right` are physical (iOS converts the system's logical edge),
+ * so nothing here looks at the layout direction. A missing width falls back to the column's
+ * default. The keep-out bands are the [reservedRegions] (window rects) that cross the strip's
+ * x-range on its edge of a `widthPx / density` wide window.
  */
-internal fun JSONObject.toRaftSideColumnPosture(): RaftSideColumnPosture {
-    if (!optBoolean("sideColumn", false)) return RaftSideColumnPosture.None
-    val width = optDouble("stripWidth", 0.0)
-    val regions =
-        optJSONArray("reservedRegions")?.let { array ->
-            (0 until array.length()).mapNotNull { index ->
-                val rect = array.opt(index) as? JSONObject ?: return@mapNotNull null
-                val x = rect.optDouble("x", 0.0)
-                val y = rect.optDouble("y", 0.0)
-                val w = rect.optDouble("width", 0.0)
-                val h = rect.optDouble("height", 0.0)
-                if (w <= 0.0 || h <= 0.0) return@mapNotNull null
-                RaftReservedRegion(
-                    left = x.dp,
-                    top = y.dp,
-                    right = (x + w).dp,
-                    bottom = (y + h).dp,
-                    kind = if (rect.optString("kind") == "division") RaftReservedRegion.Kind.Division else RaftReservedRegion.Kind.Occlusion,
-                )
-            }
-        }.orEmpty()
+internal fun RaftAdaptivePaneEvent.toRaftSideColumnPosture(): RaftSideColumnPosture {
+    if (!sideColumn) return RaftSideColumnPosture.None
+    val side =
+        when (stripEdge) {
+            RaftAdaptiveSideColumn.Left -> RaftSideActionColumnSide.Left
+            RaftAdaptiveSideColumn.Right -> RaftSideActionColumnSide.Right
+            RaftAdaptiveSideColumn.None -> return RaftSideColumnPosture.None
+        }
+    val widthPt = if (stripWidthPt.isFinite() && stripWidthPt > 0f) stripWidthPt else RaftSideActionColumnDefaults.Width.value
+    val windowWidthPt = if (density > 0f) widthPx / density else 0f
+    val columnLeft = if (side == RaftSideActionColumnSide.Right) windowWidthPt - widthPt else 0f
+    val columnRight = columnLeft + widthPt
+    val keepOut =
+        reservedRegions
+            .filter { it.isValid() && it.leftPt + it.widthPt > columnLeft && it.leftPt < columnRight }
+            .sortedBy { it.topPt }
+            .map { RaftSideColumnKeepOut(top = it.topPt.coerceAtLeast(0f).dp, bottom = (it.topPt + it.heightPt).dp) }
     return RaftSideColumnPosture(
         sideColumn = true,
-        stripEdge = if (optString("stripEdge") == "left") RaftSideActionColumnSide.Left else RaftSideActionColumnSide.Right,
-        stripWidth = if (width > 0.0) width.dp else RaftSideActionColumnDefaults.Width,
-        nativeTabBarHeight = optDouble("nativeTabBarHeight", 0.0).coerceAtLeast(0.0).dp,
-        reservedRegions = regions,
+        stripEdge = side,
+        stripWidth = widthPt.dp,
+        nativeTabBarHeight = (if (nativeTabBarHeightPt.isFinite()) nativeTabBarHeightPt.coerceAtLeast(0f) else 0f).dp,
+        keepOut = keepOut,
     )
 }
 
@@ -199,8 +168,7 @@ internal fun RaftSideColumnScaffold(
     val onRight = posture.stripEdge == RaftSideActionColumnSide.Right
     val left = if (onRight) 0.dp else posture.stripWidth
     val right = if (onRight) posture.stripWidth else 0.dp
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val windowWidth = maxWidth
+    Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -235,7 +203,7 @@ internal fun RaftSideColumnScaffold(
                 width = posture.stripWidth,
                 // Back or the tab bar, never both: a page with Back has no tab bar under it.
                 bottomReserved = if (controls.primary.isEmpty()) posture.nativeTabBarHeight else 0.dp,
-                keepOut = posture.keepOutBands(windowWidth),
+                keepOut = posture.keepOut,
             )
         }
     }

@@ -24,6 +24,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.designsystem.components.RaftSideColumnKeepOut
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -79,12 +80,12 @@ class DuoSideColumnScreenshotTest {
                 Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
                     RaftSideColumnScaffold(posture = posture, content = content)
                     // Stand-ins for what the host draws in the column: the camera, the tab bar.
-                    posture.reservedRegions.forEach { region ->
+                    posture.keepOut.forEach { band ->
                         Box(
                             Modifier
                                 .align(AbsoluteAlignment.TopRight)
-                                .padding(top = region.top)
-                                .size(region.right - region.left, region.bottom - region.top)
+                                .padding(top = band.top)
+                                .size(posture.stripWidth, band.bottom - band.top)
                                 .background(RaftColor.FillPressed),
                         )
                     }
@@ -110,14 +111,14 @@ private val outerPosture =
         sideColumn = true,
         stripWidth = StripWidth,
         nativeTabBarHeight = OuterTabBarHeight,
-        reservedRegions = listOf(RaftReservedRegion(left = 466.dp - StripWidth, top = 0.dp, right = 466.dp, bottom = 48.dp)),
+        keepOut = listOf(RaftSideColumnKeepOut(top = 0.dp, bottom = 48.dp)),
     )
 
 private val innerPosture =
     RaftSideColumnPosture(
         sideColumn = true,
         stripWidth = StripWidth,
-        reservedRegions = listOf(RaftReservedRegion(left = 951.dp - StripWidth, top = 0.dp, right = 951.dp, bottom = 40.dp)),
+        keepOut = listOf(RaftSideColumnKeepOut(top = 0.dp, bottom = 40.dp)),
     )
 
 private val duoServers =
