@@ -75,6 +75,8 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                 },
                 online.logs.toString(),
             )
+            // Phase 3b: the anchored open read the durable head epoch BEFORE its context request.
+            assertEquals(listOf<Long?>(0L), online.extender.contextRequestEpochs.toList())
             online.close()
 
             val offline = Phase(database, "ctx-offline-1", contextResult = contextUnavailable, enterReachable = false)
@@ -134,6 +136,17 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                 replyResult = DataResult.Error(ScreenError(code = "unused", retryable = false)),
                 parentResult = contextResult,
             )
+        /** Phase 3b: the real writer; its head epoch moves with every context request (a read after it sees 1). */
+        val extender =
+            HeadEpochRecordingExtender(
+                CanonicalMessageV2AdjacentPageWriter(
+                    canary = canary,
+                    generationEngine = engine,
+                    fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage()), logs::add),
+                    isEnabledForServer = { writerFlag },
+                    logger = logs::add,
+                ),
+            ) { synchronized(repository.parentRequests) { repository.parentRequests.size.toLong() } }
         private val enterBody = """{"messages":${page(50, 60, 70, 80)},"historyLimited":false}"""
         val enterNetwork =
             RecordingNetworkClient(enterBody, channelIds = if (enterReachable) setOf("channel-1") else emptySet())
@@ -163,13 +176,7 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                 payloadStore = SharedThreadPayloadStore(prewarmStartIntervalMillis = 0L),
                 durableLastKnownReader = reader,
                 enteredScopeSnapshotLoader = loader,
-                durablePageExtender = CanonicalMessageV2AdjacentPageWriter(
-                    canary = canary,
-                    generationEngine = engine,
-                    fetcher = CanonicalMessageV2RestSnapshotFetcher(RecordingNetworkClient(canonicalV2TestPage()), logs::add),
-                    isEnabledForServer = { writerFlag },
-                    logger = logs::add,
-                ),
+                durablePageExtender = extender,
                 diagnosticsLogger = logs::add,
             )
         private val scopeJob = SupervisorJob()

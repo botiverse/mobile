@@ -49,6 +49,8 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
             val rig = Rig(database, replyResult = DataResult.Content(prewarmSnapshot()))
 
             assertIs<DataResult.Content<Unit>>(rig.dataSource.prewarmReplyThread(marker))
+            // Phase 3b: the prewarm read the durable head epoch BEFORE its reply request and handed that to the write.
+            assertEquals(listOf<Long?>(0L), rig.loader.prewarmRequestEpochs.toList())
             assertTrue(
                 rig.logs.any {
                     "canonical_v2_prewarm_page server=server-1 scope=thread-1 scopeKind=thread outcome=committed " +
@@ -127,6 +129,19 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
         val payloadStore = SharedThreadPayloadStore(prewarmStartIntervalMillis = 0L)
+        val repository = ReplyThreadAccessConversationRepositoryRecorder(replyResult = replyResult)
+
+        /** Phase 3b: the real loader; its head epoch moves with every reply-page request (a read after it sees 1). */
+        val loader =
+            HeadEpochRecordingLoader(
+                CanonicalMessageV2EnteredScopeLoader(
+                    canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
+                    generationEngine = engine,
+                    fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
+                    isEnabledForServer = { true },
+                    logger = logs::add,
+                ),
+            ) { synchronized(repository.replyRequests) { repository.replyRequests.size.toLong() } }
         private val sessionStore = InMemoryRaftAuthSessionStore(session)
         val dataSource =
             testSharedThreadDataSource(
@@ -134,16 +149,10 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
                 sessionStore = sessionStore,
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-durable", "server-1")),
-                conversationRepository = ReplyThreadAccessConversationRepositoryRecorder(replyResult = replyResult),
+                conversationRepository = repository,
                 payloadStore = payloadStore,
                 durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore, isEnabledForServer = { true }, logger = logs::add),
-                enteredScopeSnapshotLoader = CanonicalMessageV2EnteredScopeLoader(
-                    canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine),
-                    generationEngine = engine,
-                    fetcher = CanonicalMessageV2RestSnapshotFetcher(network, logs::add),
-                    isEnabledForServer = { true },
-                    logger = logs::add,
-                ),
+                enteredScopeSnapshotLoader = loader,
                 diagnosticsLogger = logs::add,
             )
     }

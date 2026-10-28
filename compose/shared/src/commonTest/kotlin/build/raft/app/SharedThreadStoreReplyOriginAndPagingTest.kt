@@ -862,6 +862,48 @@ class SharedThreadStoreReplyOriginAndPagingTest {
         scope.cancel()
     }
     @Test
+    fun olderAndNewerPagingReadTheDurableHeadEpochBeforeTheirRequests() = runTest {
+        // Message storage Phase 3b: the epoch handed to the extender is the one read BEFORE each page request. The
+        // fake epoch moves with every paging request, so a read after the fetch would hand over 1 and 2.
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val repository =
+            FakeConversationRepository(
+                olderResult =
+                    DataResult.Content(
+                        threadSnapshot(body = "older repo body", id = "m5", seq = 5).copy(rawMessagePage = durableRawPage("m5", limit = 30))
+                    ),
+                newerResult =
+                    DataResult.Content(
+                        threadSnapshot(body = "newer repo body", id = "m12", seq = 12).copy(rawMessagePage = durableRawPage("m12", limit = 30))
+                    )
+            )
+        val extender = RecordingDurablePageExtender()
+        extender.headEpochProvider = { (repository.olderRequests.size + repository.newerRequests.size).toLong() }
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    testSharedThreadDataSource(
+                        storeScope = backgroundScope,
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        conversationRepository = repository,
+                        durablePageExtender = extender
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
+
+        store.accept(SharedThreadIntent.LoadOlder)
+        store.accept(SharedThreadIntent.LoadNewer)
+
+        assertEquals(2, extender.calls.size)
+        assertEquals(listOf<Long?>(0L, 1L), extender.requestHeadEpochs)
+        scope.cancel()
+    }
+
+    @Test
     fun pagesWithoutARawPageOrOnReplyRoutesAreNeverOfferedToTheExtender() = runTest {
         // Twin of the test above: identical paging, but the repository page carries no raw page.
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))

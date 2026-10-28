@@ -191,10 +191,26 @@ internal class CanonicalMessageV2RealtimeIngest(
     private suspend fun reportPendingUnrecorded() {
         val pending = synchronized(pendingUnrecordedLock) {
             if (pendingUnrecorded.isEmpty()) return
-            pendingUnrecorded.toList().also { pendingUnrecorded.clear() }
+            pendingUnrecorded.toList()
         }
         withContext(NonCancellable) {
-            pending.forEach { (partition, foldInput) -> tracker.noteFrameUnrecorded(partition, foldInput) }
+            pending.forEach { skipped ->
+                // Removed only once reported: a report that throws keeps its skip (retried before the next frame)
+                // and never costs the skips after it.
+                val reported = try {
+                    tracker.noteFrameUnrecorded(skipped.first, skipped.second)
+                    true
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (throwable: Throwable) {
+                    logger(
+                        "canonical_v2_realtime unrecorded_report_failed server=${skipped.first.serverId} " +
+                            "${skipped.second.frameLabel()} error=${throwable::class.simpleName ?: "unknown"}",
+                    )
+                    false
+                }
+                if (reported) synchronized(pendingUnrecordedLock) { pendingUnrecorded.remove(skipped) }
+            }
         }
     }
 
