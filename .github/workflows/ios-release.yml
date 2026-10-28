@@ -71,7 +71,6 @@ on:
         options:
           - /Applications/Xcode_26.6.app
           - /Applications/Xcode_27.1.app
-          - /Applications/Xcode_27.1.0.app
       testflight_internal:
         description: "After the Hands draft, upload to TestFlight and distribute to the internal group (Botiverse) only; never external, App Store, or Hands activation"
         required: false
@@ -172,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$XCODE_APP" in
-            /Applications/Xcode_26.6.app|/Applications/Xcode_27.1.app|/Applications/Xcode_27.1.0.app) ;;
+            /Applications/Xcode_26.6.app|/Applications/Xcode_27.1.app) ;;
             *) echo "::error::Unsupported xcode_app_path '${XCODE_APP}'"; exit 1 ;;
           esac
           case "${RUNNER}:${XCODE_APP}" in

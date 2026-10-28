@@ -45,8 +45,8 @@ Inputs that matter:
 - `xcode_app_path` — `/Applications/Xcode_26.6.app` (default, iOS 26.5 SDK:
   letterboxed on iPhone Duo). For the iOS 27.1 SDK (iPhone Duo edge-to-edge)
   dispatch `-f macos_runner=xcode-27-xlarge -f xcode_app_path=/Applications/Xcode_27.1.app`
-  (`xcode-27` is the 7 GB variant; `Xcode_27.1.0.app` is offered in case
-  `Xcode_27.1.app` turns out to be the symlink on that image). Only the `xcode-27*`
+  (`xcode-27` is the 7 GB variant; on that image `Xcode_27.1.app` is the real
+  install and `Xcode_27.1.0.app` a symlink, which the pin step rejects). Only the `xcode-27*`
   runners have Xcode 27.1; the resolve job fails any other pairing. GitHub-hosted
   macOS minutes are billed. The build summary and Hands `build-metadata.json`
   record `xcode_version`, `ios_sdk_version` and `xcode_lane=opt-in`.
