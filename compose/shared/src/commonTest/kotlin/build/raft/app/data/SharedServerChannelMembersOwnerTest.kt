@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -274,14 +275,149 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(null, row.serverName)
     }
 
+    // ---- Offline-first channel members (artin: everything fetched is stored locally) ----
+
+    /** One device: the disk outlives every store ("process") built over it. */
+    private class Device(scope: kotlinx.coroutines.CoroutineScope) {
+        val rows = InMemoryRaftOfflineResourceRows()
+        val offline = RaftOfflineResourceCache(rows, environmentId = { "env-a" }, scope = scope)
+        val members = SharedChannelMembersOffline(offline.resource(ChannelMembersResourceSpec), scope = scope, mirrorPeriodMillis = 0L)
+
+        suspend fun storedIds(): List<String>? =
+            members.read(SharedServerChannelMembersScope("env-a", "account-a", SERVER_ID, CHANNEL_ID))?.members?.map { it.id.value }
+    }
+
+    @Test
+    fun coldOpenShowsTheStoredMembersReadOnlyThenTheNetworkReplacesThem() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        loadOnce(device, ownerState, listOf(member("member-a"), member("member-b")))
+
+        val repository = OwnerTestMemberRepository().apply {
+            channelMembers = listOf(member("member-c"))
+            canManage = true
+            gate = CompletableDeferred()
+        }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        val load = async { store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+
+        // Knife: without the stored read this is the empty loading slice.
+        val standIn = store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        assertEquals(listOf("member-a", "member-b"), standIn.members.map { it.id.value })
+        assertEquals(true, standIn.storedStandIn)
+        // Permission flags are never taken from the stored copy: no add / remove until the network answers.
+        assertEquals(false, standIn.canAddMembers)
+        assertEquals(false, standIn.canRemoveMembers)
+        assertEquals(false, standIn.canAddMembersKnown)
+
+        repository.gate!!.complete(Unit)
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(load.await())
+        runCurrent()
+        val fresh = store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        assertEquals(listOf("member-c"), fresh.members.map { it.id.value })
+        assertEquals(false, fresh.storedStandIn)
+        assertEquals(true, fresh.canAddMembers)
+        assertEquals(true, fresh.canRemoveMembers)
+        assertEquals(listOf("member-c"), device.storedIds())
+    }
+
+    @Test
+    fun offlineRefreshKeepsTheStoredMembersReadOnlyAndLostAccessDropsThem() = kotlinx.coroutines.test.runTest {
+        val cases =
+            listOf<Triple<String, DataResult<ChannelMemberSnapshot>, List<String>?>>(
+                Triple("network", DataResult.Error(ScreenError(code = "network_offline", retryable = true)), listOf("member-a")),
+                Triple("not found", DataResult.Error(ScreenError(code = "http_404", retryable = false)), null),
+                Triple("forbidden", DataResult.NoPermission(PermissionBlocker(code = "server_forbidden")), null),
+            )
+        cases.forEach { (label, failure, expected) ->
+            val device = Device(backgroundScope)
+            val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+            loadOnce(device, ownerState, listOf(member("member-a")))
+
+            val repository = OwnerTestMemberRepository().apply { this.failure = failure }
+            val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+            store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+            runCurrent()
+
+            val slice = store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+            assertEquals(expected.orEmpty(), slice.members.map { it.id.value }, label)
+            assertEquals(false, slice.canAddMembers, label)
+            assertEquals(false, slice.canRemoveMembers, label)
+            assertEquals(expected, device.storedIds(), label)
+        }
+    }
+
+    @Test
+    fun confirmedAddAndRealtimeRemovalReachTheStoredMembersWithoutPermissionFlags() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repository = OwnerTestMemberRepository().apply {
+            channelMembers = listOf(member("member-a").copy(canChangeChannelRole = true, presence = build.raft.app.model.Presence.Active))
+            canManage = true
+        }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        val stored = device.members.read(SharedServerChannelMembersScope("env-a", "account-a", SERVER_ID, CHANNEL_ID))!!.members.single()
+        assertEquals(null, stored.canChangeChannelRole)
+        assertEquals(build.raft.app.model.Presence.Offline, stored.presence)
+
+        store.addChannelMember(ServerId(SERVER_ID), AddChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("member-b"), MemberKind.Human))
+        runCurrent()
+        // The added member is known locally only when the roster holds it; then it is stored too.
+        val afterAdd = store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
+        assertEquals(afterAdd, device.storedIds())
+
+        store.removeMember(ServerId(SERVER_ID), MemberId("member-a"))
+        runCurrent()
+        assertEquals(afterAdd - "member-a", device.storedIds().orEmpty())
+    }
+
+    @Test
+    fun aRegainedServerStoresItsUnchangedMembersAgain() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(listOf("member-a"), device.storedIds())
+
+        // The provider's order: the members store drops the server, then the offline wipe.
+        store.dropServer(ServerId(SERVER_ID))
+        device.offline.wipeServer(SERVER_ID, accountId = "account-a")
+        runCurrent()
+        assertEquals(null, device.storedIds())
+
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(listOf("member-a"), device.storedIds())
+    }
+
+    private suspend fun kotlinx.coroutines.test.TestScope.loadOnce(
+        device: Device,
+        ownerState: MutableStateFlow<ProcessServerMembersOwner?>,
+        members: List<MemberProfile>,
+    ) {
+        val repository = OwnerTestMemberRepository().apply { channelMembers = members; canManage = true }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(members.map { it.id.value }, device.storedIds())
+    }
+
     private fun store(
         repository: OwnerTestMemberRepository,
         ownerState: MutableStateFlow<ProcessServerMembersOwner?>,
         registry: ProcessMemberPresenceRegistry = ProcessMemberPresenceRegistry(),
+        channelMembersOffline: SharedChannelMembersOffline? = null,
         writeGeneration: () -> Long
     ): SharedServerMembersStore =
         SharedServerMembersStore(
             memberRepository = repository,
+            channelMembersOffline = channelMembersOffline,
             presenceRegistry = registry,
             presenceOwner = { ownerState.value },
             presenceOwnerFlow = { ownerState },
@@ -294,16 +430,24 @@ class SharedServerChannelMembersOwnerTest {
         var channelMembers: List<MemberProfile> = emptyList()
         var channelMembersLoader: (suspend (ChannelId) -> List<MemberProfile>)? = null
         var getChannelMembersCalls: Int = 0
+        var canManage = false
+        var gate: CompletableDeferred<Unit>? = null
+        /** A failure to answer with instead of the members. */
+        var failure: DataResult<ChannelMemberSnapshot>? = null
 
         override suspend fun getChannelMembers(
             priority: DataRequestPriority,
             channelId: ChannelId
         ): DataResult<ChannelMemberSnapshot> {
             getChannelMembersCalls += 1
+            gate?.await()
+            failure?.let { return it }
             return DataResult.Content(
                 ChannelMemberSnapshot(
                     channelId = channelId,
-                    members = channelMembersLoader?.invoke(channelId) ?: channelMembers
+                    members = channelMembersLoader?.invoke(channelId) ?: channelMembers,
+                    canAddMembers = canManage,
+                    canRemoveMembers = canManage
                 )
             )
         }

@@ -130,7 +130,12 @@ data class SharedServerChannelMembersSlice(
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null,
     /** [ChannelMemberSnapshot.liveActivityAgentIds] of the response this slice holds. */
-    val liveActivityAgentIds: Set<String> = emptySet()
+    val liveActivityAgentIds: Set<String> = emptySet(),
+    /**
+     * The rows are the stored (offline) copy, not yet confirmed by the network: shown read-only (the
+     * permission flags stay false, so no add / remove / role action) until a fresh answer replaces them.
+     */
+    val storedStandIn: Boolean = false
 ) {
     fun snapshotOrNull(): ChannelMemberSnapshot? =
         channelId.takeIf { it.isNotBlank() }?.let {
@@ -601,6 +606,12 @@ class SharedServerMembersStore internal constructor(
     /** Where [jointActors] runs its batches; required with [actorResolve]. */
     actorResolveScope: CoroutineScope? = null,
     /**
+     * Offline-first channel members (artin: everything fetched is stored locally): loaded channel slices
+     * are mirrored to disk (rows only, never permission flags) and read back as a read-only stand-in. Null
+     * keeps channel members memory-only (tests, fixtures).
+     */
+    private val channelMembersOffline: SharedChannelMembersOffline? = null,
+    /**
      * Incremental sync (`mobile_sync_changes_v0`) keeps this server's roster current: humans and
      * machines through the change log, agents through the (re)connect / foreground `/agents` read.
      * The provider answers with the same decision a (re)connect takes; tests and fixtures keep it off.
@@ -662,6 +673,13 @@ class SharedServerMembersStore internal constructor(
     private val deletedAgentIdsByServerId = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
+
+    init {
+        channelMembersOffline?.follow(
+            changes = _state.map { it.channelMemberSlices }.distinctUntilChanged(),
+            current = { _state.value.channelMemberSlices },
+        )
+    }
 
     // task #136 read edges: state carries wire-truth rosters ONLY; presence
     // is baked in AT READ TIME from the process registry's owner partition —
@@ -2733,9 +2751,27 @@ class SharedServerMembersStore internal constructor(
                 return@withLock DataResult.Content(it)
             }
             val previous = _state.value.channelMemberSlices[scope]
-            val previousForBinding = previous?.takeIf {
+            val previousInMemory = previous?.takeIf {
                 it.ownerWriteGeneration == admittedBinding.writeGeneration
             }
+            // Offline-first: nothing in memory for this channel yet: the stored rows stand in, read-only.
+            val previousForBinding =
+                if (previousInMemory == null || (previousInMemory.members.isEmpty() && previousInMemory.status != SharedServerMembersLoadStatus.Loaded)) {
+                    channelMembersOffline?.read(scope)?.let { stored ->
+                        SharedServerChannelMembersSlice(
+                            environmentId = scope.environmentId,
+                            accountId = scope.accountId,
+                            serverId = scope.serverId,
+                            channelId = scope.channelId,
+                            ownerWriteGeneration = admittedBinding.writeGeneration,
+                            members = authoritativeProfilesForPublication(key = serverKey, profiles = stored.members.filterDeletedAgents(serverKey)),
+                            externalMembers = stored.externalMembers,
+                            storedStandIn = true,
+                        )
+                    } ?: previousInMemory
+                } else {
+                    previousInMemory
+                }
             putChannelSlice(
                 scope,
                 (previousForBinding ?: SharedServerChannelMembersSlice(
@@ -2868,14 +2904,22 @@ class SharedServerMembersStore internal constructor(
                     logger("shared_server_channel_members_load_result serverId=$serverKey channelId=$channelKey result=empty")
                 }
                 is DataResult.Error -> {
-                    markChannelFailure(scope, previousForBinding, result.error.code)
+                    if (result.isConversationAccessLost()) {
+                        dropLostChannel(scope, result.error.code)
+                    } else {
+                        markChannelFailure(scope, previousForBinding, result.error.code)
+                    }
                     logger(
                         "shared_server_channel_members_load_result serverId=$serverKey " +
                             "channelId=$channelKey result=error code=${result.error.code}"
                     )
                 }
                 is DataResult.NoPermission -> {
-                    markChannelFailure(scope, previousForBinding, result.blocker.code)
+                    if (result.isConversationAccessLost()) {
+                        dropLostChannel(scope, result.blocker.code)
+                    } else {
+                        markChannelFailure(scope, previousForBinding, result.blocker.code)
+                    }
                     logger(
                         "shared_server_channel_members_load_result serverId=$serverKey " +
                             "channelId=$channelKey result=no_permission code=${result.blocker.code}"
@@ -3045,6 +3089,8 @@ class SharedServerMembersStore internal constructor(
         val slice = _state.value.channelMemberSlices[scope] ?: return null
         if (slice.ownerWriteGeneration != ownerWriteGeneration) return null
         if (slice.status != SharedServerMembersLoadStatus.Loaded) return null
+        // The stored stand-in (even when a realtime patch touched it) is no answer: load.
+        if (slice.storedStandIn) return null
         if (
             slice.hasPeerServerPresenceAgents(scope.serverId) &&
             channelPeerPresenceTransports[scope] != currentPresenceTransport(ServerId(scope.serverId))
@@ -3436,6 +3482,27 @@ class SharedServerMembersStore internal constructor(
         )
     }
 
+    /**
+     * Lost access to the channel (non-auth 403 / 404): its rows leave memory and disk, so neither the
+     * page nor a cold start shows them again. Caller holds [mutex].
+     */
+    private suspend fun dropLostChannel(scope: SharedServerChannelMembersScope, code: String) {
+        val current = _state.value.channelMemberSlices[scope]
+        putChannelSlice(
+            scope,
+            SharedServerChannelMembersSlice(
+                environmentId = scope.environmentId,
+                accountId = scope.accountId,
+                serverId = scope.serverId,
+                channelId = scope.channelId,
+                ownerWriteGeneration = current?.ownerWriteGeneration ?: 0L,
+                status = SharedServerMembersLoadStatus.Error,
+                errorCode = code,
+            )
+        )
+        channelMembersOffline?.forget(scope)
+    }
+
     private fun markChannelFailure(
         scope: SharedServerChannelMembersScope,
         previous: SharedServerChannelMembersSlice?,
@@ -3586,6 +3653,9 @@ class SharedServerMembersStore internal constructor(
         }
         durableStore?.evictServer(key, binding?.accountId)
         avatarRefStore?.forgetServer(key)
+        // The offline mirror forgets what it stored there (the rows go with the server's offline wipe), so a
+        // regained server's unchanged lists are stored again.
+        channelMembersOffline?.forgetServer(key)
         logger("shared_server_members_drop_server serverId=$key")
     }
 

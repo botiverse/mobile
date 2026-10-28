@@ -407,6 +407,8 @@ internal class RaftSharedStoreProvider private constructor(
      * auth-terminal cleanup and per server on lost access. New resources need no cleanup wiring.
      */
     internal val offlineResourceCache: RaftOfflineResourceCache,
+    /** Channel / thread member lists offline (rows only, never permission flags). */
+    private val channelMembersOffline: SharedChannelMembersOffline,
     private val homeIdentityPersistSlice: MviPersistSlice<SharedHomeState, SharedHomeIntent>,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val eventBus: RaftEventBusRelay,
@@ -1802,6 +1804,7 @@ internal class RaftSharedStoreProvider private constructor(
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
                     avatarRefStore = memberAvatarRefStore,
                     durableStore = serverMembersDurableStore,
+                    channelMembersOffline = channelMembersOffline,
                     actorResolve = jointActorResolve(networkClient(scope)),
                     actorResolveScope = RaftStoreThreading.newScope(),
                     incrementalSyncCoversRoster = { serverId -> syncChangesPullAllowed(serverId.value) }
@@ -3140,6 +3143,11 @@ internal class RaftSharedStoreProvider private constructor(
                     logger = sharedInfoLogger("SlockServerMembers", "server_members_durable"),
                 )
             lateinit var provider: RaftSharedStoreProvider
+            val channelMembersOffline =
+                SharedChannelMembersOffline(
+                    resource = offlineResourceCache.resource(ChannelMembersResourceSpec),
+                    logger = sharedInfoLogger("SlockOfflineResources", "channel_members_offline"),
+                )
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository = processServerMembersRepository,
@@ -3163,6 +3171,7 @@ internal class RaftSharedStoreProvider private constructor(
                     },
                     avatarRefStore = memberAvatarRefStore,
                     durableStore = serverMembersDurableStore,
+                    channelMembersOffline = channelMembersOffline,
                     actorResolve = jointActorResolve(networkClient),
                     actorResolveScope = RaftStoreThreading.newScope(),
                     incrementalSyncCoversRoster = { serverId -> provider.syncChangesPullAllowed(serverId.value) }
@@ -3316,6 +3325,7 @@ internal class RaftSharedStoreProvider private constructor(
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(offlineResourceCache.resource(SavedListResourceSpec)),
                 offlineResourceCache = offlineResourceCache,
+                channelMembersOffline = channelMembersOffline,
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
