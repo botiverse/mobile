@@ -36,12 +36,15 @@ class SharedTasksOfflineTest {
         val offline = RaftOfflineResourceCache(rows, environmentId = { Environment }, scope = scope)
         val lists = SharedTasksOfflineLists(offline.resource(TaskListResourceSpec))
 
-        fun dataStore(scope: CoroutineScope, account: String = "user-1"): SharedTasksDataStore =
+        var account = "user-1"
+
+        fun dataStore(scope: CoroutineScope): SharedTasksDataStore =
             SharedTasksDataStore(
                 scope = scope,
                 ownerIdentityProvider = { "$Environment|$account" },
                 currentServerIdProvider = { "server-1" },
                 offlineLists = lists,
+                offlineWritePeriodMillis = 0L,
             )
 
         suspend fun storedIds(scope: SharedTasksScope, account: String = "user-1"): List<String>? =
@@ -166,27 +169,101 @@ class SharedTasksOfflineTest {
         dataStore.removeTaskForCurrentOwner("server-1", TaskId("task-1"))
         runCurrent()
         assertEquals(listOf("task-2"), device.storedIds(scope))
-        // Another account's stored lists are untouched (none here).
-        assertNull(device.storedIds(scope, account = "user-2"))
     }
 
     @Test
-    fun lostServerDropsTheListsAndTheMirrorDoesNotStoreThemAgain() = runTest {
+    fun aListTheServerRefusedIsNotStoredAgainByALaterRealtimePatch() = runTest {
         val device = Device(backgroundScope)
         val dataStore = device.dataStore(backgroundScope)
-        val viewModel = viewModel(dataStore, ScriptedTasks(listOf(task("task-1", revision = 1L))))
+        val remote = ScriptedTasks(listOf(task("task-1", revision = 1L)))
+        val viewModel = viewModel(dataStore, remote)
         viewModel.dispatch(SharedTasksRouteIntent.Start)
         runCurrent()
         assertEquals(listOf("task-1"), device.storedIds(scope))
 
-        // The provider's order: memory first, then the offline wipe.
+        remote.next = DataResult.NoPermission(PermissionBlocker(code = "tasks_forbidden"))
+        viewModel.dispatch(SharedTasksRouteIntent.Refresh)
+        runCurrent()
+        assertNull(device.storedIds(scope))
+
+        // A realtime frame for a task of that channel arrives afterwards.
+        dataStore.upsertTaskForCurrentOwner("server-1", task("task-1", status = TaskStatus.Done, revision = 2L))
+        runCurrent()
+        assertNull(device.storedIds(scope))
+    }
+
+    @Test
+    fun aRegainedServerStoresItsListAgainEvenWhenItIsUnchanged() = runTest {
+        val device = Device(backgroundScope)
+        val dataStore = device.dataStore(backgroundScope)
+        val remote = ScriptedTasks(listOf(task("task-1", revision = 1L)))
+        val viewModel = viewModel(dataStore, remote)
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        runCurrent()
+
         dataStore.dropServer("server-1")
         device.offline.wipeServer("server-1", accountId = "user-1")
-        // A later change of the store (another server) does not bring the lost server's list back.
-        dataStore.upsertTaskForCurrentOwner("server-2", task("task-9", revision = 1L))
+        assertNull(device.storedIds(scope))
+
+        // Access comes back; the same list loads again.
+        viewModel.dispatch(SharedTasksRouteIntent.Refresh)
+        runCurrent()
+        assertEquals(listOf("task-1"), device.storedIds(scope))
+    }
+
+    @Test
+    fun lostServerIsNotStoredAgainByALoadThatWasAlreadyRunning() = runTest {
+        val device = Device(backgroundScope)
+        val dataStore = device.dataStore(backgroundScope)
+        val remote = ScriptedTasks(listOf(task("task-1", revision = 1L)))
+        val viewModel = viewModel(dataStore, remote)
+        viewModel.dispatch(SharedTasksRouteIntent.Start)
+        runCurrent()
+        assertEquals(listOf("task-1"), device.storedIds(scope))
+
+        // A refresh is in flight when access to the server is lost.
+        remote.next = DataResult.Content(TaskSnapshot(tasks = listOf(task("task-2", revision = 1L)), summaryCounts = emptyMap()))
+        remote.loadGate = CompletableDeferred()
+        viewModel.dispatch(SharedTasksRouteIntent.Refresh)
+        runCurrent()
+        // The provider's order: the Tasks store first, then the offline wipe.
+        dataStore.dropServer("server-1")
+        device.offline.wipeServer("server-1", accountId = "user-1")
+        remote.loadGate!!.complete(Unit)
+        // Realtime frames for that server keep arriving for a moment.
+        dataStore.upsertTaskForCurrentOwner("server-1", task("task-3", revision = 1L))
         runCurrent()
 
         assertNull(device.storedIds(scope))
+    }
+
+    @Test
+    fun accountSwitchStoresUnderTheNewAccountAndKeepsTheOldAccountsCopy() = runTest {
+        val device = Device(backgroundScope)
+        val dataStore = device.dataStore(backgroundScope)
+        viewModel(dataStore, ScriptedTasks(listOf(task("task-a")))).also {
+            it.dispatch(SharedTasksRouteIntent.Start)
+            runCurrent()
+        }
+        assertEquals(listOf("task-a"), device.storedIds(scope, account = "user-1"))
+
+        device.account = "user-2"
+        dataStore.clearOwnerData()
+        viewModel(dataStore, ScriptedTasks(listOf(task("task-b")))).also {
+            it.dispatch(SharedTasksRouteIntent.Start)
+            runCurrent()
+        }
+
+        assertEquals(listOf("task-b"), device.storedIds(scope, account = "user-2"))
+        assertEquals(listOf("task-a"), device.storedIds(scope, account = "user-1"))
+    }
+
+    @Test
+    fun aLargeListKeepsTheMostRecentlyUpdatedTasksInItsOrder() {
+        val tasks = (1..TasksOfflineListMaxTasks + 2).map { index -> task("task-$index").copy(updatedAtLabel = "2026-10-${(index % 28 + 1).toString().padStart(2, '0')}T00:00:00Z") }
+        val stored = tasks.toStoredFirstPage()
+        assertEquals(TasksOfflineListMaxTasks, stored.size)
+        assertEquals(stored, tasks.filter { it in stored })
     }
 
     @Test
@@ -243,6 +320,10 @@ class SharedTasksOfflineTest {
 
     /** Channel task reads answered by [first]; optionally held until [release]; status changes scripted. */
     private class ScriptedTasks(private val first: DataResult<TaskSnapshot>, gated: Boolean = false) : SharedTasksRemoteDataSource {
+        /** The answer of every read after the first (default: the first again). */
+        var next: DataResult<TaskSnapshot>? = null
+        var loadGate: CompletableDeferred<Unit>? = null
+        private var reads = 0
         constructor(tasks: List<TaskSummary>, gated: Boolean = false) :
             this(DataResult.Content(TaskSnapshot(tasks = tasks, summaryCounts = tasks.summaryCounts())), gated)
 
@@ -258,7 +339,10 @@ class SharedTasksOfflineTest {
             priority: DataRequestPriority
         ): DataResult<TaskSnapshot> {
             release.await()
-            return first
+            reads += 1
+            if (reads == 1) return first
+            loadGate?.await()
+            return next ?: first
         }
 
         override suspend fun loadTasks(serverId: ServerId, filter: TaskFilter, priority: DataRequestPriority): DataResult<TaskSnapshot> =

@@ -7,12 +7,16 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -570,8 +574,36 @@ internal class SharedTasksDataStore(
      * on a cold or offline open. Null: memory only.
      */
     internal val offlineLists: SharedTasksOfflineLists? = null,
+    /** At most one mirror pass per this period (a burst of realtime frames is one write per list). */
+    private val offlineWritePeriodMillis: Long = 1_000L,
+    private val offlineLogger: (String) -> Unit = {},
 ) {
     private val state = MutableStateFlow(SharedTasksDataStoreState())
+
+    // The mirror's bookkeeping, guarded by [offlineLock]:
+    // - the hash of each list as last stored (not the list: memory stays small);
+    // - lists the server took away (lost permission) and servers lost (dropServer): not mirrored until a
+    //   fresh answer for that list is published again (a load started after the drop).
+    private val offlineLock = SynchronizedObject()
+    private val persistedHashes = mutableMapOf<Pair<String, String>, Int>()
+    private val offlineBlockedLists = mutableSetOf<Pair<String, String>>()
+    private val offlineBlockedServers = mutableSetOf<String>()
+    private val offlineReopenedLists = mutableSetOf<Pair<String, String>>()
+
+    private fun offlineBlocked(serverId: String, listId: String): Boolean =
+        synchronized(offlineLock) {
+            val key = serverId to listId
+            key in offlineBlockedLists || (serverId in offlineBlockedServers && key !in offlineReopenedLists)
+        }
+
+    /** A fresh answer for the list was published: the mirror may store it again. */
+    private fun reopenOfflineList(serverId: String, scope: SharedTasksScope) {
+        val key = serverId to scope.offlineListId()
+        synchronized(offlineLock) {
+            offlineBlockedLists -= key
+            if (serverId in offlineBlockedServers) offlineReopenedLists += key
+        }
+    }
 
     init {
         if (offlineLists != null) scope.launch { persistLoadedLists(offlineLists) }
@@ -584,16 +616,33 @@ internal class SharedTasksDataStore(
      */
     private suspend fun persistLoadedLists(lists: SharedTasksOfflineLists) {
         var persistedOwner: TasksOfflineOwner? = null
-        val persisted = mutableMapOf<Pair<String, String>, List<TaskSummary>>()
-        state.collect { current ->
-            // Taken when this state is observed: a wipe of its server after this instant wins.
-            val observedAt = lists.now()
-            val owner = TasksOfflineOwner.fromOwnerIdentity(current.ownerIdentity)
-            if (owner != persistedOwner) {
-                persisted.clear()
-                persistedOwner = owner
+        state.collect {
+            try {
+                // The instant first, then the state: a wipe after this instant wins over what is read now.
+                val observedAt = lists.now()
+                val current = state.value
+                val owner = TasksOfflineOwner.fromOwnerIdentity(current.ownerIdentity)
+                if (owner != persistedOwner) {
+                    synchronized(offlineLock) { persistedHashes.clear() }
+                    persistedOwner = owner
+                }
+                if (owner != null) persistLoadedListsOnce(lists, current, owner, observedAt)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                offlineLogger("tasks_offline_mirror result=failure type=${error::class.simpleName}")
             }
-            if (owner == null) return@collect
+            if (offlineWritePeriodMillis > 0) delay(offlineWritePeriodMillis)
+        }
+    }
+
+    private suspend fun persistLoadedListsOnce(
+        lists: SharedTasksOfflineLists,
+        current: SharedTasksDataStoreState,
+        owner: TasksOfflineOwner,
+        observedAt: Long,
+    ) {
+        run {
             val pendingServers = current.statusMutations.keys.mapTo(mutableSetOf()) { it.serverId }
             val loaded =
                 current.serverSnapshotStatuses
@@ -615,9 +664,17 @@ internal class SharedTasksDataStore(
             for ((serverId, listScope, slice) in loaded) {
                 if (slice.status != SharedTasksDataStoreStatus.Loaded || slice.needsCanonicalRefetch) continue
                 val listKey = serverId to listScope.offlineListId()
-                if (persisted[listKey] == slice.tasks) continue
-                lists.write(owner, serverId, listScope, slice.tasks, observedAt)
-                persisted[listKey] = slice.tasks
+                if (offlineBlocked(serverId, listKey.second)) continue
+                val stored = slice.tasks.toStoredFirstPage()
+                val hash = stored.hashCode()
+                if (synchronized(offlineLock) { persistedHashes[listKey] } == hash) continue
+                if (stored.isEmpty()) {
+                    // An empty list is no stand-in (the Empty state is): the stored copy goes.
+                    lists.remove(owner, serverId, listScope)
+                } else {
+                    lists.write(owner, serverId, listScope, stored, observedAt)
+                }
+                synchronized(offlineLock) { persistedHashes[listKey] = hash }
             }
         }
     }
@@ -626,8 +683,54 @@ internal class SharedTasksDataStore(
      * Lost access to [serverId]: its lists leave memory (call before the offline resources are wiped, so the
      * mirror cannot store them again).
      */
-    fun dropServer(serverId: String) {
+    suspend fun dropServer(serverId: String) {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        loadMutex.withLock {
+            synchronized(offlineLock) {
+                offlineBlockedServers += normalizedServerId
+                offlineReopenedLists.removeAll { it.first == normalizedServerId }
+                persistedHashes.keys.removeAll { it.first == normalizedServerId }
+            }
+            // A load already running for that server can no longer commit (its job is not current).
+            loadsInFlight.keys.filter { it.serverId == normalizedServerId }.forEach(loadsInFlight::remove)
+            dropServerLocked(normalizedServerId)
+        }
+    }
+
+    /**
+     * The server refused this list (lost permission): it leaves memory and the mirror forgets it, so a later
+     * realtime patch cannot store it again; a fresh answer for it (published) re-opens it.
+     */
+    suspend fun dropList(serverId: String, scope: SharedTasksScope) {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        val listKey = normalizedServerId to scope.offlineListId()
+        loadMutex.withLock {
+            synchronized(offlineLock) {
+                offlineBlockedLists += listKey
+                offlineReopenedLists -= listKey
+                persistedHashes -= listKey
+            }
+            state.update { current ->
+                when (scope) {
+                    SharedTasksScope.Server ->
+                        current.copy(
+                            serverSnapshots = current.serverSnapshots - normalizedServerId,
+                            serverSnapshotStatuses = current.serverSnapshotStatuses - normalizedServerId,
+                        )
+                    is SharedTasksScope.Channel -> {
+                        val channelId = scope.channelId.value.normalizedTasksStoreId()
+                        val keep: (SharedTasksChannelKey) -> Boolean = { !(it.serverId == normalizedServerId && it.channelId == channelId) }
+                        current.copy(
+                            channelSnapshots = current.channelSnapshots.filterKeys(keep),
+                            channelSnapshotStatuses = current.channelSnapshotStatuses.filterKeys(keep),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun dropServerLocked(normalizedServerId: String) {
         state.update { current ->
             current.copy(
                 serverSnapshots = current.serverSnapshots - normalizedServerId,
@@ -713,6 +816,7 @@ internal class SharedTasksDataStore(
         requestServerSnapshotRevision: Long? = null
     ): TaskSnapshot? {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
+        reopenOfflineList(normalizedServerId, scope)
         var committedSnapshot: TaskSnapshot? = null
         state.update { current ->
             var base =
@@ -1504,4 +1608,19 @@ private fun TaskSnapshot.remove(taskId: TaskId): TaskSnapshot {
     val nextTasks = tasks.filterNot { task -> task.id == taskId }
     if (nextTasks.size == tasks.size) return this
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
+
+/**
+ * The first page of a list as stored: the [TasksOfflineListMaxTasks] most recently updated tasks, in the
+ * list's order (a task created after the first page was loaded is appended last in memory, and must not
+ * be the one cut).
+ */
+internal fun List<TaskSummary>.toStoredFirstPage(): List<TaskSummary> {
+    if (size <= TasksOfflineListMaxTasks) return this
+    val kept =
+        withIndex()
+            .sortedWith(compareByDescending<IndexedValue<TaskSummary>> { it.value.updatedAtLabel }.thenBy { it.index })
+            .take(TasksOfflineListMaxTasks)
+            .mapTo(mutableSetOf()) { it.index }
+    return filterIndexed { index, _ -> index in kept }
 }

@@ -664,7 +664,8 @@ internal class SharedTasksViewModel(
                 seedStatusPagesOnNext = true
                 // If content is already loaded (Board toggled after a List load),
                 // seed now instead of waiting for an unrelated refresh.
-                if (state.value.hasCompletedTasksSnapshot()) {
+                // Not on the stored stand-in: the columns seed after the network answer replaces it.
+                if (state.value.hasCompletedTasksSnapshot() && !state.value.standIn) {
                     seedStatusPagesOnNext = false
                     seedStatusPages(boardSeedStatuses())
                 }
@@ -704,7 +705,11 @@ internal class SharedTasksViewModel(
         }
     }
 
-    /** The network says the list is empty or gone for this account: its stored copy goes too. */
+    /**
+     * The network says the list is empty or gone for this account: its stored copy goes too. Lost permission
+     * also takes the list out of the shared store (it is no fact any more), so the offline mirror cannot
+     * store it again from a later realtime patch.
+     */
     private suspend fun dropStoredList(result: DataResult<TaskSnapshot>, selectedFilter: TaskStatus?) {
         if (selectedFilter != null) return
         if (result !is DataResult.Empty && result !is DataResult.NoPermission) return
@@ -712,6 +717,7 @@ internal class SharedTasksViewModel(
         val lists = sharedStore.offlineLists ?: return
         val owner = TasksOfflineOwner.fromOwnerIdentity(sharedStore.currentOwnerIdentity()) ?: return
         val serverId = useCase.currentServerId()?.value ?: return
+        if (result is DataResult.NoPermission) sharedStore.dropList(serverId, scope)
         lists.remove(owner, serverId, scope)
     }
 
