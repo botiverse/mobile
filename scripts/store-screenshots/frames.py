@@ -97,7 +97,7 @@ SCENES = [
 ]
 
 # The 8-shot Play phone set (StorePlay8ScreenshotsTest; Ginny's final copy 2026-10-28, msg a8fcfa93).
-# zh-Hant serves Play zh-TW and zh-HK.
+# zh-Hant serves Play zh-TW and zh-HK; Ginny's copy fixes 10-28 (03, 08 zh-Hant; 04 en).
 PLAY8_LANGS = ["en", "zh-Hans", "zh-Hant", "ja"]
 PLAY8_SCENES = [
     ("01-chat", YELLOW, {
@@ -115,11 +115,11 @@ PLAY8_SCENES = [
     ("03-thread", CYAN, {
         "en": ("Agents work together [in threads]", "They hand off, review and solve it"),
         "zh-Hans": ("多个 Agent|[在消息列里协作]", "交接、|审阅，|一起把问题解决"),
-        "zh-Hant": ("多個 Agent|[在討論串裡協作]", "交接、|審閱，|一起把問題解決"),
+        "zh-Hant": ("多個 Agent|[一起協作]", "交接、|審閱，|一起把問題解決"),
         "ja": ("スレッドで|[エージェント同士が協力]", "引き継ぎ、|レビューして、|解決まで"),
     }),
     ("04-tasks", LIME, {
-        "en": ("Assign tasks, [watch them get done]", "Track every task from to-do to done"),
+        "en": ("Assign tasks, [watch them get done]", "Track every task from Todo to Done"),
         "zh-Hans": ("分配任务，|[看着它完成]", "从待办到已完成，|全程可追踪"),
         "zh-Hant": ("指派任務，|[看著它完成]", "從待辦到已完成，|全程可追蹤"),
         "ja": ("タスクを任せて、|[完了を見届ける]", "未着手から完了まで、|すべて追跡"),
@@ -145,11 +145,14 @@ PLAY8_SCENES = [
     ("08-home", YELLOW, {
         "en": ("Your whole AI team, [organized]", "Channels, DMs and tasks at a glance"),
         "zh-Hans": ("你的整个 AI 团队，|[井井有条]", "频道、|私信、|任务一目了然"),
-        "zh-Hant": ("你的整個 AI 團隊，|[井然有序]", "頻道、|私訊、|任務一目了然"),
+        "zh-Hant": ("你的整個 AI 團隊，|[井然有序]", "頻道、|私信、|任務一目了然"),
         "ja": ("AIチーム全体を、|[すっきり整理]", "チャンネル・DM・タスクを|ひと目で"),
     }),
 ]
 PLAY8_HEADLINE_SCALE = 1.12
+# Every Play shot reserves two headline lines and one subline, so the phone sits at the same place
+# and size whether the headline takes one line or two (review 10-28: it moved ~100px).
+PLAY8_TEXT_LINES = (2, 1)
 
 
 def contact_sheet(paths, out_png, cols=4, scale=3, gap=24):
@@ -253,7 +256,7 @@ document.fonts.ready.then(function(){
 </script>"""
 
 
-def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=1.0):
+def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=1.0, text_lines=None):
     landscape = w > h
     tablet = profile in TABLET_PROFILES
     raw = Image.open(shot)
@@ -284,8 +287,9 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=
                    "-webkit-box-decoration-break:clone;box-decoration-break:clone}")
         device_css = (f"border:{6*s:.1f}px solid {INK};box-shadow:var(--sh) var(--sh) 0 {accent},var(--sh) var(--sh) 0 {6*s:.1f}px {INK}")
         kicker = f'<span class="kicker">RAFT · {idx:02d}</span>'
-        if cjk:  # no word spaces in CJK: keep the sticker clear of the characters beside it
-            hl_mark += f"h1 .m{{margin:0 {8*s:.0f}px}}"
+        if cjk:  # no word spaces in CJK: keep the sticker clear of the characters beside it; the
+            # right side also clears its offset shadow, so a gap shows before the next character
+            hl_mark += f"h1 .m{{margin:0 {(8+7+8)*s:.0f}px 0 {14*s:.0f}px}}"
         sub_color = "#3b3535"
         align = "left"
         cls = "m"
@@ -298,6 +302,12 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=
         sub_color = "#4a3f10"
         align = "left" if landscape else "center"
         cls = "u"
+    reserve = ""
+    if text_lines:  # fixed text block: [h1 lines, subline lines] at the starting sizes
+        hl_lines, sub_lines = text_lines
+        # 1.3: a line holding the highlight is that tall in English too (.m line-height)
+        reserve = (f"h1{{min-height:{hl_lines * hl * 1.3:.0f}px}}"
+                   f"p{{min-height:{sub_lines * 33 * s * 1.4:.0f}px}}")
     if landscape:
         layout = f"""body{{flex-direction:row}}
 .top{{width:{0.36*w:.0f}px;flex:none;display:flex;flex-direction:column;justify-content:center;padding:0 {24*s:.0f}px 0 {80*s:.0f}px}}"""
@@ -317,6 +327,7 @@ h1{{text-wrap:balance}} p{{text-wrap:pretty}} .ph{{white-space:nowrap}}
 h1{{font-weight:700;font-size:{hl:.0f}px;line-height:{1.3 if cjk else 1.1};letter-spacing:{-1.5*s:.1f}px}}
 {hl_mark}
 p{{margin-top:{30*s:.0f}px;font-size:{33*s:.0f}px;line-height:1.4;font-weight:500;color:{sub_color}}}
+{reserve}
 .stage{{flex:1;position:relative;min-height:0;min-width:0}}
 .device{{position:absolute;background:{INK};{device_css};display:flex}}
 .screen{{flex:1;overflow:hidden;background:#fff;display:flex;flex-direction:column}}
@@ -434,7 +445,8 @@ def main():
                 if not os.path.exists(shot):
                     raise SystemExit(f"missing raw render {shot}")
                 headline, sub = copy[lang]
-                jobs.append((page(a.style, shot, "phone", accent, headline, sub, idx, lang, 1080, 1920, PLAY8_HEADLINE_SCALE),
+                jobs.append((page(a.style, shot, "phone", accent, headline, sub, idx, lang, 1080, 1920, PLAY8_HEADLINE_SCALE,
+                                  PLAY8_TEXT_LINES),
                              f"{out}/{lang}/{key}.png", 1080, 1920))
         with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
             for done in pool.map(lambda j: render(*j), jobs):

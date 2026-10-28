@@ -43,9 +43,12 @@ devices `phone`, `tablet-7`, `tablet-10`, `iphone-6.9`, `iphone-6.5`, `ipad-13`,
 
 `StorePlay8ScreenshotsTest` renders the 8 Google Play phone scenes (01-chat, 02-mention, 03-thread,
 04-tasks, 05-agent, 06-activity, 07-swipe, 08-home) in en, zh-Hans, zh-Hant and ja, with the app
-in the server theme Weather (pixel decor off) and the demo cast Maya Chen, Leo Park, Forge, Scout
-and the fixture agents. The app has no Traditional Chinese UI, so zh-Hant shows the Simplified UI
-with Traditional demo content; its framed copy is Traditional (Play zh-TW and zh-HK).
+in the default Raft theme, brand yellow (pixel decor off) and the demo cast Maya Chen, Leo Park, Forge, Scout
+and the fixture agents. The app has no Traditional Chinese UI and a zh-TW device falls back to
+English, so zh-Hant shows the English UI with the English demo content; only its framed copy is
+Traditional (Play zh-TW and zh-HK). en and zh-Hant use the 12-hour clock. The chat lists start at
+the same whole message in every language, and the frame reserves two headline lines and one
+subline so the phone never moves between shots.
 
 ```bash
 cd compose

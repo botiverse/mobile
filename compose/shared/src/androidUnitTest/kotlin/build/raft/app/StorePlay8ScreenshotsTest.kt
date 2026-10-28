@@ -53,6 +53,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftWorkspaceFileKind
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftWorkspaceNode
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -79,11 +81,13 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The 8-shot Google Play phone set (Ginny's copy, 2026-10-28): production Compose screens with
  * fictional demo content (team "Northwind Labs"; people Maya Chen and Leo Park; agents Forge,
- * Scout and the fixture agents), the app in the server theme Weather with its pixel decor off,
- * in English, Simplified Chinese, Traditional Chinese and Japanese.
+ * Scout and the fixture agents), the app in the default Raft theme (brand yellow, huxijin 10-28)
+ * with its pixel decor off, in English, Simplified Chinese, Traditional Chinese and Japanese.
  *
- * The app has no Traditional Chinese UI resources, so `zh-Hant` renders the Simplified Chinese UI
- * with Traditional Chinese demo content.
+ * The app has no Traditional Chinese UI resources and a zh-TW device falls back to English, so
+ * `zh-Hant` renders the English UI with the English demo content; only its framed copy is
+ * Traditional (Ginny, 10-28). The en and zh-Hant clocks are 12-hour, as on those devices, so a
+ * reply preview's time reads like the messages' (09:48 AM).
  *
  * Only runs with `RAFT_STORE_SCREENSHOTS=<output dir>`; writes `<dir>/phone/<lang>/NN-scene.png`
  * at the phone profile (390x844dp, xxhdpi). `RAFT_STORE_SCENES=01-chat,07-swipe` filters scenes.
@@ -141,33 +145,35 @@ class StorePlay8ScreenshotsTest {
         try {
             RuntimeEnvironment.setQualifiers("${lang.qualifier}-w390dp-h844dp-port-xxhdpi")
             val dir = File(File(outDir!!, "phone"), lang.key)
-            capture(dir, "01-chat") { P8ChatScene(copy) }
-            capture(dir, "02-mention") { P8MentionScene(copy) }
-            capture(dir, "03-thread") { P8ThreadScene(copy) }
-            capture(dir, "04-tasks") { P8TasksScene(copy) }
-            capture(dir, "05-agent") { P8AgentScene(copy, "profile") }
-            capture(dir, "06-activity") { P8ActivityScene(copy, swipe = false) }
-            capture(dir, "07-swipe") { P8ActivityScene(copy, swipe = true) }
-            capture(dir, "08-home") { P8HomeScene() }
+            val time = if (lang.clock12h) StoreTime.copy(timeFormat = RaftTimeFormat12Hour) else StoreTime
+            capture(dir, "01-chat", time) { P8ChatScene(copy) }
+            capture(dir, "02-mention", time) { P8MentionScene(copy) }
+            capture(dir, "03-thread", time) { P8ThreadScene(copy) }
+            capture(dir, "04-tasks", time) { P8TasksScene(copy) }
+            capture(dir, "05-agent", time) { P8AgentScene(copy, "profile") }
+            capture(dir, "06-activity", time) { P8ActivityScene(copy, swipe = false) }
+            capture(dir, "07-swipe", time) { P8ActivityScene(copy, swipe = true) }
+            capture(dir, "08-home", time) { P8HomeScene() }
             // Not in the set: Forge's Workspace tab (MEMORY.md), only when asked for by name.
-            if (sceneFilter?.contains("05w-workspace") == true) capture(dir, "05w-workspace") { P8AgentScene(copy, "workspace") }
+            if (sceneFilter?.contains("05w-workspace") == true) capture(dir, "05w-workspace", time) { P8AgentScene(copy, "workspace") }
         } finally {
             java.util.Locale.setDefault(previousLocale)
             restoreVisualCaptureLocale(token)
         }
     }
 
-    private fun capture(dir: File, name: String, content: @Composable () -> Unit) {
+    private fun capture(dir: File, name: String, time: RaftTimeContext, content: @Composable () -> Unit) {
         if (sceneFilter != null && name !in sceneFilter) return
-        captureStoreScreen(activities, livePager, File(dir, "$name.png"), theme = RaftThemeId.Weather, content = content)
+        captureStoreScreen(activities, livePager, File(dir, "$name.png"), theme = RaftThemeId.Raft, time = time, content = content)
     }
 }
 
-internal enum class P8Lang(val key: String, val locale: AppLocale, val qualifier: String, val copy: P8Copy) {
-    En("en", AppLocale.English, "en-rUS", P8Copy.En),
+internal enum class P8Lang(val key: String, val locale: AppLocale, val qualifier: String, val copy: P8Copy, val clock12h: Boolean = false) {
+    En("en", AppLocale.English, "en-rUS", P8Copy.En, clock12h = true),
     ZhHans("zh-Hans", AppLocale.SimplifiedChinese, "zh-rCN", P8Copy.ZhHans),
-    // No Traditional Chinese UI resources: the Simplified UI with Traditional demo content.
-    ZhHant("zh-Hant", AppLocale.SimplifiedChinese, "zh-rCN", P8Copy.ZhHant),
+    // No Traditional Chinese UI resources: a zh-TW device shows the English UI, so the English UI
+    // with the English demo content (the framed copy is Traditional).
+    ZhHant("zh-Hant", AppLocale.English, "en-rUS", P8Copy.En, clock12h = true),
     Ja("ja", AppLocale.Japanese, "ja-rJP", P8Copy.Ja);
 
     val javaLocale: java.util.Locale
@@ -274,30 +280,30 @@ internal class P8Copy(
                 channelSubtitle = "Release train for the mobile app",
                 chat =
                     listOf(
-                        P8Message("human-leo", "Morning! Code freeze for 2.4 is at noon.", "9:30 AM"),
-                        P8Message("agent-pixel", "The new onboarding screens are exported and attached to #508.", "9:32 AM", reactions = listOf("👍" to 2)),
-                        P8Message("human-maya", "@Scout can you run the release checklist on build 319?", "9:35 AM", mentions = listOf("agent-scout")),
-                        P8Message("agent-scout", "Done: 46 of 48 checks pass. Both failures are on the login screen.", "9:38 AM"),
+                        P8Message("human-leo", "Morning! Code freeze for 2.4 is at noon.", "09:30 AM"),
+                        P8Message("agent-pixel", "The new onboarding screens are exported and attached to #508.", "09:32 AM", reactions = listOf("👍" to 2)),
+                        P8Message("human-maya", "@Scout can you run the release checklist on build 319?", "09:35 AM", mentions = listOf("agent-scout")),
+                        P8Message("agent-scout", "Done: 46 of 48 checks pass. Both failures are on the login screen.", "09:38 AM"),
                         P8Message(
                             "agent-forge",
                             "I'll take the login failures. Fix and a test are going up in **PR #512**.",
-                            "9:40 AM",
+                            "09:40 AM",
                             reactions = listOf("🎉" to 2, "👍" to 1),
                             replies = listOf("agent-atlas" to "Reviewed #512, approved.", "human-maya" to "Thanks, ship it."),
                         ),
-                        P8Message("agent-nova", "Build 2.4.0 (320) goes to internal testing as soon as #512 merges.", "9:44 AM", reactions = listOf("🚀" to 3)),
+                        P8Message("agent-nova", "Build 2.4.0 (320) goes to internal testing as soon as #512 merges.", "09:44 AM", reactions = listOf("🚀" to 3)),
                     ),
                 mentionChat =
                     listOf(
-                        P8Message("human-leo", "Morning! Code freeze for 2.4 is at noon.", "9:30 AM"),
-                        P8Message("human-leo", "Heads up: a few beta testers can't sign in after updating to 2.4.", "9:50 AM"),
-                        P8Message("agent-scout", "Reproduced on Android 15 and iOS 18: the session expires when the app resumes.", "9:52 AM"),
+                        P8Message("human-leo", "Morning! Code freeze for 2.4 is at noon.", "09:30 AM"),
+                        P8Message("human-leo", "Heads up: a few beta testers can't sign in after updating to 2.4.", "09:50 AM"),
+                        P8Message("agent-scout", "Reproduced on Android 15 and iOS 18: the session expires when the app resumes.", "09:52 AM"),
                     ),
                 composerText = "@Forge can you fix the login bug?",
-                threadOrigin = P8Message("human-maya", "@Forge can you fix the login bug?", "9:54 AM", mentions = listOf("agent-forge")),
+                threadOrigin = P8Message("human-maya", "@Forge can you fix the login bug?", "09:54 AM", mentions = listOf("agent-forge")),
                 threadReplies =
                     listOf(
-                        P8Message("agent-forge", "Found it: the refresh token was dropped when the app came back from the background. Fix and a test are up in **PR #512**.", "9:58 AM"),
+                        P8Message("agent-forge", "Found it: the refresh token was dropped when the app came back from the background. Fix and a test are up in **PR #512**.", "09:58 AM"),
                         P8Message("agent-scout", "Ran the login suite on Android and iOS: 48 of 48 pass, including the resume case.", "10:03 AM", reactions = listOf("🎉" to 2)),
                         P8Message("agent-atlas", "Reviewed #512 and approved.", "10:05 AM"),
                         P8Message("agent-forge", "Merged. @Nova it's ready for build 320.", "10:06 AM", mentions = listOf("agent-nova")),
@@ -392,65 +398,6 @@ internal class P8Copy(
                         coldStartPreview = "旧手机冷启动快了 38%。",
                         supportPreview = "今天 12 个工单都已回复，2 个转给了 Forge。",
                         checklistPreview = "48 项检查通过 46 项，两个失败已建任务。",
-                    ),
-            )
-
-        val ZhHant =
-            P8Copy(
-                channelSubtitle = "行動端發版",
-                chat =
-                    listOf(
-                        P8Message("human-leo", "大家早，2.4 中午程式碼凍結。", "09:30"),
-                        P8Message("agent-pixel", "新的導覽頁素材已匯出，附在 #508 上了。", "09:32", reactions = listOf("👍" to 2)),
-                        P8Message("human-maya", "@Scout 可以幫忙在 319 版跑一次發版檢查嗎？", "09:35", mentions = listOf("agent-scout")),
-                        P8Message("agent-scout", "跑完了：48 項檢查通過 46 項，兩項失敗都在登入頁。", "09:38"),
-                        P8Message(
-                            "agent-forge",
-                            "登入頁的問題我來修，修正和測試馬上提交到 **PR #512**。",
-                            "09:40",
-                            reactions = listOf("🎉" to 2, "👍" to 1),
-                            replies = listOf("agent-atlas" to "#512 審完了，已核准。", "human-maya" to "謝謝，發吧。"),
-                        ),
-                        P8Message("agent-nova", "#512 合併後，2.4.0 (320) 就發到內部測試。", "09:44", reactions = listOf("🚀" to 3)),
-                    ),
-                mentionChat =
-                    listOf(
-                        P8Message("human-leo", "大家早，2.4 中午程式碼凍結。", "09:30"),
-                        P8Message("human-leo", "提醒一下：有幾位測試使用者更新到 2.4 後無法登入。", "09:50"),
-                        P8Message("agent-scout", "在 Android 15 和 iOS 18 上重現了：App 從背景回來時工作階段就過期了。", "09:52"),
-                    ),
-                composerText = "@Forge 可以幫忙修一下登入的 bug 嗎？",
-                threadOrigin = P8Message("human-maya", "@Forge 可以幫忙修一下登入的 bug 嗎？", "09:54", mentions = listOf("agent-forge")),
-                threadReplies =
-                    listOf(
-                        P8Message("agent-forge", "找到了：App 從背景回來時把 refresh token 弄丟了。修正和測試已提交到 **PR #512**。", "09:58"),
-                        P8Message("agent-scout", "在 Android 和 iOS 上跑了登入測試：48 項全部通過，包括從背景恢復的情境。", "10:03", reactions = listOf("🎉" to 2)),
-                        P8Message("agent-atlas", "#512 審完了，已核准。", "10:05"),
-                        P8Message("agent-forge", "已合併。@Nova 可以打 320 版了。", "10:06", mentions = listOf("agent-nova")),
-                        P8Message("agent-nova", "2.4.0 (320) 正在上傳到內部測試。", "10:09", reactions = listOf("🚀" to 3)),
-                    ),
-                tasks = tasks(listOf("設定頁支援深色模式", "加快舊手機冷啟動速度", "修正登入 bug", "在 319 版跑發版檢查")),
-                agentDescriptions =
-                    mapOf(
-                        "agent-forge" to "修 bug、寫測試",
-                        "agent-scout" to "測試每個版本，找出問題",
-                        "agent-atlas" to "審查程式碼",
-                        "agent-nova" to "打包和發版",
-                        "agent-pixel" to "設計介面",
-                        "agent-echo" to "回覆客服工單",
-                        "agent-sage" to "維護文件",
-                        "agent-quill" to "撰寫更新日誌",
-                    ),
-                forgeBio = "修 bug、寫測試。記得行動 App 是怎麼建起來的、以前出過什麼問題，也記得團隊喜歡什麼樣的 PR。",
-                forgeActivity = "正在幫登入修正寫測試",
-                activity =
-                    P8ActivityCopy(
-                        channelPreview = "@Maya 2.4.0 (320) 已經發到內部測試。",
-                        loginThreadPreview = "登入測試 48 項在 Android 和 iOS 上全部通過。",
-                        dmForgePreview = "登入修正已合併。接下來要我做 #515 嗎？",
-                        coldStartPreview = "舊手機冷啟動快了 38%。",
-                        supportPreview = "今天 12 張工單都已回覆，2 張轉給了 Forge。",
-                        checklistPreview = "48 項檢查通過 46 項，兩項失敗已建立任務。",
                     ),
             )
 
@@ -657,15 +604,25 @@ private fun P8ChannelHeader(copy: P8Copy) {
     )
 }
 
-/** Messages bottom-aligned like the live list (older ones clip at the top), with an optional typing line. */
+/**
+ * The list scrolled so [messages]`[topIndex]` starts at the top, whole, in every language (Kirby and
+ * Ginny's review, 10-28): older messages are scrolled away above it, the newest end above the
+ * optional typing line.
+ */
 @Composable
-private fun P8MessageList(messages: List<P8Message>, modifier: Modifier, typing: List<String> = emptyList(), idPrefix: String = "m") {
+private fun P8MessageList(
+    messages: List<P8Message>,
+    modifier: Modifier,
+    topIndex: Int,
+    typing: List<String> = emptyList(),
+    idPrefix: String = "m",
+) {
     val items = remember(messages) { p8MessageItems(messages, idPrefix) }
     Box(modifier.clipToBounds().background(RaftColor.SurfaceWhite)) {
         Column(
-            Modifier.fillMaxSize().wrapContentHeight(Alignment.Bottom, unbounded = true).padding(bottom = if (typing.isEmpty()) 12.dp else 36.dp),
+            Modifier.fillMaxSize().wrapContentHeight(Alignment.Top, unbounded = true).padding(bottom = if (typing.isEmpty()) 12.dp else 36.dp),
         ) {
-            items.forEachIndexed { index, message -> P8MessageCard(message, messages[index].time) }
+            items.forEachIndexed { index, message -> if (index >= topIndex) P8MessageCard(message, messages[index].time) }
         }
         if (typing.isNotEmpty()) {
             ThreadMessageListEndFade(typingLineShown = true, modifier = Modifier.align(Alignment.BottomCenter))
@@ -694,7 +651,8 @@ private fun P8Composer(placeholder: String, surfaceKind: String = RaftThreadSurf
 private fun P8ChatScene(copy: P8Copy) {
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         P8ChannelHeader(copy)
-        P8MessageList(copy.chat, Modifier.weight(1f).fillMaxWidth(), typing = listOf("agent-forge", "agent-scout"))
+        // From Maya's request to Scout down: the same messages on screen in every language.
+        P8MessageList(copy.chat, Modifier.weight(1f).fillMaxWidth(), topIndex = 2, typing = listOf("agent-forge", "agent-scout"))
         P8Composer(stringResource(Res.string.thread_composer_placeholder_channel, P8Channel))
     }
 }
@@ -738,7 +696,7 @@ private fun P8MentionScene(copy: P8Copy) {
         P8ChannelHeader(copy)
         Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             // The morning's first messages, then the bug report the request answers.
-            P8MessageList(copy.chat.take(2) + copy.mentionChat.drop(1), Modifier.weight(1f).fillMaxWidth(), idPrefix = "mc")
+            P8MessageList(copy.chat.take(2) + copy.mentionChat.drop(1), Modifier.weight(1f).fillMaxWidth(), topIndex = 1, idPrefix = "mc")
             Box(Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm).padding(bottom = 8.dp)) {
                 ComposerSuggestionPanelContent(
                     panelState = ThreadComposerSuggestionPanelState.MemberItems,

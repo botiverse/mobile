@@ -185,13 +185,14 @@ class StoreScreenshotsTest {
 
 /**
  * Renders [content] full screen in a fresh activity (light appearance, app theme [theme] with its
- * decor off, clock fixed at [StoreTime]) and writes the window as a PNG to [file].
+ * decor off, clock fixed at [time], [StoreTime] by default) and writes the window as a PNG to [file].
  */
 internal fun captureStoreScreen(
     activities: RobolectricComposeActivityRule,
     pager: Pager,
     file: File,
     theme: RaftThemeId = RaftThemeId.Raft,
+    time: RaftTimeContext = StoreTime,
     content: @Composable () -> Unit,
 ) {
     val previous = RaftAppThemeState.appearance
@@ -208,7 +209,7 @@ internal fun captureStoreScreen(
                     val bytes = runBlocking { Res.readBytes(RaftBundledFiles.reactionAtlasV1.path) }
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
                 }
-            val clock = remember { RaftTimeContextProvider(StoreTime) }
+            val clock = remember { RaftTimeContextProvider(time) }
             CompositionLocalProvider(
                 LocalActivity provides RaftPageActivity(pager),
                 LocalRaftTimeContextProvider provides clock,
