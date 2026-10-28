@@ -44,6 +44,9 @@ enum class RaftGlyph(internal vararg val paths: String) {
     Minus("M5 12h14"),
     X("M18 6 6 18", "m6 6 12 12"),
     Search("m21 21-4.34-4.34", circle(11f, 11f, 8f)),
+
+    /** Lucide `ellipsis`: a "More Actions" overflow ([RaftSideActionColumn]). */
+    Ellipsis(circle(12f, 12f, 1f), circle(19f, 12f, 1f), circle(5f, 12f, 1f)),
     Info(circle(12f, 12f, 10f), "M12 16v-4", "M12 8h.01"),
     TriangleAlert(
         "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
