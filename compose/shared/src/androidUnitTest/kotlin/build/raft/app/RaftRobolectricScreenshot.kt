@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
+import build.raft.designsystem.components.applyRaftSystemBarsAppearance
 import java.io.File
 import java.time.Duration
 import kotlin.math.abs
@@ -53,6 +54,9 @@ internal object RaftRobolectricScreenshot {
         try {
             RaftAppThemeState.apply(appearance)
             val activity = activities.launch()
+            // The host's bar icons as the app sets them for this mode: a dialog window copies them
+            // (#3847), so leaving them to whatever ran before made dialog captures differ by a row.
+            activity.window.applyRaftSystemBarsAppearance(RaftAppThemeState.isDark)
             // Moko string resources read the app context through the shared SQLDelight holder.
             build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
             // Spinners hold still on their first step: a capture is one deterministic frame.
