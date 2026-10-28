@@ -1,6 +1,7 @@
 name: Desktop macOS dmg
 
-# Builds the Raft desktop app (compose/desktopApp) for macOS and uploads the unsigned .dmg.
+# Builds the Raft desktop app (compose/desktopApp) for macOS and uploads the .dmg (ad-hoc signed,
+# no Developer ID, not notarized).
 # Signing and notarization are DevOps' follow-up: compose/desktopApp/README.md lists the
 # Gradle properties (compose.desktop.mac.sign / signing.identity / notarization.*) a signed
 # lane would pass; this workflow adds no secrets.
@@ -102,15 +103,40 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Package dmg
+      # Unsigned for now (owner decision 2026-10-28: no Developer ID yet), but ad-hoc signed:
+      # on Apple silicon an arm64 app with no signature at all is reported as "damaged" when it
+      # carries the download quarantine flag, and Privacy & Security offers no "Open Anyway".
+      # So build the .app, ad-hoc sign and verify it, then wrap it in the dmg ourselves.
+      - name: Build app bundle
         working-directory: compose
         env:
           RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
         run: |
           set -euo pipefail
-          ./gradlew :desktopApp:packageDmg \
+          ./gradlew :desktopApp:createDistributable \
             -Praft.desktop.version="$RAFT_DESKTOP_VERSION" \
             --no-daemon --console=plain --stacktrace
+
+      - name: Ad-hoc sign the app and package dmg
+        working-directory: compose/desktopApp/build/compose/binaries/main
+        env:
+          RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
+        run: |
+          set -euo pipefail
+          app="app/Raft.app"
+          [ -d "$app" ] || { echo "::error::$app not found"; ls -la app || true; exit 1; }
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | sed 's/^/codesign: /'
+          staging="$RUNNER_TEMP/raft-dmg"
+          rm -rf "$staging" && mkdir -p "$staging" dmg
+          cp -R "$app" "$staging/"
+          ln -s /Applications "$staging/Applications"
+          dmg="dmg/Raft-${RAFT_DESKTOP_VERSION}.dmg"
+          rm -f "$dmg"
+          hdiutil create -volname "Raft" -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$dmg"
+          hdiutil verify "$dmg"
+          shasum -a 256 "$dmg"
 
       - name: Upload dmg
         uses: actions/upload-artifact@v7
