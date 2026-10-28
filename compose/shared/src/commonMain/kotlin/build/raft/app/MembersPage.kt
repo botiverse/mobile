@@ -10207,14 +10207,12 @@ private fun MembersAgentRuntimeConfigSection(
     }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
-    // Runtime form v2 edit (flag `runtime_form_v2_web`); any v2 load failure or a runtime
-    // change hands the same editing session to the v1 dialog below.
+    // Runtime form v2 edit (flag `runtime_form_v2_web`). A v2-opened session stays on v2: a load
+    // failure shows Retry and a runtime switch loads the new runtime's v2 form (task #8). The v1
+    // dialog below only serves sessions opened without v2 (flag off, or no computer).
     val runtimeFormV2Access =
         agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
-    var runtimeFormV2Declined by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(false) }
     var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
-    // The runtime picked in the v2 dialog's Runtime select; the v1 dialog opens with it selected.
-    var runtimeFormV2SwitchRuntime by remember(member.id.value, editingRuntimeConfig) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(canonicalRuntimeId) {
         canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
@@ -10344,7 +10342,7 @@ private fun MembersAgentRuntimeConfigSection(
         }
     }
 
-    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody) {
+    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) {
         val callback = onUpdateAgentProfile
         // The access the form was loaded through; the authority check below still fences
         // account/server/profile changes.
@@ -10379,15 +10377,15 @@ private fun MembersAgentRuntimeConfigSection(
             runtimeFormV2ErrorFields = emptySet()
             val result =
                 try {
-                    // Same runtime only (a runtime switch goes through v1), so an active agent restarts
-                    // to pick the change up, exactly as the v1 editor decides.
-                    val request = AgentProfileUpdateRequest(
-                        agentId = member.id,
-                        displayName = member.displayName,
-                        description = member.description?.takeIf { it.isNotBlank() },
-                        runtimeResetMode = if (activeAgent) AgentResetMode.Restart else null,
-                        runtimeFormV2 = submit
-                    )
+                    val request =
+                        membersRuntimeFormV2UpdateRequest(
+                            agentId = member.id,
+                            displayName = member.displayName,
+                            description = member.description,
+                            submit = submit,
+                            runtimeSwitched = runtimeSwitched,
+                            activeAgent = activeAgent
+                        )
                     if (agentDetailActions != null) {
                         agentDetailActions.updateAgentProfile(request)
                     } else {
@@ -10477,7 +10475,6 @@ private fun MembersAgentRuntimeConfigSection(
             editing = editingRuntimeConfig,
             opened = session?.authority,
             openedFormV2 = session?.formV2Access != null && session.machineId != null,
-            formV2Declined = runtimeFormV2Declined,
             live = MembersRuntimeEditorLiveFacts(
                 authority = agentProfileEditAuthority,
                 canManage = edit.canManage,
@@ -10501,6 +10498,7 @@ private fun MembersAgentRuntimeConfigSection(
             machineId = checkNotNull(session.machineId),
             runtimeId = session.config.runtime,
             machineRuntimeIds = agentMachineRuntimes,
+            activeAgent = activeAgent,
             saving = savingRuntimeConfig,
             error = runtimeConfigError,
             errorFieldKeys = runtimeFormV2ErrorFields,
@@ -10510,18 +10508,15 @@ private fun MembersAgentRuntimeConfigSection(
                     runtimeConfigError = null
                 }
             },
-            onLoadFailed = { runtimeFormV2Declined = true },
-            onChangeRuntime = { nextRuntime ->
+            onRuntimeSelected = {
                 runtimeConfigError = null
-                runtimeFormV2SwitchRuntime = nextRuntime
-                runtimeFormV2Declined = true
+                runtimeFormV2ErrorFields = emptySet()
             },
             onSave = ::saveRuntimeConfigV2
         )
     } else if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.Legacy) {
         MembersAgentRuntimeConfigDialog(
             initialConfig = session.config,
-            initialRuntime = runtimeFormV2SwitchRuntime,
             memberId = member.id,
             activeAgent = activeAgent,
             machineRuntimeIds = agentMachineRuntimes,
@@ -11183,8 +11178,6 @@ private fun membersMaskedEnvValue(value: String?): String =
 @Composable
 private fun MembersAgentRuntimeConfigDialog(
     initialConfig: RuntimeConfig,
-    /** A runtime other than [initialConfig]'s to open with already selected (picked in the v2 dialog). */
-    initialRuntime: String? = null,
     memberId: MemberId,
     activeAgent: Boolean,
     createAgentFormStore: SharedCreateAgentFormStore?,
@@ -11315,16 +11308,6 @@ private fun MembersAgentRuntimeConfigDialog(
                 nextRuntimeModels = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
             )
         )
-    }
-    // Opened from the v2 dialog's Runtime select: start on the picked runtime, through the
-    // same reset its own runtime select runs. Once per editing session (the state keys above).
-    remember(stableInitialConfig, initialRuntime) {
-        membersRuntimeConfigInitialRuntimeSwitch(
-            initialConfig = stableInitialConfig,
-            initialRuntime = initialRuntime,
-            nextRuntimeModels = initialRuntime?.let { runtimeModelsByRuntime[it]?.models }.orEmpty()
-        )?.let(::applyRuntimeSwitch)
-        Unit
     }
     val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
     val cleanServerId = currentServerId?.trim().orEmpty()
@@ -12071,7 +12054,6 @@ internal fun membersRuntimeEditorDialog(
     editing: Boolean,
     opened: MembersAgentProfileEditAuthority?,
     openedFormV2: Boolean,
-    formV2Declined: Boolean,
     live: MembersRuntimeEditorLiveFacts
 ): MembersRuntimeEditorDialog {
     if (!editing || opened == null) return MembersRuntimeEditorDialog.None
@@ -12086,8 +12068,36 @@ internal fun membersRuntimeEditorDialog(
     ) {
         return MembersRuntimeEditorDialog.None
     }
-    return if (openedFormV2 && !formV2Declined) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.Legacy
+    // A v2-opened session never hands over to v1 (task #8): load failures and runtime switches
+    // stay in the v2 dialog.
+    return if (openedFormV2) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.Legacy
 }
+
+/**
+ * The PATCH for a v2 edit save: only the form ref and values travel. A runtime switch starts a
+ * new session (`restartMode: "session"`, as web after task #8; the server forces it too);
+ * otherwise an active agent restarts to pick the change up, as the v1 editor decides.
+ */
+internal fun membersRuntimeFormV2UpdateRequest(
+    agentId: MemberId,
+    displayName: String,
+    description: String?,
+    submit: RuntimeFormV2SubmitBody,
+    runtimeSwitched: Boolean,
+    activeAgent: Boolean
+): AgentProfileUpdateRequest =
+    AgentProfileUpdateRequest(
+        agentId = agentId,
+        displayName = displayName,
+        description = description?.takeIf { it.isNotBlank() },
+        runtimeResetMode =
+            when {
+                runtimeSwitched -> AgentResetMode.Session
+                activeAgent -> AgentResetMode.Restart
+                else -> null
+            },
+        runtimeFormV2 = submit
+    )
 
 internal fun membersRuntimeConfigResetMode(
     currentConfig: RuntimeConfig,
@@ -12184,8 +12194,26 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    RaftUnifiedDialog(
+    MembersRuntimeSwitchConfirmationDialog(
         title = confirmation.title.localized(),
+        message = confirmation.message,
+        confirmLabel = confirmation.confirmLabel.localized(),
+        onConfirm = onConfirm,
+        onCancel = onCancel
+    )
+}
+
+/** The runtime-switch confirmation shared by the v1 and v2 runtime editors. */
+@Composable
+internal fun MembersRuntimeSwitchConfirmationDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    RaftUnifiedDialog(
+        title = title,
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -12211,7 +12239,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                     color = RaftColor.TextBlackArgb
                 )
                 Text(
-                    text = confirmation.message,
+                    text = message,
                     style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = RaftColor.TextBlack
                 )
@@ -12224,7 +12252,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                     size = RaftButtonSize.Lg
                 )
                 RaftButton(
-                    text = confirmation.confirmLabel.localized(),
+                    text = confirmLabel,
                     variant = RaftButtonVariant.Warning,
                     size = RaftButtonSize.Lg,
                     onClick = onConfirm
@@ -12405,26 +12433,6 @@ internal fun membersRuntimeConfigRuntimeSwitch(
             },
         clearCustomModel = !toBuiltIn,
         resetRuntimeSpecificFields = !fromBuiltIn
-    )
-}
-
-/**
- * The reset the v1 editor starts from when opened with [initialRuntime] (picked in the v2
- * dialog's Runtime select): the same switch its own select runs from [initialConfig]'s
- * runtime. Null when there is nothing to switch (no pick, or the agent's own runtime).
- */
-internal fun membersRuntimeConfigInitialRuntimeSwitch(
-    initialConfig: RuntimeConfig,
-    initialRuntime: String?,
-    nextRuntimeModels: List<SharedCreateAgentRuntimeModelOption>
-): MembersRuntimeConfigRuntimeSwitch? {
-    val next = initialRuntime?.trim()?.takeIf { it.isNotBlank() && it != initialConfig.runtime } ?: return null
-    return membersRuntimeConfigRuntimeSwitch(
-        initialConfig = initialConfig,
-        currentRuntime = initialConfig.runtime,
-        nextRuntime = next,
-        currentReasoningEffort = initialConfig.reasoningEffort,
-        nextRuntimeModels = nextRuntimeModels
     )
 }
 
