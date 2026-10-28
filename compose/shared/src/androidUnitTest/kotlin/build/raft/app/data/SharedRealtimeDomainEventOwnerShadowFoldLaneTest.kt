@@ -365,8 +365,9 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val event = messageNewWithCanonical("v2-committed", 1L)
 
         assertTrue(owner.accept(testGrant(), event, source = "test"))
+        // Message storage Phase 3a: the commit is bound in the exact-grant slot; display follows a fresh grant check.
         assertEquals(1, currentGrantChecks)
-        assertEquals(0, legacyRunnerChecks)
+        assertEquals(1, legacyRunnerChecks)
         assertEquals<List<RealtimeEvent>>(listOf(event), projected)
     }
 
@@ -403,8 +404,9 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         // Task #168: Held = the durable write failed. The frame is still displayed, through the same
         // post-canary path as a committed one (fresh grant check, no shadow lane).
         assertTrue(owner.accept(testGrant(), event, source = "test"))
+        // Message storage Phase 3a: the commit is bound in the exact-grant slot; display follows a fresh grant check.
         assertEquals(1, currentGrantChecks)
-        assertEquals(0, legacyRunnerChecks)
+        assertEquals(1, legacyRunnerChecks)
         assertEquals<List<RealtimeEvent>>(listOf(event), projected)
     }
 
@@ -438,9 +440,86 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
         // Task #168: Pending = the write belongs to a background snapshot. Displayed now, the same way.
         assertTrue(owner.accept(testGrant(), event, source = "test"))
+        // Message storage Phase 3a: the commit is bound in the exact-grant slot; display follows a fresh grant check.
         assertEquals(1, currentGrantChecks)
-        assertEquals(0, legacyRunnerChecks)
+        assertEquals(1, legacyRunnerChecks)
         assertEquals<List<RealtimeEvent>>(listOf(event), projected)
+    }
+
+    @Test
+    fun aThrowingOrStuckDurableCommitNeverBlocksOrSkipsTheDisplay() = runBlocking {
+        // Message storage Phase 3a: fail-open. The commit runs first in the exact-grant slot; whatever it does,
+        // each frame is displayed exactly once and in arrival order.
+        val projected = mutableListOf<RealtimeEvent>()
+        val logs = mutableListOf<String>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                block()
+                true
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                block(CurrentMessageCommitContext(scopeKey.partition))
+                true
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, foldInput, _ ->
+                when (foldInput.row.id) {
+                    "throws" -> throw IllegalStateException("disk full")
+                    "stuck" -> kotlinx.coroutines.awaitCancellation()
+                    else -> CanonicalMessageV2CanaryOutcome.Committed
+                }
+            },
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { _, event -> projected += event },
+                log = { logs += it },
+            ),
+        )
+        val events = listOf(
+            messageNewWithCanonical("throws", 1L),
+            messageNewWithCanonical("stuck", 2L),
+            messageNewWithCanonical("ok", 3L),
+        )
+
+        events.forEach { assertTrue(owner.accept(testGrant(), it, source = "test")) }
+
+        assertEquals<List<RealtimeEvent>>(events, projected)
+        assertTrue(logs.any { "outcome=display_only" in it && "msg=throws" in it && "reason=error=IllegalStateException" in it }, logs.toString())
+        assertTrue(logs.any { "outcome=display_only" in it && "msg=stuck" in it && "reason=timeout" in it }, logs.toString())
+        assertTrue(logs.none { "msg=ok" in it }, logs.toString())
+    }
+
+    @Test
+    fun aStaleGrantNeverReachesTheDurableCommit() = runBlocking {
+        val committed = mutableListOf<String>()
+        val projected = mutableListOf<RealtimeEvent>()
+        var current = true
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                if (current) block()
+                current
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                if (current) block(CurrentMessageCommitContext(scopeKey.partition))
+                current
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, foldInput, _ ->
+                committed += foldInput.row.id
+                CanonicalMessageV2CanaryOutcome.Committed
+            },
+        )
+        owner.registerGuardedSinks(RealtimeGuardedDomainEventSinks(applyHomeShell = { _, event -> projected += event }))
+
+        assertTrue(owner.accept(testGrant(), messageNewWithCanonical("current", 1L), source = "test"))
+        current = false
+        assertFalse(owner.accept(testGrant(), messageNewWithCanonical("stale", 2L), source = "test"))
+
+        assertEquals(listOf("current"), committed)
+        assertEquals(1, projected.size)
     }
 
     @Test

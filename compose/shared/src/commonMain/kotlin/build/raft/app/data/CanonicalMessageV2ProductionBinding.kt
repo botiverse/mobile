@@ -74,6 +74,17 @@ internal fun interface CanonicalMessageV2OwnerGateway {
 
     /** Task #167: the transport behind [grant] (re)connected as [transportEpoch]; callers check the grant is current. */
     suspend fun noteTransportEpoch(grant: RealtimeGrantRecord, transportEpoch: Long) {}
+
+    /**
+     * Message storage Phase 3a: called INSIDE the exact-current-grant slot; reads only what binds the commit to that
+     * grant and returns the commit, which the owner runs after the slot (never holding the authority registry
+     * during disk work), before display. Default: [accept] as the deferred commit.
+     */
+    suspend fun captureUnderGrant(
+        grant: RealtimeGrantRecord,
+        foldInput: CanonicalMessageFoldInput,
+        transportEpoch: Long?,
+    ): suspend () -> Unit = { accept(grant, foldInput, transportEpoch) }
 }
 
 /**
@@ -712,7 +723,9 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         try {
             val scope = SyncScopeKey(partition = partition, scopeId = threadChannelId, scopeKind = REPLY_THREAD_SCOPE_KIND)
             val expectedGeneration = generationEngine.partitionGeneration(partition)
-            val stored = generationEngine.storedCursor(scope)
+            // Message storage Phase 3a: a header with no window was created by a realtime reply and names only the
+            // parent that frame claimed: not server-confirmed, so it is confirmed here like a missing one.
+            val stored = generationEngine.storedCursor(scope)?.takeIf { it.oldestLoadedSeq != null || it.hasLoadedOldest }
             val parent = if (stored != null) {
                 storedReplyParentOrNull(stored, replyParent) ?: return skip("parent_mismatch")
             } else {
@@ -744,7 +757,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                     // `restore` re-reads the committed cursor + facts and (re)marks the scope baselined in this
                     // process, which the extend's `applyIncremental` requires. It only republishes what is on disk.
                     val restored = generationEngine.restore(scope)
-                    val current = restored.cursor
+                    // Phase 3a: a windowless (realtime-only) header is no window: the page creates one.
+                    val current = restored.cursor?.takeIf { it.oldestLoadedSeq != null || it.hasLoadedOldest }
                     // Extending keeps every stored fact (the window grows); replacing is only for a real gap.
                     var joinedCursor: PersistedCursor? = null
                     if (current != null) {

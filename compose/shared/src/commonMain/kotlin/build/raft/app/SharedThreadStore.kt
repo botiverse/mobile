@@ -2582,7 +2582,11 @@ internal class SharedThreadDataSource(
                 is DurableScopeAdmission.ReplyThread -> reader.readReplyThread(partition, channelId, admission.parent)
             } ?: return null
         if (!isCurrentReplyCacheProvenance(context.provenance)) return null
-        val stored = frame.envelopes.mapTo(mutableSetOf()) { envelope -> envelope.fact.id }
+        // Message storage Phase 3a: realtime stores every message, also loose (outside any covered range). Only a
+        // message inside the stored window counts: a loose own echo must not stop the reconnect repair.
+        val oldest = frame.cursor.oldestLoadedSeq ?: return false
+        val newest = frame.cursor.newestLoadedSeq ?: return false
+        val stored = frame.envelopes.filter { it.fact.seq in oldest..newest }.mapTo(mutableSetOf()) { it.fact.id }
         return stored.containsAll(messageIds)
     }
 

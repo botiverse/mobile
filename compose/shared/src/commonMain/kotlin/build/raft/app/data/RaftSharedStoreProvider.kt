@@ -117,6 +117,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.coroutines.EmptyCoroutineContext
@@ -1138,6 +1139,22 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
+    /**
+     * One ingest for every owner (message storage Phase 3a): its ordered worker and duplicate-delivery memory span
+     * the process and shell entries. Declared before `init`, which installs the gateway that reads it.
+     */
+    private val canonicalMessageV2RealtimeIngest: CanonicalMessageV2RealtimeIngest by lazy {
+        CanonicalMessageV2RealtimeIngest(
+            tracker = canonicalMessageV2Canary,
+            generationEngine = canonicalMessageV2GenerationEngine,
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
+            },
+            // Lines already start with `canonical_v2_realtime`.
+            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Realtime"),
+        )
+    }
+
     init {
         // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
         // every surviving `sync-core.messages.v1` row once per start (idempotent; V2 and read-state untouched).
@@ -1341,9 +1358,13 @@ internal class RaftSharedStoreProvider private constructor(
             logger = sharedInfoLogger("SyncCoreReactionShadow", "sync_core_reaction_shadow"),
         )
 
-    /** Task #168 step 3: the realtime path never requests the network; one gateway shape for every owner. */
+    /**
+     * Task #168 step 3: the realtime path never requests the network; one gateway shape for every owner. Message
+     * storage Phase 3a: every frame is stored (the canary only decides the head-segment claim).
+     */
     private fun buildCanonicalMessageV2OwnerGateway(): CanonicalMessageV2OwnerGateway =
-        ProviderBackedCanonicalMessageV2OwnerGateway(canary = canonicalMessageV2Canary)
+        RealtimeIngestCanonicalMessageV2OwnerGateway(ingest = canonicalMessageV2RealtimeIngest, canary = canonicalMessageV2Canary)
+
 
     /**
      * Task #168 step 3: whether the user is known NOT to be a member of (serverId, channelId), read from every
@@ -3546,6 +3567,8 @@ internal class SharedRealtimeDomainEventOwner(
     private val runWithCurrentMessageGrant:
         (suspend (RealtimeGrantRecord, suspend (CurrentMessageCommitContext) -> Unit) -> Boolean)? = null,
     private val canonicalFinalOwnerGateway: RealtimeCanonicalFinalOwnerGateway? = null,
+    /** Phase 3a fail-open bound on how long display waits for the durable V2 commit. */
+    private val canonicalMessageV2CommitTimeoutMs: Long = CANONICAL_MESSAGE_V2_REALTIME_COMMIT_TIMEOUT_MS,
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
@@ -3777,22 +3800,8 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyContinuation(grant.serverId, event, source)
             }
         }
-        when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput, transportEpoch)) {
-            // Held = the durable write failed (nothing was written). Display must not fail with it
-            // (task #168): the event takes the same post-canary legacy path as a committed one.
-            // Pending = the event is buffered for the channel's loading enter snapshot: the canary returned
-            // without loading anything, so the event is displayed now under the grant it arrived with.
-            CanonicalMessageV2CanaryOutcome.Committed,
-            CanonicalMessageV2CanaryOutcome.Pending,
-            is CanonicalMessageV2CanaryOutcome.Held,
-            ->
-                return runIfCurrentGrant(grant) {
-                    legacyContinuation(grant.serverId, event, source)
-                }
-            CanonicalMessageV2CanaryOutcome.NotSelected,
-            null,
-            -> Unit
-        }
+        // Message storage Phase 3a: the durable V2 commit no longer runs here, before any grant check (P3's grant
+        // race): it runs in the exact-grant slot below, on every route, ahead of the unchanged display.
         val legacyKey = event.realtimeDomainKey(grant.serverId)?.let(::LegacyRealtimeDedupKey)
         val gateway = canonicalFinalOwnerGateway
         if (gateway != null && legacyKey != null) {
@@ -3804,12 +3813,13 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyKey = legacyKey,
                 foldInput = foldInput,
                 legacyWithoutT3 = { context ->
-                    legacyContinuation(context.partition.serverId, event, source)
+                    runCurrentGrantMessageSlotThenLegacy(context, grant, foldInput, transportEpoch, event, source, legacyContinuation)
                 },
                 legacyWithCurrentT3 = { context ->
-                    runCurrentGrantMessageSlotThenLegacy(context, event, source, legacyContinuation)
+                    runCurrentGrantMessageSlotThenLegacy(context, grant, foldInput, transportEpoch, event, source, legacyContinuation)
                 },
                 commitPrepared = { context ->
+                    commitCanonicalMessageV2FailOpen(grant, foldInput, transportEpoch)
                     canonicalFinalCommitStep?.commitPrepared(
                         partition = context.partition,
                         legacyKey = legacyKey,
@@ -3820,24 +3830,75 @@ internal class SharedRealtimeDomainEventOwner(
                 },
             )
         }
-        return currentMessageRunner(grant) { context ->
-            runCurrentGrantMessageSlotThenLegacy(context, event, source, legacyContinuation)
+        // Phase 3a: the exact-grant slot only binds the commit to the grant (an in-memory read); the disk work runs
+        // after the slot releases the authority registry, and display follows after a fresh grant check.
+        var commit: (suspend () -> Unit)? = null
+        val current = currentMessageRunner(grant) {
+            commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch)
+        }
+        if (!current) return false
+        commit?.let { runCanonicalMessageV2CommitFailOpen(grant, foldInput, it) }
+        return runIfCurrentGrant(grant) {
+            legacyContinuation(grant.serverId, event, source)
         }
     }
 
     /**
-     * The exact-grant message slot: runs inside [runWithCurrentMessageGrant], so the frame is still under the
-     * grant it arrived with. The V1 shadow commit that used to run here first was deleted (message storage
-     * design 2026-10-27, Phase 0a; its rows were never read). Phase 3a puts the V2 ingest here; display is the
-     * unchanged legacy continuation.
+     * The exact-grant message slot of the dormant T4 routes: runs inside the T4 preparation's grant check, so the
+     * frame is still under the grant it arrived with. Message storage design 2026-10-27, Phase 3a: the V2 realtime
+     * ingest commits the frame first (fact always; head segment only for a proven-continuous run), then display is
+     * the unchanged legacy continuation — exactly once, in arrival order, whatever the commit did. (The production
+     * route, without T4, commits after the slot instead: see [runGuardedCanonicalShadowFirst].)
      */
     private suspend fun runCurrentGrantMessageSlotThenLegacy(
         context: CurrentMessageCommitContext,
+        grant: RealtimeGrantRecord,
+        foldInput: CanonicalMessageFoldInput,
+        transportEpoch: Long?,
         event: RealtimeEvent,
         source: String,
         legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
     ) {
+        commitCanonicalMessageV2FailOpen(grant, foldInput, transportEpoch)
         legacyContinuation(context.partition.serverId, event, source)
+    }
+
+    private suspend fun commitCanonicalMessageV2FailOpen(
+        grant: RealtimeGrantRecord,
+        foldInput: CanonicalMessageFoldInput,
+        transportEpoch: Long?,
+    ) {
+        val commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch) ?: return
+        runCanonicalMessageV2CommitFailOpen(grant, foldInput, commit)
+    }
+
+    /**
+     * Fail-open: display never waits longer than [canonicalMessageV2CommitTimeoutMs] on, and is never skipped by,
+     * the durable write. A throw is logged and swallowed; past the timeout the frame is displayed while the
+     * production ingest keeps the commit queued in order (it is never cancelled half-way, so the live coverage
+     * tracker's continuity stays exact). Only the caller's own cancellation propagates.
+     */
+    private suspend fun runCanonicalMessageV2CommitFailOpen(
+        grant: RealtimeGrantRecord,
+        foldInput: CanonicalMessageFoldInput,
+        commit: suspend () -> Unit,
+    ) {
+        val failure = try {
+            val completed = withTimeoutOrNull(canonicalMessageV2CommitTimeoutMs) {
+                commit()
+                true
+            }
+            if (completed == null) "timeout" else null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            "error=${throwable::class.simpleName ?: "unknown"}"
+        }
+        if (failure != null) {
+            val line = "canonical_v2_realtime outcome=display_only server=${grant.serverId} msg=${foldInput.row.id} " +
+                "seq=${foldInput.row.seq} reason=$failure"
+            guardedSinks?.log?.invoke(line) ?: sinks?.log?.invoke(line)
+        }
     }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {

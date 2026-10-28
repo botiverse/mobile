@@ -266,6 +266,11 @@ private sealed interface CanonicalMessageV2AppendResult {
  * Task #168 step 3: realtime messages are written to the durable offline cache for EVERY top-level channel /
  * DM that has a window committed in this process, behind the existing `sync_core_messages` flag.
  *
+ * Message storage Phase 3a: this class is the [CanonicalMessageV2LiveCoverageTracker]. "Display only" below means
+ * "no claim": production hands every frame the canary does not commit to
+ * [build.raft.app.data.CanonicalMessageV2RealtimeIngest], which stores it as a loose fact (no segment) under the
+ * same exact grant. Only a write made here extends the head segment.
+ *
  * - Which scopes: those whose window an enter snapshot committed in this process ([stateByScope], the
  *   in-memory index). A scope without one — never opened, or only restored from disk after a cold start —
  *   is display only: no request, no write, no store lookup on the display path. A restored window may have
@@ -383,6 +388,27 @@ private sealed interface CanonicalMessageV2AppendResult {
  *      partial like a channel message.
  *   7. Lines: `written … source=incremental[ scopeKind=thread] partial=SenderDescription,Reactions`.
  */
+/**
+ * Message storage design 2026-10-27 §4 "Realtime" (Phase 3a): the live coverage tracker. It decides only whether
+ * a realtime frame is provably continuous with the scope's head segment (the per-scope, per-epoch, join-ack and
+ * room-leave rules of [CanonicalMessageV2ProductionCanary]); when it is, it writes the frame and extends the head
+ * segment ([CanonicalMessageV2CanaryOutcome.Committed]). Any other outcome means "no claim": it never decides
+ * whether the fact is stored — [build.raft.app.data.CanonicalMessageV2RealtimeIngest] then stores it loose.
+ */
+internal interface CanonicalMessageV2LiveCoverageTracker {
+    suspend fun accept(
+        partition: DurablePartitionKey,
+        foldInput: CanonicalMessageFoldInput,
+        frameTransportEpoch: Long? = null,
+    ): CanonicalMessageV2CanaryOutcome
+
+    /**
+     * A realtime frame of [foldInput]'s channel was delivered but never reached [accept], or [accept] failed for
+     * it: nothing proves the stream is still whole, so no claim may grow over it.
+     */
+    suspend fun noteFrameUnrecorded(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput)
+}
+
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
 
 /** Task #14c: how many channels' latest `join:channel` answers are remembered (least recently answered dropped). */
@@ -395,7 +421,7 @@ internal class CanonicalMessageV2ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val logger: (String) -> Unit = {},
-) {
+) : CanonicalMessageV2LiveCoverageTracker {
     /** Leaf lock: never held while calling the engine's suspending writes or another lock. */
     private val stateMutex = Mutex()
 
@@ -445,10 +471,10 @@ internal class CanonicalMessageV2ProductionCanary(
         generationEngine.addScopeInvalidationObserver(::onScopesInvalidated)
     }
 
-    suspend fun accept(
+    override suspend fun accept(
         partition: DurablePartitionKey,
         foldInput: CanonicalMessageFoldInput,
-        frameTransportEpoch: Long? = null,
+        frameTransportEpoch: Long?,
     ): CanonicalMessageV2CanaryOutcome {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         if (!CANONICAL_MESSAGE_FULL_V2_SOLE_APPLY_ELIGIBLE) return CanonicalMessageV2CanaryOutcome.NotSelected
@@ -783,6 +809,27 @@ internal class CanonicalMessageV2ProductionCanary(
             )
             null
         }
+
+    /**
+     * Message storage Phase 3a: a frame of this channel id was delivered but skipped (the ingest queue was full)
+     * or [accept] failed for it. Every window of the channel id is discontinuous from here on, and an enter in
+     * flight for it commits discontinuous (as a buffer overflow), so the head segment never grows over it.
+     */
+    override suspend fun noteFrameUnrecorded(
+        partition: DurablePartitionKey,
+        foldInput: CanonicalMessageFoldInput,
+    ): Unit = withContext(NonCancellable) {
+        stateMutex.withLock {
+            val scopeId = foldInput.row.channelId
+            enterBaselineByChannel[partition to scopeId]?.takeIf { !it.closed }?.let { baseline ->
+                baseline.overflowed = true
+                baseline.buffered.clear()
+            }
+            stateByScope.entries
+                .filter { it.key.partition == partition && it.key.scopeId == scopeId }
+                .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, "frame_unrecorded ${foldInput.frameLabel()}") }
+        }
+    }
 
     /**
      * Task #167: the realtime transport serving [partition] (re)connected as [transportEpoch]. Posted by
@@ -1440,7 +1487,7 @@ private const val ENTER_SOURCE: String = "enter"
 private const val PUBLIC_CHANNEL_SCOPE_KIND: String = "channel"
 
 /** `kind=new msg=<id> seq=<seq>`: which frame a canary line is about (ids only, never content). */
-private fun CanonicalMessageFoldInput.frameLabel(): String =
+internal fun CanonicalMessageFoldInput.frameLabel(): String =
     "kind=${kind.name.lowercase()} msg=${row.id} seq=${row.seq}"
 
 /** ` scopeKind=thread` for a reply-thread scope, nothing for a top-level one (log lines keep their shape). */
@@ -1466,7 +1513,7 @@ private fun replyParentMismatchOrNull(
         "storedParent=${stored.first}/${stored.second}/${stored.third}"
 }
 
-private fun CanonicalMessageFoldInput.v2ScopeOrNull(partition: DurablePartitionKey): SyncScopeKey? {
+internal fun CanonicalMessageFoldInput.v2ScopeOrNull(partition: DurablePartitionKey): SyncScopeKey? {
     val context = row.conversationContext ?: return null
     val kind = context.channelType
     if (kind == REPLY_THREAD_SCOPE_KIND) {
@@ -1521,11 +1568,11 @@ internal sealed interface CanonicalMessageV2EnvelopeConversion {
     data class NotFull(val detail: String) : CanonicalMessageV2EnvelopeConversion
 }
 
-private fun CanonicalMessageV2EnvelopeConversion.Converted.unknownFieldsByFactId(): Map<String, Set<MessageAggregateField>> =
+internal fun CanonicalMessageV2EnvelopeConversion.Converted.unknownFieldsByFactId(): Map<String, Set<MessageAggregateField>> =
     if (unknownFields.isEmpty()) emptyMap() else mapOf(envelope.fact.id to unknownFields)
 
 /** ` partial=SenderDescription,Reactions` for a partial fact, nothing for a full one. */
-private fun CanonicalMessageV2EnvelopeConversion.Converted.partialLabel(): String =
+internal fun CanonicalMessageV2EnvelopeConversion.Converted.partialLabel(): String =
     if (unknownFields.isEmpty()) ""
     else " partial=" + CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in unknownFields }.joinToString(",") { it.name }
 
