@@ -286,11 +286,13 @@ class SharedServerMembersJointPeerAgentPresenceTest {
         assertEquals(1, repo.fetches, "same transport: cache hit")
 
         registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
-        assertNull(registry.factFor(owner, "peer-agent"))
+        // PR #3856: the peer's last known fact is carried over at lowest precedence, not wiped.
+        assertTrue("peer-agent" in registry.carriedOverMemberIds(owner))
         store.loadChannelMembers(serverId, channelId)
 
         assertEquals(2, repo.fetches, "rebaselined transport: peer slice refetches")
         assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
+        assertTrue("peer-agent" !in registry.carriedOverMemberIds(owner), "the refetch restated it")
 
         // Twin: a slice without peer agents keeps the cache across a rebaseline.
         val (localRegistry, localRepo, localStore) = fixture(body(localWorking))

@@ -1039,8 +1039,9 @@ class SharedServerMembersStore internal constructor(
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
         return if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
-            // A native reconnect retired the profile's pre-connect status.
-            // Publish an explicit neutral resolution (rather than null,
+            // A native transport is live and this member has no fact at all
+            // (a reconnect carries known facts over, so this is a member never
+            // observed in the registry). Publish an explicit neutral resolution (rather than null,
             // which UI consumers interpret as permission to fall back to
             // the stale profile) until the request-fenced forced roster
             // refresh, current detail, or realtime repopulates this member.
@@ -2592,16 +2593,15 @@ class SharedServerMembersStore internal constructor(
                 diagnostics?.deleted?.add(memberId)
                 return@forEach
             }
-            val rosterStatus = profile.agentStatus
+            // No usable roster status (e.g. lifecycle `active` with no runtime activity, which is
+            // not liveness — Tenny, PR #3856): write nothing. The registry keeps the member's
+            // fact carried over the transport advance, if any; with none it stays unknown.
             val status =
-                rosterStatus
-                    ?: profile.rosterLifecycleFallbackStatus()
-                    ?: run {
-                        diagnostics?.skipped?.add("$memberId:${profile.agentLifecycleStatus ?: "none"}")
-                        return@forEach
-                    }
+                profile.agentStatus ?: run {
+                    diagnostics?.skipped?.add("$memberId:${profile.agentLifecycleStatus ?: "none"}")
+                    return@forEach
+                }
             val memberRequest = request.memberRequest(profile.id.value) ?: return@forEach
-            if (rosterStatus == null) diagnostics?.lifecycleFallback?.add(memberId)
             if (status.presence == Presence.Offline) diagnostics?.offline?.add(memberId)
             diagnostics?.let { it.projected += 1 }
             presenceRegistry.applyProjection(
@@ -2619,11 +2619,12 @@ class SharedServerMembersStore internal constructor(
         }
         if (diagnostics != null) {
             val filteredAgents = filteredOut.filter { it.kind == MemberKind.Agent }
+            val retained = presenceRegistry.carriedOverMemberIds(request.owner).sorted()
             logger(
                 "roster_presence_projection serverId=$serverId agents=${profiles.count { it.kind == MemberKind.Agent }} " +
                     "projected=${diagnostics.projected} " +
                     "offline=${diagnostics.offline.size}${diagnostics.offline.rosterPresenceSample()} " +
-                    "lifecycleFallback=${diagnostics.lifecycleFallback.size}${diagnostics.lifecycleFallback.rosterPresenceSample()} " +
+                    "retained=${retained.size}${retained.rosterPresenceSample()} " +
                     "skipped=${diagnostics.skipped.size}${diagnostics.skipped.rosterPresenceSample()} " +
                     "deleted=${diagnostics.deleted.size}${diagnostics.deleted.rosterPresenceSample()} " +
                     "filtered=${filteredAgents.size}" +
@@ -3911,7 +3912,6 @@ private fun List<MemberProfile>.rosterPresenceFilteredOut(kept: List<MemberProfi
 private class RosterPresenceProjectionDiagnostics {
     var projected: Int = 0
     val offline = mutableListOf<String>()
-    val lifecycleFallback = mutableListOf<String>()
     val skipped = mutableListOf<String>()
     val deleted = mutableListOf<String>()
 }
@@ -3920,25 +3920,6 @@ private const val RosterPresenceDiagnosticSampleLimit = 20
 
 private fun List<String>.rosterPresenceSample(): String =
     if (isEmpty()) "" else take(RosterPresenceDiagnosticSampleLimit).joinToString(",", prefix = "[", postfix = "]")
-
-/**
- * Web parity for an agent row without usable runtime activity: `agentStatusFallbackActivity`
- * (botiverse/slock packages/web/src/components/agent/ChannelMembers.tsx) and
- * `resolveAgentDisplayState` (store/agentStore.ts) read lifecycle `active` as online. Only the
- * roster presence projection applies it — [normalizedAgentRuntimeStatus] keeps `active` unknown
- * for every other reader. App bots (web shows no presence) and external agents (presence is
- * `lastSeenAt`) are left out; non-`active` lifecycle values already normalize to Offline or stay
- * unknown as before.
- */
-private fun MemberProfile.rosterLifecycleFallbackStatus(): AgentStatus? =
-    AgentStatus.Online.takeIf {
-        kind == MemberKind.Agent &&
-            agentStatus == null &&
-            agentDeletedAt.isNullOrBlank() &&
-            managedByAppInstallId.isNullOrBlank() &&
-            !isExternal &&
-            agentLifecycleStatus == "active"
-    }
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {

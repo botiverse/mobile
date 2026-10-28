@@ -557,7 +557,9 @@ class SharedServerMembersPresenceReconciliationTest {
             heldRequest,
             detail(summaryStatus = "working", summaryActivity = "working")
         )
-        assertNull(registry.factFor(owner, agentId.value))
+        // PR #3856: the rebaseline carries the last known fact over (seq dropped, lowest
+        // precedence) instead of wiping it; the held pre-advance detail still cannot write.
+        assertCarriedOver(registry, AgentStatus.Offline)
 
         registry.apply(
             owner,
@@ -565,7 +567,8 @@ class SharedServerMembersPresenceReconciliationTest {
             registry.writeGeneration,
             firstTransport
         )
-        assertNull(registry.factFor(owner, agentId.value))
+        // The late old-socket event is rejected: the carried fact stays, still marked carried.
+        assertCarriedOver(registry, AgentStatus.Offline)
 
         registry.apply(
             owner,
@@ -614,7 +617,12 @@ class SharedServerMembersPresenceReconciliationTest {
         val current = registry.factFor(owner, agentId.value)
         assertEquals(AgentStatus.Working, current?.agentStatus)
         assertEquals(1L, current?.serverSeq)
-        assertNull(registry.factFor(owner, otherAgentId.value))
+        assertTrue(agentId.value !in registry.carriedOverMemberIds(owner))
+        // PR #3856: the other agent's old-epoch fact is carried over without its seq, not wiped.
+        val carried = registry.factFor(owner, otherAgentId.value)
+        assertEquals(AgentStatus.Offline, carried?.agentStatus)
+        assertNull(carried?.serverSeq)
+        assertEquals(setOf(otherAgentId.value), registry.carriedOverMemberIds(owner))
         assertEquals(
             ProcessPresenceTransportRebaselineResult.Current,
             registry.rebaselineTransport(owner, registry.writeGeneration, secondTransport)
@@ -636,7 +644,11 @@ class SharedServerMembersPresenceReconciliationTest {
             ProcessPresenceTransportEpoch("family-1", 1L)
         )
 
-        assertNull(registry.factFor(owner, agentId.value))
+        // PR #3856: only this owner's facts are carried over (seq dropped); others are untouched.
+        assertCarriedOver(registry, AgentStatus.Offline)
+        assertEquals(20L, registry.factFor(otherAccount, agentId.value)?.serverSeq)
+        assertTrue(registry.carriedOverMemberIds(otherAccount).isEmpty())
+        assertTrue(registry.carriedOverMemberIds(otherServer).isEmpty())
         assertEquals(AgentStatus.Working, registry.factFor(otherAccount, agentId.value)?.agentStatus)
         assertEquals(AgentStatus.Online, registry.factFor(otherServer, agentId.value)?.agentStatus)
     }
@@ -907,5 +919,12 @@ class SharedServerMembersPresenceReconciliationTest {
         assertEquals(AgentStatus.Working, live?.status, "liveness still flows")
         assertEquals("Running", live?.statusLabel)
         assertTrue(live?.external == true, "presence fact must not erase external")
+    }
+
+    private fun assertCarriedOver(registry: ProcessMemberPresenceRegistry, status: AgentStatus) {
+        val fact = registry.factFor(owner, agentId.value)
+        assertEquals(status, fact?.agentStatus)
+        assertNull(fact?.serverSeq)
+        assertTrue(agentId.value in registry.carriedOverMemberIds(owner))
     }
 }
