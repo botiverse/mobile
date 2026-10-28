@@ -16422,7 +16422,7 @@ private fun ThreadPageContentContent(
             rootModifier =
                 Modifier.onGloballyPositioned { coordinates ->
                     onLayoutGeneration(coordinates.size.width, coordinates.size.height)
-                },
+                }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
                 val panelFollowAction = threadPanelFollowAction(timelineSlice.originMessage)
@@ -16545,12 +16545,9 @@ private fun ThreadPageContentContent(
             }
             if (payload.isTaskConversationSurface()) {
                 // Task v2: the head pulled down from the top bar hangs over the messages (no scrim,
-                // nothing moves under it); a press outside it puts it back up.
-                val taskHead = data.taskConversationHead
-                Box(
-                    Modifier.weight(1f).fillMaxWidth()
-                        .then(taskHead?.let { Modifier.taskHeadFloatOutsideTap(it) } ?: Modifier)
-                ) {
+                // nothing moves under it); a press outside it, anywhere on the page, puts it back up
+                // (rootModifier).
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     Column(Modifier.fillMaxSize()) { threadTabContent() }
                     data.taskConversationFloat?.invoke()
                 }

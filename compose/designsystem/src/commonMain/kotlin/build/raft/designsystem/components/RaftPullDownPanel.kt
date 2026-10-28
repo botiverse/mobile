@@ -16,10 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -39,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftStroke
 import kotlin.math.roundToInt
 
 /** How far up a swipe its content does not scroll must travel to close a [RaftPullDownPanel] (web 40px). */
@@ -54,7 +50,7 @@ const val RaftPullDownMaxHeightFraction: Float = 0.7f
  * nor a Drawer or Sheet: it has no scrim and is not modal, so what is under it stays live.
  *
  * It hangs from the bar's whole width on `layer-canvas`, with `shadow-float` under it (an overlay,
- * raft-ui Elevation) and the `line-seam` hairline along its bottom edge, at most
+ * raft-ui Elevation: a floating layer shows its level by its shadow, not by a line), at most
  * [maxHeightFraction] of the window tall; its content scrolls inside it past that. It slides down
  * from under the bar and back up with `ease-slide` over 220ms (raft-ui Motion: slides); with
  * [reducedMotion] it appears and goes at once.
@@ -85,7 +81,6 @@ fun RaftPullDownPanel(
 
     val colors = RaftTheme.colors
     val dark = RaftTheme.isDark
-    val seam = colors.lineSeam.compositeOver(colors.layerCanvas)
     val currentOnDismiss by rememberUpdatedState(onDismiss)
     val thresholdPx = with(LocalDensity.current) { RaftPullDownSwipeClose.toPx() }
     val swipe = remember { RaftPullDownSwipe() }
@@ -115,11 +110,6 @@ fun RaftPullDownPanel(
             modifier
                 .fillMaxWidth()
                 .raftFloatShadow(dark, 0.dp)
-                .drawWithContent {
-                    drawContent()
-                    val hairline = RaftStroke.Hairline.toPx()
-                    drawRect(seam, topLeft = Offset(0f, size.height - hairline), size = Size(size.width, hairline))
-                }
                 .background(colors.layerCanvas)
                 .clipToBounds()
                 .onPreviewKeyEvent { event ->

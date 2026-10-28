@@ -42,6 +42,10 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.graphics.compositeOver
@@ -298,8 +302,8 @@ internal class TaskHeadScrollState {
 
     private var floatRequested by mutableStateOf(false)
 
-    /** How far the pulled-down head reaches into the box over the messages (a press below it is outside). */
-    internal var floatHeightPx: Int = 0
+    /** The bottom edge of the pulled-down head in root coordinates (a press below it is outside). */
+    internal var floatBottomInRootPx: Float = 0f
 
     /** The head pulled down from the top bar over the messages: only while it is out of view. */
     val floatOpen: Boolean
@@ -1138,7 +1142,7 @@ internal fun TaskHeadFloat(
     RaftPullDownPanel(
         open = scrollState.floatOpen,
         onDismiss = { scrollState.closeFloat() },
-        modifier = modifier.onSizeChanged { scrollState.floatHeightPx = it.height },
+        modifier = modifier.onGloballyPositioned { scrollState.floatBottomInRootPx = it.boundsInRoot().bottom },
         paneTitle = label,
         reducedMotion = reducedMotion,
     ) {
@@ -1149,16 +1153,27 @@ internal fun TaskHeadFloat(
 }
 
 /**
- * On the box over the messages: a press outside the pulled-down head puts it back up. The press
- * still goes where the reader meant it (web: a tap outside closes it and lands).
+ * On the whole task page: a press anywhere outside the pulled-down head puts it back up, the
+ * composer and its buttons included (web: a tap anywhere outside closes it). The press still goes
+ * where the reader meant it. The top bar sits above the head, so a press there is not outside: the
+ * bar's own tap toggles the head.
  */
-internal fun Modifier.taskHeadFloatOutsideTap(scrollState: TaskHeadScrollState): Modifier =
-    pointerInput(scrollState) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            if (scrollState.floatOpen && taskHeadFloatTapIsOutside(down.position.y, scrollState.floatHeightPx)) scrollState.closeFloat()
-        }
+internal fun Modifier.taskHeadFloatOutsidePress(scrollState: TaskHeadScrollState): Modifier =
+    composed {
+        val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
+        onGloballyPositioned { coordinates[0] = it }
+            .pointerInput(scrollState) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val layout = coordinates[0]?.takeIf { it.isAttached } ?: return@awaitEachGesture
+                    if (scrollState.floatOpen &&
+                        taskHeadFloatPressIsOutside(layout.localToRoot(down.position).y, scrollState.floatBottomInRootPx)
+                    ) {
+                        scrollState.closeFloat()
+                    }
+                }
+            }
     }
 
-/** A press at [y] in the box over the messages misses the head pulled down [floatHeightPx] into it. */
-internal fun taskHeadFloatTapIsOutside(y: Float, floatHeightPx: Int): Boolean = y > floatHeightPx
+/** A press at [rootY] misses the pulled-down head whose bottom edge is at [floatBottomInRootPx]. */
+internal fun taskHeadFloatPressIsOutside(rootY: Float, floatBottomInRootPx: Float): Boolean = rootY > floatBottomInRootPx

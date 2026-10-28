@@ -432,7 +432,7 @@ private fun TaskFloatPage(open: Boolean) {
         )
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         TaskHeader(chrome)
-        Box(Modifier.weight(1f).fillMaxWidth().taskHeadFloatOutsideTap(scrollState)) {
+        Box(Modifier.weight(1f).fillMaxWidth().taskHeadFloatOutsidePress(scrollState)) {
             Column(Modifier.fillMaxSize()) {
                 TaskConversationHead(
                     model = HeadModel,

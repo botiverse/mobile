@@ -85,9 +85,9 @@ class TaskHeadFloatStateTest {
 
     @Test
     fun `a press below the panel is outside it and one on it is not`() {
-        assertTrue(taskHeadFloatTapIsOutside(y = 501f, floatHeightPx = 500))
-        assertFalse(taskHeadFloatTapIsOutside(y = 500f, floatHeightPx = 500))
-        assertFalse(taskHeadFloatTapIsOutside(y = 10f, floatHeightPx = 500))
+        assertTrue(taskHeadFloatPressIsOutside(rootY = 501f, floatBottomInRootPx = 500f))
+        assertFalse(taskHeadFloatPressIsOutside(rootY = 500f, floatBottomInRootPx = 500f))
+        assertFalse(taskHeadFloatPressIsOutside(rootY = 10f, floatBottomInRootPx = 500f))
     }
 
     @Test
