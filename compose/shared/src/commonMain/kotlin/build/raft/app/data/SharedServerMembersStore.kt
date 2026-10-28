@@ -691,25 +691,67 @@ class SharedServerMembersStore internal constructor(
         channelMembersMirror?.cancel()
     }
 
-    /** This store holds [channelId]'s list as a loaded answer (not a stand-in) for its current owner. */
+    /**
+     * This store holds [channelId]'s list for its current owner: loaded, or loading (a reload, or a first
+     * load) — never a stored stand-in.
+     */
     internal fun holdsLoadedChannel(serverId: ServerId, channelId: ChannelId): Boolean {
         val scope = currentChannelScope(serverId, channelId) ?: return false
         val binding = currentChannelMembersOwner(ServerId(scope.serverId)) ?: return false
         val slice = _state.value.channelMemberSlices[scope]?.takeIf { it.ownerWriteGeneration == binding.writeGeneration }
-        return slice != null && slice.status == SharedServerMembersLoadStatus.Loaded && !slice.storedStandIn
+        return slice != null &&
+            !slice.storedStandIn &&
+            (slice.status == SharedServerMembersLoadStatus.Loaded || slice.status == SharedServerMembersLoadStatus.InFlight)
     }
 
-    /** Reloads [channelId]'s list when it is loaded here (realtime `channel:members-updated`). */
+    // Channel reloads asked by realtime `channel:members-updated`: scope -> "another one asked meanwhile".
+    private val channelReloadLock = SynchronizedObject()
+    private val channelReloads = mutableMapOf<SharedServerChannelMembersScope, Boolean>()
+
+    /**
+     * Reloads [channelId]'s list (realtime `channel:members-updated`). A burst coalesces: an event that
+     * arrives while a reload runs schedules exactly one more after it, so the last change is never missed.
+     */
     internal suspend fun reloadLoadedChannel(serverId: ServerId, channelId: ChannelId) {
         if (!holdsLoadedChannel(serverId, channelId)) return
         val scope = currentChannelScope(serverId, channelId) ?: return
-        refreshLoadedChannelMembers(ServerId(scope.serverId), setOf(scope.channelId), reason = "channel_members_updated")
+        val starts =
+            synchronized(channelReloadLock) {
+                if (scope in channelReloads) {
+                    channelReloads[scope] = true
+                    false
+                } else {
+                    channelReloads[scope] = false
+                    true
+                }
+            }
+        if (!starts) return
+        try {
+            do {
+                loadChannelMembers(ServerId(scope.serverId), ChannelId(scope.channelId), DataRequestPriority.Background, force = true)
+                val again =
+                    synchronized(channelReloadLock) {
+                        (channelReloads[scope] == true).also { again ->
+                            if (again) channelReloads[scope] = false else channelReloads.remove(scope)
+                        }
+                    }
+            } while (again)
+        } catch (error: Throwable) {
+            // Failed / cancelled: the next event starts afresh.
+            synchronized(channelReloadLock) { channelReloads.remove(scope) }
+            throw error
+        }
     }
 
-    /** Drops [channelId]'s stored list (no store holds it loaded; the viewer may no longer belong to it). */
-    internal suspend fun forgetStoredChannel(serverId: ServerId, channelId: ChannelId) {
-        val scope = currentChannelScope(serverId, channelId) ?: return
-        channelMembersOffline?.forget(scope)
+    /**
+     * Drops [channelId]'s stored list (no store holds it; the viewer may no longer belong to it). False when
+     * this store has no owner for the server (another store must do it).
+     */
+    internal suspend fun forgetStoredChannel(serverId: ServerId, channelId: ChannelId): Boolean {
+        val scope = currentChannelScope(serverId, channelId) ?: return false
+        val offline = channelMembersOffline ?: return false
+        offline.forget(scope)
+        return true
     }
 
     private fun currentChannelScope(serverId: ServerId, channelId: ChannelId): SharedServerChannelMembersScope? {
@@ -4351,7 +4393,10 @@ internal suspend fun applyChannelMembersUpdated(
 ) {
     val loaded = stores.filter { it.holdsLoadedChannel(serverId, channelId) }
     if (loaded.isEmpty()) {
-        stores.firstOrNull()?.forgetStoredChannel(serverId, channelId)
+        // Through the first store that has an owner for the server (and the offline mirror).
+        for (store in stores) {
+            if (store.forgetStoredChannel(serverId, channelId)) break
+        }
     } else {
         loaded.forEach { it.reloadLoadedChannel(serverId, channelId) }
     }

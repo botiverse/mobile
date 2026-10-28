@@ -546,7 +546,10 @@ internal class RaftSharedStoreProvider private constructor(
 
     /** Realtime `channel:members-updated`: every members store reloads its loaded list or drops a stored one. */
     internal suspend fun applyChannelMembersUpdated(serverId: String, channelId: String) {
-        build.raft.app.data.applyChannelMembersUpdated(allServerMembersStores(), ServerId(serverId), ChannelId(channelId))
+        // Off the realtime delivery path: the reloads are network requests (a burst coalesces per store).
+        threadSendScope.launch {
+            build.raft.app.data.applyChannelMembersUpdated(allServerMembersStores(), ServerId(serverId), ChannelId(channelId))
+        }
     }
 
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */

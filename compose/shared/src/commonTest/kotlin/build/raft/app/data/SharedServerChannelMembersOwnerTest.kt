@@ -517,6 +517,51 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun aBurstOfMembersUpdatedEventsEndsWithTheLastChangeInMemoryAndOnDisk() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+        val loaded = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        val other = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
+        loaded.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        // Change #1 arrives; its reload is held at the network.
+        repository.channelMembers = listOf(member("member-a"), member("member-b"))
+        repository.gate = CompletableDeferred()
+        launch { applyChannelMembersUpdated(listOf(other, loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        // Change #2 arrives while that reload runs.
+        launch { applyChannelMembersUpdated(listOf(other, loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        repository.channelMembers = listOf(member("member-a"), member("member-b"), member("member-c"))
+        repository.gate!!.complete(Unit)
+        runCurrent()
+
+        assertEquals(3, repository.getChannelMembersCalls)
+        assertEquals(
+            listOf("member-a", "member-b", "member-c"),
+            loaded.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
+        )
+        assertEquals(listOf("member-a", "member-b", "member-c"), device.storedIds())
+    }
+
+    @Test
+    fun theStoredCopyIsDroppedThroughAnyStoreThatHasAnOwner() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        loadOnce(device, ownerState, listOf(member("member-a")))
+        val noOwner = MutableStateFlow<ProcessServerMembersOwner?>(null)
+        val ownerless = store(OwnerTestMemberRepository(), noOwner, channelMembersOffline = device.members) { 1L }
+        val owned = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
+
+        applyChannelMembersUpdated(listOf(ownerless, owned), ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        assertEquals(null, device.storedIds())
+    }
+
+    @Test
     fun aRemovalThatDoesNotConcernAListLeavesItsLaterWritesWelcome() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
