@@ -181,7 +181,20 @@ fun RaftTooltip(
         TooltipBox(
             positionProvider = sideProvider ?: framed,
             tooltip = {
-                if (sideProvider == null) {
+                if (sideProvider == null && framed is RaftTooltipFrameProvider) {
+                    // Moved out of the frame insets: Material's caret does not see where it went, so
+                    // no caret of its own here; ours points at the anchor from the side it ended on.
+                    PlainTooltip(
+                        modifier =
+                            Modifier
+                                .raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip)
+                                .raftFramedCaret(framed, colors.layerHud),
+                        shape = RoundedCornerShape(RaftRadius.Chip),
+                        contentColor = colors.foregroundOnHud,
+                        containerColor = colors.layerHud,
+                        content = label,
+                    )
+                } else if (sideProvider == null) {
                     PlainTooltip(
                         modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
                         // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
@@ -294,21 +307,60 @@ private class RaftTooltipFrameProvider(
     private val spacing: Int,
     private val frame: RaftFramePx,
 ) : PopupPositionProvider {
+    /** The bubble ended below its anchor (its caret on its top edge, pointing up). */
+    var below by mutableStateOf(false)
+        private set
+
+    /** The anchor's centre, in px from the bubble's left edge: where the caret goes. */
+    var anchorCenterX by mutableStateOf(0)
+        private set
+
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
-    ): IntOffset =
-        raftTooltipClearOfFrame(
-            inner.calculatePosition(anchorBounds, windowSize, layoutDirection, popupContentSize),
-            anchorBounds,
-            windowSize,
-            popupContentSize,
-            spacing,
-            frame,
-        )
+    ): IntOffset {
+        val at =
+            raftTooltipClearOfFrame(
+                inner.calculatePosition(anchorBounds, windowSize, layoutDirection, popupContentSize),
+                anchorBounds,
+                windowSize,
+                popupContentSize,
+                spacing,
+                frame,
+            )
+        val isBelow = at.y >= anchorBounds.bottom
+        if (below != isBelow) below = isBelow
+        val centre = anchorBounds.center.x - at.x
+        if (anchorCenterX != centre) anchorCenterX = centre
+        return at
+    }
 }
+
+/**
+ * The caret of a tooltip moved out of the frame insets ([RaftTooltipFrameProvider]): Material's
+ * triangle, on the edge facing the anchor and under its centre, kept on the bubble's straight edge.
+ */
+private fun Modifier.raftFramedCaret(provider: RaftTooltipFrameProvider, color: Color): Modifier =
+    drawBehind {
+        val width = RaftTooltipMetrics.CaretSize.width.toPx()
+        val depth = RaftTooltipMetrics.CaretSize.height.toPx()
+        val corner = RaftRadius.Chip.toPx()
+        val low = corner + width / 2f
+        val high = size.width - corner - width / 2f
+        val cx = if (low <= high) provider.anchorCenterX.toFloat().coerceIn(low, high) else size.width / 2f
+        val base = if (provider.below) 0f else size.height
+        val tip = if (provider.below) base - depth else base + depth
+        val path =
+            Path().apply {
+                moveTo(cx - width / 2f, base)
+                lineTo(cx, tip)
+                lineTo(cx + width / 2f, base)
+                close()
+            }
+        drawPath(path, color)
+    }
 
 /**
  * A tooltip at [placed] moved out of the host's [frame] insets (raft-ui #860, up to the inset, no
