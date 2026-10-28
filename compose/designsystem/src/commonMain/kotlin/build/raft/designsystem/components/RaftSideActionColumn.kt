@@ -112,14 +112,18 @@ object RaftSideActionColumnDefaults {
  * buttons are `lg` ghost icon buttons. It draws no theme decor (that belongs to the frame:
  * [RaftAppRail], [RaftTopBar]).
  *
- * Top to bottom:
+ * Top to bottom (the HIG's order: primary navigation, then prominent actions, the rest from
+ * the bottom up):
  * - [primary], pinned at the top under [topReserved]: Back / Close, or Back and Forward. Never
  *   moved into the ⋯, even when the column is too short for them.
- * - a gap of at least [RaftSideActionColumnDefaults.SectionGap];
- * - [actions] in their listed order, stacked against the bottom, above [bottomReserved]. When
- *   the column cannot fit them all, the ones that stay (see [RaftSideAction.keepVisible] and
- *   [RaftSideAction.priority]) keep the bottom slots and a ⋯ ([overflowLabel]) takes the slot
- *   above them, opening a [RaftDropdownMenu] of the rest with their labels.
+ * - With a primary (a pushed page), [actions] are its prominent ones: in their listed order
+ *   straight under it, [RaftSideActionColumnDefaults.SectionGap] below, top-aligned.
+ * - Without one (a top-level page), [actions] in their listed order stacked against the bottom,
+ *   above [bottomReserved] (the tab bar).
+ * - When the column cannot fit them all, the ones that stay (see [RaftSideAction.keepVisible]
+ *   and [RaftSideAction.priority]) keep their slots nearest the primary (pushed page) or the
+ *   bottom (top-level page) and a ⋯ ([overflowLabel]) takes the next slot (under them, or
+ *   above them), opening a [RaftDropdownMenu] of the rest with their labels.
  *
  * What goes in it (raft-design): a pushed page shows Back and at most
  * [RaftSideActionColumnDefaults.MaxActionsBesideBack] page actions, and no tab bar: with any
@@ -212,21 +216,26 @@ fun RaftSideActionColumn(
                     // Centre the buttons in what the hairline leaves.
                     .absolutePadding(left = if (onRight) RaftStroke.Hairline else 0.dp, right = if (onRight) 0.dp else RaftStroke.Hairline),
             ) {
-                // Composed top to bottom, the order a screen reader reads them in.
+                // Composed top to bottom, the order a screen reader reads them in: the ⋯ is
+                // under the actions on a pushed page, above them on a top-level one.
+                val overflow: @Composable () -> Unit = {
+                    plan.overflowTop?.let { top ->
+                        RaftSideActionOverflow(
+                            actions = plan.overflowed.map { actions[it] },
+                            label = overflowLabel,
+                            modifier = Modifier.raftSideSlot(top),
+                        )
+                    }
+                }
                 primary.forEachIndexed { i, action ->
                     key(action.id) { RaftSideActionItem(action, Modifier.raftSideSlot(plan.primaryTops[i])) }
                 }
-                plan.overflowTop?.let { top ->
-                    RaftSideActionOverflow(
-                        actions = plan.overflowed.map { actions[it] },
-                        label = overflowLabel,
-                        modifier = Modifier.raftSideSlot(top),
-                    )
-                }
+                if (primary.isEmpty()) overflow()
                 plan.shown.forEachIndexed { j, index ->
                     val action = actions[index]
                     key(action.id) { RaftSideActionItem(action, Modifier.raftSideSlot(plan.shownTops[j])) }
                 }
+                if (primary.isNotEmpty()) overflow()
             }
         }
     }
@@ -351,10 +360,12 @@ internal data class RaftSideColumnPlan(
 
 /**
  * Lays out a side column [height] px tall: the [primaryCount] primaries from the top, then the
- * actions ([ranks]: one per action, higher stays longer, ties keep the earlier) from the bottom,
- * no slot crossing a keep-out band, the actions no higher than the primaries' end plus the
- * section gap. When the actions don't all fit, or there are more than [maxActions], the ⋯ takes
- * the slot above the ones that stay.
+ * actions ([ranks]: one per action, higher stays longer, ties keep the earlier), no slot crossing
+ * a keep-out band. With primaries (a pushed page) the actions are its prominent ones: listed
+ * order, straight under the primaries after the section gap, down to the bottom band, the ⋯
+ * after them. Without (a top-level page) they stack against the bottom band, listed order
+ * reading down, no higher than the top band, the ⋯ above them. When the actions don't all fit,
+ * or there are more than [maxActions], the ⋯ takes the slot next to the ones that stay.
  */
 internal fun raftSideColumnPlan(
     height: Int,
@@ -366,43 +377,67 @@ internal fun raftSideColumnPlan(
     val item = metrics.item
     fun crosses(top: Int): Pair<Int, Int>? = metrics.keepOut.firstOrNull { (kTop, kBottom) -> top < kBottom && top + item > kTop }
 
-    // Primaries, downwards from under the top band, each pushed below any keep-out it crosses.
+    // The first free top at or below [top], and the first free bottom-anchored top above [bottom].
+    fun slotBelow(top: Int): Int {
+        var t = top
+        while (true) t = crosses(t)?.second ?: break
+        return t
+    }
+    fun slotAbove(bottom: Int): Int {
+        var t = bottom - item
+        while (true) t = (crosses(t)?.first ?: break) - item
+        return t
+    }
+
     val primaryTops = ArrayList<Int>(primaryCount)
     var cursor = metrics.topReserved + metrics.inset
     repeat(primaryCount) {
-        while (true) cursor = crosses(cursor)?.second ?: break
+        cursor = slotBelow(cursor)
         primaryTops += cursor
         cursor += item + metrics.gap
     }
     val ceiling = if (primaryCount > 0) primaryTops.last() + item + metrics.sectionGap else metrics.topReserved + metrics.inset
+    val floor = height - metrics.bottomReserved - metrics.inset
+    val downwards = primaryCount > 0
 
-    // Action slots, upwards from above the bottom band, each lifted above any keep-out it crosses.
-    fun slotAbove(bottom: Int): Int {
-        var top = bottom - item
-        while (true) top = (crosses(top)?.first ?: break) - item
-        return top
-    }
+    // Action slots in stacking order: downwards from the ceiling, or upwards from the floor.
     val actionCount = ranks.size
     val slots = ArrayList<Int>()
-    var floor = height - metrics.bottomReserved - metrics.inset
-    while (slots.size < actionCount) {
-        val top = slotAbove(floor)
-        if (top < ceiling) break
-        slots += top
-        floor = top - metrics.gap
+    if (downwards) {
+        var next = ceiling
+        while (slots.size < actionCount) {
+            val top = slotBelow(next)
+            if (top + item > floor) break
+            slots += top
+            next = top + item + metrics.gap
+        }
+    } else {
+        var next = floor
+        while (slots.size < actionCount) {
+            val top = slotAbove(next)
+            if (top < ceiling) break
+            slots += top
+            next = top - metrics.gap
+        }
     }
+    // The [count] actions that stay, listed order, top to bottom.
+    fun tops(count: Int): List<Int> = (0 until count).map { if (downwards) slots[it] else slots[count - 1 - it] }
 
     if (actionCount <= minOf(slots.size, maxActions)) {
-        val shown = (0 until actionCount).toList()
-        return RaftSideColumnPlan(primaryTops, shown, shown.map { slots[actionCount - 1 - it] }, emptyList(), null)
+        return RaftSideColumnPlan(primaryTops, (0 until actionCount).toList(), tops(actionCount), emptyList(), null)
     }
     val keep = minOf(maxActions, slots.size - 1).coerceAtLeast(0)
     val stays = ranks.indices.sortedWith(compareByDescending<Int> { ranks[it] }.thenBy { it }).take(keep).sorted()
     val overflowed = ranks.indices.filter { it !in stays }
-    val shownTops = stays.indices.map { slots[keep - 1 - it] }
-    // No slot left for the ⋯ itself: it takes the lowest one anyway, over whatever is above.
-    val overflowTop = slots.getOrNull(keep) ?: slotAbove(height - metrics.bottomReserved - metrics.inset).coerceAtLeast(0)
-    return RaftSideColumnPlan(primaryTops, stays, shownTops, overflowed, overflowTop)
+    // No slot left for the ⋯ itself: it takes the next one anyway, past the band it would keep to.
+    val overflowTop =
+        slots.getOrNull(keep)
+            ?: if (downwards) {
+                slotBelow(if (keep > 0) slots[keep - 1] + item + metrics.gap else ceiling)
+            } else {
+                slotAbove(floor).coerceAtLeast(0)
+            }
+    return RaftSideColumnPlan(primaryTops, stays, tops(keep), overflowed, overflowTop)
 }
 
 /** The height a side column's buttons need without keep-outs (for an unbounded height). */

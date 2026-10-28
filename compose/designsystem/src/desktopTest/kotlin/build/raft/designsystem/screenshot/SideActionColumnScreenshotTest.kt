@@ -35,7 +35,7 @@ import kotlin.test.Test
 
 /**
  * The iPhone Duo side action column beside a stand-in page: a pushed page (Back and two page
- * actions) and a top-level page (actions only), a short column whose actions overflow into the ⋯,
+ * actions right under it) and a top-level page (actions only, against the bottom), a short column whose actions overflow into the ⋯,
  * a top-level column above the host's native tab bar (drawn here as a grey stand-in) under a
  * status-bar band, the bell's attention pixel (on the bell, and on the ⋯ when the bell is in
  * it), a Back tooltip opening toward the content, and a right column in a right-to-left layout
@@ -56,7 +56,7 @@ class SideActionColumnScreenshotTest {
         capture("side_action_column_overflow") {
             // Room for three: two actions stay at the bottom, the ⋯ holds the other three.
             Page(172.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(), search, members, home, settings)) }
-            // Back allows two actions whatever the height.
+            // Back allows two actions whatever the height, under it; the ⋯ under them.
             Page(520.dp) { RaftSideActionColumn(primary = listOf(back), actions = listOf(search, settings, members)) }
         }
 

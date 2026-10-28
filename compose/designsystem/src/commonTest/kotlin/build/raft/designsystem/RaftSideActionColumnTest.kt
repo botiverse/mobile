@@ -43,12 +43,12 @@ class RaftSideActionColumnTest {
 
     @Test
     fun primariesArePinnedAtTheTopAndNeverOverflow() {
-        // 100 tall: the primary takes 8..52, actions may start at 68, and none fits below 92.
+        // 100 tall: the primary takes 8..52, actions may start at 68, and none ends above 92.
         val plan = raftSideColumnPlan(height = 100, metrics = metrics, primaryCount = 1, ranks = listOf(0))
         assertEquals(listOf(8), plan.primaryTops)
         assertEquals(emptyList(), plan.shown)
         assertEquals(listOf(0), plan.overflowed)
-        assertEquals(48, plan.overflowTop, "no slot left: the overflow takes the lowest one anyway")
+        assertEquals(68, plan.overflowTop, "no slot left: the overflow takes the next one anyway")
         val tiny = raftSideColumnPlan(height = 20, metrics = metrics, primaryCount = 2, ranks = emptyList())
         assertEquals(listOf(8, 56), tiny.primaryTops)
     }
@@ -58,10 +58,27 @@ class RaftSideActionColumnTest {
         val plan = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 1, ranks = listOf(0, 0, 0), maxActions = 2)
         assertEquals(listOf(0, 1), plan.shown)
         assertEquals(listOf(2), plan.overflowed)
-        assertEquals(listOf(700, 748), plan.shownTops)
-        assertEquals(652, plan.overflowTop)
+        assertEquals(listOf(68, 116), plan.shownTops)
+        assertEquals(164, plan.overflowTop, "under the actions")
         val two = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 1, ranks = listOf(0, 0), maxActions = 2)
         assertEquals(null, two.overflowTop)
+    }
+
+    @Test
+    fun withBackTheActionsSitRightUnderIt() {
+        // Back 8..52, then the section gap: the actions start at 68, top-aligned, however tall.
+        val plan = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 1, ranks = listOf(0, 0), maxActions = 2)
+        assertEquals(RaftSideColumnPlan(listOf(8), listOf(0, 1), listOf(68, 116), emptyList(), null), plan)
+        // Back and Forward 8 and 56; 116 would cross 120..150, so the first action drops to 150.
+        val keepOut = metrics.copy(keepOut = listOf(120 to 150))
+        val two = raftSideColumnPlan(height = 800, metrics = keepOut, primaryCount = 2, ranks = listOf(0, 0), maxActions = 2)
+        assertEquals(listOf(8, 56), two.primaryTops)
+        assertEquals(listOf(150, 198), two.shownTops)
+        // 150 tall: one slot (68..112, inside 142) for two actions, so the overflow takes it.
+        val short = raftSideColumnPlan(height = 150, metrics = metrics, primaryCount = 1, ranks = listOf(0, 0), maxActions = 2)
+        assertEquals(emptyList(), short.shown)
+        assertEquals(listOf(0, 1), short.overflowed)
+        assertEquals(68, short.overflowTop)
     }
 
     @Test
@@ -72,14 +89,14 @@ class RaftSideActionColumnTest {
         val open = raftSideColumnPlan(height = 500, metrics = reserved, primaryCount = 0, ranks = listOf(0, 0, 0, 0))
         assertEquals(listOf(156, 269, 317, 365), open.shownTops)
         assertEquals(null, open.overflowTop)
-        // With Back: from 58 it crosses 60..100, so it drops to 100; the actions now stop at
-        // 100 + 44 + 16 = 160, so 156 is gone and the overflow takes 269.
+        // With Back: from 58 it crosses 60..100, so it drops to 100; the actions start at
+        // 100 + 44 + 16 = 160, which crosses 200..260, so 260, then 308 and 356 (ending by 409).
         val withBack = raftSideColumnPlan(height = 500, metrics = reserved, primaryCount = 1, ranks = listOf(0, 0, 0, 1))
         assertEquals(listOf(100), withBack.primaryTops)
         assertEquals(listOf(0, 3), withBack.shown)
-        assertEquals(listOf(317, 365), withBack.shownTops)
+        assertEquals(listOf(260, 308), withBack.shownTops)
         assertEquals(listOf(1, 2), withBack.overflowed)
-        assertEquals(269, withBack.overflowTop)
+        assertEquals(356, withBack.overflowTop)
     }
 
     @Test
