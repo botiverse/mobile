@@ -8056,6 +8056,142 @@ class ThreadPayloadTest {
         )
     }
 
+    /**
+     * Staging regression (task v2 off): `POST /tasks/convert-message` answers the canonical
+     * `tasks` row, whose `id` is its own uuid; the converted message is only `messageId` /
+     * `hostMessageId` (slock `taskService.enrichTaskRows` + `projectTaskToChannel`). The
+     * conversion succeeded but was reported as "Unable to convert message".
+     */
+    @Test
+    fun convertMessageAcceptsRealServerResponseWhoseTaskIdDiffersFromMessageId() = runBlocking {
+        var serverLoadCalls = 0
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : RaftTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse {
+                            serverLoadCalls += 1
+                            return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
+                        }
+
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse =
+                            HomeNetworkResponse(code = 200, bodyText = REAL_LEGACY_CONVERT_RESPONSE)
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+        val store = SharedTasksDataStore()
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = store
+            )
+
+        val task = assertIs<DataResult.Content<TaskSummary>>(result).data
+        assertEquals("7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10", task.id.value)
+        assertEquals(2, task.taskNumber)
+        assertEquals(MessageId("message-convert"), task.messageId)
+        assertEquals(0, serverLoadCalls)
+        assertEquals(
+            listOf("7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10"),
+            store.projection("server-1", SharedTasksScope.Server).tasks.map { it.id.value }
+        )
+    }
+
+    @Test
+    fun convertMessageWithoutTaskBodyFindsRefreshedTaskByHostMessageId() = runBlocking {
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : RaftTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText = """{"tasks":[$REAL_LEGACY_CONVERTED_TASK_JSON]}"""
+                            )
+
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 204, bodyText = null)
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = SharedTasksDataStore()
+            )
+
+        assertEquals(
+            "7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10",
+            assertIs<DataResult.Content<TaskSummary>>(result).data.id.value
+        )
+    }
+
+    @Test
+    fun convertMessageRejectsResponseTaskLinkedToAnotherMessage() = runBlocking {
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : RaftTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
+
+                        override suspend fun convertMessage(
+                            serverId: ServerId,
+                            messageId: MessageId
+                        ): HomeNetworkResponse =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText = REAL_LEGACY_CONVERT_RESPONSE.replace("message-convert", "message-other")
+                            )
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = SharedTasksDataStore()
+            )
+
+        assertEquals(
+            "tasks_convert_message_identity_mismatch",
+            assertIs<DataResult.Error>(result).error.code
+        )
+    }
+
     @Test
     fun convertMessageWithoutTaskBodyFailsWhenCanonicalProjectionOmitsMessage() = runBlocking {
         var serverLoadCalls = 0
@@ -9305,3 +9441,13 @@ class ThreadPayloadTest {
             HomeNetworkResponse(code = 501, bodyText = null)
     }
 }
+
+/**
+ * `POST /api/tasks/convert-message` body from slock staging (`routes/tasks.ts` ->
+ * `taskService.enrichSingleLegacyTask` + `projectTaskToChannel`) for a flag-off server:
+ * the task row has its own uuid; the converted message is `messageId` / `hostMessageId`.
+ */
+private val REAL_LEGACY_CONVERTED_TASK_JSON =
+    """{"id":"7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10","messageId":"message-convert","hostMessageId":"message-convert","sourceMessageId":"message-convert","conversationReplyCount":0,"conversationChannelId":null,"conversationAnchored":false,"channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":2,"title":"convert me","description":null,"status":"todo","createdByType":"user","createdById":"user-1","createdByName":"Artin","createdByHandle":"artin","createdByMembershipStatus":"active","claimedByType":null,"claimedById":null,"claimedByName":null,"claimedAt":null,"completedAt":null,"requiresResourceReceipt":false,"resourceReceipt":null,"resourceReceiptRecordedAt":null,"resourceTeardownOwnerAgentId":null,"resourceExpiryFollowupId":null,"createdAt":"2026-10-28T08:00:00.000Z","updatedAt":"2026-10-28T08:00:00.000Z","revision":1,"isLegacy":false,"readOnlyReason":null}"""
+
+private val REAL_LEGACY_CONVERT_RESPONSE = """{"task":$REAL_LEGACY_CONVERTED_TASK_JSON}"""
