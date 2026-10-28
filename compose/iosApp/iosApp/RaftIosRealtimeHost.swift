@@ -469,7 +469,11 @@ final class RaftIosRealtimeHost: NSObject {
         }
         guard let params = runtime.connectParams else { return }
         let gate = payloadServerGate(connectionServerId: params.serverId, rawPayload: rawPayload)
-        guard gate.accept else {
+        // A user-scoped event (sent to the member's own room, e.g. appearance:updated) may name
+        // another server than this connection's: the shared layer applies it to that server
+        // (RealtimeSocketEvents.UserScopedServerEvents; artin 2026-10-28, a theme changed on web).
+        let userScopedElsewhere = gate.reason == "mismatch" && Self.userScopedServerEvents.contains(eventName)
+        guard gate.accept || userScopedElsewhere else {
             log(
                 "raw_event_skip reason=payload_server_\(gate.reason) connectionServerId=\(params.serverId) " +
                     "payloadServerId=\(gate.payloadServerId) eventName=\(eventName)"
@@ -789,6 +793,11 @@ final class RaftIosRealtimeHost: NSObject {
             ]
         )
     }
+
+    /** Kotlin RealtimeSocketEvents.UserScopedServerEvents: events that may name any of the member's servers. */
+    private static let userScopedServerEvents: Set<String> = [
+        GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
+    ]
 
     private func payloadServerGate(connectionServerId: String, rawPayload: String) -> (accept: Bool, reason: String, payloadServerId: String) {
         guard
