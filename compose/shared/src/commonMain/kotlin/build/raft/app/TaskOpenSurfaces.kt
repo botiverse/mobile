@@ -462,11 +462,14 @@ internal fun TaskPendingConversationPage(
         task.taskConversationHeaderChrome(
             state = state,
             summarized = headScrollState.collapsed,
-            onBackToHead = { headScrollState.expand() },
+            headFloatOpen = headScrollState.floatOpen,
+            onToggleHeadFloat = { headScrollState.toggleFloat() },
             onViewInChannel = {},
             onToggleFollow = {},
         )
     val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    // Back puts the pulled-down head back up before it leaves the page.
+    RaftBackHandler(enabled = headScrollState.floatOpen, label = "task_pending_head_float") { headScrollState.closeFloat() }
     // The conversation page's canvas, so its composer dock sits on the same ground as there.
     Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
         // The conversation page's top bar (ThreadPage's header for a task conversation).
@@ -481,7 +484,10 @@ internal fun TaskPendingConversationPage(
             },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
         )
-        Column(Modifier.fillMaxWidth().weight(1f).nestedScroll(headScrollState.connection)) {
+        // The same head pulled down from the bar as on the conversation page, once it has scrolled
+        // away; a press anywhere outside it puts it back up.
+        Box(Modifier.fillMaxWidth().weight(1f).taskHeadFloatOutsidePress(headScrollState)) {
+        Column(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
             TaskConversationHeadRoute(
                 task = task,
                 state = state,
@@ -526,6 +532,24 @@ internal fun TaskPendingConversationPage(
                 }
                 errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
             }
+        }
+            TaskConversationHeadRoute(
+                task = task,
+                state = state,
+                details = details.state,
+                serverRole = serverRole,
+                statusUpdating = statusUpdating,
+                assigneeCandidates = members,
+                timeContext = timeContext,
+                onUpdateStatus = onUpdateStatus,
+                onAssign = onAssign,
+                onOpenSource = null,
+                onOpenEarlierDiscussion = null,
+                scrollState = headScrollState,
+                onRetryHistory = details.retryHistory,
+                editable = editable,
+                floating = true,
+            )
         }
         if (joined == false) {
             ThreadJoinFooter(label = stringResource(Res.string.task_conversation_join_to_reply), onJoin = onJoin)
