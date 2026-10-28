@@ -198,7 +198,11 @@ internal class FakeInboxRepository(
 }
 
 internal class FakeReadReceiptRepository(
-    private val pendingInboxReadAllResult: CompletableDeferred<DataResult<ReadReceiptResult>>? = null
+    private val pendingInboxReadAllResult: CompletableDeferred<DataResult<ReadReceiptResult>>? = null,
+    /** `POST /channels/:id/unread`'s answer (default: a rewind that left one unread). */
+    private val unreadResult: (ChannelId) -> ReadReceiptResult = { channelId ->
+        ReadReceiptResult(channelId = channelId, unreadCount = 1)
+    }
 ) : ReadReceiptRepository {
     val readAllChannelIds = mutableListOf<ChannelId>()
     val unreadChannelIds = mutableListOf<ChannelId>()
@@ -217,7 +221,7 @@ internal class FakeReadReceiptRepository(
 
     override suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult> {
         unreadChannelIds += channelId
-        return DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 1))
+        return DataResult.Content(unreadResult(channelId))
     }
 
     override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {

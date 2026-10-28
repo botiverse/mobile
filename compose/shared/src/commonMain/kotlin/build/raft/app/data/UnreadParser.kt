@@ -12,7 +12,7 @@ import kotlinx.serialization.json.Json
  *  - GET  /api/channels/unread?summary=1       → [ChannelUnreadSummaryWireDto]
  *  - POST /api/channels/:id/read               → `{ ok }`
  *  - POST /api/channels/:id/read-all           → `{ ok, seq }`
- *  - POST /api/channels/:id/unread             → `{ ok, unreadCount }`
+ *  - POST /api/channels/:id/unread             → `{ ok, unreadCount, maxReadSeq, readStateVersion, markedUnread }`
  *  - POST /api/channels/inbox/read-all         → `{ ok, markedCount }`
  *
  * Field names are exact camelCase. No snake_case fallbacks, no nested
@@ -34,6 +34,12 @@ private data class WireReadReceipt(
     val ok: Boolean = true,
     val markedCount: Int = 0,
     val scopes: List<WireReadStateAckScope> = emptyList(),
+    /**
+     * `POST /channels/:id/unread` only (botiverse/slock #11795, `routes/channels.ts`): true when the
+     * server found nothing countable and marked the conversation unread with no count; false when it
+     * refused (empty conversation, not a member). Absent from a server older than the mark.
+     */
+    val markedUnread: Boolean? = null,
 )
 
 @Serializable
@@ -50,10 +56,11 @@ private data class WireReadStateAckScope(
 internal val CHANNEL_UNREAD_SUMMARY_QUERY: List<Pair<String, String>> = listOf("summary" to "1")
 
 /**
- * `readState` of one summary entry: botiverse/slock `packages/shared/src/inboxScopeReadFrontier.ts`
- * `InboxScopeReadFrontier` (`{kind:"absent"} | {kind:"corrupt"} | {kind:"present", readStateVersion,
- * maxReadSeq: string, latestActivity: {messageId, seq: string} | null}`). Carried for contract
- * completeness; Home reads its read cursors from the read-state path, not from here.
+ * `readState` of one summary entry or Activity row: botiverse/slock
+ * `packages/shared/src/inboxScopeReadFrontier.ts` `InboxScopeReadFrontier` (`{kind:"absent"} |
+ * {kind:"corrupt"} | {kind:"present", readStateVersion, maxReadSeq: string, latestActivity:
+ * {messageId, seq: string} | null, markedUnread?: true}`). Home reads its read cursors from the
+ * read-state path; from here it takes only [markedUnread].
  */
 @Serializable
 data class ChannelUnreadSummaryReadStateWireDto(
@@ -61,7 +68,16 @@ data class ChannelUnreadSummaryReadStateWireDto(
     val readStateVersion: Long? = null,
     val maxReadSeq: String? = null,
     val latestActivity: ChannelUnreadSummaryLatestActivityWireDto? = null,
-)
+    /**
+     * botiverse/slock #11795: the person marked the conversation unread and nothing countable is
+     * unread ("unread, no number"). Present only when true; absent means not marked.
+     */
+    val markedUnread: Boolean? = null,
+) {
+    /** Marked unread: a present frontier that says so. Absent / corrupt frontiers are never marked. */
+    val isMarkedUnread: Boolean
+        get() = kind == "present" && markedUnread == true
+}
 
 @Serializable
 data class ChannelUnreadSummaryLatestActivityWireDto(
@@ -130,17 +146,24 @@ data class ChannelUnreadSummary(
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread>,
     /** Task #164: served from the server's remembered summary (`X-Raft-Stale`); may be old. */
     val stale: Boolean = false,
+    /**
+     * Scopes marked unread with nothing countable (`readState.markedUnread`, botiverse/slock #11795),
+     * by channel id value: shown unread with a dot and no number. Never in [unreadCounts]' totals.
+     */
+    val markedUnreadIds: Set<String> = emptySet(),
 )
 
 fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
     val unreadCounts = LinkedHashMap<ChannelId, Int>()
     val mentioned = LinkedHashSet<ChannelId>()
     val threads = LinkedHashMap<String, HomeFollowedThreadUnread>()
+    val marked = LinkedHashSet<String>()
     for ((key, entry) in channels) {
         val id = key.trim().takeIf { it.isNotEmpty() }?.let(::ChannelId) ?: continue
         val count = entry.unreadCount.coerceAtLeast(0)
         unreadCounts[id] = count
         if (entry.hasMention) mentioned += id
+        if (entry.readState?.isMarkedUnread == true) marked += id.value
         val parent = entry.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
         if (parent != null && count > 0) {
             threads[id.value] = HomeFollowedThreadUnread(ChannelId(parent), count, entry.hasMention)
@@ -156,6 +179,7 @@ fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {
                     key.trim().takeIf { it.isNotEmpty() }?.let { ChannelId(it) to HomeParentThreadUnread(value.count, value.hasMention) }
                 }
                 .toMap(),
+        markedUnreadIds = marked,
     )
 }
 
@@ -222,6 +246,7 @@ fun parseReadReceiptResult(
                 },
             unreadCount = decoded.unreadCount,
             changed = decoded.changed,
+            markedUnread = decoded.markedUnread,
         )
     } else {
         null

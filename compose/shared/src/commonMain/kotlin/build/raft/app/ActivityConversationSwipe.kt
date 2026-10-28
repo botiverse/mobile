@@ -58,6 +58,7 @@ import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.activityDoneRequestFrontier
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.isUnfollowedActivityThread
+import build.raft.app.data.showsUnread
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.designsystem.components.RaftGlyph
@@ -294,17 +295,17 @@ internal enum class ActivitySwipeSide {
 internal fun InboxItem.activitySwipeStartButton(): ActivitySwipeButton? =
     when {
         isUnfollowedActivityThread -> null
-        unreadCount > 0 -> ActivitySwipeButton.Read
+        showsUnread -> ActivitySwipeButton.Read
         else -> ActivitySwipeButton.Unread
     }
 
 /** The menu's Mark as read / unread write for [item] (`toggle-read`), which the start button shares. */
 internal fun activityReadToggleIntent(item: InboxItem): SharedActivityIntent =
-    if (item.unreadCount > 0) SharedActivityIntent.MarkRead(item) else SharedActivityIntent.MarkUnread(item)
+    if (item.showsUnread) SharedActivityIntent.MarkRead(item) else SharedActivityIntent.MarkUnread(item)
 
 /** The `activity_mark` analytics value of [activityReadToggleIntent] (#3615): `read` or `unread`. */
 internal fun activityReadToggleMarkAction(item: InboxItem): RaftActivityMarkAction =
-    if (item.unreadCount > 0) RaftActivityMarkAction.Read else RaftActivityMarkAction.Unread
+    if (item.showsUnread) RaftActivityMarkAction.Read else RaftActivityMarkAction.Unread
 
 /** The action a non-Done button applies. */
 internal val ActivitySwipeButton.endAction: ActivitySwipeEndAction?

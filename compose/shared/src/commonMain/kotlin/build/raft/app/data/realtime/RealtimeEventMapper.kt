@@ -805,6 +805,9 @@ private data class ReadStateUpdatedDto(
     val maxReadSeq: Long? = null,
     val readStateVersion: Long,
     val unreadCount: JsonElement? = null,
+    // botiverse/slock #11795: `markedUnread: true` only when the scope is marked unread (absent = not).
+    // Raw like unreadCount: a malformed mark is dropped, never the watermark it rides on.
+    val markedUnread: JsonElement? = null,
 )
 
 @Serializable
@@ -813,6 +816,9 @@ private data class ReadStateScopeWireDto(
     val maxReadSeq: Long? = null,
     val readStateVersion: Long,
     val unreadCount: JsonElement? = null,
+    // botiverse/slock #11795: `markedUnread: true` only when the scope is marked unread (absent = not).
+    // Raw like unreadCount: a malformed mark is dropped, never the watermark it rides on.
+    val markedUnread: JsonElement? = null,
 )
 
 @Serializable
@@ -1596,6 +1602,12 @@ private fun JsonElement?.readStateUnreadCountOrNull(): Int? {
     return value.content.toIntOrNull()?.takeIf { it >= 0 }
 }
 
+// botiverse/slock #11795 (web readStateSync `markedUnread === true`): only the JSON literal true marks.
+private fun JsonElement?.isReadStateMarkedUnread(): Boolean {
+    val value = this as? JsonPrimitive ?: return false
+    return !value.isString && value.content == "true"
+}
+
 private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
     val cleanMaxReadSeq = maxReadSeq?.takeIf { it >= 0L } ?: return null
@@ -1607,7 +1619,8 @@ private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
                 scopeId = ChannelId(cleanScopeId),
                 maxReadSeq = cleanMaxReadSeq,
                 readStateVersion = readStateVersion,
-                unreadCount = unreadCount.readStateUnreadCountOrNull()
+                unreadCount = unreadCount.readStateUnreadCountOrNull(),
+                markedUnread = markedUnread.isReadStateMarkedUnread()
             )
         )
     )
@@ -1622,7 +1635,8 @@ private fun ReadStateUpdatedBulkDto.toDomain(): PerReceiverReadStateChanged? {
             scopeId = ChannelId(cleanScopeId),
             maxReadSeq = cleanMaxReadSeq,
             readStateVersion = scope.readStateVersion,
-            unreadCount = scope.unreadCount.readStateUnreadCountOrNull()
+            unreadCount = scope.unreadCount.readStateUnreadCountOrNull(),
+            markedUnread = scope.markedUnread.isReadStateMarkedUnread()
         )
     }
     if (cleanScopes.isEmpty()) return null

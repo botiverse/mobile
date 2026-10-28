@@ -12,7 +12,9 @@ data class PerReceiverReadStateUpdate(
     val version: Long,
     val maxReadSeq: Long?,
     /** The scope's server-side unread after this read (`read_state:updated` `unreadCount`), when sent. */
-    val unreadCount: Int? = null
+    val unreadCount: Int? = null,
+    /** `read_state:updated` `markedUnread` (botiverse/slock #11795): marked unread with no count. */
+    val markedUnread: Boolean = false
 )
 
 data class PerReceiverNotificationPrefsUpdate(

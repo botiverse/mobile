@@ -86,6 +86,12 @@ data class InboxItem(
      */
     val readStateLatestActivitySeq: String? = null,
     /**
+     * Wire `readState.markedUnread` (botiverse/slock #11795): the person marked this conversation
+     * unread and nothing countable is unread. With [unreadCount] 0 the row shows unread with a dot
+     * and no number (and the Unread filter lists it); counts never include it.
+     */
+    val markedUnread: Boolean = false,
+    /**
      * Wire `latestActivitySeq`: the display content frontier (decimal string).
      * Realtime reply patches advance a row only on a strictly newer seq, like
      * web `receiveThreadReply`. Null on servers that predate it.
@@ -155,6 +161,17 @@ internal fun ActivityDoneRequestFrontier.toInboxDoneFrontier(): InboxDoneFrontie
     }
 
 /** True only for an explicitly server-projected, unfollowed thread row. */
+/**
+ * The row reads as unread: a count, or marked unread with no count (botiverse/slock #11795). The
+ * read toggle offers Mark as read, and opening it sends the read that clears the mark.
+ */
+internal val InboxItem.showsUnread: Boolean
+    get() = unreadCount > 0 || markedUnread
+
+/** Marked unread with nothing counted: the quiet dot instead of a number. */
+internal val InboxItem.showsMarkedUnreadDot: Boolean
+    get() = markedUnread && unreadCount <= 0
+
 internal val InboxItem.isUnfollowedActivityThread: Boolean
     get() = kind == InboxItemKind.Thread && isFollowing == false
 
@@ -580,6 +597,13 @@ data class HomeSnapshot(
      */
     // String keys: JSON map keys must be primitive, and HomeSnapshot is persisted.
     val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    /**
+     * Channels and DMs marked unread with nothing countable (botiverse/slock #11795, the unread
+     * summary's `readState.markedUnread`), by channel id value: the row shows unread with a dot and
+     * no number. Counts never include them. A read of the row (local or a newer read-state version)
+     * clears its entry.
+     */
+    val markedUnreadIds: Set<String> = emptySet(),
     /**
      * Task #164: this load's unread reads were the server's remembered bodies (`X-Raft-Stale`) or
      * `503 rw_overloaded`. Never persisted; the store turns it into [SharedHomeState.unreadStale].
@@ -1221,7 +1245,12 @@ data class ReadReceiptResult(
     val maxReadSeq: Long? = null,
     val scopes: List<ReadStateV1AckScope> = emptyList(),
     val unreadCount: Int = 0,
-    val changed: Boolean = true
+    val changed: Boolean = true,
+    /**
+     * `POST /channels/:id/unread` (botiverse/slock #11795): true = saved as "marked unread" with no
+     * count; false = nothing to mark (refused); null = a server older than the mark (or another write).
+     */
+    val markedUnread: Boolean? = null
 )
 
 @Serializable

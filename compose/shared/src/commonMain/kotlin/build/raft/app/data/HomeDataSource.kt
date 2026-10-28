@@ -580,6 +580,8 @@ data class HomeNetworkPayload(
     val mentionedChannelIds: Set<ChannelId> = emptySet(),
     /** Followed threads with unread replies from the same summary, keyed by thread channel id value. */
     val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    /** Scopes the same summary reports marked unread with no count ([ChannelUnreadSummary.markedUnreadIds]). */
+    val markedUnreadIds: Set<String> = emptySet(),
     val serverUnreadSummary: List<ServerUnreadSummaryDto>,
     /**
      * True when `/servers/unread-summary` itself completed and decoded. This
@@ -719,6 +721,7 @@ internal class RaftHomeApiClient(
                 unreadCounts = unreadCounts,
                 mentionedChannelIds = unreadSummary?.mentionedChannelIds ?: emptySet(),
                 followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
+                markedUnreadIds = unreadSummary?.markedUnreadIds ?: emptySet(),
                 serverUnreadSummary = serverUnreadSummary,
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable,

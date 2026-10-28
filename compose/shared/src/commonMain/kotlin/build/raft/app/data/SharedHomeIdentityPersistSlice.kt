@@ -119,7 +119,8 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
         unreadSource = AppBadgeSource.UNKNOWN,
         serverUnreadCounts = emptyMap(),
         // Unread-bearing like the row counts: the identity cache never restores a thread mark.
-        followedThreadUnread = emptyMap()
+        followedThreadUnread = emptyMap(),
+        markedUnreadIds = emptySet()
     )
 
 private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =

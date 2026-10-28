@@ -70,12 +70,15 @@ internal fun raftAgentRuntimeDisplayName(runtime: String): String =
 /** One element of a DM row's trailing column, in render order. */
 internal enum class RaftHomeDmTrailingSlot {
     UnreadBadge,
+    /** Marked unread with no count (botiverse/slock #11795): web `SidebarPeerRowBody`'s quiet dot. */
+    MarkedUnreadDot,
     Draft,
     AgentMeta
 }
 
 /**
- * Web `SidebarPeerRowBody`: an unread count is shown alone; otherwise the
+ * Web `SidebarPeerRowBody`: an unread count is shown alone; then, marked unread
+ * with no count ([markedUnread]), the quiet dot alone; otherwise the
  * draft mark, then the agent's meta (live activity or runtime). An App Bot
  * ([isAppBot]) runs on no runtime and has no activity: no meta (web `DmRow`
  * `agentMeta={... && !appBot ...}`), so a long name keeps its room.
@@ -84,10 +87,13 @@ internal fun raftHomeDmTrailingSlots(
     badge: String?,
     hasDraft: Boolean,
     isAgent: Boolean,
-    isAppBot: Boolean = false
+    isAppBot: Boolean = false,
+    markedUnread: Boolean = false
 ): List<RaftHomeDmTrailingSlot> =
     if (badge != null) {
         listOf(RaftHomeDmTrailingSlot.UnreadBadge)
+    } else if (markedUnread) {
+        listOf(RaftHomeDmTrailingSlot.MarkedUnreadDot)
     } else {
         buildList {
             if (hasDraft) add(RaftHomeDmTrailingSlot.Draft)
