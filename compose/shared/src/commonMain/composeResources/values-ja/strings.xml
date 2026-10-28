@@ -1608,8 +1608,8 @@
     <string name="task_conversation_unfollow">タスクのフォローを解除</string>
     <string name="task_conversation_deleted">このタスクは削除されました</string>
     <string name="task_conversation_follow_failed">このタスクのフォロー状態を更新できませんでした</string>
-    <string name="task_conversation_send">送信</string>
     <string name="task_conversation_send_failed">メッセージを送信できませんでした</string>
+    <string name="task_conversation_join_to_reply">チャンネルに参加して返信</string>
     <string name="task_conversation_empty_title">このタスクにはまだ議論がありません</string>
     <string name="task_conversation_empty_body">以前の議論は元のメッセージの返信にあります。ここに書くとタスク自身の議論が始まります。</string>
     <string name="task_conversation_composer_placeholder">このタスクにメッセージ</string>
@@ -1622,6 +1622,7 @@
     <string name="task_legacy_read_only_hint">レガシータスクはスレッドに対応付けられていません。このパネルにはタスクのメタデータのみが表示され、投稿はできません。</string>
     <string name="task_legacy_no_description">説明はありません</string>
     <string name="task_legacy_unknown">不明</string>
+    <string name="task_legacy_unknown_channel">不明</string>
     <string name="tasks_label_title">タスクのタイトル</string>
     <string name="tasks_action_add_another">さらに追加</string>
     <string name="auth_label_name">名前</string>

@@ -7187,10 +7187,9 @@ private fun RaftAppShellReadyContent(
                     }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         // Task v2: a task opened without a page of its own (its empty conversation, a legacy panel).
-                        var tasksOpenSurface by remember { mutableStateOf<TaskOpenSurface?>(null) }
-                        var tasksOpenSurfaceSending by remember { mutableStateOf(false) }
-                        var tasksOpenSurfaceError by remember { mutableStateOf<String?>(null) }
+                        val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow() }
                         val tasksOpenGate = remember { TaskOpenGate() }
+                        val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         // Foreground is the shell's visible-route refresh; a socket reconnect re-reads missed task pushes.
@@ -7228,53 +7227,48 @@ private fun RaftAppShellReadyContent(
                             pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope)
                         }
                         TaskOpenSurfaceHost(
-                            surface = tasksOpenSurface,
-                            sending = tasksOpenSurfaceSending,
-                            errorText = tasksOpenSurfaceError,
-                            onDismiss = {
-                                tasksOpenSurface = null
-                                tasksOpenSurfaceError = null
-                            },
+                            flow = tasksOpenSurfaceFlow,
                             onSend = { task, text ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
-                                if (serverId != null && !tasksOpenSurfaceSending) {
-                                    tasksOpenSurfaceSending = true
-                                    tasksOpenSurfaceError = null
+                                if (serverId != null) {
                                     appShellCoroutineScope.launch {
-                                        try {
-                                            when (
-                                                val started =
-                                                    startTaskConversation(
-                                                        task = task,
-                                                        serverId = ServerId(serverId),
-                                                        body = text,
-                                                        tasksDataSource = tasksDataSource,
-                                                        send = { channelId, body ->
-                                                            homeActivityReplyThreadPrewarmDataSource.sendMessage(
-                                                                channelId = channelId,
-                                                                body = body,
-                                                                asTask = false,
-                                                            )
-                                                        },
+                                        val opened =
+                                            tasksOpenSurfaceFlow.send(
+                                                text = text,
+                                                serverId = serverId,
+                                                tasksDataSource = tasksDataSource,
+                                                sendMessage = { channelId, body, randomId ->
+                                                    homeActivityReplyThreadPrewarmDataSource.sendMessage(
+                                                        channelId = channelId,
+                                                        body = body,
+                                                        asTask = false,
+                                                        randomId = randomId,
                                                     )
-                                            ) {
-                                                is TaskConversationStart.Started -> {
-                                                    bridge.log("tasks_task_conversation_started task=${task.id.value}")
-                                                    tasksOpenSurface = null
-                                                    openTaskPage(task, started.conversationChannelId)
-                                                }
-                                                is TaskConversationStart.Failed -> {
-                                                    bridge.logWarn("tasks_task_conversation_start_failed task=${task.id.value}")
-                                                    tasksOpenSurfaceError = started.serverMessage ?: tasksSendFailedLabel
-                                                }
-                                            }
-                                        } finally {
-                                            tasksOpenSurfaceSending = false
-                                        }
+                                                },
+                                                currentServerId = { latestTasksOpenServerId },
+                                                fallbackError = tasksSendFailedLabel,
+                                            )
+                                        bridge.log("tasks_task_first_send task=${task.id.value} opened=${opened != null}")
+                                        opened?.let { (sentTask, conversationId) -> openTaskPage(sentTask, conversationId) }
                                     }
                                 }
                             },
                         )
+                        // The open sheet follows the board's copy of its task; when its conversation
+                        // appears (someone wrote first) the conversation page opens instead.
+                        val tasksOpenSurfaceTaskId = tasksOpenSurfaceFlow.surface?.task?.id
+                        val tasksOpenTaskV2Enabled =
+                            readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
+                                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+                            } == true
+                        LaunchedEffect(tasksOpenSurfaceTaskId, tasksState, tasksOpenTaskV2Enabled) {
+                            val taskId = tasksOpenSurfaceTaskId ?: return@LaunchedEffect
+                            val fresh = (tasksState.loadState as? build.raft.app.data.ScreenLoadState.Content)?.data?.tasks.orEmpty().firstOrNull { it.id == taskId }
+                            tasksOpenSurfaceFlow.onTaskChanged(fresh, tasksOpenTaskV2Enabled)?.let { arrived ->
+                                bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
+                                openTaskPage(arrived, null)
+                            }
+                        }
                         Box(modifier = Modifier.fillMaxSize()) {
                         key(tasksRoute) {
                         SharedTasksScreen(
@@ -7303,8 +7297,7 @@ private fun RaftAppShellReadyContent(
                                 // The legacy panel, or the empty conversation of a task without one (opening never creates it).
                                 task.taskOpenSurface(taskV2Enabled)?.let { surface ->
                                     bridge.log("tasks_open_surface kind=${surface::class.simpleName} task=${task.id.value}")
-                                    tasksOpenSurfaceError = null
-                                    tasksOpenSurface = surface
+                                    tasksOpenSurfaceFlow.open(surface)
                                     return@open
                                 }
                                 if (!tasksOpenGate.tryBegin(task.id.value)) {

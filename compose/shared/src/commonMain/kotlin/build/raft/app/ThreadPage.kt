@@ -1927,7 +1927,7 @@ private object ThreadLocalSendNextId {
     }
 }
 
-private fun newThreadSendRandomId(): String =
+internal fun newThreadSendRandomId(): String =
     "mobile-${Random.nextLong().toULong().toString(36)}-${Random.nextLong().toULong().toString(36)}"
 
 /**
@@ -7350,9 +7350,7 @@ private fun SharedThreadRouteContentContent(
     // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
     // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
-    var taskOpenSurface by remember(threadInstanceKey) { mutableStateOf<TaskOpenSurface?>(null) }
-    var taskOpenSurfaceSending by remember(threadInstanceKey) { mutableStateOf(false) }
-    var taskOpenSurfaceError by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var markdownReferencePending by remember(threadInstanceKey) {
@@ -11410,13 +11408,13 @@ private fun SharedThreadRouteContentContent(
             onOpenThreadPayload(loadingPayload)
         }
     }
+    val latestTaskOpenServerId by rememberUpdatedState(currentServerId)
     val openCanonicalTask: (TaskSummary, String) -> Unit = open@{ task, source ->
         // Web useOpenTask: the legacy panel, or the empty conversation of a task without one
         // (opening never creates it), or a page.
         task.taskOpenSurface(taskV2Enabled)?.let { surface ->
             bridge.log("thread_task_open result=surface kind=${surface::class.simpleName} source=$source taskId=${task.id.value}")
-            taskOpenSurfaceError = null
-            taskOpenSurface = surface
+            taskOpenSurfaceFlow.open(surface)
             return@open
         }
         if (!taskOpenGate.tryBegin(task.id.value)) {
@@ -11450,47 +11448,64 @@ private fun SharedThreadRouteContentContent(
     }
 
     TaskOpenSurfaceHost(
-        surface = taskOpenSurface,
-        sending = taskOpenSurfaceSending,
-        errorText = taskOpenSurfaceError,
-        onDismiss = {
-            taskOpenSurface = null
-            taskOpenSurfaceError = null
+        flow = taskOpenSurfaceFlow,
+        // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
+        joined = { task ->
+            task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
         },
-        onSend = { task, text ->
-            val serverId = currentServerId?.takeIf { it.isNotBlank() }
-            if (serverId != null && !taskOpenSurfaceSending) {
-                taskOpenSurfaceSending = true
-                taskOpenSurfaceError = null
+        onJoin = { task ->
+            val channelId = task.channelId
+            if (channelId != null) {
                 coroutineScope.launch {
-                    try {
-                        when (
-                            val started =
-                                startTaskConversation(
-                                    task = task,
-                                    serverId = ServerId(serverId),
-                                    body = text,
-                                    tasksDataSource = tasksDataSource,
-                                    send = { channelId, body -> dataSource.sendMessage(channelId = channelId, body = body, asTask = false) },
-                                )
-                        ) {
-                            is TaskConversationStart.Started -> {
-                                bridge.log("thread_task_conversation_started taskId=${task.id.value}")
-                                taskOpenSurface = null
-                                openCanonicalTaskWith(task, "task_first_send", started.conversationChannelId)
+                    when (val result = dataSource.joinChannel(channelId)) {
+                        is DataResult.Content -> {
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                            currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
                             }
-                            is TaskConversationStart.Failed -> {
-                                bridge.logWarn("thread_task_conversation_start_failed taskId=${task.id.value}")
-                                taskOpenSurfaceError = started.serverMessage ?: unableToSendTaskMessageLabel
-                            }
+                            realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
+                            bridge.toast(joinedChannelLabel)
                         }
-                    } finally {
-                        taskOpenSurfaceSending = false
+                        is DataResult.NoPermission -> if (!routeAuthRequired(result)) bridge.toast(unableToJoinChannelLabel)
+                        else -> bridge.toast(unableToJoinChannelLabel)
                     }
                 }
             }
         },
+        onSend = { task, text ->
+            val serverId = currentServerId?.takeIf { it.isNotBlank() }
+            if (serverId != null) {
+                coroutineScope.launch {
+                    val opened =
+                        taskOpenSurfaceFlow.send(
+                            text = text,
+                            serverId = serverId,
+                            tasksDataSource = tasksDataSource,
+                            sendMessage = { channelId, body, randomId ->
+                                dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
+                            },
+                            currentServerId = { latestTaskOpenServerId },
+                            fallbackError = unableToSendTaskMessageLabel,
+                        )
+                    bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
+                    opened?.let { (sentTask, conversationId) -> openCanonicalTaskWith(sentTask, "task_first_send", conversationId) }
+                }
+            }
+        },
     )
+    // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
+    // sheet follows the store's copy of its task and gives way to the conversation page.
+    val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
+    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice, taskV2Enabled) {
+        val taskId = taskOpenSurfaceTaskId ?: return@LaunchedEffect
+        val fresh =
+            taskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+                ?: serverTaskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+        taskOpenSurfaceFlow.onTaskChanged(fresh, taskV2Enabled)?.let { arrived ->
+            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+            openCanonicalTask(arrived, "task_conversation_arrived")
+        }
+    }
 
     createTaskFromMessage.source?.let { source ->
         TaskCreateFromMessageDialog(
@@ -32491,7 +32506,7 @@ private fun String.threadTaskAssigneeKey(): String =
         .ifBlank { "unknown" }
 
 @Composable
-private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
+internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     // task #176: last element of the page, like the composer it replaces, so it
     // keeps clear of the system navigation bar.
     val bottomSafeArea = raftBottomSafeAreaPadding()

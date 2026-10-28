@@ -82,7 +82,8 @@ class TaskOpenSurfacesTest {
                     serverId = ServerId("server-1"),
                     body = "  hello ",
                     tasksDataSource = SharedTasksDataSource(api, diagnosticsLogger = {}),
-                    send = { channelId, body ->
+                    randomId = "rid-1",
+                    send = { channelId, body, _ ->
                         calls += "send:$channelId:$body"
                         case.send
                     },
@@ -90,6 +91,96 @@ class TaskOpenSurfacesTest {
             assertEquals(case.expected, result, case.name)
             assertEquals(case.calls, calls, case.name)
         }
+    }
+
+    @Test
+    fun aRetryAfterALostAnswerReusesTheConversationAndTheRandomIdSoTheServerDedupes() = runTest {
+        // Tenny: POST /conversation succeeded, then the send failed — or timed out although the
+        // server took it. The retry POSTs again (the server answers the same conversation) and
+        // sends with the SAME randomId, so the server dedupes it: one message, not two.
+        val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
+        val calls = mutableListOf<String>()
+        val api = ConversationApi(HomeNetworkResponse(200, """{"conversationChannelId":"conv-local","canonicalConversationChannelId":"conv-1","created":true}"""), calls)
+        val opened = mutableListOf<ChannelId>()
+        val sends = mutableListOf<Pair<String, String>>()
+        var attempt = 0
+        var ids = 0
+        val flow = TaskOpenSurfaceFlow(newRandomId = { "rid-${++ids}" })
+        flow.open(TaskOpenSurface.Pending(preV2))
+        suspend fun send() =
+            flow.send(
+                text = "On it",
+                serverId = "server-1",
+                tasksDataSource = SharedTasksDataSource(api, diagnosticsLogger = {}),
+                sendMessage = { channelId, _, randomId ->
+                    sends += channelId to randomId
+                    attempt += 1
+                    // First attempt: the server took it, but the answer was lost (a timeout).
+                    if (attempt == 1) ThreadApiResult.Failure(code = 504) else ThreadApiResult.Success(Unit)
+                },
+                currentServerId = { "server-1" },
+                fallbackError = "Couldn't send the message",
+            )
+        assertEquals(null, send())
+        assertEquals("Couldn't send the message", flow.errorText)
+        assertEquals("On it", flow.draft("t-1"), "the typed text stays after a failure")
+        send()?.let { (_, conversation) -> opened += conversation }
+        assertEquals(listOf("post:t-1", "post:t-1"), calls.filter { it.startsWith("post:") })
+        assertEquals(listOf("conv-local" to "rid-1", "conv-local" to "rid-1"), sends, "same conversation, same randomId")
+        assertEquals(listOf(ChannelId("conv-local")), opened)
+        assertEquals(null, flow.surface, "it gives way to the conversation page")
+        assertEquals("", flow.draft("t-1"))
+
+        // The next draft gets a new id.
+        flow.open(TaskOpenSurface.Pending(preV2))
+        send()
+        assertEquals("rid-2", sends.last().second)
+    }
+
+    @Test
+    fun theOpenSheetFollowsItsTaskAndGivesWayWhenItsConversationAppears() {
+        val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
+        val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
+        flow.open(TaskOpenSurface.Pending(preV2))
+        flow.onDraftChange("t-1", "half a thought")
+        // Another task's update, and the same copy: nothing changes.
+        assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2")), taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
+        // `task:updated` with a new status, still no conversation: the sheet shows the new copy.
+        val reviewed = preV2.copy(status = TaskStatus.InReview)
+        assertEquals(null, flow.onTaskChanged(reviewed, taskV2Enabled = true))
+        assertEquals(reviewed, flow.surface?.task)
+        // Someone else wrote first: the conversation exists; the caller opens it.
+        val anchored = reviewed.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
+        assertEquals(anchored, flow.onTaskChanged(anchored, taskV2Enabled = true))
+        assertEquals(null, flow.surface)
+        assertEquals("half a thought", flow.draft("t-1"), "the draft is kept while the page lives")
+    }
+
+    @Test
+    fun aSendThatFinishesOnAnotherServerOpensNothingAndClosingKeepsTheDraft() = runTest {
+        val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
+        val api = ConversationApi(HomeNetworkResponse(200, """{"conversationChannelId":"conv-local","canonicalConversationChannelId":"conv-1","created":true}"""), mutableListOf())
+        val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
+        flow.open(TaskOpenSurface.Pending(preV2))
+        flow.onDraftChange("t-1", "draft")
+        assertTrue(flow.dismiss())
+        assertEquals("draft", flow.draft("t-1"))
+        flow.open(TaskOpenSurface.Pending(preV2))
+        var server = "server-1"
+        val opened =
+            flow.send(
+                text = "On it",
+                serverId = "server-1",
+                tasksDataSource = SharedTasksDataSource(api, diagnosticsLogger = {}),
+                sendMessage = { _, _, _ ->
+                    server = "server-2"
+                    ThreadApiResult.Success(Unit)
+                },
+                currentServerId = { server },
+                fallbackError = "x",
+            )
+        assertEquals(null, opened, "web stops when the context changed meanwhile")
     }
 
     @Test

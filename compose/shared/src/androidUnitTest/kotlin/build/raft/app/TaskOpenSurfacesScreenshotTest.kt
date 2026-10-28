@@ -19,7 +19,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
-import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import kotlin.test.Test
 import org.junit.Rule
@@ -30,9 +29,11 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * A task opened without a page of its own (slock web `useOpenTask`), the phone sheet's surface,
- * light and dark: `task.open.pending` — a pre-v2 task's conversation before its first message
- * (web `TaskConversationDialog` empty: "No discussion in this task yet" and where its earlier
- * discussion is), with a refused send's server words; `task.open.legacy` — web `LegacyTaskPanel`.
+ * light and dark: `task.open.pending{,.refused,.not-joined}` — a pre-v2 task's conversation before
+ * its first message (web `TaskConversationDialog` empty: "No discussion in this task yet" and where
+ * its earlier discussion is) with the composer pinned at the bottom; after a refused first send
+ * (the server's words, the text kept); for a reader outside the channel (web ThreadPanel "Join
+ * Channel to Reply" instead of the composer); `task.open.legacy` — web `LegacyTaskPanel`.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -43,10 +44,22 @@ class TaskOpenSurfacesScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun pendingLight() = capture("task.open.pending", RaftAppAppearance.Light) { Pending() }
+    fun pendingLight() = capture("task.open.pending", RaftAppAppearance.Light) { Pending(joined = true, refused = false) }
 
     @Test
-    fun pendingDark() = capture("task.open.pending.dark", RaftAppAppearance.Dark) { Pending() }
+    fun pendingDark() = capture("task.open.pending.dark", RaftAppAppearance.Dark) { Pending(joined = true, refused = false) }
+
+    @Test
+    fun pendingRefusedLight() = capture("task.open.pending.refused", RaftAppAppearance.Light) { Pending(joined = null, refused = true) }
+
+    @Test
+    fun pendingRefusedDark() = capture("task.open.pending.refused.dark", RaftAppAppearance.Dark) { Pending(joined = null, refused = true) }
+
+    @Test
+    fun pendingNotJoinedLight() = capture("task.open.pending.not-joined", RaftAppAppearance.Light) { Pending(joined = false, refused = false) }
+
+    @Test
+    fun pendingNotJoinedDark() = capture("task.open.pending.not-joined.dark", RaftAppAppearance.Dark) { Pending(joined = false, refused = false) }
 
     @Test
     fun legacyLight() = capture("task.open.legacy", RaftAppAppearance.Light) { Legacy() }
@@ -61,23 +74,31 @@ class TaskOpenSurfacesScreenshotTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { RaftDesignSystemTheme { content() } }
         }
 
+    /**
+     * [joined] true: an empty composer at the bottom, as on the conversation page. null with
+     * [refused]: membership not known where it opened (the Tasks tab), the first send was refused,
+     * the server's words show and the typed text stays. false: the reader has not joined the
+     * channel, so web's "Join Channel to Reply" replaces the composer.
+     */
     @Composable
-    private fun Pending() {
+    private fun Pending(joined: Boolean?, refused: Boolean) {
         val task = sampleTask(hostMessageId = MessageId("msg-host"))
         RaftDialogSheetSurface(
             title = task.taskRefTitle(),
-            commitLabel = stringResource(Res.string.task_conversation_send),
+            commitLabel = null,
             onCommit = {},
             onClose = {},
             modifier = Modifier.fillMaxSize(),
-            commitEnabled = true,
         ) {
             TaskConversationPendingBody(
                 task = task,
-                draft = "On it, testing on the emulator now",
-                onDraftChange = {},
                 sending = false,
-                errorText = "You must join this channel to reply in this task",
+                errorText = if (refused) "You must join this channel to reply in this task" else null,
+                joined = joined,
+                onSend = {},
+                onJoin = {},
+                modifier = Modifier.weight(1f),
+                seedText = if (refused) "On it, testing on the emulator now" else "",
             )
         }
     }

@@ -1,21 +1,20 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,14 +28,12 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftTaskStatusBadge
-import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftRadius
-import build.raft.designsystem.tokens.RaftStroke
 
 /**
  * Where opening a task lands when it is not a page of its own yet (slock web `useOpenTask`):
@@ -72,15 +69,17 @@ internal sealed interface TaskConversationStart {
 
 /**
  * Web `ensureTaskModalThreadChannel` + the send: POST /tasks/:id/conversation (this server's local
- * conversation; creating it broadcasts `task:updated`), then the message into it. Only a send
- * creates the conversation; opening never does.
+ * conversation; creating it broadcasts `task:updated`; a repeat answers the same one), then the
+ * message into it with [randomId]. Only a send creates the conversation; opening never does.
  */
 internal suspend fun startTaskConversation(
     task: TaskSummary,
     serverId: ServerId,
     body: String,
     tasksDataSource: SharedTasksDataSource,
-    send: suspend (channelId: String, body: String) -> ThreadApiResult<*>,
+    /** The draft's one id: a retry reuses it, so a send the server already took is not posted twice. */
+    randomId: String,
+    send: suspend (channelId: String, body: String, randomId: String) -> ThreadApiResult<*>,
 ): TaskConversationStart {
     val text = body.trim()
     if (text.isEmpty()) return TaskConversationStart.Failed(null)
@@ -91,62 +90,178 @@ internal suspend fun startTaskConversation(
             is DataResult.NoPermission -> return TaskConversationStart.Failed(opened.blocker.serverMessage)
             is DataResult.Empty -> return TaskConversationStart.Failed(null)
         }
-    return when (val sent = send(conversation.value, text)) {
+    return when (val sent = send(conversation.value, text, randomId)) {
         is ThreadApiResult.Success -> TaskConversationStart.Started(conversation)
         is ThreadApiResult.Failure -> TaskConversationStart.Failed(sent.toThreadAttachmentCommentsFailureProjection().serverMessage)
     }
 }
 
-/** Renders [surface] (the pending conversation or the legacy panel); [onSend] runs the first send of a pending one. */
+/**
+ * The page's task-open surface ([TaskOpenSurface]) and its first send, shared by every place a task
+ * opens (thread, Tasks tab):
+ * - one `randomId` per draft, reused on every retry until a send succeeds, so a first message the
+ *   server took before the answer was lost is not posted twice (a repeated POST /conversation
+ *   answers the same conversation);
+ * - the typed text is kept per task while the page lives (closing the sheet keeps it; the app's
+ *   composer drafts are keyed by a conversation channel, which this task does not have yet);
+ * - the task follows the store ([onTaskChanged]): fresh status and assignee, and when its
+ *   conversation appears (someone else wrote first, `task:updated`) the caller opens it, as web
+ *   `TaskConversationDialog` binds to it;
+ * - a send that finishes after the reader switched server opens nothing (web stops too).
+ */
+internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::newThreadSendRandomId) {
+    var surface by mutableStateOf<TaskOpenSurface?>(null)
+        private set
+    var sending by mutableStateOf(false)
+        private set
+    var errorText by mutableStateOf<String?>(null)
+        private set
+    private val drafts = mutableStateMapOf<String, String>()
+    private val randomIds = mutableMapOf<String, String>()
+
+    fun open(surface: TaskOpenSurface) {
+        if (sending) return
+        this.surface = surface
+        errorText = null
+    }
+
+    /** Closes the sheet unless a send runs; the draft stays for the next open. */
+    fun dismiss(): Boolean {
+        if (sending) return false
+        surface = null
+        errorText = null
+        return true
+    }
+
+    fun draft(taskId: String): String = drafts[taskId].orEmpty()
+
+    fun onDraftChange(taskId: String, text: String) {
+        drafts[taskId] = text
+    }
+
+    /**
+     * The store's copy of the open task: refreshes the sheet, or — when it no longer opens here
+     * (its conversation appeared) — closes it and returns the task for the caller to open.
+     */
+    fun onTaskChanged(fresh: TaskSummary?, taskV2Enabled: Boolean): TaskSummary? {
+        val current = surface ?: return null
+        if (fresh == null || fresh.id != current.task.id || fresh == current.task) return null
+        return when (val next = fresh.taskOpenSurface(taskV2Enabled)) {
+            null -> {
+                if (sending) return null
+                surface = null
+                errorText = null
+                fresh
+            }
+            else -> {
+                surface = next
+                null
+            }
+        }
+    }
+
+    /**
+     * The first send ([startTaskConversation]) of the open pending task: the conversation to open,
+     * or null (nothing open, a send already running, a failure shown in [errorText], or the reader
+     * left [serverId] meanwhile).
+     */
+    suspend fun send(
+        text: String,
+        serverId: String,
+        tasksDataSource: SharedTasksDataSource,
+        sendMessage: suspend (channelId: String, body: String, randomId: String) -> ThreadApiResult<*>,
+        currentServerId: () -> String?,
+        fallbackError: String,
+    ): Pair<TaskSummary, ChannelId>? {
+        val task = (surface as? TaskOpenSurface.Pending)?.task ?: return null
+        if (sending || text.isBlank()) return null
+        val key = task.id.value
+        drafts[key] = text
+        val randomId = randomIds.getOrPut(key, newRandomId)
+        sending = true
+        errorText = null
+        try {
+            val started = startTaskConversation(task, ServerId(serverId), text, tasksDataSource, randomId, sendMessage)
+            if (currentServerId() != serverId) {
+                // web: the task's context changed while its conversation was created; stop.
+                return null
+            }
+            return when (started) {
+                is TaskConversationStart.Started -> {
+                    drafts.remove(key)
+                    randomIds.remove(key)
+                    surface = null
+                    task to started.conversationChannelId
+                }
+                is TaskConversationStart.Failed -> {
+                    errorText = started.serverMessage ?: fallbackError
+                    null
+                }
+            }
+        } finally {
+            sending = false
+        }
+    }
+}
+
+/** Renders the flow's surface (the pending conversation or the legacy panel). */
 @Composable
 internal fun TaskOpenSurfaceHost(
-    surface: TaskOpenSurface?,
-    sending: Boolean,
-    errorText: String?,
-    onDismiss: () -> Unit,
+    flow: TaskOpenSurfaceFlow,
     onSend: (TaskSummary, String) -> Unit,
+    /** Whether the reader is a member of the task's channel; null = not known here. */
+    joined: (TaskSummary) -> Boolean? = { null },
+    onJoin: (TaskSummary) -> Unit = {},
 ) {
-    when (surface) {
+    when (val surface = flow.surface) {
         is TaskOpenSurface.Pending ->
             TaskConversationPendingSheet(
                 task = surface.task,
-                sending = sending,
-                errorText = errorText,
-                onDismiss = onDismiss,
+                sending = flow.sending,
+                errorText = flow.errorText,
+                joined = joined(surface.task),
+                draft = flow.draft(surface.task.id.value),
+                onDraftChange = { flow.onDraftChange(surface.task.id.value, it) },
+                onDismiss = { flow.dismiss() },
                 onSend = { text -> onSend(surface.task, text) },
+                onJoin = { onJoin(surface.task) },
             )
-        is TaskOpenSurface.Legacy -> TaskLegacyPanelSheet(task = surface.task, onDismiss = onDismiss)
+        is TaskOpenSurface.Legacy -> TaskLegacyPanelSheet(task = surface.task, onDismiss = { flow.dismiss() })
         null -> Unit
     }
 }
 
 /**
  * A task conversation before its first message (web `TaskConversationDialog` with no conversation
- * yet): the task's status and assignee, its title and description, the empty state ("No discussion
- * in this task yet", and for a pre-v2 task where its earlier discussion is), and the composer.
- * Sending creates the conversation; [errorText] is the failure (the server's words when it gave
- * them). Attachments, mentions and Follow wait for the conversation page that opens after the
- * first send.
+ * yet): the task's status and assignee, its title and description and the empty state ("No
+ * discussion in this task yet", and for a pre-v2 task where its earlier discussion is) at the
+ * top, and at the bottom what the conversation page has there, so nothing moves when the first
+ * send opens it: the conversation composer (its own send button), or for a reader who has not
+ * joined the task's channel web ThreadPanel's "Join Channel to Reply" ([joined] false; null =
+ * not known here, the composer shows and a refusal comes back as [errorText]). Sending creates the
+ * conversation; a refused send keeps the typed text. Attachments, mentions and Follow wait for
+ * the conversation page.
  */
 @Composable
 internal fun TaskConversationPendingSheet(
     task: TaskSummary,
     sending: Boolean,
     errorText: String?,
+    joined: Boolean?,
+    draft: String,
+    onDraftChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSend: (String) -> Unit,
+    onJoin: () -> Unit,
 ) {
-    var draft by remember(task.id) { mutableStateOf("") }
     RaftDialogSheet(
         onDismissRequest = { if (!sending) onDismiss() },
         title = task.taskRefTitle(),
-        commitLabel = stringResource(Res.string.task_conversation_send),
-        onCommit = { onSend(draft) },
-        commitEnabled = draft.isNotBlank() && !sending,
-        commitLoading = sending,
+        commitLabel = null,
+        onCommit = {},
         closeEnabled = !sending,
     ) {
-        TaskConversationPendingBody(task, draft, { draft = it }, sending, errorText, Modifier.weight(1f, fill = false))
+        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange)
     }
 }
 
@@ -154,22 +269,26 @@ internal fun TaskConversationPendingSheet(
 @Composable
 internal fun TaskConversationPendingBody(
     task: TaskSummary,
-    draft: String,
-    onDraftChange: (String) -> Unit,
     sending: Boolean,
     errorText: String?,
+    joined: Boolean?,
+    onSend: (String) -> Unit,
+    onJoin: () -> Unit,
     modifier: Modifier = Modifier,
+    seedText: String = "",
+    onDraftChange: (String) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    run {
+    // The conversation page's canvas, so its composer dock sits on the same ground as there.
+    Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
         Column(
-            modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             TaskFacts(task)
             Column(
-                Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -188,13 +307,37 @@ internal fun TaskConversationPendingBody(
                 }
             }
             errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
-            RaftTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
-                enabled = !sending,
+        }
+        if (joined == false) {
+            ThreadJoinFooter(label = stringResource(Res.string.task_conversation_join_to_reply), onJoin = onJoin)
+        } else {
+            // The conversation page's own composer in its dock: multi-line, paste, its send button.
+            ThreadComposerDock {
+            ThreadComposerContent(
+                payload =
+                    RaftThreadComposerPayload(
+                        instanceId = "task-pending:${task.id.value}",
+                        seedText = seedText,
+                        placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
+                        enabled = !sending,
+                        attachmentActionsEnabled = false,
+                        originalImageOptionEnabled = false,
+                        showAsTaskToggle = false,
+                    ),
+                onEvent = { action, value, _, _ -> if (action == "change" && value != null) onDraftChange(value) },
+                onSendRequest = { request ->
+                    val text = request.value.text
+                    if (sending || text.isBlank()) {
+                        ThreadComposerSendAdmission.Rejected
+                    } else {
+                        onSend(text)
+                        // The text stays until the conversation page opens (a refused send keeps it).
+                        ThreadComposerSendAdmission.Deferred
+                    }
+                },
+                attachmentPreviewEnabled = false,
             )
+            }
         }
     }
 }
@@ -215,9 +358,10 @@ internal fun TaskLegacyPanelSheet(task: TaskSummary, onDismiss: () -> Unit) {
     }
 }
 
+/** web LegacyTaskPanel's head: `#channel` (or "unknown"); the task line sits under it. */
 @Composable
 internal fun taskLegacyPanelTitle(task: TaskSummary): String =
-    stringResource(Res.string.task_legacy_heading, task.taskNumber?.toString() ?: "?")
+    "#" + (task.channelName?.trim()?.takeIf { it.isNotEmpty() } ?: stringResource(Res.string.task_legacy_unknown_channel))
 
 /** The legacy panel's body (the sheet's content; screenshot tests frame it themselves). */
 @Composable
@@ -230,8 +374,14 @@ internal fun TaskLegacyPanelBody(task: TaskSummary, modifier: Modifier = Modifie
             modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // web: "Task #N · Legacy" in Space Mono under the channel.
+            RaftText(
+                stringResource(Res.string.task_legacy_heading, task.taskNumber?.toString() ?: "?"),
+                style = typography.monoMeta,
+                color = colors.foregroundHint,
+            )
             RaftTaskStatusBadge(status = task.status.raftTaskStatus(), text = task.status.localizedLabel())
-            LegacyCard {
+            RaftCard(Modifier.fillMaxWidth()) {
                 LegacyLabel(stringResource(Res.string.task_legacy_title))
                 RaftText(task.title, style = typography.headline, color = colors.foreground)
                 LegacyLabel(stringResource(Res.string.task_legacy_description), Modifier.padding(top = 12.dp))
@@ -241,7 +391,7 @@ internal fun TaskLegacyPanelBody(task: TaskSummary, modifier: Modifier = Modifie
                     color = colors.foreground,
                 )
             }
-            LegacyCard {
+            RaftCard(Modifier.fillMaxWidth()) {
                 LegacyProperty(stringResource(Res.string.task_legacy_created_by), task.creator?.displayName?.let { "@$it" } ?: unknown)
                 LegacyProperty(
                     stringResource(Res.string.task_legacy_assignee),
@@ -279,18 +429,6 @@ private fun TaskFacts(task: TaskSummary) {
 }
 
 @Composable
-private fun LegacyCard(content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(RaftRadius.Container)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(RaftTheme.colors.layerCard, shape)
-            .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, shape)
-            .padding(16.dp),
-    ) { content() }
-}
-
-@Composable
 private fun LegacyLabel(text: String, modifier: Modifier = Modifier) {
     RaftText(
         text,
@@ -317,9 +455,10 @@ private fun LegacyProperty(label: String, value: String) {
 internal fun TaskSummary.taskRefTitle(): String = taskNumber?.let { "#$it $title" } ?: title
 
 /**
- * One open per task at a time: a second tap while the first is still resolving (the joint POST)
- * is dropped, and so is a repeat tap within [repeatWindowMs] of a finished open, so a double tap
- * neither POSTs twice nor pushes the same page twice. [nowMs] is injectable for tests.
+ * One task open at a time (not per task): while an open is still resolving (the joint POST) any
+ * other tap is dropped, and a repeat tap on the same task within [repeatWindowMs] of a finished
+ * open is dropped too, so a double tap neither POSTs twice nor pushes the same page twice.
+ * [nowMs] is injectable for tests.
  */
 internal class TaskOpenGate(
     private val repeatWindowMs: Long = 700L,
