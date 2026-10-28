@@ -751,19 +751,19 @@ internal fun stampSharedActivityDiagnosticsSequence(message: String): String =
 private val sharedActivityDiagnosticsSequence = atomic(0L)
 
 /**
- * Which refresh chrome the Activity page asks for. A refresh the user did not pull
- * ([SharedActivityState.silentRefreshing]: re-entry, resume, realtime / sync reconcile, server
- * switch over cached rows) shows the header's top-right indicator (artin 10-27); the user's pull
- * shows the pull indicator alone, never the header one too (artin task #22). The header indicator
- * is further delayed and held by [rememberRaftDelayedIndicatorVisible] so a quick reload never
- * flashes it.
+ * Which refresh chrome the Activity page asks for (ticket 67609860, artin 10-28). The header's
+ * top-right indicator shows only for [SharedActivityState.headerRefreshing]: the open, a server /
+ * filter switch, or a resume / re-entry refresh after a while. Realtime, sync and periodic
+ * background loads show nothing; the user's pull shows the pull indicator alone, never the header
+ * one too (artin task #22). The header indicator is further delayed and held by
+ * [rememberRaftDelayedIndicatorVisible] so a quick reload never flashes it.
  */
 internal fun activityRefreshPresentation(
-    silentRefreshing: Boolean,
+    headerRefreshing: Boolean,
     pullRefreshing: Boolean
 ): ActivityRefreshPresentation =
     ActivityRefreshPresentation(
-        headerRefreshing = raftHeaderRefreshIndicatorVisible(refreshing = silentRefreshing, pullRefreshing = pullRefreshing),
+        headerRefreshing = raftHeaderRefreshIndicatorVisible(refreshing = headerRefreshing, pullRefreshing = pullRefreshing),
         pullRefreshing = pullRefreshing
     )
 
@@ -958,8 +958,8 @@ private fun SharedActivityPanelContent(
     conversationListPending: Boolean = false,
     scrollToTopRequest: Int = 0
 ) {
-    val refreshPresentation = activityRefreshPresentation(state.silentRefreshing, state.pullRefreshing)
-    // Delayed and held so a quick silent reload never flashes; a pull hides it at once.
+    val refreshPresentation = activityRefreshPresentation(state.headerRefreshing, state.pullRefreshing)
+    // Delayed and held so a quick reload never flashes; a pull hides it at once.
     val headerRefreshIndicatorVisible =
         rememberRaftDelayedIndicatorVisible(refreshPresentation.headerRefreshing) && !refreshPresentation.pullRefreshing
     // task #232 (#2224 review blocker 1): the panel owns per-filter scroll
