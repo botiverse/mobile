@@ -6,6 +6,7 @@ import build.raft.app.SharedThreadStoreTest.Companion.pageResponse
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
+import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -15,6 +16,7 @@ import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalFailureInjector
 import build.raft.app.data.WireMessage
 import build.raft.app.shared.data.local.RaftDatabase
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -318,6 +320,58 @@ class ThreadPendingSendStoreIntegrationTest {
         }
     }
 
+    /**
+     * Feedback 03e9a2f6 (1.16.1, log replay): the in-page POST for "hi?" died (h2 stream reset)
+     * while a server switch rehomed the journal, so its failure projection was blocked and the
+     * durable row stayed "sending". Re-entering the DM, the drainer adopted it
+     * (`thread_send_adopted_stale` -> failed projection), resent with the same randomId and got
+     * 200 -- yet the page kept a failed copy beside the delivered message.
+     */
+    @Test
+    fun pageEntryDrainOfAnOrphanedSendingRowEndsOnTheDeliveredMessageNotAFailure() = runTest {
+        withDatabase { path ->
+            val identity = identity()
+            val routePayload = basePayload()
+            val orphan = pendingMessage("local-send-orphan", "random-orphan", createdAt = 10L)
+
+            val first = open(path, FakeThreadApi(), identity)
+            first.store.accept(SharedThreadIntent.Start(routePayload))
+            val route = first.store.state.value.payload.resolveThreadRouteIdentity()
+            assertTrue(
+                first.store.admitLocalSend(
+                    message = orphan,
+                    expectedProvenance = requireNotNull(first.dataSource.currentReplyCacheProvenance()),
+                    expectedRoute = route
+                )
+            )
+            // The owning attempt dies without a durable terminal write.
+            first.scope.cancel()
+            first.driver.close()
+
+            // The resend commits server-side, so the page-entry refresh's latest page carries it.
+            val api =
+                FakeThreadApi(bodyText = latestPageWithDelivered("random-orphan")).apply {
+                    sendResponseBody = sentMessageResponse("random-orphan")
+                }
+            val second = open(path, api, identity, threadParseDispatcher = Dispatchers.Unconfined)
+            second.store.accept(SharedThreadIntent.Start(routePayload))
+
+            assertEquals(1, api.sendMessageCalls, "the adoption resends exactly once")
+            assertEquals("random-orphan", api.lastRandomId, "the resend reuses the idempotency key")
+            val messages = second.store.state.value.payload.messages
+            val timeline = messages.map { "${it.id}:${it.deliveryState}" }
+            assertTrue(messages.any { it.id == "server-random-orphan" }, "the delivered message is shown: $timeline")
+            assertTrue(
+                messages.none { it.id == orphan.id },
+                "a delivered send must not keep a failed local copy (and its Retry) beside it"
+            )
+            assertTrue(messages.none { it.deliveryState == ThreadMessageDeliveryFailed })
+            assertTrue(second.journal.restore(identity.toProvenance(), route).isEmpty())
+            second.scope.cancel()
+            second.driver.close()
+        }
+    }
+
     @Test
     fun emptyJournalIsSafeAndRowsRestoreInCreatedOrder() = runTest {
         withDatabase { path ->
@@ -354,19 +408,26 @@ class ThreadPendingSendStoreIntegrationTest {
         api: FakeThreadApi,
         identity: ThreadReplyCacheIdentitySnapshot,
         failureInjector: ThreadPendingSendJournalFailureInjector? = null,
+        threadParseDispatcher: CoroutineDispatcher? = null,
     ): Opened =
         openWithIdentityProvider(
             path = path,
             api = api,
             identityProvider = { identity },
             failureInjector = failureInjector,
+            threadParseDispatcher = threadParseDispatcher,
         )
 
+    /**
+     * [threadParseDispatcher] = Unconfined keeps the store's own drainer (launched on the
+     * Unconfined store scope) inline, so a drain started by Start has finished when it returns.
+     */
     private fun openWithIdentityProvider(
         path: java.nio.file.Path,
         api: FakeThreadApi,
         identityProvider: () -> ThreadReplyCacheIdentitySnapshot,
         failureInjector: ThreadPendingSendJournalFailureInjector? = null,
+        threadParseDispatcher: CoroutineDispatcher? = null,
     ): Opened {
         val driver = JdbcSqliteDriver(url(path))
         val journal =
@@ -383,6 +444,7 @@ class ThreadPendingSendStoreIntegrationTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 pendingSendJournal = journal,
                 replyCacheIdentityAuthority = identityProvider,
+                threadParseDispatcher = threadParseDispatcher ?: RaftJsonParseDispatcher,
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         return Opened(
@@ -506,6 +568,27 @@ class ThreadPendingSendStoreIntegrationTest {
           "content": "pending body",
           "randomId": "$randomId",
           "createdAt": "2026-08-25T00:00:00Z"
+        }
+        """.trimIndent()
+
+    private fun latestPageWithDelivered(randomId: String): String =
+        """
+        {
+          "historyLimited": false,
+          "messages": [
+            {
+              "id": "m1",
+              "seq": 10,
+              "channelId": "channel-1",
+              "content": "earlier",
+              "createdAt": "2026-08-24T23:59:00Z",
+              "senderId": "u2",
+              "senderName": "Ruby",
+              "senderType": "user",
+              "messageType": "chat"
+            },
+            ${sentMessageResponse(randomId)}
+          ]
         }
         """.trimIndent()
 
