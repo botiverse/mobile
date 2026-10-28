@@ -11453,11 +11453,16 @@ internal class SharedThreadStore(
                                 ?.streamChannelId,
                         diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
                     )
+                // The HTTP success is the terminal proof for [messageId] whatever state the open
+                // row is in: the drainer flips an adopted orphan to failed before resending, so the
+                // row may already read "failed" here. Drop it from the stability baseline too, or
+                // the failed-row retention would resurrect it beside the delivered message even
+                // when the canonical response carries no random-id echo (feedback 03e9a2f6).
                 val selected =
                     appended
                         .withoutLocalSendMessage(messageId)
                         .withRouteContext(payload)
-                        .preserveStableTimelineFrom(payload)
+                        .preserveStableTimelineFrom(payload.withoutLocalSendMessage(messageId))
                 payload.withThreadContentProjectionFrom(selected)
             }
         val terminalProjection =
@@ -13057,6 +13062,16 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
     val stableMessages =
         timelineMessages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
+            // Feedback 03e9a2f6: a retained local shadow (sending OR failed) whose idempotency key
+            // the server has already echoed on a canonical row in this timeline is delivered, not
+            // pending. Retaining the failed copy beside it rendered a false "send failed" bubble
+            // whose Retry invited a duplicate. Exact random-id proof only (no content heuristic).
+            .let { messages ->
+                messages.absorbingCanonicalSendEchoes(
+                    canonicalMessages = messages,
+                    matchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId
+                )
+            }
             .withSelectedReactionsFrom(previous.messages, preserveSelectedReactions)
             .let { messages ->
                 if (preserveAuxiliaryProjectionFromPrevious) {
