@@ -15,13 +15,14 @@ import build.raft.app.model.topLevelThreadId
  * `directTaskConversationChannelId` (slock `packages/web/src/components/task/useOpenTask.ts`,
  * `utils/taskConversation.ts`):
  * - a legacy orphan (server `isLegacy`: no host message, no conversation, not created to have one)
- *   never opens a conversation;
+ *   opens the read-only legacy panel ([LegacyPanel], web `LegacyTaskPanel`);
  * - with `task_v2_conversations_v0` off, a pre-v2 task (not `conversationAnchored`) keeps its host
- *   message's thread; with the flag on every non-legacy task opens as its own conversation, a
- *   pre-v2 one through `POST /tasks/:id/conversation`, which creates it;
+ *   message's thread; with the flag on every non-legacy task opens as its own conversation;
+ * - a task with no conversation yet opens it empty ([PendingConversation]): opening never creates
+ *   it; the first send does (web `TaskConversationDialog`, `ensureTaskModalThreadChannel`);
  * - a task whose canonical conversation is known and is local (not a joint surface) opens it;
- * - otherwise (anchored without a conversation yet, or a joint surface whose LOCAL conversation
- *   differs from the canonical one) `POST /tasks/:id/conversation` answers the local id first.
+ * - a joint surface's LOCAL conversation differs from the canonical one: `POST /tasks/:id/conversation`
+ *   (idempotent; the conversation already exists, so nothing is created) answers it first.
  */
 internal sealed interface TaskOpenTarget {
     data class Conversation(val conversationChannelId: ChannelId) : TaskOpenTarget
@@ -29,15 +30,23 @@ internal sealed interface TaskOpenTarget {
     data object ResolveConversation : TaskOpenTarget
 
     data object HostThread : TaskOpenTarget
+
+    /** No conversation yet: open it empty; the first send creates it ([TaskOpenSurface.Pending]). */
+    data object PendingConversation : TaskOpenTarget
+
+    /** A legacy orphan: the read-only panel ([TaskOpenSurface.Legacy]). */
+    data object LegacyPanel : TaskOpenTarget
 }
 
 internal fun TaskSummary.taskOpenTarget(taskV2Enabled: Boolean): TaskOpenTarget {
+    if (isLegacy) return TaskOpenTarget.LegacyPanel
     if (!opensAsTaskConversation(taskV2Enabled)) return TaskOpenTarget.HostThread
-    val direct =
-        conversationChannelId?.takeUnless {
-            parseConversationKindOrNull(channelType) == ConversationKind.Joint
-        }
-    return direct?.let(TaskOpenTarget::Conversation) ?: TaskOpenTarget.ResolveConversation
+    val conversation = conversationChannelId ?: return TaskOpenTarget.PendingConversation
+    return if (parseConversationKindOrNull(channelType) == ConversationKind.Joint) {
+        TaskOpenTarget.ResolveConversation
+    } else {
+        TaskOpenTarget.Conversation(conversation)
+    }
 }
 
 /** Web `opensAsTaskConversation(task, taskV2Enabled)`: never for a legacy orphan; else with the flag on, or per task. */
@@ -67,7 +76,8 @@ internal suspend fun resolveTaskOpenConversationChannelId(
 ): ChannelId? =
     when (val target = task.taskOpenTarget(taskV2Enabled)) {
         is TaskOpenTarget.Conversation -> target.conversationChannelId
-        TaskOpenTarget.HostThread -> null
+        // Never POSTed: that would create the conversation (web: opening does not create).
+        TaskOpenTarget.HostThread, TaskOpenTarget.PendingConversation, TaskOpenTarget.LegacyPanel -> null
         TaskOpenTarget.ResolveConversation -> {
             val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
             val result = resolvedServerId?.let { tasksDataSource.openTaskConversation(it, task.id) }
@@ -105,6 +115,8 @@ internal fun buildTaskOpenLaunchPayload(
         )
     }
     // A task resolved to no conversation still opens its pre-v2 host thread when it has one.
+    // A legacy orphan has no thread to open (its panel is [TaskOpenSurface.Legacy]).
+    if (task.isLegacy) return null
     return if (task.taskOpenTarget(taskV2Enabled = false) == TaskOpenTarget.HostThread || task.hostMessageId != null) {
         hostThreadPayload()
     } else {

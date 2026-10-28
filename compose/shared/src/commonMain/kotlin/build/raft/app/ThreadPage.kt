@@ -3797,6 +3797,9 @@ internal sealed interface MarkdownTaskNumberOpenResult {
         val source: SharedTaskReferenceResolutionSource
     ) : MarkdownTaskNumberOpenResult
 
+    /** The task opens without a page of its own: its empty conversation or its legacy panel. */
+    data class OpensInPlace(val task: TaskSummary) : MarkdownTaskNumberOpenResult
+
     data object NotFound : MarkdownTaskNumberOpenResult
     data object AuthRequired : MarkdownTaskNumberOpenResult
     data object Failed : MarkdownTaskNumberOpenResult
@@ -3836,6 +3839,9 @@ internal suspend fun openMarkdownTaskNumberPayload(
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
+            if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
+                return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
+            }
             val payload =
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
@@ -7341,10 +7347,13 @@ private fun SharedThreadRouteContentContent(
     }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    // Task v2: the message "Create Task from Message" is open for, and whether its create is in flight.
-    var createTaskSourceMessage by remember(threadInstanceKey) { mutableStateOf<TaskCreateSourceMessage?>(null) }
-    var createTaskFromMessagePending by remember(threadInstanceKey) { mutableStateOf(false) }
-    var createTaskFromMessageFailed by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
+    val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
+    // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
+    var taskOpenSurface by remember(threadInstanceKey) { mutableStateOf<TaskOpenSurface?>(null) }
+    var taskOpenSurfaceSending by remember(threadInstanceKey) { mutableStateOf(false) }
+    var taskOpenSurfaceError by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var markdownReferencePending by remember(threadInstanceKey) {
         mutableStateOf(ThreadMarkdownReferencePendingState())
@@ -7675,6 +7684,7 @@ private fun SharedThreadRouteContentContent(
     val unableToConvertMessageLabel = stringResource(Res.string.thread_error_convert_message)
     val taskCreatedLabel = stringResource(Res.string.thread_feedback_task_created)
     val unableToCreateTaskLabel = stringResource(Res.string.tasks_create_failed)
+    val unableToSendTaskMessageLabel = stringResource(Res.string.task_conversation_send_failed)
     val unsupportedTaskStatusLabel = stringResource(Res.string.thread_error_task_status_unsupported)
     val unableToUpdateTaskLabel = stringResource(Res.string.thread_error_update_task)
     val unableToUpdateAssigneeLabel = stringResource(Res.string.thread_error_update_assignee)
@@ -11400,77 +11410,106 @@ private fun SharedThreadRouteContentContent(
             onOpenThreadPayload(loadingPayload)
         }
     }
-    val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
+    val openCanonicalTask: (TaskSummary, String) -> Unit = open@{ task, source ->
+        // Web useOpenTask: the legacy panel, or the empty conversation of a task without one
+        // (opening never creates it), or a page.
+        task.taskOpenSurface(taskV2Enabled)?.let { surface ->
+            bridge.log("thread_task_open result=surface kind=${surface::class.simpleName} source=$source taskId=${task.id.value}")
+            taskOpenSurfaceError = null
+            taskOpenSurface = surface
+            return@open
+        }
+        if (!taskOpenGate.tryBegin(task.id.value)) {
+            bridge.log("thread_task_open result=ignored reason=in_flight source=$source taskId=${task.id.value}")
+            return@open
+        }
         if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
-            // Task v2: the local conversation id comes from the server first.
+            // Task v2: a joint surface's local conversation id comes from the server first.
             coroutineScope.launch {
-                openCanonicalTaskWith(
-                    task = task,
-                    source = source,
-                    resolvedConversationChannelId =
-                        resolveTaskOpenConversationChannelId(
-                            task = task,
-                            serverId = currentServerId.orEmpty(),
-                            tasksDataSource = tasksDataSource,
-                            taskV2Enabled = taskV2Enabled,
-                            log = bridge::log,
-                        ),
-                )
+                try {
+                    openCanonicalTaskWith(
+                        task = task,
+                        source = source,
+                        resolvedConversationChannelId =
+                            resolveTaskOpenConversationChannelId(
+                                task = task,
+                                serverId = currentServerId.orEmpty(),
+                                tasksDataSource = tasksDataSource,
+                                taskV2Enabled = taskV2Enabled,
+                                log = bridge::log,
+                            ),
+                    )
+                } finally {
+                    taskOpenGate.finish(task.id.value)
+                }
             }
         } else {
             openCanonicalTaskWith(task, source, null)
+            taskOpenGate.finish(task.id.value)
         }
     }
 
-    createTaskSourceMessage?.let { source ->
+    TaskOpenSurfaceHost(
+        surface = taskOpenSurface,
+        sending = taskOpenSurfaceSending,
+        errorText = taskOpenSurfaceError,
+        onDismiss = {
+            taskOpenSurface = null
+            taskOpenSurfaceError = null
+        },
+        onSend = { task, text ->
+            val serverId = currentServerId?.takeIf { it.isNotBlank() }
+            if (serverId != null && !taskOpenSurfaceSending) {
+                taskOpenSurfaceSending = true
+                taskOpenSurfaceError = null
+                coroutineScope.launch {
+                    try {
+                        when (
+                            val started =
+                                startTaskConversation(
+                                    task = task,
+                                    serverId = ServerId(serverId),
+                                    body = text,
+                                    tasksDataSource = tasksDataSource,
+                                    send = { channelId, body -> dataSource.sendMessage(channelId = channelId, body = body, asTask = false) },
+                                )
+                        ) {
+                            is TaskConversationStart.Started -> {
+                                bridge.log("thread_task_conversation_started taskId=${task.id.value}")
+                                taskOpenSurface = null
+                                openCanonicalTaskWith(task, "task_first_send", started.conversationChannelId)
+                            }
+                            is TaskConversationStart.Failed -> {
+                                bridge.logWarn("thread_task_conversation_start_failed taskId=${task.id.value}")
+                                taskOpenSurfaceError = started.serverMessage ?: unableToSendTaskMessageLabel
+                            }
+                        }
+                    } finally {
+                        taskOpenSurfaceSending = false
+                    }
+                }
+            }
+        },
+    )
+
+    createTaskFromMessage.source?.let { source ->
         TaskCreateFromMessageDialog(
             source = source,
-            submitting = createTaskFromMessagePending,
-            failed = createTaskFromMessageFailed,
-            onDismiss = {
-                if (!createTaskFromMessagePending) {
-                    createTaskSourceMessage = null
-                    createTaskFromMessageFailed = false
-                }
-            },
+            submitting = createTaskFromMessage.submitting,
+            errorText = createTaskFromMessage.errorText,
+            onDismiss = { createTaskFromMessage.dismiss() },
             onSubmit = { titles ->
                 val serverId = currentServerId?.takeIf { it.isNotBlank() }
-                if (serverId != null && !createTaskFromMessagePending) {
-                    createTaskFromMessagePending = true
-                    createTaskFromMessageFailed = false
+                if (serverId != null && !createTaskFromMessage.submitting) {
                     coroutineScope.launch {
-                        try {
-                            when (
-                                val result =
-                                    tasksDataSource.createTasksFromMessage(
-                                        serverId = ServerId(serverId),
-                                        channelId = source.channelId,
-                                        titles = titles,
-                                        sourceMessageId = source.messageId,
-                                    )
-                            ) {
-                                is DataResult.Content -> {
-                                    // The answer folds into the shared projection now; `task:created` agrees.
-                                    result.data.tasks.forEach { task -> tasksDataStore?.upsertTaskForCurrentOwner(serverId, task) }
-                                    bridge.log(
-                                        "thread_task_create_from_message result=content messageId=${source.messageId.value} " +
-                                            "tasks=${result.data.tasks.size}"
-                                    )
-                                    createTaskSourceMessage = null
-                                    bridge.toast(taskCreatedLabel)
-                                }
-                                else -> {
-                                    bridge.logWarn(
-                                        "thread_task_create_from_message result=${result::class.simpleName} " +
-                                            "messageId=${source.messageId.value}"
-                                    )
-                                    if (result is DataResult.NoPermission && routeAuthRequired(result)) return@launch
-                                    createTaskFromMessageFailed = true
-                                }
-                            }
-                        } finally {
-                            createTaskFromMessagePending = false
-                        }
+                        val outcome =
+                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel)
+                        bridge.log(
+                            "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
+                                "messageId=${source.messageId.value}"
+                        )
+                        val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
+                        if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
                     }
                 }
             },
@@ -12588,6 +12627,9 @@ private fun SharedThreadRouteContentContent(
                                             candidates = result.candidates
                                         )
                                 }
+                                is MarkdownTaskNumberOpenResult.OpensInPlace -> {
+                                    openCanonicalTask(result.task, "markdown_task")
+                                }
                                 MarkdownTaskNumberOpenResult.NotFound -> {
                                     bridge.log(
                                         "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
@@ -12947,13 +12989,14 @@ private fun SharedThreadRouteContentContent(
                         bridge.toast(unableToCreateTaskLabel)
                         return@ThreadPageContent
                     }
-                    createTaskSourceMessage =
+                    createTaskFromMessage.open(
                         TaskCreateSourceMessage(
                             channelId = taskChannelId,
                             messageId = MessageId(message.id),
                             senderName = message.threadAvatarName().ifBlank { message.authorName },
                             text = message.body,
                         )
+                    )
                 }
                 action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
                     if (itemId in pendingTaskConvertMessageIds) {

@@ -57,13 +57,14 @@ internal fun taskTitleFromMessage(text: String): String {
  * Task v2: "Create Task from Message" (slock web `CreateTaskDialog` with `sourceMessage`): the
  * message quoted (sender, three lines), then one title per task — the first starts as the
  * message's text — "Add Another", Cancel and Create (Create N Tasks). [onSubmit] gets the
- * non-blank titles; [failed] shows web's "Failed to create task" banner.
+ * non-blank titles; [errorText] is the failure banner (the server's `error` when it gave one, as
+ * web shows it, else "Failed to create task"). Nothing dismisses it while [submitting].
  */
 @Composable
 internal fun TaskCreateFromMessageDialog(
     source: TaskCreateSourceMessage,
     submitting: Boolean,
-    failed: Boolean,
+    errorText: String?,
     onDismiss: () -> Unit,
     onSubmit: (List<String>) -> Unit,
 ) {
@@ -77,7 +78,7 @@ internal fun TaskCreateFromMessageDialog(
             stringResource(
                 if (batch) Res.string.tasks_create_from_message_title_many else Res.string.tasks_create_from_message_title_one
             ),
-        onDismiss = onDismiss,
+        onDismiss = { if (!submitting) onDismiss() },
         dismissEnabled = !submitting,
         keyboardAvoidanceEnabled = true,
         contentPadding = RaftAppSpacing.Md,
@@ -111,9 +112,7 @@ internal fun TaskCreateFromMessageDialog(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (failed) {
-                RaftBanner(description = stringResource(Res.string.tasks_create_failed), status = RaftBannerStatus.Warning)
-            }
+            errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
             Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
                 titles.forEachIndexed { index, title ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
@@ -148,7 +147,7 @@ internal fun TaskCreateFromMessageDialog(
         RaftDialogFooter {
             RaftButton(
                 text = stringResource(Res.string.common_cancel),
-                onClick = onDismiss,
+                onClick = { if (!submitting) onDismiss() },
                 enabled = !submitting,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg,
@@ -157,7 +156,8 @@ internal fun TaskCreateFromMessageDialog(
                 text =
                     when {
                         submitting -> stringResource(Res.string.tasks_create_action_creating)
-                        batch -> stringResource(Res.string.tasks_create_submit_many, filled.size)
+                        // web `task.create.submit`: "Create" for one filled title, "Create N Tasks" for more.
+                        filled.size > 1 -> stringResource(Res.string.tasks_create_submit_many, filled.size)
                         else -> stringResource(Res.string.tasks_create_action)
                     },
                 onClick = { onSubmit(filled) },
@@ -165,6 +165,103 @@ internal fun TaskCreateFromMessageDialog(
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
             )
+        }
+    }
+}
+
+/** The create step's outcome: the tasks made, or the server's `error` text (null: none given). */
+internal sealed interface TaskCreateFromMessageOutcome {
+    data class Created(val tasks: List<build.raft.app.model.TaskSummary>) : TaskCreateFromMessageOutcome
+
+    /** [blocker]: a 401/403 answer (the caller may route a lapsed session to sign-in). */
+    data class Failed(
+        val serverMessage: String?,
+        val blocker: build.raft.app.data.PermissionBlocker? = null,
+    ) : TaskCreateFromMessageOutcome
+}
+
+/**
+ * Web `CreateTaskDialog.handleSubmit`: POST the titles under the message; the created tasks fold
+ * into the shared projection at once (web waits for `task:created`; the fold agrees with it).
+ * A failure keeps the server's words (400 "Cannot create more than 50 tasks at once", 403
+ * `task_v2_not_enabled`, ...).
+ */
+internal suspend fun submitTasksFromMessage(
+    source: TaskCreateSourceMessage,
+    titles: List<String>,
+    serverId: String,
+    tasksDataSource: build.raft.app.data.SharedTasksDataSource,
+    tasksDataStore: build.raft.app.data.SharedTasksDataStore?,
+): TaskCreateFromMessageOutcome =
+    when (
+        val result =
+            tasksDataSource.createTasksFromMessage(
+                serverId = build.raft.app.model.ServerId(serverId),
+                channelId = source.channelId,
+                titles = titles,
+                sourceMessageId = source.messageId,
+            )
+    ) {
+        is build.raft.app.data.DataResult.Content -> {
+            result.data.tasks.forEach { task -> tasksDataStore?.upsertTaskForCurrentOwner(serverId, task) }
+            TaskCreateFromMessageOutcome.Created(result.data.tasks)
+        }
+        is build.raft.app.data.DataResult.Error -> TaskCreateFromMessageOutcome.Failed(result.error.serverMessage)
+        is build.raft.app.data.DataResult.NoPermission -> TaskCreateFromMessageOutcome.Failed(result.blocker.serverMessage, result.blocker)
+        is build.raft.app.data.DataResult.Empty -> TaskCreateFromMessageOutcome.Failed(null)
+    }
+
+/**
+ * The page's "Create Task from Message" state: which message it is open for, whether its create is
+ * in flight, and the failure to show. While a create runs nothing closes it (web `submitting`).
+ */
+internal class TaskCreateFromMessageFlow {
+    var source by mutableStateOf<TaskCreateSourceMessage?>(null)
+        private set
+    var submitting by mutableStateOf(false)
+        private set
+    var errorText by mutableStateOf<String?>(null)
+        private set
+
+    fun open(source: TaskCreateSourceMessage) {
+        if (submitting) return
+        this.source = source
+        errorText = null
+    }
+
+    /** Closes it unless a create is in flight; true when it closed. */
+    fun dismiss(): Boolean {
+        if (submitting) return false
+        source = null
+        errorText = null
+        return true
+    }
+
+    /**
+     * Runs the create ([submitTasksFromMessage]); null when nothing is open or one already runs.
+     * Created: it closes (web just closes). Failed: it stays open with the server's words, else
+     * [fallbackError].
+     */
+    suspend fun submit(
+        titles: List<String>,
+        serverId: String,
+        tasksDataSource: build.raft.app.data.SharedTasksDataSource,
+        tasksDataStore: build.raft.app.data.SharedTasksDataStore?,
+        fallbackError: String,
+    ): TaskCreateFromMessageOutcome? {
+        val current = source ?: return null
+        if (submitting) return null
+        submitting = true
+        errorText = null
+        try {
+            val outcome = submitTasksFromMessage(current, titles, serverId, tasksDataSource, tasksDataStore)
+            when (outcome) {
+                is TaskCreateFromMessageOutcome.Created -> source = null
+                is TaskCreateFromMessageOutcome.Failed -> errorText = outcome.serverMessage ?: fallbackError
+            }
+            return outcome
+        } finally {
+            submitting = false
         }
     }
 }
