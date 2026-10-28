@@ -22,6 +22,11 @@ import org.robolectric.annotation.Config
  * artin (dm fff6fafe, 2026-10-28): opening the Activity filter menu turned the status bar icons
  * white on the yellow frame. A focusable popup is its own window on Android and, while it holds
  * focus, the bar icons follow its appearance; it must carry the host's light-bar flags.
+ *
+ * Robolectric does not model the system's choice of which window drives the bar icons, so the
+ * menu case only guards that the popup window carries the host's flags (it passes on the old
+ * code too); the device check is artin's. The dialog case does fail on the old code: since
+ * #3623 a dialog guessed its icons from the mode instead of copying the host.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29])
