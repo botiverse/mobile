@@ -530,8 +530,12 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
-    /** Agent detail pages (data-layer plan step 5): memory-only, per-server LRU. */
-    internal val agentDetailCache: RaftAgentDetailCache = RaftKeyedSnapshotCache()
+    /**
+     * Agent detail pages (data-layer plan step 5): per-server LRU in memory, a whitelisted record on disk
+     * (offline resource; never secrets) for a cold / offline open.
+     */
+    internal val agentDetailCache: RaftAgentDetailCache =
+        raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
 
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
