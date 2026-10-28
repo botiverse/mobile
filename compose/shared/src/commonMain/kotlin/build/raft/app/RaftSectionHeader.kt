@@ -301,12 +301,6 @@ internal fun RaftPanelBackHeader(
 
 private val RaftPanelHeaderHeight = 56.dp
 
-/**
- * iPhone Duo: a top-level page's first header line beside the system's side column (its name, the
- * server switcher on Home, the search field on Search): a 44pt line on paper, in place of the 56dp
- * navigation row.
- */
-internal val RaftSideColumnTitleLineHeight = 44.dp
 
 // raft-ui `text-headline`: 17/22 700, no tracking.
 private val RaftPanelHeaderTitleStyle: TextStyle
@@ -325,12 +319,11 @@ internal fun RaftTopPageHeaderFrame(
 ) {
     // iPhone Duo (raft-design #859, "Foldable phones"): with the system's side column a top-level
     // page has no yellow navigation row. Its name (the search field on Search) is the page's first
-    // header line, on paper, with no seam: the column, with the tab bar in it, says it is a root.
+    // header line, on paper, 56pt with the seam under it like every top-level head, so tops line up
+    // across pages (Kirby, 2026-10-28: spacing.md Heights, page-structure.md).
     val sideColumnTitleLine = raftSideColumnActive() && backgroundColor == RaftColor.Frame
     @Suppress("NAME_SHADOWING")
     val backgroundColor = if (sideColumnTitleLine) RaftColor.Canvas else backgroundColor
-    @Suppress("NAME_SHADOWING")
-    val headerHeight = if (sideColumnTitleLine) RaftSideColumnTitleLineHeight else headerHeight
     val metrics = raftTopPageHeaderFrameMetrics(topSafeArea = topSafeArea, headerHeight = headerHeight)
     // A head that pads for the status bar paints under it: the host's status bar icons follow.
     RaftStatusBarBackdropClaim(backgroundColor, enabled = topSafeArea > 0.dp)
@@ -357,7 +350,7 @@ internal fun RaftTopPageHeaderFrame(
         )
         // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule). Flattened
         // onto the canvas first so it rounds like the web (a draw-time 8-bit blend lands a level dark).
-        if (!sideColumnTitleLine) Box(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()

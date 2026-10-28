@@ -4131,9 +4131,9 @@ internal fun homeServerSwitcherJoinCommunityActions(
 internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp, sideColumnTitleLine: Boolean = false): Dp =
     homeShellHeaderHeight(topSafeArea, sideColumnTitleLine) + HomeServerSwitcherTopGap
 
-/** The Home head: the 56dp navigation row, or beside the Duo side column the 44pt switcher line. */
+/** The Home head: the 56dp row, on the yellow frame, or beside the Duo side column on paper. */
 internal fun homeShellHeaderHeight(topSafeArea: Dp, sideColumnTitleLine: Boolean = false): Dp =
-    topSafeArea + if (sideColumnTitleLine) RaftSideColumnTitleLineHeight else RaftAppSize.PageHeaderHeight
+    topSafeArea + RaftAppSize.PageHeaderHeight
 
 /**
  * From the window's bottom to the bottom of the bell's popover beside the Duo side column: level
@@ -4867,8 +4867,9 @@ private fun HomeTitlebar(
     // The frame runs up under the status bar: the host's status bar icons follow it.
     RaftStatusBarBackdropClaim(background, enabled = topSafeArea > 0.dp)
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea, bellInColumn)).background(background)) {
-        // Beside the Duo side column the switcher line is the page's own first line: no seam.
-        if (!bellInColumn) Box(
+        // Beside the Duo side column the switcher line is the page's first line, on paper, with the
+        // same seam as every top-level head.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(RaftAppStroke.Thin)
@@ -4879,7 +4880,7 @@ private fun HomeTitlebar(
             modifier =
                 Modifier
                     .padding(top = topSafeArea)
-                    .height(if (bellInColumn) RaftSideColumnTitleLineHeight else RaftAppSize.PageHeaderContentHeight)
+                    .height(RaftAppSize.PageHeaderContentHeight)
                     // The frame runs edge to edge; the identity and bell stay in the safe area.
                     .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = RaftAppSpacing.Md),
