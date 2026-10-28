@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import build.raft.app.data.ChannelMessageWindow
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.serialization.json.JsonArray
@@ -68,6 +70,9 @@ internal fun interface ThreadEnteredScopeSnapshotLoader {
         requestedLimit: Int,
         /** [replyThreadCommitGeneration] read before the page was fetched; any later write of the scope wins. */
         expectedCommitGeneration: Long,
+        /** The page's server `messageWindow` and `historyLimited` (what range it proves; null = legacy claim). */
+        messageWindow: ChannelMessageWindow? = null,
+        historyLimited: Boolean = false,
         stillCurrent: () -> Boolean,
     ) = Unit
 }
@@ -123,12 +128,10 @@ internal fun interface ThreadDurablePageExtender {
 
     /**
      * Gap catch-up entry (task #168 step 1, product decision "option A"): [rawMessages] is the
-     * channel's LATEST page (`messages/channel/{id}?limit=[requestedLimit]`, no cursor). Whether it
-     * joins the stored window is the explicit fact "a fact stored inside the window is on the page"
-     * (both blocks are contiguous, so sharing one message means page ∪ window is contiguous):
-     * - joined → the page is merged and the newest edge moves to the page (`extended`);
-     * - not joined → the stored window is REPLACED by the page as a snapshot (`window_replaced`,
-     *   logged with both windows' bounds); the dropped history comes back through older paging.
+     * channel's LATEST page (`messages/channel/{id}?limit=[requestedLimit]`, no cursor). Message storage
+     * Phase 2a: the page is stored with the seq range it proves ([messageWindow], else the legacy latest-page
+     * claim) unioned into the stored ranges — `window_extended` when it reaches the stored head, otherwise
+     * the old head stays as an older island (`island_kept`); nothing stored is dropped.
      * Same admission as [extendWithAdjacentPage]; never creates a window (no stored window ⇒
      * nothing). Implementations that do not persist pages write nothing.
      */
@@ -138,6 +141,9 @@ internal fun interface ThreadDurablePageExtender {
         rawMessages: JsonArray,
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
+        /** The page's server `messageWindow` and `historyLimited` (what range it proves; null = legacy claim). */
+        messageWindow: ChannelMessageWindow? = null,
+        historyLimited: Boolean = false,
         stillCurrent: () -> Boolean,
     ) = Unit
 
@@ -170,8 +176,10 @@ internal fun interface ThreadDurablePageExtender {
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
         baseline: CanonicalMessageV2EnterBaseline?,
+        messageWindow: ChannelMessageWindow? = null,
+        historyLimited: Boolean = false,
         stillCurrent: () -> Boolean,
-    ) = applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, stillCurrent)
+    ) = applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, stillCurrent)
 
     /**
      * Task #14 part C: [rawMessages] is the `messages/context/{anchor}` page an anchored open (Activity row,

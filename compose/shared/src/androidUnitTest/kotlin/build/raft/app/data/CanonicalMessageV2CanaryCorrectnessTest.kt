@@ -1710,6 +1710,24 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         override suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
             delegate.baselinedScopeKinds(partition, scopeId)
         override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = delegate.readCursor(scope)
+        override suspend fun readSegments(scope: SyncScopeKey) = delegate.readSegments(scope)
+        override suspend fun maxLocalRev(partition: DurablePartitionKey): Long = delegate.maxLocalRev(partition)
+
+        /** Since message storage Phase 2a the enter / catch-up page is a coverage write: counted with the snapshots. */
+        override suspend fun applyCoverage(
+            scope: SyncScopeKey,
+            envelopes: List<build.raft.app.network.sync.CanonicalMessageEnvelopeV2>,
+            coverage: build.raft.app.network.sync.CanonicalMessageV2Coverage?,
+            revAtRequest: Long,
+            userDriven: Boolean,
+            threadParent: build.raft.app.network.sync.CanonicalMessageV2ThreadParent?,
+            insertOnly: Boolean,
+            unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
+            runPartitionRetention: Boolean,
+        ): CanonicalMessageV2StoreWriteResult {
+            snapshotWrites += 1
+            return delegate.applyCoverage(scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId, runPartitionRetention)
+        }
         override suspend fun containsFact(scope: SyncScopeKey, factId: String): Boolean = delegate.containsFact(scope, factId)
     }
 

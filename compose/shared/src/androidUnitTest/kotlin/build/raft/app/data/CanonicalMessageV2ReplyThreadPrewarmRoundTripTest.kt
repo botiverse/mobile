@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
@@ -117,15 +118,16 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
     }
 
     @Test
-    fun newerPrewarmPageWithAGapReplacesTheStoredWindow() = withFreshDatabase { database ->
-        // Twin of the extend above: stored window 50..70, but the page (80, 90) shares no reply with it, so
-        // nothing proves page ∪ window contiguous. Same as the gap catch-up's `window_replaced`: the page
-        // becomes the window and the dropped history comes back through older paging.
+    fun newerPrewarmPageWithAGapKeepsTheStoredWindowAsAnIsland() = withFreshDatabase { database ->
+        // Twin of the extend above: stored window 50..70, but the full page (80, 90) proves only [80, 90], so
+        // nothing proves page ∪ window contiguous. Message storage Phase 2a: the page becomes the head and the
+        // stored window stays on disk as an older island (`island_kept`); the reader shows the head.
         val rig = Rig(database)
         runBlocking {
             rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
             rig.prewarm(replyPageArray(80, 90), limit = 2)
-            assertTrue(rig.logs.any { committed("window_replaced", 2) in it }, rig.logs.toString())
+            assertTrue(rig.logs.any { committed("island_kept", 2) in it }, rig.logs.toString())
+            assertEquals(listOf(50L, 60L, 70L, 80L, 90L), rig.storedSeqs(), "nothing stored is dropped")
             val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
             assertEquals(listOf(80L, 90L), thread.envelopes.map { it.fact.seq })
             assertEquals(80L, thread.cursor.oldestLoadedSeq)
@@ -198,6 +200,25 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
         }
     }
 
+    @Test
+    fun anEnterRewritesARealtimeHeaderThatNamedAnotherRootAndKeepsOneNamingTheSameRoot() {
+        // Pair: the realtime header names root m99 (another thread's) or m30 (this one). The server-confirmed parent
+        // wins: the foreign header is cleared and rewritten; the matching one is simply filled. Both end readable.
+        fun run(realtimeRoot: String) = onFreshDatabase { database ->
+            val rig = Rig(database)
+            runBlocking {
+                rig.seedRealtimeHeader(realtimeRoot)
+                rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+                val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
+                assertEquals(listOf(50L, 60L, 70L), thread.envelopes.map { it.fact.seq })
+                assertEquals("m30", thread.cursor.rootMessageId)
+                rig.logs.any { "parent_rewritten old=channel-1/m99" in it }
+            }
+        }
+        assertTrue(run("m99"))
+        assertFalse(run("m30"))
+    }
+
     private class Rig(
         database: RaftSqlDatabase,
         flagOn: Boolean = true,
@@ -214,6 +235,18 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             ),
         )
         private val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
+
+        /** A realtime reply created thread-1's header naming the parent its frame claimed (Phase 3a). */
+        suspend fun seedRealtimeHeader(rootMessageId: String) {
+            store.applyCoverage(
+                SyncScopeKey(partition, "thread-1", "thread"), emptyList(), coverage = null, revAtRequest = 0L, userDriven = false,
+                threadParent = build.raft.app.network.sync.CanonicalMessageV2ThreadParent("channel", "channel-1", rootMessageId),
+            )
+        }
+
+        /** Every reply fact of thread-1 on disk, head or island. */
+        suspend fun storedSeqs(): List<Long> =
+            store.restore(SyncScopeKey(partition, "thread-1", "thread")).envelopes.map { it.fact.seq }.sorted()
         private val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
@@ -237,11 +270,13 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             loader.persistReplyThreadPrewarmPage(partition, "thread-1", parent, page, limit, generation) { true }
     }
 
-    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) = onFreshDatabase(block)
+
+    private fun <T> onFreshDatabase(block: (RaftSqlDatabase) -> T): T {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
             RaftSqlDatabase.Schema.create(driver).value
-            block(RaftSqlDatabase(driver))
+            return block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

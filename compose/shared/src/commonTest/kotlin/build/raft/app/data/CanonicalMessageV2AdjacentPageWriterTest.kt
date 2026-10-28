@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.network.sync.legacyWindowSegment
+import build.raft.app.network.sync.mirroring
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
@@ -171,26 +173,29 @@ class CanonicalMessageV2AdjacentPageWriterTest {
     }
 
     @Test
-    fun latestPageOverlappingTheWindowExtendsItAndADisjointOneReplacesIt() = runBlocking {
-        // Task #168 step 1. Positive: m40 (stored) is on the page ⇒ incremental, newest edge moves.
+    fun latestPageReachingTheWindowExtendsItAndOneSeqShortKeepsTheWindowAsAnIsland() = runBlocking {
+        // Message storage Phase 2a. Twin pair with IDENTICAL rows (m60, m70, a full page): only the server's
+        // messageWindow differs. A says nothing lies between seq 40 and the page ([41, 70]: touches the stored
+        // [20, 40]); B says seq 41 exists and is not on the page ([42, 70]: one seq short).
+        val page = adjacentPageOf(adjacentPageNode("m60", 60), adjacentPageNode("m70", 70))
         val joined = harness()
         joined.seedWindow()
-        joined.latest(adjacentPageOf(adjacentPageNode("m40", 40), adjacentPageNode("m50", 50)), limit = 200)
-        assertEquals(listOf(20L, 30L, 40L, 50L), joined.store.seqs(scope))
-        assertEquals(1, joined.store.incrementals.size)
-        assertEquals(50L, joined.store.cursors.getValue(scope).newestLoadedSeq)
+        joined.latest(page, limit = 2, messageWindow = channelWindow(coveredAfterSeq = 40, coveredThroughSeq = 70))
+        assertEquals(listOf(20L, 30L, 40L, 60L, 70L), joined.store.seqs(scope))
+        assertEquals(listOf(20L to 70L), joined.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
         assertEquals(20L, joined.store.cursors.getValue(scope).oldestLoadedSeq)
+        assertEquals(70L, joined.store.cursors.getValue(scope).newestLoadedSeq)
+        assertTrue(joined.logs.any { "outcome=window_extended new=60..70" in it }, joined.logs.toString())
 
-        // Twin: the same seqs, but the seq-40 message on the page is not the stored one ⇒ snapshot.
-        val disjoint = harness()
-        disjoint.seedWindow()
-        disjoint.latest(adjacentPageOf(adjacentPageNode("x40", 40), adjacentPageNode("m50", 50)), limit = 200)
-        assertEquals(listOf(40L, 50L), disjoint.store.seqs(scope))
-        assertEquals(1, disjoint.store.snapshots.size - 1, "one replacement snapshot on top of the seed")
-        val cursor = disjoint.store.cursors.getValue(scope)
-        assertEquals(40L, cursor.oldestLoadedSeq)
-        assertTrue(cursor.hasLoadedOldest, "2 < limit 200 ⇒ the page reached the channel's start")
-        assertTrue(disjoint.logs.any { "outcome=window_replaced old=20..40 oldFacts=3 new=40..50" in it }, disjoint.logs.toString())
+        val island = harness()
+        island.seedWindow()
+        island.latest(page, limit = 2, messageWindow = channelWindow(coveredAfterSeq = 41, coveredThroughSeq = 70))
+        assertEquals(listOf(20L, 30L, 40L, 60L, 70L), island.store.seqs(scope), "nothing stored is dropped")
+        assertEquals(listOf(20L to 40L, 42L to 70L), island.store.segments.getValue(scope).map { it.lowSeq to it.highSeq })
+        val cursor = island.store.cursors.getValue(scope)
+        assertEquals(60L, cursor.oldestLoadedSeq, "the header mirrors the new head")
+        assertEquals(70L, cursor.newestLoadedSeq)
+        assertTrue(island.logs.any { "outcome=island_kept new=60..70" in it }, island.logs.toString())
     }
 
     @Test
@@ -212,10 +217,10 @@ class CanonicalMessageV2AdjacentPageWriterTest {
         owned.enterWindow(foldInput("channel-1"))
         assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, owned.canary.continuityOf(scope))
         // Task #168 device FAIL: the canary's own scope is no longer skipped — its catch-up page is written.
-        owned.latest(page, limit = 200)
-        assertEquals(listOf(100L), owned.store.seqs(scope))
+        owned.latest(page, limit = 1)
+        assertEquals(listOf(7L, 100L), owned.store.seqs(scope), "the enter's page stays (an older island)")
         assertEquals(100L, owned.store.cursors.getValue(scope).newestLoadedSeq)
-        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=window_replaced" in it }, owned.logs.toString())
+        assertTrue(owned.logs.any { "canonical_v2_latest_page" in it && "outcome=island_kept" in it }, owned.logs.toString())
         assertTrue(owned.logs.none { "canary_owned" in it }, owned.logs.toString())
         // #3008 kept for the catch-up writer: nothing proves the page continuous with the realtime stream.
         assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, owned.canary.continuityOf(scope))
@@ -465,7 +470,8 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             limit: Int,
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
-        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, stillCurrent)
+            messageWindow: ChannelMessageWindow? = null,
+        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, messageWindow, false, stillCurrent)
     }
 
     /**
@@ -548,6 +554,26 @@ internal fun adjacentPageNode(
 internal fun adjacentPageOf(vararg nodes: String): JsonArray =
     Json.parseToJsonElement("[${nodes.joinToString(",")}]") as JsonArray
 
+/** The server `messageWindow` of a `latest`-direction page of [scopeId] on server-1. */
+internal fun channelWindow(
+    coveredAfterSeq: Long,
+    coveredThroughSeq: Long,
+    completeThroughLatest: Boolean = true,
+    scopeId: String = "channel-1",
+): ChannelMessageWindow = ChannelMessageWindow(
+    schemaVersion = CHANNEL_MESSAGE_WINDOW_SCHEMA_VERSION,
+    domain = CHANNEL_MESSAGE_WINDOW_DOMAIN,
+    serverId = "server-1",
+    scopeId = scopeId,
+    coveredAfterSeq = coveredAfterSeq,
+    coveredThroughSeq = coveredThroughSeq,
+    completeThroughLatest = completeThroughLatest,
+)
+
+/** The JSON of [window] for a raw page body. */
+internal fun channelWindowJson(window: ChannelMessageWindow): String =
+    kotlinx.serialization.json.Json.encodeToString(ChannelMessageWindow.serializer(), window)
+
 /** A V2 store that keeps facts and cursors in memory (no retention), for the writer's gates. */
 internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
     val facts = mutableMapOf<SyncScopeKey, MutableMap<String, CanonicalMessageEnvelopeV2>>()
@@ -561,6 +587,8 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
         snapshots += frame
         facts[frame.scope] = frame.envelopes.associateByTo(mutableMapOf()) { it.fact.id }
         cursors[frame.scope] = frame.cursor
+        // As the SQLite store: the legacy window is the scope's (head) segment.
+        segments[frame.scope] = listOfNotNull(frame.cursor.legacyWindowSegment(verifiedAtMs = 0L))
         return CanonicalMessageV2StoreWriteResult()
     }
 
@@ -569,6 +597,12 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
         val scopeFacts = facts.getOrPut(frame.scope) { mutableMapOf() }
         frame.envelopes.forEach { scopeFacts[it.fact.id] = it }
         cursors[frame.scope] = frame.cursor
+        val window = frame.cursor.legacyWindowSegment(verifiedAtMs = 0L)
+        segments[frame.scope] = if (window == null) {
+            emptyList()
+        } else {
+            segments[frame.scope].orEmpty().filter { it.highSeq + 1L < window.effectiveLowSeq } + window
+        }
         return CanonicalMessageV2StoreWriteResult()
     }
 
@@ -591,4 +625,60 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
 
     override suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
         cursors.keys.filter { it.partition == partition && it.scopeId == scopeId }.map { it.scopeKind }.sorted()
+
+    val segments = mutableMapOf<SyncScopeKey, List<build.raft.app.network.sync.CanonicalMessageV2Segment>>()
+    var localRev = 0L
+
+    /** Phase 2a: facts upserted (no localRev guard), the coverage unioned, the header mirroring the head. */
+    override suspend fun applyCoverage(
+        scope: SyncScopeKey,
+        envelopes: List<CanonicalMessageEnvelopeV2>,
+        coverage: build.raft.app.network.sync.CanonicalMessageV2Coverage?,
+        revAtRequest: Long,
+        userDriven: Boolean,
+        threadParent: build.raft.app.network.sync.CanonicalMessageV2ThreadParent?,
+        insertOnly: Boolean,
+        unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
+        runPartitionRetention: Boolean,
+    ): CanonicalMessageV2StoreWriteResult {
+        localRev += 1
+        val scopeFacts = facts.getOrPut(scope) { mutableMapOf() }
+        envelopes.forEach { scopeFacts[it.fact.id] = it }
+        val unioned = coverage?.let {
+            build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union(segments[scope].orEmpty(), it.toSegment(localRev))
+        } ?: segments[scope].orEmpty()
+        segments[scope] = unioned
+        val written = coverageHeader(cursors[scope], unioned, scopeFacts.values, threadParent, envelopes)
+        cursors[scope] = written
+        snapshots += CanonicalMessageV2SnapshotFrame(scope, envelopes, written)
+        return CanonicalMessageV2StoreWriteResult(committedCursor = written)
+    }
+
+    override suspend fun readSegments(scope: SyncScopeKey) = segments[scope].orEmpty()
+
+    override suspend fun maxLocalRev(partition: DurablePartitionKey): Long = localRev
+}
+
+/** The header a coverage write commits: [stored] (or a new one) with its window mirroring the head segment. */
+internal fun coverageHeader(
+    stored: PersistedCursor?,
+    segments: List<build.raft.app.network.sync.CanonicalMessageV2Segment>,
+    facts: Collection<CanonicalMessageEnvelopeV2>,
+    threadParent: build.raft.app.network.sync.CanonicalMessageV2ThreadParent?,
+    envelopes: List<CanonicalMessageEnvelopeV2>,
+): PersistedCursor {
+    val base = stored ?: PersistedCursor(
+        latestSeq = null,
+        oldestLoadedSeq = null,
+        newestLoadedSeq = null,
+        hasLoadedOldest = false,
+        hasLoadedNewest = false,
+        parentScopeKind = threadParent?.parentScopeKind,
+        parentScopeId = threadParent?.parentScopeId,
+        rootMessageId = threadParent?.rootMessageId,
+    )
+    val head = build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.head(segments)
+    val inHead = head?.let { h -> facts.map { it.fact.seq }.filter { it in h } }.orEmpty()
+    val bounds = if (inHead.isEmpty()) null else inHead.min() to inHead.max()
+    return base.mirroring(head, bounds).copy(latestSeq = (listOfNotNull(base.latestSeq) + envelopes.map { it.fact.seq }).maxOrNull())
 }

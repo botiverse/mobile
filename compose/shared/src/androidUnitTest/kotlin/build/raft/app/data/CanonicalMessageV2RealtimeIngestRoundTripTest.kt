@@ -662,7 +662,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         override suspend fun readCursor(scope: SyncScopeKey) = guarded { delegate.readCursor(scope) }
         override suspend fun containsFact(scope: SyncScopeKey, factId: String) = guarded { delegate.containsFact(scope, factId) }
         override suspend fun readSegments(scope: SyncScopeKey) = guarded { delegate.readSegments(scope) }
-        override suspend fun maxLocalRev(scope: SyncScopeKey) = guarded { delegate.maxLocalRev(scope) }
+        override suspend fun maxLocalRev(partition: DurablePartitionKey) = guarded { delegate.maxLocalRev(partition) }
         override suspend fun applyCoverage(
             scope: SyncScopeKey,
             envelopes: List<CanonicalMessageEnvelopeV2>,

@@ -317,7 +317,7 @@ internal class CanonicalMessageV2RealtimeIngest(
                     scope = scope,
                     envelopes = listOf(converted.envelope),
                     coverage = null,
-                    revAtRequest = generationEngine.storedLocalRev(scope),
+                    revAtRequest = generationEngine.storedLocalRev(partition),
                     userDriven = false,
                     expectedPartitionGeneration = work.expectedPartitionGeneration,
                     threadParent = threadParent,

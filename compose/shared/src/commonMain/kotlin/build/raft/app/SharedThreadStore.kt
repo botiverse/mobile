@@ -2771,6 +2771,8 @@ internal class SharedThreadDataSource(
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
             // The writer uses it only for this exact partition + top-level channel.
             baseline = baseline,
+            messageWindow = rawPage.messageWindow,
+            historyLimited = rawPage.historyLimited,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -4499,6 +4501,8 @@ internal class SharedThreadDataSource(
             rawMessages = rawPage.messages,
             requestedLimit = rawPage.requestedLimit,
             expectedCommitGeneration = expectedCommitGeneration,
+            messageWindow = rawPage.messageWindow,
+            historyLimited = rawPage.historyLimited,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
     }
 
