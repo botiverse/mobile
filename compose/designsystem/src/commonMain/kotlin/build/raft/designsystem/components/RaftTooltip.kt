@@ -15,6 +15,7 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TooltipState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -159,23 +161,25 @@ fun RaftTooltip(
             )
         }
         val density = LocalDensity.current
+        val spacing = with(density) { RaftTooltipMetrics.AnchorSpacing.roundToPx() }
+        val frame = LocalRaftFrameInsets.current.toPx(density)
         val sideProvider =
             if (side == null) {
                 null
             } else {
-                remember(side, density) {
-                    RaftTooltipSidePositionProvider(side, with(density) { RaftTooltipMetrics.AnchorSpacing.roundToPx() })
-                }
+                remember(side, spacing, frame) { RaftTooltipSidePositionProvider(side, spacing, frame) }
             }
+        val placed =
+            when (placement) {
+                RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
+                // Material's own Below provider: its caret follows the side it picks.
+                RaftTooltipPlacement.Below ->
+                    TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
+            }
+        // The host's frame insets: Material's placement, then moved out of them (none: as it is).
+        val framed = remember(placed, spacing, frame) { if (frame.isZero) placed else RaftTooltipFrameProvider(placed, spacing, frame) }
         TooltipBox(
-            positionProvider =
-                sideProvider
-                    ?: when (placement) {
-                        RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
-                        // Material's own Below provider: its caret follows the side it picks.
-                        RaftTooltipPlacement.Below ->
-                            TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
-                    },
+            positionProvider = sideProvider ?: framed,
             tooltip = {
                 if (sideProvider == null) {
                     PlainTooltip(
@@ -220,6 +224,7 @@ fun RaftTooltip(
 private class RaftTooltipSidePositionProvider(
     private val preferred: RaftTooltipSide,
     private val spacing: Int,
+    private val frame: RaftFramePx,
 ) : PopupPositionProvider {
     var resolved by mutableStateOf(preferred)
         private set
@@ -230,7 +235,7 @@ private class RaftTooltipSidePositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
-        val (offset, side) = raftTooltipSidePosition(anchorBounds, windowSize, popupContentSize, spacing, preferred)
+        val (offset, side) = raftTooltipSidePosition(anchorBounds, windowSize, popupContentSize, spacing, preferred, frame)
         if (resolved != side) resolved = side
         return offset
     }
@@ -247,19 +252,83 @@ internal fun raftTooltipSidePosition(
     popup: IntSize,
     spacing: Int,
     preferred: RaftTooltipSide,
+    frame: RaftFramePx = RaftFramePx.Zero,
 ): Pair<IntOffset, RaftTooltipSide> {
     val leftX = anchor.left - spacing - popup.width
     val rightX = anchor.right + spacing
-    val fitsLeft = leftX >= 0
-    val fitsRight = rightX + popup.width <= window.width
+    // Room on a side ends at the host's inset there (raft-ui: the tooltip flips away from it).
+    val fitsLeft = leftX >= frame.left
+    val fitsRight = rightX + popup.width <= window.width - frame.right
     val side =
         when (preferred) {
             RaftTooltipSide.Left -> if (!fitsLeft && fitsRight) RaftTooltipSide.Right else RaftTooltipSide.Left
             RaftTooltipSide.Right -> if (!fitsRight && fitsLeft) RaftTooltipSide.Left else RaftTooltipSide.Right
         }
     val x = if (side == RaftTooltipSide.Left) leftX else rightX
-    val y = (anchor.top + (anchor.height - popup.height) / 2).coerceAtMost(window.height - popup.height).coerceAtLeast(0)
+    val y = (anchor.top + (anchor.height - popup.height) / 2).coerceAtMost(window.height - popup.height).coerceAtLeast(frame.top)
     return IntOffset(x, y) to side
+}
+
+/** [RaftFrameInsets] in px. */
+@Immutable
+internal data class RaftFramePx(val top: Int = 0, val left: Int = 0, val right: Int = 0) {
+    val isZero: Boolean get() = top <= 0 && left <= 0 && right <= 0
+
+    companion object {
+        val Zero = RaftFramePx()
+    }
+}
+
+internal fun RaftFrameInsets.toPx(density: Density): RaftFramePx =
+    if (isZero) {
+        RaftFramePx.Zero
+    } else {
+        with(density) {
+            RaftFramePx(top.coerceAtLeast(0.dp).roundToPx(), left.coerceAtLeast(0.dp).roundToPx(), right.coerceAtLeast(0.dp).roundToPx())
+        }
+    }
+
+/** Material's placement ([inner]), then moved out of the host's [frame] insets ([raftTooltipClearOfFrame]). */
+private class RaftTooltipFrameProvider(
+    private val inner: PopupPositionProvider,
+    private val spacing: Int,
+    private val frame: RaftFramePx,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset =
+        raftTooltipClearOfFrame(
+            inner.calculatePosition(anchorBounds, windowSize, layoutDirection, popupContentSize),
+            anchorBounds,
+            windowSize,
+            popupContentSize,
+            spacing,
+            frame,
+        )
+}
+
+/**
+ * A tooltip at [placed] moved out of the host's [frame] insets (raft-ui #860, up to the inset, no
+ * gap): one that would open up into the top band opens [spacing] below [anchor] instead, and one
+ * reaching into a side inset slides along toward the middle, as far as the window allows.
+ */
+internal fun raftTooltipClearOfFrame(
+    placed: IntOffset,
+    anchor: IntRect,
+    window: IntSize,
+    popup: IntSize,
+    spacing: Int,
+    frame: RaftFramePx,
+): IntOffset {
+    if (frame.isZero) return placed
+    val y = if (placed.y < frame.top && placed.y < anchor.top) anchor.bottom + spacing else placed.y
+    val minX = frame.left
+    val maxX = window.width - frame.right - popup.width
+    val x = if (minX <= maxX) placed.x.coerceIn(minX, maxX) else placed.x
+    return IntOffset(x, y)
 }
 
 /**
