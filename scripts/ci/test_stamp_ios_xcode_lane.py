@@ -25,10 +25,10 @@ class StampIosXcodeLaneTest(unittest.TestCase):
         self.env = dict(
             os.environ,
             PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
-            FAKE_XCODE="26.6",
-            FAKE_SIM_SDK="26.5",
-            XCODE_APP_PATH="/Applications/Xcode_26.6.app",
-            RAFT_DEFAULT_XCODE_APP="/Applications/Xcode_26.6.app",
+            FAKE_XCODE="27.1",
+            FAKE_SIM_SDK="27.1",
+            XCODE_APP_PATH="/Applications/Xcode_27.1.app",
+            RAFT_DEFAULT_XCODE_APP="/Applications/Xcode_27.1.app",
         )
 
     def write_tool(self, name, body):
@@ -46,26 +46,26 @@ class StampIosXcodeLaneTest(unittest.TestCase):
         self.run_script()
         data = json.loads(self.metadata.read_text())
         self.assertEqual(data["xcode_lane"], "default")
-        self.assertEqual(data["xcode_version"], "26.6")
+        self.assertEqual(data["xcode_version"], "27.1")
         self.assertEqual(data["xcode_build"], "17F42")
-        self.assertEqual(data["ios_sdk_version"], "26.5")
-        self.assertEqual(data["xcode_app"], "Xcode_26.6.app")
+        self.assertEqual(data["ios_sdk_version"], "27.1")
+        self.assertEqual(data["xcode_app"], "Xcode_27.1.app")
         for key, value in BASE.items():
             self.assertEqual(data[key], value)
 
     def test_trailing_slash_is_still_default(self):
-        self.env["XCODE_APP_PATH"] = "/Applications/Xcode_26.6.app/"
+        self.env["XCODE_APP_PATH"] = "/Applications/Xcode_27.1.app/"
         self.run_script()
         self.assertEqual(json.loads(self.metadata.read_text())["xcode_lane"], "default")
 
-    def test_opt_in_27_1_lane(self):
-        self.env.update(XCODE_APP_PATH="/Applications/Xcode_27.1.app", FAKE_XCODE="27.1",
-                        FAKE_SIM_SDK="27.1")
+    def test_26_6_fallback_is_opt_in_lane(self):
+        self.env.update(XCODE_APP_PATH="/Applications/Xcode_26.6.app", FAKE_XCODE="26.6",
+                        FAKE_SIM_SDK="26.5")
         self.run_script()
         data = json.loads(self.metadata.read_text())
         self.assertEqual(data["xcode_lane"], "opt-in")
-        self.assertEqual(data["ios_sdk_version"], "27.1")
-        self.assertEqual(data["xcode_app"], "Xcode_27.1.app")
+        self.assertEqual(data["ios_sdk_version"], "26.5")
+        self.assertEqual(data["xcode_app"], "Xcode_26.6.app")
 
     def test_refuses_unknown_lane_or_toolchain(self):
         original = self.metadata.read_text()

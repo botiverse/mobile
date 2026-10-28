@@ -31,7 +31,8 @@ gh workflow run ios-release.yml --repo botiverse/mobile --ref <release-branch> \
   -f release_notes_version=1.15.0 \
   -f hands_channel=main -f export_method=app-store-connect \
   -f release_mode=draft \
-  -f macos_runner=blacksmith-12vcpu-macos-latest \
+  -f macos_runner=xcode-27-xlarge \
+  -f xcode_app_path=/Applications/Xcode_27.1.app \
   -f testflight_internal=false \
   -f testflight_what_to_test=""
 ```
@@ -39,17 +40,22 @@ gh workflow run ios-release.yml --repo botiverse/mobile --ref <release-branch> \
 Inputs that matter:
 - `release_notes_version` — directory under `change-logs/`; reads
   `change-logs/<v>/ios/{zh-CN,en,ja}.md` (fails closed on an incomplete set).
-- `macos_runner` — `blacksmith-12vcpu-macos-latest` (default, 60 min timeout);
-  `macos-latest-xlarge` (GitHub larger, billed) or `macos-latest` (7 GB;
-  Kotlin/Native release link may OOM) only when Blacksmith is unavailable.
-- `xcode_app_path` — `/Applications/Xcode_26.6.app` (default, iOS 26.5 SDK:
-  letterboxed on iPhone Duo). For the iOS 27.1 SDK (iPhone Duo edge-to-edge)
-  dispatch `-f macos_runner=xcode-27-xlarge -f xcode_app_path=/Applications/Xcode_27.1.app`
-  (`xcode-27` is the 7 GB variant; on that image `Xcode_27.1.app` is the real
-  install and `Xcode_27.1.0.app` a symlink, which the pin step rejects). Only the `xcode-27*`
-  runners have Xcode 27.1; the resolve job fails any other pairing. GitHub-hosted
-  macOS minutes are billed. The build summary and Hands `build-metadata.json`
-  record `xcode_version`, `ios_sdk_version` and `xcode_lane=opt-in`.
+- `macos_runner` + `xcode_app_path` — default `xcode-27-xlarge` +
+  `/Applications/Xcode_27.1.app` (iOS 27.1 SDK, iPhone Duo edge-to-edge; owner
+  decision 2026-10-28: all iOS builds use Xcode 27.1). Only GitHub's `xcode-27*`
+  images have Xcode 27.1 (`Xcode_27.1.app` is the real install there,
+  `Xcode_27.1.0.app` a symlink the pin step rejects; no 26.x). GitHub-hosted
+  macOS minutes are billed; non-Blacksmith runners get a 120 min timeout.
+  `xcode-27` is the 7 GB variant (5g heap, the Kotlin/Native release link may
+  OOM) — avoid it for releases.
+- Manual fallback only (e.g. the `xcode-27*` pool is unavailable):
+  `-f macos_runner=blacksmith-12vcpu-macos-latest -f xcode_app_path=/Applications/Xcode_26.6.app`
+  (60 min timeout; `macos-latest-xlarge` also has 26.6). A 26.6 build uses the
+  iOS 26.5 SDK and is **letterboxed on iPhone Duo**; it is recorded as a
+  deliberate `xcode_lane=opt-in` build. The resolve job fails any other
+  runner/Xcode pairing. The build summary and Hands `build-metadata.json`
+  record `xcode_version`, `ios_sdk_version` and `xcode_lane`
+  (`default` = 27.1).
 - `testflight_internal=true` — after the draft, upload to ASC and assign the
   internal group **Botiverse** only (never external/App Store/activation).
   Use it only when the owner or the train's standing directive asked for

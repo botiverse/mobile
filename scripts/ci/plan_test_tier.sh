@@ -415,17 +415,17 @@ self_test() {
     return 1
   fi
   # An opt-in Xcode lane must compile iOS: scope=full plans pass, scope=pr is refused.
-  if ! emit_plan workflow_dispatch "$work/paths" false main full /Applications/Xcode_27.1.app >/dev/null 2>&1; then
+  if ! emit_plan workflow_dispatch "$work/paths" false main full /Applications/Xcode_27.0.app >/dev/null 2>&1; then
     echo "xcode_app_path with scope=full unexpectedly failed" >&2
     return 1
   fi
   local lane_error
-  if lane_error="$(emit_plan workflow_dispatch "$work/paths" false main pr /Applications/Xcode_27.1.app 2>&1 >/dev/null)"; then
+  if lane_error="$(emit_plan workflow_dispatch "$work/paths" false main pr /Applications/Xcode_27.0.app 2>&1 >/dev/null)"; then
     echo "xcode_app_path with scope=pr (no iOS compile) unexpectedly passed" >&2
     return 1
   fi
   case "$lane_error" in
-    *"xcode_app_path=/Applications/Xcode_27.1.app is set but this plan skips the iOS compile"*"scope=full"*) ;;
+    *"xcode_app_path=/Applications/Xcode_27.0.app is set but this plan skips the iOS compile"*"scope=full"*) ;;
     *) echo "xcode_app_path refusal message missing, got: $lane_error" >&2; return 1 ;;
   esac
   if emit_plan pull_request "$work/paths" maybe feature >/dev/null 2>&1; then

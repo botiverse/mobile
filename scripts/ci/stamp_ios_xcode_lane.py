@@ -5,10 +5,11 @@ Usage: stamp_ios_xcode_lane.py <metadata.json>
 Env:   XCODE_APP_PATH          the Xcode this job selected (scripts/ci/select_ios_xcode.sh)
        RAFT_DEFAULT_XCODE_APP  the workflow's pinned default Xcode
 
-An app built on the opt-in lane (e.g. xcode_app_path=/Applications/Xcode_27.1.app) is not
-the release toolchain: the iOS SDK decides how the app lays out on iPhone Duo. Without these
-fields a 27.1-built carrier is indistinguishable from the 26.6 one, and qa-acceptance-ios.yml
-would accept it as the release build. scripts/qa/prepare_pinned_ios_app.sh reads xcode_lane
+An app built on the opt-in lane (since 2026-10-28 the default is Xcode 27.1, so e.g. the
+xcode_app_path=/Applications/Xcode_26.6.app fallback) is not the release toolchain: the iOS SDK
+decides how the app lays out on iPhone Duo (26.x letterboxes it). Without these fields a
+26.6-built carrier is indistinguishable from the 27.1 one, and qa-acceptance-ios.yml would
+accept it as the release build. scripts/qa/prepare_pinned_ios_app.sh reads xcode_lane
 and refuses anything but "default" unless the run allows it explicitly.
 
 Fails (exit 2) when the lane or versions cannot be determined: this runs on the producer, and
