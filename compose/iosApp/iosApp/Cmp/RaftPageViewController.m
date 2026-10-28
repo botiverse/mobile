@@ -1,6 +1,7 @@
 #import "RaftPageViewController.h"
 #import "RaftAdaptiveNavigationSession.h"
 #import "RaftAdaptiveEditorSnapshot.h"
+#import "RaftIosDuoGeometry.h"
 #import "HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
@@ -424,20 +425,31 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     NSDictionary *payload =
         [_raftAdaptivePanePublisher nextPayloadWithWidthPoints:size.width
                                                   heightPoints:size.height
-                                                         scale:scale];
+                                                         scale:scale
+                                                  sideColumn:RaftIosSideColumnIsActive(window)
+                                                     stripEdge:RaftIosSideColumnEdgeName(window)
+                                             stripWidthPoints:RaftIosSideColumnWidthPoints(window)
+                                    nativeTabBarHeightPoints:RaftIosNativeTabBarHeightPoints(window)
+                                             reservedRegions:RaftIosReservedRegions(window)];
     if (payload == nil) {
         return;
     }
     [self raftSendEvent:RaftAdaptivePanePagerEvent data:payload];
     NSString *message =
         [NSString stringWithFormat:
-            @"ios_window_facts page=%@ widthPx=%@ heightPx=%@ density=%@ posture=flat hSizeClass=%ld vSizeClass=%ld reason=%@",
+            @"ios_window_facts page=%@ widthPx=%@ heightPx=%@ density=%@ posture=flat hSizeClass=%ld vSizeClass=%ld "
+            @"sideColumn=%@ stripEdge=%@ stripWidthPt=%@ nativeTabBarHeightPt=%@ reservedRegions=%@ reason=%@",
             _pageName ?: @"unknown",
             payload[@"widthPx"],
             payload[@"heightPx"],
             payload[@"density"],
             (long)self.traitCollection.horizontalSizeClass,
             (long)self.traitCollection.verticalSizeClass,
+            payload[@"sideColumn"],
+            payload[@"stripEdge"],
+            payload[@"stripWidthPt"],
+            payload[@"nativeTabBarHeightPt"],
+            payload[@"reservedRegions"],
             reason ?: @"unknown"];
     RaftIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
 }

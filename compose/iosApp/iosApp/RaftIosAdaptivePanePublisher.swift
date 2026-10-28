@@ -10,15 +10,59 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let widthPx: Int
         let heightPx: Int
         let density: CGFloat
+        let sideColumn: Bool
+        let stripEdge: String
+        let stripWidthPt: CGFloat
+        let nativeTabBarHeightPt: CGFloat
+        let reservedRegions: [[String: NSNumber]]
     }
 
     private var latest: Snapshot?
 
-    @objc(nextPayloadWithWidthPoints:heightPoints:scale:)
+    /// The physical side the vertical strip is drawn on, as the name shared expects:
+    /// "left", "right" or "none".
+    ///
+    /// UIKit's `verticalBarEdge` is a *logical* edge - "leading" or "trailing" - and in a
+    /// right-to-left language its trailing edge is the left of the screen. The side column is
+    /// laid out by physical side (the design system's column is placed on the Left or the
+    /// Right), so the host converts the logical edge into the physical side the strip is
+    /// actually drawn on. The host is the right place to do this: it knows the window's
+    /// effective layout direction.
+    ///
+    /// - Parameters:
+    ///   - verticalBarEdge: `UIVerticalBarEdge` as a number: 0 unspecified, 1 leading,
+    ///     2 trailing.
+    ///   - isRightToLeft: whether the window's effective layout direction is right-to-left.
+    @objc(physicalStripEdgeForVerticalBarEdge:rightToLeft:)
+    static func physicalStripEdge(verticalBarEdge: Int, rightToLeft: Bool) -> String {
+        // Only a leading or trailing edge places a bar; "unspecified" places none.
+        guard verticalBarEdge == 1 || verticalBarEdge == 2 else { return "none" }
+        let isLeading = verticalBarEdge == 1
+        // A leading edge is the left in a left-to-right language and the right in a
+        // right-to-left one.
+        let isOnLeft = isLeading != rightToLeft
+        return isOnLeft ? "left" : "right"
+    }
+
+    /// The window facts the host owns, read once per publish.
+    ///
+    /// `sideColumn` says the window is in the iPhone Duo side-column shape: the outer (folded)
+    /// display, or the inner display held landscape. Apple's HIG for iPhone Duo moves the tool
+    /// bar, tab bar and navigation buttons into one vertical strip on the right edge in that
+    /// shape, and back to a horizontal top bar when the inner display is held portrait.
+    ///
+    /// The shape is decided from the window's size and the device, not from the hinge angle: the
+    /// hinge APIs (`UIHinge`) are iOS 27.1+ and the app still has to build against the 26.x SDK.
+    @objc(nextPayloadWithWidthPoints:heightPoints:scale:sideColumn:stripEdge:stripWidthPoints:nativeTabBarHeightPoints:reservedRegions:)
     func nextPayload(
         widthPoints: CGFloat,
         heightPoints: CGFloat,
-        scale: CGFloat
+        scale: CGFloat,
+        sideColumn: Bool,
+        stripEdge: String,
+        stripWidthPoints: CGFloat,
+        nativeTabBarHeightPoints: CGFloat,
+        reservedRegions: [[String: NSNumber]]
     ) -> NSDictionary? {
         guard widthPoints.isFinite,
               heightPoints.isFinite,
@@ -41,7 +85,12 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let snapshot = Snapshot(
             widthPx: Int(widthPixels),
             heightPx: Int(heightPixels),
-            density: scale
+            density: scale,
+            sideColumn: sideColumn,
+            stripEdge: stripEdge,
+            stripWidthPt: stripWidthPoints.isFinite ? max(0, stripWidthPoints) : 0,
+            nativeTabBarHeightPt: nativeTabBarHeightPoints.isFinite ? max(0, nativeTabBarHeightPoints) : 0,
+            reservedRegions: reservedRegions
         )
         guard snapshot != latest else { return nil }
         latest = snapshot
@@ -51,6 +100,11 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             "heightPx": snapshot.heightPx,
             "density": snapshot.density,
             "posture": "flat",
+            "sideColumn": snapshot.sideColumn,
+            "stripEdge": snapshot.stripEdge,
+            "stripWidthPt": snapshot.stripWidthPt,
+            "nativeTabBarHeightPt": snapshot.nativeTabBarHeightPt,
+            "reservedRegions": snapshot.reservedRegions,
         ]
     }
 }
