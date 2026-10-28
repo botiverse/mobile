@@ -16,6 +16,19 @@ class SqliteUserVersionPreflightTest {
     }
 
     @Test
+    fun anEmptyWalFileIsTreatedAsAbsent() {
+        // SQLite leaves a zero-length -wal behind after a clean close (the WAL is truncated to
+        // zero, not deleted). The preflight must read the main database's version in that case;
+        // treating the empty file as a WAL to parse aborts the read.
+        val database = sqlitePageOne(userVersion = 10)
+
+        assertEquals(
+            10L,
+            readSqliteUserVersionFromFiles(database.asReadOnlyFile(), ByteArray(0).asReadOnlyFile()),
+        )
+    }
+
+    @Test
     fun lastCommittedWalPageOneWinsForBothChecksumByteOrders() {
         TestWalChecksumOrder.entries.forEach { order ->
             val database = sqlitePageOne(userVersion = 7)

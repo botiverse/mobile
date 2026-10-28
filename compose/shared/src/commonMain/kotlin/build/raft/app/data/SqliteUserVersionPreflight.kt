@@ -33,7 +33,10 @@ internal fun readSqliteUserVersionFromFiles(
     check(database.size >= mainPage.pageSize && database.size % mainPage.pageSize == 0L) {
         "Invalid SQLite database file size ${database.size} for page size ${mainPage.pageSize}"
     }
-    if (wal == null) return mainPage.userVersion
+    // SQLite truncates the -wal file to zero bytes after a clean close instead of deleting it, and
+    // a zero-length WAL carries no committed pages. Reading it as a WAL aborts the preflight, so
+    // an empty one is treated as absent and the main database's version stands.
+    if (wal == null || wal.size == 0L) return mainPage.userVersion
 
     check(wal.size >= SqliteWalHeaderSize) {
         "Invalid SQLite WAL: file is shorter than its header"
