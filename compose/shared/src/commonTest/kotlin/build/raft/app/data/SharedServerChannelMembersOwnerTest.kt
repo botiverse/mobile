@@ -406,6 +406,96 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun anOlderStoresPatchedCopyNeverReplacesANewerAnswerAfterReopen() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repositoryA = OwnerTestMemberRepository().apply { channelMembers = listOf(member("old-a"), member("old-b")) }
+        val repositoryB = OwnerTestMemberRepository().apply { channelMembers = listOf(member("new-a"), member("old-b")) }
+        val storeA = store(repositoryA, ownerState, channelMembersOffline = device.members) { 1L }
+        val storeB = store(repositoryB, ownerState, channelMembersOffline = device.members) { 1L }
+        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        // Store B: the channel is gone (drop), then comes back with a fresh answer (re-open).
+        repositoryB.failure = DataResult.Error(ScreenError(code = "http_404", retryable = false))
+        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        repositoryB.failure = null
+        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID), force = true)
+        runCurrent()
+        assertEquals(listOf("new-a", "old-b"), device.storedIds())
+
+        // Both stores apply one realtime removal; store A's copy is older than B's answer.
+        storeA.removeMember(ServerId(SERVER_ID), MemberId("old-b"))
+        storeB.removeMember(ServerId(SERVER_ID), MemberId("old-b"))
+        runCurrent()
+        assertEquals(listOf("new-a"), device.storedIds())
+    }
+
+    @Test
+    fun whenTwoStoresApplyOneRealtimeRemovalTheNewerAnswerStaysStored() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repositoryA = OwnerTestMemberRepository().apply { channelMembers = listOf(member("old-a"), member("gone")) }
+        val repositoryB = OwnerTestMemberRepository().apply { channelMembers = listOf(member("new-a"), member("gone")) }
+        val storeA = store(repositoryA, ownerState, channelMembersOffline = device.members) { 1L }
+        val storeB = store(repositoryB, ownerState, channelMembersOffline = device.members) { 1L }
+        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        // B patches first, A (holding the older answer) last: last writer must not win.
+        storeB.removeMember(ServerId(SERVER_ID), MemberId("gone"))
+        runCurrent()
+        storeA.removeMember(ServerId(SERVER_ID), MemberId("gone"))
+        runCurrent()
+
+        assertEquals(listOf("new-a"), device.storedIds())
+    }
+
+    @Test
+    fun aRemovedMemberLeavesStoredListsThatAreNotInMemory() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        loadOnce(device, ownerState, listOf(member("member-a"), member("member-b")))
+
+        // A new process: nothing in memory; a realtime removal arrives.
+        val store = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
+        store.removeMember(ServerId(SERVER_ID), MemberId("member-a"))
+        runCurrent()
+
+        assertEquals(listOf("member-b"), device.storedIds())
+    }
+
+    @Test
+    fun channelMembersUpdatedReloadsALoadedListAndDropsAStoredOnlyOne() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        loadOnce(device, ownerState, listOf(member("member-a")))
+
+        // Held only on disk: the viewer may no longer belong to the channel; the copy goes.
+        val coldRepository = OwnerTestMemberRepository()
+        val cold = store(coldRepository, ownerState, channelMembersOffline = device.members) { 1L }
+        cold.applyChannelMembersUpdated(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(null, device.storedIds())
+        assertEquals(0, coldRepository.getChannelMembersCalls)
+
+        // Loaded in memory: it reloads (and a viewer removed from it would get the lost-access drop).
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+        val loaded = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        loaded.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        repository.failure = DataResult.NoPermission(PermissionBlocker(code = "server_forbidden"))
+        loaded.applyChannelMembersUpdated(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(2, repository.getChannelMembersCalls)
+        assertEquals(emptyList(), loaded.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
+        assertEquals(null, device.storedIds())
+    }
+
+    @Test
     fun aRegainedServerStoresItsUnchangedMembersAgain() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))

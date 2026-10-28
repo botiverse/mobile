@@ -7,6 +7,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -82,6 +83,28 @@ internal class SharedChannelMembersOffline(
     // Channels the server refused (lost access): no store mirrors them until a fresh answer re-opens them.
     private val blocked = mutableSetOf<SharedServerChannelMembersScope>()
 
+    /** Now, on the offline cache's clock: taken when a members request starts ([SharedServerChannelMembersSlice.offlineAnswerStamp]). */
+    fun now(): Long = resource.fetchStarted()
+
+    /**
+     * A member left / was removed from [serverId] (realtime): every stored list of [accountId] there loses
+     * them, whether or not the list is in memory (in the background).
+     */
+    fun removeMemberEverywhere(accountId: String, serverId: String, memberId: String, memberKind: build.raft.app.model.MemberKind?) {
+        val member = memberId.trim().takeIf { it.isNotEmpty() } ?: return
+        scope.launch {
+            try {
+                resource.updateEach(accountId, serverId) { stored ->
+                    stored.copy(members = stored.members.filterNot { it.id.value.trim() == member && (memberKind == null || it.kind == memberKind) })
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                logger("channel_members_offline_remove_member result=failure type=${error::class.simpleName}")
+            }
+        }
+    }
+
     suspend fun read(scope: SharedServerChannelMembersScope): StoredChannelMembers? {
         val key = key(scope, mintedAt = null) ?: return null
         return resource.read(key)
@@ -118,15 +141,13 @@ internal class SharedChannelMembersOffline(
     fun follow(
         changes: Flow<*>,
         current: () -> Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice>,
-    ) {
+    ): Job {
         val hashes = mutableMapOf<SharedServerChannelMembersScope, Int>()
         synchronized(lock) { followers += hashes }
-        scope.launch {
+        val job = scope.launch {
             changes.conflate().collect {
                 try {
-                    // The instant first, then the state: a wipe after this instant wins over what is read now.
-                    val observedAt = resource.fetchStarted()
-                    mirrorOnce(hashes, current(), observedAt)
+                    mirrorOnce(hashes, current())
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -135,28 +156,33 @@ internal class SharedChannelMembersOffline(
                 if (mirrorPeriodMillis > 0) delay(mirrorPeriodMillis)
             }
         }
+        // A disposed store stops mirroring and its bookkeeping goes.
+        job.invokeOnCompletion { synchronized(lock) { followers.remove(hashes) } }
+        return job
     }
 
     private suspend fun mirrorOnce(
         hashes: MutableMap<SharedServerChannelMembersScope, Int>,
         slices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice>,
-        observedAt: Long,
     ) {
         // Slices that left this store (eviction, owner change) are forgotten: a later identical load stores again.
         synchronized(lock) { hashes.keys.retainAll(slices.keys) }
         for ((sliceScope, slice) in slices) {
             if (slice.status != SharedServerMembersLoadStatus.Loaded || slice.storedStandIn) continue
+            // Written under the instant its answer's request started: an older answer (another store's copy,
+            // a late one) never replaces a newer one, and a wipe after that instant fences it.
+            val answeredAt = slice.offlineAnswerStamp.takeIf { it > 0L } ?: continue
             val record = slice.toStoredChannelMembers()
             val hash = record.hashCode()
             if (synchronized(lock) { sliceScope in blocked || hashes[sliceScope] == hash }) continue
-            val key = key(sliceScope, mintedAt = observedAt) ?: continue
+            val key = key(sliceScope, mintedAt = answeredAt) ?: continue
             val stored =
                 if (record.members.isEmpty() && record.externalMembers.isEmpty()) {
                     // No members is no stand-in: the copy goes.
                     resource.remove(key)
                     true
                 } else {
-                    resource.write(key, record)
+                    resource.write(key, record, startedAt = answeredAt)
                 }
             // Only what reached disk is remembered (a fenced / failed write is tried again on the next change).
             if (stored) synchronized(lock) { if (sliceScope !in blocked) hashes[sliceScope] = hash }

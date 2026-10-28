@@ -135,7 +135,13 @@ data class SharedServerChannelMembersSlice(
      * The rows are the stored (offline) copy, not yet confirmed by the network: shown read-only (the
      * permission flags stay false, so no add / remove / role action) until a fresh answer replaces them.
      */
-    val storedStandIn: Boolean = false
+    val storedStandIn: Boolean = false,
+    /**
+     * When the request this slice answers started (the offline cache's clock; 0 = unknown): its stored copy
+     * is written under this instant, so an older answer (another store's, or a late one) never replaces a
+     * newer one on disk.
+     */
+    val offlineAnswerStamp: Long = 0L
 ) {
     fun snapshotOrNull(): ChannelMemberSnapshot? =
         channelId.takeIf { it.isNotBlank() }?.let {
@@ -674,11 +680,33 @@ class SharedServerMembersStore internal constructor(
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
-    init {
+    private val channelMembersMirror =
         channelMembersOffline?.follow(
             changes = _state.map { it.channelMemberSlices }.distinctUntilChanged(),
             current = { _state.value.channelMemberSlices },
         )
+
+    /** This store is gone (its shell closed): its offline mirror stops. */
+    internal fun dispose() {
+        channelMembersMirror?.cancel()
+    }
+
+    /**
+     * Realtime `channel:members-updated` for [channelId]: a list loaded here reloads (a viewer removed from
+     * the channel then gets the lost-access drop); a list held only on disk (or as a stand-in) is dropped,
+     * since the viewer may no longer belong to the channel; its next open loads afresh.
+     */
+    internal suspend fun applyChannelMembersUpdated(serverId: ServerId, channelId: ChannelId) {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return
+        val channelKey = channelId.value.normalizedServerMembersId() ?: return
+        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return
+        val scope = binding.scope(ChannelId(channelKey)) ?: return
+        val slice = _state.value.channelMemberSlices[scope]?.takeIf { it.ownerWriteGeneration == binding.writeGeneration }
+        if (slice != null && slice.status == SharedServerMembersLoadStatus.Loaded && !slice.storedStandIn) {
+            refreshLoadedChannelMembers(ServerId(serverKey), setOf(channelKey), reason = "channel_members_updated")
+        } else {
+            channelMembersOffline?.forget(scope)
+        }
     }
 
     // task #136 read edges: state carries wire-truth rosters ONLY; presence
@@ -1465,6 +1493,8 @@ class SharedServerMembersStore internal constructor(
         }
         // Tenny rule 2: the durable roster forgets the member too, so a cold start cannot bring it back.
         channelOwner?.let { owner -> durableStore?.removeMemberAsync(owner.durableKey(), memberKey) }
+        // ... and so do the stored channel member lists of this server, loaded in this process or not.
+        channelOwner?.let { owner -> channelMembersOffline?.removeMemberEverywhere(owner.accountId, serverKey, memberKey, memberKind) }
         if (!changed) return false
         _state.value =
             current.copy(
@@ -2804,6 +2834,7 @@ class SharedServerMembersStore internal constructor(
                             writeGeneration = write.writeGeneration
                         )
                     }
+            val answerStamp = channelMembersOffline?.now() ?: 0L
             val result =
                 try {
                     memberRepository.getChannelMembers(priority, ChannelId(channelKey))
@@ -2858,7 +2889,8 @@ class SharedServerMembersStore internal constructor(
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null,
-                            liveActivityAgentIds = result.data.liveActivityAgentIds
+                            liveActivityAgentIds = result.data.liveActivityAgentIds,
+                            offlineAnswerStamp = answerStamp
                         )
                     )
                     if (normalizedScope != scope) removeChannelSlice(scope)
@@ -2902,7 +2934,8 @@ class SharedServerMembersStore internal constructor(
                                     ?: false,
                             canAddMembersKnown = previousForBinding?.canAddMembersKnown == true,
                             status = SharedServerMembersLoadStatus.Loaded,
-                            errorCode = null
+                            errorCode = null,
+                            offlineAnswerStamp = answerStamp
                         )
                     )
                     logger("shared_server_channel_members_load_result serverId=$serverKey channelId=$channelKey result=empty")

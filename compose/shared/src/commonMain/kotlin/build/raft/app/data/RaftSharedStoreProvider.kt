@@ -208,10 +208,12 @@ internal fun createSharedRealtimeDomainEventOwner(
     cursorStore: RealtimeAppliedSeqCursorStore?,
     authorityProvider: RealtimeAuthorityProvider,
     onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
+    onChannelMembersUpdated: (suspend (serverId: String, channelId: String) -> Unit)? = null,
 ): SharedRealtimeDomainEventOwner =
     SharedRealtimeDomainEventOwner(
         tasksDataStore = tasksDataStore,
         onAgentDeleted = onAgentDeleted,
+        onChannelMembersUpdated = onChannelMembersUpdated,
         cursorStore = cursorStore,
         runIfCurrentGrant = authorityProvider::runIfCurrentGrant,
         runWithCurrentMessageGrant = authorityProvider::runWithCurrentMessageGrant,
@@ -541,6 +543,11 @@ internal class RaftSharedStoreProvider private constructor(
      */
     internal val agentDetailCache: RaftAgentDetailCache =
         raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
+
+    /** Realtime `channel:members-updated`: every members store reloads its loaded list or drops a stored one. */
+    internal suspend fun applyChannelMembersUpdated(serverId: String, channelId: String) {
+        allServerMembersStores().forEach { store -> store.applyChannelMembersUpdated(ServerId(serverId), ChannelId(channelId)) }
+    }
 
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
     internal suspend fun evictAgentDetail(serverId: String, agentId: String) {
@@ -2501,7 +2508,10 @@ internal class RaftSharedStoreProvider private constructor(
         homeActivityStoreScopes.remove(scope)?.cancel()
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
-        shellServerMembersStores.remove(scope)?.clearScopedReadCaches()
+        shellServerMembersStores.remove(scope)?.let { store ->
+            store.clearScopedReadCaches()
+            store.dispose()
+        }
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentTypingStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
@@ -3340,6 +3350,7 @@ internal class RaftSharedStoreProvider private constructor(
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
                         onAgentDeleted = { serverId, agentId -> provider.evictAgentDetail(serverId, agentId) },
+                        onChannelMembersUpdated = { serverId, channelId -> provider.applyChannelMembersUpdated(serverId, channelId) },
                     ).also { owner ->
                         // task #136: agent presence flows straight into the
                         // process registry's owner partition for the realtime
@@ -3609,6 +3620,8 @@ internal class SharedRealtimeDomainEventOwner(
      * its stored offline copy) goes, so a cold / offline open never shows a deleted agent.
      */
     private val onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
+    /** Realtime `channel:members-updated` on a server of the current grant (offline channel member lists). */
+    private val onChannelMembersUpdated: (suspend (serverId: String, channelId: String) -> Unit)? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
     private val runWithCurrentMessageGrant:
@@ -4155,6 +4168,7 @@ internal class SharedRealtimeDomainEventOwner(
         if (event is Heartbeat) return
         event.patchSharedTaskProjection(resolvedServerId)
         event.deletedAgentIdOrNull()?.let { agentId -> onAgentDeleted?.invoke(resolvedServerId, agentId) }
+        event.updatedChannelMembersChannelIdOrNull()?.let { channelId -> onChannelMembersUpdated?.invoke(resolvedServerId, channelId) }
         deliverGuardedAppShellProjectionFinal(resolvedServerId, event, source, activeSinks)
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             if (admission != null) {
@@ -4352,6 +4366,12 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 }
+
+/** The channel of a realtime `channel:members-updated`, else null. */
+internal fun RealtimeEvent.updatedChannelMembersChannelIdOrNull(): String? =
+    (this as? RealtimeRefreshRequired)
+        ?.takeIf { it.scope == RealtimeRefreshScope.ChannelMembers }
+        ?.channelId?.value?.trim()?.takeIf(String::isNotEmpty)
 
 /** The agent of a realtime `agent:deleted`, else null. */
 internal fun RealtimeEvent.deletedAgentIdOrNull(): String? =

@@ -12,6 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -279,6 +280,37 @@ class RaftOfflineResourcesOrderingTest {
         // A key minted after the fence writes again.
         assertTrue(lists.write(fixture.key(), Rows(listOf("next"))))
         assertEquals(Rows(listOf("next")), lists.read(fixture.key()))
+    }
+
+    // An answer of an older request never replaces the stored answer of a newer one (two writers).
+    @Test
+    fun anOlderAnswerNeverReplacesANewerOne() = runTest {
+        val fixture = Fixture(backgroundScope)
+        val lists = fixture.lists
+        val olderStart = lists.fetchStarted()
+        val newerStart = lists.fetchStarted()
+
+        assertTrue(lists.write(fixture.key(), Rows(listOf("newer")), startedAt = newerStart))
+        assertFalse(lists.write(fixture.key(), Rows(listOf("older")), startedAt = olderStart))
+        assertEquals(Rows(listOf("newer")), lists.read(fixture.key()))
+        // The same answer again (e.g. patched) still writes.
+        assertTrue(lists.write(fixture.key(), Rows(listOf("newer+")), startedAt = newerStart))
+        assertEquals(Rows(listOf("newer+")), lists.read(fixture.key()))
+    }
+
+    @Test
+    fun updateEachChangesEveryStoredValueOfOneAccountAndServer() = runTest {
+        val fixture = Fixture(backgroundScope)
+        val lists = fixture.lists
+        lists.write(lists.key("user-1", "server-1", "a")!!, Rows(listOf("x", "y")))
+        lists.write(lists.key("user-1", "server-1", "b")!!, Rows(listOf("y")))
+        lists.write(lists.key("user-1", "server-2", "a")!!, Rows(listOf("y")))
+
+        assertEquals(2, lists.updateEach("user-1", "server-1") { it.copy(ids = it.ids - "y") })
+
+        assertEquals(Rows(listOf("x")), lists.read(lists.key("user-1", "server-1", "a")!!))
+        assertEquals(Rows(emptyList()), lists.read(lists.key("user-1", "server-1", "b")!!))
+        assertEquals(Rows(listOf("y")), lists.read(lists.key("user-1", "server-2", "a")!!))
     }
 
     // Two concurrent revalidations of one key share one network request.
