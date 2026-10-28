@@ -11493,7 +11493,7 @@ private fun SharedThreadRouteContentContent(
         detailsRepository = taskConversationDetailsRepository,
         membersStore = serverMembersStore,
         serverId = currentServerId,
-        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+        timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
         joined = { task ->
             task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
@@ -11792,7 +11792,10 @@ private fun SharedThreadRouteContentContent(
             } else {
                 null
             }
-        val taskConversationTimeContext = renderedThread.toRaftTimeCapabilities().staticContext()
+        // The page's live clock supplies "today": the static context has none, and without it the
+        // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
+        val taskConversationTimeContext =
+            timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
         val taskConversationBar: (@Composable () -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 {
@@ -17222,6 +17225,7 @@ internal fun ThreadPageHeader(
                             onSearchInTask = onOpenSearch.takeIf { taskConversation },
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
                             taskFollowLabels = taskConversation,
+                            drawLocally = toggleFocus == null,
                         )
                     }
                 }
@@ -17782,11 +17786,18 @@ private fun ThreadHeaderFocusModeMenu(
     onViewInChannel: (() -> Unit)? = null,
     /** Task v2: the follow row reads Follow / Unfollow Task. */
     taskFollowLabels: Boolean = false,
+    /**
+     * Draw the menu here, as a dropdown under the button, instead of asking the shell. Only a host
+     * with a side column has the shell overlay; on a phone the page is the whole window, so a
+     * request to the shell drew nothing (1.17.0 build 3: the task page's More did nothing).
+     */
+    drawLocally: Boolean = false,
 ) {
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
+    var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     val items =
         buildList {
-            add(
+            if (!drawLocally) add(
                 RaftBrutalDropdownMenuItem(
                     id = FOCUS_MODE_MENU_ITEM_ID,
                     label =
@@ -17904,6 +17915,10 @@ private fun ThreadHeaderFocusModeMenu(
             // produced ZERO trace lines, which could not distinguish "the click never reached this
             // handler" from "the lines went somewhere else". This line fires before any guard.
             raftTraceToPlatformLog("SlockShellOverlay", "click_enter")
+            if (drawLocally) {
+                anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { localMenuAnchor = it }
+                return@onClick
+            }
             val bus = pageEventBus
             val anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
@@ -17950,6 +17965,21 @@ private fun ThreadHeaderFocusModeMenu(
         modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(Res.string.thread_focus_mode_menu_more)
     )
+    localMenuAnchor?.let { anchor ->
+        RaftBrutalDropdownMenu(
+            anchor = anchor,
+            items = items,
+            onSelect = { id ->
+                localMenuAnchor = null
+                when (id) {
+                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                }
+            },
+            onDismiss = { localMenuAnchor = null },
+        )
+    }
 }
 
 /**
