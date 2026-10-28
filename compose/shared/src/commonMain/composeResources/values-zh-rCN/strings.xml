@@ -1926,7 +1926,7 @@
     <string name="search_filter_time">时间</string>
     <string name="search_filter_sort">排序</string>
     <string name="search_filter_channel">频道</string>
-    <string name="search_filter_clear_all">全部清除</string>
+    <string name="search_filter_clear_all">清除筛选</string>
     <string name="search_scope_mentioned">@ 我</string>
     <string name="search_scope_humans">人类</string>
     <string name="search_scope_agents">Agent</string>

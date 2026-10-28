@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -35,6 +37,7 @@ import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -310,33 +313,92 @@ fun RaftPickerTriggerButton(
             .border(RaftStroke.Hairline, look.ring, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = size.horizontalPadding, vertical = size.verticalPadding),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (leadingIcon != null) {
-            CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
-                Box(Modifier.size(size.iconSize), contentAlignment = Alignment.Center) { leadingIcon() }
-            }
-        }
-        // A trigger narrower than its label (a long assignee name) ends in an ellipsis before the
-        // chevron instead of cutting the text.
-        RaftText(
-            text,
-            modifier = Modifier.weight(1f, fill = false),
-            style =
-                if (size == RaftPickerTriggerSize.Chip) {
-                    RaftTheme.typography.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
-                } else {
-                    RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold)
+        RaftPickerTriggerContent(
+            leading =
+                leadingIcon?.let { icon ->
+                    {
+                        CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
+                            Box(Modifier.size(size.iconSize), contentAlignment = Alignment.Center) { icon() }
+                        }
+                    }
                 },
-            color = look.ink,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
+            label = {
+                RaftText(
+                    text,
+                    style =
+                        if (size == RaftPickerTriggerSize.Chip) {
+                            RaftTheme.typography.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
+                        } else {
+                            RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold)
+                        },
+                    color = look.ink,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            trailing =
+                if (showIndicator) {
+                    { RaftGlyphIcon(RaftGlyph.ChevronDown, size = size.iconSize, color = look.indicator) }
+                } else {
+                    null
+                },
         )
-        if (showIndicator) RaftGlyphIcon(RaftGlyph.ChevronDown, size = size.iconSize, color = look.indicator)
     }
 }
+
+/**
+ * A picker trigger's icon, label and chevron, 6dp apart. The icon and chevron are measured
+ * first and always kept; the label takes the rest of a bounded width and ends in an ellipsis
+ * when it doesn't fit (web `truncate` under `max-w-full`). Given an unbounded width (a
+ * horizontally scrolling filter row, a `LazyRow` item) the label is measured whole. A
+ * `Modifier.weight` label would get no width at all there, leaving an icon-only chip.
+ */
+@Composable
+private fun RaftPickerTriggerContent(
+    leading: (@Composable () -> Unit)?,
+    label: @Composable () -> Unit,
+    trailing: (@Composable () -> Unit)?,
+) {
+    Layout(
+        content = {
+            Box(Modifier.layoutId(PickerTriggerLabelId)) { label() }
+            if (leading != null) Box(Modifier.layoutId(PickerTriggerLeadingId)) { leading() }
+            if (trailing != null) Box(Modifier.layoutId(PickerTriggerTrailingId)) { trailing() }
+        },
+    ) { measurables, constraints ->
+        val gap = 6.dp.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val leadingPlaceable = measurables.firstOrNull { it.layoutId == PickerTriggerLeadingId }?.measure(loose)
+        val trailingPlaceable = measurables.firstOrNull { it.layoutId == PickerTriggerTrailingId }?.measure(loose)
+        val fixed =
+            (leadingPlaceable?.let { it.width + gap } ?: 0) +
+                (trailingPlaceable?.let { it.width + gap } ?: 0)
+        val labelMax =
+            if (constraints.hasBoundedWidth) (constraints.maxWidth - fixed).coerceAtLeast(0) else Constraints.Infinity
+        val labelPlaceable = measurables.first { it.layoutId == PickerTriggerLabelId }.measure(loose.copy(maxWidth = labelMax))
+        val width = (fixed + labelPlaceable.width).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height =
+            maxOf(labelPlaceable.height, leadingPlaceable?.height ?: 0, trailingPlaceable?.height ?: 0)
+                .coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            var x = 0
+            leadingPlaceable?.let {
+                it.placeRelative(x, (height - it.height) / 2)
+                x += it.width + gap
+            }
+            labelPlaceable.placeRelative(x, (height - labelPlaceable.height) / 2)
+            x += labelPlaceable.width
+            trailingPlaceable?.placeRelative(x + gap, (height - trailingPlaceable.height) / 2)
+        }
+    }
+}
+
+private const val PickerTriggerLabelId = "picker-trigger-label"
+private const val PickerTriggerLeadingId = "picker-trigger-leading"
+private const val PickerTriggerTrailingId = "picker-trigger-trailing"
 
 /**
  * [RaftPickerTriggerButton]'s metrics: [Default] is raft-ui PickerTriggerButton (32dp

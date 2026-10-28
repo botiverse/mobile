@@ -1930,10 +1930,10 @@
     <string name="search_scope_mentioned">@ Me</string>
     <string name="search_scope_humans">Humans</string>
     <string name="search_scope_agents">Agents</string>
-    <string name="search_time_any">Any time</string>
+    <string name="search_time_any">Any Time</string>
     <string name="search_time_today">Today</string>
-    <string name="search_time_last_7_days">Last 7 days</string>
-    <string name="search_time_last_30_days">Last 30 days</string>
+    <string name="search_time_last_7_days">Last 7 Days</string>
+    <string name="search_time_last_30_days">Last 30 Days</string>
     <string name="search_sort_relevant">Relevant</string>
     <string name="search_sort_recent">Recent</string>
     <string name="search_state_searching">SEARCHING…</string>

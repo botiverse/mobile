@@ -1920,7 +1920,7 @@
     <string name="search_scope_in_channel">%1$s 内</string>
     <string name="search_scope_expand_all">すべて</string>
     <string name="search_filter_from">送信者</string>
-    <string name="search_filter_from_value">送信者: %1$s</string>
+    <string name="search_filter_from_value">送信者：%1$s</string>
     <string name="search_filter_search_senders">送信者を検索</string>
     <string name="search_filter_loading_senders">送信者を読み込み中…</string>
     <string name="search_filter_channels">チャンネル</string>
