@@ -194,13 +194,17 @@ jobs:
       - name: Boot simulator
         run: |
           SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"; export SIM_SDK
+          # Newest iOS runtime not newer than the SDK that can host SIM_DEVICE. A runtime may not
+          # support every iPhone: on GitHub's xcode-27 image the iOS 27.1 runtime only lists
+          # iPhone Duo, so iPhone 14 has to fall back to the newest runtime that still has it.
           runtime=$(xcrun simctl list runtimes -j | python3 -c "
           import json, os, sys
           v = lambda s: tuple(int(p) for p in s.split('.') if p.isdigit())
           rs = sorted((r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform'] == 'iOS'), key=lambda r: v(r['version']))
           if not rs: sys.exit('no available iOS simulator runtime')
-          fit = [r for r in rs if v(r['version']) <= v(os.environ['SIM_SDK'])]
-          print((fit or rs)[-1]['identifier'])")
+          fit = [r for r in rs if v(r['version']) <= v(os.environ['SIM_SDK'])] or rs
+          hosts = [r for r in fit if any(t['name'] == os.environ['SIM_DEVICE'] for t in r.get('supportedDeviceTypes', []))]
+          print((hosts or fit)[-1]['identifier'])")
           export RUNTIME="$runtime"
           echo "iPhoneSimulator SDK ${SIM_SDK}; runtime ${RUNTIME}; device ${SIM_DEVICE}"
           udid=$(xcrun simctl list devices available -j \
