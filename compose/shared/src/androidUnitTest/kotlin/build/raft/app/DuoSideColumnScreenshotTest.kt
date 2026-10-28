@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
@@ -41,9 +43,12 @@ import org.robolectric.annotation.GraphicsMode
  *  - outer screen, a channel: Back first in the column, Search and Settings under it; the white
  *    56dp header keeps the title and the subtitle, from the 16dp margin, without Back and icon
  *    buttons; the messages and the composer end at the column's inner edge. No tab bar.
- *  - inner screen held sideways (951x669), the wide layout: top bar (no history arrows), rail,
- *    Home list, the channel in the main area; the column holds the history Back and the
- *    channel's actions, never destinations.
+ *  - inner screen held sideways (951x669), the apps' desktop mode without the top bar
+ *    (page-structure "The inner screen"): the rail's header tile is the server switcher (with the
+ *    other-server attention light), Search is its first destination, the bell (with its attention
+ *    pixel) is in its footer above Settings; then the Home list with no server switcher of its own.
+ *    Home alone; Home with the bell's popover open next to the rail; a channel in the main area,
+ *    where the column holds the history Back and the channel's actions, never destinations.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -63,7 +68,17 @@ class DuoSideColumnScreenshotTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
-    fun innerScreenLandscapeChannel() = capture("duo.inner-landscape.channel", innerPosture, tabBarStandIn = 0.dp) { WideChannel() }
+    fun innerScreenLandscapeHome() = capture("duo.inner-landscape.home", innerPosture, tabBarStandIn = 0.dp) { WideShell() }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
+    fun innerScreenLandscapeHomeBellOpen() =
+        capture("duo.inner-landscape.home-bell", innerPosture, tabBarStandIn = 0.dp) { WideShell(bellOpen = true) }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
+    fun innerScreenLandscapeChannel() =
+        capture("duo.inner-landscape.channel", innerPosture, tabBarStandIn = 0.dp) { WideShell(channelOpen = true) }
 
     private fun capture(
         name: String,
@@ -241,40 +256,52 @@ private fun ChannelPage(showBack: Boolean = true) {
 }
 
 @Composable
-private fun WideChannel() {
+private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false) {
     val topBar = remember { RaftAppShellTopBarState() }
+    // Home closes the shell's bell when it first shows: open it a frame later, as a tap would.
+    if (bellOpen) {
+        LaunchedEffect(Unit) {
+            withFrameNanos {}
+            topBar.bellOpen.value = true
+        }
+    }
     // The shell hands the column its history Back (the detail pane has none of its own).
-    val historyBackInColumn = raftSideColumnFallbackBack(raftSideColumnBackAction(onBack = {}))
+    if (channelOpen) raftSideColumnFallbackBack(raftSideColumnBackAction(onBack = {}))
+    val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive = true)
     CompositionLocalProvider(LocalRaftAppShellTopBar provides topBar) {
-        Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-            RaftAppShellTopBar(
-                currentServer = duoServers.first(),
-                servers = duoServers,
-                serverMenuOpen = false,
-                onWorkspaceClick = {},
-                onServerPick = {},
-                searchLabel = "Search",
-                onSearchClick = {},
-                windowWidth = 951.dp,
-                bell = topBar,
-                history = if (historyBackInColumn) null else RaftAppShellTopBarHistory(true, false, {}, {}),
-            )
-            Row(Modifier.weight(1f)) {
+        Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+            Row(Modifier.fillMaxSize()) {
                 RaftNavigationRailTabBar(
                     items =
-                        listOf(
-                            RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
-                            RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
-                            RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
-                            RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
+                        appShellRailItemsWithSearch(
+                            items =
+                                listOf(
+                                    RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
+                                    RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
+                                    RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
+                                    RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
+                                ),
+                            searchLabel = "Search",
+                            searchOpen = false,
                         ),
                     onSelect = {},
                     modifier = Modifier.fillMaxHeight(),
                     bottomItems = listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
+                    header =
+                        if (railWithoutTopBar) {
+                            { RaftAppRailServerTile(duoServerMenu, onClick = {}) }
+                        } else {
+                            null
+                        },
+                    footerTools = if (railWithoutTopBar) ({ RaftAppRailNotificationBell(topBar, onToggle = {}) }) else null,
                 )
                 Box(Modifier.width(280.dp).fillMaxHeight()) { HomeList(serverSwitcherInTopBar = true) }
-                Box(Modifier.weight(1f).fillMaxHeight()) { ChannelPage(showBack = false) }
+                Box(Modifier.weight(1f).fillMaxHeight()) { if (channelOpen) ChannelPage(showBack = false) }
             }
+            RaftAppTopBarNotificationOverlay(topBar, topInset = 0.dp, besideRail = true)
         }
     }
 }
+
+private val duoServerMenu =
+    RaftServerMenuModel(servers = duoServers, currentServer = duoServers.first(), otherServersUnread = true)

@@ -491,7 +491,9 @@ internal fun resolveRaftAppTabBarRenderer(
 /**
  * The wide layout's navigation rail (web LeftRail with the top bar): the destinations at the top,
  * the tools (Settings) pinned to the bottom. The server and Search live in the top bar above it
- * ([RaftAppShellTopBar], artin task #8), so the rail has no header.
+ * ([RaftAppShellTopBar], artin task #8), so the rail has no header. Without the top bar (iPhone
+ * Duo's inner screen, raft-design #859) the rail takes the server tile in its [header] and the
+ * bell in [footerTools], before [bottomItems] (raft-ui AppRail without the top bar).
  */
 @Composable
 internal fun RaftNavigationRailTabBar(
@@ -501,7 +503,9 @@ internal fun RaftNavigationRailTabBar(
     bottomItems: List<RaftBottomTabItemPayload> = emptyList(),
     onBottomItemSelect: ((String) -> Unit)? = null,
     topSafeArea: Dp = 0.dp,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    header: (@Composable () -> Unit)? = null,
+    footerTools: (@Composable () -> Unit)? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
     // both ends, the selected sticker on the frame.
@@ -510,9 +514,11 @@ internal fun RaftNavigationRailTabBar(
             modifier = modifier,
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
+            header = header,
             footer =
-                if (bottomItems.isNotEmpty()) {
+                if (bottomItems.isNotEmpty() || footerTools != null) {
                     {
+                        footerTools?.invoke()
                         bottomItems.forEach { item ->
                             RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
                         }
