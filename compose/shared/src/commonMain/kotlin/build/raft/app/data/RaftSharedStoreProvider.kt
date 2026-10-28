@@ -1122,6 +1122,22 @@ internal class RaftSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
+    /**
+     * One ingest for every owner (message storage Phase 3a): its ordered worker and duplicate-delivery memory span
+     * the process and shell entries. Declared before `init`, which installs the gateway that reads it.
+     */
+    private val canonicalMessageV2RealtimeIngest: CanonicalMessageV2RealtimeIngest by lazy {
+        CanonicalMessageV2RealtimeIngest(
+            tracker = canonicalMessageV2Canary,
+            generationEngine = canonicalMessageV2GenerationEngine,
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
+            },
+            // Lines already start with `canonical_v2_realtime`.
+            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Realtime"),
+        )
+    }
+
     init {
         // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
         // every surviving `sync-core.messages.v1` row once per start (idempotent; V2 and read-state untouched).
@@ -1326,18 +1342,6 @@ internal class RaftSharedStoreProvider private constructor(
     private fun buildCanonicalMessageV2OwnerGateway(): CanonicalMessageV2OwnerGateway =
         RealtimeIngestCanonicalMessageV2OwnerGateway(ingest = canonicalMessageV2RealtimeIngest, canary = canonicalMessageV2Canary)
 
-    /** One ingest for every owner: its duplicate-delivery memory spans the process and shell entries. */
-    private val canonicalMessageV2RealtimeIngest: CanonicalMessageV2RealtimeIngest by lazy {
-        CanonicalMessageV2RealtimeIngest(
-            tracker = canonicalMessageV2Canary,
-            generationEngine = canonicalMessageV2GenerationEngine,
-            isEnabledForServer = { serverId ->
-                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
-            },
-            // Lines already start with `canonical_v2_realtime`.
-            logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Realtime"),
-        )
-    }
 
     /**
      * Task #168 step 3: whether the user is known NOT to be a member of (serverId, channelId), read from every
