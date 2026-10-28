@@ -6,7 +6,11 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.isFreeThemePlan
 import build.raft.app.model.raftThemeChoiceFromWire
 import build.raft.designsystem.tokens.RaftThemeId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -15,6 +19,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /*
  * The member's own look on one server: theme and decorations (design/foundations/themes.md;
@@ -165,6 +171,7 @@ class NetworkServerAppearanceRepository(
 ) : ServerAppearanceRepository {
     override suspend fun load(serverId: ServerId): ServerAppearanceLoadResult {
         val accountId = sessionStore.readSession()?.user?.id
+        val savesBefore = ServerAppearanceSavesInFlight.generation(serverId.value)
         val response =
             runCatchingPreservingCancellation {
                 networkClient.request(
@@ -180,6 +187,11 @@ class NetworkServerAppearanceRepository(
         val appearance =
             response.bodyText?.let(::parseSharedServerAppearance)
                 ?: return ServerAppearanceLoadResult.Failed(response.code, serverMessage = null)
+        // A save that began meanwhile (or is still on its way) is newer than this read: the stored
+        // server already shows that pick, so this answer must not put the old one back.
+        if (ServerAppearanceSavesInFlight.supersedes(serverId.value, savesBefore)) {
+            return ServerAppearanceLoadResult.Loaded(appearance)
+        }
         accountId?.let { sessionStore.applyStoredServerAppearance(it, serverId.value, appearance.themeWire, appearance.themeDecor) }
         return ServerAppearanceLoadResult.Loaded(appearance)
     }
@@ -199,6 +211,19 @@ class NetworkServerAppearanceRepository(
         patch(sessionStore.readSession(), serverId, encodeServerAppearanceDecorPatchBody(themeDecor))
 
     private suspend fun patch(
+        session: StoredAuthSession?,
+        serverId: ServerId,
+        bodyText: String,
+    ): ServerAppearanceUpdateResult {
+        ServerAppearanceSavesInFlight.begin(serverId.value)
+        try {
+            return sendPatch(session, serverId, bodyText)
+        } finally {
+            ServerAppearanceSavesInFlight.end(serverId.value)
+        }
+    }
+
+    private suspend fun sendPatch(
         session: StoredAuthSession?,
         serverId: ServerId,
         bodyText: String,
@@ -235,6 +260,106 @@ class NetworkServerAppearanceRepository(
 
     private fun HomeNetworkResponse.errorCode(): String? =
         parseSharedServerAppearanceErrorCode(bodyText ?: errorBodyText)
+}
+
+/**
+ * Appearance saves on their way, per server, for the whole process: Settings and the catch-up
+ * read each make their own [NetworkServerAppearanceRepository]. A [NetworkServerAppearanceRepository.load]
+ * answer is not written when a save began after the read started or is still on its way: it may
+ * predate that save and would put the previous theme back over the optimistic pick.
+ */
+internal object ServerAppearanceSavesInFlight {
+    private val lock = SynchronizedObject()
+    private val inFlight = mutableMapOf<String, Int>()
+    private val started = mutableMapOf<String, Long>()
+
+    fun begin(serverId: String) {
+        synchronized(lock) {
+            inFlight[serverId] = (inFlight[serverId] ?: 0) + 1
+            started[serverId] = (started[serverId] ?: 0L) + 1L
+        }
+    }
+
+    fun end(serverId: String) {
+        synchronized(lock) {
+            val left = (inFlight[serverId] ?: 1) - 1
+            if (left <= 0) inFlight.remove(serverId) else inFlight[serverId] = left
+        }
+    }
+
+    /** How many saves of [serverId] have begun so far; a read notes it when it starts. */
+    fun generation(serverId: String): Long = synchronized(lock) { started[serverId] ?: 0L }
+
+    /** Whether a save of [serverId] is on its way or began since [generation] was read. */
+    fun supersedes(serverId: String, generation: Long): Boolean =
+        synchronized(lock) { (inFlight[serverId] ?: 0) > 0 || (started[serverId] ?: 0L) != generation }
+}
+
+/** Resume and reconnect arriving together share one read (same window as foreground reconcile). */
+internal const val SERVER_APPEARANCE_CATCH_UP_WINDOW_MS: Long = FOREGROUND_RECONCILE_COALESCE_MS
+
+/**
+ * `appearance:updated` is never replayed: a theme changed on another device while the socket was
+ * down or the app was in the background would stay stale until the next cold start (the server
+ * list is read on restore only). Every realtime (re)connect and every return to the foreground
+ * reads the server's appearance again ([load], which writes it onto the stored server, so the
+ * worn look follows). One read per server per [windowMs]: the rest are coalesced into it.
+ */
+internal class ServerAppearanceCatchUp(
+    private val scope: CoroutineScope,
+    private val load: suspend (ServerId) -> Unit,
+    private val windowMs: Long = SERVER_APPEARANCE_CATCH_UP_WINDOW_MS,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val logger: (String) -> Unit = {},
+) {
+    private val lock = SynchronizedObject()
+    private val lastStarted = mutableMapOf<String, TimeMark>()
+
+    fun onReconnected(serverId: ServerId): Job? = request(serverId, reason = "reconnect")
+
+    fun onForeground(serverId: ServerId): Job? = request(serverId, reason = "foreground")
+
+    /** Reads [currentServerId] on every background -> foreground return of [appForeground]. */
+    fun followAppLifecycle(appForeground: Flow<Boolean>, currentServerId: suspend () -> String?): Job =
+        scope.launch {
+            var previous: Boolean? = null
+            appForeground.collect { foreground ->
+                val returned = foreground && previous == false
+                previous = foreground
+                if (!returned) return@collect
+                val serverId =
+                    runCatchingPreservingCancellation { currentServerId() }.getOrNull()
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: return@collect
+                onForeground(ServerId(serverId))
+            }
+        }
+
+    private fun request(serverId: ServerId, reason: String): Job? {
+        val id = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return null
+        val start =
+            synchronized(lock) {
+                val last = lastStarted[id]
+                if (last != null && last.elapsedNow().inWholeMilliseconds < windowMs) {
+                    false
+                } else {
+                    lastStarted[id] = timeSource.markNow()
+                    true
+                }
+            }
+        if (!start) {
+            logger("server_appearance_catch_up_skip server=$id reason=$reason cause=coalesced")
+            return null
+        }
+        logger("server_appearance_catch_up server=$id reason=$reason")
+        return scope.launch {
+            runCatchingPreservingCancellation { load(ServerId(id)) }
+                .onFailure { error ->
+                    logger("server_appearance_catch_up_failed server=$id error=${error::class.simpleName ?: "unknown"}")
+                }
+        }
+    }
 }
 
 /**

@@ -1098,6 +1098,19 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * Missed `appearance:updated` notices are not replayed: every socket (re)connect and every
+     * return to the foreground reads the server's appearance again ([ServerAppearanceCatchUp]).
+     */
+    private val serverAppearanceCatchUp: ServerAppearanceCatchUp by lazy {
+        val repository = NetworkServerAppearanceRepository(networkClient, authStore)
+        ServerAppearanceCatchUp(
+            scope = threadSendScope,
+            load = { serverId -> repository.load(serverId) },
+            logger = sharedInfoLogger("SlockServerTheme", "server_appearance_catch_up"),
+        )
+    }
+
     /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
@@ -1175,6 +1188,10 @@ internal class RaftSharedStoreProvider private constructor(
             appForeground = RaftStaleReadRecoverySignals.foreground,
             coversServer = ::syncChangesPullAllowed,
         )
+        // A theme changed on another device while backgrounded: read the selected server's again.
+        serverAppearanceCatchUp.followAppLifecycle(RaftStaleReadRecoverySignals.foreground) {
+            authStore.readSession()?.currentServerId
+        }
         // App start: read this environment's client config (and again on each environment change).
         clientConfigStore.start()
         // Attach canonical/reaction shadow mutation to the dedicated process
@@ -1238,6 +1255,8 @@ internal class RaftSharedStoreProvider private constructor(
                     RaftStaleReadRecoverySignals.onRealtimeRoomsJoined()
                     // Missed `server:features-changed` notices are not replayed: refetch on every (re)connect.
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
+                    // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
+                    serverAppearanceCatchUp.onReconnected(ServerId(grant.serverId))
                 }
             },
             onAccepted = { grant, event ->
@@ -3713,7 +3732,9 @@ internal class SharedRealtimeDomainEventOwner(
                 acceptedSource,
                 grant.presenceAdmission(presenceTransportEpoch)
             )
-            if (acceptedEvent is ServerAppearanceUpdated && acceptedEvent.serverId.value == serverId) {
+            // `appearance:updated` is per member, sent to their user room: it names whichever of their
+            // servers changed, not the connection's. The sink writes only the grant's account's servers.
+            if (acceptedEvent is ServerAppearanceUpdated) {
                 serverAppearanceSink?.invoke(grant.principalId, acceptedEvent)
             }
             if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {

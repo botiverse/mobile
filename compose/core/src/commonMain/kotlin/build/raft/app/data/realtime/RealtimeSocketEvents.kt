@@ -90,6 +90,14 @@ object RealtimeSocketEvents {
     // #4233, staging 31042ed06). Literal until the next contract regeneration.
     const val NotificationPush = "notification:push"
 
+    /**
+     * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
+     * whichever server the app has open receives it: the payload `serverId` names the server
+     * that changed, not the connected one. Gates that drop a payload naming another server than
+     * the connection's let these through (web applies them by payload `serverId`).
+     */
+    val UserScopedServerEvents: Set<String> = setOf(AppearanceUpdated)
+
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
             ThreadFollowersUpdated,

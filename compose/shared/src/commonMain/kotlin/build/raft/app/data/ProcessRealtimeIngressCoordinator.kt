@@ -120,7 +120,15 @@ internal class ProcessRealtimeIngressCoordinator(
         val envelopeServerId =
             eventData.optString(RaftRealtimeNotifyContract.KeyServerId).trim().takeIf(String::isNotEmpty)
         val payloadServerId = event.serverIdHint()?.value
-        if (envelopeServerId != null && payloadServerId != null && envelopeServerId != payloadServerId) return
+        if (
+            envelopeServerId != null &&
+            payloadServerId != null &&
+            envelopeServerId != payloadServerId &&
+            // A user-room event about another of the member's servers, on this server's socket.
+            event !is ServerAppearanceUpdated
+        ) {
+            return
+        }
         val serverId = envelopeServerId ?: payloadServerId ?: return
         val witness = eventData.processRealtimeWitnessOrNull() ?: return
         val grant = authorityProvider.resolve(witness, serverId) ?: return

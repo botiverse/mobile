@@ -414,7 +414,10 @@ class RaftRealtimeAppScopeEngine {
         rawPayload: String,
     ): RaftRealtimeAppScopeRawDecision {
         val gate = realtimePayloadServerGate(connectionServerIdValue, rawPayload)
-        if (!gate.shouldAccept) {
+        // A user-room event about another of the member's servers rides this server's socket.
+        val userScopedOtherServer =
+            gate.reason == "mismatch" && eventName in RealtimeSocketEvents.UserScopedServerEvents
+        if (!gate.shouldAccept && !userScopedOtherServer) {
             return RaftRealtimeAppScopeRawDecision(
                 shouldFanOut = false,
                 serverId = null,
