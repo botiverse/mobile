@@ -437,6 +437,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             parentScopeKind = null,
             parentScopeId = null,
             rootMessageId = null,
+            lastUserAccessAtMs = null,
         )
         val store = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
         val poisoned = runCatching { runBlocking { store.restore(scope) } }.exceptionOrNull() is CanonicalMessageV2ScopePoisoned

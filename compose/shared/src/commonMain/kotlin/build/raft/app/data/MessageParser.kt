@@ -42,7 +42,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
  *
  * - `GET /api/messages/channel/:channelId`
  *     → `{ messages: WireMessage[], historyLimited: boolean,
- *          threadSummariesByParentMessageId: Record<messageId, ThreadSummary> }`
+ *          threadSummariesByParentMessageId: Record<messageId, ThreadSummary>,
+ *          messageWindow: ChannelMessageWindow }`
  *
  * - `GET /api/messages/context/:messageId`
  *     → `{ channelId, targetMessageId, hasOlder, hasNewer,
@@ -179,6 +180,9 @@ private data class MessagesWireChannelResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
     val threadSummariesByParentMessageId: JsonElement? = null,
+    // Message storage Phase 1: decoded leniently ([decodeChannelMessageWindow]) so a drifted window never
+    // fails the page.
+    val messageWindow: JsonElement? = null,
 )
 
 @Serializable
@@ -254,6 +258,8 @@ data class SharedMessagesPayload(
     val hasNewer: Boolean = false,
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+    /** `messages/channel` only: the page's server coverage bounds ([ChannelMessageWindow]); no reader yet. */
+    val messageWindow: ChannelMessageWindow? = null,
 )
 
 data class SharedMessagesCanonicalTarget(
@@ -305,6 +311,7 @@ fun parseSharedChannelMessages(
             ),
         replySummariesAuthority = embeddedAuthority,
         historyLimited = response.historyLimited,
+        messageWindow = decodeChannelMessageWindow(response.messageWindow),
     )
 }
 

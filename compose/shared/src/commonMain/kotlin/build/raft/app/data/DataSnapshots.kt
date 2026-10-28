@@ -633,10 +633,16 @@ data class ThreadSnapshot(
     val rawMessagePage: RawMessagePageWitness = RawMessagePageWitness.None,
 )
 
-/** One fetched REST message page: the server's raw `messages` array and the `limit` the request sent. */
+/**
+ * One fetched REST message page: the server's raw `messages` array and the `limit` the request sent, plus
+ * (message storage Phase 1, no reader yet) the page's [messageWindow] (`messages/channel` only; `null` when
+ * absent or malformed) and its `historyLimited` flag, which together say what range the page proves.
+ */
 data class RawMessagePage(
     val messages: JsonArray,
     val requestedLimit: Int,
+    val messageWindow: ChannelMessageWindow? = null,
+    val historyLimited: Boolean = false,
 )
 
 /**

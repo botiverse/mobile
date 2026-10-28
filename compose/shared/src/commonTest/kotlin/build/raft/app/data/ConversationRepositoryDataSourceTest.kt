@@ -1320,6 +1320,7 @@ class ConversationRepositoryDataSourceTest {
         val page = assertNotNull(context.rawMessagePage.page)
         assertEquals(listOf("m7", "m8"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
         assertEquals(0, page.requestedLimit)
+        assertNull(page.messageWindow, "a context page has no messageWindow")
         assertTrue("senderName" in page.messages.first().jsonObject, "the raw node, not the domain projection")
         assertTrue(context.canLoadMoreBefore)
         assertFalse(context.canLoadMoreAfter)
@@ -1366,6 +1367,61 @@ class ConversationRepositoryDataSourceTest {
         // The witness never takes part in equality: a snapshot with and without it is the same.
         assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None), older)
         assertEquals(older.copy(rawMessagePage = RawMessagePageWitness.None).hashCode(), older.hashCode())
+    }
+
+    @Test
+    fun aChannelPageCarriesItsServerMessageWindowAndAMalformedWindowNeverDropsThePage() = runBlocking {
+        // Message storage Phase 1: the raw page carries the server's `messageWindow` (and `historyLimited`)
+        // so the coverage writer can claim the range the page proves. No reader uses it yet.
+        val window =
+            """{"schemaVersion":1,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user",""" +
+                """"receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":4,"coveredFromSeq":7,""" +
+                """"coveredThroughSeq":8,"remoteHighWaterSeq":30,"hasGap":true,"hasNewer":true,"completeThroughLatest":false}"""
+        val rows = """[${messageJson("m7", "channel-1", seq = 7)},${messageJson("m8", "channel-1", seq = 8)}]"""
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to """{"messages":$rows,"historyLimited":true,"messageWindow":$window}""",
+                        "GET messages/channel/channel-2" to
+                            """{"messages":[${messageJson("m9", "channel-2", seq = 9)}],"historyLimited":false,"messageWindow":{"coveredAfterSeq":"x"}}""",
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val page = assertNotNull(
+            assertIs<DataResult.Content<ThreadSnapshot>>(
+                repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 9, limit = 2),
+            ).data.rawMessagePage.page,
+        )
+        val decoded = assertNotNull(page.messageWindow)
+        assertEquals(4L, decoded.coveredAfterSeq)
+        assertEquals(7L, decoded.coveredFromSeq)
+        assertEquals(8L, decoded.coveredThroughSeq)
+        assertEquals(30L, decoded.remoteHighWaterSeq)
+        assertEquals(false, decoded.completeThroughLatest)
+        assertEquals("channel-1", decoded.scopeId)
+        assertTrue(page.historyLimited)
+        assertEquals(
+            build.raft.app.network.sync.CanonicalMessageV2Coverage(
+                lowSeq = 5,
+                highSeq = 8,
+                reachesOldest = false,
+                headAtVerify = false,
+                source = build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Older,
+            ),
+            decoded.toCoverage(page.historyLimited, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Older),
+        )
+
+        // A malformed window decodes to null; the page and its rows are unaffected.
+        val malformed = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.loadOlderMessages(ThreadId("channel-2"), beforeSeq = 10, limit = 2),
+        ).data
+        assertEquals(listOf("m9"), malformed.messages.map { it.id.value })
+        val malformedPage = assertNotNull(malformed.rawMessagePage.page)
+        assertEquals(1, malformedPage.messages.size)
+        assertNull(malformedPage.messageWindow)
+        assertFalse(malformedPage.historyLimited)
     }
 
     @Test

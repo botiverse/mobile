@@ -84,6 +84,7 @@ internal class SqlDelightFoldPersistStore(
             parentScopeKind = cursor.parentScopeKind,
             parentScopeId = cursor.parentScopeId,
             rootMessageId = cursor.rootMessageId,
+            lastUserAccessAtMs = null,
         )
     }
 

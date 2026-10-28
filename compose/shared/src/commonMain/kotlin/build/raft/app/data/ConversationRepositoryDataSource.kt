@@ -31,6 +31,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlin.time.TimeSource
 
 private val conversationRepositoryJson = Json {
@@ -1895,12 +1897,20 @@ private fun buildSharedThreadSnapshot(
  * the rendered snapshot is unaffected either way.
  */
 private fun rawMessagePageWitness(bodyText: String, requestedLimit: Int): RawMessagePageWitness {
-    val messages =
+    val root =
         runCatching { rawMessagePageJson.parseToJsonElement(bodyText) as? JsonObject }
             .getOrNull()
-            ?.get("messages") as? JsonArray
             ?: return RawMessagePageWitness.None
-    return RawMessagePageWitness(RawMessagePage(messages = messages, requestedLimit = requestedLimit))
+    val messages = root["messages"] as? JsonArray ?: return RawMessagePageWitness.None
+    return RawMessagePageWitness(
+        RawMessagePage(
+            messages = messages,
+            requestedLimit = requestedLimit,
+            // Message storage Phase 1: carried for the coverage writer; nothing reads it yet.
+            messageWindow = decodeChannelMessageWindow(root["messageWindow"]),
+            historyLimited = (root["historyLimited"] as? JsonPrimitive)?.booleanOrNull ?: false,
+        ),
+    )
 }
 
 private val rawMessagePageJson = Json { ignoreUnknownKeys = true }
