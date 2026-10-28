@@ -1,0 +1,75 @@
+-- Schema v10 (message storage design 2026-10-27, Phase 1): store every message, cover ranges with segments.
+-- `localRev`: the partition write revision (messageLocalRevEntity) of the fact's last write. A page fetched
+-- before a fact was rewritten never overwrites it (the page's revAtRequest is lower). Existing facts get 0.
+ALTER TABLE messageEntity ADD COLUMN localRev INTEGER NOT NULL DEFAULT 0;
+
+-- `lastUserAccessAtMs`: when the user last read or loaded the scope. Retention ranks scopes by it; NULL =
+-- never opened (realtime only), ranked least recently used.
+ALTER TABLE syncCursorEntity ADD COLUMN lastUserAccessAtMs INTEGER;
+
+-- One row = one proven-complete seq range [lowSeq, highSeq] of a V2 scope: every message of the scope with
+-- a seq in the range is stored. Segments of a scope never overlap or touch (they are merged on write); gaps
+-- between them are derived at read time, never stored.
+CREATE TABLE messageSegmentEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  scopeId TEXT NOT NULL,
+  lowSeq INTEGER NOT NULL,
+  highSeq INTEGER NOT NULL,
+  reachesOldest INTEGER NOT NULL,
+  headAtVerify INTEGER NOT NULL,
+  verifiedAtMs INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, scopeKind, scopeId, lowSeq)
+);
+
+-- The partition's fact write revision. It only grows: clearing or pruning facts never lowers it, so a
+-- fact written after a request started always has a higher localRev than the request read.
+CREATE TABLE messageLocalRevEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  localRev INTEGER NOT NULL,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId)
+);
+
+-- Each stored V2 window becomes one identical segment.
+INSERT INTO messageSegmentEntity(
+  environmentId, serverId, principalId, consumerId, scopeKind, scopeId,
+  lowSeq, highSeq, reachesOldest, headAtVerify, verifiedAtMs, source
+)
+SELECT
+  environmentId, serverId, principalId, consumerId, scopeKind, scopeId,
+  oldestLoadedSeq, newestLoadedSeq,
+  CASE WHEN hasLoadedOldest != 0 THEN 1 ELSE 0 END,
+  CASE WHEN hasLoadedNewest != 0 THEN 1 ELSE 0 END,
+  updatedAtMs, 'migrated'
+FROM syncCursorEntity
+WHERE consumerId = 'sync-core.messages.v2'
+  AND oldestLoadedSeq IS NOT NULL
+  AND newestLoadedSeq IS NOT NULL
+  AND oldestLoadedSeq <= newestLoadedSeq;
+
+-- An empty baseline (the channel had no messages: both edges NULL, oldest reached) becomes [0, 0].
+INSERT INTO messageSegmentEntity(
+  environmentId, serverId, principalId, consumerId, scopeKind, scopeId,
+  lowSeq, highSeq, reachesOldest, headAtVerify, verifiedAtMs, source
+)
+SELECT
+  environmentId, serverId, principalId, consumerId, scopeKind, scopeId,
+  0, 0, 1,
+  CASE WHEN hasLoadedNewest != 0 THEN 1 ELSE 0 END,
+  updatedAtMs, 'migrated'
+FROM syncCursorEntity
+WHERE consumerId = 'sync-core.messages.v2'
+  AND oldestLoadedSeq IS NULL
+  AND newestLoadedSeq IS NULL
+  AND hasLoadedOldest != 0;
+
+-- Until v10 every V2 scope's updatedAtMs was its last user-driven write (realtime kept it), so it is the
+-- scope's last user access.
+UPDATE syncCursorEntity SET lastUserAccessAtMs = updatedAtMs WHERE consumerId = 'sync-core.messages.v2';

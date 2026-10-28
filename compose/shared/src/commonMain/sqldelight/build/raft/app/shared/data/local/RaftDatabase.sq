@@ -104,6 +104,8 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 -- `unknownFields` (schema v9, task #14a): the aggregates a V2 fact written from a realtime frame does not
 -- know (comma-separated, canonical order); NULL = all known. The fact's bytes hold neutral placeholders
 -- for them, and unknown is never read as empty.
+-- `localRev` (schema v10): the scope-local write revision of the fact's last write (0 = written before v10).
+-- A page whose request started at revision R never overwrites a fact with localRev > R.
 CREATE TABLE messageEntity (
   environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
@@ -116,6 +118,7 @@ CREATE TABLE messageEntity (
   createdAt TEXT NOT NULL,
   canonicalFactJson TEXT NOT NULL,
   unknownFields TEXT,
+  localRev INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (environmentId, serverId, principalId, consumerId, id)
 );
 
@@ -271,6 +274,8 @@ CREATE TABLE syncCursorEntity (
   parentScopeKind TEXT,
   parentScopeId TEXT,
   rootMessageId TEXT,
+  -- Schema v10: when the user last read or loaded the scope (retention rank); NULL = never opened.
+  lastUserAccessAtMs INTEGER,
   -- Full durable partition + scope key: a channel and a thread (etc.) that happen to share a partition and
   -- scopeId must not collide on the cursor. scopeKind is part of the identity, so it is in the PK.
   PRIMARY KEY (environmentId, serverId, principalId, consumerId, scopeKind, scopeId)
@@ -278,6 +283,40 @@ CREATE TABLE syncCursorEntity (
 
 CREATE INDEX syncCursorEntity_partitionUpdatedScope
 ON syncCursorEntity(environmentId, serverId, principalId, consumerId, updatedAtMs DESC, scopeKind, scopeId);
+
+-- Schema v10 (message storage design 2026-10-27): one row = one proven-complete seq range [lowSeq, highSeq]
+-- of a V2 scope — every message of the scope with a seq in the range is stored. A scope's segments never
+-- overlap or touch (they are merged in the writing transaction); gaps are derived at read time. A
+-- `reachesOldest` segment also proves nothing exists below it. [0, 0] + reachesOldest = known-empty scope.
+-- The syncCursorEntity window columns mirror the head segment (the one with the highest highSeq).
+CREATE TABLE messageSegmentEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  scopeId TEXT NOT NULL,
+  lowSeq INTEGER NOT NULL,
+  highSeq INTEGER NOT NULL,
+  reachesOldest INTEGER NOT NULL,
+  headAtVerify INTEGER NOT NULL,
+  verifiedAtMs INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId, scopeKind, scopeId, lowSeq)
+);
+
+-- Schema v10: the partition's fact write revision (messageEntity.localRev of its newest write). It only
+-- grows — a scope clear or retention never lowers it — so a fact rewritten after a request started always
+-- has localRev > the revision the request read. Dropped with the partition (whose generation bump fences
+-- every in-flight writer).
+CREATE TABLE messageLocalRevEntity (
+  environmentId TEXT NOT NULL,
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  localRev INTEGER NOT NULL,
+  PRIMARY KEY (environmentId, serverId, principalId, consumerId)
+);
 
 CREATE TABLE outboxMessageEntity (
   localId TEXT NOT NULL PRIMARY KEY,
@@ -611,7 +650,7 @@ WHERE id = ?
 -- Task #14a: one stored fact of THIS full scope (partial merge / completion), read inside the write
 -- transaction. 0 rows = absent (or a contractually impossible cross-scope id).
 selectCanonicalFactInScope:
-SELECT canonicalFactJson, unknownFields FROM messageEntity
+SELECT canonicalFactJson, unknownFields, localRev FROM messageEntity
 WHERE id = ?
   AND environmentId = ?
   AND serverId = ?
@@ -621,10 +660,10 @@ WHERE id = ?
   AND channelId = ?;
 
 -- Task #14a: the unknown-aggregate marker of one fact, written right after its upsert in the same
--- transaction. NULL = every aggregate known.
+-- transaction. NULL = every aggregate known. Schema v10: with the fact's write revision (`localRev`).
 setCanonicalFactUnknownFields:
 UPDATE messageEntity
-SET unknownFields = ?
+SET unknownFields = ?, localRev = ?
 WHERE id = ?
   AND environmentId = ?
   AND serverId = ?
@@ -632,6 +671,175 @@ WHERE id = ?
   AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?;
+
+-- Schema v10: the partition's current fact write revision (0 = none yet). A writer reads it before its request.
+selectLocalRev:
+SELECT COALESCE(MAX(localRev), 0) AS localRev FROM messageLocalRevEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+setLocalRev:
+INSERT OR REPLACE INTO messageLocalRevEntity(environmentId, serverId, principalId, consumerId, localRev)
+VALUES (?, ?, ?, ?, ?);
+
+clearLocalRevForPartition:
+DELETE FROM messageLocalRevEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+purgeLocalRevForConsumer:
+DELETE FROM messageLocalRevEntity
+WHERE consumerId = ?;
+
+-- Schema v10: the oldest / newest stored fact seq of a scope inside [low, high] (the head mirror's edges).
+selectFactSeqBoundsInRange:
+SELECT MIN(seq) AS oldestSeq, MAX(seq) AS newestSeq FROM messageEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?
+  AND seq BETWEEN ? AND ?;
+
+-- Schema v10 reads: the newest facts strictly below / the oldest strictly above a seq, in (seq, id) order.
+selectFactsInScopeBefore:
+SELECT * FROM messageEntity
+WHERE environmentId = :environmentId
+  AND serverId = :serverId
+  AND principalId = :principalId
+  AND consumerId = :consumerId
+  AND scopeKind = :scopeKind
+  AND channelId = :channelId
+  AND seq < :seq
+ORDER BY seq DESC, id DESC
+LIMIT :limit;
+
+selectFactsInScopeAfter:
+SELECT * FROM messageEntity
+WHERE environmentId = :environmentId
+  AND serverId = :serverId
+  AND principalId = :principalId
+  AND consumerId = :consumerId
+  AND scopeKind = :scopeKind
+  AND channelId = :channelId
+  AND seq > :seq
+ORDER BY seq, id
+LIMIT :limit;
+
+-- Schema v10: where a fact id is stored in a partition (an anchored open reads around it).
+selectFactLocationById:
+SELECT scopeKind, channelId, seq FROM messageEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND id = ?;
+
+-- Schema v10 per-scope retention: the scope's facts that retention may delete (pinned thread roots
+-- excluded), oldest first.
+countUnpinnedFactsInScope:
+SELECT COUNT(*) FROM messageEntity AS fact
+WHERE fact.environmentId = ?
+  AND fact.serverId = ?
+  AND fact.principalId = ?
+  AND fact.consumerId = ?
+  AND fact.scopeKind = ?
+  AND fact.channelId = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM syncCursorEntity AS reply
+    WHERE reply.environmentId = fact.environmentId
+      AND reply.serverId = fact.serverId
+      AND reply.principalId = fact.principalId
+      AND reply.consumerId = fact.consumerId
+      AND reply.scopeKind = 'thread'
+      AND reply.parentScopeKind = fact.scopeKind
+      AND reply.parentScopeId = fact.channelId
+      AND reply.rootMessageId = fact.id
+  );
+
+selectUnpinnedFactSeqsInScope:
+SELECT fact.id, fact.seq FROM messageEntity AS fact
+WHERE fact.environmentId = ?
+  AND fact.serverId = ?
+  AND fact.principalId = ?
+  AND fact.consumerId = ?
+  AND fact.scopeKind = ?
+  AND fact.channelId = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM syncCursorEntity AS reply
+    WHERE reply.environmentId = fact.environmentId
+      AND reply.serverId = fact.serverId
+      AND reply.principalId = fact.principalId
+      AND reply.consumerId = fact.consumerId
+      AND reply.scopeKind = 'thread'
+      AND reply.parentScopeKind = fact.scopeKind
+      AND reply.parentScopeId = fact.channelId
+      AND reply.rootMessageId = fact.id
+  )
+ORDER BY fact.seq, fact.id;
+
+selectSegmentsForScope:
+SELECT * FROM messageSegmentEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?
+ORDER BY lowSeq;
+
+upsertSegment:
+INSERT OR REPLACE INTO messageSegmentEntity(
+  environmentId,
+  serverId,
+  principalId,
+  consumerId,
+  scopeKind,
+  scopeId,
+  lowSeq,
+  highSeq,
+  reachesOldest,
+  headAtVerify,
+  verifiedAtMs,
+  source
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteSegment:
+DELETE FROM messageSegmentEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?
+  AND lowSeq = ?;
+
+clearSegmentsForScope:
+DELETE FROM messageSegmentEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?;
+
+clearSegmentsForPartition:
+DELETE FROM messageSegmentEntity
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+purgeSegmentsForConsumer:
+DELETE FROM messageSegmentEntity
+WHERE consumerId = ?;
 
 -- Count matching rows for the fail-stop guard: after insert-or-ignore + scoped update, the store asserts
 -- exactly this row exists in THIS full scope. 0 = a cross-scope same-id collision (contract violation).
@@ -1023,8 +1231,9 @@ INSERT OR REPLACE INTO syncCursorEntity(
   epoch,
   parentScopeKind,
   parentScopeId,
-  rootMessageId
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  rootMessageId,
+  lastUserAccessAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSyncCursor:
 SELECT *
@@ -1066,15 +1275,16 @@ WHERE environmentId = ?
   AND channelId = ?
 ORDER BY seq, id;
 
-touchSyncCursorUpdatedAt:
+-- A use of the scope: both the write time and the user-access time (schema v10) move.
+touchSyncCursorUserAccess:
 UPDATE syncCursorEntity
-SET updatedAtMs = ?
-WHERE environmentId = ?
-  AND serverId = ?
-  AND principalId = ?
-  AND consumerId = ?
-  AND scopeKind = ?
-  AND scopeId = ?;
+SET updatedAtMs = :atMs, lastUserAccessAtMs = :atMs
+WHERE environmentId = :environmentId
+  AND serverId = :serverId
+  AND principalId = :principalId
+  AND consumerId = :consumerId
+  AND scopeKind = :scopeKind
+  AND scopeId = :scopeId;
 
 deleteSyncCursorForScope:
 DELETE FROM syncCursorEntity
@@ -1125,6 +1335,7 @@ SELECT
   cursor.scopeKind,
   cursor.scopeId,
   cursor.updatedAtMs,
+  cursor.lastUserAccessAtMs,
   COUNT(message.id) AS factCount,
   COALESCE(SUM(LENGTH(message.canonicalFactJson)), 0) AS byteCount
 FROM syncCursorEntity AS cursor
@@ -1139,8 +1350,10 @@ WHERE cursor.environmentId = ?
   AND cursor.serverId = ?
   AND cursor.principalId = ?
   AND cursor.consumerId = ?
-GROUP BY cursor.scopeKind, cursor.scopeId, cursor.updatedAtMs
-ORDER BY cursor.updatedAtMs DESC, cursor.scopeKind, cursor.scopeId;
+GROUP BY cursor.scopeKind, cursor.scopeId, cursor.updatedAtMs, cursor.lastUserAccessAtMs
+-- Most recently used first: by user access (schema v10; never-opened scopes last), then last write.
+ORDER BY (cursor.lastUserAccessAtMs IS NULL), cursor.lastUserAccessAtMs DESC, cursor.updatedAtMs DESC,
+  cursor.scopeKind, cursor.scopeId;
 
 selectCanonicalFactIdsBeyondLimit:
 SELECT fact.id, fact.seq
@@ -1198,6 +1411,9 @@ SELECT environmentId, serverId, principalId, consumerId FROM syncCursorEntity
 WHERE consumerId = ?
 UNION
 SELECT environmentId, serverId, principalId, consumerId FROM messageViewerOverlayEntity
+WHERE consumerId = ?
+UNION
+SELECT environmentId, serverId, principalId, consumerId FROM messageSegmentEntity
 WHERE consumerId = ?
 ORDER BY environmentId, principalId, serverId, consumerId;
 

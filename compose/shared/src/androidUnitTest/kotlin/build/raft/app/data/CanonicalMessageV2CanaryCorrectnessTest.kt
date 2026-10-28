@@ -1317,6 +1317,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                 rig.enter(channelA)
                 database.queries.setCanonicalFactUnknownFields(
                     unknownFields = marker,
+                    localRev = 1L,
                     id = "a1",
                     environmentId = channelA.environmentId,
                     serverId = channelA.serverId,

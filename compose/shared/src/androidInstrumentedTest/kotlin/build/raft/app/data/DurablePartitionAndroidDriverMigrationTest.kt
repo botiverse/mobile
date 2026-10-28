@@ -40,9 +40,9 @@ class DurablePartitionAndroidDriverMigrationTest {
     )
 
     @Test
-    fun androidFileBackedV1ToV9MigrationRollsBackAndRetriesForEveryDdlBoundary() {
+    fun androidFileBackedV1ToV10MigrationRollsBackAndRetriesForEveryDdlBoundary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        for (failAt in 1..26) {
+        for (failAt in 1..33) {
             val name = "slock-durable-android-$failAt-${UUID.randomUUID()}.db"
             context.deleteDatabase(name)
             try {
@@ -77,14 +77,14 @@ class DurablePartitionAndroidDriverMigrationTest {
                     assertEquals(expectedOutbox, driver.outboxRow())
                 }
                 AndroidSqliteDriver(RaftDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(9L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(10L, driver.scalarLong("PRAGMA user_version"))
                     assertMigratedState(driver)
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                     assertEquals(expectedOutbox, driver.outboxRow())
                     seedNewPartitionRows(driver)
                 }
                 AndroidSqliteDriver(RaftDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(9L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(10L, driver.scalarLong("PRAGMA user_version"))
                     assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                     assertEquals(
                         11L,
@@ -105,9 +105,9 @@ class DurablePartitionAndroidDriverMigrationTest {
     }
 
     @Test
-    fun androidFileBackedV2ToV9MigrationRollsBackAndRetriesAtEveryRemainingDdlBoundary() {
+    fun androidFileBackedV2ToV10MigrationRollsBackAndRetriesAtEveryRemainingDdlBoundary() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        for (failAt in 1..20) {
+        for (failAt in 1..27) {
             val name = "slock-overlay-android-$failAt-${UUID.randomUUID()}.db"
             context.deleteDatabase(name)
             try {
@@ -124,13 +124,13 @@ class DurablePartitionAndroidDriverMigrationTest {
                     AndroidSqliteDriver(FailAtSchema(RaftDatabase.Schema, failAt), context, name).useDriver { driver ->
                         driver.scalarLong("SELECT 1")
                     }
-                    fail("v2->v9 fail-at-$failAt must abort AndroidSqliteDriver migration")
+                    fail("v2->v10 fail-at-$failAt must abort AndroidSqliteDriver migration")
                     error("unreachable")
                 } catch (throwable: Throwable) {
                     throwable
                 }
                 assertTrue(
-                    "v2->v9 must expose the injected DDL failure: $failure",
+                    "v2->v10 must expose the injected DDL failure: $failure",
                     failure.hasCause<InjectedAndroidMigrationFailure>(),
                 )
 
@@ -141,14 +141,14 @@ class DurablePartitionAndroidDriverMigrationTest {
                     assertEquals(expectedOutbox, driver.outboxRow())
                 }
                 AndroidSqliteDriver(RaftDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(9L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(10L, driver.scalarLong("PRAGMA user_version"))
                     assertMigratedState(driver)
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                     assertEquals(expectedOutbox, driver.outboxRow())
                     seedOverlayRow(driver)
                 }
                 AndroidSqliteDriver(RaftDatabase.Schema, context, name).useDriver { driver ->
-                    assertEquals(9L, driver.scalarLong("PRAGMA user_version"))
+                    assertEquals(10L, driver.scalarLong("PRAGMA user_version"))
                     assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
                     assertEquals(Long.MAX_VALUE, driver.scalarLong("SELECT overlayVersion FROM messageViewerOverlayEntity"))
                     assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
@@ -358,6 +358,14 @@ class DurablePartitionAndroidDriverMigrationTest {
         assertFalse(driver.hasObject("index", "messageEntity_channelSeqId"))
         assertTrue(driver.hasObject("index", "messageEntity_partitionChannelSeqId"))
         assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM pragma_table_info('messageEntity') WHERE name='unknownFields'"))
+        assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM pragma_table_info('messageEntity') WHERE name='localRev'"))
+        assertEquals(
+            1L,
+            driver.scalarLong("SELECT COUNT(*) FROM pragma_table_info('syncCursorEntity') WHERE name='lastUserAccessAtMs'"),
+        )
+        assertTrue(driver.hasObject("table", "messageSegmentEntity"))
+        assertTrue(driver.hasObject("table", "messageLocalRevEntity"))
+        assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM messageSegmentEntity"))
         assertTrue(driver.hasObject("table", "messageViewerOverlayEntity"))
         assertTrue(driver.hasObject("table", "syncReadStateFactEntity"))
         assertTrue(driver.hasObject("table", "avatarCacheMetadataEntity"))
@@ -457,6 +465,8 @@ class DurablePartitionAndroidDriverMigrationTest {
             definition.name in setOf(
                 "messageEntity",
                 "syncCursorEntity",
+                "messageSegmentEntity",
+                "messageLocalRevEntity",
                 "messageViewerOverlayEntity",
                 "syncReadStateFactEntity",
                 "avatarCacheMetadataEntity",
