@@ -144,17 +144,20 @@ class SharedServerMembersRebaselineCarryOverTest {
         assertTrue("offline=1[agent-a]" in line, line)
     }
 
+    /** artin #triage:#97: no fact + lifecycle `active` reads "Likely online", display only. */
     @Test
-    fun neverSeenAgentStaysUnknown() = runBlocking {
+    fun neverSeenActiveAgentReadsLikelyOnlineWithoutAFact() = runBlocking {
         val registry = ProcessMemberPresenceRegistry()
         val store = storeWith(registry)
         switchWithKnownOnline(registry)
         store.refreshMembers(serverId, force = true, reason = "presence_transport_connected")
 
-        assertNull(registry.factFor(owner, "agent-never"))
+        assertNull(registry.factFor(owner, "agent-never"), "the guess is never written as a fact")
         val status = assertNotNull(store.currentMemberStatus(serverId, "agent-never"))
         assertNull(status.status)
-        assertEquals(NeutralAgentStatusLabel, status.statusLabel)
+        assertTrue(status.likelyOnline)
+        assertEquals(Presence.Active, status.presence)
+        assertEquals(LikelyOnlineAgentStatusLabel, status.statusLabel)
     }
 
     @Test

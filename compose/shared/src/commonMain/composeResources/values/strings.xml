@@ -2697,6 +2697,7 @@
     <string name="channel_member_role_admin">Admin</string>
     <string name="channel_member_role_guest">Guest</string>
     <string name="member_row_status_online">Online</string>
+    <string name="member_row_status_likely_online">Likely online</string>
     <string name="member_row_status_offline">Offline</string>
     <string name="member_row_status_idle">Idle</string>
     <string name="member_row_status_disconnected">Disconnected</string>

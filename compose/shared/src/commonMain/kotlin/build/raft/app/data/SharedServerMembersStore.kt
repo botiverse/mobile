@@ -347,7 +347,15 @@ data class SharedServerMemberStatus(
      * `now - lastSeenAt < 120s` (web `EXTERNAL_AGENT_ONLINE_WINDOW_MS`).
      * Null on managed members.
      */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /**
+     * No presence fact at all for this agent (realtime, roster, detail, historical, or one
+     * carried over a transport advance), only its lifecycle `status: "active"`: a display-only
+     * guess, shown green as "Likely online" so it reads apart from a server-sent Online
+     * (artin, #triage:#97; web botiverse/slock #11642 `AgentDisplayState.likelyOnline`).
+     * Produced only by [likelyOnlineMemberStatusOrNull]; never written into the registry.
+     */
+    val likelyOnline: Boolean = false
 )
 
 /**
@@ -355,6 +363,37 @@ data class SharedServerMemberStatus(
  * member's pre-connect status. It exists because [Presence] cannot express Unknown.
  */
 internal const val NeutralAgentStatusLabel = "—"
+
+/** Raw label of [SharedServerMemberStatus.likelyOnline]; UI localizes it (`member_row_status_likely_online`). */
+internal const val LikelyOnlineAgentStatusLabel = "Likely online"
+
+/**
+ * The display-only "Likely online" guess (artin, #triage:#97; web botiverse/slock #11642
+ * `resolveAgentDisplayState`), or null when it does not apply. Call it only when the member
+ * has no presence fact. It applies to a managed agent whose authoritative profile has
+ * lifecycle `active` and no runtime status of its own. Lifecycle is not liveness (an
+ * `active` agent can be not running), so this never feeds [normalizedAgentRuntimeStatus],
+ * the roster projection, or the registry; any real fact replaces it. `stopped` stays
+ * Offline through [MemberProfile.agentStatus]; an unknown or missing lifecycle keeps the
+ * neutral "—"; external agents keep their `lastSeenAt` tiers; App Bots and deleted agents
+ * get no guess.
+ */
+internal fun MemberProfile?.likelyOnlineMemberStatusOrNull(): SharedServerMemberStatus? {
+    val member = this ?: return null
+    if (member.kind != MemberKind.Agent || member.isExternal) return null
+    if (!member.managedByAppInstallId.isNullOrBlank()) return null
+    if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return null
+    if (member.agentStatus != null) return null
+    if (member.agentLifecycleStatus != "active") return null
+    return SharedServerMemberStatus(
+        status = null,
+        presence = Presence.Active,
+        statusLabel = LikelyOnlineAgentStatusLabel,
+        runtime = member.agentRuntimeOrNull(),
+        external = false,
+        likelyOnline = true
+    )
+}
 
 /** A scoped profile plus whether it came from an authoritative record or a message-author seed. */
 private data class ScopedMemberProfileResolution(
@@ -1038,6 +1077,11 @@ class SharedServerMembersStore internal constructor(
     ): SharedServerMemberStatus? {
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
+        if (presenceFact == null && resolution.authoritative) {
+            // No fact at all (a carried-over fact is still a fact): an `active` managed agent
+            // reads "Likely online" rather than neutral or Offline (artin, #triage:#97).
+            member.likelyOnlineMemberStatusOrNull()?.let { return it }
+        }
         return if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
             // A native transport is live and this member has no fact at all
             // (a reconnect carries known facts over, so this is a member never

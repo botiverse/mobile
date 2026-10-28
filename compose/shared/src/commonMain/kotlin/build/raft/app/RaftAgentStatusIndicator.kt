@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.data.LikelyOnlineAgentStatusLabel
 import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
@@ -39,7 +40,13 @@ internal data class RaftAgentStatusIndicatorState(
     /** Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked`. */
     val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /** The agent is stuck on one tool call (latest agent:activity frame); null when not. */
-    val toolStuck: AgentToolStuck? = null
+    val toolStuck: AgentToolStuck? = null,
+    /**
+     * A guess, not a fact: no presence fact, lifecycle `active` (see
+     * [build.raft.app.data.likelyOnlineMemberStatusOrNull]). Green, labelled "Likely online";
+     * [status] stays null so nothing reads it as a server-sent Online.
+     */
+    val likelyOnline: Boolean = false
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -139,7 +146,8 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         activityToolName = activityToolName,
         runtime = runtime,
         wakeCrashLoop = wakeCrashLoop,
-        toolStuck = toolStuck
+        toolStuck = toolStuck,
+        likelyOnline = likelyOnline
     )
 
 /**
@@ -414,6 +422,9 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
     workingActivityDetailText()
         ?.takeIf { it !is RaftAgentActivityDetailText.Raw }
         ?.let { return it.localizedText() }
+    if (likelyOnline && label == LikelyOnlineAgentStatusLabel) {
+        return stringResource(Res.string.member_row_status_likely_online)
+    }
     return when (label.trim().lowercase()) {
         "online", "active" -> stringResource(Res.string.member_row_status_online)
         "offline" -> stringResource(Res.string.member_row_status_offline)

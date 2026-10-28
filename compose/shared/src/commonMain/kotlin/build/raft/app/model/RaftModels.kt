@@ -388,8 +388,12 @@ data class MemberProfile(
     /**
      * The agent row's raw lifecycle `status` (`active` / `inactive` / `stopped` ...), trimmed and
      * lowercased; null on humans and identity seeds. [agentStatus] deliberately reads `active` as
-     * unknown (it is lifecycle, not liveness); the roster presence projection uses this to apply
-     * web's no-live-activity fallback (`agentStatusFallbackActivity`: `active` reads online).
+     * unknown (it is lifecycle, not liveness), and the roster presence projection never turns it
+     * into a presence fact (it only logs it in its `skipped=` samples). Its one display use is
+     * the "Likely online" fallback (artin, #triage:#97; web botiverse/slock #11642): when the
+     * member status read finds no presence fact at all for a managed agent and this is `active`,
+     * it shows a green "Likely online" guess that any real fact replaces
+     * (`likelyOnlineMemberStatusOrNull` in SharedServerMembersStore).
      */
     val agentLifecycleStatus: String? = null,
     /**
