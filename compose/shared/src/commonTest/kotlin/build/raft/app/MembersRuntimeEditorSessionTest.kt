@@ -40,13 +40,11 @@ class MembersRuntimeEditorSessionTest {
     private fun dialog(
         live: MembersRuntimeEditorLiveFacts,
         openedFormV2: Boolean = true,
-        formV2Declined: Boolean = false,
         editing: Boolean = true
     ) = membersRuntimeEditorDialog(
         editing = editing,
         opened = opened,
         openedFormV2 = openedFormV2,
-        formV2Declined = formV2Declined,
         live = live
     )
 
@@ -101,12 +99,9 @@ class MembersRuntimeEditorSessionTest {
     }
 
     @Test
-    fun declinedFormV2HandsTheSameSessionToTheLegacyEditor() {
-        assertEquals(MembersRuntimeEditorDialog.Legacy, dialog(steady(), formV2Declined = true))
-        assertEquals(
-            MembersRuntimeEditorDialog.Legacy,
-            dialog(steady().copy(runtimeStatusResolved = false), formV2Declined = true)
-        )
+    fun aFormV2SessionStaysOnFormV2WhileStatusIsUnresolved() {
+        // Task #8: nothing hands a v2-opened session to the legacy editor any more.
+        assertEquals(MembersRuntimeEditorDialog.FormV2, dialog(steady().copy(runtimeStatusResolved = false)))
     }
 
     private fun agentDetail(creatorId: String?, deletedAt: String? = null) =

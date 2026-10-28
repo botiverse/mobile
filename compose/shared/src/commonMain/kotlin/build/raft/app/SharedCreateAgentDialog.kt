@@ -118,7 +118,36 @@ internal data class SharedCreateAgentDialogSubmit(
     val runtimeFormV2: RuntimeFormV2SubmitBody? = null
 )
 
-private sealed interface RuntimeFormV2DialogLoad {
+/** What the create dialog's runtime section shows. */
+internal sealed interface CreateAgentRuntimeSection {
+    /** Runtime form v2 is off (flag) or not applicable yet (external, no computer/runtime). */
+    data object V1 : CreateAgentRuntimeSection
+    data object V2Loading : CreateAgentRuntimeSection
+    data class V2Ready(val loaded: RuntimeFormV2Loaded) : CreateAgentRuntimeSection
+    data class V2Failed(val code: String) : CreateAgentRuntimeSection
+}
+
+/**
+ * Once runtime form v2 is a candidate it owns the runtime section in every load state: a
+ * failed load shows a warning with Retry and never falls back to the v1 form (task #8,
+ * retire runtime form v1).
+ */
+internal fun createAgentRuntimeSection(v2Candidate: Boolean, load: RuntimeFormV2DialogLoad): CreateAgentRuntimeSection =
+    if (!v2Candidate) {
+        CreateAgentRuntimeSection.V1
+    } else {
+        when (load) {
+            is RuntimeFormV2DialogLoad.Ready -> CreateAgentRuntimeSection.V2Ready(load.loaded)
+            is RuntimeFormV2DialogLoad.Failed -> CreateAgentRuntimeSection.V2Failed(load.code)
+            RuntimeFormV2DialogLoad.Idle, RuntimeFormV2DialogLoad.Loading -> CreateAgentRuntimeSection.V2Loading
+        }
+    }
+
+/** Create with v2 needs the loaded form and no field errors. */
+internal fun createAgentRuntimeFormV2SubmitReady(formLoaded: Boolean, hasErrors: Boolean): Boolean =
+    formLoaded && !hasErrors
+
+internal sealed interface RuntimeFormV2DialogLoad {
     data object Idle : RuntimeFormV2DialogLoad
     data object Loading : RuntimeFormV2DialogLoad
     data class Ready(val loaded: RuntimeFormV2Loaded) : RuntimeFormV2DialogLoad
@@ -1012,7 +1041,7 @@ internal fun SharedCreateAgentDialog(
     ) {
         mutableStateOf(0)
     }
-    // Runtime form v2 (flag `runtime_form_v2_web`): null keeps the v1 form untouched.
+    // Runtime form v2 (flag `runtime_form_v2_web`): null keeps the v1 form (flag off only).
     // Read on every recomposition (value-equal), so a flag that resolves after open still applies.
     val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
     // Runtime form v2 needs only the live catalog to offer Built-in; its form comes from v2.
@@ -1026,19 +1055,20 @@ internal fun SharedCreateAgentDialog(
             hasResolvedExactForm = builtInForm != null
         ) || builtInV2Offered
     val v2Candidate =
-        // Any runtime: the server decides which runtimes have a v2 form (404 otherwise, then v1),
-        // so a runtime moving to v2 needs no app release.
+        // Any runtime: every runtime has a v2 form on the server, and a load failure shows Retry
+        // instead of falling back to v1 (task #8, retire runtime form v1).
         runtimeFormV2 != null && !external && availableSelectedMachineId != null && runtime.isNotBlank()
     var v2LoadAttempt by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
     // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; after that it
-    // fails like any other load (v1 form, or the retry banner).
+    // fails like any other load (the retry banner).
     var v2StaleReloads by remember(runtimeFormV2, availableSelectedMachineId, runtime, external) { mutableStateOf(0) }
     var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(if (v2Candidate) RuntimeFormV2DialogLoad.Loading else RuntimeFormV2DialogLoad.Idle)
     }
-    val v2Loaded = (v2Load as? RuntimeFormV2DialogLoad.Ready)?.loaded
-    // v2 owns the runtime section while it loads or is ready; a failure falls back to v1.
-    val v2Active = v2Candidate && (v2Load is RuntimeFormV2DialogLoad.Loading || v2Loaded != null)
+    // v2 owns the runtime section whenever it is a candidate: loading, ready, or failed (banner + Retry).
+    val runtimeSection = createAgentRuntimeSection(v2Candidate, v2Load)
+    val v2Active = runtimeSection != CreateAgentRuntimeSection.V1
+    val v2Loaded = (runtimeSection as? CreateAgentRuntimeSection.V2Ready)?.loaded
     var v2Values by remember(v2Loaded) {
         mutableStateOf(v2Loaded?.let { initialRuntimeFormV2Values(it.form, it.sources) }.orEmpty())
     }
@@ -1312,7 +1342,7 @@ internal fun SharedCreateAgentDialog(
         (external || runtime in supportedRuntimeIds) &&
         (external ||
             if (v2Active) {
-                v2Loaded != null && v2Errors.isEmpty()
+                createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty())
             } else {
                 isCreateAgentRuntimeContractReady(
                     runtime = runtime,
@@ -1506,12 +1536,9 @@ internal fun SharedCreateAgentDialog(
                         }
                     }
                 }
-                val v2FailureCode = (v2Load as? RuntimeFormV2DialogLoad.Failed)?.code
-                val v1FormMissing =
-                    (runtime == "builtin" && builtInForm == null) ||
-                        (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && resolvedKimiSdkForm == null)
-                if (!external && v2Candidate && v2FailureCode != null && v1FormMissing) {
-                    // v2 failed and there is no v1 form to fall back to: say so instead of a blank section.
+                val v2FailureCode = (runtimeSection as? CreateAgentRuntimeSection.V2Failed)?.code
+                if (!external && v2FailureCode != null) {
+                    // v2 failed: say so with Retry; there is no v1 fallback.
                     item(key = "runtime-form-v2-failure") {
                         RaftUiBanner(
                             status = RaftUiBannerStatus.Warning,
@@ -1521,7 +1548,10 @@ internal fun SharedCreateAgentDialog(
                             action = {
                                 RaftBrutalActionButton(
                                     label = stringResource(Res.string.common_retry),
-                                    onClick = { v2LoadAttempt += 1 },
+                                    onClick = {
+                                        v2StaleReloads = 0
+                                        v2LoadAttempt += 1
+                                    },
                                     enabled = !submitting,
                                     leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
@@ -1562,13 +1592,13 @@ internal fun SharedCreateAgentDialog(
                                 runtimeAvailabilityError = runtimeAvailabilityError,
                                 enabled = !submitting
                             ) {
-                                if (v2Loaded == null) {
+                                if (v2Loaded == null && v2FailureCode == null) {
                                     Text(
                                         text = stringResource(Res.string.agent_create_state_computers_loading),
                                         style = RaftType.Caption,
                                         color = RaftColor.TextMutedGray
                                     )
-                                } else {
+                                } else if (v2Loaded != null) {
                                     RuntimeFormV2Fields(
                                         loaded = v2Form ?: v2Loaded,
                                         values = v2Values,
@@ -1783,6 +1813,8 @@ internal fun SharedCreateAgentDialog(
                             onSubmit(v2Submit)
                             return@RaftBrutalActionButton
                         }
+                        // v2 owns the form but has not loaded: never submit the v1 fields instead.
+                        if (v2Active) return@RaftBrutalActionButton
                         onSubmit(
                             buildSharedCreateAgentDialogSubmit(
                                 name = trimmedName,

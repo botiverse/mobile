@@ -72,13 +72,13 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
                         machineId = "m-1",
                         runtimeId = "gemini",
                         machineRuntimeIds = listOf("gemini", "claude", "codex"),
+                        activeAgent = false,
                         saving = false,
                         error = null,
                         errorFieldKeys = emptySet(),
                         onDismiss = {},
-                        onLoadFailed = {},
-                        onChangeRuntime = {},
-                        onSave = {},
+                        onRuntimeSelected = {},
+                        onSave = { _, _ -> },
                     )
                 }
             }

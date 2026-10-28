@@ -1113,6 +1113,8 @@
     <string name="member_action_stop_confirm">停止</string>
     <string name="member_action_reset_runtime_session">ランタイムセッションをリセット</string>
     <string name="member_action_save_runtime_change">ランタイム変更を保存</string>
+    <string name="member_runtime_switch_active_message">ランタイムを %1$s から %2$s に切り替え、現在のランタイムセッションをリセットします。</string>
+    <string name="member_runtime_switch_inactive_message">ランタイムを %1$s から %2$s に切り替えます。</string>
     <string name="member_action_view_service">サービスを表示</string>
     <string name="member_action_view_logs">ログを表示</string>
     <string name="member_action_refresh">更新</string>
