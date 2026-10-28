@@ -405,6 +405,10 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 2
         let crop = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(at: CGPoint(x: 0, y: -top)) }
+        // Also written to a file so the bar can be looked at, not only measured.
+        if let data = crop.pngData() {
+            try? data.write(to: URL(fileURLWithPath: "/tmp/\(tag).png"))
+        }
         guard let b64 = crop.pngData()?.base64EncodedString() else { return }
         stride(from: 0, to: b64.count, by: 2000).forEach { start in
             let a = b64.index(b64.startIndex, offsetBy: start)
@@ -444,10 +448,16 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(button.midY, capsule.midY, accuracy: 0.5, geometry)
         XCTAssertEqual(button.height, capsule.height, accuracy: 0.5, geometry)
         XCTAssertGreaterThan(button.minX, capsule.maxX, geometry)
-        let c = try XCTUnwrap(capsuleSpan, geometry), b = try XCTUnwrap(buttonSpan, geometry)
-        let capsuleCentre = (c.0 + c.1) / 2 * scale, buttonCentre = (b.0 + b.1) / 2 * scale
-        print("RAFT_SYSTEMTAB_CENTRES capsule=\(capsuleCentre)px button=\(buttonCentre)px diff=\(buttonCentre - capsuleCentre)px")
-        XCTAssertEqual(buttonCentre, capsuleCentre, accuracy: 2, "pixel centres: \(geometry)")
+        // The avatar is centred in its own round button, and the button sits level with the
+        // capsule. The button's ink is compared with the button's own frame rather than with a
+        // column through the capsule: what a column through the capsule catches changed in
+        // iOS 27 (the icon glyph alone, instead of the icon and its caption), while the
+        // avatar's position inside its button did not.
+        let b = try XCTUnwrap(buttonSpan, geometry)
+        let buttonCentre = (b.0 + b.1) / 2 * scale
+        let buttonFrameCentre = button.midY * scale
+        print("RAFT_SYSTEMTAB_CENTRES buttonInk=\(buttonCentre)px buttonFrame=\(buttonFrameCentre)px diff=\(buttonCentre - buttonFrameCentre)px")
+        XCTAssertEqual(buttonCentre, buttonFrameCentre, accuracy: 2, "avatar centred in its button: \(geometry)")
         // The page tabs' titles are laid out whole, inside the capsule.
         func labels(_ view: UIView) -> [UILabel] {
             view.subviews.flatMap { sub -> [UILabel] in ((sub as? UILabel).map { [$0] } ?? []) + labels(sub) }
