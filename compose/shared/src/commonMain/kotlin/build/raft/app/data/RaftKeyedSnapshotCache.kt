@@ -20,8 +20,29 @@ import kotlinx.atomicfu.locks.synchronized
  * [durable] (optional) persists entries through [toDurable] / [fromDurable] so a cold start paints
  * from disk; a null [durable] keeps the cache memory-only.
  */
+/** The disk behind a [RaftKeyedSnapshotCache]: [RaftKeyedDurableSnapshotStore] or an offline resource. */
+internal interface RaftKeyedSnapshotDurable<D> {
+    /** Captured before a request starts; [write] under it is dropped across a boundary / eviction. */
+    val epoch: Long
+
+    suspend fun read(key: RaftDurableSnapshotKey): D?
+
+    suspend fun write(key: RaftDurableSnapshotKey, value: D, expectedEpoch: Long): Boolean
+
+    /** A confirmed change (the server answered a mutation): stored now, over any older in-flight answer. */
+    suspend fun confirm(key: RaftDurableSnapshotKey, value: D) {
+        write(key, value, epoch)
+    }
+
+    suspend fun evict(key: RaftDurableSnapshotKey)
+
+    suspend fun evictServer(serverId: String, accountId: String? = null)
+
+    suspend fun clearAll()
+}
+
 internal class RaftKeyedSnapshotCache<T : Any, D>(
-    private val durable: RaftKeyedDurableSnapshotStore<D>? = null,
+    private val durable: RaftKeyedSnapshotDurable<D>? = null,
     private val toDurable: (T) -> D? = { null },
     private val fromDurable: (D) -> T? = { null },
     private val maxPerServer: Int = DefaultMaxPerServer,
@@ -74,6 +95,21 @@ internal class RaftKeyedSnapshotCache<T : Any, D>(
         val store = durable ?: return true
         toDurable(value)?.let { record -> store.write(key, record, ticket.durable) }
         return true
+    }
+
+    /**
+     * A confirmed change of [key]'s entity (the server answered a mutation): memory and disk follow at once,
+     * and an answer of a request that started before it cannot overwrite it.
+     */
+    suspend fun confirm(key: RaftDurableSnapshotKey, value: T) {
+        if (key.rowId == null) return
+        synchronized(lock) {
+            // Fences answers of requests that started before this change (like [evict]).
+            memoryEpoch += 1L
+            putLocked(key, value)
+        }
+        val store = durable ?: return
+        toDurable(value)?.let { record -> store.confirm(key, record) }
     }
 
     suspend fun evict(key: RaftDurableSnapshotKey) {

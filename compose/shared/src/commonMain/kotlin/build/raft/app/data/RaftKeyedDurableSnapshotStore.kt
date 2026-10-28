@@ -37,17 +37,17 @@ internal class RaftKeyedDurableSnapshotStore<T>(
     private val maxRows: Int = DefaultMaxRows,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val logger: (String) -> Unit = {},
-) {
+) : RaftKeyedSnapshotDurable<T> {
     private val mutex = Mutex()
 
     @Volatile
     private var epochValue = 0L
 
     /** Capture before a request starts; pass to [write] so a write across a boundary is dropped. */
-    val epoch: Long
+    override val epoch: Long
         get() = epochValue
 
-    suspend fun read(key: RaftDurableSnapshotKey): T? {
+    override suspend fun read(key: RaftDurableSnapshotKey): T? {
         val id = key.rowId ?: return null
         return try {
             storage.read(id)?.let { encoded -> DurableJson.decodeFromString(serializer, encoded) }
@@ -60,7 +60,7 @@ internal class RaftKeyedDurableSnapshotStore<T>(
     }
 
     /** Persists [value] for [key] unless a boundary / eviction happened after [expectedEpoch]. */
-    suspend fun write(key: RaftDurableSnapshotKey, value: T, expectedEpoch: Long): Boolean {
+    override suspend fun write(key: RaftDurableSnapshotKey, value: T, expectedEpoch: Long): Boolean {
         val id = key.rowId ?: return false
         return mutex.withLock {
             if (expectedEpoch != epochValue) {
@@ -84,7 +84,7 @@ internal class RaftKeyedDurableSnapshotStore<T>(
     }
 
     /** Lost access to one entity (403 / 404): drop its row and fence in-flight writes. */
-    suspend fun evict(key: RaftDurableSnapshotKey) {
+    override suspend fun evict(key: RaftDurableSnapshotKey) {
         val id = key.rowId ?: return
         mutex.withLock {
             epochValue += 1L
@@ -96,7 +96,7 @@ internal class RaftKeyedDurableSnapshotStore<T>(
     }
 
     /** Lost access to [serverId] for [accountId] (every environment, every entity). */
-    suspend fun evictServer(serverId: String, accountId: String? = null) {
+    override suspend fun evictServer(serverId: String, accountId: String?) {
         val serverKey = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         val accountKey = accountId?.trim()?.takeIf { it.isNotEmpty() }
         mutex.withLock {
@@ -115,7 +115,7 @@ internal class RaftKeyedDurableSnapshotStore<T>(
     }
 
     /** Every row; in-flight writes are fenced. */
-    suspend fun clearAll() {
+    override suspend fun clearAll() {
         mutex.withLock {
             epochValue += 1L
             runCatchingNonCancellation {

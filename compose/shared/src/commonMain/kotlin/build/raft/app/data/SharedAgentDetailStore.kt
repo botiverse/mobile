@@ -514,6 +514,11 @@ internal class SharedAgentDetailStore(
         actions: SharedAgentDetailActions,
         workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult> {
+        // A cache replay (incl. the stored offline copy) is read-only until a fresh answer replaces it.
+        if (_state.value.detailFromCache && _state.value.agentId == agentId) {
+            logger("shared_agent_detail_store lifecycle_skip reason=cached_stand_in action=${action.actionKey}")
+            return DataResult.Error(ScreenError(AgentDetailStandInReadOnlyCode, retryable = true))
+        }
         dispatch(SharedAgentDetailIntent.StartLifecycleAction(action.actionKey))
         val result =
             try {
@@ -958,11 +963,34 @@ internal data class RaftCachedAgentDetail(
 )
 
 /**
- * Process agent-detail cache: memory-only (the detail graph carries runtime config and activity
- * that are revalidated on every open anyway), keyed environment + account + server + agent,
- * capped per server.
+ * Process agent-detail cache, keyed environment + account + server + agent, capped per server. Its disk
+ * (offline resource [AgentDetailResourceSpec]) holds a whitelisted record ([StoredAgentDetail]: never env
+ * values, provider keys, client keys, activity or previews) so a cold / offline open paints the page
+ * read-only while it refreshes.
  */
-internal typealias RaftAgentDetailCache = RaftKeyedSnapshotCache<RaftCachedAgentDetail, Unit>
+/** A lifecycle action asked against a cached / stored stand-in (not yet refreshed): not sent. */
+internal const val AgentDetailStandInReadOnlyCode = "agent_detail_stand_in_read_only"
+
+internal typealias RaftAgentDetailCache = RaftKeyedSnapshotCache<RaftCachedAgentDetail, StoredAgentDetail>
+
+/** [RaftAgentDetailCache] backed by [resource] (null: memory only). */
+internal fun raftAgentDetailCache(resource: RaftOfflineResource<String, StoredAgentDetail>?): RaftAgentDetailCache =
+    RaftKeyedSnapshotCache(
+        durable = resource?.let { RaftOfflineKeyedSnapshotDurable(it) },
+        toDurable = { cached -> cached.toStoredAgentDetail() },
+        fromDurable = { stored -> stored.toCachedAgentDetail() },
+    )
+
+/**
+ * This account's last canonical detail of [agentId] on [owner]'s server: memory, else the stored record
+ * (cold start / offline). The caller paints it as a cache replay (no edit authority) and refreshes it.
+ */
+internal suspend fun RaftAgentDetailCache.cachedAgentDetailFor(
+    owner: SharedAgentDetailOwner,
+    agentId: MemberId,
+): RaftCachedAgentDetail? =
+    read(owner.agentDetailCacheKey(agentId))
+        ?.takeIf { it.detail.agentId == agentId && it.server.id == owner.serverId }
 
 internal fun SharedAgentDetailOwner.agentDetailCacheKey(agentId: MemberId): RaftDurableSnapshotKey =
     RaftDurableSnapshotKey(

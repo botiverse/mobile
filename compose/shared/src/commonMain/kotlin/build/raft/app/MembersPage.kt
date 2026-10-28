@@ -156,6 +156,7 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
 import build.raft.app.data.agentDetailCacheKey
+import build.raft.app.data.cachedAgentDetailFor
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
@@ -3039,8 +3040,26 @@ private class MemberDetailRouteProvider(
     /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
-    val accountBinding: () -> Pair<String, String>? = { null }
+    val accountBinding: () -> Pair<String, String>? = { null },
+    /** Runs the agent detail cache's write-through of confirmed edits (outlives the callback that asks). */
+    private val cacheScope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
 ) {
+    /**
+     * A confirmed edit of the shown agent (the server answered): the cached detail, in memory and on disk
+     * (whitelisted record), follows the store's detail. Nothing cached / a cache replay: nothing to do.
+     */
+    private suspend fun confirmCachedAgentDetail() {
+        val cache = agentDetailCache ?: return
+        val state = agentDetailStore.state.value
+        if (state.detailFromCache) return
+        val owner = state.detailOwner ?: return
+        val detail = state.detail ?: return
+        if (state.detailServerId != owner.serverId || state.agentId != detail.agentId) return
+        val key = owner.agentDetailCacheKey(detail.agentId)
+        val cached = cache.peek(key) ?: return
+        cache.confirm(key, cached.copy(detail = detail))
+    }
+
     /**
      * First-frame read of [memberId]'s cached canonical detail on [serverId] for the bound account,
      * without suspending; null when nothing is cached or the account is not known yet.
@@ -3087,10 +3106,14 @@ private class MemberDetailRouteProvider(
             )
         )
         val projection = agentDetailStore.state.value.runtimeConfigProjection
-        return projection?.owner == expectedOwner &&
-            projection.agentId == authority.memberId &&
-            projection.profileGeneration == authority.profileGeneration &&
-            projection.config == config
+        val applied =
+            projection?.owner == expectedOwner &&
+                projection.agentId == authority.memberId &&
+                projection.profileGeneration == authority.profileGeneration &&
+                projection.config == config
+        // Confirmed (the save answered): the cached page follows (its disk record never holds the values).
+        if (applied) confirmCachedAgentDetail()
+        return applied
     }
 
     suspend fun updateHumanRole(
@@ -3459,6 +3482,8 @@ private class MemberDetailRouteProvider(
                 profileGeneration = state.detailProfileGeneration
             )
         )
+        // Confirmed profile / avatar edit: the cached page (memory and disk) follows.
+        cacheScope.launch { confirmCachedAgentDetail() }
     }
 
     suspend fun runLifecycleAction(
@@ -3496,6 +3521,10 @@ private class MemberDetailRouteProvider(
                         AgentMachineAssignmentRequest(agentId, machineId = null)
                     )
             }
+        // A deleted agent's page must not come back from the cache (memory or disk).
+        if (action == MembersAgentLifecycleAction.Delete && result is DataResult.Content && result.data.success) {
+            currentAgentDetailOwner(serverId)?.let { owner -> agentDetailCache?.evict(owner.agentDetailCacheKey(agentId)) }
+        }
         return result
     }
 
@@ -4152,10 +4181,10 @@ internal fun MemberDetailPageContent(
             }
             // Data-layer plan step 5: this account's last canonical answer for the agent on this
             // server paints at once (no spinner, no edit authority) while the request refreshes it.
+            // Offline-first: memory, else the whitelisted record on disk (a cold start / offline open).
             val cached =
                 if (memberIdentity.memberDetailAccessMode(activeServerId) == MemberDetailAccessMode.LocalFull) {
-                    provider.agentDetailCache?.peek(requestOwner.agentDetailCacheKey(memberIdentity.memberId))
-                        ?.takeIf { it.detail.agentId == memberIdentity.memberId && it.server.id == requestOwner.serverId }
+                    provider.agentDetailCache?.cachedAgentDetailFor(requestOwner, memberIdentity.memberId)
                 } else {
                     null
                 }
