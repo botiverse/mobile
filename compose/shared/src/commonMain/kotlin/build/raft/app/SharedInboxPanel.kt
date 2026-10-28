@@ -1448,8 +1448,9 @@ private fun SharedActivityList(
     // list (see ActivityEntryTopAnchorOwner for owner + fence). Declared before
     // the canonical-snapshot effect so activation arms it before that effect runs.
     val entryTopAnchorOwner = remember(listState) { ActivityEntryTopAnchorOwner() }
-    // The rows that landed above a scrolled reader; the pill shows only while one of
-    // them is laid out above the viewport (activityNewRowsAboveViewport).
+    // The rows that arrived (new, or with new activity) above a scrolled reader
+    // (activityPillKeysAfterChange); the pill shows only while one of them is laid out
+    // above the viewport (activityNewRowsAboveViewport).
     var newActivityAboveKeys by
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             mutableStateOf(emptySet<String>())
@@ -1503,13 +1504,11 @@ private fun SharedActivityList(
                 "activity_keep_top_pin fromIndex=${nextItems.indexOfFirst { it.key == previousHead }} anchorTop=$anchorTop"
             )
         }
-        if (anchorTop || keptTop) {
-            if (newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet()
-            listState.requestScrollToItem(0)
-        } else {
-            val landed = activityNewTopRowKeys(previousItems.map(InboxItem::key), nextItems.map(InboxItem::key))
-            if (landed.isNotEmpty()) newActivityAboveKeys = newActivityAboveKeys + landed
-        }
+        if (anchorTop || keptTop) listState.requestScrollToItem(0)
+        // The pill counts only rows that arrived (new, or with new activity), never rows the
+        // reader scrolled past that a reorder moved above the old head.
+        val pillKeys = activityPillKeysAfterChange(newActivityAboveKeys, previousItems, nextItems, listAtTop = anchorTop || keptTop)
+        if (pillKeys != newActivityAboveKeys) newActivityAboveKeys = pillKeys
     }
     LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
         if (!active || !viewportRecoveryArmed || listState.isScrollInProgress) return@LaunchedEffect
