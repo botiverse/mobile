@@ -158,4 +158,4 @@ internal fun appShellRailItemsWithSearch(
     ) + items.map { if (searchOpen) it.copy(selected = false) else it }
 
 // raft-ui --sticker-ink-medium (raft-design #875); generated token after the 0.48 bump
-private val RaftAppRailServerTileOpenFill = Color.White.copy(alpha = 0.06f)
+private val RaftAppRailServerTileOpenFill = Color.White.copy(alpha = 0.06f) // raft-color: sticker-ink-medium is paper 6% in both themes (raft-design #875)
