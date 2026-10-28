@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
+import kotlin.time.Clock
 import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
@@ -87,6 +88,13 @@ private data class ActivityCanonicalDepthResult(
  * then supersedes them.
  */
 internal const val ActivityPullJoinsInFlightRefreshWindowMillis: Long = 10_000L
+
+/**
+ * Ticket 67609860 (artin): a visible-route Refresh shows the Activity header indicator only when
+ * the rows shown were last read at least this long ago (wall clock), like the app shell's
+ * [build.raft.app.AppShellResumeStaleRefreshMillis] resume backstop.
+ */
+internal const val ActivityHeaderRefreshStaleAfterMillis: Long = 60_000L
 
 private data class ActivityRealtimeReconcileResult(
     val items: List<InboxItem>,
@@ -153,6 +161,11 @@ class SharedActivityStore internal constructor(
     private val realtimeBackgroundRefreshIntervalMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
     /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
+    /**
+     * Wall clock for [ActivityHeaderRefreshStaleAfterMillis]: the monotonic clock does not advance
+     * while an iOS device sleeps, and the resume after a suspension is the refresh that must show.
+     */
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** See [ActivityRefreshCoalesceWindowMillis]. */
     private val refreshCoalesceWindowMillis: Long = ActivityRefreshCoalesceWindowMillis,
     /** Task #164: the backoff of the stale-Activity recovery read; injectable for virtual time. */
@@ -187,6 +200,8 @@ class SharedActivityStore internal constructor(
     private val readOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
+    /** Wall time the shown rows were last read from the server (any refresh, background too). */
+    private var lastRowsReadAtEpochMillis: Long? = null
     /** Start time of [loadJob] when it is a foreground reset load (not LoadMore / background). */
     private var foregroundResetLoadStartedAtMillis: Long? = null
     /**
@@ -329,11 +344,11 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ServerSelected -> scope.launch { selectServer(intent) }
             SharedActivityIntent.LoadInitial -> {
                 activitySurfaceHidden = false
-                load(refresh = true, intent = intent)
+                load(refresh = true, headerIndicator = true, intent = intent)
             }
             SharedActivityIntent.Refresh -> {
                 activitySurfaceHidden = false
-                load(refresh = true, pullRefresh = false, intent = intent)
+                load(refresh = true, pullRefresh = false, headerIndicator = shownRowsAreOld(), intent = intent)
             }
             SharedActivityIntent.PullRefresh -> {
                 activitySurfaceHidden = false
@@ -558,6 +573,7 @@ class SharedActivityStore internal constructor(
             readOverlay.clear()
             doneOverlay.clear()
             lastResetLoadStartedAtMillis = null
+            lastRowsReadAtEpochMillis = null
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
             readPredictionHolds = emptyMap()
@@ -1010,7 +1026,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (!changed) return
-        load(refresh = true, intent = SharedActivityIntent.SetFilter(filter))
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.SetFilter(filter))
     }
 
     /**
@@ -1036,6 +1052,7 @@ class SharedActivityStore internal constructor(
                 realtimeHighWater.clear()
                 resetRealtimeCatchUpLocked()
                 presentationStore.clear()
+                lastRowsReadAtEpochMillis = null
                 // Web registerServerReset (slock #11383) starts the new server on its last
                 // Activity filter (All when none); the persist slice hydrates that server's
                 // cached rows for it.
@@ -1055,7 +1072,7 @@ class SharedActivityStore internal constructor(
             "store_load domain=activity phase=server_selected serverId=$serverId " +
                 "cached=${_state.value.snapshot != null}"
         )
-        load(refresh = true, intent = SharedActivityIntent.LoadInitial)
+        load(refresh = true, headerIndicator = true, intent = SharedActivityIntent.LoadInitial)
     }
 
     private suspend fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
@@ -1640,10 +1657,27 @@ class SharedActivityStore internal constructor(
         if (accepted) onUnreadCountsChanged()
     }
 
+    /**
+     * Ticket 67609860: a visible-route Refresh (resume, re-entry, page did appear) shows the header
+     * indicator only when the rows shown were last read [ActivityHeaderRefreshStaleAfterMillis]
+     * ago or never; a re-entry right after a load or realtime refresh revalidates silently.
+     */
+    private fun shownRowsAreOld(): Boolean {
+        val lastReadAt = synchronized(realtimeOwnerLock) { lastRowsReadAtEpochMillis } ?: return true
+        return nowEpochMillis() - lastReadAt >= ActivityHeaderRefreshStaleAfterMillis
+    }
+
+    /**
+     * [headerIndicator]: this refresh may show the header's top-right indicator
+     * ([SharedActivityState.headerRefreshing]). Only the open / server or filter switch / visible
+     * Refresh over old rows pass it; background loads (realtime, sync, stale recovery) and the
+     * store's own corrective refreshes never show it, and a pull shows only the pull spinner.
+     */
     private fun load(
         refresh: Boolean,
         pullRefresh: Boolean = false,
         backgroundRefresh: Boolean = false,
+        headerIndicator: Boolean = false,
         intent: SharedActivityIntent
     ) {
         val job =
@@ -1715,6 +1749,7 @@ class SharedActivityStore internal constructor(
                 if (_state.value.backgroundRefreshing != backgroundRefreshing) {
                     _state.update { state -> state.copy(backgroundRefreshing = backgroundRefreshing) }
                 }
+                val showsHeaderIndicator = refresh && headerIndicator && !pullRefresh && !backgroundRefresh
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
@@ -1725,6 +1760,7 @@ class SharedActivityStore internal constructor(
                             refresh = refresh,
                             pullRefresh = pullRefresh,
                             backgroundRefresh = backgroundRefresh,
+                            headerIndicator = showsHeaderIndicator,
                             filter = filter,
                             generation = generation
                         )
@@ -1844,6 +1880,7 @@ class SharedActivityStore internal constructor(
                                     stateWithLocalProfiles.copy(
                                         loading = refresh && stateWithLocalProfiles.snapshot == null,
                                         refreshing = refresh && stateWithLocalProfiles.snapshot != null,
+                                        headerRefreshAllowed = showsHeaderIndicator,
                                         pullRefreshing =
                                             refresh &&
                                                 (pullRefresh || pullJoinedGeneration == generation) &&
@@ -1948,6 +1985,9 @@ class SharedActivityStore internal constructor(
                                         // (the list does not shrink), the refresh is not an error.
                                         keepUnfetchedTail = partialFailureCode != null
                                     )
+                                    if (refresh && result is DataResult.Content && result.data.staleReason == null) {
+                                        lastRowsReadAtEpochMillis = nowEpochMillis()
+                                    }
                                     true
                                 }
                             }
@@ -2072,6 +2112,7 @@ class SharedActivityStore internal constructor(
                     settle = false
                 )
                 progressiveTailGeneration = generation
+                lastRowsReadAtEpochMillis = nowEpochMillis()
                 true
             }
         if (!published) return
@@ -2215,12 +2256,13 @@ class SharedActivityStore internal constructor(
         refresh: Boolean,
         pullRefresh: Boolean,
         backgroundRefresh: Boolean,
+        headerIndicator: Boolean,
         filter: InboxFilter,
         generation: Long
     ) {
         diagnosticsLogger(
             "store_load domain=activity phase=start refresh=$refresh background=$backgroundRefresh " +
-                "pullRefresh=$pullRefresh filter=${filter.name} generation=$generation " +
+                "pullRefresh=$pullRefresh headerIndicator=$headerIndicator filter=${filter.name} generation=$generation " +
                 "pullRefreshingBefore=${_state.value.pullRefreshing}"
         )
     }
@@ -3945,9 +3987,15 @@ data class SharedActivityState(
     /**
      * A background load (realtime reconcile, sync-triggered or periodic refresh) is reading the
      * list behind rows already shown. It never sets [refreshing], so the page keeps its rows and
-     * error state; only the header's refresh indicator follows it ([silentRefreshing]).
+     * error state, and shows no refresh chrome at all (ticket 67609860).
      */
     val backgroundRefreshing: Boolean = false,
+    /**
+     * The current [refreshing] load may show the header indicator ([headerRefreshing]): it is the
+     * open, a server / filter switch, or a visible-route Refresh (resume, re-entry) over rows last
+     * read [ActivityHeaderRefreshStaleAfterMillis] ago. Each foreground load sets it afresh.
+     */
+    val headerRefreshAllowed: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
     val loadMoreErrorCode: String? = null,
@@ -3979,13 +4027,14 @@ data class SharedActivityState(
         get() = snapshot?.nextOffset
 
     /**
-     * A refresh the user did not pull is reading behind the rows shown: open / re-entry / resume,
-     * server or filter switch over cached rows, realtime or sync reconcile (artin 10-27). The
-     * header shows its refresh indicator for it; a user pull owns the refresh chrome alone (the
-     * pull indicator, artin task #22), so this is false while [pullRefreshing].
+     * The Activity header shows its top-right refresh indicator (ticket 67609860, artin 10-28):
+     * only for a foreground refresh over shown rows that [headerRefreshAllowed] (open, server /
+     * filter switch, resume or re-entry after a while). Background loads (realtime, sync,
+     * periodic: [backgroundRefreshing]) show nothing, and a user pull owns the refresh chrome
+     * alone (the pull indicator, artin task #22), so this is false while [pullRefreshing].
      */
-    val silentRefreshing: Boolean
-        get() = !pullRefreshing && (refreshing || backgroundRefreshing)
+    val headerRefreshing: Boolean
+        get() = refreshing && headerRefreshAllowed && !pullRefreshing
 }
 
 /**

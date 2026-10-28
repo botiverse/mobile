@@ -394,24 +394,24 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activitySilentRefreshShowsHeaderIndicatorAndPullShowsOnlyThePullIndicator() {
-        // artin 10-27: a refresh the user did not pull shows the header's top-right indicator.
+    fun activityHeaderRefreshShowsHeaderIndicatorAndPullShowsOnlyThePullIndicator() {
+        // Ticket 67609860: a resume / re-entry refresh after a while shows the header's indicator.
         assertEquals(
             ActivityRefreshPresentation(headerRefreshing = true, pullRefreshing = false),
-            activityRefreshPresentation(silentRefreshing = true, pullRefreshing = false)
+            activityRefreshPresentation(headerRefreshing = true, pullRefreshing = false)
         )
         // artin task #22: a pull shows the pull indicator only, never the header one too.
         assertEquals(
             ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = true),
-            activityRefreshPresentation(silentRefreshing = false, pullRefreshing = true)
+            activityRefreshPresentation(headerRefreshing = false, pullRefreshing = true)
         )
         assertEquals(
             ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = true),
-            activityRefreshPresentation(silentRefreshing = true, pullRefreshing = true)
+            activityRefreshPresentation(headerRefreshing = true, pullRefreshing = true)
         )
         assertEquals(
             ActivityRefreshPresentation(headerRefreshing = false, pullRefreshing = false),
-            activityRefreshPresentation(silentRefreshing = false, pullRefreshing = false)
+            activityRefreshPresentation(headerRefreshing = false, pullRefreshing = false)
         )
     }
 
