@@ -331,7 +331,7 @@ import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -11802,14 +11802,19 @@ private fun SharedThreadRouteContentContent(
             )
         }
         // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
-        // the task's state while it is out of view.
+        // the task's state while it is out of view and pulls the head down over the messages.
         val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
+        // Back (and Escape) puts the pulled-down head back up before it leaves the page.
+        RaftBackHandler(enabled = taskHeadScrollState.floatOpen, label = "task_head_float") {
+            taskHeadScrollState.closeFloat()
+        }
         val taskConversationChrome: TaskConversationHeaderChrome? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 taskConversationTask.taskConversationHeaderChrome(
                     state = taskConversationHeaderState,
                     summarized = taskHeadScrollState.collapsed,
-                    onBackToHead = { taskHeadScrollState.expand() },
+                    headFloatOpen = taskHeadScrollState.floatOpen,
+                    onToggleHeadFloat = { taskHeadScrollState.toggleFloat() },
                     onViewInChannel = {
                         openTaskInChannel(taskConversationTask, taskConversationTask.taskViewInChannelAnchor(), "view_in_channel")
                     },
@@ -11822,9 +11827,10 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        val taskConversationBar: (@Composable () -> Unit)? =
+        // The head in the conversation ([floating] false) and pulled down from the bar (true).
+        val taskConversationHeadRoute: (@Composable (floating: Boolean) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
-                {
+                { floating ->
                     TaskConversationHeadRoute(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
@@ -11859,11 +11865,14 @@ private fun SharedThreadRouteContentContent(
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
+                        floating = floating,
                     )
                 }
             } else {
                 null
             }
+        val taskConversationBar: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(false) } }
+        val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(true) } }
         CompositionLocalProvider(*threadProvidedValues) {
             ThreadPageContent(
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
@@ -11872,7 +11881,8 @@ private fun SharedThreadRouteContentContent(
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
             taskConversationChrome = taskConversationChrome,
-            taskConversationScroll = taskHeadScrollState.connection.takeIf { taskConversationBar != null },
+            taskConversationHead = taskHeadScrollState.takeIf { taskConversationBar != null },
+            taskConversationFloat = taskConversationFloat,
             agentFollowersHeader = {
                 // Task v2: a task conversation's bar carries its Agent followers too (web
                 // ThreadAgentFollowers `subject="task"` on the conversation channel).
@@ -15108,8 +15118,10 @@ private data class ThreadPageContentData(
     val taskConversationBar: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
     val taskConversationChrome: TaskConversationHeaderChrome? = null,
-    /** Task v2 on a phone: the head moves with the conversation's scroll. */
-    val taskConversationScroll: NestedScrollConnection? = null,
+    /** Task v2 on a phone: the head moves with the conversation's scroll and is pulled down from the bar. */
+    val taskConversationHead: TaskHeadScrollState? = null,
+    /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
+    val taskConversationFloat: (@Composable () -> Unit)? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -15217,7 +15229,8 @@ fun ThreadPageContent(
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
-    taskConversationScroll: NestedScrollConnection? = null,
+    taskConversationHead: TaskHeadScrollState? = null,
+    taskConversationFloat: (@Composable () -> Unit)? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -15324,7 +15337,8 @@ fun ThreadPageContent(
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
                 taskConversationChrome = taskConversationChrome,
-                taskConversationScroll = taskConversationScroll,
+                taskConversationHead = taskConversationHead,
+                taskConversationFloat = taskConversationFloat,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -16504,6 +16518,7 @@ private fun ThreadPageContentContent(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
+            val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             if (payload.showModeTabs) {
                 RaftTabbedScaffold(
@@ -16523,9 +16538,24 @@ private fun ThreadPageContentContent(
                     selectedTab,
                     Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
                         // Task v2 on a phone: the head above moves with the conversation's scroll.
-                        .then(data.taskConversationScroll?.let { Modifier.nestedScroll(it) } ?: Modifier),
+                        .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
                     true
                 )
+            }
+            }
+            if (payload.isTaskConversationSurface()) {
+                // Task v2: the head pulled down from the top bar hangs over the messages (no scrim,
+                // nothing moves under it); a press outside it puts it back up.
+                val taskHead = data.taskConversationHead
+                Box(
+                    Modifier.weight(1f).fillMaxWidth()
+                        .then(taskHead?.let { Modifier.taskHeadFloatOutsideTap(it) } ?: Modifier)
+                ) {
+                    Column(Modifier.fillMaxSize()) { threadTabContent() }
+                    data.taskConversationFloat?.invoke()
+                }
+            } else {
+                threadTabContent()
             }
             if (!primaryFooterReady) {
                 // Loading/permission/error owns the whole content frame. Join and
@@ -16675,6 +16705,11 @@ private fun ThreadPageContentContent(
                             bottomSafeArea = composerBottomSafeArea,
                             keyboardInsetExcludesBottomSafeArea =
                                 composerKeyboardInsetExcludesBottomSafeArea
+                        ).then(
+                            // Task v2: focus in the composer puts the pulled-down head back up.
+                            data.taskConversationHead?.let { taskHead ->
+                                Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
+                            } ?: Modifier
                         )
                 ) {
                     CompositionLocalProvider(

@@ -1643,7 +1643,6 @@
     <string name="task_head_month_11">11月</string>
     <string name="task_head_month_12">12月</string>
     <string name="task_head_medium_date_time">%3$d年%1$s%2$d日 %4$s</string>
-    <string name="task_head_back_to_top">回到任务顶部</string>
     <string name="task_head_unknown">未知</string>
     <string name="task_head_earlier_discussion">早先讨论</string>
     <string name="task_head_earlier_discussion_replies_one">1 条回复</string>

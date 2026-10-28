@@ -1645,7 +1645,6 @@
     <string name="task_head_month_11">Nov</string>
     <string name="task_head_month_12">Dec</string>
     <string name="task_head_medium_date_time">%1$s %2$d, %3$d, %4$s</string>
-    <string name="task_head_back_to_top">Back to the top of the task</string>
     <string name="task_head_unknown">Unknown</string>
     <string name="task_head_earlier_discussion">Earlier discussion</string>
     <string name="task_head_earlier_discussion_replies_one">1 reply</string>

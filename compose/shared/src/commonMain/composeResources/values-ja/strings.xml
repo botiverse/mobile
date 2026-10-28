@@ -1647,7 +1647,6 @@
     <string name="task_head_month_11">11</string>
     <string name="task_head_month_12">12</string>
     <string name="task_head_medium_date_time">%3$d/%1$s/%2$d %4$s</string>
-    <string name="task_head_back_to_top">タスクの先頭に戻る</string>
     <string name="task_head_unknown">不明</string>
     <string name="task_head_earlier_discussion">以前の議論</string>
     <string name="task_head_earlier_discussion_replies_one">1 件の返信</string>
