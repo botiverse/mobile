@@ -300,6 +300,12 @@ gh workflow run ios-release.yml \
   -f release_mode=draft
 ```
 
+The default builds with Xcode 26.6 on Blacksmith. Only when the train calls for
+the iOS 27.1 SDK (iPhone Duo edge-to-edge), add
+`-f macos_runner=xcode-27-xlarge -f xcode_app_path=/Applications/Xcode_27.1.app`:
+only GitHub's billed `xcode-27*` runners have Xcode 27.1, and the build is
+recorded as an opt-in Xcode lane in its summary and Hands metadata.
+
 For the Google Play carrier, use the same exact release-ref checkout and
 source identity but dispatch `android_variant=play` with
 `upload_android_artifacts=true`. The workflow retains the signed AAB and

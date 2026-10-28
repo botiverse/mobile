@@ -57,6 +57,12 @@ post_install do |installer|
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+      # Xcode 27 only builds for iOS 15.0+, and some pods still declare 9.0-14.x.
+      # The app's own floor is 15.0 (platform above), so lift lower pod targets to it.
+      target_version = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+      if target_version.nil? || Gem::Version.new(target_version) < Gem::Version.new('15.0')
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
     end
   end
 end

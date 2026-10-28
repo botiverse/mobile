@@ -7,6 +7,9 @@
 #   iOS 27.1 SDK or later -> full display, bars vertical below the status bar.
 # Run after scripts/ci/select_ios_xcode.sh (it exports DEVELOPER_DIR). RAFT_DEFAULT_XCODE_APP is
 # the workflow's pinned default; a different XCODE_APP_PATH is flagged as an opt-in lane.
+# RAFT_XCODE_LANE_DELIBERATE=1 marks that lane as chosen by an explicit workflow input (e.g. an
+# ios-release.yml xcode_app_path dispatch): still flagged, but not called "not for release".
+# With GITHUB_OUTPUT set, also emits xcode_version, ios_sdk_version and xcode_lane step outputs.
 #
 # Log-only: this script never fails the job. A tool that errors or an SDK version it cannot
 # parse becomes a ::warning:: and tier "unknown"; a release must not stop on a log line.
@@ -38,15 +41,21 @@ else
 fi
 
 lane="default"
+lane_id="default"
 if [ -n "$default_app" ] && [ -n "$selected_app" ] && [ "$selected_app" != "$default_app" ]; then
   lane="opt-in (default is ${default_app##*/})"
+  lane_id="opt-in"
 fi
+xcode_short="$(printf '%s\n' "$xcode_version" | sed -n 's/^Xcode \([0-9][0-9.]*\)$/\1/p' | head -n 1)"
+xcode_build="$(printf '%s\n' "$xcode_version" | sed -n 's/^Build version \([0-9A-Za-z]*\)$/\1/p' | head -n 1)"
 
 echo "$xcode_version"
 echo "iPhoneOS SDK $device_sdk, iPhoneSimulator SDK $simulator_sdk"
 echo "Raft iOS SDK tier: $tier"
 echo "Xcode lane: $lane"
-if [ "$lane" != "default" ]; then
+if [ "$lane" != "default" ] && [ "${RAFT_XCODE_LANE_DELIBERATE:-}" = "1" ]; then
+  echo "::warning::Deliberate opt-in Xcode lane: built with ${selected_app##*/} (iPhoneOS SDK $device_sdk), not the pinned ${default_app##*/}."
+elif [ "$lane" != "default" ]; then
   echo "::warning::Built with ${selected_app##*/} (iPhoneOS SDK $device_sdk), not the pinned ${default_app##*/}. Not for release."
 fi
 
@@ -63,5 +72,12 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "- Raft iOS SDK tier: $tier"
     echo "- Xcode lane: $lane"
   } >> "$GITHUB_STEP_SUMMARY"
+fi
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  {
+    echo "xcode_version=${xcode_short}${xcode_build:+ ($xcode_build)}"
+    echo "ios_sdk_version=$(printf '%s' "$device_sdk" | tr -d '\r\n')"
+    echo "xcode_lane=${lane_id}"
+  } >> "$GITHUB_OUTPUT" || true
 fi
 exit 0

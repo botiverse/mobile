@@ -16,6 +16,10 @@ RELEASE_TYPE="${SLOCK_HANDS_RELEASE_TYPE:-stable}"
 APPSTORE_BUILD_NUMBER="${SLOCK_IOS_APPSTORE_BUILD_NUMBER:-}"
 TESTFLIGHT_STATUS="${SLOCK_IOS_TESTFLIGHT_STATUS:-}"
 DRY_RUN="${SLOCK_HANDS_DRY_RUN:-0}"
+# Optional toolchain record from ios-release.yml (scripts/ci/record_ios_toolchain.sh outputs).
+XCODE_VERSION="${RAFT_IOS_XCODE_VERSION:-}"
+IOS_SDK_VERSION="${RAFT_IOS_SDK_VERSION:-}"
+XCODE_LANE="${RAFT_IOS_XCODE_LANE:-}"
 
 die() {
   echo "error: $*" >&2
@@ -109,6 +113,9 @@ Environment overrides:
   SLOCK_HANDS_DRAFT=1
   SLOCK_IOS_APPSTORE_BUILD_NUMBER=<buildNumber>
   SLOCK_IOS_TESTFLIGHT_STATUS=uploaded
+  RAFT_IOS_XCODE_VERSION=<"27.1 (27A9275)">
+  RAFT_IOS_SDK_VERSION=<iPhoneOS SDK>
+  RAFT_IOS_XCODE_LANE=default|opt-in
   SLOCK_RELEASE_CHANGELOG_ZH_FILE=change-logs/1.6.0/ios/zh-CN.md
   SLOCK_RELEASE_CHANGELOG_EN_FILE=change-logs/1.6.0/ios/en.md
   SLOCK_RELEASE_CHANGELOG_JA_FILE=change-logs/1.6.0/ios/ja.md
@@ -253,6 +260,11 @@ mkdir -p "${ARTIFACT_DIR}"
   printf '  "source_branch": %s,\n' "$(json_string "${GIT_BRANCH}")"
   printf '  "build_time": %s,\n' "$(json_string "${BUILD_TIME}")"
   printf '  "ci_url": %s,\n' "$(json_string "${CI_URL}")"
+  if [ -n "${XCODE_VERSION}${IOS_SDK_VERSION}${XCODE_LANE}" ]; then
+    printf '  "xcode_version": %s,\n' "$(json_string "${XCODE_VERSION}")"
+    printf '  "ios_sdk_version": %s,\n' "$(json_string "${IOS_SDK_VERSION}")"
+    printf '  "xcode_lane": %s,\n' "$(json_string "${XCODE_LANE}")"
+  fi
   printf '  "ipa": { "path": %s, "sha256": %s, "size_bytes": %s },\n' \
     "$(json_string "$(abs_path "${IPA_PATH}")")" \
     "$(json_string "$(sha256_file "${IPA_PATH}")")" \

@@ -29,10 +29,19 @@ on:
         type: string
         default: "arm64"
       xcode_app_path:
-        description: "Opt-in Xcode for this run, e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). Empty = the pinned Xcode_26.6. Must be an installed /Applications/Xcode*.app."
+        description: "Opt-in Xcode for this run, e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge; needs macos_runner=xcode-27*). Empty = the pinned Xcode_26.6. Must be an installed, non-symlink /Applications/Xcode*.app."
         required: false
         type: string
         default: ""
+      macos_runner:
+        description: "macos-latest (default, Xcode <= 26.6) | xcode-27 / xcode-27-xlarge (GitHub Xcode 27 image, billed; required for an Xcode_27* xcode_app_path)"
+        required: false
+        type: choice
+        default: "macos-latest"
+        options:
+          - macos-latest
+          - xcode-27
+          - xcode-27-xlarge
   # workflow_dispatch only registers once this file reaches the default
   # branch; until then, pushing an edit of THIS FILE on a branch is the
   # trigger (scoped so ordinary source pushes never burn a macOS runner).
@@ -50,9 +59,27 @@ concurrency:
 jobs:
   build-app:
     name: Build installable Simulator app
-    runs-on: macos-latest
+    # push has no inputs: macos-latest + the pinned Xcode.
+    runs-on: ${{ inputs.macos_runner || 'macos-latest' }}
     timeout-minutes: 60
     steps:
+      # Xcode 27 is only on the xcode-27 images, which are not known to carry Xcode 26.6.
+      - name: Check runner / Xcode pairing
+        shell: bash
+        env:
+          RUNNER: ${{ inputs.macos_runner || 'macos-latest' }}
+          XCODE_APP: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+        run: |
+          case "${RUNNER}:${XCODE_APP}" in
+            xcode-27*:/Applications/Xcode_27*) ;;
+            xcode-27*:*)
+              echo "::error::macos_runner=${RUNNER} has Xcode 27.x only; ${XCODE_APP##*/} is not installed there. Pass xcode_app_path=/Applications/Xcode_27.1.app or use macos-latest."
+              exit 1 ;;
+            *:/Applications/Xcode_27*)
+              echo "::error::${XCODE_APP##*/} is not installed on ${RUNNER}. Xcode 27 needs macos_runner=xcode-27 or xcode-27-xlarge."
+              exit 1 ;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -78,7 +105,13 @@ jobs:
         # /Applications/Xcode_27.1.app for the iOS 27.1 SDK; empty keeps the pinned default.
         env:
           XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
-        run: bash scripts/ci/select_ios_xcode.sh
+        shell: bash
+        run: |
+          bash scripts/ci/select_ios_xcode.sh || {
+            echo "Xcode installs on this runner (pick a non-symlink path):"
+            ls -ld /Applications/Xcode*.app || true
+            exit 1
+          }
 
       - name: Record Xcode and iOS SDK
         env:
