@@ -47,6 +47,7 @@ import build.raft.app.data.CardElement
 import build.raft.app.data.CardRelativeTime
 import build.raft.app.data.CardStack
 import build.raft.app.data.CardStackDirection
+import build.raft.app.data.CardStackRole
 import build.raft.app.data.RAFT_APP_LINK_CARD_MAX_DEPTH
 import build.raft.app.data.RaftAppLinkCardElement
 import build.raft.app.data.RaftAppLinkTextTone
@@ -60,6 +61,7 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftMessageActionCardActions
+import build.raft.designsystem.components.RaftMessageActionCardHint
 import build.raft.designsystem.components.RaftMessageActionCardNotice
 import build.raft.designsystem.components.RaftMessageActionCardProperties
 import build.raft.designsystem.components.RaftMessageActionCardProperty
@@ -109,7 +111,10 @@ internal enum class RaftCardButtonState { Enabled, Disabled, Busy, Hidden }
  * - `action-card.v1` (web `LinkCardElements`, raft-ui MessageActionCard parts): a column Stack
  *   lays consecutive Fields out as one [RaftMessageActionCardProperties] and consecutive
  *   Buttons as one [RaftMessageActionCardActions]; a row Stack of Buttons is the actions row,
- *   any other row keeps its children on one line (texts truncate) or wraps when asked. Text is
+ *   any other row keeps its children on one line (texts truncate) or wraps when asked. A Stack
+ *   with `role` (schemaVersion 6) is that part of the card: a `reason` column of one or two
+ *   Texts is the quoted hint ([RaftMessageActionCardHint]), an `actions` row of Buttons the
+ *   actions row; another shape under a role is the plain Stack. Text is
  *   callout (mono: `text-mono-meta`) in its tone, cut at `clamp` lines; a Badge is neutral and
  *   soft whatever its tone (DS PreviewCard); RelativeTime and Duration are `text-mono-meta`
  *   muted; an EntityRef is its name; ScopeList and Notice are the card's scope list and notice.
@@ -147,10 +152,11 @@ private fun RaftCardNode(
         is RaftAppLinkCardElement.Badge -> RaftBadge(text = node.text, appearance = RaftBadgeAppearance.Soft)
         // Shared with link card v2, then action-card.v1.
         is CardStack ->
-            when {
-                node.direction == CardStackDirection.Column -> RaftCardColumn(elements, node.childIds, depth, context)
-                node.childIds.all { elements[it] is ActionCardSpecButton } -> RaftCardButtons(elements, node.childIds, context)
-                node.wrap ->
+            when (val layout = actionCardStackLayout(node, elements)) {
+                is RaftCardStackLayout.Reason -> RaftCardReason(layout.texts, context)
+                RaftCardStackLayout.Actions -> RaftCardButtons(elements, node.childIds, context)
+                RaftCardStackLayout.Column -> RaftCardColumn(elements, node.childIds, depth, context)
+                RaftCardStackLayout.WrapRow ->
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -158,7 +164,7 @@ private fun RaftCardNode(
                     ) {
                         node.childIds.forEach { RaftCardNode(elements, it, depth + 1, inRow = true, context) }
                     }
-                else ->
+                RaftCardStackLayout.Row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         node.childIds.forEach { RaftCardNode(elements, it, depth + 1, inRow = true, context) }
                     }
@@ -204,6 +210,77 @@ private fun RaftCardNode(
         // A missing id, or an element of a later catalog (the parse layer never lets one through).
         else -> Unit
     }
+}
+
+/** How [RaftCardNode] draws a [CardStack] ([actionCardStackLayout]). */
+internal sealed interface RaftCardStackLayout {
+    /** A `reason` Stack: the quoted hint. */
+    data class Reason(val texts: RaftCardReasonTexts) : RaftCardStackLayout
+
+    /** The card's actions row (raft-ui MessageActionCardActions: bottom right). */
+    data object Actions : RaftCardStackLayout
+
+    /** A column: runs of Fields and Buttons grouped ([RaftCardColumn]). */
+    data object Column : RaftCardStackLayout
+
+    data object WrapRow : RaftCardStackLayout
+
+    data object Row : RaftCardStackLayout
+}
+
+/**
+ * How [stack] is drawn. A `role` (schemaVersion 6; the parse keeps it only on its own
+ * direction) comes first: a `reason` of one or two Texts is the hint, an `actions` row of
+ * Buttons the actions row; any other shape under a role is the plain Stack. Only an explicit
+ * role makes a hint: a Stack without one is never taken for a reason by its shape (unlike the
+ * web's reading of cards stored before schemaVersion 6). A row of only Buttons was the actions
+ * row before roles and still is.
+ */
+internal fun actionCardStackLayout(stack: CardStack, elements: Map<String, CardElement>): RaftCardStackLayout {
+    val allButtons = stack.childIds.all { elements[it] is ActionCardSpecButton }
+    return when {
+        stack.role == CardStackRole.Reason -> actionCardReasonTexts(elements, stack.childIds)?.let { RaftCardStackLayout.Reason(it) }
+        stack.role == CardStackRole.Actions && allButtons -> RaftCardStackLayout.Actions
+        else -> null
+    } ?: when {
+        stack.direction == CardStackDirection.Column -> RaftCardStackLayout.Column
+        allButtons -> RaftCardStackLayout.Actions
+        stack.wrap -> RaftCardStackLayout.WrapRow
+        else -> RaftCardStackLayout.Row
+    }
+}
+
+/** A `reason` Stack's texts: its note, under an optional label. */
+internal data class RaftCardReasonTexts(
+    val label: ActionCardSpecDisplayElement.Text?,
+    val note: ActionCardSpecDisplayElement.Text,
+)
+
+/**
+ * The texts of a `reason` Stack ([children]): one Text (the note) or two (a label, then the note),
+ * as web `reasonHint`. Null for any other shape, which is drawn as the plain column it is.
+ */
+internal fun actionCardReasonTexts(elements: Map<String, CardElement>, children: List<String>): RaftCardReasonTexts? {
+    val texts = children.map { elements[it] as? ActionCardSpecDisplayElement.Text ?: return null }
+    return when (texts.size) {
+        1 -> RaftCardReasonTexts(label = null, note = texts[0])
+        2 -> RaftCardReasonTexts(label = texts[0], note = texts[1])
+        else -> null
+    }
+}
+
+/**
+ * A `reason` Stack (web `reasonHint`): the agent's words as the DS quote, raft-ui
+ * MessageActionCardHint ([RaftMessageActionCardHint]), its label (plain) above. The note keeps
+ * its `clamp`; the tones are the hint's own.
+ */
+@Composable
+private fun RaftCardReason(texts: RaftCardReasonTexts, context: RaftCardTreeContext) {
+    RaftMessageActionCardHint(
+        text = actionCardContentText(texts.note.text, context),
+        label = texts.label?.let { actionCardContentText(it.text, context).text },
+        maxLines = texts.note.clamp ?: Int.MAX_VALUE,
+    )
 }
 
 /** A column Stack: runs of Fields are one property list, runs of Buttons one actions row. */

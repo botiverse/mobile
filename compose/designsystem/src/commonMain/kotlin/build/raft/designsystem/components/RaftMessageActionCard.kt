@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -447,6 +448,20 @@ fun RaftMessageActionCardHint(
     modifier: Modifier = Modifier,
     label: String? = null,
 ) {
+    RaftMessageActionCardHint(AnnotatedString(text), modifier, label)
+}
+
+/**
+ * [RaftMessageActionCardHint] with rich [text] (an action card's note: names as mentions), cut
+ * at [maxLines] with an ellipsis.
+ */
+@Composable
+fun RaftMessageActionCardHint(
+    text: AnnotatedString,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    maxLines: Int = Int.MAX_VALUE,
+) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -465,6 +480,8 @@ fun RaftMessageActionCardHint(
                 .padding(start = 2.dp + 10.dp),
             style = typography.footnote,
             color = colors.foregroundMuted,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

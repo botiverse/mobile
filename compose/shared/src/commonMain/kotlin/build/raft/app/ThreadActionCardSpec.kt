@@ -126,7 +126,7 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         ActionCardSpecIntent.FeedbackForm -> FeedbackSubmitActionCardType
         // A done feedback card's "View in Settings" (S0.3): Settings › Feedback on the ticket.
         ActionCardSpecIntent.FeedbackTicket -> FeedbackSubmitActionCardType
-        ActionCardSpecIntent.UpgradeDialog -> null
+        ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats -> null
     }
 
 /** A Button that changes the card (as opposed to a link). A result intent only views what the result names. */

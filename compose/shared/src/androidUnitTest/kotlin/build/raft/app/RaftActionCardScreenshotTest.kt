@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityRef
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
@@ -46,6 +47,10 @@ import org.robolectric.annotation.GraphicsMode
  * - s0-updates (S0.1 / S0.2): Field clamp (1 and 6 lines), ScopeList groups, the shield and
  *   credit_card header icons, "Runs on {server}" on a joint channel's card, and an execute with
  *   a key this App doesn't take, stripped to "Open in web", still usable on a frozen card.
+ * - stack-roles (schemaVersion 6, Stack.role): a prepared create-channel card as slock's shared
+ *   builder writes it (Fields, a `reason` Stack drawn as the quoted hint, an `actions` row bottom
+ *   right), the vector's stack_roles, then stack_role_wrong_direction and stack_role_unknown,
+ *   whose dropped roles leave plain Stacks (no quote).
  * - limits: every string at its limit in English and Chinese (title wraps, labels truncate),
  *   and the install card in `zh-cn`.
  *
@@ -82,6 +87,10 @@ class RaftActionCardScreenshotTest {
     @Test fun contractUpdatesLight() = capture("thread.action-card.s0-updates", RaftAppAppearance.Light) { ContractUpdates() }
 
     @Test fun contractUpdatesDark() = capture("thread.action-card.s0-updates.dark", RaftAppAppearance.Dark) { ContractUpdates() }
+
+    @Test fun stackRolesLight() = capture("thread.action-card.stack-roles", RaftAppAppearance.Light) { StackRoles() }
+
+    @Test fun stackRolesDark() = capture("thread.action-card.stack-roles.dark", RaftAppAppearance.Dark) { StackRoles() }
 
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 
@@ -125,8 +134,18 @@ private fun Card(
     locale: String = "en",
     expanded: Boolean? = null,
 ) {
+    Card(ActionCardSpecFixtures.card(name), state, locale, expanded)
+}
+
+@Composable
+private fun Card(
+    card: ActionCardSpecCard,
+    state: RaftActionCardFrameState = RaftActionCardFrameState(),
+    locale: String = "en",
+    expanded: Boolean? = null,
+) {
     RaftActionCardView(
-        card = ActionCardSpecFixtures.card(name),
+        card = card,
         state = state,
         entityName = fixtureEntityName,
         onAction = {},
@@ -187,6 +206,14 @@ private fun ContractUpdates() {
     Card("icon_shield", RaftActionCardFrameState(runsOnServerName = "Raft Labs"))
     Card("icon_credit_card")
     Card("read_unknown_prop_execute", RaftActionCardFrameState(status = RaftActionCardStatus.Frozen))
+}
+
+@Composable
+private fun StackRoles() {
+    Card(ActionCardSpecFixtures.cardFromJson(ActionCardSpecFixtures.CHANNEL_CREATE_V6))
+    Card("stack_roles")
+    Card("stack_role_wrong_direction")
+    Card("stack_role_unknown")
 }
 
 @Composable
