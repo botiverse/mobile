@@ -422,6 +422,8 @@ fun RaftDropdownMenu(
     // A right swipe must not pop the page underneath an open menu.
     RaftBlockBackSwipe()
     Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = true)) {
+        // Its own window on Android: keep the host's bar icons while it holds focus.
+        RaftPopupWindowPolicy()
         LaunchedEffect(Unit) {
             if (inputModes.inputMode == InputMode.Keyboard) {
                 // The rows attach their focus targets in the first frame.

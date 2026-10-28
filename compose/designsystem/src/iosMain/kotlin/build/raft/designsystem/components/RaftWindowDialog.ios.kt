@@ -25,3 +25,6 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
  */
 @Composable
 internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
+
+@Composable
+internal actual fun RaftPopupWindowPolicy() = Unit

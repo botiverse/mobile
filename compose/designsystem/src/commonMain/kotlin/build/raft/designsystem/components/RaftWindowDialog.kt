@@ -87,6 +87,17 @@ internal expect fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 @Composable
 internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
 
+/**
+ * Called from inside a focusable popup's content (a [RaftDropdownMenu]): on Android a focusable
+ * popup is its own window, and while it holds focus the system draws the status and navigation
+ * bar icons from THAT window's appearance, white by default, so the icons flipped to white on the
+ * yellow frame whenever a menu opened (artin 2026-10-28, Activity filter). The popup copies the
+ * host activity's bar appearance, whatever the page set it to. Elsewhere a popup is a layer in
+ * the host's window: nothing to do.
+ */
+@Composable
+internal expect fun RaftPopupWindowPolicy()
+
 /** Which system bars draw dark icons: light ones on a dark theme, dark ones on a light theme. */
 @Immutable
 data class RaftSystemBarsAppearance(
