@@ -31,4 +31,33 @@
     XCTAssertNil(RaftSharePresenterController(nil, nil));
 }
 
+- (void)testReusableExportFilePrefersRequestedName {
+    XCTAssertEqualObjects(
+        RaftAttachmentReusableExportFileName(@[ @"other.bin", @"photo.png" ], @"photo.png"),
+        @"photo.png");
+}
+
+- (void)testReusableExportFileFallsBackToFirstStoredFile {
+    XCTAssertEqualObjects(
+        RaftAttachmentReusableExportFileName(@[ @"only.bin" ], @"photo.png"),
+        @"only.bin");
+}
+
+- (void)testReusableExportFileSkipsInProgressDownload {
+    XCTAssertNil(
+        RaftAttachmentReusableExportFileName(@[ @"photo.png.part-1234" ], @"photo.png"));
+}
+
+- (void)testReusableExportFileIsNilWhenNothingStored {
+    XCTAssertNil(RaftAttachmentReusableExportFileName(@[], @"photo.png"));
+    XCTAssertNil(RaftAttachmentReusableExportFileName(nil, @"photo.png"));
+}
+
+- (void)testReusableExportFileSanitizesRequestedName {
+    // The store keys files by the sanitized name, so the request has to be sanitized the same way.
+    XCTAssertEqualObjects(
+        RaftAttachmentReusableExportFileName(@[ @"a_b_c.png" ], @"a/b:c.png"),
+        @"a_b_c.png");
+}
+
 @end
