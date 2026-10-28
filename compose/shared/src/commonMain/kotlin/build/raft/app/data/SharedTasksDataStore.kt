@@ -13,6 +13,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -562,9 +563,86 @@ private const val CountedReplyKeyLimit = 512
 internal class SharedTasksDataStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val ownerIdentityProvider: (suspend () -> String?)? = null,
-    private val currentServerIdProvider: (suspend () -> String?)? = null
+    private val currentServerIdProvider: (suspend () -> String?)? = null,
+    /**
+     * Offline-first (artin: everything fetched is stored locally): every loaded list (the server board, each
+     * channel's list) is stored once it holds only confirmed facts, and read back as a Tasks list's stand-in
+     * on a cold or offline open. Null: memory only.
+     */
+    internal val offlineLists: SharedTasksOfflineLists? = null,
 ) {
     private val state = MutableStateFlow(SharedTasksDataStoreState())
+
+    init {
+        if (offlineLists != null) scope.launch { persistLoadedLists(offlineLists) }
+    }
+
+    /**
+     * Mirrors the loaded lists to [lists]: after a load, a confirmed mutation, a realtime create / update /
+     * delete. A server with a mutation still in flight waits (only confirmed facts are stored); a server not
+     * loaded as a whole (Partial) is not stored.
+     */
+    private suspend fun persistLoadedLists(lists: SharedTasksOfflineLists) {
+        var persistedOwner: TasksOfflineOwner? = null
+        val persisted = mutableMapOf<Pair<String, String>, List<TaskSummary>>()
+        state.collect { current ->
+            // Taken when this state is observed: a wipe of its server after this instant wins.
+            val observedAt = lists.now()
+            val owner = TasksOfflineOwner.fromOwnerIdentity(current.ownerIdentity)
+            if (owner != persistedOwner) {
+                persisted.clear()
+                persistedOwner = owner
+            }
+            if (owner == null) return@collect
+            val pendingServers = current.statusMutations.keys.mapTo(mutableSetOf()) { it.serverId }
+            val loaded =
+                current.serverSnapshotStatuses
+                    .filter { (serverId, status) -> status == SharedTasksDataStoreStatus.Loaded && serverId !in pendingServers }
+                    .keys
+                    .map { serverId -> Triple(serverId, SharedTasksScope.Server as SharedTasksScope, current.selectServerProjection(serverId)) } +
+                    current.channelSnapshotStatuses
+                        .filter { (key, status) ->
+                            status == SharedTasksDataStoreStatus.Loaded && key.serverId !in pendingServers && key.channelId != null
+                        }
+                        .keys
+                        .map { key ->
+                            Triple(
+                                key.serverId,
+                                SharedTasksScope.Channel(ChannelId(key.channelId!!)) as SharedTasksScope,
+                                current.selectChannelProjection(key.serverId, key.channelId, null),
+                            )
+                        }
+            for ((serverId, listScope, slice) in loaded) {
+                if (slice.status != SharedTasksDataStoreStatus.Loaded || slice.needsCanonicalRefetch) continue
+                val listKey = serverId to listScope.offlineListId()
+                if (persisted[listKey] == slice.tasks) continue
+                lists.write(owner, serverId, listScope, slice.tasks, observedAt)
+                persisted[listKey] = slice.tasks
+            }
+        }
+    }
+
+    /**
+     * Lost access to [serverId]: its lists leave memory (call before the offline resources are wiped, so the
+     * mirror cannot store them again).
+     */
+    fun dropServer(serverId: String) {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        state.update { current ->
+            current.copy(
+                serverSnapshots = current.serverSnapshots - normalizedServerId,
+                serverSnapshotStatuses = current.serverSnapshotStatuses - normalizedServerId,
+                serverSnapshotRevisions = current.serverSnapshotRevisions - normalizedServerId,
+                authoritativeServerSnapshotRevisions = current.authoritativeServerSnapshotRevisions - normalizedServerId,
+                channelSnapshots = current.channelSnapshots.filterKeys { it.serverId != normalizedServerId },
+                channelSnapshotStatuses = current.channelSnapshotStatuses.filterKeys { it.serverId != normalizedServerId },
+                channelSnapshotRevisions = current.channelSnapshotRevisions.filterKeys { it.serverId != normalizedServerId },
+                taskMutations = current.taskMutations.filterKeys { it.serverId != normalizedServerId },
+                statusMutations = current.statusMutations.filterKeys { it.serverId != normalizedServerId },
+                taskProjectionRoutes = current.taskProjectionRoutes.filterKeys { it.serverId != normalizedServerId },
+            )
+        }
+    }
     private val loadMutex = Mutex()
     private val loadsInFlight =
         mutableMapOf<SharedTasksSnapshotLoadKey, Deferred<DataResult<TaskSnapshot>>>()

@@ -1208,6 +1208,8 @@ internal class RaftSharedStoreProvider private constructor(
                 if (allComputersStores().isEmpty()) computersDurableStore.evictServer(grant.serverId, lostAccountId)
                 jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
                 agentDetailCache.dropServer(grant.serverId, lostAccountId)
+                // Tasks lists leave memory before the offline wipe below, so the offline mirror cannot store them again.
+                tasksDataStore.dropServer(grant.serverId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
@@ -2546,6 +2548,12 @@ internal class RaftSharedStoreProvider private constructor(
             CoroutineScope(SupervisorJob()).launch {
                 apiEnvironmentStore.state.collect { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
             }
+            val offlineResourceCache =
+                RaftOfflineResourceCache(
+                    rows = SqlDelightRaftOfflineResourceRows(database),
+                    environmentId = { apiEnvironmentStore.current().apiBaseUrl },
+                    logger = sharedInfoLogger("SlockOfflineResources", "offline_resources"),
+                )
             val tasksDataStore =
                 SharedTasksDataStore(
                     ownerIdentityProvider = {
@@ -2555,7 +2563,8 @@ internal class RaftSharedStoreProvider private constructor(
                     },
                     currentServerIdProvider = {
                         authStore.readSession()?.currentServerId
-                    }
+                    },
+                    offlineLists = SharedTasksOfflineLists(offlineResourceCache.resource(TaskListResourceSpec)),
                 )
             CoroutineScope(SupervisorJob()).launch {
                 authStore.authSessionEvents.collect { event ->
@@ -3170,12 +3179,6 @@ internal class RaftSharedStoreProvider private constructor(
                     // here doubled the latest-page line on device (task #168).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),
                     isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
-                )
-            val offlineResourceCache =
-                RaftOfflineResourceCache(
-                    rows = SqlDelightRaftOfflineResourceRows(database),
-                    environmentId = { apiEnvironmentStore.current().apiBaseUrl },
-                    logger = sharedInfoLogger("SlockOfflineResources", "offline_resources"),
                 )
             val storedConversationDetails =
                 StoredConversationDetails(offlineResourceCache.resource(ConversationDetailResourceSpec))

@@ -79,7 +79,12 @@ data class TasksUiState(
     // column. Consulted ONLY in per-status mode; the global triple above stays
     // the authoritative walk for the default (non-per-status) path, so #345's
     // behaviour is unchanged when this map is unused.
-    val statusPages: Map<TaskStatus, TasksStatusPageState> = emptyMap()
+    val statusPages: Map<TaskStatus, TasksStatusPageState> = emptyMap(),
+    /**
+     * The tasks shown are the stored (offline) copy, not yet confirmed by the network: read-only (no status,
+     * assignee or create) until a network answer replaces them. A failed refresh keeps them.
+     */
+    val standIn: Boolean = false
 )
 
 /** One status column's independent pagination position (task #363). */
@@ -175,6 +180,8 @@ sealed interface SharedTasksIntent {
     data class MergeRefreshResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SeedContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
+    /** The stored list as a read-only stand-in while the network refreshes (nothing shown yet only). */
+    data class SeedStoredStandIn(val snapshot: TaskSnapshot) : SharedTasksIntent
     data class StartLoading(val filter: TaskStatus? = null) : SharedTasksIntent
     data class RefreshFailed(val errorCode: String) : SharedTasksIntent
     data class UpdateTaskStatus(val taskId: String, val nextStatus: TaskStatus) : SharedTasksIntent
@@ -589,6 +596,7 @@ internal class SharedTasksViewModel(
             is SharedTasksRouteIntent.SelectFilter ->
                 load(action)
             is SharedTasksRouteIntent.UpdateStatus -> {
+                if (rejectAgainstStandIn("status", action.task.id.value)) return
                 val skipReason = state.value.taskStatusUpdateSkipReason(action.task, action.status)
                 if (skipReason != null) {
                     diagnosticsLogger(
@@ -605,6 +613,7 @@ internal class SharedTasksViewModel(
                     }
             }
             is SharedTasksRouteIntent.AssignTask -> {
+                if (rejectAgainstStandIn("assign", action.task.id.value)) return
                 val skipReason = state.value.taskAssignUpdateSkipReason(action.task, action.assignee)
                 if (skipReason != null) {
                     diagnosticsLogger(
@@ -630,6 +639,7 @@ internal class SharedTasksViewModel(
                 }
             }
             is SharedTasksRouteIntent.CreateTasks -> {
+                if (rejectAgainstStandIn("create", null)) return
                 val cleanedTitles = action.titles.map { it.trim() }.filter { it.isNotBlank() }
                 if (cleanedTitles.isEmpty()) return
                 val operation =
@@ -669,6 +679,40 @@ internal class SharedTasksViewModel(
                 }
             }
         }
+    }
+
+    /** A mutation against the stored stand-in (not yet confirmed by the network) is not sent. */
+    private fun rejectAgainstStandIn(action: String, taskId: String?): Boolean {
+        if (!state.value.standIn) return false
+        diagnosticsLogger("tasks_${action}_update_skip reason=offline_stand_in taskId=${taskId.orEmpty()}")
+        return true
+    }
+
+    /**
+     * Cold / offline open: the stored copy of this list (unfiltered only) as a read-only stand-in while the
+     * network answers. Nothing stored, or something already shown: nothing happens.
+     */
+    private suspend fun seedStoredStandIn(selectedFilter: TaskStatus?) {
+        if (selectedFilter != null || state.value.hasCompletedTasksSnapshot()) return
+        val sharedStore = sharedTasksDataStore ?: return
+        val lists = sharedStore.offlineLists ?: return
+        val owner = TasksOfflineOwner.fromOwnerIdentity(sharedStore.currentOwnerIdentity()) ?: return
+        val serverId = useCase.currentServerId()?.value ?: return
+        val stored = lists.read(owner, serverId, scope) ?: return
+        if (store.accept(SharedTasksIntent.SeedStoredStandIn(stored.toSnapshot()))) {
+            diagnosticsLogger("tasks_offline_stand_in serverId=$serverId tasks=${stored.tasks.size}")
+        }
+    }
+
+    /** The network says the list is empty or gone for this account: its stored copy goes too. */
+    private suspend fun dropStoredList(result: DataResult<TaskSnapshot>, selectedFilter: TaskStatus?) {
+        if (selectedFilter != null) return
+        if (result !is DataResult.Empty && result !is DataResult.NoPermission) return
+        val sharedStore = sharedTasksDataStore ?: return
+        val lists = sharedStore.offlineLists ?: return
+        val owner = TasksOfflineOwner.fromOwnerIdentity(sharedStore.currentOwnerIdentity()) ?: return
+        val serverId = useCase.currentServerId()?.value ?: return
+        lists.remove(owner, serverId, scope)
     }
 
     fun applyRealtimeTaskUpdate(serverId: String, task: TaskSummary) {
@@ -762,6 +806,7 @@ internal class SharedTasksViewModel(
         loadJob =
             runtimeScope.launch {
                 try {
+                    seedStoredStandIn(selectedFilter)
                     refreshTasks(
                         request = request,
                         selectedFilter = selectedFilter,
@@ -878,6 +923,7 @@ internal class SharedTasksViewModel(
                     }
                 }
             } else {
+                dropStoredList(result, selectedFilter)
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
                 store.accept(
                     if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
@@ -1401,6 +1447,16 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                     refreshing = false
                 )
             }
+        is SharedTasksIntent.SeedStoredStandIn ->
+            if (hasCompletedTasksSnapshot()) {
+                this
+            } else {
+                copy(
+                    loadState = ScreenLoadState.Content(intent.snapshot.toTasksContent()),
+                    refreshing = true,
+                    standIn = true
+                )
+            }
         is SharedTasksIntent.StartLoading -> withLoading(intent.filter ?: selectedFilter)
         is SharedTasksIntent.RefreshFailed -> withRefreshFailure(intent.errorCode)
         is SharedTasksIntent.UpdateTaskStatus -> withTaskStatusUpdating(intent.taskId, intent.nextStatus)
@@ -1791,6 +1847,17 @@ fun TaskSnapshot.filteredForConversationIds(knownConversationIds: Set<String>): 
 }
 
 fun TasksUiState.mergeTasksRefreshResult(
+    result: DataResult<TaskSnapshot>,
+    selectedFilter: TaskStatus?
+): TasksUiState =
+    when {
+        // A stored stand-in is no fact: an empty list or lost access replaces it (an error keeps it).
+        standIn && (result is DataResult.Empty || result is DataResult.NoPermission) ->
+            result.toTasksUiState(selectedFilter).copy(refreshing = false).withCreateOperationFrom(this)
+        else -> mergeLiveTasksRefreshResult(result, selectedFilter)
+    }
+
+private fun TasksUiState.mergeLiveTasksRefreshResult(
     result: DataResult<TaskSnapshot>,
     selectedFilter: TaskStatus?
 ): TasksUiState =
