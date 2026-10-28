@@ -3800,8 +3800,10 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyContinuation(grant.serverId, event, source)
             }
         }
-        // Message storage Phase 3a: the durable V2 commit no longer runs here, before any grant check (P3's grant
-        // race): it runs in the exact-grant slot below, on every route, ahead of the unchanged display.
+        // Message storage Phase 3a: the durable V2 commit is bound to the exact current grant (an in-memory read in
+        // the slot) and its disk work runs after the slot released the authority registry, on every route; display
+        // follows after a fresh grant check (the T4 gateway's own, or runIfCurrentGrant below).
+        if (!commitCanonicalMessageV2AfterGrantCheck(currentMessageRunner, grant, foldInput, transportEpoch)) return false
         val legacyKey = event.realtimeDomainKey(grant.serverId)?.let(::LegacyRealtimeDedupKey)
         val gateway = canonicalFinalOwnerGateway
         if (gateway != null && legacyKey != null) {
@@ -3813,13 +3815,12 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyKey = legacyKey,
                 foldInput = foldInput,
                 legacyWithoutT3 = { context ->
-                    runCurrentGrantMessageSlotThenLegacy(context, grant, foldInput, transportEpoch, event, source, legacyContinuation)
+                    legacyContinuation(context.partition.serverId, event, source)
                 },
                 legacyWithCurrentT3 = { context ->
-                    runCurrentGrantMessageSlotThenLegacy(context, grant, foldInput, transportEpoch, event, source, legacyContinuation)
+                    legacyContinuation(context.partition.serverId, event, source)
                 },
                 commitPrepared = { context ->
-                    commitCanonicalMessageV2FailOpen(grant, foldInput, transportEpoch)
                     canonicalFinalCommitStep?.commitPrepared(
                         partition = context.partition,
                         legacyKey = legacyKey,
@@ -3830,46 +3831,29 @@ internal class SharedRealtimeDomainEventOwner(
                 },
             )
         }
-        // Phase 3a: the exact-grant slot only binds the commit to the grant (an in-memory read); the disk work runs
-        // after the slot releases the authority registry, and display follows after a fresh grant check.
-        var commit: (suspend () -> Unit)? = null
-        val current = currentMessageRunner(grant) {
-            commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch)
-        }
-        if (!current) return false
-        commit?.let { runCanonicalMessageV2CommitFailOpen(grant, foldInput, it) }
         return runIfCurrentGrant(grant) {
             legacyContinuation(grant.serverId, event, source)
         }
     }
 
     /**
-     * The exact-grant message slot of the dormant T4 routes: runs inside the T4 preparation's grant check, so the
-     * frame is still under the grant it arrived with. Message storage design 2026-10-27, Phase 3a: the V2 realtime
-     * ingest commits the frame first (fact always; head segment only for a proven-continuous run), then display is
-     * the unchanged legacy continuation — exactly once, in arrival order, whatever the commit did. (The production
-     * route, without T4, commits after the slot instead: see [runGuardedCanonicalShadowFirst].)
+     * Phase 3a: binds the V2 commit inside the exact-grant slot ([CanonicalMessageV2OwnerGateway.captureUnderGrant]
+     * reads only in-memory state there), then runs it fail-open after the slot. `false` = the grant was not current:
+     * nothing is committed and the frame must not be displayed.
      */
-    private suspend fun runCurrentGrantMessageSlotThenLegacy(
-        context: CurrentMessageCommitContext,
+    private suspend fun commitCanonicalMessageV2AfterGrantCheck(
+        currentMessageRunner: suspend (RealtimeGrantRecord, suspend (CurrentMessageCommitContext) -> Unit) -> Boolean,
         grant: RealtimeGrantRecord,
         foldInput: CanonicalMessageFoldInput,
         transportEpoch: Long?,
-        event: RealtimeEvent,
-        source: String,
-        legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
-    ) {
-        commitCanonicalMessageV2FailOpen(grant, foldInput, transportEpoch)
-        legacyContinuation(context.partition.serverId, event, source)
-    }
-
-    private suspend fun commitCanonicalMessageV2FailOpen(
-        grant: RealtimeGrantRecord,
-        foldInput: CanonicalMessageFoldInput,
-        transportEpoch: Long?,
-    ) {
-        val commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch) ?: return
-        runCanonicalMessageV2CommitFailOpen(grant, foldInput, commit)
+    ): Boolean {
+        var commit: (suspend () -> Unit)? = null
+        val current = currentMessageRunner(grant) {
+            commit = canonicalMessageV2OwnerGateway?.captureUnderGrant(grant, foldInput, transportEpoch)
+        }
+        if (!current) return false
+        commit?.let { runCanonicalMessageV2CommitFailOpen(grant, foldInput, it) }
+        return true
     }
 
     /**
