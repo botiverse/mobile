@@ -65,6 +65,15 @@ class RaftSideActionColumnTest {
     }
 
     @Test
+    fun aTopLevelPageShowsAtMostTwoActions() {
+        // Room for four, but two stay at the bottom and the overflow sits above them.
+        val plan = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 0, ranks = listOf(0, 0, 0, 0), maxActions = 2)
+        assertEquals(RaftSideColumnPlan(emptyList(), listOf(0, 1), listOf(700, 748), listOf(2, 3), 652), plan)
+        val two = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 0, ranks = listOf(0, 0), maxActions = 2)
+        assertEquals(null, two.overflowTop)
+    }
+
+    @Test
     fun withBackTheActionsSitRightUnderIt() {
         // Back 8..52, then the section gap: the actions start at 68, top-aligned, however tall.
         val plan = raftSideColumnPlan(height = 800, metrics = metrics, primaryCount = 1, ranks = listOf(0, 0), maxActions = 2)

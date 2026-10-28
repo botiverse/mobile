@@ -66,7 +66,8 @@ data class RaftSideColumnKeepOut(val top: Dp, val bottom: Dp)
  *   the ⋯ menu, the ⋯ wears the pixel instead.
  * - [keepVisible] keeps it out of the ⋯ before any [priority]; among the rest, a higher
  *   [priority] stays longer, and on a tie the action listed first does. Neither makes room
- *   that is not there, nor lifts the two-action cap beside Back.
+ *   that is not there, nor lifts the two-action cap
+ *   ([RaftSideActionColumnDefaults.MaxActions]).
  */
 @Immutable
 data class RaftSideAction(
@@ -101,8 +102,8 @@ object RaftSideActionColumnDefaults {
     /** At least this between the primary buttons and the actions. */
     val SectionGap: Dp = 16.dp
 
-    /** The page actions a pushed page (one with Back) shows beside it; the rest go in the ⋯. */
-    const val MaxActionsBesideBack: Int = 2
+    /** The page actions a column shows, with Back or without; the rest go in the ⋯. */
+    const val MaxActions: Int = 2
 }
 
 /**
@@ -125,11 +126,16 @@ object RaftSideActionColumnDefaults {
  *   bottom (top-level page) and a ⋯ ([overflowLabel]) takes the next slot (under them, or
  *   above them), opening a [RaftDropdownMenu] of the rest with their labels.
  *
- * What goes in it (raft-design): a pushed page shows Back and at most
- * [RaftSideActionColumnDefaults.MaxActionsBesideBack] page actions, and no tab bar: with any
- * [primary], actions past the second go in the ⋯ whatever the height. A top-level page shows
- * no Back, its page actions, and the tab bar under them ([bottomReserved]). A button that acts
- * on only one pane of a split layout does not belong here: keep it above that pane.
+ * What goes in it (raft-design #859): at most [RaftSideActionColumnDefaults.MaxActions] page
+ * actions on any page, the rest in the ⋯ whatever the height (a short column moves more there).
+ * A pushed page shows Back, its actions and the ⋯, and no tab bar. A top-level page shows no
+ * Back, its actions, the ⋯, and the host's icon-only tab bar under them ([bottomReserved]). A
+ * button that acts on only one pane of a split layout does not belong here: keep it above that
+ * pane.
+ *
+ * The ⋯ menu is a plain [RaftDropdownMenu]: it keeps inside the window's safe area, but does not
+ * know [keepOut] bands, so raft-design's 8dp from reserved regions holds only where the host
+ * also reports them as safe-area insets.
  *
  * Every button is one screen-reader stop, named by its label (the ⋯ by [overflowLabel]), read
  * top to bottom.
@@ -194,7 +200,7 @@ fun RaftSideActionColumn(
                     keepOut = keepOut.map { it.top.roundToPx() to it.bottom.roundToPx() },
                 )
             }
-        val maxActions = if (primary.isEmpty()) Int.MAX_VALUE else RaftSideActionColumnDefaults.MaxActionsBesideBack
+        val maxActions = RaftSideActionColumnDefaults.MaxActions
         val height =
             if (constraints.maxHeight != Constraints.Infinity) {
                 constraints.maxHeight

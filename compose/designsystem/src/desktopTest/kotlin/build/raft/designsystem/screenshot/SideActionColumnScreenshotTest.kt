@@ -48,14 +48,16 @@ class SideActionColumnScreenshotTest {
     fun sideActionColumnAllActions() =
         capture("side_action_column_all") {
             Page(520.dp) { RaftSideActionColumn(primary = listOf(back), actions = listOf(search, settings)) }
-            Page(520.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(), search, members, settings)) }
+            Page(520.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(), search)) }
         }
 
     @Test
     fun sideActionColumnOverflow() =
         capture("side_action_column_overflow") {
-            // Room for three: two actions stay at the bottom, the ⋯ holds the other three.
-            Page(172.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(), search, members, home, settings)) }
+            // Two actions at most: two stay at the bottom, the ⋯ above them holds the other three.
+            Page(520.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(), search, members, home, settings)) }
+            // Room for two slots only: one action stays, the ⋯ holds the other two.
+            Page(124.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(search, members, settings)) }
             // Back allows two actions whatever the height, under it; the ⋯ under them.
             Page(520.dp) { RaftSideActionColumn(primary = listOf(back), actions = listOf(search, settings, members)) }
         }
@@ -67,8 +69,8 @@ class SideActionColumnScreenshotTest {
                 Box(Modifier.fillMaxHeight()) {
                     RaftSideActionColumn(
                         primary = emptyList(),
-                        // The third slot would cross the camera band: Members goes above it.
-                        actions = listOf(members, bell(), search),
+                        // Two actions, then the ⋯: its slot would cross the camera band, so it goes above it.
+                        actions = listOf(bell(), search, members),
                         topReserved = 24.dp,
                         bottomReserved = 220.dp,
                         keepOut = listOf(RaftSideColumnKeepOut(150.dp, 190.dp)),
