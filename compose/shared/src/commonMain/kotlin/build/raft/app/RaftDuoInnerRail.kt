@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -25,8 +26,6 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.designsystem.tokens.RaftUiPalette
-import build.raft.designsystem.tokens.stickerInkMedium
 
 // iPhone Duo's inner screen is the apps' desktop mode without the top bar (raft-design #859,
 // page-structure "Foldable phones" > "The inner screen"): the rail takes what the top bar held.
@@ -91,7 +90,7 @@ internal fun RaftAppRailServerTile(
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(RaftUiPalette.stickerInkMedium, RoundedCornerShape(RaftRadius.Sticker))
+                    .background(RaftAppRailServerTileOpenFill, RoundedCornerShape(RaftRadius.Sticker))
             )
         }
     }
@@ -157,3 +156,6 @@ internal fun appShellRailItemsWithSearch(
             selected = searchOpen,
         )
     ) + items.map { if (searchOpen) it.copy(selected = false) else it }
+
+// raft-ui --sticker-ink-medium (raft-design #875); generated token after the 0.48 bump
+private val RaftAppRailServerTileOpenFill = Color.White.copy(alpha = 0.06f)
