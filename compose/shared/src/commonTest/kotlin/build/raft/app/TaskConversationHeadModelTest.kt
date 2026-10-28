@@ -60,7 +60,11 @@ class TaskConversationHeadModelTest {
         assertEquals("Wire the bar", model.description)
         // Created by: the channel member's display name (web `displayNameFor`), not the DTO handle.
         assertEquals("Artin Display", model.createdBy)
-        assertEquals("2026-10-27T09:00:00.000Z", model.createdAt)
+        // Web `formatMediumDateTime24`: the date and the 24-hour time in the reader's zone (UTC here).
+        assertEquals(TaskHeadDateTime(2026, 10, 27, 9, 0), model.createdAt)
+        assertEquals(TaskHeadDateTime(2026, 10, 27, 18, 30), taskHeadDateTime("2026-10-27T09:00:00.000Z", build.raft.app.model.RaftTimeContext(localOffsetMinutes = 570)))
+        assertEquals(TaskHeadDateTime(2024, 2, 29, 23, 59), taskHeadDateTime("2024-03-01T00:59:00Z", build.raft.app.model.RaftTimeContext(localOffsetMinutes = -60)))
+        assertNull(taskHeadDateTime("not a time", null))
         assertEquals("Artin Display", model.source?.authorName)
         assertEquals("first line", model.source?.preview)
         // A v2 task has no host message: no Earlier discussion row.
@@ -144,6 +148,67 @@ class TaskConversationHeadModelTest {
         advanceUntilIdle()
         assertEquals(TaskId("task-2"), vm.state.value.taskId)
         assertEquals("task-2", (vm.state.value.history as TaskDetailLoad.Loaded).value.single().id)
+    }
+
+    @Test
+    fun aTaskWithoutRevisionRereadsItsHistoryWhenItsFactsChangeAndRetryRereadsAFailure() = runTest {
+        val calls = mutableListOf<TaskId>()
+        var fail = true
+        val vm =
+            TaskConversationDetailsViewModel(
+                loadHistory = { taskId ->
+                    calls += taskId
+                    if (fail) DataResult.Error(ScreenError("x", true)) else DataResult.Content(listOf(event("e")))
+                },
+                loadSource = { _, id -> DataResult.Content(TaskSourceMessagePreview(id, null, "", null)) },
+                loadEarlierDiscussion = { _, id -> DataResult.Content(TaskEarlierDiscussion(id, 0, null)) },
+                scopeOverride = this,
+            )
+        val unrevised = task().copy(revision = null)
+        vm.onTask(unrevised)
+        advanceUntilIdle()
+        assertIs<TaskDetailLoad.Failed>(vm.state.value.history)
+        // Retry reads it again.
+        fail = false
+        vm.retryHistory()
+        advanceUntilIdle()
+        assertIs<TaskDetailLoad.Loaded<*>>(vm.state.value.history)
+        // The same facts: nothing to read; a status change: read again.
+        vm.onTask(unrevised.copy())
+        vm.onTask(unrevised.copy(status = build.raft.app.model.TaskStatus.Done))
+        advanceUntilIdle()
+        assertEquals(3, calls.size)
+    }
+
+    @Test
+    fun onAPhoneTheHeadMovesWithTheConversationScrollAndOffAPhoneItStays() {
+        val state = TaskHeadScrollState()
+        state.updateHeight(300f)
+        // Pinned (tablet): nothing moves.
+        assertEquals(0f, state.consume(-50f))
+        state.scrollsWithConversation = true
+        // A drag towards newer messages slides it away first, up to its height.
+        assertEquals(-120f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -120f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
+        assertEquals(-180f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, -500f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
+        assertEquals(true, state.collapsed)
+        // A drag back down: the list scrolls first; only what it leaves (at its oldest) brings the head back.
+        assertEquals(0f, state.connection.onPreScroll(androidx.compose.ui.geometry.Offset(0f, 80f), androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput).y)
+        assertEquals(
+            80f,
+            state.connection.onPostScroll(
+                androidx.compose.ui.geometry.Offset.Zero,
+                androidx.compose.ui.geometry.Offset(0f, 80f),
+                androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput,
+            ).y,
+        )
+        assertEquals(false, state.collapsed)
+        // The keyboard folds it away (even before it is measured); the top bar's summary brings it back.
+        val fresh = TaskHeadScrollState().apply { scrollsWithConversation = true }
+        fresh.collapse()
+        fresh.updateHeight(200f)
+        assertEquals(true, fresh.collapsed)
+        fresh.expand()
+        assertEquals(false, fresh.collapsed)
     }
 
     @Test

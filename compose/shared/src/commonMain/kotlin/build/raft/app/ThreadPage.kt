@@ -331,6 +331,8 @@ import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -11489,6 +11491,7 @@ private fun SharedThreadRouteContentContent(
     TaskOpenSurfaceHost(
         flow = taskOpenSurfaceFlow,
         detailsRepository = taskConversationDetailsRepository,
+        membersStore = serverMembersStore,
         serverId = currentServerId,
         timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
@@ -11772,8 +11775,23 @@ private fun SharedThreadRouteContentContent(
                 action,
             )
         }
-        val onViewTaskInChannel: (() -> Unit)? =
-            taskConversationTask?.let { task -> { openTaskInChannel(task, task.taskViewInChannelAnchor(), "view_in_channel") } }
+        // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
+        // the task's state while it is out of view.
+        val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
+        val taskConversationChrome: TaskConversationHeaderChrome? =
+            if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
+                taskConversationTask.taskConversationHeaderChrome(
+                    state = taskConversationHeaderState,
+                    summarized = taskHeadScrollState.collapsed,
+                    onBackToHead = { taskHeadScrollState.expand() },
+                    onViewInChannel = {
+                        openTaskInChannel(taskConversationTask, taskConversationTask.taskViewInChannelAnchor(), "view_in_channel")
+                    },
+                    onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
+                )
+            } else {
+                null
+            }
         val taskConversationTimeContext = renderedThread.toRaftTimeCapabilities().staticContext()
         val taskConversationBar: (@Composable () -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
@@ -11792,7 +11810,6 @@ private fun SharedThreadRouteContentContent(
                         onAssign = { member ->
                             taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.AssignTask(taskConversationTask, member))
                         },
-                        onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
                         onOpenSource = {
                             openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
                         },
@@ -11807,6 +11824,10 @@ private fun SharedThreadRouteContentContent(
                                 "earlier_discussion",
                             )
                         },
+                        scrollState = taskHeadScrollState,
+                        // Typing on a phone: the head folds away so the conversation keeps its room.
+                        keyboardUp = adaptivePageKeyboardInsetDp > 0f,
+                        onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                     )
                 }
             } else {
@@ -11819,7 +11840,8 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
-            onViewTaskInChannel = onViewTaskInChannel,
+            taskConversationChrome = taskConversationChrome,
+            taskConversationScroll = taskHeadScrollState.connection.takeIf { taskConversationBar != null },
             agentFollowersHeader = {
                 // Task v2: a task conversation's bar carries its Agent followers too (web
                 // ThreadAgentFollowers `subject="task"` on the conversation channel).
@@ -15053,8 +15075,10 @@ private data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
-    /** Task v2: the header More menu's View in Channel; null elsewhere or before the task is known. */
-    val onViewTaskInChannel: (() -> Unit)? = null,
+    /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
+    val taskConversationChrome: TaskConversationHeaderChrome? = null,
+    /** Task v2 on a phone: the head moves with the conversation's scroll. */
+    val taskConversationScroll: NestedScrollConnection? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -15161,7 +15185,8 @@ private @Composable
 fun ThreadPageContent(
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
-    onViewTaskInChannel: (() -> Unit)? = null,
+    taskConversationChrome: TaskConversationHeaderChrome? = null,
+    taskConversationScroll: NestedScrollConnection? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -15267,7 +15292,8 @@ fun ThreadPageContent(
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
-                onViewTaskInChannel = onViewTaskInChannel,
+                taskConversationChrome = taskConversationChrome,
+                taskConversationScroll = taskConversationScroll,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -16406,10 +16432,11 @@ private fun ThreadPageContentContent(
                     // task #180 (artin): the follow row is derived by a pure helper from the same
                     // per-message state the long-press menu reads, so the two cannot disagree and the
                     // decision is unit-testable. Null = nothing to follow -> row is absent.
-                    threadFollowed = panelFollowAction?.followed,
-                    onViewTaskInChannel = data.onViewTaskInChannel,
+                    threadFollowed = data.taskConversationChrome?.followed ?: panelFollowAction?.followed,
+                    taskConversationChrome = data.taskConversationChrome,
                     onToggleThreadFollow =
-                        panelFollowAction?.let { follow ->
+                        data.taskConversationChrome?.takeIf { it.followed != null }?.onToggleFollow
+                            ?: panelFollowAction?.let { follow ->
                             {
                                 // The existing handler reads the thread channel from the attachmentId
                                 // slot: onThreadEvent(action, itemId, attachmentId, tab).
@@ -16463,7 +16490,9 @@ private fun ThreadPageContentContent(
             } else {
                 renderThreadTabContent(
                     selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite),
+                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
+                        // Task v2 on a phone: the head above moves with the conversation's scroll.
+                        .then(data.taskConversationScroll?.let { Modifier.nestedScroll(it) } ?: Modifier),
                     true
                 )
             }
@@ -17015,8 +17044,8 @@ internal fun ThreadPageHeader(
     /** task #180: null when this thread has no message column to follow. */
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
-    /** Task v2: the More menu's View in Channel for a task conversation (null: not known yet). */
-    onViewTaskInChannel: (() -> Unit)? = null,
+    /** Task v2: the task's title block and More menu rows (null: not a task, or not known yet). */
+    taskConversationChrome: TaskConversationHeaderChrome? = null,
 ) {
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
@@ -17109,6 +17138,11 @@ internal fun ThreadPageHeader(
             }
         },
         titleContent = {
+            if (taskConversationChrome != null) {
+                // Task v2 (web TaskConversationBar): the ref over "Task #7", and the task's state once
+                // the head has scrolled away.
+                TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
+            } else
             Column(
                 modifier =
                     Modifier
@@ -17186,7 +17220,8 @@ internal fun ThreadPageHeader(
                             onToggleFollow = onToggleThreadFollow,
                             focusEnabled = focusModeActive || toggleFocus != null,
                             onSearchInTask = onOpenSearch.takeIf { taskConversation },
-                            onViewInChannel = onViewTaskInChannel.takeIf { taskConversation },
+                            onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
+                            taskFollowLabels = taskConversation,
                         )
                     }
                 }
@@ -17745,6 +17780,8 @@ private fun ThreadHeaderFocusModeMenu(
     onSearchInTask: (() -> Unit)? = null,
     /** Task v2: View in Channel (the task's message in its channel, or the channel). */
     onViewInChannel: (() -> Unit)? = null,
+    /** Task v2: the follow row reads Follow / Unfollow Task. */
+    taskFollowLabels: Boolean = false,
 ) {
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
@@ -17795,10 +17832,11 @@ private fun ThreadHeaderFocusModeMenu(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
-                                if (followed) {
-                                    Res.string.thread_action_unfollow_thread
-                                } else {
-                                    Res.string.thread_action_follow_thread
+                                when {
+                                    taskFollowLabels && followed -> Res.string.task_conversation_unfollow
+                                    taskFollowLabels -> Res.string.task_conversation_follow
+                                    followed -> Res.string.thread_action_unfollow_thread
+                                    else -> Res.string.thread_action_follow_thread
                                 }
                             ),
                         icon = threadFollowMenuIcon(followed),

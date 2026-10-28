@@ -20,12 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
@@ -219,17 +221,16 @@ internal fun TaskOpenSurfaceHost(
     detailsRepository: TaskConversationDetailsRepository? = null,
     serverId: String? = null,
     timeContext: RaftTimeContext? = null,
+    /** The task channel's members, so the sheet names people as the conversation page does. */
+    membersStore: SharedServerMembersStore? = null,
 ) {
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending ->
             TaskConversationPendingSheet(
                 task = surface.task,
-                head =
-                    surface.task.taskPendingHeadModel(
-                        details = rememberTaskConversationDetails(surface.task, detailsRepository, serverId),
-                        members = emptyList(),
-                        timeContext = timeContext,
-                    ),
+                details = rememberTaskConversationDetails(surface.task, detailsRepository, serverId),
+                members = rememberTaskChannelMembers(membersStore, serverId, surface.task.channelId),
+                timeContext = timeContext,
                 sending = flow.sending,
                 errorText = flow.errorText,
                 joined = joined(surface.task),
@@ -258,7 +259,9 @@ internal fun TaskOpenSurfaceHost(
 @Composable
 internal fun TaskConversationPendingSheet(
     task: TaskSummary,
-    head: TaskConversationHeadModel,
+    details: TaskHeadDetailsHandle,
+    members: List<MemberProfile>,
+    timeContext: RaftTimeContext?,
     sending: Boolean,
     errorText: String?,
     joined: Boolean?,
@@ -275,7 +278,8 @@ internal fun TaskConversationPendingSheet(
         onCommit = {},
         closeEnabled = !sending,
     ) {
-        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange, head)
+        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange,
+            task.taskPendingHeadModel(details.state, members, timeContext), details.retryHistory)
     }
 }
 
@@ -293,6 +297,7 @@ internal fun TaskConversationPendingBody(
     onDraftChange: (String) -> Unit = {},
     /** The conversation page's head, read-only (title, description, facts, History). */
     head: TaskConversationHeadModel = task.taskPendingHeadModel(TaskConversationDetailsState(), emptyList(), null),
+    onRetryHistory: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -303,7 +308,7 @@ internal fun TaskConversationPendingBody(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // The conversation page's head, read-only: what the page shows once the first send opens it.
-            TaskHeadContent(head)
+            TaskHeadContent(head, onRetryHistory = onRetryHistory)
             Column(
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,

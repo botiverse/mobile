@@ -338,7 +338,11 @@ internal class TaskConversationDetailsRepository(
         return DataResult.Content(preview)
     }
 
-    /** 404 (no thread on the message, or not visible): nothing earlier, i.e. 0 replies (web). */
+    /**
+     * 404 (`THREAD_NOT_FOUND`: the message has no thread): nothing earlier, 0 replies, and the row
+     * hides (web). Any other failure (401 / 403 / 429 / 5xx / network) leaves the count unknown: the
+     * row stays, reading "View".
+     */
     suspend fun loadEarlierDiscussion(serverId: ServerId, channelId: ChannelId, hostMessageId: MessageId): DataResult<TaskEarlierDiscussion> {
         val response =
             request {
@@ -349,7 +353,7 @@ internal class TaskConversationDetailsRepository(
                 )
             } ?: return networkError("task_earlier_discussion_network")
         if (!response.isSuccessful) {
-            return if (response.code in 400..499) {
+            return if (response.code == 404) {
                 DataResult.Content(TaskEarlierDiscussion(hostMessageId, replyCount = 0, threadChannelId = null))
             } else {
                 httpError("task_earlier_discussion", response.code)

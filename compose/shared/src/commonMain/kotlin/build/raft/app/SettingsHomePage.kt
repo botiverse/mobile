@@ -7285,6 +7285,7 @@ private fun RaftAppShellReadyContent(
                             detailsRepository = remember(appShellNetworkClient) { TaskConversationDetailsRepository(appShellNetworkClient) },
                             serverId = readyServerId,
                             timeContext = threadTimeContext,
+                            membersStore = appShellServerMembersStore,
                             onSend = { task, text ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 if (serverId != null) {

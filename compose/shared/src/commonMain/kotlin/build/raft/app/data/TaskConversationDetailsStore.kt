@@ -38,6 +38,11 @@ internal data class TaskConversationDetailsState(
     val taskId: TaskId? = null,
     /** The task revision the history was last asked for (a `task:updated` bumps it: read again). */
     val historyRevision: Long? = null,
+    /**
+     * What the history was last asked for when the task has no `revision` (an older server or
+     * frame): its mutable facts. A change to any of them reads the history again.
+     */
+    val historyStamp: String? = null,
     val history: TaskDetailLoad<List<TaskHistoryEvent>> = TaskDetailLoad.Idle,
     val sourceMessageId: MessageId? = null,
     val source: TaskDetailLoad<TaskSourceMessagePreview> = TaskDetailLoad.Idle,
@@ -56,8 +61,20 @@ internal fun TaskSummary.taskHeadSourceMessageId(): MessageId? =
 internal fun TaskConversationDetailsState.earlierDiscussionVisible(): Boolean =
     hostMessageId != null && (earlierDiscussion.valueOrNull?.replyCount ?: 1) > 0
 
+/**
+ * A task without a `revision`: the facts a history event changes (status, assignee, title,
+ * description) and its update time. Null when the task has a revision (that is compared instead).
+ */
+internal fun TaskSummary.taskHistoryStamp(): String? =
+    if (revision != null) {
+        null
+    } else {
+        listOf(status.toWireValue(), assignee?.kind?.name, assignee?.id?.value, title, description, updatedAtLabel)
+            .joinToString("\u0001") { it.orEmpty() }
+    }
+
 internal sealed interface TaskConversationDetailsIntent {
-    data class HistoryStarted(val taskId: TaskId, val revision: Long?) : TaskConversationDetailsIntent
+    data class HistoryStarted(val taskId: TaskId, val revision: Long?, val stamp: String? = null) : TaskConversationDetailsIntent
 
     data class HistoryLoaded(val taskId: TaskId, val result: DataResult<List<TaskHistoryEvent>>) : TaskConversationDetailsIntent
 
@@ -76,6 +93,7 @@ internal fun TaskConversationDetailsState.reduce(intent: TaskConversationDetails
             copy(
                 taskId = intent.taskId,
                 historyRevision = intent.revision,
+                historyStamp = intent.stamp,
                 // A refresh keeps the rows on screen; another task starts empty.
                 history = if (taskId == intent.taskId && history is TaskDetailLoad.Loaded) history else TaskDetailLoad.Loading,
             )
@@ -144,10 +162,15 @@ internal class TaskConversationDetailsViewModel(
     fun onTask(task: TaskSummary) {
         val current = _state.value
         val channelId = task.channelId
-        val newerRevision =
-            task.revision != null && (current.historyRevision == null || task.revision > current.historyRevision)
-        if (task.id != current.taskId || newerRevision) {
-            dispatch(TaskConversationDetailsIntent.HistoryStarted(task.id, task.revision))
+        val stamp = task.taskHistoryStamp()
+        val changed =
+            if (task.revision != null) {
+                current.historyRevision == null || task.revision > current.historyRevision
+            } else {
+                stamp != current.historyStamp
+            }
+        if (task.id != current.taskId || changed) {
+            dispatch(TaskConversationDetailsIntent.HistoryStarted(task.id, task.revision, stamp))
             requestHistory(task.id)
         }
         val sourceId = task.taskHeadSourceMessageId()
@@ -172,6 +195,14 @@ internal class TaskConversationDetailsViewModel(
                 }
             }
         }
+    }
+
+    /** Reads the history again after a failure (the History section's Retry). */
+    fun retryHistory() {
+        val current = _state.value
+        val taskId = current.taskId ?: return
+        dispatch(TaskConversationDetailsIntent.HistoryStarted(taskId, current.historyRevision, current.historyStamp))
+        requestHistory(taskId)
     }
 
     private fun requestHistory(taskId: TaskId) {

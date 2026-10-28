@@ -21,6 +21,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
+import build.raft.designsystem.tokens.RaftStroke
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.SideEffect
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.data.TaskConversationDetailsViewModel
@@ -37,6 +56,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButton
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +68,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskConversationDetailsState
+import build.raft.app.data.formatTaskConversationRef
+import kotlinx.coroutines.flow.onStart
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskDetailLoad
 import build.raft.app.data.TaskHistoryDetail
@@ -132,7 +161,8 @@ internal data class TaskConversationHeadModel(
     /** Null: no Source row (no source message, or a pre-v2 task's host, led to by Earlier discussion). */
     val source: TaskHeadSource?,
     val createdBy: String?,
-    val createdAt: String?,
+    /** Web `formatMediumDateTime24`: shown as "Oct 28, 2026, 09:14" (localized). */
+    val createdAt: TaskHeadDateTime?,
     /** Null: no Earlier discussion row; [Int] the reply count, null inside = not known yet ("View"). */
     val earlierDiscussion: TaskHeadEarlierDiscussion?,
     val history: TaskHeadHistory,
@@ -193,7 +223,7 @@ internal fun TaskSummary.taskConversationHeadModel(
                 )
             },
         createdBy = creatorName,
-        createdAt = createdAt?.let { formatRaftTimestampLabel(it, timeContext).takeIf(String::isNotBlank) },
+        createdAt = taskHeadDateTime(createdAt, timeContext),
         earlierDiscussion = earlier,
         history = history,
     )
@@ -216,54 +246,159 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
+/** On a phone the head shows at most this much of the page at once (the rest comes as it scrolls). */
+private const val TaskHeadPhoneMaxFraction = 0.6f
+
+/** Narrower than this the head scrolls with the conversation (web `mobile-modal`); wider it stays pinned. */
+internal val TaskHeadPinnedMinWidth = 600.dp
+
+/**
+ * Where the head of a phone's task conversation is: web puts the head in the conversation as its
+ * first row, so it scrolls away with it (Artea, #wg-task-v2 #7: pinned, it left the replies a
+ * sliver). Here the head sits above the conversation and moves with the conversation's scroll
+ * ([connection], on an ancestor of the message list): a drag towards newer messages slides it away
+ * before the list scrolls; a drag back down brings it back only once the list is at its oldest
+ * message, as the first row would. [collapsed]: out of view (the top bar then names the task's
+ * state, and [expand] brings it back). Off a phone it stays pinned and none of this applies.
+ */
+@Stable
+internal class TaskHeadScrollState {
+    var heightPx by mutableFloatStateOf(0f)
+        internal set
+    var offsetPx by mutableFloatStateOf(0f)
+        private set
+    var scrollsWithConversation by mutableStateOf(false)
+        internal set
+
+    val collapsed: Boolean
+        get() = scrollsWithConversation && heightPx > 0f && offsetPx >= heightPx - 0.5f
+
+    /** Moves the head by a drag [delta] (negative: up, away); returns the part it took. */
+    fun consume(delta: Float): Float {
+        if (!scrollsWithConversation) return 0f
+        val old = offsetPx
+        val next = (old - delta).coerceIn(0f, heightPx)
+        offsetPx = next
+        return old - next
+    }
+
+    /** Out of view: the keyboard came up (the conversation keeps the room above it). */
+    fun collapse() {
+        // Before the head is measured, "all of it": [updateHeight] clamps it to the height.
+        if (scrollsWithConversation) offsetPx = if (heightPx > 0f) heightPx else Float.POSITIVE_INFINITY
+    }
+
+    /** Back in view (the top bar's summary was tapped). */
+    fun expand() {
+        offsetPx = 0f
+    }
+
+    internal fun updateHeight(height: Float) {
+        if (height == heightPx) return
+        val wasCollapsed = collapsed
+        heightPx = height
+        offsetPx = if (wasCollapsed) height else offsetPx.coerceIn(0f, height)
+    }
+
+    val connection: NestedScrollConnection =
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
+                if (available.y < 0f) Offset(0f, consume(available.y)) else Offset.Zero
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
+                if (available.y > 0f) Offset(0f, consume(available.y)) else Offset.Zero
+        }
+}
+
 /**
  * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
  * order the questions arise: what is this (the title, `text-headline` 600, and the description,
  * `text-subhead` muted, folded to three lines with Show More), what state is it in (the inline
  * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
- * discussion), and what happened to it (History, folded, as on web). Follow / Unfollow stays the
- * one icon button beside the title. The head never takes more than [maxHeightFraction] of the page:
- * past that it scrolls inside itself (web's pinned head, `max-h-[45%]`).
+ * discussion), and what happened to it (History, folded, as on web).
+ *
+ * On a phone (narrower than [TaskHeadPinnedMinWidth]) it scrolls with the conversation
+ * ([TaskHeadScrollState]) and folds away while the keyboard is up ([keyboardUp]); wider it stays
+ * pinned and never takes more than [maxHeightFraction] of the page: past that it scrolls inside
+ * itself (web's pinned head, `max-h-[45%]`).
  */
 @Composable
 internal fun TaskConversationHead(
     model: TaskConversationHeadModel,
     onSelectStatus: (TaskStatus) -> Unit,
     onOpenAssignee: () -> Unit,
-    onToggleFollow: () -> Unit,
     onOpenSource: () -> Unit,
     onOpenEarlierDiscussion: () -> Unit,
     modifier: Modifier = Modifier,
+    scrollState: TaskHeadScrollState = remember { TaskHeadScrollState() },
+    keyboardUp: Boolean = false,
     initiallyHistoryOpen: Boolean = false,
     initiallyDescriptionExpanded: Boolean = false,
     maxHeightFraction: Float = 0.45f,
+    onRetryHistory: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
+    val content: @Composable () -> Unit = {
+        TaskHeadContent(
+            model = model,
+            onSelectStatus = onSelectStatus,
+            onOpenAssignee = onOpenAssignee,
+            onOpenSource = onOpenSource,
+            onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+            initiallyHistoryOpen = initiallyHistoryOpen,
+            initiallyDescriptionExpanded = initiallyDescriptionExpanded,
+            onRetryHistory = onRetryHistory,
+        )
+    }
+    val padding = Modifier.raftSafeAreaHorizontalPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
-        val cap = if (maxHeight.value.isFinite()) maxHeight * maxHeightFraction else maxHeight
+        val pageHeight = maxHeight
+        val phone = maxWidth < TaskHeadPinnedMinWidth
+        SideEffect { scrollState.scrollsWithConversation = phone }
+        LaunchedEffect(phone, keyboardUp) { if (phone && keyboardUp) scrollState.collapse() }
         Column(Modifier.fillMaxWidth()) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = cap)
-                    .verticalScroll(rememberScrollState())
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp),
-            ) {
-                TaskHeadContent(
-                    model = model,
-                    onSelectStatus = onSelectStatus,
-                    onOpenAssignee = onOpenAssignee,
-                    onToggleFollow = onToggleFollow,
-                    onOpenSource = onOpenSource,
-                    onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                    initiallyHistoryOpen = initiallyHistoryOpen,
-                    initiallyDescriptionExpanded = initiallyDescriptionExpanded,
-                )
+            if (phone) {
+                // The head at its full height, shown from [offsetPx] down: it slides up under the top bar.
+                Layout(
+                    content = {
+                        Column(Modifier.fillMaxWidth().onSizeChanged { scrollState.updateHeight(it.height.toFloat()) }.then(padding)) {
+                            content()
+                        }
+                    },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clipToBounds()
+                            .draggable(
+                                orientation = Orientation.Vertical,
+                                state = rememberDraggableState { delta -> scrollState.consume(delta) },
+                            ),
+                ) { measurables, constraints ->
+                    val placeable = measurables.single().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+                    val offset = scrollState.offsetPx.roundToInt().coerceIn(0, placeable.height)
+                    // Never more than [TaskHeadPhoneMaxFraction] of the page: the conversation and the
+                    // composer keep the rest; a taller head shows its top, the rest comes with the drag.
+                    val visibleCap =
+                        if (pageHeight.value.isFinite()) (pageHeight * TaskHeadPhoneMaxFraction).roundToPx() else placeable.height
+                    layout(placeable.width, (placeable.height - offset).coerceAtMost(visibleCap)) { placeable.place(0, -offset) }
+                }
+                if (!scrollState.collapsed) TaskHeadDivider()
+            } else {
+                val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
+                Column(Modifier.fillMaxWidth().heightIn(max = cap).verticalScroll(rememberScrollState()).then(padding)) {
+                    content()
+                }
+                TaskHeadDivider()
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.lineHairline))
         }
     }
+}
+
+/** The top bar's seam (raft-ui panel head: `line-seam` flattened on the canvas), so both rules match. */
+@Composable
+private fun TaskHeadDivider() {
+    val colors = RaftTheme.colors
+    Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
 }
 
 /**
@@ -277,65 +412,42 @@ internal fun TaskHeadContent(
     model: TaskConversationHeadModel,
     onSelectStatus: (TaskStatus) -> Unit = {},
     onOpenAssignee: () -> Unit = {},
-    onToggleFollow: () -> Unit = {},
     onOpenSource: (() -> Unit)? = null,
     onOpenEarlierDiscussion: (() -> Unit)? = null,
     initiallyHistoryOpen: Boolean = false,
     initiallyDescriptionExpanded: Boolean = false,
+    /** Null: no Retry after a failed History read. */
+    onRetryHistory: (() -> Unit)? = null,
 ) {
     Column {
-        TaskHeadTitleRow(model, onToggleFollow)
-        Column(Modifier.padding(end = 8.dp)) {
+        TaskHeadTitleRow(model)
+        Column {
             model.description?.let { TaskHeadDescription(it, initiallyDescriptionExpanded) }
             TaskHeadFacts(model, onSelectStatus, onOpenAssignee, onOpenSource, onOpenEarlierDiscussion)
-            TaskHeadHistorySection(model.history, initiallyHistoryOpen)
+            TaskHeadHistorySection(model.history, initiallyHistoryOpen, onRetryHistory)
         }
     }
 }
 
 @Composable
-private fun TaskHeadTitleRow(model: TaskConversationHeadModel, onToggleFollow: () -> Unit) {
-    // The follow button sits on the title's first line; the title wraps up to three lines beside it.
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftText(
-            model.title,
-            Modifier.weight(1f).padding(top = 10.dp, bottom = 8.dp).semantics { heading() },
-            style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
-            color = RaftTheme.colors.foreground,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
-        TaskHeadFollowButton(model.bar, onToggleFollow)
-    }
-}
-
-@Composable
-private fun TaskHeadFollowButton(bar: TaskConversationHeaderBarModel, onToggle: () -> Unit) {
-    bar.followed?.let { followed ->
-        // Web keeps Follow / Unfollow Task in the bar's More menu (ThreadOverflowMenu); here the
-        // command stays the head's one icon button, with the web's words as its tooltip.
-        val followLabel =
-            stringResource(if (followed) Res.string.task_conversation_unfollow else Res.string.task_conversation_follow)
-        RaftIconButton(
-            onClick = onToggle,
-            tooltip = followLabel,
-            variant = RaftButtonVariant.Ghost,
-            loading = bar.followPending,
-        ) {
-            RaftLucideIcon(
-                if (followed) RaftLucideIconName.MessageCircleOff else RaftLucideIconName.MessageCirclePlus,
-                Modifier.size(18.dp),
-                color = raftArgbHex(RaftTheme.colors.foreground),
-            )
-        }
-    }
+private fun TaskHeadTitleRow(model: TaskConversationHeadModel) {
+    // Follow / Unfollow Task is the header More menu's, as on web (ThreadOverflowMenu).
+    RaftText(
+        model.title,
+        Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp).semantics { heading() },
+        style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
+        color = RaftTheme.colors.foreground,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
 private fun TaskHeadDescription(description: String, initiallyExpanded: Boolean) {
     var expanded by remember(description) { mutableStateOf(initiallyExpanded) }
     var collapsible by remember(description) { mutableStateOf(false) }
-    Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // With a toggle, its 44dp target is the gap to the facts; without one, 12dp.
+    Column(Modifier.padding(bottom = if (collapsible) 0.dp else 12.dp)) {
         RaftText(
             description,
             style = RaftTheme.typography.subhead,
@@ -347,11 +459,16 @@ private fun TaskHeadDescription(description: String, initiallyExpanded: Boolean)
             },
         )
         if (collapsible) {
-            RaftTextLink(
-                text = stringResource(if (expanded) Res.string.thread_long_message_show_less else Res.string.thread_long_message_show_more),
-                onClick = { expanded = !expanded },
-                style = RaftTheme.typography.footnote,
-            )
+            val label = stringResource(if (expanded) Res.string.thread_long_message_show_less else Res.string.thread_long_message_show_more)
+            TaskHeadToggleTarget(label = label, expanded = expanded, onToggle = { expanded = !expanded }) {
+                RaftTextLink(
+                    text = label,
+                    onClick = { expanded = !expanded },
+                    style = RaftTheme.typography.footnote,
+                    // The 44dp target around it is the one control screen readers see.
+                    modifier = Modifier.clearAndSetSemantics {},
+                )
+            }
         }
     }
 }
@@ -376,6 +493,8 @@ private fun TaskHeadFacts(
                 RaftTaskStatusBadge(
                     status = bar.status.raftTaskStatus(),
                     text = statusLabel,
+                    // raft-ui inline: a leading chip hangs its padding outward (the text lines up).
+                    modifier = Modifier.offset(x = TaskHeadChipHang),
                     onClick = if (bar.statusEditable) ({ statusMenuOpen = true }) else null,
                     enabled = !bar.statusUpdating,
                     contentDescription = "$statusFieldLabel: $statusLabel",
@@ -407,16 +526,17 @@ private fun TaskHeadFacts(
         Item(stringResource(Res.string.task_head_assignee)) {
             // An assignee the reader may not change is a plain fact, not a disabled picker.
             if (!bar.assigneeEditable) {
-                RaftDescriptionValue(bar.assigneeName?.let { "@$it" } ?: unassigned, copyable = false)
+                RaftDescriptionValue(bar.assigneeName ?: unassigned, copyable = false, maxLines = 1)
                 return@Item
             }
+            // The assignee by display name, as web's v2 dialog shows it (`assigneeAsPerson`).
             RaftPickerTriggerButton(
-                text = bar.assigneeName?.let { "@$it" } ?: unassigned,
+                text = bar.assigneeName ?: unassigned,
                 onClick = onOpenAssignee,
                 hasValue = bar.assigneeName != null,
                 enabled = bar.assigneeEditable,
                 showIndicator = bar.assigneeEditable,
-                modifier = Modifier.widthIn(max = 200.dp),
+                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp),
                 // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
                 size = RaftPickerTriggerSize.Chip,
             )
@@ -427,8 +547,9 @@ private fun TaskHeadFacts(
             }
         }
         Item(stringResource(Res.string.task_head_created_by), model.createdBy ?: unknown, copyable = false)
-        model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it, mono = true, copyable = false) }
-        model.earlierDiscussion?.let { earlier ->
+        model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
+        // Where it cannot open (the pending sheet) it is a plain count, and hidden while unknown.
+        model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
             Item(stringResource(Res.string.task_head_earlier_discussion)) {
                 val label =
                     when (val count = earlier.replyCount) {
@@ -463,6 +584,8 @@ private fun TaskHeadLinkValue(
     val pressed by source.collectIsPressedAsState()
     Row(
         Modifier
+            // A 48dp touch target with no visible padding (it overhangs the row).
+            .then(if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
             // The padding hangs outward: the text starts where a plain fact's does.
             .offset(x = (-6).dp)
             .clip(shape)
@@ -516,27 +639,39 @@ private fun TaskHeadSourceValue(source: TaskHeadSource, onOpenSource: (() -> Uni
 }
 
 @Composable
-private fun TaskHeadHistorySection(history: TaskHeadHistory, initiallyOpen: Boolean) {
+private fun TaskHeadHistorySection(history: TaskHeadHistory, initiallyOpen: Boolean, onRetry: (() -> Unit)?) {
     var open by remember { mutableStateOf(initiallyOpen) }
     val colors = RaftTheme.colors
-    Column(Modifier.padding(top = 16.dp)) {
+    val title = stringResource(Res.string.task_history_title)
+    Column(Modifier.padding(top = 4.dp)) {
         // Web SectionEyebrow as a button: the History heading folds the timeline (closed at first).
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(RaftRadius.Sticker))
-                .clickable(role = Role.Button) { open = !open },
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RaftSectionEyebrow(stringResource(Res.string.task_history_title))
-            RaftGlyphIcon(if (open) RaftGlyph.ChevronDown else RaftGlyph.ChevronRight, size = 14.dp, color = colors.foregroundHint)
+        TaskHeadToggleTarget(label = title, expanded = open, onToggle = { open = !open }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftSectionEyebrow(title)
+                RaftGlyphIcon(if (open) RaftGlyph.ChevronDown else RaftGlyph.ChevronRight, size = 14.dp, color = colors.foregroundHint)
+            }
         }
         if (open) {
-            Box(Modifier.padding(top = 12.dp).fillMaxWidth()) {
+            Box(Modifier.padding(top = 4.dp).fillMaxWidth()) {
                 when (history) {
                     TaskHeadHistory.Loading -> RaftSkeleton(Modifier.fillMaxWidth().height(16.dp))
                     TaskHeadHistory.Failed ->
-                        RaftText(stringResource(Res.string.task_history_error), style = RaftTheme.typography.caption, color = colors.warningStrong)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RaftText(
+                                stringResource(Res.string.task_history_error),
+                                Modifier.weight(1f, fill = false),
+                                style = RaftTheme.typography.caption,
+                                color = colors.warningStrong,
+                            )
+                            onRetry?.let { retry ->
+                                RaftButton(
+                                    text = stringResource(Res.string.common_retry),
+                                    onClick = retry,
+                                    variant = RaftButtonVariant.Ghost,
+                                    size = RaftButtonSize.Md,
+                                )
+                            }
+                        }
                     is TaskHeadHistory.Rows ->
                         if (history.rows.isEmpty()) {
                             RaftText(stringResource(Res.string.task_history_empty), style = RaftTheme.typography.caption, color = colors.foregroundHint)
@@ -548,6 +683,28 @@ private fun TaskHeadHistorySection(history: TaskHeadHistory, initiallyOpen: Bool
         }
     }
 }
+
+/**
+ * A fold toggle (History, Show More) with a 48dp touch target around its small visible label: a
+ * button for screen readers, named [label], that says whether it is expanded and offers expand /
+ * collapse.
+ */
+@Composable
+private fun TaskHeadToggleTarget(label: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .minimumInteractiveComponentSize()
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onToggle)
+            .semantics(mergeDescendants = true) {
+                contentDescription = label
+                if (expanded) collapse { onToggle(); true } else expand { onToggle(); true }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) { content() }
+}
+
+/** raft-ui inline facts: a leading chip / picker trigger hangs 7dp outward. */
+private val TaskHeadChipHang = (-7).dp
 
 @Composable
 private fun TaskHeadHistoryTimeline(rows: List<TaskHeadHistoryRow>) {
@@ -637,9 +794,12 @@ internal fun TaskConversationHeadRoute(
     timeContext: RaftTimeContext?,
     onUpdateStatus: (TaskStatus) -> Unit,
     onAssign: (MemberProfile?) -> Unit,
-    onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
     onOpenSource: () -> Unit,
     onOpenEarlierDiscussion: () -> Unit,
+    scrollState: TaskHeadScrollState,
+    /** The keyboard is up: on a phone the head folds away. */
+    keyboardUp: Boolean = false,
+    onRetryHistory: (() -> Unit)? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
@@ -654,9 +814,11 @@ internal fun TaskConversationHeadRoute(
                     assigneeSheetOpen = true
                 }
             },
-            onToggleFollow = { model.bar.followed?.let(onToggleFollow) },
             onOpenSource = onOpenSource,
             onOpenEarlierDiscussion = onOpenEarlierDiscussion,
+            scrollState = scrollState,
+            keyboardUp = keyboardUp,
+            onRetryHistory = onRetryHistory,
         )
         if (assigneeSheetOpen && model.bar.assigneeEditable) {
             TaskConversationAssigneeSheet(
@@ -697,6 +859,9 @@ internal fun TaskSummary.taskPendingHeadModel(
     return head.copy(bar = head.bar.copy(statusOptions = emptyList(), assigneeEditable = false, followed = null))
 }
 
+/** The pending sheet's head reads and their Retry. */
+internal class TaskHeadDetailsHandle(val state: TaskConversationDetailsState, val retryHistory: (() -> Unit)?)
+
 /**
  * The head's reads ([TaskConversationDetailsViewModel]) for [task] outside a conversation page:
  * the pending-conversation sheet. Nothing is read without a [repository] and a [serverId].
@@ -706,8 +871,8 @@ internal fun rememberTaskConversationDetails(
     task: TaskSummary,
     repository: TaskConversationDetailsRepository?,
     serverId: String?,
-): TaskConversationDetailsState {
-    if (repository == null || serverId.isNullOrBlank()) return TaskConversationDetailsState()
+): TaskHeadDetailsHandle {
+    if (repository == null || serverId.isNullOrBlank()) return TaskHeadDetailsHandle(TaskConversationDetailsState(), null)
     val scope = rememberCoroutineScope()
     val server = ServerId(serverId)
     val viewModel =
@@ -720,5 +885,139 @@ internal fun rememberTaskConversationDetails(
             )
         }
     LaunchedEffect(viewModel, task) { viewModel.onTask(task) }
-    return viewModel.state.collectAsState().value
+    return TaskHeadDetailsHandle(viewModel.state.collectAsState().value, viewModel::retryHistory)
+}
+
+/**
+ * The task channel's people and agents (web `useChannelMembers(task.channelId)`), so the pending
+ * sheet names creators and assignees as the conversation page does. Empty without a store.
+ */
+@Composable
+internal fun rememberTaskChannelMembers(
+    store: SharedServerMembersStore?,
+    serverId: String?,
+    channelId: ChannelId?,
+): List<MemberProfile> {
+    val server = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+    if (store == null || server == null || channelId == null) return emptyList()
+    val flow =
+        remember(store, server, channelId) {
+            store.channelMemberSliceFlow(server, channelId)
+                .onStart { store.loadChannelMembers(server, channelId, DataRequestPriority.Visible) }
+        }
+    return flow.collectAsState(SharedServerChannelMembersSlice(serverId = server.value, channelId = channelId.value)).value.members
+}
+
+/** A moment in the reader's time zone, for web `formatMediumDateTime24` (medium date, 24-hour time). */
+@Immutable
+internal data class TaskHeadDateTime(val year: Int, val month: Int, val day: Int, val hour: Int, val minute: Int)
+
+/** [iso] in the reader's offset ([timeContext]; UTC without one); null when it is not a timestamp. */
+internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): TaskHeadDateTime? {
+    val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(iso, offsetMinutes) ?: return null
+    val local = epochMillis + offsetMinutes * 60_000L
+    val dayMillis = 86_400_000L
+    val days = local.floorDiv(dayMillis)
+    val millisOfDay = local.mod(dayMillis)
+    // Days since 1970-01-01 to a civil date (H. Hinnant, `civil_from_days`).
+    val z = days + 719_468
+    val era = z.floorDiv(146_097L)
+    val doe = z - era * 146_097
+    val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val day = (doy - (153 * mp + 2) / 5 + 1).toInt()
+    val month = (if (mp < 10) mp + 3 else mp - 9).toInt()
+    val year = (yoe + era * 400 + if (month <= 2) 1 else 0).toInt()
+    return TaskHeadDateTime(year, month, day, (millisOfDay / 3_600_000L).toInt(), ((millisOfDay / 60_000L) % 60).toInt())
+}
+
+@Composable
+private fun TaskHeadDateTime.localized(): String {
+    val months =
+        listOf(
+            Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
+            Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
+            Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
+            Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
+        )
+    val time = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
+    return stringResource(Res.string.task_head_medium_date_time, stringResource(months[month - 1]), day, year, time)
+}
+
+/**
+ * The task conversation's top bar (web `TaskConversationBar`): the task's ref (`#channel:#7`, Space
+ * Mono, muted) over "Task #7"; while the head is scrolled away ([summarized]) the second line also
+ * names the task's status and assignee, and tapping it brings the head back. The More menu's View in
+ * Channel and Follow / Unfollow Task go with it.
+ */
+@Immutable
+internal data class TaskConversationHeaderChrome(
+    val ref: String,
+    val taskNumber: Int?,
+    val status: TaskStatus,
+    val assigneeName: String?,
+    val summarized: Boolean,
+    /** Null: not known yet (no Follow row). */
+    val followed: Boolean?,
+    val onBackToHead: () -> Unit,
+    val onViewInChannel: () -> Unit,
+    val onToggleFollow: () -> Unit,
+)
+
+internal fun TaskSummary.taskConversationHeaderChrome(
+    state: TaskConversationHeaderState,
+    summarized: Boolean,
+    onBackToHead: () -> Unit,
+    onViewInChannel: () -> Unit,
+    onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
+): TaskConversationHeaderChrome {
+    val followed = state.followed(conversationFollowed)
+    return TaskConversationHeaderChrome(
+        ref = taskNumber?.let { formatTaskConversationRef(it, channelName, parseConversationKindOrNull(channelType)) } ?: title,
+        taskNumber = taskNumber,
+        status = status,
+        assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
+        summarized = summarized,
+        followed = followed,
+        onBackToHead = onBackToHead,
+        onViewInChannel = onViewInChannel,
+        onToggleFollow = { followed?.let(onToggleFollow) },
+    )
+}
+
+/** The top bar's title block for [chrome] (in place of the conversation title). */
+@Composable
+internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modifier: Modifier = Modifier) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val label =
+        chrome.taskNumber?.let { stringResource(Res.string.tasks_detail_task_identifier, it) } ?: chrome.ref
+    // At large text the bar has room for one line: the task line keeps it.
+    val refLine = LocalDensity.current.fontScale <= 1.3f
+    Column(modifier, verticalArrangement = Arrangement.Top) {
+        if (refLine) {
+            RaftText(chrome.ref, style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (chrome.summarized) {
+            val backToTop = stringResource(Res.string.task_head_back_to_top)
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(RaftRadius.Control))
+                    .clickable(role = Role.Button, onClick = chrome.onBackToHead)
+                    .semantics(mergeDescendants = true) { contentDescription = backToTop },
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RaftText(label, style = typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.foreground, maxLines = 1)
+                RaftTaskStatusBadge(chrome.status.raftTaskStatus(), chrome.status.localizedLabel(), size = RaftTaskStatusBadgeSize.Sm)
+                chrome.assigneeName?.let {
+                    RaftText(it, Modifier.weight(1f, fill = false), style = typography.subhead, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        } else {
+            RaftText(label, style = typography.subhead.copy(fontWeight = FontWeight.Bold), color = colors.foreground, maxLines = 1)
+        }
+    }
 }

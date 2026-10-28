@@ -153,6 +153,36 @@ class TaskConversationDetailsApiTest {
     }
 
     @Test
+    fun earlierDiscussionIsEmptyOnlyWhenTheMessageHasNoThread() = kotlinx.coroutines.test.runTest {
+        // (status, body) -> the reply count read, or null for "unknown" (the row stays, "View").
+        listOf(
+            200 to 3,
+            404 to 0,
+            401 to null,
+            403 to null,
+            429 to null,
+            500 to null,
+        ).forEach { (code, expected) ->
+            val repository =
+                TaskConversationDetailsRepository(
+                    object : RaftNetworkClient {
+                        override suspend fun request(
+                            priority: DataRequestPriority,
+                            path: String,
+                            method: String,
+                            query: List<Pair<String, String>>,
+                            serverIdOverride: build.raft.app.model.ServerId?,
+                            bodyText: String?,
+                        ): HomeNetworkResponse =
+                            HomeNetworkResponse(code, if (code == 200) """{"threadChannelId":"th-1","replyCount":3}""" else """{"code":"X"}""")
+                    }
+                )
+            val result = repository.loadEarlierDiscussion(build.raft.app.model.ServerId("s"), ChannelId("ch-1"), MessageId("host-1"))
+            assertEquals(expected, (result as? DataResult.Content)?.data?.replyCount, "status $code")
+        }
+    }
+
+    @Test
     fun previewLineIsTheFirstNonBlankLine() {
         assertEquals("hello", taskSourcePreviewLine("\n   \n  hello  \nworld"))
         assertEquals("", taskSourcePreviewLine(" \n "))
