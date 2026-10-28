@@ -865,6 +865,8 @@ class SharedServerMembersStore internal constructor(
         val channelMember =
             currentOwnerChannelMemberSlices(serverId)
                 .asSequence()
+                // A stored stand-in's rows are no authority (presence / liveness are not stored).
+                .filterNot { it.storedStandIn }
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == memberId }
         if (channelMember != null) return ScopedMemberProfileResolution(channelMember, authoritative = true)
@@ -2839,6 +2841,8 @@ class SharedServerMembersStore internal constructor(
                                     .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
                                     .filterDeletedAgents(serverKey)
                         )
+                    // A fresh answer: the offline mirror may store this channel again (after a lost-access drop).
+                    channelMembersOffline?.reopen(normalizedScope)
                     putChannelSlice(
                         normalizedScope,
                         SharedServerChannelMembersSlice(
@@ -3799,8 +3803,9 @@ class SharedServerMembersStore internal constructor(
             scope,
             current.copy(
                 members = nextMembers,
-                status = SharedServerMembersLoadStatus.Loaded,
-                errorCode = null
+                // A stand-in stays a stand-in (not a loaded answer) until its load answers.
+                status = if (current.storedStandIn) current.status else SharedServerMembersLoadStatus.Loaded,
+                errorCode = if (current.storedStandIn) current.errorCode else null
             )
         )
     }
@@ -3820,8 +3825,8 @@ class SharedServerMembersStore internal constructor(
             scope,
             current.copy(
                 members = current.members.removeServerMember(memberId, memberKind),
-                status = SharedServerMembersLoadStatus.Loaded,
-                errorCode = null
+                status = if (current.storedStandIn) current.status else SharedServerMembersLoadStatus.Loaded,
+                errorCode = if (current.storedStandIn) current.errorCode else null
             )
         )
     }

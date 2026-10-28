@@ -75,40 +75,58 @@ internal class SharedChannelMembersOffline(
 ) {
     private val lock = SynchronizedObject()
 
-    // Hash of each channel's rows as last stored (not the rows: memory stays small).
-    private val storedHashes = mutableMapOf<SharedServerChannelMembersScope, Int>()
+    // Per following store: hash of each channel's rows as that store last stored them (not the rows: memory
+    // stays small). Per store, so one store's unchanged copy never overwrites another store's newer one.
+    private val followers = mutableListOf<MutableMap<SharedServerChannelMembersScope, Int>>()
+
+    // Channels the server refused (lost access): no store mirrors them until a fresh answer re-opens them.
+    private val blocked = mutableSetOf<SharedServerChannelMembersScope>()
 
     suspend fun read(scope: SharedServerChannelMembersScope): StoredChannelMembers? {
         val key = key(scope, mintedAt = null) ?: return null
         return resource.read(key)
     }
 
-    /** The channel is gone for this account (lost permission / not found): its copy goes, and is not remembered. */
+    /**
+     * The channel is gone for this account (lost permission / not found): its copy goes, and no store
+     * (another shell may still hold the old rows) mirrors it again until [reopen].
+     */
     suspend fun forget(scope: SharedServerChannelMembersScope) {
-        synchronized(lock) { storedHashes -= scope }
+        synchronized(lock) {
+            blocked += scope
+            followers.forEach { it -= scope }
+        }
         val key = key(scope, mintedAt = null) ?: return
         resource.remove(key)
     }
 
-    /** Lost access to [serverId]: its rows go with the offline wipe; what was stored is forgotten. */
+    /** A fresh answer for the channel arrived: it may be mirrored again. */
+    fun reopen(scope: SharedServerChannelMembersScope) {
+        synchronized(lock) { blocked -= scope }
+    }
+
+    /** Lost access to [serverId]: its rows go with the offline wipe; what every store stored is forgotten. */
     fun forgetServer(serverId: String) {
-        synchronized(lock) { storedHashes.keys.removeAll { it.serverId == serverId } }
+        synchronized(lock) { followers.forEach { hashes -> hashes.keys.removeAll { it.serverId == serverId } } }
     }
 
     /**
-     * Mirrors [slices] (read through [current] when [changes] signals): every Loaded slice whose rows
-     * changed is stored; an empty one drops its copy. Slices that are loading / failed are not touched.
+     * Mirrors one store's slices (read through [current] when [changes] signals): every Loaded slice whose
+     * rows changed in that store is stored; an empty one drops its copy. Slices that are loading / failed /
+     * stand-ins are not touched.
      */
     fun follow(
         changes: Flow<*>,
         current: () -> Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice>,
     ) {
+        val hashes = mutableMapOf<SharedServerChannelMembersScope, Int>()
+        synchronized(lock) { followers += hashes }
         scope.launch {
             changes.conflate().collect {
                 try {
                     // The instant first, then the state: a wipe after this instant wins over what is read now.
                     val observedAt = resource.fetchStarted()
-                    mirrorOnce(current(), observedAt)
+                    mirrorOnce(hashes, current(), observedAt)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -120,24 +138,28 @@ internal class SharedChannelMembersOffline(
     }
 
     private suspend fun mirrorOnce(
+        hashes: MutableMap<SharedServerChannelMembersScope, Int>,
         slices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice>,
         observedAt: Long,
     ) {
-        // Slices that left memory (eviction, owner change) are forgotten: a later identical load stores again.
-        synchronized(lock) { storedHashes.keys.retainAll(slices.keys) }
+        // Slices that left this store (eviction, owner change) are forgotten: a later identical load stores again.
+        synchronized(lock) { hashes.keys.retainAll(slices.keys) }
         for ((sliceScope, slice) in slices) {
-            if (slice.status != SharedServerMembersLoadStatus.Loaded) continue
+            if (slice.status != SharedServerMembersLoadStatus.Loaded || slice.storedStandIn) continue
             val record = slice.toStoredChannelMembers()
             val hash = record.hashCode()
-            if (synchronized(lock) { storedHashes[sliceScope] } == hash) continue
+            if (synchronized(lock) { sliceScope in blocked || hashes[sliceScope] == hash }) continue
             val key = key(sliceScope, mintedAt = observedAt) ?: continue
-            if (record.members.isEmpty() && record.externalMembers.isEmpty()) {
-                // No members is no stand-in: the copy goes.
-                resource.remove(key)
-            } else {
-                resource.write(key, record)
-            }
-            synchronized(lock) { storedHashes[sliceScope] = hash }
+            val stored =
+                if (record.members.isEmpty() && record.externalMembers.isEmpty()) {
+                    // No members is no stand-in: the copy goes.
+                    resource.remove(key)
+                    true
+                } else {
+                    resource.write(key, record)
+                }
+            // Only what reached disk is remembered (a fenced / failed write is tried again on the next change).
+            if (stored) synchronized(lock) { if (sliceScope !in blocked) hashes[sliceScope] = hash }
         }
     }
 

@@ -366,13 +366,43 @@ class SharedServerChannelMembersOwnerTest {
 
         store.addChannelMember(ServerId(SERVER_ID), AddChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("member-b"), MemberKind.Human))
         runCurrent()
-        // The added member is known locally only when the roster holds it; then it is stored too.
-        val afterAdd = store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
-        assertEquals(afterAdd, device.storedIds())
+        assertEquals(setOf("member-a", "member-b"), device.storedIds()?.toSet())
 
         store.removeMember(ServerId(SERVER_ID), MemberId("member-a"))
         runCurrent()
-        assertEquals(afterAdd - "member-a", device.storedIds().orEmpty())
+        assertEquals(listOf("member-b"), device.storedIds())
+    }
+
+    @Test
+    fun twoStoresOnOneMirrorNeverStoreAnOlderCopyOrALostChannelAgain() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repositoryA = OwnerTestMemberRepository().apply {
+            channelMembersLoader = { channel -> if (channel.value == CHANNEL_ID) listOf(member("old-a"), member("old-b")) else listOf(member("other")) }
+        }
+        val repositoryB = OwnerTestMemberRepository().apply { channelMembers = listOf(member("new-a")) }
+        // The legacy store and a shell store of the same account share the mirror.
+        val storeA = store(repositoryA, ownerState, channelMembersOffline = device.members) { 1L }
+        val storeB = store(repositoryB, ownerState, channelMembersOffline = device.members) { 1L }
+        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(listOf("new-a"), device.storedIds())
+
+        // Store A changes something else: its older copy of the channel is not written back.
+        storeA.loadChannelMembers(ServerId(SERVER_ID), ChannelId("channel-other"))
+        runCurrent()
+        assertEquals(listOf("new-a"), device.storedIds())
+
+        // Store B learns the channel is gone; store A still holds old rows and patches them.
+        repositoryB.failure = DataResult.Error(ScreenError(code = "http_404", retryable = false))
+        storeB.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID), force = true)
+        runCurrent()
+        assertEquals(null, device.storedIds())
+        storeA.removeMember(ServerId(SERVER_ID), MemberId("old-a"))
+        runCurrent()
+        assertEquals(null, device.storedIds())
     }
 
     @Test
@@ -434,6 +464,18 @@ class SharedServerChannelMembersOwnerTest {
         var gate: CompletableDeferred<Unit>? = null
         /** A failure to answer with instead of the members. */
         var failure: DataResult<ChannelMemberSnapshot>? = null
+
+        override suspend fun addChannelMember(
+            priority: DataRequestPriority,
+            request: AddChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> =
+            DataResult.Content(
+                ChannelMemberActionResult(
+                    channelId = request.channelId,
+                    memberId = request.memberId,
+                    member = member(request.memberId.value)
+                )
+            )
 
         override suspend fun getChannelMembers(
             priority: DataRequestPriority,
