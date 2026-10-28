@@ -1259,11 +1259,11 @@
     <string name="member_state_activity_start_agent">启动 Agent 后可查看其动态日志。</string>
     <string name="member_label_computer">计算机</string>
     <string name="member_daemon_version_suffix">&#160;· 守护进程 v%1$s</string>
-    <string name="member_machine_run_computer_version">Computer v%1$s</string>
+    <string name="member_machine_run_computer_version">计算机 v%1$s</string>
     <string name="member_machine_run_daemon_version">守护进程 v%1$s</string>
-    <string name="member_machine_run_computer_online">Computer 在线</string>
+    <string name="member_machine_run_computer_online">计算机在线</string>
     <string name="member_machine_run_daemon_online">守护进程在线</string>
-    <string name="member_machine_run_computer_offline">Computer 离线</string>
+    <string name="member_machine_run_computer_offline">计算机离线</string>
     <string name="member_machine_run_daemon_offline">守护进程离线</string>
     <string name="member_machine_no_computer_assigned">未分配计算机</string>
     <string name="member_label_created">创建时间</string>

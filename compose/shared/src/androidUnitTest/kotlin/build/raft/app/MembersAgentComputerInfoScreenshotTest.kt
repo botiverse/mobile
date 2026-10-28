@@ -37,7 +37,8 @@ import org.robolectric.annotation.GraphicsMode
  * JVM screenshot of the agent profile's Computer / Created / Creator rows and the Runtime
  * Config rows below them (web AgentDetailPanel `AgentProfileInfo`), light and dark: the
  * value type per row against the web InfoRow spans (DescriptionDetails `text-callout`,
- * `font-mono` for machine text, `foreground-hint` for empty values).
+ * `font-mono` for machine text, `foreground-hint` for empty values). Light in zh-CN and ja too:
+ * the Created date and the Computer run label follow the UI language.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -52,6 +53,16 @@ class MembersAgentComputerInfoScreenshotTest {
 
     @Test
     fun computerInfoDark() = capture("members.agent-computer-info.dark", RaftAppAppearance.Dark)
+
+    /** zh-CN: the Created date reads 2026年10月20日 and the run label 计算机 v0.62.1. */
+    @Test
+    @Config(qualifiers = "zh-rCN-w390dp-h560dp-xxhdpi")
+    fun computerInfoZh() = capture("members.agent-computer-info.zh", RaftAppAppearance.Light)
+
+    /** ja: the Created date reads 2026年10月20日 and the run label コンピューター v0.62.1. */
+    @Test
+    @Config(qualifiers = "ja-w390dp-h560dp-xxhdpi")
+    fun computerInfoJa() = capture("members.agent-computer-info.ja", RaftAppAppearance.Light)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

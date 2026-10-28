@@ -2,6 +2,7 @@ package build.raft.designsystem.text
 
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -35,6 +36,8 @@ fun RaftText(
     overflow: TextOverflow = TextOverflow.Clip,
     softWrap: Boolean = true,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
+    /** Shrinks the text to fit its bounds (a tab label); null keeps [style]'s size. */
+    autoSize: TextAutoSize? = null,
 ) {
     BasicText(
         text = text,
@@ -44,6 +47,7 @@ fun RaftText(
         overflow = overflow,
         softWrap = softWrap,
         maxLines = maxLines,
+        autoSize = autoSize,
     )
 }
 

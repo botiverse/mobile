@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -112,6 +113,12 @@ object RaftMobileNavDefaults {
     val LabelGap: Dp = 4.dp
     val LabelFontSize = 11.5.sp
     val LabelLineHeight = 14.sp
+
+    /**
+     * The smallest a label shrinks to before it truncates: a long one (ja 「アクティビティ」)
+     * steps down from [LabelFontSize] to fit its cell, as raft-ui's 10px label fits it on the web.
+     */
+    val LabelMinFontSize = 9.sp
 
     /**
      * The attention dot on the pill's top-right corner, from the slot's top-left: raft-ui `Status
@@ -274,7 +281,7 @@ fun RaftMobileNavItem(
             }
         }
         Spacer(Modifier.height(RaftMobileNavDefaults.LabelGap))
-        RaftMobileNavLabel(label, selected, enabled = enabled, readable = true)
+        RaftMobileNavLabel(label, selected, enabled = enabled, readable = true, shrinkToFit = true)
     }
 }
 
@@ -746,9 +753,19 @@ private fun raftMobileNavServerWash(pressed: Boolean, open: Boolean): Color =
         else -> Color.Transparent
     }
 
-/** A tab label: `text-label` at 11.5/14, bold when selected, truncated; it keeps its size at any font scale. */
+/**
+ * A tab label: `text-label` at 11.5/14, bold when selected; it keeps its size at any font scale.
+ * With [shrinkToFit] (a tab's own name, not a server's) a label too long for its cell shrinks
+ * in 0.5sp steps down to 9sp, then truncates; without it, it truncates.
+ */
 @Composable
-private fun RaftMobileNavLabel(text: String, selected: Boolean, enabled: Boolean = true, readable: Boolean = false) {
+private fun RaftMobileNavLabel(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    readable: Boolean = false,
+    shrinkToFit: Boolean = false,
+) {
     // Sized to the bar's fixed 58dp geometry: like a native tab bar it does not grow with the
     // system font size (it would run out of the bar).
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -771,6 +788,16 @@ private fun RaftMobileNavLabel(text: String, selected: Boolean, enabled: Boolean
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Ellipsis,
+        autoSize =
+            if (!shrinkToFit) {
+                null
+            } else {
+                TextAutoSize.StepBased(
+                    minFontSize = RaftMobileNavDefaults.LabelMinFontSize / fontScale,
+                    maxFontSize = RaftMobileNavDefaults.LabelFontSize / fontScale,
+                    stepSize = 0.5.sp / fontScale,
+                )
+            },
     )
 }
 

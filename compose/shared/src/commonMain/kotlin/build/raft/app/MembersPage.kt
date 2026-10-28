@@ -578,6 +578,26 @@ internal fun String?.membersJoinedDateOrNull(timeContext: RaftTimeContext): Memb
 internal fun membersJoinedMonthLabel(monthsCsv: String, month: Int): String =
     monthsCsv.split(',').getOrNull(month - 1)?.trim()?.takeIf { it.isNotEmpty() } ?: month.toString()
 
+/** [date] in the UI language (`member_joined_date`): "Aug 4, 2026" in English, 2026年8月4日 in zh-CN and ja. */
+@Composable
+internal fun membersLocalizedDate(date: MembersJoinedDate): String =
+    stringResource(
+        Res.string.member_joined_date,
+        membersJoinedMonthLabel(stringResource(Res.string.member_joined_date_months), date.month),
+        date.day.toString(),
+        date.year.toString()
+    )
+
+/**
+ * A `createdAt` timestamp as the local calendar day in the UI language; the raw text when it does
+ * not parse; null when it is blank.
+ */
+@Composable
+internal fun String?.membersLocalizedCreatedDateOrNull(timeContext: RaftTimeContext): String? {
+    val trimmed = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return trimmed.membersJoinedDateOrNull(timeContext)?.let { membersLocalizedDate(it) } ?: trimmed
+}
+
 /**
  * Route data for the profile of an agent listed under a human's Created Agents (web
  * CreatedAgentRow opens the agent profile). Keeps the human page's time context and
@@ -8444,14 +8464,7 @@ private fun MembersHumanInfoSection(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val joinedDate = member.joinedAt.membersJoinedDateOrNull(timeContext)
-    val joined = joinedDate?.let { date ->
-        stringResource(
-            Res.string.member_joined_date,
-            membersJoinedMonthLabel(stringResource(Res.string.member_joined_date_months), date.month),
-            date.day.toString(),
-            date.year.toString()
-        )
-    }
+    val joined = joinedDate?.let { membersLocalizedDate(it) }
     val initialRole = member.serverRole.toMembersHumanServerRoleOrNull()
         ?: member.roleDescription.toMembersHumanServerRoleOrNull()
     var displayedRole by remember(member.id.value, initialRole?.wireValue) { mutableStateOf(initialRole) }
@@ -10080,7 +10093,7 @@ internal fun MembersAgentComputerInfoRows(
         horizontalArrangement = Arrangement.spacedBy(MembersInfoFieldGapX),
         verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
     ) {
-        summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+        summary?.createdAt.membersLocalizedCreatedDateOrNull(timeContext)?.let { createdDate ->
             MembersAgentInfoField(label = stringResource(Res.string.member_label_created), copyText = createdDate) {
                 // Web `<span className="font-mono">` on the callout.
                 RaftText(
@@ -14987,17 +15000,6 @@ private fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): 
     val hour = (millisOfDay / MembersReminderMillisPerHour).toInt()
     val minute = ((millisOfDay % MembersReminderMillisPerHour) / MembersReminderMillisPerMinute).toInt()
     return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
-}
-
-internal fun String.membersAgentCreatedDate(timeContext: RaftTimeContext): String {
-    val trimmed = trim()
-    if (trimmed.isEmpty()) return ""
-    val epochMillis =
-        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
-    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
-    val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
-    val date = membersReminderCivilDateFromEpochDay(epochDay)
-    return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${date.year}"
 }
 
 private fun membersReminderClock(hour: Int, minute: Int, timeFormat: String): String {
