@@ -4808,6 +4808,31 @@ static NSString *RaftAttachmentCachedFilePath(NSString *ownerKey, NSString *atta
     return [dir stringByAppendingFormat:@"/%@", leaf];
 }
 
+NSString *RaftAttachmentReusableExportFileName(
+    NSArray<NSString *> *storedFileNames,
+    NSString *requestedFileName) {
+    if (storedFileNames.count == 0) {
+        return nil;
+    }
+    // A `.part-` file is an in-progress download, never a usable copy.
+    NSMutableArray<NSString *> *usable = [NSMutableArray arrayWithCapacity:storedFileNames.count];
+    for (NSString *name in storedFileNames) {
+        if (name.length > 0 && ![name containsString:@".part-"]) {
+            [usable addObject:name];
+        }
+    }
+    if (usable.count == 0) {
+        return nil;
+    }
+    NSString *wanted = RaftAttachmentSafeComponent(requestedFileName ?: @"");
+    for (NSString *name in usable) {
+        if (name.length == wanted.length && [name isEqualToString:wanted]) {
+            return name;
+        }
+    }
+    return usable.firstObject;
+}
+
 static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
@@ -5067,6 +5092,12 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportFileName = fileName;
     self.raft_attachmentExportTrackProgress = RaftBridgeBool(params[@"trackProgress"]);
 
+    // Save to Files / Save to Photos reuses the durable local copy when the attachment was
+    // already downloaded ("Open with" keeps one), instead of fetching it again.
+    if ([self raft_reuseCachedAttachmentForExportWithParams:params fileName:fileName]) {
+        return;
+    }
+
     if (!savesToPhotos) {
         [self raft_beginAttachmentExportDownloadWithParams:params];
         return;
@@ -5121,6 +5152,57 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             }];
         });
     }];
+}
+
+// Reuses the durable local copy of an attachment for an export, when one exists.
+// The persistent attachment store is keyed by `<ownerKey>-<safe(attachmentId)>` and holds the
+// file "Open with" downloaded earlier. When the same attachment is saved to Files or Photos,
+// that copy is presented instead of downloading the bytes a second time.
+//
+// Returns YES when the export was served from the local copy (the callback is answered through
+// the normal presentation path); NO when there is no usable copy and the caller must download.
+- (BOOL)raft_reuseCachedAttachmentForExportWithParams:(NSDictionary *)params
+                                            fileName:(NSString *)fileName {
+    NSString *ownerKey = RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
+    NSString *attachmentId = RaftBridgeString(params[@"attachmentId"]);
+    if (ownerKey.length == 0 || attachmentId.length == 0) {
+        return NO;
+    }
+    NSString *cachedDir = RaftAttachmentCacheDirectory(ownerKey, attachmentId);
+    if (!cachedDir) {
+        return NO;
+    }
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSArray<NSString *> *storedNames = [fileManager contentsOfDirectoryAtPath:cachedDir error:nil];
+    NSString *reusableName = RaftAttachmentReusableExportFileName(storedNames, fileName);
+    if (!reusableName) {
+        return NO;
+    }
+    NSString *cachedPath = [cachedDir stringByAppendingPathComponent:reusableName];
+    NSDictionary *attributes = [fileManager attributesOfItemAtPath:cachedPath error:nil];
+    long long sizeBytes = [attributes[NSFileSize] longLongValue];
+    if (sizeBytes <= 0) {
+        return NO;
+    }
+    // The export path presents the file and then removes the directory it lives in
+    // (raft_finishAttachmentExport deletes the parent). The durable copy must survive that, so
+    // the file is staged into the throwaway export directory first and presented from there.
+    NSURL *root = [NSURL fileURLWithPath:RaftAttachmentExportRootPath() isDirectory:YES];
+    NSString *requestId = NSUUID.UUID.UUIDString;
+    NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
+    NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
+    NSError *error = nil;
+    [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error];
+    if (error) {
+        return NO;
+    }
+    if (![fileManager copyItemAtPath:cachedPath toPath:targetURL.path error:&error]) {
+        [fileManager removeItemAtURL:directory error:nil];
+        return NO;
+    }
+    self.raft_attachmentExportURL = targetURL;
+    [self raft_presentAttachmentExportWithURL:targetURL sizeBytes:sizeBytes];
+    return YES;
 }
 
 - (void)raft_beginAttachmentExportDownloadWithParams:(NSDictionary *)params {
@@ -5222,6 +5304,21 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
         strongSelf.raft_attachmentExportSizeBytes = @(result.downloadedBytes);
+        [strongSelf raft_presentAttachmentExportWithURL:targetURL sizeBytes:result.downloadedBytes];
+    });
+}
+
+// Presents an attachment that is on disk, according to the destination the caller asked for.
+// `targetURL` is the local file; `sizeBytes` its size. Shared by the download-completed path and
+// the path that reuses an already downloaded local copy.
+- (void)raft_presentAttachmentExportWithURL:(NSURL *)targetURL sizeBytes:(long long)sizeBytes {
+    __weak typeof(self) weakSelf = self;
+    RaftBridgeRunOnMain(^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        strongSelf.raft_attachmentExportSizeBytes = @(sizeBytes);
         if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationPreview]) {
             // In-app preview: keep the cached copy (no raft_finishAttachmentExport, which deletes
             // the parent dir) and report its path; nothing is presented.

@@ -80,5 +80,24 @@ FOUNDATION_EXTERN NSString *RaftAttachmentSafeComponent(NSString *raw);
  * (empty owner yields just the id).
  */
 FOUNDATION_EXTERN NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId);
+/**
+ * Picks the cached file to reuse for an export, given the files already in the
+ * persistent store directory for that attachment.
+ *
+ * The export path (Save to Files / Save to Photos) downloads the attachment again
+ * even when a durable local copy already exists. This decides which of the stored
+ * files may be reused instead, so the download can be skipped:
+ * - a file whose name matches `requestedFileName` (after the same sanitizing the
+ *   store applies) wins;
+ * - otherwise the first stored file is used, since the store holds one file per
+ *   attachment;
+ * - `nil` when the directory holds no usable file, or when the stored file is
+ *   still an in-progress `.part-` download.
+ *
+ * Pure function for tests.
+ */
+FOUNDATION_EXTERN NSString * _Nullable RaftAttachmentReusableExportFileName(
+    NSArray<NSString *> * _Nullable storedFileNames,
+    NSString * _Nullable requestedFileName);
 
 NS_ASSUME_NONNULL_END
