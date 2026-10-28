@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -18,6 +17,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -293,7 +293,8 @@ private fun RaftSideActionIcon(size: Dp, attention: Boolean, icon: @Composable (
         icon()
         if (attention) {
             RaftStatusDot(
-                modifier = Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp),
+                // Physical top-right in RTL too: the column does not mirror.
+                modifier = Modifier.align(AbsoluteAlignment.TopRight).absoluteOffset(x = 4.dp, y = (-4).dp),
                 size = RaftStatusSize.Sm,
                 color = RaftUiPalette.attention,
             )
