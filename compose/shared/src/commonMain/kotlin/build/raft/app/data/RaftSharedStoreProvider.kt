@@ -206,9 +206,11 @@ internal fun createSharedRealtimeDomainEventOwner(
     tasksDataStore: SharedTasksDataStore?,
     cursorStore: RealtimeAppliedSeqCursorStore?,
     authorityProvider: RealtimeAuthorityProvider,
+    onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
 ): SharedRealtimeDomainEventOwner =
     SharedRealtimeDomainEventOwner(
         tasksDataStore = tasksDataStore,
+        onAgentDeleted = onAgentDeleted,
         cursorStore = cursorStore,
         runIfCurrentGrant = authorityProvider::runIfCurrentGrant,
         runWithCurrentMessageGrant = authorityProvider::runWithCurrentMessageGrant,
@@ -536,6 +538,13 @@ internal class RaftSharedStoreProvider private constructor(
      */
     internal val agentDetailCache: RaftAgentDetailCache =
         raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
+
+    /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
+    internal suspend fun evictAgentDetail(serverId: String, agentId: String) {
+        val (environmentId, accountId) = currentAccountBindingOrNull() ?: return
+        val owner = sharedAgentDetailOwner(environmentId, accountId, ServerId(serverId)) ?: return
+        agentDetailCache.evict(owner.agentDetailCacheKey(MemberId(agentId)))
+    }
 
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
@@ -3258,6 +3267,7 @@ internal class RaftSharedStoreProvider private constructor(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
+                        onAgentDeleted = { serverId, agentId -> provider.evictAgentDetail(serverId, agentId) },
                     ).also { owner ->
                         // task #136: agent presence flows straight into the
                         // process registry's owner partition for the realtime
@@ -3522,6 +3532,11 @@ internal fun interface RealtimeGuardedActiveThreadSink {
 
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
+    /**
+     * Realtime `agent:deleted` on a server of the current grant: the agent's cached detail page (memory and
+     * its stored offline copy) goes, so a cold / offline open never shows a deleted agent.
+     */
+    private val onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
     private val runWithCurrentMessageGrant:
@@ -4018,6 +4033,7 @@ internal class SharedRealtimeDomainEventOwner(
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
         if (event is Heartbeat) return
         event.patchSharedTaskProjection(resolvedServerId)
+        event.deletedAgentIdOrNull()?.let { agentId -> onAgentDeleted?.invoke(resolvedServerId, agentId) }
         deliverGuardedAppShellProjectionFinal(resolvedServerId, event, source, activeSinks)
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             if (admission != null) {
@@ -4215,6 +4231,12 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 }
+
+/** The agent of a realtime `agent:deleted`, else null. */
+internal fun RealtimeEvent.deletedAgentIdOrNull(): String? =
+    (this as? RealtimeRefreshRequired)
+        ?.takeIf { it.scope == RealtimeRefreshScope.Agents && it.reason == build.raft.app.data.realtime.RealtimeSocketEvents.AgentDeleted }
+        ?.let { event -> event.subjectId?.trim()?.takeIf(String::isNotEmpty) ?: event.memberId?.value?.trim()?.takeIf(String::isNotEmpty) }
 
 private fun RealtimeEvent.updatesSharedTaskProjection(): Boolean =
     this is TaskCreated || this is TaskUpdated || this is TaskDeleted

@@ -4,15 +4,12 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.MembersAgentLifecycleAction
-import build.raft.app.model.MemberProfile
 import build.raft.app.seedCachedAgentDetail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -43,15 +40,10 @@ class AgentDetailOfflineTest {
         assertEquals("Atlas", replay.detail.summary?.name)
         assertEquals(listOf("general"), replay.detail.channels.map { it.name })
 
-        // Painted as a cache replay: no edit authority, no lifecycle action until a fresh answer.
+        // Painted as a cache replay: no profile edit authority until a fresh answer (the page's gate).
         val store = SharedAgentDetailStore()
         store.seedCachedAgentDetail(AGENT, owner, profileGeneration = 1L, cached = replay)
         assertTrue(store.state.value.detailFromCache)
-        val blocked =
-            store.runLifecycleAction(AGENT, MembersAgentLifecycleAction.Stop, RecordingActions)
-        assertIs<DataResult.Error>(blocked)
-        assertEquals(AgentDetailStandInReadOnlyCode, blocked.error.code)
-        assertEquals(0, RecordingActions.lifecycleCalls)
 
         // The refresh answers: memory and disk take it.
         assertTrue(coldCache.write(owner.agentDetailCacheKey(AGENT), cached(detail("Atlas Prime")), coldCache.ticket()))
@@ -69,6 +61,10 @@ class AgentDetailOfflineTest {
                 base.copy(
                     summary =
                         base.summary!!.copy(
+                            activity = "thinking",
+                            activityDetail = "thinking: the token is SECRET-11",
+                            activityDetailKind = "thinking",
+                            toolStuck = build.raft.app.model.AgentToolStuck(toolName = "bash SECRET-12", quietSinceMs = 1L),
                             envVarNames = listOf("PUBLIC_FLAG"),
                             envVars = mapOf("OPENAI_API_KEY" to "sk-env-SECRET-1", "PUBLIC_FLAG" to "env-SECRET-2"),
                             runtimeProvider = RuntimeProviderConfig.Custom(apiUrl = "https://llm.example/SECRET-URL", apiKey = "sk-provider-SECRET-3"),
@@ -140,6 +136,24 @@ class AgentDetailOfflineTest {
     }
 
     @Test
+    fun onDiskAConfirmedEditSupersedesAnOlderAnswerAndIsStoredWhenNothingWasStored() = runTest {
+        val device = Device(backgroundScope)
+        val durable = RaftOfflineKeyedSnapshotDurable(device.offline.resource(AgentDetailResourceSpec))
+        val key = owner.agentDetailCacheKey(AGENT)
+        fun record(name: String) = cached(detail(name)).toStoredAgentDetail()
+
+        // Nothing stored yet (e.g. the first write was fenced): the confirmed edit is stored.
+        durable.confirm(key, record("Renamed"))
+        assertEquals("Renamed", durable.read(key)?.summary?.name)
+
+        // An answer whose request started before the next confirmed edit cannot overwrite it on disk.
+        val olderRequest = durable.epoch
+        durable.confirm(key, record("Renamed again"))
+        assertFalse(durable.write(key, record("Atlas"), olderRequest))
+        assertEquals("Renamed again", durable.read(key)?.summary?.name)
+    }
+
+    @Test
     fun lostServerWipeTakesTheStoredPageAndFencesAnInFlightAnswer() = runTest {
         val device = Device(backgroundScope)
         val cache = device.cache()
@@ -153,23 +167,48 @@ class AgentDetailOfflineTest {
         assertNull(device.cache().cachedAgentDetailFor(owner, AGENT))
     }
 
-    private object RecordingActions : SharedAgentDetailActions {
-        var lifecycleCalls = 0
+    @Test
+    fun realtimeAgentDeletedDropsTheStoredPageOfThatAgentOnly() = runTest {
+        val device = Device(backgroundScope)
+        val cache = device.cache()
+        val other = MemberId("agent-2")
+        cache.write(owner.agentDetailCacheKey(AGENT), cached(detail("Atlas")), cache.ticket())
+        cache.write(owner.agentDetailCacheKey(other), cached(detail("Other").copy(agentId = other)), cache.ticket())
+        val deleted = mutableListOf<Pair<String, String>>()
+        val realtime =
+            SharedRealtimeDomainEventOwner(
+                onAgentDeleted = { serverId, agentId ->
+                    deleted += serverId to agentId
+                    val key = sharedAgentDetailOwner(ENVIRONMENT, "user-1", ServerId(serverId))!!.agentDetailCacheKey(MemberId(agentId))
+                    cache.evict(key)
+                }
+            )
 
-        override suspend fun runLifecycleAction(
-            agentId: MemberId,
-            action: MembersAgentLifecycleAction,
-            workspaceChoice: AgentArchiveWorkspaceChoice
-        ): DataResult<AgentLifecycleActionResult> {
-            lifecycleCalls += 1
-            error("must not be called against a stand-in")
-        }
+        realtime.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = SERVER,
+            event =
+                build.raft.app.model.RealtimeRefreshRequired(
+                    scope = build.raft.app.model.RealtimeRefreshScope.Agents,
+                    reason = "agent:deleted",
+                    subjectId = AGENT.value,
+                ),
+        )
+        // Other agent refreshes (agent:created / session) are not deletions.
+        realtime.deliverGuardedAppShellDomainFinal(
+            sinks = RealtimeGuardedDomainEventSinks(),
+            serverId = SERVER,
+            event =
+                build.raft.app.model.RealtimeRefreshRequired(
+                    scope = build.raft.app.model.RealtimeRefreshScope.Agents,
+                    reason = "agent:session",
+                    subjectId = other.value,
+                ),
+        )
 
-        override fun copyDiagnostics(diagnostics: String) = Unit
-
-        override suspend fun reportIssue(request: SharedAgentIssueReportRequest): DataResult<AgentIssueReportResult> = error("unused")
-
-        override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> = error("unused")
+        assertEquals(listOf(SERVER to AGENT.value), deleted)
+        assertNull(device.cache().cachedAgentDetailFor(owner, AGENT))
+        assertEquals("Other", device.cache().cachedAgentDetailFor(owner, other)?.detail?.summary?.name)
     }
 
     private val owner = sharedAgentDetailOwner(ENVIRONMENT, "user-1", ServerId(SERVER))!!
