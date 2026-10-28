@@ -68,6 +68,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -396,13 +397,14 @@ fun RaftDropdownMenu(
     val density = LocalDensity.current
     val safe = WindowInsets.safeDrawing
     val layoutDirection = LocalLayoutDirection.current
+    val frame = LocalRaftFrameInsets.current
     val area =
         RaftSafeArea(
             left = safe.getLeft(density, layoutDirection),
             top = safe.getTop(density),
             right = safe.getRight(density, layoutDirection),
             bottom = safe.getBottom(density),
-        )
+        ).clearOf(frame, density)
     val windowMargin = with(density) { 8.dp.roundToPx() }
     val insets =
         with(density) {
@@ -530,6 +532,21 @@ internal val LocalRaftMenuNav = staticCompositionLocalOf<RaftMenuNav?> { null }
 /** The window's safe area (system bars, cutouts, the keyboard), in px from each edge. */
 @Immutable
 internal data class RaftSafeArea(val left: Int = 0, val top: Int = 0, val right: Int = 0, val bottom: Int = 0)
+
+/**
+ * The safe area grown to cover the host's [frame] insets: the menu's 8dp window margin then keeps
+ * it [RaftFrameInsetsDefaults.PopupGap] from each inset too (raft-ui `usePopupCollisionPadding`).
+ */
+internal fun RaftSafeArea.clearOf(frame: RaftFrameInsets, density: Density): RaftSafeArea {
+    if (frame.isZero) return this
+    return with(density) {
+        copy(
+            left = maxOf(left, frame.left.coerceAtLeast(0.dp).roundToPx()),
+            top = maxOf(top, frame.top.coerceAtLeast(0.dp).roundToPx()),
+            right = maxOf(right, frame.right.coerceAtLeast(0.dp).roundToPx()),
+        )
+    }
+}
 
 /** The transparent room round a popup's surface, in px. */
 @Immutable
