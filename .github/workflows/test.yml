@@ -898,7 +898,8 @@ jobs:
     # - github-xcode27.1, only on the full tier (full-ci PR, release-* push, nightly, scope=full
     #   dispatch) or when compose/iosApp changed: GitHub xcode-27 with Xcode 27.1, so code using
     #   27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge) compiles before release.
-    # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK.
+    # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
+    # iPhone Duo (on xcode-27 the iOS 27.1 runtime only offers Duo; the tab-bar tests expect a phone).
     needs: [plan]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
     strategy:
@@ -1066,7 +1067,7 @@ jobs:
         working-directory: compose/iosApp
         run: |
           set -o pipefail
-          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
@@ -1087,7 +1088,7 @@ jobs:
         working-directory: compose/iosApp
         run: |
           set -o pipefail
-          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-login-router-tests.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
@@ -1157,7 +1158,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
-          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           # The XCTest steps above leave this simulator booted; the Kotlin test task boots it itself.
           xcrun simctl shutdown "$device_id" 2>/dev/null || true
           gradle_rc=0
