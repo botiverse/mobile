@@ -103,7 +103,11 @@ internal class CanonicalMessageV2ResumeIngest(
     ): Deferred<CanonicalMessageV2ResumeIngestResult> =
         scope.async { order.withLock { commit(partition, resume, expectedPartitionGeneration) } }
 
-    /** In-memory only (flag off): reports the resume's hole to the tracker; nothing is stored. */
+    /**
+     * In-memory only: reports the resume's holes to the tracker. The owner's commit calls it FIRST, before any disk
+     * work is queued (an earlier resume may still hold the disk), so a live frame after this resume can never
+     * extend a window across its holes; with the flag off it is all that runs.
+     */
     suspend fun noteUnrecorded(partition: DurablePartitionKey, resume: SyncResumeResponse) {
         withContext(NonCancellable) { reportHoles(partition, resume) }
     }
@@ -143,7 +147,6 @@ internal class CanonicalMessageV2ResumeIngest(
         fun skip(reason: String, count: Int = 1) {
             skipped[reason] = (skipped[reason] ?: 0) + count
         }
-        withContext(NonCancellable) { reportHoles(partition, resume) }
         val rowCount = resume.decodedCanonical.size
         if (generationEngine.partitionGeneration(partition) != expectedPartitionGeneration) {
             // Cleared after the grant check (server access lost): nothing of this resume may refill it.
@@ -194,7 +197,7 @@ internal class CanonicalMessageV2ResumeIngest(
                         scope = scope,
                         envelopes = facts.values.map { it.envelope },
                         coverage = null,
-                        revAtRequest = generationEngine.storedLocalRev(scope),
+                        revAtRequest = generationEngine.storedLocalRev(partition),
                         userDriven = false,
                         expectedPartitionGeneration = expectedPartitionGeneration,
                         threadParent = threadParent,
@@ -369,6 +372,11 @@ internal class RealtimeResumeCanonicalMessageV2Gateway(
         // Flag off: nothing is stored, but the hole is still reported (in memory) so no window claims across it.
         if (!ingest.isEnabledFor(partition.serverId)) return { ingest.noteUnrecorded(partition, resume) }
         val expectedGeneration = ingest.partitionGeneration(partition)
-        return { ingest.commitDetached(partition, resume, expectedGeneration).await() }
+        return {
+            // Memory only and first: the holes are on record before any disk work (which may queue behind an earlier
+            // resume) and before the owner's timeout can let the applied seq move.
+            ingest.noteUnrecorded(partition, resume)
+            ingest.commitDetached(partition, resume, expectedGeneration).await()
+        }
     }
 }

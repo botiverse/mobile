@@ -273,6 +273,54 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
         }
     }
 
+    @Test
+    fun aPageRequestedBeforeAHorizonResetStoresItsFactsButNeverReclaimsTheHead() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(9L)
+            rig.connect(1L)
+            // The enter's page is in flight when the resume says late messages were dropped.
+            rig.enterWhile(channel, listOf(10L, 20L)) {
+                assertTrue(rig.deliver(rig.resumeWith(25L, emptyList(), horizonReset = true)))
+            }
+            assertEquals(listOf(10L, 20L), rig.seqsInScope(channel), "the page's facts are stored")
+            assertEquals(listOf(Triple(10L, 20L, false)), rig.segmentFlags(channel), "its head claim is not")
+            assertEquals(false, rig.hasLoadedNewest(channel))
+        }
+        file.rig().session { restarted ->
+            assertEquals(listOf(Triple(10L, 20L, false)), restarted.segmentFlags(channel), "after a restart too")
+        }
+    }
+
+    @Test
+    fun aResumesHolesAreOnRecordBeforeItsDiskWorkEvenBehindAStuckEarlierResume() = withFile { file ->
+        file.rig(timeoutMs = 300L).session { rig ->
+            rig.cursorAt(9L)
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            val stuck = SyncScopeKey(partition, "channel-x", "channel")
+            assertTrue(rig.deliver(rig.messageNew(stuck, "x5", 5L)))
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val held = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val holder = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                rig.engine.withScopeWriter(stuck) {
+                    held.complete(Unit)
+                    release.await()
+                }
+            }
+            held.await()
+            // An earlier resume whose disk work is stuck, then one whose page has more to follow.
+            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("x30", 30L, stuck.scopeId))))
+            assertTrue(rig.deliver(rig.resumeWith(31L, listOf(rig.resumeRow("o31", 31L, "channel-other")), hasMore = true)))
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            // A live frame right after it is stored loose: no window grows across the unknown rest.
+            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L)))
+            assertEquals(listOf(10L to 20L), rig.segments(channel))
+            release.complete(Unit)
+            holder.join()
+            rig.resumeIngest.awaitIdle()
+        }
+    }
+
     // ---- rig -----------------------------------------------------------------------------------------
 
     private class TestFile(val path: Path) {
@@ -363,13 +411,17 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
 
         fun appliedSeq(): Long = cursorStore.readAppliedLastSeq(ServerId(partition.serverId))
 
-        suspend fun enter(scope: SyncScopeKey, vararg seqs: Long) {
+        suspend fun enter(scope: SyncScopeKey, vararg seqs: Long) = enterWhile(scope, seqs.toList(), duringFetch = null)
+
+        /** The enter loader; [duringFetch] runs after the page was requested, before it is answered. */
+        suspend fun enterWhile(scope: SyncScopeKey, seqs: List<Long>, duringFetch: (suspend () -> Unit)?) {
             val page = adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it, channelId = scope.scopeId) }.toTypedArray())
             CanonicalMessageV2EnteredScopeLoader(
                 canary = canary,
                 generationEngine = engine,
                 fetcher = CanonicalMessageV2RestSnapshotFetcher(
-                    RecordingNetworkClient("""{"messages":$page,"historyLimited":false}""", channelIds = setOf(scope.scopeId)),
+                    RecordingNetworkClient("""{"messages":$page,"historyLimited":false}""", channelIds = setOf(scope.scopeId))
+                        .also { it.onPageRequested = duringFetch },
                 ),
                 isEnabledForServer = { true },
                 logger = { logs += it },

@@ -4,10 +4,11 @@ import build.raft.app.RaftCoreInternalApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.IO
 
-// Same pattern as RaftAvatarDbDispatcher: one serialized worker off the UI/frame thread.
+// Blocking SQLite I/O belongs on the IO pool (Native has one too); parallelism 1 keeps resume writes ordered.
 @OptIn(ExperimentalCoroutinesApi::class)
 @RaftCoreInternalApi
 actual val RaftMessageDbDispatcher: CoroutineDispatcher by lazy {
-    Dispatchers.Default.limitedParallelism(1)
+    Dispatchers.IO.limitedParallelism(1)
 }
