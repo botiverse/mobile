@@ -72,6 +72,22 @@ private data class ActivityRealtimeHighWater(
 
 private data class ActivityRealtimeCatchUpTarget(val channelId: ChannelId, val seq: String)
 
+/**
+ * A canonical refresh read ([SharedActivityStore.loadCanonicalDepth]). [partialFailureCode] is set
+ * when a page after the first failed: [result] then holds the rows fetched before it.
+ */
+private data class ActivityCanonicalDepthResult(
+    val result: DataResult<InboxSnapshot>,
+    val partialFailureCode: String? = null
+)
+
+/**
+ * How long a pull joins a foreground refresh already in flight instead of restarting it. Older
+ * loads may have hung across a background (see [ActivityRefreshCoalesceWindowMillis]); the pull
+ * then supersedes them.
+ */
+internal const val ActivityPullJoinsInFlightRefreshWindowMillis: Long = 10_000L
+
 private data class ActivityRealtimeReconcileResult(
     val items: List<InboxItem>,
     val preserveTotalUnreadFloor: Boolean = false
@@ -173,6 +189,14 @@ class SharedActivityStore internal constructor(
     private var lastResetLoadStartedAtMillis: Long? = null
     /** Start time of [loadJob] when it is a foreground reset load (not LoadMore / background). */
     private var foregroundResetLoadStartedAtMillis: Long? = null
+    /**
+     * The generation of the refresh whose first page is already shown while its later pages are
+     * still being read (Hands f6c3f3a6). A LoadMore then waits for those pages instead of
+     * cancelling them, and a pull restarts the read instead of joining it.
+     */
+    private var progressiveTailGeneration: Long? = null
+    /** The generation of a non-pull refresh a pull joined: it shows the pull spinner until it lands. */
+    private var pullJoinedGeneration: Long? = null
     /**
      * Local duplicate-request fence for Activity Follow/Unfollow actions.
      * The server remains the authority for the eventual boolean; this set only
@@ -1627,6 +1651,37 @@ class SharedActivityStore internal constructor(
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
+                if (pullRefresh && inFlightLoad != null) {
+                    // Hands f6c3f3a6: a pull over a visible refresh still in flight joins it and
+                    // shows the pull spinner, instead of throwing the pages it already read away.
+                    val inFlightAgeMillis = foregroundResetLoadStartedAtMillis?.let { startedAt -> nowMillis() - startedAt }
+                    val supersedeReason =
+                        when {
+                            inFlightAgeMillis == null -> "not_visible_refresh"
+                            progressiveTailGeneration == loadGeneration -> "first_page_shown"
+                            current.snapshot == null -> "no_rows"
+                            inFlightAgeMillis >= ActivityPullJoinsInFlightRefreshWindowMillis -> "stale_in_flight"
+                            else -> null
+                        }
+                    if (supersedeReason == null) {
+                        pullJoinedGeneration = loadGeneration
+                        reduceState(intent, current.copy(refreshing = true, pullRefreshing = true))
+                        diagnosticsLogger(
+                            "store_load domain=activity phase=pull_joined generation=$loadGeneration " +
+                                "inFlightAgeMs=$inFlightAgeMillis"
+                        )
+                        return@synchronized null
+                    }
+                    diagnosticsLogger(
+                        "store_load domain=activity phase=pull_supersedes reason=$supersedeReason " +
+                            "generation=$loadGeneration inFlightAgeMs=${inFlightAgeMillis ?: -1}"
+                    )
+                }
+                if (!refresh && inFlightLoad != null && progressiveTailGeneration == loadGeneration) {
+                    // The refresh is still reading the pages below the first: they are the rows a
+                    // LoadMore would ask for, and a LoadMore would cancel that read.
+                    return@synchronized null
+                }
                 if (refresh && !pullRefresh && intent == SharedActivityIntent.Refresh && inFlightLoad != null) {
                     // Keyed on the job, not on loading/refreshing: those flags are only set once
                     // the launched load has read the session, so a same-frame second Refresh used
@@ -1789,7 +1844,10 @@ class SharedActivityStore internal constructor(
                                     stateWithLocalProfiles.copy(
                                         loading = refresh && stateWithLocalProfiles.snapshot == null,
                                         refreshing = refresh && stateWithLocalProfiles.snapshot != null,
-                                        pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
+                                        pullRefreshing =
+                                            refresh &&
+                                                (pullRefresh || pullJoinedGeneration == generation) &&
+                                                stateWithLocalProfiles.snapshot != null,
                                         loadingMore = !refresh,
                                         errorCode = null,
                                         loadMoreErrorCode = null
@@ -1802,9 +1860,26 @@ class SharedActivityStore internal constructor(
                         // shared members flight); on a server switch it took 11s and held the new
                         // server's rows behind the old server's cached ones.
                         val senderProfilesLoad = scope.async { loadSenderProfiles(serverId) }
+                        var partialFailureCode: String? = null
                         val result =
                             if (refresh) {
-                                loadCanonicalDepth(serverId, filter, refreshLimit)
+                                val depth =
+                                    loadCanonicalDepth(serverId, filter, refreshLimit) { fetched ->
+                                        publishRefreshPage(
+                                            fetched = fetched,
+                                            generation = generation,
+                                            serverId = serverId,
+                                            userId = userId,
+                                            server = server,
+                                            senderProfilesLoad = senderProfilesLoad,
+                                            intent = intent,
+                                            backgroundRefresh = backgroundRefresh,
+                                            pullRefresh = pullRefresh,
+                                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                        )
+                                    }
+                                partialFailureCode = depth.partialFailureCode
+                                depth.result
                             } else {
                                 inboxRepository.loadMore(
                                     serverId,
@@ -1868,7 +1943,10 @@ class SharedActivityStore internal constructor(
                                         append = !refresh,
                                         senderProfiles = senderProfiles,
                                         intent = intent,
-                                        backgroundRefresh = backgroundRefresh
+                                        backgroundRefresh = backgroundRefresh,
+                                        // A later page failed: the rows below the fetched ones stay
+                                        // (the list does not shrink), the refresh is not an error.
+                                        keepUnfetchedTail = partialFailureCode != null
                                     )
                                     true
                                 }
@@ -1888,8 +1966,8 @@ class SharedActivityStore internal constructor(
                         }
                         ensureDmPeerNames()
                         logActivityLoad(
-                            result = result.activityDiagnosticsResult(),
-                            code = null,
+                            result = if (partialFailureCode != null) "content_partial" else result.activityDiagnosticsResult(),
+                            code = partialFailureCode,
                             refresh = refresh,
                             append = !refresh,
                             filter = filter,
@@ -1941,11 +2019,11 @@ class SharedActivityStore internal constructor(
                             pullRefresh = pullRefresh
                         )
                     } finally {
-                        if (backgroundRefresh) {
-                            synchronized(realtimeOwnerLock) {
-                                if (generation == loadGeneration && _state.value.backgroundRefreshing) {
-                                    _state.update { state -> state.copy(backgroundRefreshing = false) }
-                                }
+                        synchronized(realtimeOwnerLock) {
+                            if (progressiveTailGeneration == generation) progressiveTailGeneration = null
+                            if (pullJoinedGeneration == generation) pullJoinedGeneration = null
+                            if (backgroundRefresh && generation == loadGeneration && _state.value.backgroundRefreshing) {
+                                _state.update { state -> state.copy(backgroundRefreshing = false) }
                             }
                         }
                     }
@@ -1954,38 +2032,113 @@ class SharedActivityStore internal constructor(
         job?.start()
     }
 
+    /**
+     * Shows the rows a refresh has read so far while it reads the next page (Hands f6c3f3a6): the
+     * first page (totals, unread counts, the head of the list) lands at once and ends the
+     * refresh / pull spinner; the rows below it stay as they were until their page arrives
+     * ([applyCanonicalLoadResult] keepUnfetchedTail). The last page replaces the whole list with
+     * the full served order, so rows that moved out of the first page resolve there. A remembered
+     * (`X-Raft-Stale`) first page is not shown early: the final answer decides as before.
+     */
+    private suspend fun publishRefreshPage(
+        fetched: InboxSnapshot,
+        generation: Long,
+        serverId: ServerId,
+        userId: String,
+        server: ServerSummary,
+        senderProfilesLoad: Deferred<Map<String, SharedActivitySenderProfile>>,
+        intent: SharedActivityIntent,
+        backgroundRefresh: Boolean,
+        pullRefresh: Boolean,
+        durationMs: Long
+    ) {
+        if (fetched.staleReason != null) return
+        val session = authStore.readSession()
+        if (session == null || session.user.id != userId || session.currentServerId != serverId.value) return
+        val readySenderProfiles = if (senderProfilesLoad.isCompleted) senderProfilesLoad.await() else null
+        val published =
+            synchronized(realtimeOwnerLock) {
+                if (generation != loadGeneration) return@synchronized false
+                val senderProfiles =
+                    readySenderProfiles ?: (_state.value.senderProfiles + currentSenderProfiles(serverId))
+                applyLoadResult(
+                    result = DataResult.Content(fetched),
+                    server = server,
+                    append = false,
+                    senderProfiles = senderProfiles,
+                    intent = intent,
+                    backgroundRefresh = backgroundRefresh,
+                    keepUnfetchedTail = true,
+                    settle = false
+                )
+                progressiveTailGeneration = generation
+                true
+            }
+        if (!published) return
+        diagnosticsLogger(
+            "store_load domain=activity phase=page_published fetched=${fetched.items.size} " +
+                "shown=${_state.value.items.size} unread=${_state.value.totalUnreadCount} durationMs=$durationMs " +
+                "generation=$generation background=$backgroundRefresh pullRefresh=$pullRefresh " +
+                "pullRefreshingAfter=${_state.value.pullRefreshing}"
+        )
+    }
+
+    /**
+     * Hands f6c3f3a6 (iOS 1.17.0): a refresh re-reads as many rows as are loaded (270 rows = three
+     * sequential 100-row pages, ~1.2-1.9 s each) and used to publish only after the last one, so
+     * the pull spinner and the list looked stuck for 5-6 s, and a later page cancelled by the app
+     * leaving the foreground (`http_0`) threw the pages already fetched away.
+     *
+     * [onPageMerged] receives the rows fetched so far after every page that is not the last
+     * (offset 0 first: it carries the totals and unread counts), so the caller can publish them
+     * at once. A later page that fails, stalls or throws ends the read with what was fetched:
+     * [ActivityCanonicalDepthResult.partialFailureCode] names it and the result stays Content.
+     * Only the first page's failure fails the read.
+     */
     private suspend fun loadCanonicalDepth(
         serverId: ServerId,
         filter: InboxFilter,
-        depth: Int
-    ): DataResult<InboxSnapshot> {
+        depth: Int,
+        onPageMerged: suspend (InboxSnapshot) -> Unit = {}
+    ): ActivityCanonicalDepthResult {
         val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
         val initial = inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
-        if (initial !is DataResult.Content) return initial
+        if (initial !is DataResult.Content) return ActivityCanonicalDepthResult(initial)
 
         var combined = initial.data.copy(items = initial.data.items.dedupeActivityItems())
         val seenOffsets = mutableSetOf<Int>()
         val maxContinuationRequests = targetDepth.toLong() + SharedActivityRefreshContinuationSlack
         var continuationRequests = 0
         var consecutiveNoProgressPages = 0
+        fun partial(code: String) = ActivityCanonicalDepthResult(DataResult.Content(combined), partialFailureCode = code)
         while (combined.items.size < targetDepth && combined.hasMore) {
             val offset = combined.nextOffset ?: combined.items.size
             if (!seenOffsets.add(offset) || continuationRequests.toLong() >= maxContinuationRequests) {
-                return DataResult.Error(ScreenError("activity_pagination_stalled"))
+                return partial("activity_pagination_stalled")
             }
+            onPageMerged(combined)
             continuationRequests += 1
             val remaining = targetDepth - combined.items.size
-            when (
-                val page = inboxRepository.loadMore(
-                    serverId,
-                    filter,
-                    offset,
-                    minOf(remaining, SharedActivityRefreshPageLimit)
-                )
-            ) {
+            val page =
+                try {
+                    inboxRepository.loadMore(
+                        serverId,
+                        filter,
+                        offset,
+                        minOf(remaining, SharedActivityRefreshPageLimit)
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    return partial("activity_network")
+                }
+            when (page) {
                 is DataResult.Content -> {
                     val inferredNextOffset = offset.toLong() + page.data.items.size.toLong()
                     val nextOffset = page.data.nextOffset ?: inferredNextOffset.takeIf { it <= Int.MAX_VALUE }?.toInt()
+                    // Offset pages are read one after another, so a row that moved up between two
+                    // reads comes again on the later page: the first (newer) position wins, the
+                    // same key merge as an append (dedupeActivityItems).
                     val mergedItems = (combined.items + page.data.items).dedupeActivityItems()
                     // A page can be empty after the repository projects an
                     // unfollowed row out of an attention filter.  The raw
@@ -2008,7 +2161,7 @@ class SharedActivityStore internal constructor(
                             mergedItems.size < targetDepth &&
                             consecutiveNoProgressPages > SharedActivityRefreshMaxNoProgressPages
                     if (invalidNonTerminalPage || exhaustedNoProgressBudget) {
-                        return DataResult.Error(ScreenError("activity_pagination_stalled"))
+                        return partial("activity_pagination_stalled")
                     }
                     combined =
                         page.data.copy(
@@ -2020,11 +2173,11 @@ class SharedActivityStore internal constructor(
                     combined = combined.copy(hasMore = false, nextOffset = null)
                     break
                 }
-                is DataResult.Error -> return page
-                is DataResult.NoPermission -> return page
+                is DataResult.Error -> return partial(page.error.code)
+                is DataResult.NoPermission -> return partial(page.blocker.code)
             }
         }
-        return DataResult.Content(combined)
+        return ActivityCanonicalDepthResult(DataResult.Content(combined))
     }
 
     private fun logActivityLoad(
@@ -2092,7 +2245,9 @@ class SharedActivityStore internal constructor(
         append: Boolean,
         senderProfiles: Map<String, SharedActivitySenderProfile>,
         intent: SharedActivityIntent,
-        backgroundRefresh: Boolean = false
+        backgroundRefresh: Boolean = false,
+        keepUnfetchedTail: Boolean = false,
+        settle: Boolean = true
     ) {
         val current = _state.value
         // Task #164: the server's remembered page (at most 5 minutes old) never replaces rows this
@@ -2123,7 +2278,8 @@ class SharedActivityStore internal constructor(
                     server = server,
                     append = append,
                     senderProfiles = senderProfiles,
-                    backgroundRefresh = backgroundRefresh
+                    backgroundRefresh = backgroundRefresh,
+                    keepUnfetchedTail = keepUnfetchedTail
                 )
             }
         acceptCanonicalReplyThreadFacts(nextState)
@@ -2152,7 +2308,7 @@ class SharedActivityStore internal constructor(
                 },
             summarySource = "activity_canonical:${current.selectedFilter.wireValue}"
         )
-        if (!append) {
+        if (!append && settle) {
             settleStaleRecovery(nextState, result)
             settleRealtimeCatchUpLocked(nextState, result)
         }
@@ -2271,7 +2427,8 @@ class SharedActivityStore internal constructor(
         server: ServerSummary,
         append: Boolean,
         senderProfiles: Map<String, SharedActivitySenderProfile>,
-        backgroundRefresh: Boolean
+        backgroundRefresh: Boolean,
+        keepUnfetchedTail: Boolean = false
     ): SharedActivityState =
             when (result) {
                 is DataResult.Content -> {
@@ -2287,14 +2444,29 @@ class SharedActivityStore internal constructor(
                         reconcileRealtimeHighWater(
                             canonicalItems = pageItems.items,
                             append = append,
-                            preservePendingRealtimeUnread = backgroundRefresh
+                            preservePendingRealtimeUnread = backgroundRefresh,
+                            // Rows below the fetched pages were not answered yet: their realtime
+                            // high-water waits for the page that serves them.
+                            pruneUnlisted = !keepUnfetchedTail
                         )
-                    val items =
+                    val fetchedItems =
                         if (append) {
                             (current.items + realtimeReconcile.items).dedupeActivityItems()
                         } else {
                             realtimeReconcile.items.withRetainedReadRows(current).dedupeActivityItems()
                         }
+                    // Hands f6c3f3a6: a refresh shown page by page keeps the rows it has not read
+                    // yet below the fetched ones, in their shown order; a fetched row is listed
+                    // once, at its served position.
+                    val unfetchedTail =
+                        if (append || !keepUnfetchedTail) {
+                            emptyList()
+                        } else {
+                            val fetchedKeys = fetchedItems.mapTo(mutableSetOf(), InboxItem::key)
+                            current.items.filterNot { item -> item.key in fetchedKeys }
+                        }
+                    val items =
+                        (if (unfetchedTail.isEmpty()) fetchedItems else (fetchedItems + unfetchedTail).dedupeActivityItems())
                             // RFC 077: a re-fetched row of the same latest message without
                             // `latestDelegatedBy` keeps the known label.
                             .withKnownLatestDelegatedLabelsFrom(current.items)
@@ -2324,8 +2496,16 @@ class SharedActivityStore internal constructor(
                                         },
                                     totalUnreadCount =
                                         canonicalUnreadCount,
-                                    hasMore = result.data.hasMore,
-                                    nextOffset = result.data.nextOffset
+                                    hasMore =
+                                        result.data.hasMore || (unfetchedTail.isNotEmpty() && current.hasMore),
+                                    // The kept rows below were read up to the shown offset; a
+                                    // LoadMore continues after them (an overlap dedupes by key).
+                                    nextOffset =
+                                        if (unfetchedTail.isEmpty()) {
+                                            result.data.nextOffset
+                                        } else {
+                                            listOfNotNull(result.data.nextOffset, current.nextOffset).maxOrNull()
+                                        }
                                 ),
                             senderProfiles = if (append) current.senderProfiles + senderProfiles else senderProfiles,
                             loaded = true,
@@ -2444,7 +2624,8 @@ class SharedActivityStore internal constructor(
     private fun reconcileRealtimeHighWater(
         canonicalItems: List<InboxItem>,
         append: Boolean,
-        preservePendingRealtimeUnread: Boolean
+        preservePendingRealtimeUnread: Boolean,
+        pruneUnlisted: Boolean = true
     ): ActivityRealtimeReconcileResult {
         if (append || realtimeHighWater.isEmpty()) {
             return ActivityRealtimeReconcileResult(items = canonicalItems)
@@ -2503,6 +2684,7 @@ class SharedActivityStore internal constructor(
         if (missingCurrent.isNotEmpty()) preserveTotalUnreadFloor = true
         realtimeHighWater.keys.toList().forEach { key ->
             if (
+                pruneUnlisted &&
                 key !in canonicalKeys &&
                 (!preservePendingRealtimeUnread || key !in currentThreads)
             ) {

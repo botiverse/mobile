@@ -1234,7 +1234,8 @@ class SharedActivityStoreTest {
 
         assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
         assertEquals(120, store.state.value.items.size)
-        assertEquals("tail_failed", store.state.value.errorCode)
+        // Hands f6c3f3a6: a later page's failure keeps what was fetched and is not the refresh's error.
+        assertEquals(null, store.state.value.errorCode)
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
@@ -1290,7 +1291,8 @@ class SharedActivityStoreTest {
 
         assertEquals(3, continuationLoads)
         assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
-        assertEquals("activity_pagination_stalled", store.state.value.errorCode)
+        // A stalled later page ends the read with what it fetched (Hands f6c3f3a6), not an error.
+        assertEquals(null, store.state.value.errorCode)
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
@@ -1342,7 +1344,8 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.Refresh)
 
         assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
-        assertEquals("activity_pagination_stalled", store.state.value.errorCode)
+        // A stalled later page ends the read with what it fetched (Hands f6c3f3a6), not an error.
+        assertEquals(null, store.state.value.errorCode)
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
