@@ -829,6 +829,24 @@ WHERE environmentId = ?
   AND principalId = ?
   AND consumerId = ?;
 
+-- Message storage I7 (sync:resume horizonReset): no segment of the partition is known to reach the server head.
+clearHeadAtVerifyForPartition:
+UPDATE messageSegmentEntity
+SET headAtVerify = 0
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
+-- The header mirror of clearHeadAtVerifyForPartition (hasLoadedNewest mirrors the head's headAtVerify).
+clearHasLoadedNewestForPartition:
+UPDATE syncCursorEntity
+SET hasLoadedNewest = 0
+WHERE environmentId = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
+
 purgeSegmentsForConsumer:
 DELETE FROM messageSegmentEntity
 WHERE consumerId = ?;

@@ -161,6 +161,13 @@ interface CanonicalMessageV2Store {
     suspend fun readSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> = emptyList()
 
     /**
+     * Design I7 (a `sync:resume` horizonReset: late messages were dropped): every segment of [partition] stops
+     * claiming it reached the server head (`headAtVerify`), and every header's `hasLoadedNewest` mirror with it.
+     * Ranges and facts stay. One transaction.
+     */
+    suspend fun clearHeadVerification(partition: DurablePartitionKey) {}
+
+    /**
      * The current fact write revision of [partition] (0 = none yet). It only grows: no prune and
      * no clear — scope or whole partition (server-access loss, revoke) — lowers or resets it. Read it before a
      * request and pass it as revAtRequest.
@@ -221,6 +228,13 @@ class CanonicalMessageV2GenerationEngine(
      * compares it to refuse a stale page (see [scopeCommitGeneration]).
      */
     private val commitGenerationByScope = mutableMapOf<SyncScopeKey, Long>()
+
+    /**
+     * Phase 3b (design I7), guarded by [stateLock]: bumped by every [clearHeadVerification] of the partition. A page
+     * writer reads [partitionHeadEpoch] before it requests its page and passes it with the write: a page fetched
+     * before a horizonReset still stores its facts and range, but never claims the server head again.
+     */
+    private val headEpochByPartition = mutableMapOf<DurablePartitionKey, Long>()
     private val partitionRevocationObservers = mutableListOf<suspend (DurablePartitionKey) -> Unit>()
     private val scopeInvalidationObservers = mutableListOf<suspend (Set<SyncScopeKey>) -> Unit>()
 
@@ -273,38 +287,52 @@ class CanonicalMessageV2GenerationEngine(
     suspend fun applySnapshot(
         frame: CanonicalMessageV2SnapshotFrame,
         expectedPartitionGeneration: Long? = null,
+        /** [partitionHeadEpoch] read before the page was requested (`null` = not a page writer). */
+        expectedHeadEpoch: Long? = null,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(frame.scope.partition) {
         if (!isCurrentGeneration(frame.scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
-        val write = store.applySnapshot(frame)
-        bumpScopeCommitGeneration(frame.scope)
+        val admitted = if (headClaimIsStale(frame.scope.partition, expectedHeadEpoch)) {
+            frame.copy(cursor = frame.cursor.copy(hasLoadedNewest = false))
+        } else {
+            frame
+        }
+        val write = store.applySnapshot(admitted)
+        bumpScopeCommitGeneration(admitted.scope)
         invalidateEvictedScopes(write.evictedScopes)
-        if (frame.scope in write.evictedScopes) {
+        if (admitted.scope in write.evictedScopes) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
         }
-        coordinator.onSnapshotCommitted(frame.scope)
-        synchronized(stateLock) { cursorByScope[frame.scope] = write.committedCursor ?: frame.cursor }
-        snapshotCommitObserver.onSnapshotCommitted(frame.scope)
+        coordinator.onSnapshotCommitted(admitted.scope)
+        synchronized(stateLock) { cursorByScope[admitted.scope] = write.committedCursor ?: admitted.cursor }
+        snapshotCommitObserver.onSnapshotCommitted(admitted.scope)
         CanonicalMessageV2CommitResult.Committed
     }
 
     suspend fun applyIncremental(
         frame: CanonicalMessageV2IncrementalFrame,
         expectedPartitionGeneration: Long? = null,
+        /** [partitionHeadEpoch] read before the page was requested (`null` = not a page writer). */
+        expectedHeadEpoch: Long? = null,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(frame.scope.partition) {
         if (!isCurrentGeneration(frame.scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
-        when (val decision = coordinator.onIncremental(frame.scope)) {
+        val admitted = if (headClaimIsStale(frame.scope.partition, expectedHeadEpoch)) {
+            frame.copy(cursor = frame.cursor.copy(hasLoadedNewest = false))
+        } else {
+            frame
+        }
+        when (val decision = coordinator.onIncremental(admitted.scope)) {
             CanonicalMessageV2IncrementalDecision.Apply -> {
-                val write = store.applyIncremental(frame)
-                bumpScopeCommitGeneration(frame.scope)
+                val write = store.applyIncremental(admitted)
+                bumpScopeCommitGeneration(admitted.scope)
                 invalidateEvictedScopes(write.evictedScopes)
-                if (frame.scope in write.evictedScopes) {
+                if (admitted.scope in write.evictedScopes) {
                     return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
                 }
-                synchronized(stateLock) { cursorByScope[frame.scope] = write.committedCursor ?: frame.cursor }
+                synchronized(stateLock) { cursorByScope[admitted.scope] = write.committedCursor ?: admitted.cursor }
                 CanonicalMessageV2CommitResult.Committed
             }
             is CanonicalMessageV2IncrementalDecision.Hold ->
@@ -339,26 +367,64 @@ class CanonicalMessageV2GenerationEngine(
          */
         countsAsScopeCommit: Boolean = true,
         establishesBaseline: Boolean = false,
+        /**
+         * Phase 3b: [partitionHeadEpoch] read before the page was requested (`null` = not a page writer). A
+         * horizonReset since then voids the page's head claim and with it its baseline: facts and range still land.
+         */
+        expectedHeadEpoch: Long? = null,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
+        val headStale = headClaimIsStale(scope.partition, expectedHeadEpoch)
+        val admittedCoverage = if (headStale) coverage?.copy(headAtVerify = false) else coverage
+        val admittedBaseline = establishesBaseline && !headStale
         // Only a page proven to reach the scope's newest message can be the realtime baseline: anything else would
         // let realtime appends extend a claim over messages between the page and the head.
-        require(!establishesBaseline || coverage?.headAtVerify == true) { "a realtime baseline needs a head coverage" }
+        require(!admittedBaseline || admittedCoverage?.headAtVerify == true) { "a realtime baseline needs a head coverage" }
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
         val write = store.applyCoverage(
-            scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
+            scope, envelopes, admittedCoverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
             runPartitionRetention,
         )
         if (countsAsScopeCommit) bumpScopeCommitGeneration(scope)
         invalidateEvictedScopes(write.evictedScopes)
         if (scope in write.evictedScopes) return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
-        if (establishesBaseline) coordinator.onSnapshotCommitted(scope)
+        if (admittedBaseline) coordinator.onSnapshotCommitted(scope)
         write.committedCursor?.let { committed -> synchronized(stateLock) { cursorByScope[scope] = committed } }
-        if (establishesBaseline) snapshotCommitObserver.onSnapshotCommitted(scope)
+        if (admittedBaseline) snapshotCommitObserver.onSnapshotCommitted(scope)
         CanonicalMessageV2CommitResult.Committed
     }
+
+    /**
+     * [CanonicalMessageV2Store.clearHeadVerification] as a partition mutation, refused
+     * ([CanonicalMessageV2CommitResult.PartitionRevoked]) when the partition was cleared since the caller read
+     * [expectedPartitionGeneration]. The in-memory cursors of the partition lose `hasLoadedNewest` too.
+     */
+    suspend fun clearHeadVerification(
+        partition: DurablePartitionKey,
+        expectedPartitionGeneration: Long?,
+    ): CanonicalMessageV2CommitResult = withPartitionMutation(partition) {
+        if (!isCurrentGeneration(partition, expectedPartitionGeneration)) {
+            return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
+        }
+        // First: a page requested before this point may still commit after it; it must not claim the head again.
+        synchronized(stateLock) { headEpochByPartition[partition] = (headEpochByPartition[partition] ?: 0L) + 1L }
+        store.clearHeadVerification(partition)
+        synchronized(stateLock) {
+            cursorByScope.entries.filter { it.key.partition == partition }.forEach { entry ->
+                entry.setValue(entry.value.copy(hasLoadedNewest = false))
+            }
+        }
+        CanonicalMessageV2CommitResult.Committed
+    }
+
+    /** The partition's head epoch (0 until its first [clearHeadVerification] in this process). */
+    fun partitionHeadEpoch(partition: DurablePartitionKey): Long =
+        synchronized(stateLock) { headEpochByPartition[partition] ?: 0L }
+
+    private fun headClaimIsStale(partition: DurablePartitionKey, expectedHeadEpoch: Long?): Boolean =
+        expectedHeadEpoch != null && expectedHeadEpoch != partitionHeadEpoch(partition)
 
     /** Pass-through of [CanonicalMessageV2Store.maxLocalRev]: read it before a request (revAtRequest). */
     suspend fun storedLocalRev(partition: DurablePartitionKey): Long {
@@ -1082,6 +1148,24 @@ internal class SqlDelightCanonicalMessageV2Store(
             )
             // The write revision is kept on purpose: a request that read it before this clear must never
             // overwrite a fact written after it, so the counter never restarts.
+        }
+    }
+
+    override suspend fun clearHeadVerification(partition: DurablePartitionKey) {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        database.transaction {
+            queries.clearHeadAtVerifyForPartition(
+                environmentId = partition.environmentId,
+                serverId = partition.serverId,
+                principalId = partition.principalId,
+                consumerId = partition.consumerId,
+            )
+            queries.clearHasLoadedNewestForPartition(
+                environmentId = partition.environmentId,
+                serverId = partition.serverId,
+                principalId = partition.principalId,
+                consumerId = partition.consumerId,
+            )
         }
     }
 

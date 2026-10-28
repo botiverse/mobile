@@ -1113,6 +1113,18 @@ data class SyncResumeResponse(
     val horizon: String? = null,
     /** More late messages qualified than the server sends: the client re-fetches its visible scope. */
     val horizonReset: Boolean = false,
+    /**
+     * Message storage Phase 3b: the raw-wire canonical decode of each message the response carries (in order; a
+     * row the decoder refuses is absent). The server's resume rows carry neither `conversationContext` nor
+     * `randomId` (slock `syncMessagesWithHorizon`), so these carries have no context and a null randomId: the
+     * durable writer supplies the context from the stored scope header. In-process only, never serialized.
+     */
+    @Transient val decodedCanonical: List<CanonicalMessageCarry> = emptyList(),
+    /**
+     * Phase 3b: one entry per row the canonical decode refused — its channel id when the row names one, else
+     * `null`. Those rows can never be stored, so the durable writer reports them as continuity holes.
+     */
+    @Transient val canonicalDecodeMisses: List<String?> = emptyList(),
 ) : RealtimeEvent
 
 @Serializable

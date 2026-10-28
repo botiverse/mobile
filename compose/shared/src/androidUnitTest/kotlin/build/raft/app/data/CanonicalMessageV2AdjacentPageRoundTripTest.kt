@@ -137,7 +137,7 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
             anchorSeq: Long,
             rawMessages: kotlinx.serialization.json.JsonArray,
             limit: Int,
-        ) = writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null) { true }
+        ) = writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
     }
 
     private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {

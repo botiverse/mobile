@@ -161,9 +161,9 @@ class CanonicalMessageV2ReplyThreadDurableTest {
         val h = harness(flagOn = true)
         h.seedChannelWindow()
         val channelPage = adjacentPageOf(adjacentPageNode("m5", 5), adjacentPageNode("m10", 10))
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, parent) { true }
+        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, parent, null) { true }
         assertTrue(h.logs.last().endsWith("scopeKind=thread direction=older outcome=no_window"), h.logs.toString())
-        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, null) { true }
+        h.writer.extendWithAdjacentPage(partition, "channel-1", ThreadDurablePageDirection.Older, 20, channelPage, 3, null, null) { true }
         assertTrue(h.logs.last().endsWith("direction=older outcome=committed facts=2"), h.logs.toString())
     }
 
@@ -184,6 +184,7 @@ class CanonicalMessageV2ReplyThreadDurableTest {
                 page,
                 limit,
                 replyParent,
+                null,
             ) { true }
 
         suspend fun seedChannelWindow() {

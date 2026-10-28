@@ -57,6 +57,7 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
                 replyPageArray(80),
                 30,
                 parent,
+                null,
             ) { true }
             assertEquals(
                 listOf(50L, 60L, 70L, 80L),

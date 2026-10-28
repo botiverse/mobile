@@ -307,10 +307,10 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         fun networkPaths(): List<String> = networks.flatMap { it.paths.toList() }
 
         suspend fun latest(rawMessages: JsonArray, limit: Int) =
-            writer.applyLatestPage(partition, "channel-1", rawMessages, limit, replyParent = null) { true }
+            writer.applyLatestPage(partition, "channel-1", rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
 
         suspend fun extend(direction: ThreadDurablePageDirection, anchorSeq: Long, rawMessages: JsonArray, limit: Int) =
-            writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null) { true }
+            writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
 
         /** A reader over a NEW store instance on the same database: what an offline cold start reads. */
         private fun coldStartReader() =

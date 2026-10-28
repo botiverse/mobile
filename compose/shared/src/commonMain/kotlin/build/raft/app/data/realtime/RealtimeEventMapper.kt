@@ -95,6 +95,8 @@ import build.raft.app.data.toScopeReadUpdated
 import build.raft.app.data.toMessageMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import build.raft.app.network.sync.decodeCanonicalMessageWire
+import build.raft.app.network.sync.ProductionFace
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -205,6 +207,34 @@ class RealtimeEventMapper(
             }
             .getOrNull()
 
+    /**
+     * Message storage Phase 3b: decode each resume row once, fail-open (a refused row is just absent). The server's
+     * resume rows never carry `randomId` (its sync select has no such column), so an absent key is decoded as an
+     * explicit null here; whoever stores the fact must treat that randomId as unknown.
+     */
+    private fun SyncResumeResponse.withResumeCanonical(element: JsonObject): SyncResumeResponse {
+        val rows = element["messages"] as? kotlinx.serialization.json.JsonArray ?: return this
+        val carries = ArrayList<build.raft.app.canonical.message.CanonicalMessageCarry>(rows.size)
+        val misses = ArrayList<String?>()
+        rows.forEach { raw ->
+            val row = raw as? JsonObject
+            val carry = runCatching {
+                row ?: return@runCatching null
+                val withRandomId = if (row.containsKey("randomId")) row else JsonObject(row + ("randomId" to JsonNull))
+                decodeCanonicalMessageWire(withRandomId, ProductionFace.EnrichedUpdated)
+            }.getOrNull()
+            if (carry != null) {
+                carries += carry
+            } else {
+                misses += (row?.get("channelId") as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            }
+        }
+        if (misses.isNotEmpty()) {
+            runCatching { diagnosticsLogger("sync_resume_canonical_decode rows=${rows.size} decoded=${carries.size}") }
+        }
+        return copy(decodedCanonical = carries, canonicalDecodeMisses = misses)
+    }
+
     private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {
         when (eventName) {
             RealtimeSocketEvents.MessageNew ->
@@ -310,6 +340,7 @@ class RealtimeEventMapper(
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Reminders, eventName)
             RealtimeSocketEvents.SyncResumeResponse ->
                 decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomainOrRecovery(diagnosticsLogger)
+                    ?.let { mapped -> if (mapped is SyncResumeResponse) mapped.withResumeCanonical(element) else mapped }
             RealtimeSocketEvents.Heartbeat ->
                 decodeOrNull(HeartbeatDto.serializer(), element)?.let { Heartbeat(it.seq) }
             RealtimeSocketEvents.ReadStateUpdated ->

@@ -463,7 +463,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             limit: Int,
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
-        ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, null, stillCurrent)
+        ) = writer.extendWithAdjacentPage(partition, channelId, direction, anchorSeq, rawMessages, limit, null, null, stillCurrent)
 
         suspend fun latest(
             rawMessages: JsonArray,
@@ -471,7 +471,7 @@ class CanonicalMessageV2AdjacentPageWriterTest {
             channelId: SyncScopeId = "channel-1",
             stillCurrent: () -> Boolean = { true },
             messageWindow: ChannelMessageWindow? = null,
-        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, messageWindow, false, stillCurrent)
+        ) = writer.applyLatestPage(partition, channelId, rawMessages, limit, null, messageWindow, false, null, stillCurrent)
     }
 
     /**

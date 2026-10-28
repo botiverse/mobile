@@ -306,6 +306,7 @@ class SharedThreadStoreReplyThreadDurableTest {
             rawMessages: JsonArray,
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
+            requestHeadEpoch: Long?,
             stillCurrent: () -> Boolean,
         ) {
             calls += channelId to replyParent
