@@ -86,8 +86,8 @@ import kotlinx.coroutines.launch
  * - Released past half the buttons' width the row stays open on them; short of that it springs back
  *   ([activitySwipeReleaseTarget]). Pulled past [ActivitySwipeFullDoneFraction] of the row's width, Done
  *   grows over the whole uncovered area, Android ticks once, and the release applies Done at once.
- * - Open: tapping a button runs its action (Done hides the row behind an 8 s Undo, as before; Unfollow and
- *   Mute write at once with an Undo that reverses them). One row is open at a time
+ * - Open: tapping a button runs its action (Done and Unfollow hide the row behind an 8 s Undo and write
+ *   only when it ends; Mute writes at once with an Undo that reverses it). One row is open at a time
  *   ([ActivitySwipeOpenRow], held by the list): a tap anywhere else, a scroll, a swipe back, opening
  *   another row or system Back closes it. A tap on the open row itself closes it rather than opening the
  *   conversation.
@@ -129,15 +129,17 @@ import kotlinx.coroutines.launch
  *   (without its leading [RaftBackSwipeEdgeWidth] strip), so its own drag toward the end is not taken for a
  *   page pop. A closed row without a start button leaves every drag toward the end to the host.
  *
- * Undo, Done: Done is applied by the Activity store (SharedActivityIntent.MarkDone), which has no un-done
- * path for every row kind. So a Done row is hidden locally and the MarkDone is committed when the toast
- * times out, when another row's action is applied, or when the list owner (account, server, filter) goes
- * away; Undo just shows the row again.
+ * Undo, Done and Unfollow ([ActivitySwipeDeferredAction]): Done is applied by the Activity store
+ * (SharedActivityIntent.MarkDone), which has no un-done path for every row kind; Unfollow also marks the
+ * thread read on the server, so following it again can't restore it (raft-design #790, Jasper and Remy).
+ * So the row is hidden locally and the write is committed when the toast times out, when another row's
+ * action is applied, or when the list owner (account, server, filter) goes away; Undo just shows the row
+ * again, as it was, and nothing is written. A Done is dropped if the row moved on meanwhile; an Unfollow
+ * still applies. This holds for the swipe's Unfollow button and the row menu's Unfollow alike.
  *
- * Undo, Unfollow / Mute: these have exact reverses (Follow, Unmute), so they are written on tap through the
- * same intents the row menu uses ([activitySwipeEndApplyCommand]); Undo sends the reverse
- * ([activitySwipeEndUndoCommand]). One toast at a time: a newer action replaces the older toast (a waiting
- * Done is committed first).
+ * Undo, Mute: it has an exact reverse (Unmute), so it is written on tap through the same command the row
+ * menu uses ([activitySwipeEndApplyCommand]); Undo sends the reverse ([activitySwipeEndUndoCommand]). One
+ * toast at a time: a newer action replaces the older toast (a waiting Done or Unfollow is committed first).
  */
 
 /**
@@ -583,27 +585,49 @@ internal data class ActivitySwipeOpenRow(val key: String? = null, val side: Acti
     fun retain(listedKeys: Collection<String>): ActivitySwipeOpenRow = if (key != null && key !in listedKeys) close() else this
 }
 
-/** A swiped row waiting out its undo window. */
+/** What a hidden row waits to write when its toast ends: a Done or a thread's Unfollow (raft-design #790). */
+internal enum class ActivitySwipeDeferredAction { Done, Unfollow }
+
+/**
+ * A swiped row waiting out its undo window. [listOwnerUserId] / [listOwnerServerId] are the account and
+ * server whose list showed it, so an Unfollow written after the filter changed still lands, and only there.
+ */
 @Immutable
-internal data class ActivityPendingSwipeDone(val item: InboxItem, val token: Long)
+internal data class ActivityPendingSwipeDone(
+    val item: InboxItem,
+    val token: Long,
+    val action: ActivitySwipeDeferredAction = ActivitySwipeDeferredAction.Done,
+    val listOwnerUserId: String? = null,
+    val listOwnerServerId: String? = null,
+)
 
-/** One step of [ActivitySwipeDoneUndoState]: the next state, and the row whose Done to commit now, if any. */
-internal data class ActivitySwipeDoneTransition(val state: ActivitySwipeDoneUndoState, val commit: InboxItem?)
+/** One step of [ActivitySwipeDoneUndoState]: the next state, and the waiting row to commit now, if any. */
+internal data class ActivitySwipeDoneTransition(val state: ActivitySwipeDoneUndoState, val commit: ActivityPendingSwipeDone?)
 
-/** At most one swiped Done waits for undo; a newer Done commits the older one. Pure; unit-tested. */
+/**
+ * At most one swiped Done or Unfollow waits for undo; a newer one commits the older one. Pure; unit-tested.
+ */
 @Immutable
 internal data class ActivitySwipeDoneUndoState(
     val pending: ActivityPendingSwipeDone? = null,
     private val nextToken: Long = 1L,
 ) {
-    /** The row hidden from the list while its Done waits. */
+    /** The row hidden from the list while its Done or Unfollow waits. */
     val hiddenKey: String? get() = pending?.item?.key
 
-    fun swipe(item: InboxItem): ActivitySwipeDoneTransition {
+    fun swipe(
+        item: InboxItem,
+        action: ActivitySwipeDeferredAction = ActivitySwipeDeferredAction.Done,
+        listOwnerUserId: String? = null,
+        listOwnerServerId: String? = null,
+    ): ActivitySwipeDoneTransition {
         if (pending?.item?.key == item.key) return ActivitySwipeDoneTransition(this, commit = null)
         return ActivitySwipeDoneTransition(
-            ActivitySwipeDoneUndoState(ActivityPendingSwipeDone(item, nextToken), nextToken + 1),
-            commit = pending?.item,
+            ActivitySwipeDoneUndoState(
+                ActivityPendingSwipeDone(item, nextToken, action, listOwnerUserId, listOwnerServerId),
+                nextToken + 1,
+            ),
+            commit = pending,
         )
     }
 
@@ -613,12 +637,45 @@ internal data class ActivitySwipeDoneUndoState(
     /** The undo window of [token] ran out: commit it. */
     fun expire(token: Long): ActivitySwipeDoneTransition {
         val expiring = pending?.takeIf { it.token == token } ?: return ActivitySwipeDoneTransition(this, commit = null)
-        return ActivitySwipeDoneTransition(copy(pending = null), expiring.item)
+        return ActivitySwipeDoneTransition(copy(pending = null), expiring)
     }
 
-    /** The list owner goes away: commit now rather than drop the person's Done. */
-    fun flush(): ActivitySwipeDoneTransition = ActivitySwipeDoneTransition(copy(pending = null), pending?.item)
+    /** Another row's action or the list owner goes away: commit now rather than drop the person's action. */
+    fun flush(): ActivitySwipeDoneTransition = ActivitySwipeDoneTransition(copy(pending = null), pending)
 }
+
+/**
+ * The rows the list shows: without the one hidden behind its toast ([hiddenKey]), and without a thread
+ * unfollowed here ([committedUnfollowKeys]) while it stays unfollowed (a failed or reversed Unfollow
+ * shows it again).
+ */
+internal fun activitySwipeListedItems(
+    items: List<InboxItem>,
+    hiddenKey: String?,
+    committedUnfollowKeys: Set<String>,
+): List<InboxItem> {
+    if (hiddenKey == null && committedUnfollowKeys.isEmpty()) return items
+    return items.filterNot { item ->
+        item.key == hiddenKey || (item.key in committedUnfollowKeys && !item.isFollowedActivityThread)
+    }
+}
+
+/**
+ * The intent to send when [pending] commits, or null to write nothing. [current] is the row as the list
+ * presents it now (null: no longer presented). A Done follows [activitySwipeDoneCommitItem]. An Unfollow
+ * always goes out: the person stops following whatever the thread says next (raft-design #790); it names
+ * its list owner so the store writes it even if that list has since moved to another filter.
+ */
+internal fun activitySwipeDeferredCommitIntent(pending: ActivityPendingSwipeDone, current: InboxItem?): SharedActivityIntent? =
+    when (pending.action) {
+        ActivitySwipeDeferredAction.Done -> activitySwipeDoneCommitItem(pending.item, current)?.let(SharedActivityIntent::MarkDone)
+        ActivitySwipeDeferredAction.Unfollow ->
+            SharedActivityIntent.UnfollowThread(
+                item = current?.takeIf { it.isFollowedActivityThread } ?: pending.item,
+                listOwnerUserId = pending.listOwnerUserId,
+                listOwnerServerId = pending.listOwnerServerId,
+            )
+    }
 
 /**
  * The row to send MarkDone for when a swiped Done commits. The person swiped what they saw; if the row has
@@ -641,8 +698,9 @@ internal data class ActivityPendingSwipeEnd(val item: InboxItem, val action: Act
 internal data class ActivitySwipeEndTransition(val state: ActivitySwipeEndUndoState, val reverse: ActivityPendingSwipeEnd?)
 
 /**
- * The toast of the latest Unfollow / Mute. The action is written on tap, so a newer action, the window
- * running out or the list owner going away only drops the toast; Undo returns the swipe to reverse.
+ * The toast of the latest Mute (an Unfollow waits for its toast instead: [ActivitySwipeDoneUndoState]). The
+ * action is written on tap, so a newer action, the window running out or the list owner going away only
+ * drops the toast; Undo returns the swipe to reverse.
  * Pure; unit-tested.
  */
 @Immutable

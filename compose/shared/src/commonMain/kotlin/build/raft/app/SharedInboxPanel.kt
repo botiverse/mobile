@@ -1759,9 +1759,12 @@ private fun SharedActivityList(
             )
         }
     }
-    // Rule L swipe-to-Done: the swiped row is hidden while its undo toast is up; the Done itself is
-    // committed when the window ends (ActivityConversationSwipe.kt).
+    // Rule L swipe-to-Done, and a thread's Unfollow (raft-design #790): the row is hidden while its undo
+    // toast is up; the Done or Unfollow itself is committed when the window ends (ActivityConversationSwipe.kt).
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
+    // Threads unfollowed here while this list is shown stay out of it (web `unfollowedKeys`), though a
+    // filter that lists unfollowed threads (All, Pinned) keeps them; one followed again shows again.
+    var committedUnfollowKeys by remember(presentationOwnerIdentity) { mutableStateOf(emptySet<String>()) }
     var objectUndo by remember { mutableStateOf(ActivityObjectUndoState()) }
     val activityObjectUriHandler = LocalUriHandler.current
     val activityObjectWebBaseUrl =
@@ -1773,8 +1776,8 @@ private fun SharedActivityList(
     val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
-        remember(renderedItems, swipeDoneHiddenKey) {
-            val listed = if (swipeDoneHiddenKey == null) renderedItems else renderedItems.filterNot { item -> item.key == swipeDoneHiddenKey }
+        remember(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys) {
+            val listed = activitySwipeListedItems(renderedItems, swipeDoneHiddenKey, committedUnfollowKeys)
             activityConversationListEntries(listed)
         }
     // LazyColumn key order as laid out, for the pill.
@@ -1848,11 +1851,19 @@ private fun SharedActivityList(
         activeMenuItem = currentItem
         menuAnchor = anchor
     }
-    fun commitSwipeDone(swiped: InboxItem) {
-        val current = presentedItemsState.value.firstOrNull { it.key == swiped.key }
-        activitySwipeDoneCommitItem(swiped, current)?.let { item ->
-            RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
-            latestOnIntent(SharedActivityIntent.MarkDone(item))
+    fun commitSwipeDone(pending: ActivityPendingSwipeDone) {
+        val current = presentedItemsState.value.firstOrNull { it.key == pending.item.key }
+        when (val intent = activitySwipeDeferredCommitIntent(pending, current)) {
+            null -> Unit
+            is SharedActivityIntent.MarkDone -> {
+                RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
+                latestOnIntent(intent)
+            }
+            else -> {
+                // Kept out of this list from now on; the store's own projection takes over.
+                committedUnfollowKeys = committedUnfollowKeys + pending.item.key
+                latestOnIntent(intent)
+            }
         }
     }
     fun applySwipeDone(transition: ActivitySwipeDoneTransition) {
@@ -1885,6 +1896,20 @@ private fun SharedActivityList(
         swipeEndUndo = swipeEndUndo.dismiss()
         applySwipeDone(swipeDoneUndo.swipe(currentItem))
     }
+    // raft-design #790: a thread's Unfollow (swipe button or menu) takes the row out at once and is only
+    // sent when its toast ends; Undo sends nothing and shows the row again as it was.
+    fun deferThreadUnfollow(item: InboxItem) {
+        swipeEndUndo = swipeEndUndo.dismiss()
+        objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+        applySwipeDone(
+            swipeDoneUndo.swipe(
+                item,
+                ActivitySwipeDeferredAction.Unfollow,
+                listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
+                listOwnerServerId = presentationServerId,
+            )
+        )
+    }
     fun runSwipeEndCommand(command: ActivitySwipeEndCommand) {
         when (command) {
             is ActivitySwipeEndCommand.Activity -> latestOnIntent(command.intent)
@@ -1896,7 +1921,8 @@ private fun SharedActivityList(
     fun swipeRowEnd(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
         val action = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
-        // One toast at a time: a waiting Done is committed now rather than lost.
+        if (action == ActivitySwipeEndAction.UnfollowThread) return deferThreadUnfollow(currentItem)
+        // One toast at a time: a waiting Done or Unfollow is committed now rather than lost.
         applySwipeDone(swipeDoneUndo.flush())
         runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, action))
         swipeEndUndo = swipeEndUndo.swipe(currentItem, action)
@@ -1916,6 +1942,7 @@ private fun SharedActivityList(
     fun runRowAction(item: InboxItem, actionId: String) {
         if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
         if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
+        if (actionId == "unfollow-thread") return deferThreadUnfollow(item)
         val write = activityRowActionWrite(item, actionId)
         write.markAction?.let(RaftProductEvents::activityMark)
         runSwipeEndCommand(write.command)
@@ -2138,7 +2165,13 @@ private fun SharedActivityList(
         }
         swipeDoneUndo.pending?.let { pending ->
             RaftToast(
-                title = stringResource(Res.string.activity_list_marked_done),
+                title =
+                    when (pending.action) {
+                        ActivitySwipeDeferredAction.Done -> stringResource(Res.string.activity_list_marked_done)
+                        // raft-design responsive.md › Touch screens: the toast names the conversation.
+                        ActivitySwipeDeferredAction.Unfollow ->
+                            stringResource(Res.string.activity_swipe_unfollowed_thread, pending.item.activitySwipeConversationLabel())
+                    },
                 actionLabel = stringResource(Res.string.common_undo),
                 onAction = { swipeDoneUndo = swipeDoneUndo.undo(pending.token) },
                 modifier =
