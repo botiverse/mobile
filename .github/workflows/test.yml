@@ -30,7 +30,7 @@ on:
         type: string
         default: ci
       xcode_app_path:
-        description: "Opt-in Xcode for the iOS compile job; requires scope=full (the plan fails otherwise). Empty = the pinned /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). The job runs on GitHub's xcode-27 image (Xcode 27.x only, no 26.x), so only another installed, non-symlink /Applications/Xcode_27*.app works here."
+        description: "Opt-in Xcode for the iOS compile job; requires scope=full (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. Releases build with Xcode 27.1 in ios-release.yml."
         required: false
         type: string
         default: ""
@@ -886,31 +886,55 @@ jobs:
     # pushes: changes touching commonMain run Linux fast gates only; the full iOS
     # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
     # or on nightly/release readbacks.
-    # GitHub's Xcode 27 image (billed, ~7GB like macos-latest): the only one with Xcode 27.1,
-    # the default iOS toolchain since 2026-10-28. The simulator steps pick an iPhone on the
-    # newest iOS runtime not newer than the pinned iPhoneSimulator SDK.
+    # Blacksmith with Xcode 27.0 (iOS 27 SDK): a compile/test check does not need 27.1, and
+    # GitHub's Macs share one concurrency cap with ios-release.yml and ios-simulator-app.yml
+    # (27.1, xcode-27*), so PR checks stay off it and releases do not queue behind them.
+    # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK.
     needs: [plan]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
-    runs-on: xcode-27
+    runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
     steps:
+      # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
+      - name: Warm macOS artifact proxy
+        shell: bash
+        run: sleep 5
+
       - name: Checkout
         uses: actions/checkout@v7
+
+      # Blacksmith exposes Xcode 27.0 only through symlinks (Xcode_27.0.app ->
+      # Xcode_27_Release_Candidate.app), which select_ios_xcode.sh rejects. Resolve the
+      # requested path to its real bundle directly under /Applications first.
+      - name: Resolve Xcode bundle
+        shell: bash
+        env:
+          XCODE_REQUEST: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.0.app' }}
+        run: |
+          set -euo pipefail
+          real="$(realpath "$XCODE_REQUEST")"
+          case "$real" in
+            /Applications/Xcode*.app) ;;
+            *) echo "::error::$XCODE_REQUEST resolves to $real, not an Xcode bundle directly under /Applications"; exit 1 ;;
+          esac
+          [ "$(dirname "$real")" = /Applications ] || { echo "::error::$real is not directly under /Applications"; exit 1; }
+          echo "Xcode: $XCODE_REQUEST -> $real"
+          echo "RAFT_IOS_COMPILE_XCODE=$real" >> "$GITHUB_ENV"
 
       - name: Pin Xcode
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
-        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane (another
-        # Xcode 27.x on this image); empty keeps the pinned default Xcode 27.1.
+        # `xcode_app_path` (workflow_dispatch only) picks another Xcode on this runner;
+        # empty keeps Xcode 27.0. Releases still build with 27.1 (ios-release.yml).
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
+          XCODE_APP_PATH: ${{ env.RAFT_IOS_COMPILE_XCODE }}
         run: bash scripts/ci/select_ios_xcode.sh
 
       - name: Record Xcode and iOS SDK
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
-          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
+          XCODE_APP_PATH: ${{ env.RAFT_IOS_COMPILE_XCODE }}
+          RAFT_DEFAULT_XCODE_APP: ${{ env.RAFT_IOS_COMPILE_XCODE }}
         run: bash scripts/ci/record_ios_toolchain.sh
 
       - name: Set up JDK
