@@ -182,6 +182,8 @@ internal fun TaskSummary.taskConversationHeadModel(
     statusUpdating: Boolean,
     members: List<MemberProfile>,
     timeContext: RaftTimeContext?,
+    /** False: no store to write to here (or it holds the offline stand-in): status and assignee are plain facts. */
+    editable: Boolean = true,
 ): TaskConversationHeadModel {
     val sourceId = taskHeadSourceMessageId()
     val sourcePreview = details.source.valueOrNull?.takeIf { it.messageId == sourceId }
@@ -208,7 +210,10 @@ internal fun TaskSummary.taskConversationHeadModel(
             null
         }
     return TaskConversationHeadModel(
-        bar = taskConversationHeaderBarModel(state, serverRole, statusUpdating),
+        bar =
+            taskConversationHeaderBarModel(state, serverRole, statusUpdating).let { bar ->
+                if (editable) bar else bar.copy(statusOptions = emptyList(), assigneeEditable = false)
+            },
         title = title,
         description = description?.trim()?.takeIf { it.isNotBlank() },
         source =
@@ -327,8 +332,9 @@ internal fun TaskConversationHead(
     model: TaskConversationHeadModel,
     onSelectStatus: (TaskStatus) -> Unit,
     onOpenAssignee: () -> Unit,
-    onOpenSource: () -> Unit,
-    onOpenEarlierDiscussion: () -> Unit,
+    /** Null (also [onOpenEarlierDiscussion]): a plain fact, as on the pending task page. */
+    onOpenSource: (() -> Unit)?,
+    onOpenEarlierDiscussion: (() -> Unit)?,
     modifier: Modifier = Modifier,
     scrollState: TaskHeadScrollState = remember { TaskHeadScrollState() },
     keyboardUp: Boolean = false,
@@ -402,9 +408,8 @@ private fun TaskHeadDivider() {
 }
 
 /**
- * The head's content without its frame: the conversation page's head, and the same title,
- * description, facts and History in the pending-conversation sheet (a task opened before its
- * conversation exists). Null navigation callbacks draw Source and Earlier discussion as plain
+ * The head's content without its frame (the conversation page's head, and the pending task
+ * page's, a task opened before its conversation exists). Null navigation callbacks draw Source and Earlier discussion as plain
  * facts; a bar model with no status options and no editable assignee draws them as plain facts too.
  */
 @Composable
@@ -548,7 +553,7 @@ private fun TaskHeadFacts(
         }
         Item(stringResource(Res.string.task_head_created_by), model.createdBy ?: unknown, copyable = false)
         model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
-        // Where it cannot open (the pending sheet) it is a plain count, and hidden while unknown.
+        // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
         model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
             Item(stringResource(Res.string.task_head_earlier_discussion)) {
                 val label =
@@ -794,16 +799,19 @@ internal fun TaskConversationHeadRoute(
     timeContext: RaftTimeContext?,
     onUpdateStatus: (TaskStatus) -> Unit,
     onAssign: (MemberProfile?) -> Unit,
-    onOpenSource: () -> Unit,
-    onOpenEarlierDiscussion: () -> Unit,
+    /** Null (also [onOpenEarlierDiscussion]): a plain fact (the pending task page). */
+    onOpenSource: (() -> Unit)?,
+    onOpenEarlierDiscussion: (() -> Unit)?,
     scrollState: TaskHeadScrollState,
     /** The keyboard is up: on a phone the head folds away. */
     keyboardUp: Boolean = false,
     onRetryHistory: (() -> Unit)? = null,
+    /** False: status and assignee are plain facts whatever the role ([taskConversationHeadModel]). */
+    editable: Boolean = true,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext)
+    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable)
     RaftDesignSystemTheme {
         TaskConversationHead(
             model = model,
@@ -837,34 +845,12 @@ internal fun TaskConversationHeadRoute(
     }
 }
 
-/**
- * The head of a task opened before its conversation exists (the pending-conversation sheet, web
- * `TaskConversationDialog` with no conversation): the same title, description, facts and History,
- * read-only. Status, assignee and Follow wait for the conversation page that the first send opens.
- */
-internal fun TaskSummary.taskPendingHeadModel(
-    details: TaskConversationDetailsState,
-    members: List<MemberProfile>,
-    timeContext: RaftTimeContext?,
-): TaskConversationHeadModel {
-    val head =
-        taskConversationHeadModel(
-            state = TaskConversationHeaderState(conversationChannelId = conversationChannelId ?: ChannelId("")),
-            details = details,
-            serverRole = null,
-            statusUpdating = false,
-            members = members,
-            timeContext = timeContext,
-        )
-    return head.copy(bar = head.bar.copy(statusOptions = emptyList(), assigneeEditable = false, followed = null))
-}
-
-/** The pending sheet's head reads and their Retry. */
+/** The pending task page's head reads and their Retry. */
 internal class TaskHeadDetailsHandle(val state: TaskConversationDetailsState, val retryHistory: (() -> Unit)?)
 
 /**
  * The head's reads ([TaskConversationDetailsViewModel]) for [task] outside a conversation page:
- * the pending-conversation sheet. Nothing is read without a [repository] and a [serverId].
+ * the pending task page. Nothing is read without a [repository] and a [serverId].
  */
 @Composable
 internal fun rememberTaskConversationDetails(
@@ -890,7 +876,7 @@ internal fun rememberTaskConversationDetails(
 
 /**
  * The task channel's people and agents (web `useChannelMembers(task.channelId)`), so the pending
- * sheet names creators and assignees as the conversation page does. Empty without a store.
+ * task page names creators and offers assignees as the conversation page does. Empty without a store.
  */
 @Composable
 internal fun rememberTaskChannelMembers(

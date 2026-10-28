@@ -16,6 +16,18 @@ const val RAFT_ROUTE_ENVIRONMENT_ID = "slockRouteEnvironmentId"
 const val RAFT_ROUTE_ACCOUNT_ID = "slockRouteAccountId"
 const val RAFT_ROUTE_SERVER_ID = "slockRouteServerId"
 
+/**
+ * Page data flag: the host shows the page without its push transition (Android
+ * `FLAG_ACTIVITY_NO_ANIMATION`, iOS `animated:NO`), for a page that takes the place of what the
+ * source page shows over itself (a task's first send opens its conversation where the pending task
+ * page was).
+ */
+const val RAFT_OPEN_WITHOUT_ANIMATION = "slockOpenWithoutAnimation"
+
+/** [RAFT_OPEN_WITHOUT_ANIMATION] when [animated] is false; the data unchanged otherwise. */
+internal fun JSONObject.withRaftOpenAnimation(animated: Boolean): JSONObject =
+    if (animated) this else put(RAFT_OPEN_WITHOUT_ANIMATION, true)
+
 internal fun appLifecycleEventTargetsShell(
     eventShellInstanceId: String,
     routeShellInstanceId: String

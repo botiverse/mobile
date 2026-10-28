@@ -7245,12 +7245,18 @@ private fun RaftAppShellReadyContent(
                         val tasksOpenGate = remember { TaskOpenGate() }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
+                        val tasksUpdateFailedLabel = stringResource(Res.string.thread_error_update_task)
+                        val tasksAssignFailedLabel = stringResource(Res.string.thread_error_update_assignee)
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         // Foreground is the shell's visible-route refresh; a socket reconnect re-reads missed task pushes.
                         RaftLiveCatchUpEffect(serverId = selectedServerId, visible = active, foreground = false) {
                             tasksViewModel.dispatch(SharedTasksRouteIntent.CatchUp)
                         }
-                        fun openTaskPage(task: TaskSummary, resolvedConversationChannelId: ChannelId?) {
+                        /**
+                         * [animated] false: the conversation takes the pending task page's place (its
+                         * first send); the page goes once it is covered, or at once where it opened in place.
+                         */
+                        fun openTaskPage(task: TaskSummary, resolvedConversationChannelId: ChannelId?, animated: Boolean = true) {
                             val taskLaunchPayload =
                                 buildStandaloneTaskThreadLaunchPayload(
                                     task = task,
@@ -7276,16 +7282,42 @@ private fun RaftAppShellReadyContent(
                                     "tasks_detail_overlay_open task=${task.id} " +
                                         "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
                                 )
+                                tasksOpenSurfaceFlow.finishHandOff()
                                 return
                             }
-                            pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope)
+                            pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope, animated)
                         }
+                        val tasksOpenTaskV2Enabled =
+                            readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
+                                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+                            } == true
                         TaskOpenSurfaceHost(
                             flow = tasksOpenSurfaceFlow,
                             detailsRepository = remember(appShellNetworkClient) { TaskConversationDetailsRepository(appShellNetworkClient) },
                             serverId = readyServerId,
                             timeContext = threadTimeContext,
                             membersStore = appShellServerMembersStore,
+                            // The conversation page's head writes: the same task channel store and gates.
+                            editing =
+                                TaskPageEditing(
+                                    authStore = shellAuthStore,
+                                    tasksDataSource = tasksDataSource,
+                                    tasksDataStore = sharedStores.tasksDataStore,
+                                    serverRole = readySession?.servers?.firstOrNull { it.id == readyServerId }?.role,
+                                    onFailed = { code ->
+                                        when {
+                                            code.startsWith("tasks_status") -> bridge.toast(tasksUpdateFailedLabel)
+                                            code.startsWith("tasks_assign") -> bridge.toast(tasksAssignFailedLabel)
+                                        }
+                                    },
+                                    log = { bridge.log(it) },
+                                ),
+                            hostVisible = pageVisible,
+                            taskV2Enabled = tasksOpenTaskV2Enabled,
+                            onConversationArrived = { arrived ->
+                                bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
+                                openTaskPage(arrived, null)
+                            },
                             onSend = { task, text ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 if (serverId != null) {
@@ -7307,18 +7339,14 @@ private fun RaftAppShellReadyContent(
                                                 fallbackError = tasksSendFailedLabel,
                                             )
                                         bridge.log("tasks_task_first_send task=${task.id.value} opened=${opened != null}")
-                                        opened?.let { (sentTask, conversationId) -> openTaskPage(sentTask, conversationId) }
+                                        opened?.let { (sentTask, conversationId) -> openTaskPage(sentTask, conversationId, animated = false) }
                                     }
                                 }
                             },
                         )
-                        // The open sheet follows the board's copy of its task; when its conversation
+                        // The open pending page follows the board's copy of its task; when its conversation
                         // appears (someone wrote first) the conversation page opens instead.
                         val tasksOpenSurfaceTaskId = tasksOpenSurfaceFlow.surface?.task?.id
-                        val tasksOpenTaskV2Enabled =
-                            readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
-                                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
-                            } == true
                         LaunchedEffect(tasksOpenSurfaceTaskId, tasksState, tasksOpenTaskV2Enabled) {
                             val taskId = tasksOpenSurfaceTaskId ?: return@LaunchedEffect
                             val fresh = (tasksState.loadState as? build.raft.app.data.ScreenLoadState.Content)?.data?.tasks.orEmpty().firstOrNull { it.id == taskId }
@@ -15328,11 +15356,13 @@ internal data class ThreadLaunchAccessState(
 
 private fun Pager.openStandaloneThreadLaunchPayload(
     launchPayload: WireThreadLaunchPayload,
-    storeScope: RaftShellStoreScope
+    storeScope: RaftShellStoreScope,
+    /** False: shown without the push ([RAFT_OPEN_WITHOUT_ANIMATION]). */
+    animated: Boolean = true,
 ) {
     openRaftPage(
         pageName = THREAD_PAGE,
-        pageData = threadLaunchPageData(launchPayload),
+        pageData = threadLaunchPageData(launchPayload).withRaftOpenAnimation(animated),
         storeScopeOverride = storeScope
     )
 }

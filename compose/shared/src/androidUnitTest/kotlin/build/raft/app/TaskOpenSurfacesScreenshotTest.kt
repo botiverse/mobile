@@ -28,10 +28,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * A task opened without a page of its own (slock web `useOpenTask`), the phone sheet's surface,
- * light and dark: `task.open.pending{,.refused,.not-joined}` — a pre-v2 task's conversation before
- * its first message (web `TaskConversationDialog` empty: "No discussion in this task yet" and where
- * its earlier discussion is) with the composer pinned at the bottom; after a refused first send
+ * A task opened without a page of its own (slock web `useOpenTask`), light and dark:
+ * `task.open.pending{,.refused,.not-joined}` — a pre-v2 task's conversation before its first
+ * message as the task conversation page (its bar, its head with the Status and Assignee editors,
+ * web `TaskConversationDialog` empty: "No discussion in this task yet" and where its earlier
+ * discussion is) with the composer pinned at the bottom; `task.open.pending.guest` — the same for
+ * a guest, status and assignee as plain facts; after a refused first send
  * (the server's words, the text kept); for a reader outside the channel (web ThreadPanel "Join
  * Channel to Reply" instead of the composer); `task.open.legacy` — web `LegacyTaskPanel`.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
@@ -62,6 +64,9 @@ class TaskOpenSurfacesScreenshotTest {
     fun pendingNotJoinedDark() = capture("task.open.pending.not-joined.dark", RaftAppAppearance.Dark) { Pending(joined = false, refused = false) }
 
     @Test
+    fun pendingGuestLight() = capture("task.open.pending.guest", RaftAppAppearance.Light) { Pending(joined = true, refused = false, role = "guest") }
+
+    @Test
     fun legacyLight() = capture("task.open.legacy", RaftAppAppearance.Light) { Legacy() }
 
     @Test
@@ -75,33 +80,35 @@ class TaskOpenSurfacesScreenshotTest {
         }
 
     /**
-     * [joined] true: an empty composer at the bottom, as on the conversation page. null with
-     * [refused]: membership not known where it opened (the Tasks tab), the first send was refused,
-     * the server's words show and the typed text stays. false: the reader has not joined the
+     * The pending task page, drawn as the conversation page it becomes: the task bar, the head
+     * with its Status and Assignee editors (a member), the empty state, and at the bottom:
+     * [joined] true: an empty composer, as on the conversation page. null with [refused]:
+     * membership not known where it opened (the Tasks tab), the first send was refused, the
+     * server's words show and the typed text stays. false: the reader has not joined the
      * channel, so web's "Join Channel to Reply" replaces the composer.
      */
     @Composable
-    private fun Pending(joined: Boolean?, refused: Boolean) {
+    private fun Pending(joined: Boolean?, refused: Boolean, role: String = "member") {
         val task = sampleTask(hostMessageId = MessageId("msg-host"))
-        RaftDialogSheetSurface(
-            title = task.taskRefTitle(),
-            commitLabel = null,
-            onCommit = {},
-            onClose = {},
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            TaskConversationPendingBody(
-                head = task.taskPendingHeadModel(build.raft.app.data.TaskConversationDetailsState(), emptyList(), null),
-                task = task,
-                sending = false,
-                errorText = if (refused) "You must join this channel to reply in this task" else null,
-                joined = joined,
-                onSend = {},
-                onJoin = {},
-                modifier = Modifier.weight(1f),
-                seedText = if (refused) "On it, testing on the emulator now" else "",
-            )
-        }
+        TaskPendingConversationPage(
+            task = task,
+            details = TaskHeadDetailsHandle(build.raft.app.data.TaskConversationDetailsState(), null),
+            members = emptyList(),
+            timeContext = null,
+            serverRole = role,
+            editable = true,
+            statusUpdating = false,
+            sending = false,
+            errorText = if (refused) "You must join this channel to reply in this task" else null,
+            joined = joined,
+            draft = if (refused) "On it, testing on the emulator now" else "",
+            onDraftChange = {},
+            onBack = {},
+            onSend = {},
+            onJoin = {},
+            onUpdateStatus = {},
+            onAssign = {},
+        )
     }
 
     @Composable

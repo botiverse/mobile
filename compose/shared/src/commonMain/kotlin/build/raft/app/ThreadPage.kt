@@ -1989,7 +1989,7 @@ private val ThreadHeaderChannelTileSize = 27.dp
 private val ThreadHeaderChannelIconSize = 14.dp
 private val ThreadHeaderDmAvatarSize = 34.dp
 // raft-ui `panelHeader` on a phone: `max-md:gap-2` between Back, the tile, the title and actions.
-private val ThreadHeaderContentSpacing = 8.dp
+internal val ThreadHeaderContentSpacing = 8.dp
 private val ThreadHeaderChannelTitleGapExtra = 0.dp
 
 private object ThreadReactionGlyphDiagnostics {
@@ -4588,7 +4588,9 @@ private fun ThreadPageScreen(
     val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
     fun openStandaloneThreadPayload(
         nextPayload: RaftThreadScreenPayload,
-        serverIdOverride: String? = null
+        serverIdOverride: String? = null,
+        /** False: the page appears without the push (a task's first send, where it takes the pending page's place). */
+        animated: Boolean = true,
     ) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
@@ -4626,7 +4628,7 @@ private fun ThreadPageScreen(
                 }
             } else pager.openRaftPage(
                 pageName = THREAD_PAGE,
-                pageData = launchPayload.toThreadPageData(),
+                pageData = launchPayload.toThreadPageData().withRaftOpenAnimation(animated),
                 storeScopeOverride = targetStoreScope,
                 onMissingScope = {
                     bridge.toast(unableToOpenThreadLabel)
@@ -4689,6 +4691,7 @@ private fun ThreadPageScreen(
         },
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
+        onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
         onOpenParentThread = { currentPayload, currentSessionServerId ->
             val parentServerId = threadParentNavigationServerId(currentSessionServerId)
                 ?: return@SharedThreadRouteContent false
@@ -6138,6 +6141,7 @@ private class SharedThreadRouteContentCallbacks(
     val onBack: () -> Unit,
     val onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit,
     val onReplaceThreadPayload: (RaftThreadScreenPayload) -> Unit,
+    val onOpenThreadPayloadWithoutAnimation: (RaftThreadScreenPayload) -> Unit,
     val onOpenParentThread: (RaftThreadScreenPayload, String?) -> Boolean,
     val onAuthRequired: (String) -> Unit,
     val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
@@ -6167,6 +6171,8 @@ internal fun SharedThreadRouteContent(
     onBack: () -> Unit,
     onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (RaftThreadScreenPayload) -> Unit = onOpenThreadPayload,
+    /** A page that takes the place of what this page shows over it (the pending task page's first send). */
+    onOpenThreadPayloadWithoutAnimation: (RaftThreadScreenPayload) -> Unit = onOpenThreadPayload,
     onOpenParentThread: (RaftThreadScreenPayload, String?) -> Boolean = { _, _ -> false },
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
@@ -6203,6 +6209,7 @@ internal fun SharedThreadRouteContent(
                 onBack = onBack,
                 onOpenThreadPayload = onOpenThreadPayload,
                 onReplaceThreadPayload = onReplaceThreadPayload,
+                onOpenThreadPayloadWithoutAnimation = onOpenThreadPayloadWithoutAnimation,
                 onOpenParentThread = onOpenParentThread,
                 onAuthRequired = onAuthRequired,
                 onResolvedAuxiliaryThreadIdChanged = onResolvedAuxiliaryThreadIdChanged,
@@ -6239,6 +6246,7 @@ private fun SharedThreadRouteContentContent(
     val onBack = callbacks.onBack
     val onOpenThreadPayload = callbacks.onOpenThreadPayload
     val onReplaceThreadPayload = callbacks.onReplaceThreadPayload
+    val onOpenThreadPayloadWithoutAnimation = callbacks.onOpenThreadPayloadWithoutAnimation
     val onOpenParentThread = callbacks.onOpenParentThread
     val onAuthRequired = callbacks.onAuthRequired
     val onResolvedAuxiliaryThreadIdChanged = callbacks.onResolvedAuxiliaryThreadIdChanged
@@ -7952,21 +7960,9 @@ private fun SharedThreadRouteContentContent(
         taskConversationHeaderViewModel?.state?.collectAsState()?.value
     LaunchedEffect(taskConversationHeaderViewModel) { taskConversationHeaderViewModel?.start() }
     val taskConversationParentChannelId = taskConversationHeaderState?.ref?.parentChannelId
+    // The task channel's tasks store, shared with the pending task page ([TaskOpenSurfaceHost]).
     val taskConversationTasksViewModel: SharedTasksViewModel? =
-        taskConversationParentChannelId?.let { parentChannelId ->
-            viewModel(key = "task-conversation-tasks-${parentChannelId.value}") {
-                SharedTasksViewModel(
-                    authStore = authStore,
-                    dataSource = tasksDataSource,
-                    sharedTasksDataStore = tasksDataStore,
-                    scope = SharedTasksScope.Channel(parentChannelId),
-                    diagnosticsLogger = { bridge.log(it) }
-                )
-            }
-        }
-    LaunchedEffect(taskConversationTasksViewModel) {
-        taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
-    }
+        rememberTaskChannelTasksViewModel(taskConversationParentChannelId, authStore, tasksDataSource, tasksDataStore) { bridge.log(it) }
     val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
     val taskConversationListedTask =
         taskConversationHeaderState?.ref?.taskId?.let { taskId ->
@@ -11418,7 +11414,13 @@ private fun SharedThreadRouteContentContent(
         refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
-    fun openCanonicalTaskWith(task: TaskSummary, source: String, resolvedConversationChannelId: ChannelId?) {
+    fun openCanonicalTaskWith(
+        task: TaskSummary,
+        source: String,
+        resolvedConversationChannelId: ChannelId?,
+        /** False: the conversation takes the pending task page's place without the push. */
+        animated: Boolean = true,
+    ) {
         val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val loadingPayload =
             serverId?.let {
@@ -11446,7 +11448,7 @@ private fun SharedThreadRouteContentContent(
                     "knownThreadChannelId=${loadingPayload.streamChannelId.orEmpty()} " +
                     "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
             )
-            onOpenThreadPayload(loadingPayload)
+            if (animated) onOpenThreadPayload(loadingPayload) else onOpenThreadPayloadWithoutAnimation(loadingPayload)
         }
     }
     val latestTaskOpenServerId by rememberUpdatedState(currentServerId)
@@ -11493,6 +11495,27 @@ private fun SharedThreadRouteContentContent(
         detailsRepository = taskConversationDetailsRepository,
         membersStore = serverMembersStore,
         serverId = currentServerId,
+        // The conversation page's head writes: the same task channel store, gates and failure toasts.
+        editing =
+            TaskPageEditing(
+                authStore = authStore,
+                tasksDataSource = tasksDataSource,
+                tasksDataStore = tasksDataStore,
+                serverRole = currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                onFailed = { code ->
+                    when {
+                        code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateTaskLabel)
+                        code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateAssigneeLabel)
+                    }
+                },
+                log = { bridge.log(it) },
+            ),
+        hostVisible = active,
+        taskV2Enabled = taskV2Enabled,
+        onConversationArrived = { arrived ->
+            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+            openCanonicalTask(arrived, "task_conversation_arrived")
+        },
         timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
         joined = { task ->
@@ -11533,7 +11556,10 @@ private fun SharedThreadRouteContentContent(
                             fallbackError = unableToSendTaskMessageLabel,
                         )
                     bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
-                    opened?.let { (sentTask, conversationId) -> openCanonicalTaskWith(sentTask, "task_first_send", conversationId) }
+                    // The conversation takes the pending page's place: no push; the pending page goes once it is covered.
+                    opened?.let { (sentTask, conversationId) ->
+                        openCanonicalTaskWith(sentTask, "task_first_send", conversationId, animated = false)
+                    }
                 }
             }
         },
@@ -11808,10 +11834,10 @@ private fun SharedThreadRouteContentContent(
                         assigneeCandidates = taskConversationMembersSlice.members,
                         timeContext = taskConversationTimeContext,
                         onUpdateStatus = { status ->
-                            taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.UpdateStatus(taskConversationTask, status))
+                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).updateStatus(taskConversationTask, status) }
                         },
                         onAssign = { member ->
-                            taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.AssignTask(taskConversationTask, member))
+                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).assign(taskConversationTask, member) }
                         },
                         onOpenSource = {
                             openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
@@ -11831,6 +11857,8 @@ private fun SharedThreadRouteContentContent(
                         // Typing on a phone: the head folds away so the conversation keeps its room.
                         keyboardUp = adaptivePageKeyboardInsetDp > 0f,
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
+                        // The offline stand-in refuses writes: its status and assignee are plain facts.
+                        editable = taskConversationTasksState?.standIn != true,
                     )
                 }
             } else {
