@@ -190,8 +190,9 @@ internal class CanonicalMessageV2DurableLastKnownReader(
         }
         val cursor = restored.cursor ?: return null
         // Message storage Phase 2a: older pages now stay on disk as islands below the head. Until the read path
-        // shows gaps (Phase 2d) only the head range and the facts in no range are read, so an island never
-        // renders right next to the head as if nothing were missing between them.
+        // shows gaps (Phase 2d) only the head range and the facts in no range are read, so an island is not
+        // rendered next to the head. Loose facts (in no range, e.g. realtime ones) still are, without a gap
+        // marker, until Phase 2d.
         val segments = store.readSegments(scope)
         val head = CanonicalMessageV2SegmentAlgebra.head(segments)
         val envelopes = restored.envelopes.filter { envelope ->

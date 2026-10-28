@@ -341,6 +341,9 @@ class CanonicalMessageV2GenerationEngine(
         establishesBaseline: Boolean = false,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
+        // Only a page proven to reach the scope's newest message can be the realtime baseline: anything else would
+        // let realtime appends extend a claim over messages between the page and the head.
+        require(!establishesBaseline || coverage?.headAtVerify == true) { "a realtime baseline needs a head coverage" }
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
@@ -536,9 +539,11 @@ internal class SqlDelightCanonicalMessageV2Store(
                 // Never re-parented: a thread under another parent channel or root is another thread.
                 throw CanonicalMessageV2ScopePoisoned(scope)
             }
-            // The same parent whose kind changed on the server (e.g. a channel made private): the writer's
-            // server-confirmed kind wins, as a snapshot's cursor used to.
-            val stored = if (storedParent != null && threadParent != null && storedParent != threadParent) {
+            // The same parent whose kind changed on the server (e.g. a channel made private): a user-driven page
+            // writer's server-confirmed kind wins, as a snapshot's cursor used to. A realtime (not user-driven)
+            // writer only names the kind its frame claimed — possibly stale — so it never changes the stored kind
+            // (the canary decides a reply thread's continuity from it); its fact is still stored.
+            val stored = if (userDriven && storedParent != null && threadParent != null && storedParent != threadParent) {
                 storedHeader.copy(parentScopeKind = threadParent.parentScopeKind)
             } else {
                 storedHeader
@@ -554,7 +559,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 parentScopeId = threadParent?.parentScopeId,
                 rootMessageId = threadParent?.rootMessageId,
             )
-            requireCursorMatchesScope(scope, base, envelopes)
+            requireCursorMatchesScope(scope, base, envelopes, checkParentKind = userDriven)
             // 1. Facts. A fact rewritten after the request started is newer than the page: it stays.
             val localRev = if (envelopes.isEmpty()) 0L else nextLocalRevInsideTransaction(scope.partition)
             envelopes.forEach { incoming ->
@@ -1634,6 +1639,8 @@ private fun requireCursorMatchesScope(
     scope: SyncScopeKey,
     cursor: PersistedCursor,
     envelopes: List<CanonicalMessageEnvelopeV2>,
+    /** `false` for a realtime loose write: a frame may name a stale parent KIND; id and root must still match. */
+    checkParentKind: Boolean = true,
 ) {
     if (scope.scopeKind != "thread") {
         if (cursor.parentScopeKind != null || cursor.parentScopeId != null || cursor.rootMessageId != null) {
@@ -1651,7 +1658,7 @@ private fun requireCursorMatchesScope(
         val context = envelope.context as? CanonicalConversationContextV2.Thread
             ?: throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)
         if (
-            context.parentTopLevelScope.scopeKind != parentKind ||
+            (checkParentKind && context.parentTopLevelScope.scopeKind != parentKind) ||
             context.parentTopLevelScope.scopeId != parentScopeId ||
             context.rootMessageRef.messageId != rootMessageId
         ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)

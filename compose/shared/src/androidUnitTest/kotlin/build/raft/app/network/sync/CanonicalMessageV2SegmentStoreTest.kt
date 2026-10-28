@@ -141,6 +141,67 @@ class CanonicalMessageV2SegmentStoreTest {
     }
 
     @Test
+    fun aBaselineNeedsAHeadCoverage() = withStore { store, _ ->
+        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { }
+        val generation = engine.partitionGeneration(partition)
+        // Same page, same range: only the head proof differs.
+        assertFailsWith<IllegalArgumentException> {
+            engine.applyCoverage(
+                scope, listOf(envelope(2)), CanonicalMessageV2Coverage(1, 2, true, headAtVerify = false, Latest), 0L, true,
+                generation, establishesBaseline = true,
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.applyCoverage(scope, listOf(envelope(2)), null, 0L, true, generation, establishesBaseline = true)
+        }
+        assertTrue(store.ids().isEmpty(), "a refused baseline writes nothing")
+        assertEquals(
+            CanonicalMessageV2CommitResult.Committed,
+            engine.applyCoverage(
+                scope, listOf(envelope(2)), CanonicalMessageV2Coverage(1, 2, true, headAtVerify = true, Latest), 0L, true,
+                generation, establishesBaseline = true,
+            ),
+        )
+    }
+
+    @Test
+    fun onlyAPageWriterChangesAThreadsParentKindALooseWriteKeepsTheStoredOne() {
+        // Pair: the stored thread header says the parent is `private`; a reply arrives naming parent kind `channel`
+        // (e.g. a stale realtime frame). A loose (realtime, not user-driven) write stores the reply and keeps
+        // `private`; a page (user-driven, server-confirmed) write with the same reply takes `channel`.
+        val thread = SyncScopeKey(partition, "thread-a", "thread")
+        fun reply(seq: Long) = CanonicalMessageEnvelopeV2(
+            fact = envelope(seq).fact,
+            context = CanonicalConversationContextV2.Thread(
+                replyScope = ReplyScopeRefV2("server-a", "thread-a"),
+                parentTopLevelScope = TopLevelScopeRefV2.Channel("server-a", "channel-a"),
+                rootMessageRef = MessageRefV2("server-a", "root-1"),
+            ),
+            replyMembership = ReplyMembershipV2(
+                root = MessageRefV2("server-a", "root-1"),
+                parentScope = ReplyScopeRefV2("server-a", "thread-a"),
+            ),
+        )
+        fun run(userDriven: Boolean): Pair<String?, List<String>> {
+            var result: Pair<String?, List<String>>? = null
+            withStore { store, _ ->
+                store.applyCoverage(
+                    thread, emptyList(), CanonicalMessageV2Coverage(0, 0, true, true, Latest), 0L, userDriven = true,
+                    threadParent = CanonicalMessageV2ThreadParent("private", "channel-a", "root-1"),
+                )
+                store.applyCoverage(
+                    thread, listOf(reply(5)), null, store.maxLocalRev(partition), userDriven = userDriven,
+                    threadParent = CanonicalMessageV2ThreadParent("channel", "channel-a", "root-1"),
+                )
+                result = store.readCursor(thread)?.parentScopeKind to store.ids(thread)
+            }
+            return result!!
+        }
+        assertEquals("private" to listOf(id(5)), run(userDriven = false))
+        assertEquals("channel" to listOf(id(5)), run(userDriven = true))
+    }
+
+    @Test
     fun theHeaderEdgesAreStoredFactSeqsNotClaimBounds() = withStore { store, _ ->
         store.applyCoverage(scope, emptyList(), CanonicalMessageV2Coverage(0, 0, true, true, Latest), 0L, userDriven = true)
         assertEquals(PersistedCursor(null, null, null, hasLoadedOldest = true, hasLoadedNewest = true), store.readCursor(scope))

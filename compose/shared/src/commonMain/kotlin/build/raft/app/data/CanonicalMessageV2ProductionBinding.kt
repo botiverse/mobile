@@ -662,13 +662,13 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         threadParent = frame.cursor.threadParent(),
                         // A page that proves no range (an unusable server window) stores its facts loose; it is
                         // no realtime baseline — the stored head would otherwise be continued past a hole.
-                        establishesBaseline = fetched.coverage != null,
+                        establishesBaseline = fetched.coverage?.headAtVerify == true,
                     )
-                    log(result.wireOutcome(frame.envelopes.size) + if (fetched.coverage == null) " coverage=none" else "")
+                    log(result.wireOutcome(frame.envelopes.size) + if (fetched.coverage?.headAtVerify != true) " coverage=${fetched.coverage?.let { "not_head" } ?: "none"}" else "")
                     if (result == CanonicalMessageV2CommitResult.Committed) {
                         val expectedKinds =
                             if (replyThread) CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS else CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
-                        if (baseline != null && fetched.coverage != null && frame.scope.scopeKind in expectedKinds) {
+                        if (baseline != null && fetched.coverage?.headAtVerify == true && frame.scope.scopeKind in expectedKinds) {
                             canary.onEnterCommitted(
                                 baseline,
                                 frame,
@@ -826,9 +826,10 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                             return@withScopeWriter skip("stored_not_older")
                         }
                     }
-                    // Phase 2a (P1): the page's range is added to the stored ones; nothing stored is dropped. No
-                    // write of the scope happened since the caller's generation read (checked above), so reading
-                    // the revision here is as good as before the fetch.
+                    // Phase 2a (P1): the page's range is added to the stored ones; nothing stored is dropped.
+                    // TODO(message storage 2b): read revAtRequest before the caller's fetch. The commit-generation
+                    // check above does not see realtime loose writes (countsAsScopeCommit = false), so a loose
+                    // update that landed during the fetch may be overwritten by this page (as before 2a).
                     if (current == null) clearHeaderOfAnotherParent(scope, frame.cursor.threadParent())?.let { skipped ->
                         log("parent_rewritten", skipped)
                     }
@@ -841,7 +842,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         userDriven = true,
                         expectedPartitionGeneration = expectedGeneration,
                         threadParent = frame.cursor.threadParent(),
-                        establishesBaseline = loaded.coverage != null,
+                        establishesBaseline = loaded.coverage?.headAtVerify == true,
                     )
                     when (result) {
                         CanonicalMessageV2CommitResult.Committed -> {
@@ -1233,7 +1234,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     userDriven = true,
                     expectedPartitionGeneration = expectedGeneration,
                     threadParent = stored.threadParent(),
-                    establishesBaseline = coverage != null,
+                    establishesBaseline = coverage?.headAtVerify == true,
                 )
                 // What the window holds now, for the baseline replay: the page under the committed cursor.
                 val committedFrame = generationEngine.currentCursor(scope)?.let { cursor ->
@@ -1248,7 +1249,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 log(outcome)
                 if (result == CanonicalMessageV2CommitResult.Committed) {
                     val frame = committedFrame
-                    if (ownBaseline != null && frame != null && coverage != null) {
+                    if (ownBaseline != null && frame != null && coverage?.headAtVerify == true) {
                         canary.onEnterCommitted(
                             ownBaseline,
                             frame,
