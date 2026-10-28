@@ -360,7 +360,7 @@ class DurablePartitionJdbcMigrationTest {
     /**
      * Message storage Phase 1: v9 -> v10 turns every stored V2 window into one identical `migrated` segment
      * ([0, 0] for an empty baseline), copies `updatedAtMs` into `lastUserAccessAtMs`, gives every fact
-     * localRev 0, and leaves every other cursor (no window, an inverted window, another consumer) without a
+     * localRev 0, and leaves every other cursor (no window, an inverted window, a negative edge, another consumer) without a
      * segment. The migrated schema equals a fresh v10 one.
      */
     @Test
@@ -384,7 +384,7 @@ class DurablePartitionJdbcMigrationTest {
                 ) { c -> (0..7).joinToString("|") { c.getString(it) ?: c.getLong(it).toString() } },
             )
             assertEquals(
-                listOf("window|100", "oldest|200", "empty|300", "nowindow|400", "inverted|500", "v1-window|null"),
+                listOf("window|100", "oldest|200", "empty|300", "nowindow|400", "inverted|500", "negative|550", "v1-window|null"),
                 driver.queryRows("SELECT scopeId,lastUserAccessAtMs FROM syncCursorEntity ORDER BY updatedAtMs") { c ->
                     "${c.getString(0)}|${c.getLong(1)}"
                 },
@@ -470,6 +470,7 @@ class DurablePartitionJdbcMigrationTest {
         cursor(v2, "dm", "empty", "NULL", "NULL", 1, 1, 300)
         cursor(v2, "channel", "nowindow", "NULL", "NULL", 0, 1, 400)
         cursor(v2, "channel", "inverted", "9", "4", 0, 1, 500)
+        cursor(v2, "channel", "negative", "-3", "5", 0, 1, 550)
         cursor("sync-core.messages.v1", "channel", "v1-window", "1", "2", 1, 1, 600)
         driver.execute(
             null,

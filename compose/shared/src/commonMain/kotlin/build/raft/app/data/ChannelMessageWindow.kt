@@ -35,11 +35,20 @@ data class ChannelMessageWindow(
     val completeThroughLatest: Boolean? = null,
 ) {
     /**
-     * The range this page proves for the scope [scopeId] (see [CanonicalMessageV2Coverage.fromMessageWindow]),
-     * or `null`: an unknown schema, a missing bound, or an empty page that is not the whole channel.
+     * The range this page proves for the scope being written — server [expectedServerId], channel
+     * [expectedScopeId] (see [CanonicalMessageV2Coverage.fromMessageWindow]) — or `null`: an unknown schema or
+     * domain, a window naming another server or channel (or none), a missing bound, or an empty page that is
+     * not the whole channel. `null` only withholds the claim; the page's facts are still stored.
      */
-    fun toCoverage(historyLimited: Boolean, source: CanonicalMessageV2SegmentSource): CanonicalMessageV2Coverage? {
+    fun toCoverage(
+        expectedServerId: String,
+        expectedScopeId: String,
+        historyLimited: Boolean,
+        source: CanonicalMessageV2SegmentSource,
+    ): CanonicalMessageV2Coverage? {
         if (schemaVersion != CHANNEL_MESSAGE_WINDOW_SCHEMA_VERSION) return null
+        if (domain != CHANNEL_MESSAGE_WINDOW_DOMAIN) return null
+        if (serverId != expectedServerId || scopeId != expectedScopeId) return null
         return CanonicalMessageV2Coverage.fromMessageWindow(
             coveredAfterSeq = coveredAfterSeq ?: return null,
             coveredThroughSeq = coveredThroughSeq ?: return null,
@@ -51,6 +60,7 @@ data class ChannelMessageWindow(
 }
 
 const val CHANNEL_MESSAGE_WINDOW_SCHEMA_VERSION: Int = 1
+const val CHANNEL_MESSAGE_WINDOW_DOMAIN: String = "receiver_visible_messages_v1"
 
 /** Lenient decode of a page's `messageWindow` value: absent or malformed = `null`, never a page failure. */
 fun decodeChannelMessageWindow(element: JsonElement?): ChannelMessageWindow? {

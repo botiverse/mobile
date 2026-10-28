@@ -161,8 +161,9 @@ interface CanonicalMessageV2Store {
     suspend fun readSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> = emptyList()
 
     /**
-     * The current fact write revision of the scope's partition (0 = none yet; it only grows, a clear or
-     * prune never lowers it): read before a request, pass as revAtRequest.
+     * The current fact write revision of the scope's partition (0 = none yet). It only grows: no prune and
+     * no clear — scope or whole partition (server-access loss, revoke) — lowers or resets it. Read it before a
+     * request and pass it as revAtRequest.
      */
     suspend fun maxLocalRev(scope: SyncScopeKey): Long = 0L
 }
@@ -314,7 +315,11 @@ class CanonicalMessageV2GenerationEngine(
     /**
      * [CanonicalMessageV2Store.applyCoverage] as a partition mutation, like every other write: refused
      * ([CanonicalMessageV2CommitResult.PartitionRevoked]) when the partition was cleared since the writer read
-     * [expectedPartitionGeneration]; bumps the scope's commit generation and invalidates evicted scopes.
+     * [expectedPartitionGeneration] (required: a coverage writer always fences against a partition clear);
+     * bumps the scope's commit generation and invalidates evicted scopes. With [establishesBaseline] a
+     * committed write is the scope's realtime baseline exactly like [applySnapshot] (the latest page of an
+     * enter / catch-up): the coordinator marks the scope baselined and the snapshot observer is told. Without
+     * it the scope's baseline state is untouched (a loose or older write never makes realtime writable).
      */
     suspend fun applyCoverage(
         scope: SyncScopeKey,
@@ -322,7 +327,7 @@ class CanonicalMessageV2GenerationEngine(
         coverage: CanonicalMessageV2Coverage?,
         revAtRequest: Long,
         userDriven: Boolean,
-        expectedPartitionGeneration: Long?,
+        expectedPartitionGeneration: Long,
         threadParent: CanonicalMessageV2ThreadParent? = null,
         insertOnly: Boolean = false,
         unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
@@ -333,6 +338,7 @@ class CanonicalMessageV2GenerationEngine(
          * never makes a page fetched before it stale ([scopeCommitGeneration] stays).
          */
         countsAsScopeCommit: Boolean = true,
+        establishesBaseline: Boolean = false,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
@@ -345,7 +351,9 @@ class CanonicalMessageV2GenerationEngine(
         if (countsAsScopeCommit) bumpScopeCommitGeneration(scope)
         invalidateEvictedScopes(write.evictedScopes)
         if (scope in write.evictedScopes) return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
+        if (establishesBaseline) coordinator.onSnapshotCommitted(scope)
         write.committedCursor?.let { committed -> synchronized(stateLock) { cursorByScope[scope] = committed } }
+        if (establishesBaseline) snapshotCommitObserver.onSnapshotCommitted(scope)
         CanonicalMessageV2CommitResult.Committed
     }
 
@@ -1049,12 +1057,8 @@ internal class SqlDelightCanonicalMessageV2Store(
                 principalId = partition.principalId,
                 consumerId = partition.consumerId,
             )
-            queries.clearLocalRevForPartition(
-                environmentId = partition.environmentId,
-                serverId = partition.serverId,
-                principalId = partition.principalId,
-                consumerId = partition.consumerId,
-            )
+            // The write revision is kept on purpose: a request that read it before this clear must never
+            // overwrite a fact written after it, so the counter never restarts.
         }
     }
 

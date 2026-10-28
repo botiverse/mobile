@@ -52,7 +52,8 @@ FROM syncCursorEntity
 WHERE consumerId = 'sync-core.messages.v2'
   AND oldestLoadedSeq IS NOT NULL
   AND newestLoadedSeq IS NOT NULL
-  AND oldestLoadedSeq <= newestLoadedSeq;
+  AND oldestLoadedSeq >= 0
+  AND newestLoadedSeq >= oldestLoadedSeq;
 
 -- An empty baseline (the channel had no messages: both edges NULL, oldest reached) becomes [0, 0].
 INSERT INTO messageSegmentEntity(

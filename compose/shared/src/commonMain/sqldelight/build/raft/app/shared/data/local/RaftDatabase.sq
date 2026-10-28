@@ -306,9 +306,8 @@ CREATE TABLE messageSegmentEntity (
 );
 
 -- Schema v10: the partition's fact write revision (messageEntity.localRev of its newest write). It only
--- grows — a scope clear or retention never lowers it — so a fact rewritten after a request started always
--- has localRev > the revision the request read. Dropped with the partition (whose generation bump fences
--- every in-flight writer).
+-- grows — no retention, scope clear or partition clear lowers or deletes it — so a fact written after a
+-- request started always has localRev > the revision the request read.
 CREATE TABLE messageLocalRevEntity (
   environmentId TEXT NOT NULL,
   serverId TEXT NOT NULL,
@@ -683,13 +682,6 @@ WHERE environmentId = ?
 setLocalRev:
 INSERT OR REPLACE INTO messageLocalRevEntity(environmentId, serverId, principalId, consumerId, localRev)
 VALUES (?, ?, ?, ?, ?);
-
-clearLocalRevForPartition:
-DELETE FROM messageLocalRevEntity
-WHERE environmentId = ?
-  AND serverId = ?
-  AND principalId = ?
-  AND consumerId = ?;
 
 purgeLocalRevForConsumer:
 DELETE FROM messageLocalRevEntity
