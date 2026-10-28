@@ -8,7 +8,9 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.themeLook
 import build.raft.designsystem.tokens.RaftThemeId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -27,6 +29,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 /**
  * Per-member, per-server theme data layer, pinned to botiverse/slock@aed2ba714cea38507191289c3c17669b46b25b6f:
@@ -360,6 +364,108 @@ class ServerAppearanceTest {
             ServerAppearanceLoadResult.NotFound,
             NetworkServerAppearanceRepository(RecordingNetworkClient(emptyMap()), store).load(ServerId(serverA)),
         )
+    }
+
+    // --- Catch-up after reconnect / foreground ----------------------------------------------
+
+    /** Answers each request only when the test completes its `"METHOD path"` gate. */
+    private class GatedNetworkClient : RaftNetworkClient {
+        val gates = mutableMapOf<String, CompletableDeferred<HomeNetworkResponse>>()
+        val requests = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?,
+        ): HomeNetworkResponse {
+            val key = "$method $path"
+            requests += key
+            return gates.getOrPut(key) { CompletableDeferred() }.await()
+        }
+    }
+
+    @Test
+    fun catchUpAfterReconnectUpdatesTheStoredLookOncePerWindow() = runTest {
+        val store = InMemoryRaftAuthSessionStore(session(serverATheme = "space"))
+        val client = RecordingNetworkClient(
+            mapOf("GET $appearancePath" to HomeNetworkResponse(200, """{"theme":"quest","themeDecor":false}"""))
+        )
+        val repository = NetworkServerAppearanceRepository(client, store)
+        val clock = TestTimeSource()
+        val catchUp =
+            ServerAppearanceCatchUp(
+                scope = backgroundScope,
+                load = { serverId -> repository.load(serverId) },
+                windowMs = 10_000L,
+                timeSource = clock,
+            )
+
+        // The theme changed on the web while the socket was down; the reconnect reads it.
+        catchUp.onReconnected(ServerId(serverA))
+        runCurrent()
+        assertEquals(RaftServerThemeLook(RaftThemeId.Quest, decor = false), raftSessionThemeLook(store.readSession(), null))
+
+        // The foreground return that came with the reconnect shares that read.
+        catchUp.onForeground(ServerId(serverA))
+        runCurrent()
+        assertEquals(1, client.requests.size)
+
+        // A later return reads again, through the app lifecycle.
+        clock += 10.seconds
+        val foreground = MutableStateFlow(true)
+        catchUp.followAppLifecycle(foreground) { store.readSession()?.currentServerId }
+        runCurrent()
+        assertEquals(1, client.requests.size, "staying in the foreground is no return")
+        foreground.value = false
+        runCurrent()
+        foreground.value = true
+        runCurrent()
+        assertEquals(2, client.requests.size)
+    }
+
+    @Test
+    fun loadNeverClobbersASaveOnItsWay() = runTest {
+        val store = InMemoryRaftAuthSessionStore(session(serverATheme = "space"))
+        val client = GatedNetworkClient()
+        val repository = NetworkServerAppearanceRepository(client, store)
+        val settings = NetworkServerAppearanceRepository(client, store)
+
+        // Settings writes the pick optimistically, then saves it.
+        store.applyStoredServerAppearance("user-1", serverA, "bots", themeDecor = true)
+        launch { settings.update(ServerId(serverA), RaftThemeId.Bots, themeDecor = true) }
+        // A catch-up read lands while the save is on its way, with the old theme.
+        val load = async { repository.load(ServerId(serverA)) }
+        runCurrent()
+        client.gates.getValue("GET $appearancePath").complete(HomeNetworkResponse(200, """{"theme":"space","themeDecor":true}"""))
+        runCurrent()
+        assertIs<ServerAppearanceLoadResult.Loaded>(load.await())
+        assertEquals("bots", store.storedServer(serverA).theme)
+
+        // A read that started before a save and answers after it is just as old.
+        client.gates.getValue("PATCH $appearancePath").complete(HomeNetworkResponse(200, """{"theme":"bots","themeDecor":true}"""))
+        runCurrent()
+        client.gates.remove("GET $appearancePath")
+        client.gates.remove("PATCH $appearancePath")
+        val earlyRead = async { repository.load(ServerId(serverA)) }
+        runCurrent()
+        val save = async { settings.update(ServerId(serverA), RaftThemeId.Food, themeDecor = true) }
+        runCurrent()
+        client.gates.getValue("PATCH $appearancePath").complete(HomeNetworkResponse(200, """{"theme":"food","themeDecor":true}"""))
+        assertIs<ServerAppearanceUpdateResult.Saved>(save.await())
+        client.gates.getValue("GET $appearancePath").complete(HomeNetworkResponse(200, """{"theme":"bots","themeDecor":true}"""))
+        earlyRead.await()
+        assertEquals("food", store.storedServer(serverA).theme)
+
+        // With no save on its way, a read is written as before.
+        client.gates.remove("GET $appearancePath")
+        val freshRead = async { repository.load(ServerId(serverA)) }
+        runCurrent()
+        client.gates.getValue("GET $appearancePath").complete(HomeNetworkResponse(200, """{"theme":"desk","themeDecor":true}"""))
+        freshRead.await()
+        assertEquals("desk", store.storedServer(serverA).theme)
     }
 
     // --- Realtime ---------------------------------------------------------------------------
