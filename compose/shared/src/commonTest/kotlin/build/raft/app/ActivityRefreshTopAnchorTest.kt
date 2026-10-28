@@ -219,7 +219,7 @@ class ActivityRefreshTopAnchorTest {
     private val readRows = (1..8).map { row("r$it") }
 
     @Test
-    fun `a reorder with no new activity arrives nothing, even when the unread head drops back`() {
+    fun `a reorder with no new activity arrives nothing even when the unread head drops back`() {
         // artin 2026-10-28: an unread head (the realtime order) and the served order disagree, so the
         // head drops below rows the reader already scrolled past. Positionally r1..r5 now sit above
         // the old head; none of them has new activity.

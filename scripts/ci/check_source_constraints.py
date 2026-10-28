@@ -5,11 +5,13 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Three constraints remain: check_no_conditional_interaction_state, born from the
+Four constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
-and check_no_production_run_blocking (#3823: a main-thread runBlocking on the
-auth-session lock deadlocked the app; a hang no unit test can catch reliably).
+check_no_production_run_blocking (#3823: a main-thread runBlocking on the
+auth-session lock deadlocked the app; a hang no unit test can catch reliably),
+and check_native_safe_test_names (#3845: a comma in a backtick test name broke
+the iOS test compile on main, which PR CI does not build).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -451,6 +453,38 @@ def _production_kotlin_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+NATIVE_TEST_SOURCE_SETS = ("commonTest", "iosTest", "nativeTest", "appleTest")
+BACKTICK_FUNCTION_NAME = re.compile(r"\bfun\s+`([^`\n]+)`")
+# Kotlin/Native rejects these in identifiers ("Name contains illegal characters"); the JVM
+# accepts some of them (a comma), so a JVM-only PR CI run passes and main's iOS compile fails.
+NATIVE_ILLEGAL_NAME_CHARACTERS = frozenset(".,;:/\\[]<>()\"")
+
+
+def check_native_safe_test_names(sources: dict[str, str]) -> None:
+    """#3845: a backtick test name the iOS compiler rejects breaks main, not the PR."""
+    for name in sorted(sources):
+        for match in BACKTICK_FUNCTION_NAME.finditer(sources[name]):
+            bad = sorted(set(match.group(1)) & NATIVE_ILLEGAL_NAME_CHARACTERS)
+            if bad:
+                line = sources[name].count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"test name with characters Kotlin/Native rejects ({' '.join(bad)}): "
+                    f"{name}:{line} `{match.group(1)}`. Shared tests also compile for iOS, "
+                    "which PR CI does not build; reword the name without them."
+                )
+
+
+def _native_test_sources(root: Path) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for source_set in NATIVE_TEST_SOURCE_SETS:
+        for base in sorted((root / "compose").glob(f"*/src/{source_set}")):
+            for path in sorted(base.rglob("*.kt")):
+                sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+    if not any("/src/commonTest/" in name for name in sources):
+        raise Violation("test-name scan never reached a commonTest source set")
+    return sources
+
+
 # task #256: a null agent-status resolution means Unknown, but the label-facing
 # resolver substitutes a placeholder built with Presence.Offline, whose colour maps
 # to StatusNeutralGray. Feeding that to a dot makes an unknown agent look offline.
@@ -488,6 +522,7 @@ def run(root: Path) -> None:
         xcode_project=read(IOS_XCODE_PROJECT),
     )
     check_no_production_run_blocking(_production_kotlin_sources(root))
+    check_native_safe_test_names(_native_test_sources(root))
 
 
 def self_test() -> None:
@@ -685,6 +720,21 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: runBlocking checker accepted {bad_sources!r}")
 
+    check_native_safe_test_names(
+        {"t": "@Test\nfun `a muted row's pill - stays put`() {}\nfun plain() {}"}
+    )
+    for bad in (
+        "fun `arrives nothing, even when it drops`() {}",
+        "@Test fun `reads v1.2`() {}",
+        "fun `a: b`() {}",
+    ):
+        try:
+            check_native_safe_test_names({"t": bad})
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: test-name checker accepted {bad!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -702,7 +752,7 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
-        "#3823 no production runBlocking)"
+        "#3823 no production runBlocking, #3845 Native-safe test names)"
     )
     return 0
 
