@@ -322,4 +322,35 @@ class RaftPullToRefreshControllerTest {
         c.onRelease(0f)
         assertEquals(0, refreshes)
     }
+
+    @Test
+    fun aPullThatStartsNoRefreshReportsWhy() = runTest {
+        // Hands f6c3f3a6: pulls that started nothing left no log line.
+        var refreshes = 0
+        val ignored = mutableListOf<String>()
+        val c = controller(RaftPullToRefreshStyle.Cupertino) { refreshes++ }
+        c.onPullIgnored = { reason -> ignored += reason }
+
+        // The store never reports the requested refresh: the indicator gives up, and says so.
+        c.onPullDown(pullFor(120f))
+        c.onRelease(0f)
+        settleAnimations()
+        assertEquals(1, refreshes)
+        assertEquals(listOf("store_did_not_report"), ignored)
+        assertEquals(RaftPullToRefreshPhase.Idle, c.phase)
+
+        // A pull released while a pull refresh started meanwhile joins it.
+        c.onPullDown(pullFor(120f))
+        c.onStoreRefreshingChanged(true)
+        c.onRelease(0f)
+        assertEquals(1, refreshes)
+        assertEquals(listOf("store_did_not_report", "store_refreshing"), ignored)
+
+        // A pull short of the threshold is not a refresh request: nothing is reported.
+        c.onStoreRefreshingChanged(false)
+        settleAnimations()
+        c.onPullDown(pullFor(20f))
+        c.onRelease(0f)
+        assertEquals(2, ignored.size)
+    }
 }

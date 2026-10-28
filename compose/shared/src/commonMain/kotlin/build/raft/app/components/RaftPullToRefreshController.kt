@@ -119,6 +119,14 @@ internal class RaftPullToRefreshController(
 
     var onRefresh: () -> Unit = {}
 
+    /**
+     * A pull released past the threshold that did not call [onRefresh], with the reason
+     * (Hands f6c3f3a6: pulls that started nothing left no trace). `store_refreshing`: it joined
+     * the pull refresh already running; `disabled`: refresh was off; `store_did_not_report`: the
+     * store never reported the requested refresh, so the indicator gave up.
+     */
+    var onPullIgnored: (reason: String) -> Unit = {}
+
     var phase: RaftPullToRefreshPhase by mutableStateOf(RaftPullToRefreshPhase.Idle)
         private set
 
@@ -239,13 +247,18 @@ internal class RaftPullToRefreshController(
         pull = 0f
         val wasArmed = armed
         armed = false
+        val pastThreshold = wasArmed || contentOffset >= geometry.triggerPx
         when {
-            !enabled -> settle(offsetVelocity)
+            !enabled -> {
+                if (pastThreshold) onPullIgnored("disabled")
+                settle(offsetVelocity)
+            }
             storeRefreshing -> {
+                if (pastThreshold) onPullIgnored("store_refreshing")
                 phase = RaftPullToRefreshPhase.Refreshing
                 springToRefreshing(offsetVelocity)
             }
-            wasArmed || contentOffset >= geometry.triggerPx -> {
+            pastThreshold -> {
                 phase = RaftPullToRefreshPhase.AwaitingRefresh
                 springToRefreshing(offsetVelocity)
                 onRefresh()
@@ -326,7 +339,10 @@ internal class RaftPullToRefreshController(
             }
             // The store had the whole spring to report the refresh. If it did not (the request was
             // dropped, or it finished before we saw it), there is nothing to wait for.
-            if (phase == RaftPullToRefreshPhase.AwaitingRefresh && !storeRefreshing) settle(0f)
+            if (phase == RaftPullToRefreshPhase.AwaitingRefresh && !storeRefreshing) {
+                onPullIgnored("store_did_not_report")
+                settle(0f)
+            }
         }
     }
 
