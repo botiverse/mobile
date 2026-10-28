@@ -283,7 +283,7 @@ internal fun SettingsNativeDetailPageContent(
     diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     serverPublicVisibilityRepository: ServerPublicVisibilityRepository? = null,
-    /** With [authStore], drives Appearance's "Theme on {server}"; null hides it. */
+    /** With [authStore], drives Settings > Theme's server themes; null shows light and dark only. */
     serverAppearanceRepository: ServerAppearanceRepository? = null,
     authStore: RaftAuthSessionStore? = null,
     onOpenBillingPage: () -> Unit = {},
@@ -535,18 +535,7 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
-            SettingsNativeDetailPage.Appearance -> {
-                val serverTheme =
-                    if (serverAppearanceRepository != null && authStore != null) {
-                        rememberSettingsServerThemeBinding(
-                            repository = serverAppearanceRepository,
-                            authStore = authStore,
-                            onToast = settingsCapabilities::bridgeToast,
-                            onOpenBilling = onOpenBillingPage,
-                        )
-                    } else {
-                        null
-                    }
+            SettingsNativeDetailPage.Appearance ->
                 SettingsAppearanceContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
@@ -563,7 +552,23 @@ internal fun SettingsNativeDetailPageContent(
                         )
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
+                    showModeCard = settingsAppearanceShowsModeCard(session),
+                )
+            SettingsNativeDetailPage.Theme -> {
+                val serverTheme =
+                    if (serverAppearanceRepository != null && authStore != null) {
+                        rememberSettingsServerThemeBinding(
+                            repository = serverAppearanceRepository,
+                            authStore = authStore,
+                            onToast = settingsCapabilities::bridgeToast,
+                            onOpenBilling = onOpenBillingPage,
+                        )
+                    } else {
+                        null
+                    }
+                SettingsThemeContent(
                     serverTheme = serverTheme,
+                    bottomContentPadding = bottomContentPadding,
                 )
             }
             SettingsNativeDetailPage.Server -> {
@@ -827,6 +832,7 @@ private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): Str
         SettingsNativeDetailPage.LanguageRegion -> stringResource(Res.string.settings_language_region_title)
         SettingsNativeDetailPage.Appearance -> stringResource(Res.string.settings_appearance_title)
         SettingsNativeDetailPage.Notifications -> stringResource(Res.string.settings_notifications_title)
+        SettingsNativeDetailPage.Theme -> stringResource(Res.string.settings_theme_title)
         SettingsNativeDetailPage.Mobile -> stringResource(Res.string.settings_mobile_title)
         SettingsNativeDetailPage.Server -> stringResource(Res.string.settings_server_profile_title)
         SettingsNativeDetailPage.About -> stringResource(Res.string.settings_about_title)
@@ -851,6 +857,7 @@ private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): RaftLu
         SettingsNativeDetailPage.LanguageRegion -> RaftLucideIconName.Languages
         SettingsNativeDetailPage.Appearance -> RaftLucideIconName.Type
         SettingsNativeDetailPage.Notifications -> RaftLucideIconName.Bell
+        SettingsNativeDetailPage.Theme -> RaftLucideIconName.Palette
         SettingsNativeDetailPage.Mobile -> RaftLucideIconName.Smartphone
         SettingsNativeDetailPage.Server -> RaftLucideIconName.Building2
         SettingsNativeDetailPage.About -> RaftLucideIconName.BadgeInfo

@@ -43,6 +43,7 @@ import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftThemeId
@@ -50,7 +51,7 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlinx.coroutines.flow.emptyFlow
 import org.jetbrains.compose.resources.StringResource
 
-/** What the Appearance page needs to draw and drive "Theme on {server}". */
+/** What Settings > Theme needs to draw and drive the selected server's theme. */
 internal class SettingsServerThemeBinding(
     val state: SettingsServerThemeState,
     val onPick: (RaftThemeId) -> Unit,
@@ -63,7 +64,7 @@ internal class SettingsServerThemeBinding(
 )
 
 /**
- * The selected server's theme picker for the Appearance page: reads the stored session through
+ * The selected server's theme picker for Settings > Theme: reads the stored session through
  * [authStore] (its auth events wake it), saves through [repository], toasts a failed save with
  * [onToast] and offers [onOpenBilling] when a Free member picks a Pro theme.
  */
@@ -110,42 +111,51 @@ internal fun rememberSettingsServerThemeBinding(
 }
 
 /**
- * Settings > Appearance > "Theme on {server}", web ServerThemeSection: the description, the
- * Basics and Avatar series swatches (each a miniature of the app in that theme), then the
- * frame's pixel art. Hidden without a selected server.
+ * Settings > Theme below "Light and dark", web ServerThemeSection: the Basics and Avatar series
+ * swatches (each a miniature of the app in that theme), then the frame's pixel art, in the order of
+ * [sections]. One card with no heading of its own: the page is titled Theme. Hidden without a
+ * selected server.
  */
 @Composable
-internal fun SettingsServerThemeCard(binding: SettingsServerThemeBinding) {
+internal fun SettingsServerThemePickerCard(
+    binding: SettingsServerThemeBinding,
+    sections: List<SettingsThemePageSection> = SettingsThemePageSections,
+) {
     val state = binding.state
     if (!state.visible) return
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.Sparkles,
-        title = stringResource(Res.string.settings_server_theme_title, state.serverName),
-    ) {
-        SettingsFormDetailText(stringResource(Res.string.settings_server_theme_description, state.serverName))
-        RaftDesignSystemTheme {
-            Column(
-                modifier = Modifier.fillMaxWidth().selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                SettingsServerThemeGroup(Res.string.settings_server_theme_group_basics, SettingsServerThemeBasics, state, binding.onPick)
-                SettingsServerThemeGroup(Res.string.settings_server_theme_group_avatars, SettingsServerThemeAvatars, state, binding.onPick)
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            sections.forEach { section ->
+                when (section) {
+                    // Its own card above, SettingsAppearanceThemeCard.
+                    SettingsThemePageSection.Mode -> Unit
+                    SettingsThemePageSection.Basics ->
+                        RaftDesignSystemTheme {
+                            SettingsServerThemeGroup(Res.string.settings_server_theme_group_basics, SettingsServerThemeBasics, state, binding.onPick)
+                        }
+                    SettingsThemePageSection.Avatars ->
+                        RaftDesignSystemTheme {
+                            SettingsServerThemeGroup(Res.string.settings_server_theme_group_avatars, SettingsServerThemeAvatars, state, binding.onPick)
+                        }
+                    SettingsThemePageSection.Decor -> {
+                        SettingsFormDivider()
+                        SettingsNotificationToggleRow(
+                            title = stringResource(Res.string.settings_server_theme_decor_title),
+                            detail =
+                                if (state.decorAvailable) {
+                                    stringResource(Res.string.settings_server_theme_decor_description) + "\n" +
+                                        stringResource(Res.string.settings_server_theme_decor_wide_screens)
+                                } else {
+                                    stringResource(Res.string.settings_server_theme_decor_unavailable)
+                                },
+                            checked = state.decorChecked,
+                            enabled = state.decorAvailable,
+                            onCheckedChange = binding.onDecorChange,
+                        )
+                    }
+                }
             }
         }
-        SettingsFormDivider()
-        SettingsNotificationToggleRow(
-            title = stringResource(Res.string.settings_server_theme_decor_title),
-            detail =
-                if (state.decorAvailable) {
-                    stringResource(Res.string.settings_server_theme_decor_description) + "\n" +
-                        stringResource(Res.string.settings_server_theme_decor_wide_screens)
-                } else {
-                    stringResource(Res.string.settings_server_theme_decor_unavailable)
-                },
-            checked = state.decorChecked,
-            enabled = state.decorAvailable,
-            onCheckedChange = binding.onDecorChange,
-        )
     }
     if (binding.upgradeOpen) {
         RaftDesignSystemTheme {
@@ -166,7 +176,8 @@ private fun SettingsServerThemeGroup(
     state: SettingsServerThemeState,
     onPick: (RaftThemeId) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Each group is one radio group under its heading (web: one RadioGroup over both).
+    Column(modifier = Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftText(
             text = stringResource(title),
             style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),

@@ -114,6 +114,7 @@
     <string name="settings_title">设置</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作空间</string>
+    <string name="settings_navigation_section_on_server">我在 %1$s</string>
     <string name="settings_navigation_section_about">资源</string>
     <string name="settings_account_title">账户</string>
     <string name="settings_account_subtitle">资料、邮箱、密码、连接的账户</string>
@@ -221,13 +222,14 @@
     <string name="settings_appearance_activity_sender_avatars_detail">在每条动态旁显示最近发送者的头像。</string>
     <string name="settings_appearance_activity_sender_avatars_enabled">显示</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">隐藏</string>
-    <string name="settings_appearance_subtitle">主题、消息字号和阅读密度</string>
+    <string name="settings_appearance_subtitle">消息字号和阅读密度</string>
     <string name="settings_appearance_theme_title">主题</string>
     <string name="settings_appearance_theme_description">选择浅色、深色或跟随设备。选择会保存在此设备上。</string>
     <string name="settings_appearance_mode_light">浅色</string>
     <string name="settings_appearance_mode_dark">深色</string>
     <string name="settings_appearance_mode_system">系统</string>
-    <string name="settings_server_theme_title">%1$s 的主题</string>
+    <string name="settings_theme_title">主题</string>
+    <string name="settings_theme_group_mode">浅色和深色</string>
     <string name="settings_server_theme_description">你在 %1$s 看到的样子。只有你看得到。</string>
     <string name="settings_server_theme_group_basics">基础</string>
     <string name="settings_server_theme_group_avatars">头像系列</string>

@@ -114,6 +114,7 @@
     <string name="settings_title">Settings</string>
     <string name="settings_navigation_section_personal">Personal</string>
     <string name="settings_navigation_section_workspace">Workspace</string>
+    <string name="settings_navigation_section_on_server">On %1$s</string>
     <string name="settings_navigation_section_about">Resources</string>
     <string name="settings_account_title">Account</string>
     <string name="settings_account_subtitle">Profile, email, password, connected accounts</string>
@@ -221,13 +222,14 @@
     <string name="settings_appearance_activity_sender_avatars_detail">Show the latest sender avatar beside each Activity item.</string>
     <string name="settings_appearance_activity_sender_avatars_enabled">Shown</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">Hidden</string>
-    <string name="settings_appearance_subtitle">Theme, message font size and reading density</string>
+    <string name="settings_appearance_subtitle">Message font size and reading density</string>
     <string name="settings_appearance_theme_title">Theme</string>
     <string name="settings_appearance_theme_description">Choose light, dark, or follow your device. Your choice is saved on this device.</string>
     <string name="settings_appearance_mode_light">Light</string>
     <string name="settings_appearance_mode_dark">Dark</string>
     <string name="settings_appearance_mode_system">System</string>
-    <string name="settings_server_theme_title">Theme on %1$s</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_group_mode">Light and dark</string>
     <string name="settings_server_theme_description">How %1$s looks to you. Only you see it.</string>
     <string name="settings_server_theme_group_basics">Basics</string>
     <string name="settings_server_theme_group_avatars">Avatar series</string>

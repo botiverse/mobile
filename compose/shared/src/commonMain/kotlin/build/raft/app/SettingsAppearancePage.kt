@@ -11,6 +11,7 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
+import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -43,16 +44,18 @@ internal fun SettingsAppearanceContent(
     onActivitySenderAvatarsChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit,
-    /** "Theme on {server}"; null where the page has no server to theme (fixtures). */
-    serverTheme: SettingsServerThemeBinding? = null,
+    /**
+     * Light, Dark or System. Web (botiverse/slock#11355) keeps it on the Theme page; Appearance shows
+     * it only where there is no Theme page, so it has one place: [settingsAppearanceShowsModeCard].
+     */
+    showModeCard: Boolean,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SettingsAppearanceThemeCard() }
-        if (serverTheme != null && serverTheme.state.visible) {
-            item { SettingsServerThemeCard(serverTheme) }
+        if (showModeCard) {
+            item { SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_appearance_theme_title)) }
         }
         item {
             SettingsActivitySenderAvatarsCard(
@@ -118,13 +121,22 @@ internal fun SettingsAppearanceContent(
 }
 
 /**
- * Settings > Appearance > Theme, the Web's AppearanceThemePicker: Light, Dark or System,
- * applied at once and saved on this device ([RaftAppAppearanceRuntime]).
+ * Whether Appearance shows Light, Dark or System (web AppearanceSection `themePageShown`): only
+ * when there is no Theme page, i.e. no current server. Unknown until the session is read, so a
+ * page with a server never flashes it.
+ */
+internal fun settingsAppearanceShowsModeCard(session: StoredAuthSession?): Boolean =
+    session != null && session.settingsThemeServer() == null
+
+/**
+ * Light, Dark or System, the Web's AppearanceThemePicker, applied at once and saved on this device
+ * for every server ([RaftAppAppearanceRuntime]). Settings > Theme's "Light and dark"; Appearance's
+ * "Theme" where there is no Theme page.
  */
 @Composable
-private fun SettingsAppearanceThemeCard() {
+internal fun SettingsAppearanceThemeCard(title: String) {
     val selected = RaftAppAppearanceRuntime.appearance
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Eye, title = stringResource(Res.string.settings_appearance_theme_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Eye, title = title) {
         SettingsFormDetailText(stringResource(Res.string.settings_appearance_theme_description))
         RaftDesignSystemTheme {
             RaftRadioGroup {

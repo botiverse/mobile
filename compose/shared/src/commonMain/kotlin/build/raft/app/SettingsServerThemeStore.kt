@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /*
- * Settings > Appearance > "Theme on {server}": the member's own look on the selected server.
+ * Settings > Theme: the member's own look on the selected server.
  * Web ServerThemeSection (botiverse/slock@aed2ba714cea38507191289c3c17669b46b25b6f
  * packages/web/src/components/settings/ServerThemeSection.tsx:64-135).
  *
@@ -188,7 +188,7 @@ internal class SettingsServerThemeStore(
     private suspend fun refresh() {
         val session = sessionStore.readSession()
         accountId = session?.user?.id
-        val server = session?.selectedThemeServer()
+        val server = session?.settingsThemeServer()
         val previous = mutableState.value
         if (server?.id != previous.serverId) {
             // Another server (or none): the confirmations and the pick on the way are not this
@@ -213,8 +213,11 @@ internal class SettingsServerThemeStore(
     }
 }
 
-/** The session's selected server, or null when none is selected (the section hides). */
-private fun StoredAuthSession.selectedThemeServer(): StoredAuthServer? {
+/**
+ * The server Settings > Theme is about: the session's current server, or null when there is none
+ * (web: the Theme page and the "On {server}" group show only with a current server).
+ */
+internal fun StoredAuthSession.settingsThemeServer(): StoredAuthServer? {
     val serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return servers.firstOrNull { it.id == serverId }
 }
