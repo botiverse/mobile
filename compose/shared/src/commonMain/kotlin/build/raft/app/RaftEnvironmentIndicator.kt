@@ -42,8 +42,9 @@ private var raftEnvironmentIndicatorHiddenForCapture = false
 
 /**
  * Store-screenshot capture on a non-production server (e.g. a staging demo server): the host app
- * hides the indicator for the whole process before the first page. iOS sets it from the
- * `RaftHideEnvironmentIndicator` launch argument / user default; nothing persists it.
+ * hides the indicator for the whole process before the first page: iOS from the
+ * `RaftHideEnvironmentIndicator` launch argument / user default, Android from the same-named
+ * launch intent extra. Nothing persists it.
  */
 fun setRaftEnvironmentIndicatorHiddenForCapture(hidden: Boolean) {
     raftEnvironmentIndicatorHiddenForCapture = hidden
