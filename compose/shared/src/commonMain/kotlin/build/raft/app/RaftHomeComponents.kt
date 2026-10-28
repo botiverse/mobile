@@ -3730,7 +3730,8 @@ internal fun raftHomeConversationMenuItems(
                 icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
             )
         )
-        if (conversation.activityMuteSupported) {
+        // Unmute stays offered while muted even if mute is no longer supported (removed App bot DM).
+        if (conversation.activityMuteSupported || conversation.activityMuted) {
             add(
                 RaftBaseMenuItem(
                     id = if (conversation.activityMuted) "unmute-channel" else "mute-channel",

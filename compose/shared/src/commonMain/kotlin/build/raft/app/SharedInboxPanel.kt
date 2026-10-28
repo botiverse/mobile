@@ -2280,7 +2280,7 @@ internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: S
     val content = this as? SharedHomeContentState.Content ?: return emptyMap()
     if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
     return content.snapshot.channels
-        .filter { channel -> channel.joined && channel.activityMuteSupported }
+        .filter { channel -> channel.joined && (channel.activityMuteSupported || channel.activityMuted) }
         .associate { channel -> channel.channelId.value to channel.activityMuted }
 }
 

@@ -734,7 +734,8 @@ internal fun ChannelSettingsContent(
         }
         item(key = "preferences") {
             ChannelPreferencesSection(
-                muteSupported = channel.activityMuteSupported,
+                // A muted conversation keeps its Unmute even where mute is no longer offered.
+                muteSupported = channel.activityMuteSupported || model.muted,
                 muted = model.muted,
                 pinned = model.pinned,
                 enabled = model.writeActionsEnabled,

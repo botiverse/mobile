@@ -7949,6 +7949,59 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
+    /**
+     * AppFather 10-28: a muted conversation whose mute is no longer offered (an App bot DM after the
+     * bot was removed: `activityMuteSupported` false) can still be unmuted, so a mute never gets
+     * stuck; muting it again stays refused.
+     */
+    @Test
+    fun aMutedConversationWithoutMuteSupportCanStillBeUnmutedButNotMutedAgain() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failureMessages = mutableListOf<String>()
+        val writes = mutableListOf<Pair<String, Boolean>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-1", "general").copy(
+                                        activityNotificationPreference =
+                                            ChannelActivityNotificationPreference(activityMuted = true, activityMuteSupported = false)
+                                    )
+                                )
+                        )
+                    ),
+                scope = scope,
+                setChannelActivityMuted = { channelId, muted ->
+                    writes += channelId.value to muted
+                    DataResult.Content(
+                        ChannelActivityMuteSettings(
+                            channelId = channelId,
+                            activityMuted = muted,
+                            muteFromSeq = null,
+                            activityMuteSupported = false,
+                            prefsVersion = 1
+                        )
+                    )
+                },
+                pinUpdateFailureCallback = failureMessages::add
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", false))
+
+        assertEquals(listOf("channel-1" to false), writes, "unmute is sent although mute is not supported")
+        assertEquals(emptyList(), failureMessages)
+
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+        assertEquals(listOf("channel-1" to false), writes, "muting an unsupported conversation is still refused")
+        assertEquals(listOf("Unable to update channel notifications"), failureMessages)
+        scope.cancel()
+    }
+
     @Test
     fun setChannelActivityMutedRollsBackLatestFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

@@ -3413,6 +3413,27 @@ class ThreadPayloadTest {
         assertTrue(mutedDirectMessage.threadActivityMutedIndicatorVisible(null))
     }
 
+    /** A removed App bot's DM: mute no longer offered, but a muted one keeps Unmute and the marker. */
+    @Test
+    fun aMutedDirectMessageWithoutMuteSupportKeepsUnmuteAndTheMarker() {
+        fun dm(muted: Boolean) =
+            RaftThreadScreenPayload(
+                instanceId = "dm-bot",
+                sourceThreadId = "dm-bot",
+                streamChannelId = "dm-bot",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                activityMuted = muted,
+                activityMuteSupported = false
+            )
+
+        val mutedState = dm(muted = true).threadActivityMuteState(null)
+        assertEquals(true, mutedState?.muted)
+        assertEquals(false, mutedState?.supported)
+        assertTrue(dm(muted = true).threadActivityMutedIndicatorVisible(null))
+        assertEquals(null, dm(muted = false).threadActivityMuteState(null))
+        assertFalse(dm(muted = false).threadActivityMutedIndicatorVisible(null))
+    }
+
     @Test
     fun conversationHeaderProjectionDoesNotRenderIdentityAsTitle() {
         val uuid = "123e4567-e89b-12d3-a456-426614174000"
