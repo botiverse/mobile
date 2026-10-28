@@ -73,8 +73,17 @@ internal fun interface ThreadEnteredScopeSnapshotLoader {
         /** The page's server `messageWindow` and `historyLimited` (what range it proves; null = legacy claim). */
         messageWindow: ChannelMessageWindow? = null,
         historyLimited: Boolean = false,
+        /**
+         * Phase 3b: the partition's head epoch ([headEpoch]) read BEFORE the page's HTTP request (with the partition
+         * generation). A horizonReset between that read and this write voids the page's head claim, never its facts.
+         * `null` = not captured: the writer reads it now.
+         */
+        requestHeadEpoch: Long? = null,
         stillCurrent: () -> Boolean,
     ) = Unit
+
+    /** Phase 3b: the partition's head epoch, for a caller to read before its page request (`null` = not tracked). */
+    fun headEpoch(partition: DurablePartitionKey): Long? = null
 }
 
 /**
@@ -123,8 +132,17 @@ internal fun interface ThreadDurablePageExtender {
         rawMessages: JsonArray,
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
+        /**
+         * Phase 3b: the partition's head epoch ([headEpoch]) read BEFORE the page's HTTP request (with the partition
+         * generation). A horizonReset between that read and this write voids the page's head claim, never its facts.
+         * `null` = not captured: the writer reads it now.
+         */
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     )
+
+    /** Phase 3b: the partition's head epoch, for a caller to read before its page request (`null` = not tracked). */
+    fun headEpoch(partition: DurablePartitionKey): Long? = null
 
     /**
      * Gap catch-up entry (task #168 step 1, product decision "option A"): [rawMessages] is the
@@ -144,6 +162,12 @@ internal fun interface ThreadDurablePageExtender {
         /** The page's server `messageWindow` and `historyLimited` (what range it proves; null = legacy claim). */
         messageWindow: ChannelMessageWindow? = null,
         historyLimited: Boolean = false,
+        /**
+         * Phase 3b: the partition's head epoch ([headEpoch]) read BEFORE the page's HTTP request (with the partition
+         * generation). A horizonReset between that read and this write voids the page's head claim, never its facts.
+         * `null` = not captured: the writer reads it now.
+         */
+        requestHeadEpoch: Long? = null,
         stillCurrent: () -> Boolean,
     ) = Unit
 
@@ -178,8 +202,16 @@ internal fun interface ThreadDurablePageExtender {
         baseline: CanonicalMessageV2EnterBaseline?,
         messageWindow: ChannelMessageWindow? = null,
         historyLimited: Boolean = false,
+        /**
+         * Phase 3b: the partition's head epoch ([headEpoch]) read BEFORE the page's HTTP request (with the partition
+         * generation). A horizonReset between that read and this write voids the page's head claim, never its facts.
+         * `null` = not captured: the writer reads it now.
+         */
+        requestHeadEpoch: Long? = null,
         stillCurrent: () -> Boolean,
-    ) = applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, stillCurrent)
+    ) = applyLatestPage(
+        partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, requestHeadEpoch, stillCurrent,
+    )
 
     /**
      * Task #14 part C: [rawMessages] is the `messages/context/{anchor}` page an anchored open (Activity row,
@@ -201,6 +233,12 @@ internal fun interface ThreadDurablePageExtender {
         hasOlder: Boolean,
         hasNewer: Boolean,
         replyParent: ThreadDurableReplyParent?,
+        /**
+         * Phase 3b: the partition's head epoch ([headEpoch]) read BEFORE the page's HTTP request (with the partition
+         * generation). A horizonReset between that read and this write voids the page's head claim, never its facts.
+         * `null` = not captured: the writer reads it now.
+         */
+        requestHeadEpoch: Long? = null,
         stillCurrent: () -> Boolean,
     ) = Unit
 }

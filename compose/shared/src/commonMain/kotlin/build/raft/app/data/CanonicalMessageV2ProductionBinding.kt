@@ -748,6 +748,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             SyncScopeKey(partition = partition, scopeId = threadChannelId, scopeKind = REPLY_THREAD_SCOPE_KIND),
         )
 
+    override fun headEpoch(partition: DurablePartitionKey): Long = generationEngine.partitionHeadEpoch(partition)
+
     override suspend fun persistReplyThreadPrewarmPage(
         partition: DurablePartitionKey,
         threadChannelId: SyncScopeId,
@@ -757,6 +759,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         expectedCommitGeneration: Long,
         messageWindow: ChannelMessageWindow?,
         historyLimited: Boolean,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -784,7 +787,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             val scope = SyncScopeKey(partition = partition, scopeId = threadChannelId, scopeKind = REPLY_THREAD_SCOPE_KIND)
             val expectedGeneration = generationEngine.partitionGeneration(partition)
             // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
-            val expectedHeadEpoch = generationEngine.partitionHeadEpoch(partition)
+            val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
             // Message storage Phase 3a: a header with no window was created by a realtime reply and names only the
             // parent that frame claimed: not server-confirmed, so it is confirmed here like a missing one.
             val stored = generationEngine.storedCursor(scope)?.takeIf { it.oldestLoadedSeq != null || it.hasLoadedOldest }
@@ -936,6 +939,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) =
         canary.abandonEnterBaseline(baseline)
 
+    override fun headEpoch(partition: DurablePartitionKey): Long = generationEngine.partitionHeadEpoch(partition)
+
     override suspend fun extendWithAdjacentPage(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
@@ -944,6 +949,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         rawMessages: JsonArray,
         requestedLimit: Int,
         replyParent: ThreadDurableReplyParent?,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -987,7 +993,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
-        val expectedHeadEpoch = generationEngine.partitionHeadEpoch(partition)
+        val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
         val envelopes = when (
             val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
         ) {
@@ -1124,9 +1130,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         replyParent: ThreadDurableReplyParent?,
         messageWindow: ChannelMessageWindow?,
         historyLimited: Boolean,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) = applyLatestPageAfterBaseline(
-        partition, channelId, rawMessages, requestedLimit, replyParent, null, messageWindow, historyLimited, stillCurrent,
+        partition, channelId, rawMessages, requestedLimit, replyParent, null, messageWindow, historyLimited, requestHeadEpoch, stillCurrent,
     )
 
     /**
@@ -1147,11 +1154,12 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         baseline: CanonicalMessageV2EnterBaseline?,
         messageWindow: ChannelMessageWindow?,
         historyLimited: Boolean,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) {
         try {
             applyLatestPageInternal(
-                partition, channelId, rawMessages, requestedLimit, replyParent, baseline, messageWindow, historyLimited, stillCurrent,
+                partition, channelId, rawMessages, requestedLimit, replyParent, baseline, messageWindow, historyLimited, requestHeadEpoch, stillCurrent,
             )
         } finally {
             baseline?.let { canary.abandonEnterBaseline(it) }
@@ -1167,6 +1175,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         baseline: CanonicalMessageV2EnterBaseline?,
         messageWindow: ChannelMessageWindow?,
         historyLimited: Boolean,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -1207,7 +1216,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
-        val expectedHeadEpoch = generationEngine.partitionHeadEpoch(partition)
+        val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
         val envelopes = when (
             val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
         ) {
@@ -1308,6 +1317,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         hasOlder: Boolean,
         hasNewer: Boolean,
         replyParent: ThreadDurableReplyParent?,
+        requestHeadEpoch: Long?,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -1346,7 +1356,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
 
         // Phase 3b: a horizonReset after this read voids the page's head claim (never its facts).
 
-        val expectedHeadEpoch = generationEngine.partitionHeadEpoch(partition)
+        val expectedHeadEpoch = requestHeadEpoch ?: generationEngine.partitionHeadEpoch(partition)
         val envelopes = when (
             val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
         ) {

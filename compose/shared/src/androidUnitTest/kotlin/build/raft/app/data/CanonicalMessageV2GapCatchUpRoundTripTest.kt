@@ -182,7 +182,7 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
         suspend fun segments(): List<Pair<Long, Long>> = store.readSegments(scope).map { it.lowSeq to it.highSeq }
 
         suspend fun extend(direction: ThreadDurablePageDirection, anchorSeq: Long, rawMessages: JsonArray, limit: Int) =
-            writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null) { true }
+            writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null, requestHeadEpoch = null) { true }
     }
 
     private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {

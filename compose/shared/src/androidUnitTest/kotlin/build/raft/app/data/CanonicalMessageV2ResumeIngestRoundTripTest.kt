@@ -321,6 +321,30 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
         }
     }
 
+    @Test
+    fun aLatestPageWhoseRequestPrecededAHorizonResetStoresItsFactsWithoutTheHeadClaim() {
+        // Identical page and reset; only WHEN the caller read the head epoch differs (before vs after the reset).
+        fun run(readEpochBeforeReset: Boolean): Pair<List<Triple<Long, Long, Boolean>>, List<Long>> = withFile { file ->
+            file.rig().session { rig ->
+                rig.cursorAt(9L)
+                rig.connect(1L)
+                rig.enter(channel, 10L, 20L)
+                val before = rig.engine.partitionHeadEpoch(partition)
+                // The page's request is in flight; the resume lands between the fetch and the write.
+                assertTrue(rig.deliver(rig.resumeWith(25L, emptyList(), horizonReset = true)))
+                val epoch = if (readEpochBeforeReset) before else rig.engine.partitionHeadEpoch(partition)
+                rig.latestPage(channel, listOf(20L, 30L, 40L), requestHeadEpoch = epoch)
+                rig.segmentFlags(channel) to rig.seqsInScope(channel)
+            }
+        }
+        val stale = run(readEpochBeforeReset = true)
+        val fresh = run(readEpochBeforeReset = false)
+        assertEquals(listOf(10L, 20L, 30L, 40L), stale.second, "the stale page's facts are stored")
+        assertEquals(stale.second, fresh.second)
+        assertTrue(stale.first.none { it.third }, "a page requested before the reset claims the head: ${stale.first}")
+        assertTrue(fresh.first.any { it.third }, "control: a page requested after the reset does: ${fresh.first}")
+    }
+
     // ---- rig -----------------------------------------------------------------------------------------
 
     private class TestFile(val path: Path) {
@@ -426,6 +450,27 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
                 isEnabledForServer = { true },
                 logger = { logs += it },
             ).loadOnEnter(partition, scope.scopeId) { true }
+        }
+
+        /** The gap catch-up's latest-page writer; [requestHeadEpoch] is what its caller read before the request. */
+        suspend fun latestPage(scope: SyncScopeKey, seqs: List<Long>, requestHeadEpoch: Long?) {
+            val page = adjacentPageOf(*seqs.map { adjacentPageNode("m$it", it, channelId = scope.scopeId) }.toTypedArray())
+            CanonicalMessageV2AdjacentPageWriter(
+                canary = canary,
+                generationEngine = engine,
+                fetcher = CanonicalMessageV2RestSnapshotFetcher(
+                    RecordingNetworkClient("""{"messages":[],"historyLimited":false}""", channelIds = setOf(scope.scopeId)),
+                ),
+                isEnabledForServer = { true },
+                logger = { logs += it },
+            ).applyLatestPage(
+                partition = partition,
+                channelId = scope.scopeId,
+                rawMessages = page,
+                requestedLimit = 50,
+                replyParent = null,
+                requestHeadEpoch = requestHeadEpoch,
+            ) { true }
         }
 
         suspend fun deliver(event: RealtimeEvent): Boolean =

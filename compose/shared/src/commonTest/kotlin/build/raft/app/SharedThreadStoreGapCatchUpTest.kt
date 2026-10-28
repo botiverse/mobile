@@ -296,6 +296,56 @@ class SharedThreadStoreGapCatchUpTest {
         assertEquals(0, failedWrites)
     }
     @Test
+    fun aCatchUpReadsTheDurableHeadEpochBeforeItsFetchAndHandsItToTheWrite() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val repository = FakeConversationRepository()
+        val raw =
+            RawMessagePage(
+                messages = Json.parseToJsonElement("""[{"id":"m1"}]""") as JsonArray,
+                requestedLimit = SharedThreadPaging.DefaultPageSize
+            )
+        val extender = RecordingDurablePageExtender()
+        // The epoch moves with every latest-page request: a read after the fetch would see 1, not 0.
+        extender.headEpochProvider = { repository.latestRequests.size.toLong() }
+        // With a realtime baseline even an all-known page is written (only its commit restores continuity).
+        extender.baselineToRegister = { partition, channelId ->
+            CanonicalMessageV2EnterBaseline(
+                partition = partition,
+                scopeId = channelId,
+                epochAtRequest = 2L,
+                roomLeaveCountAtRequest = 0L,
+                nonMemberAtRequest = false,
+                roomsJoinedAtRequest = true,
+                source = "catch_up",
+            )
+        }
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository = repository,
+                durablePageExtender = extender
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+        repository.latestResult =
+            DataResult.Content(
+                threadSnapshot(messages = listOf(message(id = "m1", seq = 10, body = "repository body")))
+                    .copy(rawMessagePage = RawMessagePageWitness(raw))
+            )
+        store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+        withTimeout(5_000) { while (repository.latestRequests.isEmpty()) delay(10) }
+        delay(20)
+        scopeJob.cancelAndJoin()
+        assertEquals(1, repository.latestRequests.size)
+        assertEquals(1, extender.latestCalls.size)
+        assertEquals(listOf<Long?>(0L), extender.requestHeadEpochs, "the epoch must be read before the request")
+    }
+
+    @Test
     fun gapCatchUpDecisionReadsOnlyTheAnchorFact() {
         // Pure decision table (knife target): identical page id lists except for the anchor.
         val page = listOf("m10", "m12")

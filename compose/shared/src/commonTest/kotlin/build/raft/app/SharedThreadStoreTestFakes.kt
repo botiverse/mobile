@@ -111,6 +111,12 @@ internal object SharedThreadStoreTestFakes {
         val calls = mutableListOf<Call>()
         val replyParents = mutableListOf<ThreadDurableReplyParent?>()
 
+        /** Phase 3b: what [headEpoch] answers (null = not tracked), and the epochs every write was handed. */
+        var headEpochProvider: ((DurablePartitionKey) -> Long?)? = null
+        val requestHeadEpochs = mutableListOf<Long?>()
+
+        override fun headEpoch(partition: DurablePartitionKey): Long? = headEpochProvider?.invoke(partition)
+
         override suspend fun extendWithAdjacentPage(
             partition: DurablePartitionKey,
             channelId: String,
@@ -119,9 +125,11 @@ internal object SharedThreadStoreTestFakes {
             rawMessages: JsonArray,
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
+            requestHeadEpoch: Long?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent
+            requestHeadEpochs += requestHeadEpoch
             calls +=
                 Call(
                     partition = partition,
@@ -168,10 +176,11 @@ internal object SharedThreadStoreTestFakes {
             baseline: CanonicalMessageV2EnterBaseline?,
             messageWindow: ChannelMessageWindow?,
             historyLimited: Boolean,
+            requestHeadEpoch: Long?,
             stillCurrent: () -> Boolean,
         ) {
             baselineEvents += "apply:${baseline != null}"
-            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, stillCurrent)
+            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, requestHeadEpoch, stillCurrent)
         }
 
         override suspend fun applyLatestPage(
@@ -182,9 +191,11 @@ internal object SharedThreadStoreTestFakes {
             replyParent: ThreadDurableReplyParent?,
             messageWindow: ChannelMessageWindow?,
             historyLimited: Boolean,
+            requestHeadEpoch: Long?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent
+            requestHeadEpochs += requestHeadEpoch
             latestCalls +=
                 Triple(
                     channelId,

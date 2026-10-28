@@ -1786,7 +1786,9 @@ internal data class SharedThreadPageFetchResult(
 /** A fetched paging page as the durable window extender needs it (task #168). */
 internal data class SharedThreadDurablePage(
     val context: ReplyCacheProducerContext,
-    val rawPage: RawMessagePage
+    val rawPage: RawMessagePage,
+    /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
+    val headEpochAtRequest: Long? = null,
 )
 
 private val processAttachmentUploadCapabilitiesCache =
@@ -1806,6 +1808,8 @@ internal data class SharedThreadDurableContextPage(
     val rawPage: RawMessagePage,
     val hasOlder: Boolean,
     val hasNewer: Boolean,
+    /** Phase 3b: the durable partition's head epoch read before this page was requested (`null` = none). */
+    val headEpochAtRequest: Long? = null,
 )
 
 internal class SharedThreadDataSource(
@@ -2075,6 +2079,15 @@ internal class SharedThreadDataSource(
         readReplyResolutionScope()?.let { scope ->
             ReplyCacheProducerContext(scope.session, scope.provenance)
         }
+
+    /**
+     * Phase 3b: the durable partition's head epoch, read BEFORE a page's HTTP request and handed to the durable
+     * writer with that page: a horizonReset in between voids the page's head claim (never its facts).
+     */
+    private fun durableHeadEpochOrNull(provenance: ReplyCacheProvenance): Long? {
+        val partition = provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) ?: return null
+        return durablePageExtender?.headEpoch(partition) ?: enteredScopeSnapshotLoader?.headEpoch(partition)
+    }
 
     internal fun pendingSendJournalOrNull(): ThreadPendingSendJournal? = pendingSendJournal
 
@@ -2666,6 +2679,7 @@ internal class SharedThreadDataSource(
         anchorSeq: Long,
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent? = null,
+        headEpochAtRequest: Long? = null,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
@@ -2683,6 +2697,7 @@ internal class SharedThreadDataSource(
             rawMessages = rawPage.messages,
             requestedLimit = rawPage.requestedLimit,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+            requestHeadEpoch = headEpochAtRequest,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -2723,6 +2738,7 @@ internal class SharedThreadDataSource(
             hasOlder = page.hasOlder,
             hasNewer = page.hasNewer,
             replyParent = (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+            requestHeadEpoch = page.headEpochAtRequest,
         ) { isCurrentReplyCacheProvenance(page.context.provenance) }
         return true
     }
@@ -2740,9 +2756,10 @@ internal class SharedThreadDataSource(
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent? = null,
         baseline: CanonicalMessageV2EnterBaseline? = null,
+        headEpochAtRequest: Long? = null,
     ): Boolean =
         try {
-            applyDurableLatestPage(routeIdentity, context, rawPage, replyParent, baseline)
+            applyDurableLatestPage(routeIdentity, context, rawPage, replyParent, baseline, headEpochAtRequest)
         } finally {
             // No-op once the page committed under it; otherwise the frames it buffered were never written.
             baseline?.let { abandonDurableLatestPageBaseline(it) }
@@ -2754,6 +2771,7 @@ internal class SharedThreadDataSource(
         rawPage: RawMessagePage,
         replyParent: ThreadDurableReplyParent?,
         baseline: CanonicalMessageV2EnterBaseline?,
+        headEpochAtRequest: Long?,
     ): Boolean {
         val extender = durablePageExtender ?: return false
         if (!routeIdentity.canRenderTimelineCandidates) return false
@@ -2773,6 +2791,7 @@ internal class SharedThreadDataSource(
             baseline = baseline,
             messageWindow = rawPage.messageWindow,
             historyLimited = rawPage.historyLimited,
+            requestHeadEpoch = headEpochAtRequest,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
         return true
     }
@@ -4397,6 +4416,7 @@ internal class SharedThreadDataSource(
         val durableCommitGeneration =
             replyResolutionScope.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?.let { partition -> enteredScopeSnapshotLoader?.replyThreadCommitGeneration(partition, key.threadChannelId) }
+        val durableHeadEpoch = durableHeadEpochOrNull(replyResolutionScope.provenance)
         val result =
             payloadCache.prewarm(
                 serverId = key.serverId,
@@ -4442,7 +4462,8 @@ internal class SharedThreadDataSource(
                     context = ReplyCacheProducerContext(session, replyResolutionScope.provenance),
                     resolvedThreadChannelId = threadChannelId,
                     rawPage = page,
-                    expectedCommitGeneration = durableCommitGeneration ?: return@let
+                    expectedCommitGeneration = durableCommitGeneration ?: return@let,
+                    headEpochAtRequest = durableHeadEpoch,
                 )
             }
         }
@@ -4470,6 +4491,7 @@ internal class SharedThreadDataSource(
         resolvedThreadChannelId: String?,
         rawPage: RawMessagePage?,
         expectedCommitGeneration: Long,
+        headEpochAtRequest: Long?,
     ) {
         val loader = enteredScopeSnapshotLoader ?: return
         val threadChannelId = basePayload.streamChannelId.orEmpty()
@@ -4503,6 +4525,7 @@ internal class SharedThreadDataSource(
             expectedCommitGeneration = expectedCommitGeneration,
             messageWindow = rawPage.messageWindow,
             historyLimited = rawPage.historyLimited,
+            requestHeadEpoch = headEpochAtRequest,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
     }
 
@@ -5880,6 +5903,8 @@ internal class SharedThreadDataSource(
             "thread_page_size source=$source server=${session.currentServerId.orEmpty()} pageSize=$pageSize"
         )
         var rawPage = RawMessagePageWitness.None
+        // Phase 3b: read before the request (with the identity): a horizonReset during it voids the page's head claim.
+        val headEpochAtRequest = durableHeadEpochOrNull(resolutionScope.provenance)
         val result =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
@@ -5927,7 +5952,8 @@ internal class SharedThreadDataSource(
                             rawPage.page?.let { page ->
                                 SharedThreadDurablePage(
                                     context = ReplyCacheProducerContext(session, resolutionScope.provenance),
-                                    rawPage = page
+                                    rawPage = page,
+                                    headEpochAtRequest = headEpochAtRequest,
                                 )
                             }
                     )
@@ -6040,6 +6066,8 @@ internal class SharedThreadDataSource(
     ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
+        // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
+        val headEpochAtRequest = durableHeadEpochOrNull(replyResolutionScope.provenance)
         val contextResult =
             fetchThreadSnapshotFromRepository(
                 fallbackCode = "thread_focused_context",
@@ -6070,6 +6098,7 @@ internal class SharedThreadDataSource(
                         rawPage = rawPage,
                         hasOlder = context.canLoadMoreBefore,
                         hasNewer = context.canLoadMoreAfter,
+                        headEpochAtRequest = headEpochAtRequest,
                     )
                 )
             }
@@ -10320,6 +10349,7 @@ internal class SharedThreadStore(
                     anchorSeq = anchorSeq,
                     rawPage = durablePage.rawPage,
                     replyParent = replyParent,
+                    headEpochAtRequest = durablePage.headEpochAtRequest,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -11163,6 +11193,7 @@ internal class SharedThreadStore(
                     rawPage = durablePage.rawPage,
                     replyParent = replyParent,
                     baseline = baseline,
+                    headEpochAtRequest = durablePage.headEpochAtRequest,
                 )
             } catch (cancellation: CancellationException) {
                 throw cancellation
