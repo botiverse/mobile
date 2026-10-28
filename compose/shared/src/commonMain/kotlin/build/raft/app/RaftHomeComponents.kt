@@ -2424,6 +2424,23 @@ private fun RaftStructuralHomeShellContent(
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
+                if (serverSwitcherInTopBar && !raftUnderAppShellTopBar()) {
+                    // iPhone Duo's inner screen (raft-design #859): no top bar, so the sidebar has
+                    // its 56dp head with the destination's name, its seam on the rail header's.
+                    // The server switcher is the rail's tile, not this head.
+                    RaftTopPageHeader(
+                        title = stringResource(Res.string.tab_home),
+                        backgroundColor = RaftColor.Canvas,
+                        topSafeAreaOverride = topSafeArea,
+                        contentStartPadding = RaftMainTabHeaderStartPadding,
+                        titleStyle = RaftMainTabHeaderTitleStyle,
+                        onTitleClick = {
+                            dismissNotificationCenterForFocusLoss()
+                            listScope.launch { listState.animateScrollToTopExpressive() }
+                        },
+                        showBodyTopBanner = false,
+                    )
+                }
                 RaftAppShellBodyTopBanner()
                 // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
                 if (unreadStale) {
@@ -5058,9 +5075,18 @@ internal fun RaftAppTopBarNotificationBell(
     HomeNotificationBellButton(notifications, open, onToggle, RaftAppTopBarNotificationTriggerSize)
 }
 
-/** The bell's popover under the wide top bar, at its trailing end; shown while [state] is open. */
+/**
+ * The bell's popover, shown while [state] is open: under the wide top bar, at its trailing end; or,
+ * with [besideRail] (the bell in the rail's footer, iPhone Duo's inner screen), next to the rail,
+ * 8dp past its seam and 8dp above [bottomInset], rising from the bell.
+ */
 @Composable
-internal fun RaftAppTopBarNotificationOverlay(state: RaftAppShellTopBarState, topInset: Dp) {
+internal fun RaftAppTopBarNotificationOverlay(
+    state: RaftAppShellTopBarState,
+    topInset: Dp,
+    besideRail: Boolean = false,
+    bottomInset: Dp = 0.dp,
+) {
     if (!state.bellOpen.value) return
     RaftFloatingOverlayHost(
         onDismiss = { state.bellOpen.value = false },
@@ -5071,10 +5097,18 @@ internal fun RaftAppTopBarNotificationOverlay(state: RaftAppShellTopBarState, to
                 state.notifications,
                 state.onView,
                 state.onDismiss,
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = topInset, end = RaftTopBarDefaults.TrailingEndPadding)
-                    .raftFloatingContentClickTarget()
+                if (besideRail) {
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = RaftAppRailOuterWidth + RaftAppRailPopoverGap,
+                            bottom = bottomInset + RaftAppRailPopoverGap,
+                        )
+                } else {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = topInset, end = RaftTopBarDefaults.TrailingEndPadding)
+                }.raftFloatingContentClickTarget()
             )
         }
     }

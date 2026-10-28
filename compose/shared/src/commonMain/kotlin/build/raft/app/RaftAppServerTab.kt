@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -139,6 +140,12 @@ internal enum class RaftServerMenuAnchor {
      * one server entry.
      */
     TopBar,
+
+    /**
+     * Next to the rail header's workspace tile (iPhone Duo's inner screen, no top bar): at the
+     * top, past the rail's seam, its top on the tile's, 256dp wide.
+     */
+    RailHeader,
 }
 
 /**
@@ -209,19 +216,20 @@ internal fun RaftAppServerMenuOverlay(
         RaftDesignSystemTheme {
             RaftMobileNavServerPopover(
                 state = state,
+                modifier = if (anchor == RaftServerMenuAnchor.RailHeader) Modifier.padding(start = RaftAppRailOuterWidth) else Modifier,
                 bottomInset = bottomInset,
                 topInset = topInset,
                 screenHeight = screenHeight,
                 alignment =
                     when (anchor) {
-                        RaftServerMenuAnchor.TopBar -> Alignment.TopStart
+                        RaftServerMenuAnchor.TopBar, RaftServerMenuAnchor.RailHeader -> Alignment.TopStart
                         RaftServerMenuAnchor.BottomBar -> Alignment.BottomCenter
                     },
             ) {
                 RaftMobileNavServerPopoverContent(
                     modifier =
                         Modifier
-                            .then(if (anchor == RaftServerMenuAnchor.TopBar) Modifier.width(RaftServerMenuTopBarWidth) else Modifier)
+                            .then(if (anchor != RaftServerMenuAnchor.BottomBar) Modifier.width(RaftServerMenuTopBarWidth) else Modifier)
                             .raftFloatingContentClickTarget(),
                     paneTitle = panelTitle,
                 ) {

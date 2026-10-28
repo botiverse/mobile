@@ -6792,14 +6792,22 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // iPhone Duo's inner screen (raft-design #859): the wide layout without the top bar; the rail
+    // holds the server tile, Search and the bell.
+    val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive)
     // The server panel: over the content on the phone (above its bar), over the whole shell under
-    // the wide top bar's workspace button ([topBar]).
+    // the wide top bar's workspace button ([topBar]), or next to the rail header's tile.
     val serverMenuOverlay: @Composable (topBar: Boolean) -> Unit = { topBar ->
         if (serverMenuState.open && serverMenuModel != null && serverMenuContent != null) {
             RaftAppServerMenuOverlay(
                 model = serverMenuModel,
                 state = serverMenuState,
-                anchor = if (topBar) RaftServerMenuAnchor.TopBar else RaftServerMenuAnchor.BottomBar,
+                anchor =
+                    when {
+                        !topBar -> RaftServerMenuAnchor.BottomBar
+                        railWithoutTopBar -> RaftServerMenuAnchor.RailHeader
+                        else -> RaftServerMenuAnchor.TopBar
+                    },
                 entries =
                     raftServerMenuEntriesFor(
                         serverMenuModel.entries,
@@ -6824,7 +6832,8 @@ private fun RaftAppShellReadyContent(
                         serverMenuContent.snapshot.server,
                         { serverId -> serverSwitcherInviteServerId = serverId }
                     ) { serverMenuState.dismiss() },
-                topInset = if (topBar) raftAppShellTopBarMenuTopInset(shellScope.topSafeArea) else shellScope.topSafeArea,
+                topInset =
+                    if (topBar && !railWithoutTopBar) raftAppShellTopBarMenuTopInset(shellScope.topSafeArea) else shellScope.topSafeArea,
                 screenHeight =
                     shellScope.adaptivePane
                         .takeIf { it.heightPx > 0 && it.density > 0f }
@@ -6842,7 +6851,10 @@ private fun RaftAppShellReadyContent(
 
     // artin task #8: the wide top bar's bell, and the sign to the list panes under it that they
     // have no head of their own.
-    val appShellTopBar = remember { RaftAppShellTopBarState() }
+    // Starts with this layout's value, so the first frame's panes are right; later changes (the
+    // posture arriving, the window turning) land after composition (sindresorhus, #3906).
+    val appShellTopBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
         RaftAppShellSurface(
@@ -6900,10 +6912,46 @@ private fun RaftAppShellReadyContent(
                                     )
                                 )
                             }
-                        val railItems = appShellRailTabItems.orderedLikePhoneBar { it.key }
+                        val railItems =
+                            appShellRailTabItems.orderedLikePhoneBar { it.key }.let { items ->
+                                if (railWithoutTopBar) {
+                                    appShellRailItemsWithSearch(
+                                        items = items,
+                                        searchLabel = searchTabLabel,
+                                        searchOpen = railInlineSecondaryDestination == AppShellRailSearchKey,
+                                    )
+                                } else {
+                                    items
+                                }
+                            }
+                        if (railWithoutTopBar) {
+                            // Without the top bar the system's side column holds the history's Back.
+                            raftSideColumnFallbackBack(
+                                raftSideColumnBackAction(
+                                    onBack = {
+                                        appShellTopBar.bellOpen.value = false
+                                        navigateWideHistory(RaftWideNavDirection.Back, source = "side_column")
+                                    },
+                                    enabled = wideNavHistory.canGoBack,
+                                )
+                            )
+                        }
                         RaftNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
+                                if (key == AppShellRailSearchKey) {
+                                    // The rail's Search: the inline Search over the current tab.
+                                    serverMenuState.dismiss()
+                                    appShellTopBar.bellOpen.value = false
+                                    RaftProductEvents.navEntrySelected(
+                                        destination = appShellNavDestination(AppShellRailSearchKey),
+                                        surface = RaftNavSurface.Rail,
+                                        wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
+                                    )
+                                    railInlineSecondaryDestination = AppShellRailSearchKey
+                                    bridge.log("app_shell_rail_secondary_open destination=search from=rail")
+                                    return@RaftNavigationRailTabBar
+                                }
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
@@ -6919,7 +6967,12 @@ private fun RaftAppShellReadyContent(
                             },
                             modifier = Modifier.fillMaxHeight(),
                             // The server tab at the foot is the phone's; the top bar holds the server.
-                            bottomItems = railBottomItems,
+                            bottomItems =
+                                if (railWithoutTopBar && railInlineSecondaryDestination == AppShellRailSearchKey) {
+                                    railBottomItems.map { it.copy(selected = false) }
+                                } else {
+                                    railBottomItems
+                                },
                             onBottomItemSelect = { key ->
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
@@ -6928,16 +6981,38 @@ private fun RaftAppShellReadyContent(
                                 )
                                 onAppShellTabSelected(key)
                             },
-                            // The top bar above the rail clears the status bar.
-                            topSafeArea = 0.dp,
-                            bottomSafeArea = shellScope.bottomSafeArea
+                            // The top bar above the rail clears the status bar; without it the rail does.
+                            topSafeArea = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
+                            bottomSafeArea = shellScope.bottomSafeArea,
+                            header =
+                                if (railWithoutTopBar && serverMenuModel != null) {
+                                    {
+                                        RaftAppRailServerTile(
+                                            model = serverMenuModel,
+                                            open = serverMenuState.open,
+                                            onClick = {
+                                                appShellTopBar.bellOpen.value = false
+                                                bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open} from=rail")
+                                                serverMenuState.toggle()
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                            footerTools =
+                                if (railWithoutTopBar) {
+                                    { RaftAppRailNotificationBell(appShellTopBar, onToggle = { serverMenuState.dismiss() }) }
+                                } else {
+                                    null
+                                },
                         )
                     }
                 } else {
                     null
                 },
             topNavigation =
-                if (navRailActive) {
+                if (navRailActive && !railWithoutTopBar) {
                     {
                         // iPhone Duo's inner screen held sideways (raft-design #859): the system's
                         // side column holds Back (the wide history's), so the bar draws no arrows.
@@ -7008,7 +7083,12 @@ private fun RaftAppShellReadyContent(
                 if (navRailActive) {
                     {
                         serverMenuOverlay(true)
-                        RaftAppTopBarNotificationOverlay(appShellTopBar, raftAppShellTopBarMenuTopInset(shellScope.topSafeArea))
+                        RaftAppTopBarNotificationOverlay(
+                            appShellTopBar,
+                            raftAppShellTopBarMenuTopInset(shellScope.topSafeArea),
+                            besideRail = railWithoutTopBar,
+                            bottomInset = shellScope.bottomSafeArea,
+                        )
                     }
                 } else {
                     null
@@ -7016,7 +7096,7 @@ private fun RaftAppShellReadyContent(
         ) {
                     // The wide top bar clears the status bar: the pages under it start at its seam.
                     @Suppress("NAME_SHADOWING")
-                    val shellScope = if (navRailActive) shellScope.copy(topSafeArea = 0.dp) else shellScope
+                    val shellScope = if (navRailActive && !railWithoutTopBar) shellScope.copy(topSafeArea = 0.dp) else shellScope
                     if (!navRailActive && showAppShellBottomTabs) serverMenuOverlay(false)
                     serverSwitcherInviteServerId?.let { inviteServerId ->
                         val inviteMembersDataSource =
@@ -9743,7 +9823,7 @@ private fun SharedMembersScreen(
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
                 // No head under the wide top bar, as the loaded list (MembersListContent).
-                if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+                if (!raftUnderAppShellTopBar() || onBack != null) {
                     MembersPageHeader(title = membersTitle, onBack = onBack)
                 }
                 RaftCenteredLoading()
