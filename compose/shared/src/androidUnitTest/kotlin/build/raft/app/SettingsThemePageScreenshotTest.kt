@@ -1,12 +1,7 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -21,23 +16,24 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Settings › Appearance › "Theme on {server}" (web ServerThemeSection), light and dark: a Free
- * server wearing Space, so the swatch grid shows the selected card, Raft Yellow's "Default", the
- * Pro tag on Boring Gray and the decorations switch on. Reports land in
- * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * Settings › Theme (web ServerThemeSection after botiverse/slock#11355), light and dark: the
+ * description, "Light and dark" first, then a Free server wearing Space, so the swatch grid shows
+ * the selected card, Raft Yellow's "Default", the Pro tag on Boring Gray and the decorations
+ * switch on. Reports land in `build/reports/home-screenshots/`; verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h1260dp-xxhdpi")
-class SettingsServerThemeScreenshotTest {
+@Config(sdk = [34], qualifiers = "w390dp-h1600dp-xxhdpi")
+class SettingsThemePageScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun light() = capture("settings.appearance.server-theme", RaftAppAppearance.Light)
+    fun light() = capture("settings.theme.page", RaftAppAppearance.Light)
 
     @Test
-    fun dark() = capture("settings.appearance.server-theme.dark", RaftAppAppearance.Dark)
+    fun dark() = capture("settings.theme.page.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -47,8 +43,8 @@ class SettingsServerThemeScreenshotTest {
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 build.raft.app.components.RaftDesignSystemTheme {
-                    Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
-                        SettingsServerThemeCard(
+                    SettingsThemeContent(
+                        serverTheme =
                             SettingsServerThemeBinding(
                                 state =
                                     SettingsServerThemeState(
@@ -60,9 +56,9 @@ class SettingsServerThemeScreenshotTest {
                                     ),
                                 onPick = {},
                                 onDecorChange = {},
-                            )
-                        )
-                    }
+                            ),
+                        bottomContentPadding = 16.dp,
+                    )
                 }
             }
         }

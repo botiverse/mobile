@@ -174,6 +174,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Music("music"),
     PackageCheck("package-check"),
     Package("package"),
+    Palette("palette"),
     Paperclip("paperclip"),
     PanelBottomOpen("panel-bottom-open"),
     Pause("pause"),

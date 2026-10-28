@@ -31,7 +31,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Settings > Appearance > "Theme on {server}", web ServerThemeSection.tsx:95-135
+ * Settings > Theme (the server themes), web ServerThemeSection.tsx:95-135
  * (botiverse/slock@aed2ba714cea38507191289c3c17669b46b25b6f): a pick applies at once through the
  * stored server and saves; a failed save puts the confirmed look back; a Pro theme on Free asks
  * for the upgrade and sends nothing; the decorations switch PATCHes only `themeDecor`.

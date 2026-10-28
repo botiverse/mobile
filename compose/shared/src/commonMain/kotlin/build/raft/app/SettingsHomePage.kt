@@ -16306,7 +16306,9 @@ private fun SettingsVisualAppearanceContent() {
         onFontSizeDraftChange = {},
         onActivitySenderAvatarsChange = {},
         onSave = {},
-        onRetry = {}
+        onRetry = {},
+        // The fixture has a current server, so light and dark is on the Theme page.
+        showModeCard = false,
     )
 }
 

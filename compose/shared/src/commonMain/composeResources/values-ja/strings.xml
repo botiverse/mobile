@@ -114,6 +114,7 @@
     <string name="settings_title">設定</string>
     <string name="settings_navigation_section_personal">個人</string>
     <string name="settings_navigation_section_workspace">ワークスペース</string>
+    <string name="settings_navigation_section_on_server">%1$s での自分</string>
     <string name="settings_navigation_section_about">リソース</string>
     <string name="settings_account_title">アカウント</string>
     <string name="settings_account_subtitle">プロフィール、メール、パスワード、連携アカウント</string>
@@ -229,7 +230,8 @@
     <string name="settings_appearance_mode_light">ライト</string>
     <string name="settings_appearance_mode_dark">ダーク</string>
     <string name="settings_appearance_mode_system">システム</string>
-    <string name="settings_server_theme_title">%1$s のテーマ</string>
+    <string name="settings_theme_title">テーマ</string>
+    <string name="settings_theme_group_mode">ライトとダーク</string>
     <string name="settings_server_theme_description">%1$s での見た目です。あなたにだけ見えます。</string>
     <string name="settings_server_theme_group_basics">基本</string>
     <string name="settings_server_theme_group_avatars">アバターシリーズ</string>

@@ -114,6 +114,7 @@
     <string name="settings_title">设置</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作空间</string>
+    <string name="settings_navigation_section_on_server">我在 %1$s</string>
     <string name="settings_navigation_section_about">资源</string>
     <string name="settings_account_title">账户</string>
     <string name="settings_account_subtitle">资料、邮箱、密码、连接的账户</string>
@@ -227,7 +228,8 @@
     <string name="settings_appearance_mode_light">浅色</string>
     <string name="settings_appearance_mode_dark">深色</string>
     <string name="settings_appearance_mode_system">系统</string>
-    <string name="settings_server_theme_title">%1$s 的主题</string>
+    <string name="settings_theme_title">主题</string>
+    <string name="settings_theme_group_mode">浅色和深色</string>
     <string name="settings_server_theme_description">你在 %1$s 看到的样子。只有你看得到。</string>
     <string name="settings_server_theme_group_basics">基础</string>
     <string name="settings_server_theme_group_avatars">头像系列</string>

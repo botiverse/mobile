@@ -1569,6 +1569,17 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m7.5 4.27 9 5.15"),
                     ),
                 )
+            RaftLucideIconName.Palette ->
+                RaftLucideIconSpec(
+                    "palette",
+                    listOf(
+                        RaftLucidePathSpec("M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"),
+                        RaftLucidePathSpec("M 13.0 6.5 A 0.5 0.5 0 1 0 14.0 6.5 A 0.5 0.5 0 1 0 13.0 6.5 Z", fillPaint = "currentColor"),
+                        RaftLucidePathSpec("M 17.0 10.5 A 0.5 0.5 0 1 0 18.0 10.5 A 0.5 0.5 0 1 0 17.0 10.5 Z", fillPaint = "currentColor"),
+                        RaftLucidePathSpec("M 6.0 12.5 A 0.5 0.5 0 1 0 7.0 12.5 A 0.5 0.5 0 1 0 6.0 12.5 Z", fillPaint = "currentColor"),
+                        RaftLucidePathSpec("M 8.0 7.5 A 0.5 0.5 0 1 0 9.0 7.5 A 0.5 0.5 0 1 0 8.0 7.5 Z", fillPaint = "currentColor"),
+                    ),
+                )
             RaftLucideIconName.Paperclip ->
                 RaftLucideIconSpec(
                     "paperclip",

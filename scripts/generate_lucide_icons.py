@@ -220,6 +220,7 @@ LUCIDE_ICONS = [
     "music",
     "package-check",
     "package",
+    "palette",
     "paperclip",
     "panel-bottom-open",
     "pause",

@@ -23,6 +23,11 @@ internal enum class SettingsNativeDetailPage(
     LanguageRegion("language-region", SharedSettingsDestination.LanguageRegion),
     Appearance("appearance", SharedSettingsDestination.Appearance),
     Notifications("notifications", SharedSettingsDestination.Notifications),
+    /**
+     * The member's own look on the current server (web Settings > Theme). It loads no settings
+     * snapshot of its own; Appearance's is the nearest (the server theme reads the stored session).
+     */
+    Theme("theme", SharedSettingsDestination.Appearance),
     Mobile("mobile", SharedSettingsDestination.Mobile),
     Server("server", SharedSettingsDestination.Server),
     About("about", SharedSettingsDestination.About),
