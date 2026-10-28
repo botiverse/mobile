@@ -6,8 +6,10 @@ import build.raft.app.shared.data.local.SelectCanonicalFactInScope
 import build.raft.app.shared.data.local.SyncCursorEntity
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 sealed interface CanonicalMessageV2IncrementalDecision {
     data object Apply : CanonicalMessageV2IncrementalDecision
@@ -148,6 +150,11 @@ interface CanonicalMessageV2Store {
         threadParent: CanonicalMessageV2ThreadParent? = null,
         insertOnly: Boolean = false,
         unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
+        /**
+         * Phase 3a: `false` skips step 3's PARTITION retention (scope retention still runs). A realtime loose
+         * writer runs it only every few writes, so one frame never scans the whole partition.
+         */
+        runPartitionRetention: Boolean = true,
     ): CanonicalMessageV2StoreWriteResult = throw UnsupportedOperationException("applyCoverage")
 
     /** The scope's stored segments, normalized, by lowSeq. */
@@ -224,10 +231,13 @@ class CanonicalMessageV2GenerationEngine(
         return try {
             entry.mutex.withLock { block() }
         } finally {
-            writerRegistryMutex.withLock {
-                entry.users -= 1
-                if (entry.users == 0 && writerMutexByScope[scope] === entry) {
-                    writerMutexByScope.remove(scope)
+            // A cancelled writer must still release its entry, or the scope's registry leaks a user.
+            withContext(NonCancellable) {
+                writerRegistryMutex.withLock {
+                    entry.users -= 1
+                    if (entry.users == 0 && writerMutexByScope[scope] === entry) {
+                        writerMutexByScope.remove(scope)
+                    }
                 }
             }
         }
@@ -299,6 +309,50 @@ class CanonicalMessageV2GenerationEngine(
             is CanonicalMessageV2IncrementalDecision.Hold ->
                 CanonicalMessageV2CommitResult.BaselineRequired(decision.requestRebaseline)
         }
+    }
+
+    /**
+     * [CanonicalMessageV2Store.applyCoverage] as a partition mutation, like every other write: refused
+     * ([CanonicalMessageV2CommitResult.PartitionRevoked]) when the partition was cleared since the writer read
+     * [expectedPartitionGeneration]; bumps the scope's commit generation and invalidates evicted scopes.
+     */
+    suspend fun applyCoverage(
+        scope: SyncScopeKey,
+        envelopes: List<CanonicalMessageEnvelopeV2>,
+        coverage: CanonicalMessageV2Coverage?,
+        revAtRequest: Long,
+        userDriven: Boolean,
+        expectedPartitionGeneration: Long?,
+        threadParent: CanonicalMessageV2ThreadParent? = null,
+        insertOnly: Boolean = false,
+        unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
+        /** Phase 3a: see [CanonicalMessageV2Store.applyCoverage]. */
+        runPartitionRetention: Boolean = true,
+        /**
+         * Phase 3a: `false` for a realtime loose fact. It only adds or refreshes facts and claims nothing, so it
+         * never makes a page fetched before it stale ([scopeCommitGeneration] stays).
+         */
+        countsAsScopeCommit: Boolean = true,
+    ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
+        requireV2Scope(scope)
+        if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
+            return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
+        }
+        val write = store.applyCoverage(
+            scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
+            runPartitionRetention,
+        )
+        if (countsAsScopeCommit) bumpScopeCommitGeneration(scope)
+        invalidateEvictedScopes(write.evictedScopes)
+        if (scope in write.evictedScopes) return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
+        write.committedCursor?.let { committed -> synchronized(stateLock) { cursorByScope[scope] = committed } }
+        CanonicalMessageV2CommitResult.Committed
+    }
+
+    /** Pass-through of [CanonicalMessageV2Store.maxLocalRev]: read it before a request (revAtRequest). */
+    suspend fun storedLocalRev(scope: SyncScopeKey): Long {
+        requireV2Scope(scope)
+        return store.maxLocalRev(scope)
     }
 
     suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
@@ -373,10 +427,12 @@ class CanonicalMessageV2GenerationEngine(
         return try {
             entry.mutex.withLock { block() }
         } finally {
-            partitionRegistryMutex.withLock {
-                entry.users -= 1
-                if (entry.users == 0 && partitionMutexByKey[partition] === entry) {
-                    partitionMutexByKey.remove(partition)
+            withContext(NonCancellable) {
+                partitionRegistryMutex.withLock {
+                    entry.users -= 1
+                    if (entry.users == 0 && partitionMutexByKey[partition] === entry) {
+                        partitionMutexByKey.remove(partition)
+                    }
                 }
             }
         }
@@ -446,6 +502,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         threadParent: CanonicalMessageV2ThreadParent?,
         insertOnly: Boolean,
         unknownFieldsByFactId: Map<String, Set<MessageAggregateField>>,
+        runPartitionRetention: Boolean,
     ): CanonicalMessageV2StoreWriteResult {
         requireV2Scope(scope)
         require(revAtRequest >= 0L) { "revAtRequest must be a stored revision" }
@@ -517,7 +574,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 lastUserAccessAtMs = if (userDriven) nowMs else header?.lastUserAccessAtMs,
             )
             if (userDriven) touchParentScopeInsideTransaction(scope, written)
-            evictedScopes += prunePartitionInsideTransaction(scope.partition)
+            if (runPartitionRetention) evictedScopes += prunePartitionInsideTransaction(scope.partition)
             committedCursor = written
             if (faultHook.shouldKillAt(PersistFaultPoint.BeforeCommit)) {
                 throw PersistKilled(PersistFaultPoint.BeforeCommit)
@@ -1203,7 +1260,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 factCount = row.factCount,
                 byteCount = row.byteCount,
             )
-        }
+        }.withDependentAccessRank()
         fun evict(stat: ScopeRetentionStats, reason: String) {
             if (stat.scope in evictedScopes) return
             logEviction(stat.scope, reason)
@@ -1261,6 +1318,38 @@ internal class SqlDelightCanonicalMessageV2Store(
         val factCount: Long,
         val byteCount: Double,
     )
+
+    /**
+     * Message storage Phase 3a: a channel / DM header written only by realtime (never opened: access NULL, ranked
+     * least recently used) may be the parent of a reply thread the user did open. Evicting the parent evicts its
+     * replies too (`parent_evicted`), so a top-level scope ranks by the most recent access of itself OR any of its
+     * reply threads. Thread scopes keep their own rank. Same order otherwise: accessed first (newest first), then
+     * by last write; a legacy scope (no dependent thread) ranks exactly as before.
+     */
+    private fun List<ScopeRetentionStats>.withDependentAccessRank(): List<ScopeRetentionStats> {
+        val threads = filter { it.scope.scopeKind == THREAD_SCOPE_KIND && it.lastUserAccessAtMs != null }
+        if (threads.isEmpty()) return this
+        val childAccessByParent = mutableMapOf<SyncScopeKey, Long>()
+        threads.forEach { thread ->
+            val header = selectHeader(thread.scope) ?: return@forEach
+            val parentKind = header.parentScopeKind ?: return@forEach
+            val parentId = header.parentScopeId ?: return@forEach
+            val parent = SyncScopeKey(partition = thread.scope.partition, scopeId = parentId, scopeKind = parentKind)
+            val access = checkNotNull(thread.lastUserAccessAtMs)
+            childAccessByParent[parent] = maxOf(childAccessByParent[parent] ?: access, access)
+        }
+        if (childAccessByParent.isEmpty()) return this
+        return map { stat ->
+            val childAccess = childAccessByParent[stat.scope] ?: return@map stat
+            stat.copy(lastUserAccessAtMs = maxOf(stat.lastUserAccessAtMs ?: childAccess, childAccess))
+        }.sortedWith(
+            compareBy<ScopeRetentionStats> { it.lastUserAccessAtMs == null }
+                .thenByDescending { it.lastUserAccessAtMs ?: Long.MIN_VALUE }
+                .thenByDescending { it.updatedAtMs }
+                .thenBy { it.scope.scopeKind }
+                .thenBy { it.scope.scopeId },
+        )
+    }
 
     private fun logEviction(scope: SyncScopeKey, reason: String) {
         logger(

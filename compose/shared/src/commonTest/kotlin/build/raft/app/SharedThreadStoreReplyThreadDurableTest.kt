@@ -548,7 +548,10 @@ class SharedThreadStoreReplyThreadDurableTest {
         scopeJob.cancelAndJoin()
     }
 
-    private suspend fun ownSendCatchUpRun(diskHasTheSend: Boolean): Pair<List<ReplyRead>, List<String>> =
+    private suspend fun ownSendCatchUpRun(
+        diskHasTheSend: Boolean,
+        sendStoredLoose: Boolean = false,
+    ): Pair<List<ReplyRead>, List<String>> =
         kotlinx.coroutines.coroutineScope {
             val logs = mutableListOf<String>()
             val scopeJob = SupervisorJob()
@@ -564,6 +567,8 @@ class SharedThreadStoreReplyThreadDurableTest {
             withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
             loader.replyLoads.clear()
             if (diskHasTheSend) reader.frame = replyFrame(count = 16)
+            // Message storage Phase 3a: the realtime echo is stored, but loose (above the stored window 1..15).
+            if (sendStoredLoose) reader.frame = replyFrame(count = 16).let { it.copy(cursor = it.cursor.copy(newestLoadedSeq = 15)) }
             store.accept(
                 SharedThreadIntent.ReplaceLocalSendWithSentPage(
                     messageId = "local-16",
@@ -588,6 +593,10 @@ class SharedThreadStoreReplyThreadDurableTest {
         val (twinLoads, twinLogs) = ownSendCatchUpRun(diskHasTheSend = true)
         assertEquals(emptyList(), twinLoads)
         assertEquals(emptyList(), twinLogs)
+        // Phase 3a twin: the echo is on disk only as a loose fact (no covered range holds it): still refetched.
+        val (looseLoads, looseLogs) = ownSendCatchUpRun(diskHasTheSend = false, sendStoredLoose = true)
+        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), looseLoads, looseLogs.toString())
+        assertTrue("sent=1 stored=false requested=true" in looseLogs.single(), looseLogs.toString())
     }
 
 }
