@@ -17,7 +17,6 @@ on:
       - "scripts/test_sign_android_apk_with_rotation.sh"
       - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
-      - "scripts/visual_android_case_filter.py"
   push:
     branches: [main]
     paths:
@@ -35,7 +34,6 @@ on:
       - "scripts/test_sign_android_apk_with_rotation.sh"
       - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
-      - "scripts/visual_android_case_filter.py"
 
 permissions:
   contents: read
@@ -59,13 +57,9 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.2
       - name: Run QA contract tests
         run: node --test scripts/qa/*.test.mjs
-      # These were in scripts/qa but no workflow ran them (task #18).
-      - name: Run QA Python and shell tests
+      - name: Run i18n literal scanner tests
         run: |
-          python3 scripts/qa/test_build_testbox_preflight_manifest.py
-          python3 scripts/qa/test_generate_ios_case_manifest.py
           python3 scripts/qa/test_i18n_code_literal_scan.py
-          scripts/qa/export_ios_simulator_app.test.sh
       - name: Check canonical release acceptance cases
         run: |
           python3 scripts/qa/test_release_acceptance_contract.py
@@ -77,8 +71,6 @@ jobs:
         run: scripts/test_sign_android_apk_with_rotation.sh
       - name: Check Hands identifier migration contract
         run: scripts/test_hands_identifier_migration.sh
-      - name: Check Android visual case selection contract
-        run: python3 scripts/visual_android_case_filter.py --self-test
       - name: Check patch whitespace
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

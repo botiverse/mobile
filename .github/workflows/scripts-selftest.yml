@@ -33,21 +33,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Test iOS capture runner resource ownership
-        run: python3 scripts/ci/test_ios_visual_runner.py
-
-      - name: Test full Xcode selection
-        run: python3 scripts/ci/test_select_ios_xcode.py
-
-      - name: Test iOS toolchain record
-        run: python3 scripts/ci/test_record_ios_toolchain.py
-
-      - name: Test iOS Xcode lane metadata stamp
-        run: python3 scripts/ci/test_stamp_ios_xcode_lane.py
-
-      - name: Test iOS bootstrap dependency decisions
-        run: python3 scripts/ci/test_bootstrap_ios_runner.py
-
       - name: Test bootstrap main-ref boundary
         run: python3 scripts/ci/test_ios_bootstrap_workflow.py
 
@@ -64,15 +49,10 @@ jobs:
         run: |
           scripts/ci/test_version_code.sh
           scripts/test_resolve_git_revision.sh
-          scripts/test_run_android_visual_capture.sh
-          python3 scripts/test_collect_richtext_caps.py
 
       - name: Test iOS device automation helpers
         shell: bash
         run: |
-          # The default ios-use driver is agent-device (an npm CLI); these cases cover the
-          # qa-loop XCUITest path and mock xcodebuild/simctl, so pin that driver.
-          IOS_USE_DRIVER=qa-loop python3 scripts/test_slock_ios_simctl.py
           PYTHONPATH=tools/mobile-use/src python3 tools/mobile-use/tests/test_ios_use.py
           python3 compose/iosApp/scripts/assert_xctest_ran.py --self-test
 

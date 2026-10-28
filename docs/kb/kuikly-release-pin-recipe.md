@@ -1,6 +1,6 @@
 # Kuikly release-set pin upgrade recipe
 
-> **Stale (2026-10-19):** Kuikly UI left Mobile in the Compose Multiplatform switch. The closure, manifest gate and fetcher named below were deleted; nothing in the build consumes a Kuikly release any more. Kept for history only.
+> **Stale (2026-10-19):** Kuikly UI left Mobile in the Compose Multiplatform switch. The closure, manifest gate, fetcher and consumer contract test named below were deleted; nothing in the build consumes a Kuikly release any more. Kept for history only.
 
 Owner: Mahua · Verified at: 2026-10-19 · Status: stale
 

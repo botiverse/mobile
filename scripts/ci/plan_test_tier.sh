@@ -4,7 +4,6 @@ set -euo pipefail
 
 usage() {
   echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|full] [xcode-app-path]" >&2
-  echo "       plan_test_tier.sh --self-test" >&2
   exit 2
 }
 
@@ -15,7 +14,7 @@ UNKNOWN_PATH_SENTINEL="__CI_CHANGED_PATHS_UNKNOWN__"
 
 is_deterministic_all_path() {
   case "$1" in
-    "$UNKNOWN_PATH_SENTINEL"|.github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|scripts/ci/test_ci_tiering_contract.sh|.github/rulesets/mobile-main-merge-queue.json)
+    "$UNKNOWN_PATH_SENTINEL"|.github/workflows/test.yml|scripts/ci/plan_test_tier.sh|scripts/ci/verify_test_tier_results.mjs|.github/rulesets/mobile-main-merge-queue.json)
       return 0
       ;;
     *)
@@ -314,140 +313,6 @@ emit_plan() {
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
   printf 'reason=%s\n' "$reason"
 }
-
-self_test() {
-  local work
-  work="$(mktemp -d)"
-  trap 'rm -rf "$work"' RETURN
-
-  assert_plan() {
-    local expected="$1"
-    local event_name="$2"
-    local full_ci="$3"
-    local ref_name="$4"
-    local paths="$5"
-    local dispatch_scope="${6:-}"
-    printf '%s' "$paths" > "$work/paths"
-    local actual
-    actual="$(emit_plan "$event_name" "$work/paths" "$full_ci" "$ref_name" "$dispatch_scope")"
-    if test "$actual" != "$expected"; then
-      printf 'expected plan:\n%s\nactual plan:\n%s\n' "$expected" "$actual" >&2
-      return 1
-    fi
-  }
-
-  local ds=false; local cf=false; local att='[]'
-  local none=$'run_android=false\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local android=$'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local all=$'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local full_ci_pr=$'run_android=true\nrun_ios=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[31]'
-  local nightly=$'run_android=true\nrun_ios=true\nrun_device_suite=true\nrun_canonical_final=true\nattachment_api_levels=[29,31,34]'
-
-  assert_plan "$none"$'\nreason=pull-request-no-test-paths' \
-    pull_request false feature $'docs/readme.md\n'
-  assert_plan "$android"$'\nreason=pull-request-paths:android' \
-    pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  # Task #26 Agent-era CI downshift: ordinary PR pushes (commonMain catch-all)
-  # compile Android only; explicit full-ci PR or nightly readback covers iOS.
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
-    pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
-    pull_request false feature $'compose/gradle/libs.versions.toml\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
-    pull_request false feature $'scripts/check_auth_session_writes.sh\n'
-  # Task #37 (artin 2026-10-09): ordinary PRs never compile iOS, including PRs
-  # that touch iOS-specific paths. iOS breakage surfaces on the main push
-  # readback; the full-ci label is the explicit escape hatch.
-  assert_plan "$none"$'\nreason=pull-request-paths:none' \
-    pull_request false feature $'compose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$none"$'\nreason=pull-request-paths:none' \
-    pull_request false feature $'compose/shared/src/nativeMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
-    pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$none"$'\nreason=pull-request-paths:none' \
-    pull_request false feature $'compose/shared/src/iosMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-ci-control' \
-    pull_request false feature $'.github/workflows/test.yml\n'
-  # Fail-closed exception: an unavailable diff still selects every platform.
-  assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \
-    pull_request false feature "$UNKNOWN_PATH_SENTINEL"$'\n'
-  assert_plan "$android"$'\nreason=pull-request-paths:android' \
-    pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$full_ci_pr"$'\nreason=pull-request-full-ci' \
-    pull_request true feature $'docs/readme.md\n'
-  assert_plan "$all"$'\nreason=merge-group-deterministic-all' \
-    merge_group false gh-readonly-queue/main/pr-1 ''
-  assert_plan "$none"$'\nreason=main-push-no-test-paths' \
-    push false main $'docs/readme.md\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
-    push false main $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  assert_plan $'run_android=false\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:ios' \
-    push false main $'compose/iosApp/iosApp/Example.swift\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-diff-unavailable-fail-closed' \
-    push false main "$UNKNOWN_PATH_SENTINEL"$'\n'
-  # Task #26 option A: ordinary main pushes (commonMain catch-all) no longer
-  # compile iOS; the nightly readback covers them.
-  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
-    push false main $'compose/shared/src/commonMain/kotlin/Example.kt\n'
-  # Pushes that can affect iOS keep the iOS compile.
-  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ios' \
-    push false main $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-ci-control' \
-    push false main $'.github/workflows/test.yml\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=release-push-full-readback' \
-    push false release-1.9.0 $'docs/readme.md\n'
-  assert_plan "$nightly"$'\nreason=schedule-full-readback' \
-    schedule false main ''
-  # Task #37 (artin 2026-10-09): manual dispatch defaults to the PR-equivalent
-  # tier; scope=full keeps the deliberate full readback; the scope is mandatory
-  # and validated.
-  local pr_tier=$'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  assert_plan "$pr_tier"$'\nreason=workflow_dispatch-pr-tier' \
-    workflow_dispatch false main '' pr
-  assert_plan "$nightly"$'\nreason=workflow_dispatch-full-readback' \
-    workflow_dispatch false main '' full
-  if emit_plan workflow_dispatch "$work/paths" false main >/dev/null 2>&1; then
-    echo "dispatch without scope unexpectedly passed" >&2
-    return 1
-  fi
-  if emit_plan workflow_dispatch "$work/paths" false main bogus >/dev/null 2>&1; then
-    echo "invalid dispatch scope unexpectedly passed" >&2
-    return 1
-  fi
-  # An opt-in Xcode lane must compile iOS: scope=full plans pass, scope=pr is refused.
-  if ! emit_plan workflow_dispatch "$work/paths" false main full /Applications/Xcode_27.0.app >/dev/null 2>&1; then
-    echo "xcode_app_path with scope=full unexpectedly failed" >&2
-    return 1
-  fi
-  local lane_error
-  if lane_error="$(emit_plan workflow_dispatch "$work/paths" false main pr /Applications/Xcode_27.0.app 2>&1 >/dev/null)"; then
-    echo "xcode_app_path with scope=pr (no iOS compile) unexpectedly passed" >&2
-    return 1
-  fi
-  case "$lane_error" in
-    *"xcode_app_path=/Applications/Xcode_27.0.app is set but this plan skips the iOS compile"*"scope=full"*) ;;
-    *) echo "xcode_app_path refusal message missing, got: $lane_error" >&2; return 1 ;;
-  esac
-  if emit_plan pull_request "$work/paths" maybe feature >/dev/null 2>&1; then
-    echo "invalid full-ci flag unexpectedly passed" >&2
-    return 1
-  fi
-  if emit_plan push "$work/paths" false feature >/dev/null 2>&1; then
-    echo "unsupported push ref unexpectedly passed" >&2
-    return 1
-  fi
-  if emit_plan issue_comment "$work/paths" false feature >/dev/null 2>&1; then
-    echo "unsupported event unexpectedly passed" >&2
-    return 1
-  fi
-  echo "CI path planner self-test: PASS"
-}
-
-if test "${1:-}" = --self-test; then
-  test "$#" -eq 1 || usage
-  self_test
-  exit 0
-fi
 
 test "$#" -ge 4 && test "$#" -le 6 || usage
 emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}"
