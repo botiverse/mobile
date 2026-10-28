@@ -29,19 +29,19 @@ on:
         type: string
         default: "arm64"
       xcode_app_path:
-        description: "Opt-in Xcode for this run, e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge; needs macos_runner=xcode-27*). Empty = the pinned Xcode_26.6. Must be an installed, non-symlink /Applications/Xcode*.app."
+        description: "Xcode for this run. Empty = the pinned default /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge; needs macos_runner=xcode-27*). Fallback: /Applications/Xcode_26.6.app with macos_runner=macos-latest (opt-in lane, letterboxed on iPhone Duo). Must be an installed, non-symlink /Applications/Xcode*.app."
         required: false
         type: string
         default: ""
       macos_runner:
-        description: "macos-latest (default, Xcode <= 26.6) | xcode-27 / xcode-27-xlarge (GitHub Xcode 27 image, billed; required for an Xcode_27* xcode_app_path)"
+        description: "xcode-27 (default; GitHub Xcode 27 image, 7GB, billed; enough for this Debug Simulator build) | xcode-27-xlarge (same image, more RAM/CPU, billed) | macos-latest (Xcode <= 26.6 only: pair with xcode_app_path=/Applications/Xcode_26.6.app)"
         required: false
         type: choice
-        default: "macos-latest"
+        default: "xcode-27"
         options:
-          - macos-latest
           - xcode-27
           - xcode-27-xlarge
+          - macos-latest
   # workflow_dispatch only registers once this file reaches the default
   # branch; until then, pushing an edit of THIS FILE on a branch is the
   # trigger (scoped so ordinary source pushes never burn a macOS runner).
@@ -59,24 +59,25 @@ concurrency:
 jobs:
   build-app:
     name: Build installable Simulator app
-    # push has no inputs: macos-latest + the pinned Xcode.
-    runs-on: ${{ inputs.macos_runner || 'macos-latest' }}
+    # push has no inputs: xcode-27 + the pinned Xcode 27.1.
+    runs-on: ${{ inputs.macos_runner || 'xcode-27' }}
     timeout-minutes: 60
     steps:
-      # Xcode 27 is only on the xcode-27 images, which are not known to carry Xcode 26.6.
+      # Xcode 27 is only on the xcode-27 images, which carry no Xcode 26.x; the 26.6 fallback
+      # needs macos-latest.
       - name: Check runner / Xcode pairing
         shell: bash
         env:
-          RUNNER: ${{ inputs.macos_runner || 'macos-latest' }}
-          XCODE_APP: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          RUNNER: ${{ inputs.macos_runner || 'xcode-27' }}
+          XCODE_APP: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
         run: |
           case "${RUNNER}:${XCODE_APP}" in
             xcode-27*:/Applications/Xcode_27*) ;;
             xcode-27*:*)
-              echo "::error::macos_runner=${RUNNER} has Xcode 27.x only; ${XCODE_APP##*/} is not installed there. Pass xcode_app_path=/Applications/Xcode_27.1.app or use macos-latest."
+              echo "::error::macos_runner=${RUNNER} has Xcode 27.x only; ${XCODE_APP##*/} is not installed there. Leave xcode_app_path empty (Xcode 27.1), or use macos_runner=macos-latest for the Xcode 26.6 fallback."
               exit 1 ;;
             *:/Applications/Xcode_27*)
-              echo "::error::${XCODE_APP##*/} is not installed on ${RUNNER}. Xcode 27 needs macos_runner=xcode-27 or xcode-27-xlarge."
+              echo "::error::${XCODE_APP##*/} is not installed on ${RUNNER}. Xcode 27 needs macos_runner=xcode-27 (the default) or xcode-27-xlarge; on ${RUNNER} pass xcode_app_path=/Applications/Xcode_26.6.app."
               exit 1 ;;
           esac
 
@@ -101,10 +102,10 @@ jobs:
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
-        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane, e.g.
-        # /Applications/Xcode_27.1.app for the iOS 27.1 SDK; empty keeps the pinned default.
+        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane, e.g. the
+        # /Applications/Xcode_26.6.app fallback on macos-latest; empty keeps the pinned 27.1.
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
         shell: bash
         run: |
           bash scripts/ci/select_ios_xcode.sh || {
@@ -115,8 +116,8 @@ jobs:
 
       - name: Record Xcode and iOS SDK
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
-          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
         shell: bash
         # source_sha can predate the script; then log the bare versions.
         run: |
@@ -281,12 +282,12 @@ jobs:
       # PROVENANCE.txt stays as the human-readable twin.
       # metadata.json also records the Xcode, iPhoneSimulator SDK and xcode_lane
       # (default | opt-in): qa-acceptance-ios.yml refuses an opt-in-lane carrier unless
-      # allow_non_default_xcode_lane is set, so a 27.1-SDK build cannot pass as the release one.
+      # allow_non_default_xcode_lane is set, so a 26.6-fallback build cannot pass as the release one.
       - name: Package app with source identity
         shell: bash
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
-          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
         run: |
           set -euo pipefail
           staging="$RUNNER_TEMP/ios-simulator-app"

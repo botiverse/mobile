@@ -75,7 +75,7 @@ on:
         required: false
         default: ""
       allow_non_default_xcode_lane:
-        description: "Accept an app_run_id carrier built on an opt-in Xcode lane (metadata xcode_lane != default, e.g. the iOS 27.1 SDK). Off: such a carrier is refused, it is not the release build."
+        description: "Accept an app_run_id carrier built on an opt-in Xcode lane (metadata xcode_lane != default, e.g. the Xcode 26.6 / iOS 26.5 SDK fallback, or one stamped default on a pre-27.1 Xcode). Off: such a carrier is refused, it is not the release build."
         required: false
         type: boolean
         default: false
@@ -99,7 +99,8 @@ env:
 jobs:
   acceptance:
     name: iOS acceptance run (M3 agent on simulator)
-    runs-on: macos-latest
+    # GitHub's Xcode 27 image (billed): the only one with Xcode 27.1, the default since 2026-10-28.
+    runs-on: xcode-27
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
@@ -107,8 +108,9 @@ jobs:
       # Default inspect/act path. qa-loop keeps QaAcceptanceLoopTests.
       IOS_QA_DRIVER: agent-device
       # The one pinned Xcode for this job: Pin Xcode selects it, and the exported carrier's
-      # metadata.json is stamped as built on it (xcode_lane=default).
-      RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+      # metadata.json is stamped as built on it (xcode_lane=default). prepare_pinned_ios_app.sh
+      # also reads it to refuse an app_run_id carrier built on any other Xcode.
+      RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job.
       # Give it a bounded readiness window before any action can use artifact
@@ -186,14 +188,30 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
+      # Runtime: the newest available iOS runtime not newer than the pinned Xcode's
+      # iPhoneSimulator SDK (the Xcode 27 image also ships e.g. a 27.2 RC runtime that Xcode 27.1
+      # may not drive), else the newest available. SIM_DEVICE is reused on that runtime, or created.
       - name: Boot simulator
         run: |
+          SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"; export SIM_SDK
+          runtime=$(xcrun simctl list runtimes -j | python3 -c "
+          import json, os, sys
+          v = lambda s: tuple(int(p) for p in s.split('.') if p.isdigit())
+          rs = sorted((r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform'] == 'iOS'), key=lambda r: v(r['version']))
+          if not rs: sys.exit('no available iOS simulator runtime')
+          fit = [r for r in rs if v(r['version']) <= v(os.environ['SIM_SDK'])]
+          print((fit or rs)[-1]['identifier'])")
+          export RUNTIME="$runtime"
+          echo "iPhoneSimulator SDK ${SIM_SDK}; runtime ${RUNTIME}; device ${SIM_DEVICE}"
           udid=$(xcrun simctl list devices available -j \
-            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; print(next((dev['udid'] for devs in d.values() for dev in devs if dev['name']==os.environ['SIM_DEVICE']), ''))")
+            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices'].get(os.environ['RUNTIME'], []); print(next((dev['udid'] for dev in d if dev['name']==os.environ['SIM_DEVICE']), ''))")
           if [ -z "$udid" ]; then
-            runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform']=='iOS']; print(sorted(rs, key=lambda r: r['version'])[-1]['identifier'])")
             devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
-            udid=$(xcrun simctl create "qa-${SIM_DEVICE// /-}" "$devtype" "$runtime")
+            udid=$(xcrun simctl create "qa-${SIM_DEVICE// /-}" "$devtype" "$runtime") || {
+              echo "::error::Could not create ${SIM_DEVICE} on ${runtime}. iPhone device types it supports:"
+              xcrun simctl list runtimes -j | python3 -c "import json,sys,os; r=next(r for r in json.load(sys.stdin)['runtimes'] if r['identifier']==os.environ['RUNTIME']); print('\n'.join(t['name'] for t in r.get('supportedDeviceTypes', []) if 'iPhone' in t['name']))" || true
+              exit 1
+            }
           fi
           echo "UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"

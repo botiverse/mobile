@@ -53,25 +53,24 @@ on:
           - enterprise
           - development
       macos_runner:
-        description: "macOS runner for Build + sign IPA. blacksmith (default) | macos-latest-xlarge (GitHub larger runner, ~30GB, billed) | macos-latest (GitHub standard, 7GB; Kotlin/Native release link may OOM) | xcode-27-xlarge / xcode-27 (GitHub Xcode 27 image, billed; only these have Xcode 27.1, pair with xcode_app_path)"
+        description: "macOS runner for Build + sign IPA. xcode-27-xlarge (default; GitHub Xcode 27 image, ~30GB, billed; only the xcode-27* images have Xcode 27.1) | xcode-27 (same image, 7GB; Kotlin/Native release link may OOM) | blacksmith-12vcpu-macos-latest (manual fallback, Xcode 26.6 only: pair with xcode_app_path=Xcode_26.6) | macos-latest-xlarge / macos-latest (GitHub, Xcode <= 26.6, billed)"
         required: false
         type: choice
-        default: "blacksmith-12vcpu-macos-latest"
+        default: "xcode-27-xlarge"
         options:
+          - xcode-27-xlarge
+          - xcode-27
           - blacksmith-12vcpu-macos-latest
           - macos-latest-xlarge
           - macos-latest
-          - xcode-27-xlarge
-          - xcode-27
       xcode_app_path:
-        description: "Xcode for the build. Xcode_26.6 (default, iOS 26.5 SDK: letterboxed on iPhone Duo) | Xcode_27.1 (iOS 27.1 SDK, iPhone Duo edge-to-edge; needs macos_runner=xcode-27-xlarge or xcode-27). Recorded as an opt-in lane in the summary and Hands metadata."
+        description: "Xcode for the build. Xcode_27.1 (default, iOS 27.1 SDK, iPhone Duo edge-to-edge; needs macos_runner=xcode-27-xlarge or xcode-27) | Xcode_26.6 (manual fallback, iOS 26.5 SDK: letterboxed on iPhone Duo; needs a Blacksmith/macos-latest* runner). The fallback is recorded as a deliberate opt-in lane in the summary and Hands metadata."
         required: false
         type: choice
-        default: "/Applications/Xcode_26.6.app"
+        default: "/Applications/Xcode_27.1.app"
         options:
-          - /Applications/Xcode_26.6.app
           - /Applications/Xcode_27.1.app
-          - /Applications/Xcode_27.1.0.app
+          - /Applications/Xcode_26.6.app
       testflight_internal:
         description: "After the Hands draft, upload to TestFlight and distribute to the internal group (Botiverse) only; never external, App Store, or Hands activation"
         required: false
@@ -160,28 +159,29 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
-      # Fail before a billed macOS runner starts: Xcode 27 exists only on GitHub's xcode-27
-      # images (Blacksmith has 27.0 as symlinks only; macos-latest tops out at 26.6), and the
-      # xcode-27 image is not known to carry 26.6.
+      # Fail before a billed macOS runner starts: Xcode 27.1 (the default since 2026-10-28)
+      # exists only on GitHub's xcode-27 images (Blacksmith has 27.0 as symlinks only;
+      # macos-latest tops out at 26.6), and the xcode-27 image carries no 26.x. The manual
+      # fallback is blacksmith-12vcpu-macos-latest + Xcode_26.6.
       - id: xcode
         name: Check runner / Xcode pairing
         shell: bash
         env:
-          RUNNER: ${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}
-          XCODE_APP: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          RUNNER: ${{ inputs.macos_runner || 'xcode-27-xlarge' }}
+          XCODE_APP: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
         run: |
           set -euo pipefail
           case "$XCODE_APP" in
-            /Applications/Xcode_26.6.app|/Applications/Xcode_27.1.app|/Applications/Xcode_27.1.0.app) ;;
+            /Applications/Xcode_26.6.app|/Applications/Xcode_27.1.app) ;;
             *) echo "::error::Unsupported xcode_app_path '${XCODE_APP}'"; exit 1 ;;
           esac
           case "${RUNNER}:${XCODE_APP}" in
             xcode-27*:/Applications/Xcode_27*) ;;
             xcode-27*:*)
-              echo "::error::macos_runner=${RUNNER} has Xcode 27.x only; ${XCODE_APP##*/} is not installed there. Use xcode_app_path=/Applications/Xcode_27.1.app, or a Blacksmith/macos-latest runner for Xcode 26.6."
+              echo "::error::macos_runner=${RUNNER} has Xcode 27.x only; ${XCODE_APP##*/} is not installed there. Use xcode_app_path=/Applications/Xcode_27.1.app (the default), or for the Xcode 26.6 fallback pick macos_runner=blacksmith-12vcpu-macos-latest."
               exit 1 ;;
             *:/Applications/Xcode_27*)
-              echo "::error::${XCODE_APP##*/} is not installed on macos_runner=${RUNNER}. Xcode 27.1 needs macos_runner=xcode-27-xlarge (or xcode-27)."
+              echo "::error::${XCODE_APP##*/} is not installed on macos_runner=${RUNNER}. Xcode 27.1 (the default) needs macos_runner=xcode-27-xlarge (the default, or xcode-27); for the Blacksmith fallback pick xcode_app_path=/Applications/Xcode_26.6.app."
               exit 1 ;;
           esac
           echo "xcode_app_path=${XCODE_APP}" >> "$GITHUB_OUTPUT"
@@ -189,9 +189,10 @@ jobs:
 
   build_ios_release:
     name: Build + sign IPA
-    runs-on: ${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}
-    # GitHub-hosted Macs are slower than the Blacksmith 12-vCPU pool; give them headroom.
-    timeout-minutes: ${{ (inputs.macos_runner || 'blacksmith-12vcpu-macos-latest') == 'blacksmith-12vcpu-macos-latest' && 60 || 120 }}
+    runs-on: ${{ inputs.macos_runner || 'xcode-27-xlarge' }}
+    # GitHub-hosted Macs (incl. the default xcode-27-xlarge) are slower than the Blacksmith
+    # 12-vCPU fallback pool; give them headroom.
+    timeout-minutes: ${{ (inputs.macos_runner || 'xcode-27-xlarge') == 'blacksmith-12vcpu-macos-latest' && 60 || 120 }}
     needs: resolve
     outputs:
       ipa_sha256: ${{ steps.validate.outputs.ipa_sha256 }}
@@ -246,11 +247,12 @@ jobs:
         # The "Raft iOS SDK tier" of this build in the release summary (iPhone Duo audit §7).
         # Log-only: the script never exits non-zero, and continue-on-error keeps it that way
         # if it ever regresses. An odd version string must not stop a release.
-        # A non-default xcode_app_path here was chosen explicitly, so it is a deliberate lane.
+        # A non-default xcode_app_path here (the Xcode 26.6 fallback) was chosen explicitly,
+        # so it is a deliberate lane, flagged but not "not for release".
         continue-on-error: true
         env:
           XCODE_APP_PATH: ${{ needs.resolve.outputs.xcode_app_path }}
-          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
           RAFT_XCODE_LANE_DELIBERATE: "1"
         run: bash scripts/ci/record_ios_toolchain.sh
 
@@ -269,7 +271,7 @@ jobs:
       - name: Raise Gradle/Kotlin heap for the iOS archive (this runner only)
         shell: bash
         env:
-          RAFT_MACOS_RUNNER: ${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}
+          RAFT_MACOS_RUNNER: ${{ inputs.macos_runner || 'xcode-27-xlarge' }}
         run: |
           set -euo pipefail
           # compose/gradle.properties caps the build JVM and Kotlin daemon at
@@ -285,7 +287,7 @@ jobs:
           HEAP=12g
           if [ "${RAFT_MACOS_RUNNER}" = "macos-latest" ] || [ "${RAFT_MACOS_RUNNER}" = "xcode-27" ]; then
             HEAP=5g
-            echo "::warning::${RAFT_MACOS_RUNNER} has ~7GB RAM; Kotlin/Native release archive runs with a 5g heap and may OOM. Prefer blacksmith-12vcpu-macos-latest, macos-latest-xlarge or xcode-27-xlarge."
+            echo "::warning::${RAFT_MACOS_RUNNER} has ~7GB RAM; Kotlin/Native release archive runs with a 5g heap and may OOM. Prefer xcode-27-xlarge (the default; or blacksmith-12vcpu-macos-latest / macos-latest-xlarge for the Xcode 26.6 fallback)."
           fi
           GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
           mkdir -p "$GUH"
@@ -608,7 +610,7 @@ jobs:
             echo "| **IPA sha256** | \`${{ steps.validate.outputs.ipa_sha256 || '(not validated)' }}\` |"
             echo "| **dSYM sha256** | \`${{ steps.validate.outputs.dsym_sha256 || '(not validated)' }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
-            echo "| **Runner** | \`${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}\` |"
+            echo "| **Runner** | \`${{ inputs.macos_runner || 'xcode-27-xlarge' }}\` |"
             echo "| **Xcode / iPhoneOS SDK** | \`${{ steps.toolchain.outputs.xcode_version || '?' }}\` / \`${{ steps.toolchain.outputs.ios_sdk_version || '?' }}\` (${{ needs.resolve.outputs.xcode_app_path }}, lane ${{ steps.toolchain.outputs.xcode_lane || '?' }}) |"
             echo "| **Create Hands draft** | \`true\` |"
           } >> "$GITHUB_STEP_SUMMARY"

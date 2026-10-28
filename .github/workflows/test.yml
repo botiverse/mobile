@@ -30,7 +30,7 @@ on:
         type: string
         default: ci
       xcode_app_path:
-        description: "Opt-in Xcode for the iOS compile job; requires scope=full (the plan fails otherwise), e.g. /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). Empty = the pinned Xcode_26.6. Must be an installed /Applications/Xcode*.app."
+        description: "Opt-in Xcode for the iOS compile job; requires scope=full (the plan fails otherwise). Empty = the pinned /Applications/Xcode_27.1.app (iOS 27.1 SDK, iPhone Duo edge-to-edge). The job runs on GitHub's xcode-27 image (Xcode 27.x only, no 26.x), so only another installed, non-symlink /Applications/Xcode_27*.app works here."
         required: false
         type: string
         default: ""
@@ -913,9 +913,12 @@ jobs:
     # pushes: changes touching commonMain run Linux fast gates only; the full iOS
     # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
     # or on nightly/release readbacks.
+    # GitHub's Xcode 27 image (billed, ~7GB like macos-latest): the only one with Xcode 27.1,
+    # the default iOS toolchain since 2026-10-28. The simulator steps pick an iPhone on the
+    # newest iOS runtime not newer than the pinned iPhoneSimulator SDK.
     needs: [plan]
     if: ${{ needs.plan.outputs.run_ios == 'true' }}
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 75
     steps:
       - name: Checkout
@@ -925,16 +928,16 @@ jobs:
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
-        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane, e.g.
-        # /Applications/Xcode_27.1.app for the iOS 27.1 SDK; empty keeps the pinned default.
+        # `xcode_app_path` (workflow_dispatch only) runs a deliberate other-Xcode lane (another
+        # Xcode 27.x on this image); empty keeps the pinned default Xcode 27.1.
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
         run: bash scripts/ci/select_ios_xcode.sh
 
       - name: Record Xcode and iOS SDK
         env:
-          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_26.6.app' }}
-          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_26.6.app
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path || '/Applications/Xcode_27.1.app' }}
+          RAFT_DEFAULT_XCODE_APP: /Applications/Xcode_27.1.app
         run: bash scripts/ci/record_ios_toolchain.sh
 
       - name: Set up JDK
@@ -1041,7 +1044,7 @@ jobs:
         working-directory: compose/iosApp
         run: |
           set -o pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
           log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
@@ -1062,7 +1065,7 @@ jobs:
         working-directory: compose/iosApp
         run: |
           set -o pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
           log="$GITHUB_WORKSPACE/xcodebuild-login-router-tests.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
@@ -1132,7 +1135,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; print(next(x["udid"] for _, vs in rs for x in vs if "iPhone" in x["name"]))')
           # The XCTest steps above leave this simulator booted; the Kotlin test task boots it itself.
           xcrun simctl shutdown "$device_id" 2>/dev/null || true
           gradle_rc=0

@@ -8,7 +8,8 @@
 # Run after scripts/ci/select_ios_xcode.sh (it exports DEVELOPER_DIR). RAFT_DEFAULT_XCODE_APP is
 # the workflow's pinned default; a different XCODE_APP_PATH is flagged as an opt-in lane.
 # RAFT_XCODE_LANE_DELIBERATE=1 marks that lane as chosen by an explicit workflow input (e.g. an
-# ios-release.yml xcode_app_path dispatch): still flagged, but not called "not for release".
+# ios-release.yml xcode_app_path=Xcode_26.6 fallback dispatch, while Xcode 27.1 is the default):
+# still flagged, but as a deliberate fallback, not "not for release".
 # With GITHUB_OUTPUT set, also emits xcode_version, ios_sdk_version and xcode_lane step outputs.
 #
 # Log-only: this script never fails the job. A tool that errors or an SDK version it cannot
@@ -54,7 +55,7 @@ echo "iPhoneOS SDK $device_sdk, iPhoneSimulator SDK $simulator_sdk"
 echo "Raft iOS SDK tier: $tier"
 echo "Xcode lane: $lane"
 if [ "$lane" != "default" ] && [ "${RAFT_XCODE_LANE_DELIBERATE:-}" = "1" ]; then
-  echo "::warning::Deliberate opt-in Xcode lane: built with ${selected_app##*/} (iPhoneOS SDK $device_sdk), not the pinned ${default_app##*/}."
+  echo "::warning::Deliberate non-default Xcode lane (fallback): built with ${selected_app##*/} (iPhoneOS SDK $device_sdk), not the pinned default ${default_app##*/}."
 elif [ "$lane" != "default" ]; then
   echo "::warning::Built with ${selected_app##*/} (iPhoneOS SDK $device_sdk), not the pinned ${default_app##*/}. Not for release."
 fi

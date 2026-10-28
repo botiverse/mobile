@@ -21,7 +21,7 @@ function fixture({ metadataOverrides = {}, plistOverrides = {} } = {}) {
     platform: "ios-simulator", artifact_sha256: sha, artifact_size: fs.statSync(zip).size,
     source_commit: "4".repeat(40), bundle_id: "build.raft.app", version: "1.0",
     version_code: "1", github_run_id: "29700366778",
-    xcode_lane: "default", xcode_version: "26.6", xcode_app: "Xcode_26.6.app", ios_sdk_version: "26.5",
+    xcode_lane: "default", xcode_version: "27.1", xcode_app: "Xcode_27.1.app", ios_sdk_version: "27.1",
     ...metadataOverrides,
   }));
   const dittoLog = path.join(root, "ditto.log");
@@ -110,7 +110,9 @@ function runPinned(f, extraEnv = {}) {
   ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ENV: "", PATH: `${path.dirname(process.execPath)}:${process.env.PATH}`, DITTO_BIN: path.join(f.bin, "ditto"), PLIST_BUDDY: path.join(f.bin, "PlistBuddy"), ...extraEnv } });
 }
 
-const optInLane = { xcode_lane: "opt-in", xcode_version: "27.1", xcode_app: "Xcode_27.1.app", ios_sdk_version: "27.1" };
+// Since 2026-10-28 the default is Xcode 27.1; the Xcode 26.6 fallback is the opt-in lane.
+const optInLane = { xcode_lane: "opt-in", xcode_version: "26.6", xcode_app: "Xcode_26.6.app", ios_sdk_version: "26.5" };
+const DEFAULT_XCODE = { RAFT_DEFAULT_XCODE_APP: "/Applications/Xcode_27.1.app" };
 
 test("refuses an app from the opt-in Xcode lane before extraction", () => {
   const f = fixture({ metadataOverrides: optInLane });
@@ -118,7 +120,7 @@ test("refuses an app from the opt-in Xcode lane before extraction", () => {
     const env = allow === undefined ? {} : { ALLOW_NON_DEFAULT_XCODE_LANE: allow };
     assert.throws(() => runPinned(f, env), (error) => {
       assert.equal(error.status, 3);
-      assert.match(error.stderr, /built on the 'opt-in' Xcode lane: Xcode 27\.1 \(Xcode_27\.1\.app\), iPhoneSimulator SDK 27\.1/);
+      assert.match(error.stderr, /built on the 'opt-in' Xcode lane: Xcode 26\.6 \(Xcode_26\.6\.app\), iPhoneSimulator SDK 26\.5/);
       assert.match(error.stderr, /allow_non_default_xcode_lane=true/);
       return true;
     });
@@ -135,10 +137,27 @@ test("accepts an opt-in lane app only when explicitly allowed, with a warning", 
 });
 
 test("accepts a default lane app and logs its toolchain", () => {
+  const f = fixture();
+  for (const env of [{}, DEFAULT_XCODE, { RAFT_DEFAULT_XCODE_APP: "/Applications/Xcode_27.1.app/" }]) {
+    const out = runPinned(f, env);
+    assert.match(out, /Xcode lane: default, Xcode 27\.1 \(Xcode_27\.1\.app\), iPhoneSimulator SDK 27\.1/);
+    assert.doesNotMatch(out, /::warning::/);
+  }
+});
+
+test("refuses a carrier stamped default on an older default Xcode unless explicitly allowed", () => {
+  // Built before the 2026-10-28 switch: the producer's default was then Xcode 26.6.
   const f = fixture({ metadataOverrides: { xcode_lane: "default", xcode_version: "26.6", xcode_app: "Xcode_26.6.app", ios_sdk_version: "26.5" } });
-  const out = runPinned(f);
-  assert.match(out, /Xcode lane: default, Xcode 26\.6 \(Xcode_26\.6\.app\), iPhoneSimulator SDK 26\.5/);
-  assert.doesNotMatch(out, /::warning::/);
+  assert.throws(() => runPinned(f, DEFAULT_XCODE), (error) => {
+    assert.equal(error.status, 3);
+    assert.match(error.stderr, /was stamped 'default' on Xcode 26\.6 \(Xcode_26\.6\.app\), iPhoneSimulator SDK 26\.5, but the default Xcode is now Xcode_27\.1\.app/);
+    assert.match(error.stderr, /allow_non_default_xcode_lane=true/);
+    return true;
+  });
+  assert.equal(fs.existsSync(f.dittoLog), false);
+  const out = runPinned(f, { ...DEFAULT_XCODE, ALLOW_NON_DEFAULT_XCODE_LANE: "true" });
+  assert.match(out, /::warning::accepting a pinned iOS app that was stamped 'default'/);
+  assert.equal(fs.readFileSync(path.join(f.products, "iosApp.app", "pinned-marker"), "utf8"), "pinned");
 });
 
 test("refuses a carrier without xcode_lane (unknown toolchain) unless explicitly allowed", () => {

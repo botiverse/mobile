@@ -13,9 +13,14 @@ EXPECTED_BUNDLE="${7:-}"
 EXPECTED_VERSION="${8:-}"
 EXPECTED_CODE="${9:-}"
 # ALLOW_NON_DEFAULT_XCODE_LANE=true accepts an app whose metadata xcode_lane is not "default":
-# an opt-in Xcode lane (e.g. the iOS 27.1 SDK) or no recorded lane at all. Otherwise it is
-# refused: it is not known to be the release toolchain, and the SDK changes the iPhone Duo layout.
+# an opt-in Xcode lane (e.g. the Xcode 26.6 / iOS 26.5 SDK fallback) or no recorded lane at all.
+# Otherwise it is refused: it is not known to be the release toolchain, and the SDK changes the
+# iPhone Duo layout.
+# RAFT_DEFAULT_XCODE_APP (optional; the consuming workflow's pinned Xcode) also rejects a carrier
+# stamped "default" on a different Xcode: the lane is relative to the producer's default at build
+# time, so a carrier from before the 2026-10-28 switch to Xcode 27.1 says "default" for 26.6.
 ALLOW_NON_DEFAULT_XCODE_LANE="${ALLOW_NON_DEFAULT_XCODE_LANE:-false}"
+RAFT_DEFAULT_XCODE_APP="${RAFT_DEFAULT_XCODE_APP:-}"
 DITTO_BIN="${DITTO_BIN:-ditto}"
 PLIST_BUDDY="${PLIST_BUDDY:-/usr/libexec/PlistBuddy}"
 
@@ -43,6 +48,7 @@ ACTUAL_SHA="$ACTUAL_SHA" ACTUAL_SIZE="$ACTUAL_SIZE" APP_RUN_ID="$APP_RUN_ID" \
   EXPECTED_SHA="$EXPECTED_SHA" EXPECTED_SOURCE="$EXPECTED_SOURCE" EXPECTED_BUNDLE="$EXPECTED_BUNDLE" \
   EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_CODE="$EXPECTED_CODE" \
   ALLOW_NON_DEFAULT_XCODE_LANE="$ALLOW_NON_DEFAULT_XCODE_LANE" \
+  RAFT_DEFAULT_XCODE_APP="$RAFT_DEFAULT_XCODE_APP" \
   node - "$METADATA_PATH" "$VERIFIED_ENV" <<'NODE'
 const fs = require("fs");
 const [metadataPath, outputPath] = process.argv.slice(2);
@@ -50,15 +56,22 @@ const value = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
 if (value.platform !== "ios-simulator") throw new Error("metadata platform mismatch");
 const e = process.env;
 // Xcode lane (scripts/ci/stamp_ios_xcode_lane.py). Fail closed: a carrier without xcode_lane
-// is NOT assumed default. The opt-in xcode_app_path lane (#3808) can produce a 27.1-SDK carrier
+// is NOT assumed default. The opt-in xcode_app_path lane (#3808) can produce a carrier
 // that predates lane stamping and still sits inside its 14-day retention, so a missing lane is
 // as untrusted as an opt-in one and needs allow_non_default_xcode_lane=true.
+// "default" is relative to the producer's pinned Xcode when it was built. With
+// RAFT_DEFAULT_XCODE_APP set, a "default" carrier from another Xcode (e.g. Xcode_26.6.app,
+// stamped before the 2026-10-28 switch to Xcode 27.1) is treated as non-default too.
 const toolchain = `Xcode ${value.xcode_version ?? "?"} (${value.xcode_app ?? "?"}), iPhoneSimulator SDK ${value.ios_sdk_version ?? "?"}`;
-const lane = value.xcode_lane === undefined ? "unrecorded" : String(value.xcode_lane);
+const expectedApp = (e.RAFT_DEFAULT_XCODE_APP || "").replace(/\/+$/, "").split("/").pop();
+let lane = value.xcode_lane === undefined ? "unrecorded" : String(value.xcode_lane);
+if (lane === "default" && expectedApp && String(value.xcode_app ?? "") !== expectedApp) lane = "stale-default";
 if (lane !== "default") {
   const why = lane === "unrecorded"
     ? "has no xcode_lane in its metadata.json (it predates lane stamping), so its Xcode/iOS SDK is unknown"
-    : `was built on the '${lane}' Xcode lane: ${toolchain}`;
+    : lane === "stale-default"
+      ? `was stamped 'default' on ${toolchain}, but the default Xcode is now ${expectedApp}`
+      : `was built on the '${lane}' Xcode lane: ${toolchain}`;
   if (e.ALLOW_NON_DEFAULT_XCODE_LANE !== "true") {
     console.error(`::error::pinned iOS app ${why}. ` +
       "Only a default-lane carrier stands in for the release build (the iOS SDK changes the iPhone Duo layout). " +

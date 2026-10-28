@@ -474,7 +474,9 @@ jobs:
     # macOS minutes are the expensive part: nightly runs always capture iOS,
     # dispatched rounds only when include_ios is set (report degrades to react__android).
     if: ${{ !inputs.site_only && (github.event_name == 'schedule' || inputs.include_ios) }}
-    # Same macOS pool as ios-release.yml.
+    # Blacksmith macOS pool (ios-release.yml's Xcode 26.6 fallback pool). Not yet on the
+    # Xcode 27.1 default (2026-10-28): that needs GitHub's billed xcode-27 image and would move
+    # the capture SDK; it uses the image's default Xcode.
     runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
     env:
