@@ -508,6 +508,10 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         networkRequestLifetimeAdapter.install()
+        // `xcrun simctl launch booted <bundle> -RaftHideEnvironmentIndicator YES` for store screenshots.
+        RaftEnvironmentIndicatorKt.setRaftEnvironmentIndicatorHiddenForCapture(
+            hidden: UserDefaults.standard.bool(forKey: "RaftHideEnvironmentIndicator")
+        )
         RaftIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
         RaftIosDesktopShortcutHost.install()

@@ -49,6 +49,11 @@ class MainActivity : ComponentActivity() {
             finish()
             return
         }
+        // `adb shell am start -n <package>/build.raft.app.MainActivity --ez RaftHideEnvironmentIndicator true`
+        // for store screenshots and recordings on a staging demo server.
+        if (intent.getBooleanExtra("RaftHideEnvironmentIndicator", false)) {
+            setRaftEnvironmentIndicatorHiddenForCapture(true)
+        }
         externalShareAdmissionOwner = AndroidExternalShareProcessOwner.admissionOwner(applicationContext)
         val rawShare = intent.takeIf(Intent::isAndroidExternalShareIntent)
         if (rawShare != null) {
