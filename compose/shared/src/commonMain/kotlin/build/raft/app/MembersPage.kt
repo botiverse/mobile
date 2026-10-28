@@ -8996,14 +8996,15 @@ private fun MembersAgentInfoField(
 
 /**
  * The hero status chip's soft wash, as web AgentDetailPanel `PRESENCE_CHIP_VARIANT`
- * (botiverse/slock c1105a1): online lime (`success`), thinking/working yellow (`primary`),
- * error orange (`warning`), offline stone (`muted`). Idle is web's `online` activity and
+ * (botiverse/slock d1285e24): online lime (`success`), thinking/working yellow (`busy`, raft-ui
+ * 0.39 `presence-busy-soft`, yellow in every theme), error orange (`warning`), offline stone
+ * (`muted`). Idle is web's `online` activity and
  * Disconnected its `offline`. Null (not yet observed) has no web activity; it keeps the
  * neutral `default` wash so the chip does not claim Offline (task #256).
  */
 private fun AgentStatus?.membersStatusBadgeVariant(): RaftBadgeVariant =
     when (this) {
-        AgentStatus.Working, AgentStatus.Thinking -> RaftBadgeVariant.Primary
+        AgentStatus.Working, AgentStatus.Thinking -> RaftBadgeVariant.Busy
         AgentStatus.Online, AgentStatus.Idle -> RaftBadgeVariant.Success
         AgentStatus.Error -> RaftBadgeVariant.Warning
         AgentStatus.Offline, AgentStatus.Disconnected -> RaftBadgeVariant.Muted

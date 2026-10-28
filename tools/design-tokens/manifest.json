@@ -1,6 +1,6 @@
 {
   "comment": "Pinned Web design sources. Bump with update_sources.sh; versions must match slock packages/web (raft-ui, tailwindcss) at the pinned commit.",
-  "slockCommit": "6924ec3a016ebfc956d58863f81046d59d07c05c",
+  "slockCommit": "d1285e2439b77d3343bcedd80cc93812170b8839",
   "sources": {
     "tailwind": {
       "path": "source/tailwindcss-4.3.3/theme.css",
@@ -8,24 +8,24 @@
       "sha256": "443d7af364200f8ec8352dc78e39485a118a1840d498c97967bf0ae402b39167"
     },
     "raftUiStyles": {
-      "path": "source/raft-ui-0.37.0/styles.css",
-      "origin": "npm:@botiverse/raft-ui@0.37.0/dist/styles.css",
-      "sha256": "48f3861f4a9c26d5f6df59b310e8dc2a18aeedfefba62e7360d47347c21fcf58"
+      "path": "source/raft-ui-0.40.0/styles.css",
+      "origin": "npm:@botiverse/raft-ui@0.40.0/dist/styles.css",
+      "sha256": "11aa2b5f719b65d9d194f297c002503482f90e62f3204a110dfc40bb36537987"
     },
     "raftUiFoundation": {
-      "path": "source/raft-ui-0.37.0/foundation.css",
-      "origin": "npm:@botiverse/raft-ui@0.37.0/dist/foundation.css",
-      "sha256": "a82f6e5ffffc2bf8ee866599053267895614e5dcb52b19bfe297d0a2aa8cf433"
+      "path": "source/raft-ui-0.40.0/foundation.css",
+      "origin": "npm:@botiverse/raft-ui@0.40.0/dist/foundation.css",
+      "sha256": "c4bb801876e48174822347a7f013758bd67663a5df637623e2f0c0ede182a480"
     },
     "raftUiThemes": {
-      "path": "source/raft-ui-0.37.0/themes.css",
-      "origin": "npm:@botiverse/raft-ui@0.37.0/dist/themes.css",
+      "path": "source/raft-ui-0.40.0/themes.css",
+      "origin": "npm:@botiverse/raft-ui@0.40.0/dist/themes.css",
       "sha256": "d676bb4b3ad783cfbe81a1428939d76783f2bee1b9ed1ec5d3913e661b65093d"
     },
     "web": {
       "path": "source/raft-web/index.css",
-      "origin": "botiverse/slock@6924ec3a016ebfc956d58863f81046d59d07c05c:packages/web/src/index.css",
-      "sha256": "c8226ab77a79385516f2470930e7dbddcf11f4e2d92d01154a09413703768d6c"
+      "origin": "botiverse/slock@d1285e2439b77d3343bcedd80cc93812170b8839:packages/web/src/index.css",
+      "sha256": "1d0b5bd93dd7cf5d370f03e1be4821f47c9f2647cb4bac350928a8a3d3ebe8cd"
     }
   }
 }

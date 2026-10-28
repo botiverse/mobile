@@ -199,7 +199,8 @@ class RaftDisplayLooksTest {
 
     @Test
     fun agentStateChipsTakeTheLightsTint() {
-        assertEquals(RaftBadgeVariant.Primary, raftPresenceChipVariant(RaftPresence.Busy))
+        // raft-ui 0.39: the Working chip is Badge `busy`, yellow in every theme (not `primary`).
+        assertEquals(RaftBadgeVariant.Busy, raftPresenceChipVariant(RaftPresence.Busy))
         assertEquals(RaftBadgeVariant.Warning, raftPresenceChipVariant(RaftPresence.Error))
     }
 

@@ -43,7 +43,16 @@ enum class RaftBadgeAppearance {
 /** raft-ui Badge `variant`: the colour role; each appearance colours it differently. */
 enum class RaftBadgeVariant {
     Default,
+
+    /** `brand`: follows the theme (Boring Gray grays it). Not for a status; use [Busy]. */
     Primary,
+
+    /**
+     * raft-ui 0.39 `busy`: the yellow of a working agent, a status, so it stays yellow in every
+     * theme. Soft, the Working chip's `presence-busy-soft` tint; solid, a `presence-busy`
+     * sticker. An outline Badge has no `busy` look (it reads as `default`).
+     */
+    Busy,
     Information,
     Muted,
     Accent,
@@ -87,6 +96,7 @@ internal fun raftBadgeLook(
                             RaftBadgeVariant.Default -> RaftUiPalette.stickerPaper
                             RaftBadgeVariant.Muted -> RaftUiPalette.inactive
                             RaftBadgeVariant.Primary -> colors.brand // follows the theme (Boring Gray grays it)
+                            RaftBadgeVariant.Busy -> RaftUiPalette.presenceBusy
                             RaftBadgeVariant.Information -> RaftUiPalette.info
                             RaftBadgeVariant.Accent -> RaftUiPalette.attention
                             RaftBadgeVariant.Success -> RaftUiPalette.success
@@ -112,6 +122,7 @@ internal fun raftBadgeLook(
                             RaftBadgeVariant.Default -> colors.fillMuted
                             RaftBadgeVariant.Muted -> colors.inactiveSoft
                             RaftBadgeVariant.Primary -> colors.brandSoft
+                            RaftBadgeVariant.Busy -> colors.presenceBusySoft
                             RaftBadgeVariant.Information -> colors.infoSoft
                             RaftBadgeVariant.Accent -> colors.attentionSoft
                             RaftBadgeVariant.Success -> colors.successSoft
@@ -135,6 +146,7 @@ internal fun raftBadgeLook(
                     ink =
                         when (variant) {
                             RaftBadgeVariant.Default,
+                            RaftBadgeVariant.Busy,
                             RaftBadgeVariant.Muted -> colors.foregroundMuted
                             RaftBadgeVariant.Primary -> colors.brandStrong
                             RaftBadgeVariant.Information -> colors.infoStrong

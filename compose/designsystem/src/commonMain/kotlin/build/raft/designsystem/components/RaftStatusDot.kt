@@ -50,10 +50,10 @@ enum class RaftStatusVariant(val color: Color) {
     /** `--presence-offline`. */
     Default(RaftUiPalette.presenceOffline),
     /**
-     * Raft yellow in every theme: status lights don't follow the theme (raft-design), so not
-     * `primary-400`, which Boring Gray grays. `--selected` is raft-ui's unthemed `#FFD440`.
+     * raft-ui 0.39 `--presence-busy`: Raft yellow in every theme, since status lights don't
+     * follow the theme (not `brand-400`, which Boring Gray grays).
      */
-    Primary(RaftUiPalette.selected),
+    Primary(RaftUiPalette.presenceBusy),
     Information(RaftUiPalette.info),
     Muted(RaftUiPalette.secondary400),
 

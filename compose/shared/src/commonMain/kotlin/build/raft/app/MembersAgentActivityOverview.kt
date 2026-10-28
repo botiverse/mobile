@@ -582,7 +582,7 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
         RaftBadge(
             text = stringResource(Res.string.member_activity_overview_outcome_running),
             appearance = RaftBadgeAppearance.Soft,
-            variant = RaftBadgeVariant.Primary,
+            variant = RaftBadgeVariant.Busy,
             icon = { RaftStatusDot(presence = RaftPresence.Busy, size = RaftStatusSize.Sm) },
             modifier = modifier,
         )
