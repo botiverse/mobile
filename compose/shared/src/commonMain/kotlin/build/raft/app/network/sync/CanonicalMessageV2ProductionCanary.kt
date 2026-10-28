@@ -415,6 +415,19 @@ internal interface CanonicalMessageV2LiveCoverageTracker {
      * it: nothing proves the stream is still whole, so no claim may grow over it.
      */
     suspend fun noteFrameUnrecorded(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput)
+
+    /**
+     * Message storage Phase 3b: the stream of channel id [scopeId] had a hole the client cannot name per frame (a
+     * resume row that could not be stored or decoded): same effect as [noteFrameUnrecorded].
+     */
+    suspend fun noteScopeHole(partition: DurablePartitionKey, scopeId: SyncScopeId, reason: String)
+
+    /**
+     * Message storage Phase 3b: the hole's channels are unknown (a resume page with more to follow, a row without a
+     * channel id, a horizonReset): every window of [partition] is discontinuous and every enter in flight commits
+     * discontinuous.
+     */
+    suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String)
 }
 
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
@@ -826,16 +839,35 @@ internal class CanonicalMessageV2ProductionCanary(
     override suspend fun noteFrameUnrecorded(
         partition: DurablePartitionKey,
         foldInput: CanonicalMessageFoldInput,
+    ) = noteScopeHole(partition, foldInput.row.channelId, "frame_unrecorded ${foldInput.frameLabel()}")
+
+    override suspend fun noteScopeHole(
+        partition: DurablePartitionKey,
+        scopeId: SyncScopeId,
+        reason: String,
     ): Unit = withContext(NonCancellable) {
         stateMutex.withLock {
-            val scopeId = foldInput.row.channelId
             enterBaselineByChannel[partition to scopeId]?.takeIf { !it.closed }?.let { baseline ->
                 baseline.overflowed = true
                 baseline.buffered.clear()
             }
             stateByScope.entries
                 .filter { it.key.partition == partition && it.key.scopeId == scopeId }
-                .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, "frame_unrecorded ${foldInput.frameLabel()}") }
+                .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, reason) }
+        }
+    }
+
+    override suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String): Unit = withContext(NonCancellable) {
+        stateMutex.withLock {
+            enterBaselineByChannel.entries
+                .filter { (key, baseline) -> key.first == partition && !baseline.closed }
+                .forEach { (_, baseline) ->
+                    baseline.overflowed = true
+                    baseline.buffered.clear()
+                }
+            stateByScope.entries
+                .filter { it.key.partition == partition }
+                .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, "partition_hole $reason") }
         }
     }
 

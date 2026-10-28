@@ -1120,6 +1120,11 @@ data class SyncResumeResponse(
      * durable writer supplies the context from the stored scope header. In-process only, never serialized.
      */
     @Transient val decodedCanonical: List<CanonicalMessageCarry> = emptyList(),
+    /**
+     * Phase 3b: one entry per row the canonical decode refused — its channel id when the row names one, else
+     * `null`. Those rows can never be stored, so the durable writer reports them as continuity holes.
+     */
+    @Transient val canonicalDecodeMisses: List<String?> = emptyList(),
 ) : RealtimeEvent
 
 @Serializable

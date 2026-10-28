@@ -471,6 +471,12 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 if (slowUnrecordedMs > 0) kotlinx.coroutines.delay(slowUnrecordedMs)
                 canary.noteFrameUnrecorded(partition, foldInput)
             }
+
+            override suspend fun noteScopeHole(partition: DurablePartitionKey, scopeId: String, reason: String) =
+                canary.noteScopeHole(partition, scopeId, reason)
+
+            override suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String) =
+                canary.notePartitionHole(partition, reason)
         }
         val ingest = CanonicalMessageV2RealtimeIngest(
             tracker = tracker,

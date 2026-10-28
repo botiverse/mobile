@@ -161,6 +161,13 @@ interface CanonicalMessageV2Store {
     suspend fun readSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> = emptyList()
 
     /**
+     * Design I7 (a `sync:resume` horizonReset: late messages were dropped): every segment of [partition] stops
+     * claiming it reached the server head (`headAtVerify`), and every header's `hasLoadedNewest` mirror with it.
+     * Ranges and facts stay. One transaction.
+     */
+    suspend fun clearHeadVerification(partition: DurablePartitionKey) {}
+
+    /**
      * The current fact write revision of [partition] (0 = none yet). It only grows: no prune and
      * no clear — scope or whole partition (server-access loss, revoke) — lowers or resets it. Read it before a
      * request and pass it as revAtRequest.
@@ -357,6 +364,27 @@ class CanonicalMessageV2GenerationEngine(
         if (establishesBaseline) coordinator.onSnapshotCommitted(scope)
         write.committedCursor?.let { committed -> synchronized(stateLock) { cursorByScope[scope] = committed } }
         if (establishesBaseline) snapshotCommitObserver.onSnapshotCommitted(scope)
+        CanonicalMessageV2CommitResult.Committed
+    }
+
+    /**
+     * [CanonicalMessageV2Store.clearHeadVerification] as a partition mutation, refused
+     * ([CanonicalMessageV2CommitResult.PartitionRevoked]) when the partition was cleared since the caller read
+     * [expectedPartitionGeneration]. The in-memory cursors of the partition lose `hasLoadedNewest` too.
+     */
+    suspend fun clearHeadVerification(
+        partition: DurablePartitionKey,
+        expectedPartitionGeneration: Long?,
+    ): CanonicalMessageV2CommitResult = withPartitionMutation(partition) {
+        if (!isCurrentGeneration(partition, expectedPartitionGeneration)) {
+            return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
+        }
+        store.clearHeadVerification(partition)
+        synchronized(stateLock) {
+            cursorByScope.entries.filter { it.key.partition == partition }.forEach { entry ->
+                entry.setValue(entry.value.copy(hasLoadedNewest = false))
+            }
+        }
         CanonicalMessageV2CommitResult.Committed
     }
 
@@ -1082,6 +1110,24 @@ internal class SqlDelightCanonicalMessageV2Store(
             )
             // The write revision is kept on purpose: a request that read it before this clear must never
             // overwrite a fact written after it, so the counter never restarts.
+        }
+    }
+
+    override suspend fun clearHeadVerification(partition: DurablePartitionKey) {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        database.transaction {
+            queries.clearHeadAtVerifyForPartition(
+                environmentId = partition.environmentId,
+                serverId = partition.serverId,
+                principalId = partition.principalId,
+                consumerId = partition.consumerId,
+            )
+            queries.clearHasLoadedNewestForPartition(
+                environmentId = partition.environmentId,
+                serverId = partition.serverId,
+                principalId = partition.principalId,
+                consumerId = partition.consumerId,
+            )
         }
     }
 

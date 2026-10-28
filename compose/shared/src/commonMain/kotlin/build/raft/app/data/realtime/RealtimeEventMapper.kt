@@ -214,17 +214,25 @@ class RealtimeEventMapper(
      */
     private fun SyncResumeResponse.withResumeCanonical(element: JsonObject): SyncResumeResponse {
         val rows = element["messages"] as? kotlinx.serialization.json.JsonArray ?: return this
-        val carries = rows.mapNotNull { raw ->
-            runCatching {
-                val row = raw as? JsonObject ?: return@runCatching null
+        val carries = ArrayList<build.raft.app.canonical.message.CanonicalMessageCarry>(rows.size)
+        val misses = ArrayList<String?>()
+        rows.forEach { raw ->
+            val row = raw as? JsonObject
+            val carry = runCatching {
+                row ?: return@runCatching null
                 val withRandomId = if (row.containsKey("randomId")) row else JsonObject(row + ("randomId" to JsonNull))
                 decodeCanonicalMessageWire(withRandomId, ProductionFace.EnrichedUpdated)
             }.getOrNull()
+            if (carry != null) {
+                carries += carry
+            } else {
+                misses += (row?.get("channelId") as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            }
         }
-        if (carries.size != rows.size) {
+        if (misses.isNotEmpty()) {
             runCatching { diagnosticsLogger("sync_resume_canonical_decode rows=${rows.size} decoded=${carries.size}") }
         }
-        return copy(decodedCanonical = carries)
+        return copy(decodedCanonical = carries, canonicalDecodeMisses = misses)
     }
 
     private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {

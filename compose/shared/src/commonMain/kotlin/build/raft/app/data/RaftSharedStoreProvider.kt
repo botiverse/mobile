@@ -1163,6 +1163,7 @@ internal class RaftSharedStoreProvider private constructor(
             },
             // Lines already start with `canonical_v2_resume`.
             logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Resume"),
+            dispatcher = RaftMessageDbDispatcher,
         )
     }
 
@@ -3842,7 +3843,13 @@ internal class SharedRealtimeDomainEventOwner(
             var commit: (suspend () -> Unit)? = null
             val current = currentMessageRunner(grant) { commit = resumeGateway.captureUnderGrant(grant, event) }
             if (!current) return false
-            commit?.let { runCanonicalMessageV2CommitFailOpen(grant, "resume currentSeq=${event.currentSeq}", it) }
+            val failure = commit?.let { runCanonicalMessageV2CommitFailOpen(grant, "resume currentSeq=${event.currentSeq}", it) }
+            if (failure == "timeout") {
+                // Fail-open: the applied seq is about to move while the detached write still runs.
+                val line = "canonical_v2_resume outcome=cursor_ahead_of_write server=${grant.serverId} currentSeq=${event.currentSeq} " +
+                    "rows=${event.messages.size}"
+                guardedSinks?.log?.invoke(line) ?: sinks?.log?.invoke(line)
+            }
             return runIfCurrentGrant(grant) {
                 legacyContinuation(grant.serverId, event, source)
             }
@@ -3919,7 +3926,7 @@ internal class SharedRealtimeDomainEventOwner(
         grant: RealtimeGrantRecord,
         label: String,
         commit: suspend () -> Unit,
-    ) {
+    ): String? {
         val failure = try {
             val completed = withTimeoutOrNull(canonicalMessageV2CommitTimeoutMs) {
                 commit()
@@ -3935,6 +3942,7 @@ internal class SharedRealtimeDomainEventOwner(
             val line = "canonical_v2_realtime outcome=display_only server=${grant.serverId} $label reason=$failure"
             guardedSinks?.log?.invoke(line) ?: sinks?.log?.invoke(line)
         }
+        return failure
     }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {

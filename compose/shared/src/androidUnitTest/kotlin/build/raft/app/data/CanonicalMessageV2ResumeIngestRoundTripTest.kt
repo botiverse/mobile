@@ -22,6 +22,7 @@ import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
@@ -109,23 +110,191 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
         }
     }
 
+    // ---- review follow-ups ------------------------------------------------------------------------------
+
+    @Test
+    fun aHorizonResetStopsEveryHeadSegmentClaimingTheServerHead() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(9L)
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            assertEquals(listOf(Triple(10L, 20L, true)), rig.segmentFlags(channel), "control: the enter reached the head")
+            assertEquals(true, rig.hasLoadedNewest(channel))
+            assertTrue(rig.deliver(rig.resumeWith(25L, emptyList(), horizonReset = true)))
+            assertEquals(listOf(Triple(10L, 20L, false)), rig.segmentFlags(channel))
+            assertEquals(false, rig.hasLoadedNewest(channel))
+            // Only a new continuity proof claims the head again: the next live frame is stored loose.
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L)))
+            assertEquals(listOf(Triple(10L, 20L, false)), rig.segmentFlags(channel))
+        }
+    }
+
+    @Test
+    fun aPageWithMoreToFollowEndsEveryWindowsContinuityButALastPageOnlyItsOwnChannels() {
+        fun run(hasMore: Boolean): CanonicalMessageV2ScopeContinuity = withFile { file ->
+            file.rig().session { rig ->
+                rig.cursorAt(9L)
+                rig.connect(1L)
+                rig.enter(channel, 10L, 20L)
+                assertTrue(rig.deliver(rig.resumeWith(30L, listOf(rig.resumeRow("o30", 30L, "channel-other")), hasMore = hasMore)))
+                rig.canary.continuityOf(channel)
+            }
+        }
+        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, run(hasMore = false))
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, run(hasMore = true))
+    }
+
+    @Test
+    fun aRowTheDecoderRefusesIsAHoleOfItsChannel() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(9L)
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            val resume = rig.resumeWith(30L, listOf(rig.resumeRow("m30", 30L, channel.scopeId, undecodable = true)))
+            assertEquals(listOf<String?>(channel.scopeId), resume.canonicalDecodeMisses)
+            assertTrue(rig.deliver(resume))
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L)))
+            assertEquals(listOf(10L to 20L), rig.segments(channel))
+        }
+    }
+
+    @Test
+    fun aPayloadContextIsPreferredValidatedAndNeverChangesTheConfirmedHeader() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(29L)
+            rig.connect(1L)
+            assertTrue(rig.deliver(rig.messageNew(channel, "m5", 5L)))
+            assertTrue(
+                rig.deliver(
+                    rig.resume(
+                        34L,
+                        // No header: the payload's context stores it loose (and names the header).
+                        rig.resumeRow("n30", 30L, "channel-new", context = """{"channelType":"private"}"""),
+                        // Agrees with the stored header.
+                        rig.resumeRow("m31", 31L, channel.scopeId, context = """{"channelType":"channel"}"""),
+                        // Disagrees with it: logged, skipped, the header kind is kept.
+                        rig.resumeRow("m32", 32L, channel.scopeId, context = """{"channelType":"private"}"""),
+                        // Invalid (a reply context without its parent): ignored, the header decides.
+                        rig.resumeRow("m33", 33L, channel.scopeId, context = """{"channelType":"thread"}"""),
+                        // No context at all: the header decides.
+                        rig.resumeRow("m34", 34L, channel.scopeId),
+                    ),
+                ),
+            )
+            assertEquals(listOf("private"), rig.kinds("channel-new"))
+            assertEquals(listOf("channel"), rig.kinds(channel.scopeId))
+            assertEquals(listOf(5L, 31L, 33L, 34L), rig.seqsInScope(channel))
+            assertEquals(listOf(30L), rig.seqsInScope(SyncScopeKey(partition, "channel-new", "private")))
+            assertTrue(rig.logs.any { "context_mismatch" in it && "msg=m32" in it }, rig.logs.toString())
+            assertTrue(rig.logs.any { "payload_context_invalid" in it && "msg=m33" in it }, rig.logs.toString())
+        }
+    }
+
+    @Test
+    fun rowsWhoseHeaderCannotNameTheirContextAreSkipped() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(29L)
+            rig.header(SyncScopeKey(partition, "thread-orphan", "thread"))
+            rig.header(SyncScopeKey(partition, "task-1", "task"))
+            assertTrue(
+                rig.deliver(
+                    rig.resume(31L, rig.resumeRow("t30", 30L, "thread-orphan"), rig.resumeRow("k31", 31L, "task-1")),
+                ),
+            )
+            assertTrue(rig.logs.any { "thread_parent_unknown:1" in it && "context_unknown:task:1" in it && "written=0" in it }, rig.logs.toString())
+            assertEquals(31L, rig.appliedSeq())
+        }
+    }
+
+    @Test
+    fun withTheFlagOffNothingIsStoredButTheHoleIsReported() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(9L)
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            rig.enabled = false
+            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("m30", 30L, channel.scopeId))))
+            rig.enabled = true
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            assertEquals(listOf(10L, 20L), rig.seqsInScope(channel))
+            assertEquals(30L, rig.appliedSeq())
+        }
+    }
+
+    @Test
+    fun aPartitionClearedAfterTheGrantCheckRefusesTheResumeAndAStaleDisplaySavesNoCursor() = withFile { file ->
+        file.rig().session { rig ->
+            rig.cursorAt(29L)
+            rig.connect(1L)
+            assertTrue(rig.deliver(rig.messageNew(channel, "m5", 5L)))
+            // Server access lost between the grant check and the disk work: refused by the generation fence.
+            val commit = assertNotNull(
+                RealtimeResumeCanonicalMessageV2Gateway(rig.resumeIngest)
+                    .captureUnderGrant(rig.grant, rig.resume(30L, rig.resumeRow("m30", 30L, channel.scopeId))),
+            )
+            rig.engine.clearPartition(partition)
+            commit()
+            assertTrue(rig.logs.any { "canonical_v2_resume" in it && "partition_revoked:1" in it }, rig.logs.toString())
+            assertEquals(emptyList(), rig.seqsInScope(channel))
+            // The grant is gone at display: the facts were committed, the applied seq does not move.
+            assertTrue(rig.deliver(rig.messageNew(channel, "m6", 6L)))
+            rig.grantCurrentAtDisplay = false
+            assertEquals(false, rig.deliver(rig.resume(31L, rig.resumeRow("m31", 31L, channel.scopeId))))
+            assertEquals(29L, rig.appliedSeq())
+            assertEquals(listOf(6L, 31L), rig.seqsInScope(channel))
+        }
+    }
+
+    @Test
+    fun aSlowResumeWriteLetsTheCursorMoveFailOpenAndStillLands() = withFile { file ->
+        file.rig(timeoutMs = 300L).session { rig ->
+            rig.cursorAt(29L)
+            rig.connect(1L)
+            assertTrue(rig.deliver(rig.messageNew(channel, "m5", 5L)))
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val held = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val holder = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                rig.engine.withScopeWriter(channel) {
+                    held.complete(Unit)
+                    release.await()
+                }
+            }
+            held.await()
+            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("m30", 30L, channel.scopeId))))
+            assertEquals(30L, rig.appliedSeq(), "fail-open: the cursor moved")
+            assertTrue(rig.logs.any { "cursor_ahead_of_write" in it }, rig.logs.toString())
+            assertEquals(listOf(5L), rig.seqsInScope(channel))
+            release.complete(Unit)
+            holder.join()
+            rig.resumeIngest.awaitIdle()
+            assertEquals(listOf(5L, 30L), rig.seqsInScope(channel))
+        }
+    }
+
     // ---- rig -----------------------------------------------------------------------------------------
 
     private class TestFile(val path: Path) {
         val url = "jdbc:sqlite:${path.toAbsolutePath()}"
         private var created = false
 
-        fun rig(kv: InMemoryRaftKeyValueStore = InMemoryRaftKeyValueStore()): Rig {
+        fun rig(kv: InMemoryRaftKeyValueStore = InMemoryRaftKeyValueStore(), timeoutMs: Long = 10_000L): Rig {
             val driver = JdbcSqliteDriver(url)
             if (!created) {
                 RaftSqlDatabase.Schema.create(driver).value
                 created = true
             }
-            return Rig(driver, kv)
+            return Rig(driver, kv, timeoutMs)
         }
     }
 
-    private class Rig(private val driver: JdbcSqliteDriver, kv: InMemoryRaftKeyValueStore) : AutoCloseable {
+    private class Rig(private val driver: JdbcSqliteDriver, kv: InMemoryRaftKeyValueStore, timeoutMs: Long) : AutoCloseable {
+        /** The `sync_core_messages` flag (canary, both ingests). */
+        @Volatile var enabled = true
+
+        /** Whether the authority registry still holds the grant at display (the legacy continuation's own check). */
+        @Volatile var grantCurrentAtDisplay = true
         val database = RaftSqlDatabase(driver)
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         var onAppliedSeqSave: (() -> Set<String>)? = null
@@ -146,7 +315,7 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine, logger = { logs += it })
+        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { enabled }, generationEngine = engine, logger = { logs += it })
         private val realtime = CanonicalMessageV2RealtimeIngest(
             tracker = canary,
             generationEngine = engine,
@@ -154,25 +323,25 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
             logger = { logs += it },
             dispatcher = Dispatchers.IO,
         )
-        private val resumeIngest = CanonicalMessageV2ResumeIngest(
+        val resumeIngest = CanonicalMessageV2ResumeIngest(
             tracker = canary,
             generationEngine = engine,
-            isEnabledForServer = { true },
+            isEnabledForServer = { enabled },
             logger = { logs += it },
             dispatcher = Dispatchers.IO,
         )
-        private val grant = canonicalV2TestGrant()
+        val grant = canonicalV2TestGrant()
         private val owner = SharedRealtimeDomainEventOwner(
             cursorStore = cursorStore,
             runIfCurrentGrant = { _, block ->
-                block()
-                true
+                if (grantCurrentAtDisplay) block()
+                grantCurrentAtDisplay
             },
             runWithCurrentMessageGrant = { captured, block ->
                 block(CurrentMessageCommitContext(captured.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)))
                 true
             },
-            canonicalMessageV2CommitTimeoutMs = 10_000L,
+            canonicalMessageV2CommitTimeoutMs = timeoutMs,
         ).also { owner ->
             owner.installCanonicalMessageV2OwnerGateway(RealtimeIngestCanonicalMessageV2OwnerGateway(realtime, canary))
             owner.installCanonicalMessageV2ResumeGateway(RealtimeResumeCanonicalMessageV2Gateway(resumeIngest))
@@ -286,10 +455,22 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
          * One row of a `sync:resume:response` in the server's shape (slock `syncMessagesWithHorizon` +
          * `enrichWithSenderNames`): enriched aggregates, but no `conversationContext` and no `randomId`.
          */
-        fun resumeRow(id: String, seq: Long, channelId: String, senderId: String = "user-2", threadId: String? = null): String {
+        fun resumeRow(
+            id: String,
+            seq: Long,
+            channelId: String,
+            senderId: String = "user-2",
+            threadId: String? = null,
+            /** slock #11710: the row's `conversationContext` JSON, when the server sends one. */
+            context: String? = null,
+            /** Drops the `threadId` key: the canonical decoder refuses the row, the legacy projection keeps it. */
+            undecodable: Boolean = false,
+        ): String {
             val thread = threadId?.let { "\"$it\"" } ?: "null"
-            return """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"$senderId",""" +
-                """"messageType":"chat","content":"body-$id","threadId":$thread,"taskStatus":null,"taskNumber":null,""" +
+            val threadKey = if (undecodable) "" else """"threadId":$thread,"""
+            val contextKey = context?.let { """"conversationContext":$it,""" }.orEmpty()
+            return """{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"$senderId",$contextKey""" +
+                """"messageType":"chat","content":"body-$id",$threadKey"taskStatus":null,"taskNumber":null,""" +
                 """"taskAssigneeType":null,"taskAssigneeId":null,"taskClaimedAt":null,"taskCompletedAt":null,""" +
                 """"actionMetadata":null,"createdAt":"2026-07-17T00:00:00.000Z","updatedAt":"2026-07-17T00:00:00.000Z",""" +
                 """"delegatedByAgentId":null,"deletedAt":null,"senderName":"Bob","senderDescription":null,""" +
@@ -297,12 +478,58 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
         }
 
         fun resume(currentSeq: Long, vararg rows: String): SyncResumeResponse =
+            resumeWith(currentSeq, rows.toList()).also { assertEquals(rows.size, it.decodedCanonical.size, "every resume row must decode") }
+
+        fun resumeWith(
+            currentSeq: Long,
+            rows: List<String>,
+            hasMore: Boolean = false,
+            horizonReset: Boolean = false,
+        ): SyncResumeResponse =
             assertIs<SyncResumeResponse>(
                 mapper.map(
                     RealtimeSocketEvents.SyncResumeResponse,
-                    """{"messages":[${rows.joinToString(",")}],"currentSeq":$currentSeq,"hasMore":false}""",
+                    """{"messages":[${rows.joinToString(",")}],"currentSeq":$currentSeq,"hasMore":$hasMore,"horizonReset":$horizonReset}""",
                 ),
-            ).also { assertEquals(rows.size, it.decodedCanonical.size, "every resume row must decode") }
+            )
+
+        /** A stored header written directly (a shape no current writer produces, or a kind the test needs). */
+        fun header(scope: SyncScopeKey, parentKind: String? = null, parentId: String? = null, root: String? = null) {
+            database.queries.upsertSyncCursor(
+                scopeId = scope.scopeId,
+                environmentId = scope.environmentId,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                latestSeq = null,
+                oldestLoadedSeq = null,
+                newestLoadedSeq = null,
+                hasLoadedOldest = 0L,
+                hasLoadedNewest = 0L,
+                updatedAtMs = 1_000L,
+                epoch = null,
+                parentScopeKind = parentKind,
+                parentScopeId = parentId,
+                rootMessageId = root,
+                lastUserAccessAtMs = null,
+            )
+        }
+
+        fun kinds(channelId: String): List<String> = runBlocking { engine.baselinedScopeKinds(partition, channelId) }
+
+        suspend fun segmentFlags(scope: SyncScopeKey): List<Triple<Long, Long, Boolean>> =
+            SqlDelightCanonicalMessageV2Store(database, now = { 2_000L }).readSegments(scope).map { Triple(it.lowSeq, it.highSeq, it.headAtVerify) }
+
+        fun hasLoadedNewest(scope: SyncScopeKey): Boolean? =
+            database.queries.selectSyncCursor(
+                environmentId = scope.environmentId,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                scopeId = scope.scopeId,
+            ).executeAsOneOrNull()?.hasLoadedNewest?.let { it != 0L }
 
         override fun close() {
             realtime.close()
