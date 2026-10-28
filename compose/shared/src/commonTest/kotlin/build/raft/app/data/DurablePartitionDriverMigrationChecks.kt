@@ -626,6 +626,8 @@ private fun SqlDriver.nonCoreMasterDefinitions(): List<DriverMasterDefinition> =
         definition.name in setOf(
             "messageEntity",
             "syncCursorEntity",
+            "messageSegmentEntity",
+            "messageLocalRevEntity",
             "messageViewerOverlayEntity",
             "syncReadStateFactEntity",
             "avatarCacheMetadataEntity",

@@ -465,6 +465,8 @@ class DurablePartitionAndroidDriverMigrationTest {
             definition.name in setOf(
                 "messageEntity",
                 "syncCursorEntity",
+                "messageSegmentEntity",
+                "messageLocalRevEntity",
                 "messageViewerOverlayEntity",
                 "syncReadStateFactEntity",
                 "avatarCacheMetadataEntity",
