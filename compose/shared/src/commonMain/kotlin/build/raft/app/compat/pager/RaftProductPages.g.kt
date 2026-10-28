@@ -6,6 +6,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
     mapOf(
         "compose_app_shell_child_tab" to { build.raft.app.ComposeRaftAppShellChildTabPage() },
         "compose_app_update" to { build.raft.app.ComposeAppUpdatePage() },
+        "compose_artifact_viewer" to { build.raft.app.ComposeRaftArtifactViewerPage() },
         "compose_auth_choose_server" to { build.raft.app.ComposeAuthChooseServerPage() },
         "compose_auth_developer" to { build.raft.app.ComposeAuthAboutPage() },
         "compose_auth_profile_setup" to { build.raft.app.ComposeAuthProfileSetupPage() },

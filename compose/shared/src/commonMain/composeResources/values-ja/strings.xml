@@ -3365,6 +3365,10 @@
     <string name="artifacts_activity_updated">%1$s が更新しました</string>
     <string name="artifacts_activity_someone">誰か</string>
     <string name="artifacts_activity_untitled">無題の Artifact</string>
+    <string name="artifacts_viewer_more">その他の操作</string>
+    <string name="artifacts_viewer_unavailable_title">この Artifact を開けません</string>
+    <string name="artifacts_viewer_unavailable_body">存在しないか、閲覧する権限がありません。</string>
+    <string name="artifacts_viewer_open_in_browser">ブラウザで開く</string>
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">フォロー解除</string>
     <string name="activity_unfollowed_artifact">%1$s のフォローを解除しました</string>

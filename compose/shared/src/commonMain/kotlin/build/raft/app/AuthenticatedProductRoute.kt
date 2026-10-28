@@ -30,6 +30,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     SettingsStorage(SETTINGS_STORAGE_PAGE),
     SettingsComputers(SETTINGS_COMPUTERS_PAGE),
     ReleaseNotes(RELEASE_NOTES_PAGE),
+    ArtifactViewer(RAFT_ARTIFACT_VIEWER_PAGE),
 }
 
 internal val authenticatedProductRoutePageNames: Set<String> =

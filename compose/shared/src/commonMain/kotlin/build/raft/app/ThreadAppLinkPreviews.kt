@@ -170,6 +170,8 @@ internal fun ThreadAppLinkPreviewScope(
         }
     CompositionLocalProvider(LocalRaftAppLinkChips provides chipHost, content = content)
     ThreadAppLinkCardPopoverHost(results = view.results, cards = cards, artifacts = artifacts.summaries, artifactWebBaseUrl = artifactWebBaseUrl)
+    // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
+    RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())
     val prompt = asking
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent

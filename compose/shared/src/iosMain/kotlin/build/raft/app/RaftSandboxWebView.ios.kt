@@ -122,6 +122,8 @@ internal class RaftIosSandboxWebView(
     private var useWideViewPort = false
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled = false
+    /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
+    private var mainFrameOrigin: String? = null
     private var currentURL = ""
     private var currentTitle = ""
     private var currentLoading = false
@@ -154,7 +156,8 @@ internal class RaftIosSandboxWebView(
                 domStorageEnabled != config.domStorageEnabled ||
                 ephemeral != config.ephemeral ||
                 injectedJavaScript != config.injectedJavaScript ||
-                hostEventsEnabled != config.hostEventsEnabled
+                hostEventsEnabled != config.hostEventsEnabled ||
+                mainFrameOrigin != config.mainFrameOrigin?.let(::raftWebOriginOf)
         allowScripts = config.allowScripts
         // The auth user-script's main-frame scope is selected from this policy at configuration
         // time, so a policy change rebuilds (a broad script must not survive into a fenced document).
@@ -164,6 +167,7 @@ internal class RaftIosSandboxWebView(
         ephemeral = config.ephemeral
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
+        mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
         configured = true
         val srcChanged = updateSrcState(config.url.trim())
         if (rebuild) {
@@ -232,7 +236,9 @@ internal class RaftIosSandboxWebView(
                 WKUserScript(
                     source = injectedJavaScript,
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
-                    forMainFrameOnly = !allowNavigation
+                    // Under an origin lock the script (a session) never enters a sub-frame: the content
+                    // frame of another origin must not see it (Tenny's WebView rule 1).
+                    forMainFrameOnly = mainFrameOrigin != null || !allowNavigation
                 )
             )
         }
@@ -345,6 +351,7 @@ internal class RaftIosSandboxWebView(
             val activeURL = view.URL
             val sameTrustedDocument =
                 activeURL != null && isNavigationSchemeAllowed(activeURL) && isSameOriginURL(activeURL) &&
+                    isOnLockedOrigin(activeURL) &&
                     (allowNavigation || isAllowedMainDocumentURL(activeURL))
             if (sameTrustedDocument && script.isNotEmpty()) view.evaluateJavaScript(script, completionHandler = null)
             return
@@ -399,7 +406,7 @@ internal class RaftIosSandboxWebView(
             if (allowedNavigationSchemes.isNotEmpty()) notifyNavigationBlocked(src) else notifyLoadFailure("invalid_preview_url")
             return
         }
-        if (!isNavigationSchemeAllowed(url)) {
+        if (!isNavigationSchemeAllowed(url) || !isOnLockedOrigin(url)) {
             notifyNavigationState(force = false)
             notifyNavigationBlocked(src)
             return
@@ -423,6 +430,7 @@ internal class RaftIosSandboxWebView(
         if (!raftIsSameObjCObject(source, webView)) return false
         if (isMainFrame) {
             if (targetURL == null || !isNavigationSchemeAllowed(targetURL) ||
+                !isOnLockedOrigin(targetURL) ||
                 (!allowNavigation && !isAllowedMainDocumentURL(targetURL))
             ) {
                 handleBlockedMainFrameNavigation(targetURL?.absoluteString ?: "")
@@ -573,6 +581,12 @@ internal class RaftIosSandboxWebView(
             (allowed.path ?: "") == (targetURL.path ?: "") &&
             (allowed.query ?: "") == (targetURL.query ?: "") &&
             (allowed.port?.longValue ?: -1L) == (targetURL.port?.longValue ?: -1L)
+    }
+
+    /** True unless an origin lock is set and [targetURL] is on another origin. */
+    private fun isOnLockedOrigin(targetURL: NSURL): Boolean {
+        val locked = mainFrameOrigin ?: return true
+        return raftWebOriginOf(targetURL.absoluteString ?: "") == locked
     }
 
     private fun isSameOriginURL(targetURL: NSURL): Boolean {

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.platform.LocalUriHandler
+import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactWebUrl
 import build.raft.designsystem.haptics.rememberRaftHaptics
@@ -1779,6 +1780,12 @@ private fun SharedActivityList(
     val activityObjectUriHandler = LocalUriHandler.current
     val activityObjectWebBaseUrl =
         remember { RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl.orEmpty() }
+    // Workspace Artifacts: an object row opens the in-app viewer; the web page in the browser only
+    // when no page can open from here.
+    val activityArtifactOpener =
+        rememberRaftArtifactOpener { activityObjectUriHandler.openUri(artifactWebUrl(activityObjectWebBaseUrl, it)) }
+    // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap.
+    RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object })
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
     // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
@@ -1835,9 +1842,17 @@ private fun SharedActivityList(
         if (currentItem.kind == InboxItemKind.Object && objectRow != null) {
             selectedItemKey = currentItem.key
             currentItem.activityOpenReadIntent()?.let(onIntent)
-            activityObjectUriHandler.openUri(
-                artifactWebUrl(activityObjectWebBaseUrl, ArtifactLinkTarget(objectRow.objectId, objectRow.openVersion)),
-            )
+            val target = ArtifactLinkTarget(objectRow.objectId, objectRow.openVersion)
+            val header =
+                objectRow.title?.takeIf { it.isNotBlank() }?.let { title ->
+                    RaftArtifactViewerHeader(
+                        id = objectRow.objectId,
+                        title = title,
+                        kind = ArtifactKind.fromWire(objectRow.artifactKind),
+                        version = objectRow.openVersion ?: objectRow.latestVersion,
+                    )
+                }
+            activityArtifactOpener.open(target, header, "activity_row")
             return
         }
         RaftProductEvents.activityItemOpen(currentItem.kind.productActivityItemKind())
