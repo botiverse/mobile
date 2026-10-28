@@ -8802,14 +8802,15 @@ private fun SharedThreadRouteContentContent(
             headerDisplayModel.title,
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
-            renderedPayload.parentSurfaceKind
+            renderedPayload.parentSurfaceKind,
+            taskV2Enabled
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-            )
+            ).withTaskV2(taskV2Enabled)
         }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
@@ -10779,7 +10780,7 @@ private fun SharedThreadRouteContentContent(
                         draftText = draftText,
                         attachmentCount = pendingAttachments.size
                     ),
-                asTask = currentDraftState.seedAsTask,
+                asTask = currentDraftState.seedAsTask && composerSurface.sendsAsTask,
                 attachmentIds = attachmentIds,
                 attachments = pendingAttachments,
                 ownedTemporaryFileRefs = ownedTemporaryFileRefs,
