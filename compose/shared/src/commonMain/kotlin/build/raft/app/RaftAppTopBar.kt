@@ -214,7 +214,18 @@ internal class RaftAppShellTopBarState {
     var notifications: List<RaftHomeNotificationItem> by mutableStateOf(emptyList())
     var onView: (RaftHomeNotificationItem) -> Unit by mutableStateOf({})
     var onDismiss: (RaftHomeNotificationItem) -> Unit by mutableStateOf({})
+
+    /**
+     * False when the wide layout has no top bar (iPhone Duo's inner screen, raft-design #859): the
+     * bell is the rail's, and the list panes keep their own 56dp head with the destination's
+     * name, its seam on the rail header's. The server switcher stays the rail's.
+     */
+    var drawn: Boolean by mutableStateOf(true)
 }
 
 /** The wide top bar over the shell's pages; null on the phone (and outside the shell). */
 internal val LocalRaftAppShellTopBar = staticCompositionLocalOf<RaftAppShellTopBarState?> { null }
+
+/** True under a drawn wide top bar: a top-level list pane then has no head of its own. */
+@Composable
+internal fun raftUnderAppShellTopBar(): Boolean = LocalRaftAppShellTopBar.current?.drawn == true

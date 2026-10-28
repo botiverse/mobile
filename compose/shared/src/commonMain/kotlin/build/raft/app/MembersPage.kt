@@ -5678,7 +5678,7 @@ internal fun MembersListContent(
     ) {
         // Under the wide top bar the Members list has no head (web Sidebar `hideTitle`, artin
         // task #8); a pushed Members page (with Back) keeps its own.
-        val underTopBar = LocalRaftAppShellTopBar.current != null && onBack == null
+        val underTopBar = raftUnderAppShellTopBar() && onBack == null
         if (!underTopBar) {
             MembersPageHeader(
                 title = displayTitle,

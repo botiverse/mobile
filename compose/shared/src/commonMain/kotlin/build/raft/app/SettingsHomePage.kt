@@ -6852,6 +6852,7 @@ private fun RaftAppShellReadyContent(
     // artin task #8: the wide top bar's bell, and the sign to the list panes under it that they
     // have no head of their own.
     val appShellTopBar = remember { RaftAppShellTopBarState() }
+    if (appShellTopBar.drawn == railWithoutTopBar) appShellTopBar.drawn = !railWithoutTopBar
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
         RaftAppShellSurface(
@@ -6986,6 +6987,7 @@ private fun RaftAppShellReadyContent(
                                     {
                                         RaftAppRailServerTile(
                                             model = serverMenuModel,
+                                            open = serverMenuState.open,
                                             onClick = {
                                                 appShellTopBar.bellOpen.value = false
                                                 bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open} from=rail")
@@ -9819,7 +9821,7 @@ private fun SharedMembersScreen(
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
                 // No head under the wide top bar, as the loaded list (MembersListContent).
-                if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+                if (!raftUnderAppShellTopBar() || onBack != null) {
                     MembersPageHeader(title = membersTitle, onBack = onBack)
                 }
                 RaftCenteredLoading()

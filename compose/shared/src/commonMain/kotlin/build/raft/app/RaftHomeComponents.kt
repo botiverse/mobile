@@ -2424,6 +2424,23 @@ private fun RaftStructuralHomeShellContent(
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
+                if (serverSwitcherInTopBar && !raftUnderAppShellTopBar()) {
+                    // iPhone Duo's inner screen (raft-design #859): no top bar, so the sidebar has
+                    // its 56dp head with the destination's name, its seam on the rail header's.
+                    // The server switcher is the rail's tile, not this head.
+                    RaftTopPageHeader(
+                        title = stringResource(Res.string.tab_home),
+                        backgroundColor = RaftColor.Canvas,
+                        topSafeAreaOverride = topSafeArea,
+                        contentStartPadding = RaftMainTabHeaderStartPadding,
+                        titleStyle = RaftMainTabHeaderTitleStyle,
+                        onTitleClick = {
+                            dismissNotificationCenterForFocusLoss()
+                            listScope.launch { listState.animateScrollToTopExpressive() }
+                        },
+                        showBodyTopBanner = false,
+                    )
+                }
                 RaftAppShellBodyTopBanner()
                 // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
                 if (unreadStale) {

@@ -305,7 +305,7 @@ internal fun SettingsHomeContent(
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         // Under the wide top bar the Settings tab has no head (web Sidebar `hideTitle`, artin task #8).
-        if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+        if (!raftUnderAppShellTopBar() || onBack != null) {
             RaftMainTabPageHeader(
                 title = payload.title,
                 subtitle = null,

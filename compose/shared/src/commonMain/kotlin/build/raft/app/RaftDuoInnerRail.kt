@@ -1,9 +1,15 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -17,6 +23,7 @@ import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
 // iPhone Duo's inner screen is the apps' desktop mode without the top bar (raft-design #859,
@@ -38,13 +45,17 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * server button): the current server's 40dp avatar tile, ink with its initial in yellow when it
  * has no image. It is the one server entry and opens the server panel ([onClick]). The attention
  * light shows when another server has unread items, the server tab's rule
- * ([appShellServerTabShowsAttention]).
+ * ([appShellServerTabShowsAttention]). While the panel is [open], and under a press, the tile
+ * wears `fill-frame-medium` over its whole face, as [RaftWorkspaceButton] does (Kirby 10-28).
  */
 @Composable
 internal fun RaftAppRailServerTile(
     model: RaftServerMenuModel,
+    open: Boolean,
     onClick: () -> Unit,
 ) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
     val server = model.currentServer
     val attention = appShellServerTabShowsAttention(model)
     val label = stringResource(Res.string.server_tab_a11y_label, server.name)
@@ -55,7 +66,13 @@ internal fun RaftAppRailServerTile(
         modifier =
             Modifier
                 .size(RaftAppRailDefaults.ItemSize)
-                .clickable(role = Role.Button, onClickLabel = actionLabel, onClick = onClick)
+                .clickable(
+                    interactionSource = source,
+                    indication = null,
+                    role = Role.Button,
+                    onClickLabel = actionLabel,
+                    onClick = onClick,
+                )
                 .semantics {
                     contentDescription = label
                     if (attention) stateDescription = otherUnreadDescription
@@ -67,6 +84,13 @@ internal fun RaftAppRailServerTile(
         },
     ) {
         ServerSwitcherAvatarTile(server, size = RaftAppRailDefaults.ItemSize)
+        if (open || pressed) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(RaftTheme.colors.fillFrameMedium, RoundedCornerShape(RaftRadius.Sticker))
+            )
+        }
     }
 }
 

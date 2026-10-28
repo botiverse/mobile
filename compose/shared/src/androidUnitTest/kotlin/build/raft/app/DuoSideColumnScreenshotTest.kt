@@ -26,6 +26,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.designsystem.components.RaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftSideColumnKeepOut
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -46,9 +47,11 @@ import org.robolectric.annotation.GraphicsMode
  *  - inner screen held sideways (951x669), the apps' desktop mode without the top bar
  *    (page-structure "The inner screen"): the rail's header tile is the server switcher (with the
  *    other-server attention light), Search is its first destination, the bell (with its attention
- *    pixel) is in its footer above Settings; then the Home list with no server switcher of its own.
- *    Home alone; Home with the bell's popover open next to the rail; a channel in the main area,
- *    where the column holds the history Back and the channel's actions, never destinations.
+ *    pixel) is in its footer above Settings; then the Home list under its 56dp "Home" head (no
+ *    server switcher), whose seam lines up with the rail header's. Home alone; Home with the
+ *    bell's popover open next to the rail; Home with the server panel open next to the tile (the
+ *    tile in its open fill); a channel in the main area, where the column holds the history Back
+ *    and the channel's actions, never destinations.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -74,6 +77,11 @@ class DuoSideColumnScreenshotTest {
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
     fun innerScreenLandscapeHomeBellOpen() =
         capture("duo.inner-landscape.home-bell", innerPosture, tabBarStandIn = 0.dp) { WideShell(bellOpen = true) }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
+    fun innerScreenLandscapeHomeServerPanelOpen() =
+        capture("duo.inner-landscape.home-server", innerPosture, tabBarStandIn = 0.dp) { WideShell(serverPanelOpen = true) }
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
@@ -256,8 +264,10 @@ private fun ChannelPage(showBack: Boolean = true) {
 }
 
 @Composable
-private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false) {
-    val topBar = remember { RaftAppShellTopBarState() }
+private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false, serverPanelOpen: Boolean = false) {
+    val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive = true)
+    val topBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    val serverPanel = remember { RaftMobileNavServerPopoverState().apply { if (serverPanelOpen) show() } }
     // Home closes the shell's bell when it first shows: open it a frame later, as a tap would.
     if (bellOpen) {
         LaunchedEffect(Unit) {
@@ -267,7 +277,6 @@ private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false) {
     }
     // The shell hands the column its history Back (the detail pane has none of its own).
     if (channelOpen) raftSideColumnFallbackBack(raftSideColumnBackAction(onBack = {}))
-    val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive = true)
     CompositionLocalProvider(LocalRaftAppShellTopBar provides topBar) {
         Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Row(Modifier.fillMaxSize()) {
@@ -289,7 +298,7 @@ private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false) {
                     bottomItems = listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
                     header =
                         if (railWithoutTopBar) {
-                            { RaftAppRailServerTile(duoServerMenu, onClick = {}) }
+                            { RaftAppRailServerTile(duoServerMenu, open = serverPanel.open, onClick = {}) }
                         } else {
                             null
                         },
@@ -299,6 +308,17 @@ private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false) {
                 Box(Modifier.weight(1f).fillMaxHeight()) { if (channelOpen) ChannelPage(showBack = false) }
             }
             RaftAppTopBarNotificationOverlay(topBar, topInset = 0.dp, besideRail = true)
+            RaftAppServerMenuOverlay(
+                model = duoServerMenu,
+                state = serverPanel,
+                anchor = RaftServerMenuAnchor.RailHeader,
+                onPick = {},
+                prefersChineseCommunity = false,
+                onCreateServerClick = {},
+                onInviteHumanClick = null,
+                screenHeight = 669.dp,
+                entries = raftServerMenuEntriesFor(duoServerMenu.entries, wide = true, guest = false),
+            )
         }
     }
 }
