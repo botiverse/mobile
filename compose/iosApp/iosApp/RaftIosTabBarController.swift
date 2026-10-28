@@ -22,6 +22,25 @@ import UIKit
 ///
 /// Pushed pages (thread, channel, composer, ...) are pushed over the whole shell page by the
 /// navigation controller, so they cover this bar exactly as they covered the Compose one.
+/// A tab bar provider that does not keep its bar alive: the bar's controller goes away with its
+/// page, and the provider must not keep it (or itself) alive past that.
+private final class WeakTabBarProvider {
+    private weak var _bar: UIView?
+    private let provider: () -> UIView?
+
+    init(_ provider: @escaping () -> UIView?) {
+        self.provider = provider
+        _bar = provider()
+    }
+
+    var bar: UIView? {
+        if let _bar = _bar {
+            return _bar
+        }
+        return provider()
+    }
+}
+
 final class RaftIosTabBarController: UIViewController {
     /// Only the app shell renders the bottom tabs.
     static func hostsNativeTabBar(pageName: String) -> Bool {
@@ -37,6 +56,38 @@ final class RaftIosTabBarController: UIViewController {
     private let content: UIViewController
     private let bridge: RaftNativeTabBarBridge
     private let systemTabBarController = RaftIosSystemTabBarController()
+    /// The live tab bar of [window], for the host facts that measure it (the iPhone Duo side
+    /// column needs how much of the strip the bar takes). The bar is not in the window's own
+    /// view tree - it is a child of this controller, which the page hosts - so it is reached here.
+    ///
+    /// The bar is matched to the window it is in, so a second window (an iPad with several
+    /// scenes) is never measured against another window's bar.
+    @objc(liveTabBarInWindow:)
+    static func liveTabBar(in window: UIWindow?) -> UIView? {
+        guard let window = window else { return nil }
+        // The dead providers are dropped as they are found, so the list does not grow with the
+        // number of pages that have been opened.
+        _liveTabBarProviders.removeAll { $0.bar == nil }
+        for provider in _liveTabBarProviders {
+            if provider.bar?.window === window {
+                return provider.bar
+            }
+        }
+        return nil
+    }
+
+    /// The registered bars. Each is held weakly: a bar's controller goes away with its page, and
+    /// a dead provider would otherwise be kept alive here for the life of the process.
+    private static var _liveTabBarProviders: [WeakTabBarProvider] = []
+
+    /// Posted when the bar lays out; the page republishes the window facts, which include how
+    /// much of the side column the bar takes.
+    @objc static var didLayoutNotificationName: String { "RaftIosTabBarController.didLayout" }
+
+    /// Registers a live bar. Each page owns one tab bar controller, so there is one per window.
+    @objc static func setLiveTabBarProvider(_ provider: @escaping () -> UIView?) {
+        _liveTabBarProviders.append(WeakTabBarProvider(provider))
+    }
     private let overlayView = RaftIosTabBarOverlayView()
     private lazy var stateListener = RaftIosTabBarStateListener(owner: self)
     private var slotsByKey: [String: RaftIosTabSlotViewController] = [:]
@@ -83,7 +134,16 @@ final class RaftIosTabBarController: UIViewController {
 
         let tabs = systemTabBarController
         tabs.delegate = self
-        tabs.onLayout = { [weak self] in self?.reportBand() }
+        tabs.onLayout = { [weak self] in
+            self?.reportBand()
+            // The bar's own layout decides how much of the side column it takes, so the window
+            // facts are republished once it has laid out (the iPhone Duo side column reports how
+            // much of the strip the bar occupies).
+            NotificationCenter.default.post(
+                name: Notification.Name(RaftIosTabBarController.didLayoutNotificationName),
+                object: nil
+            )
+        }
         addChild(tabs)
         // Always a bottom bar: iPadOS 18+ would otherwise move regular-width tabs to the top.
         if #available(iOS 17.0, *) {
@@ -97,6 +157,7 @@ final class RaftIosTabBarController: UIViewController {
         overlayView.addSubview(tabs.view)
         tabs.didMove(toParent: self)
         overlayView.tabBar = tabs.tabBar
+        RaftIosTabBarController.setLiveTabBarProvider { [weak tabs] in tabs?.tabBar }
         tabs.tabBar.tintColor = .label
         applyAppearance()
         NotificationCenter.default.addObserver(

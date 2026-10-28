@@ -35,6 +35,9 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let stripWidthPt: CGFloat
         let nativeTabBarHeightPt: CGFloat
         let reservedRegions: [ReservedRegion]
+        /// Which of the iPhone Duo's displays the window is on: "duoOuter", "duoInner" or
+        /// "other".
+        let display: String
     }
 
     private var latest: Snapshot?
@@ -73,7 +76,7 @@ final class RaftIosAdaptivePanePublisher: NSObject {
     ///
     /// The shape is decided from the window's size and the device, not from the hinge angle: the
     /// hinge APIs (`UIHinge`) are iOS 27.1+ and the app still has to build against the 26.x SDK.
-    @objc(nextPayloadWithWidthPoints:heightPoints:scale:sideColumn:stripEdge:stripWidthPoints:nativeTabBarHeightPoints:reservedRegions:)
+    @objc(nextPayloadWithWidthPoints:heightPoints:scale:sideColumn:stripEdge:stripWidthPoints:nativeTabBarHeightPoints:reservedRegions:display:)
     func nextPayload(
         widthPoints: CGFloat,
         heightPoints: CGFloat,
@@ -82,7 +85,8 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         stripEdge: String,
         stripWidthPoints: CGFloat,
         nativeTabBarHeightPoints: CGFloat,
-        reservedRegions: [[String: Any]]
+        reservedRegions: [[String: Any]],
+        display: String
     ) -> NSDictionary? {
         let regions = reservedRegions.map { region -> ReservedRegion in
             ReservedRegion(
@@ -119,7 +123,8 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             stripEdge: stripEdge,
             stripWidthPt: stripWidthPoints.isFinite ? max(0, stripWidthPoints) : 0,
             nativeTabBarHeightPt: nativeTabBarHeightPoints.isFinite ? max(0, nativeTabBarHeightPoints) : 0,
-            reservedRegions: regions
+            reservedRegions: regions,
+            display: display
         )
         guard snapshot != latest else { return nil }
         latest = snapshot
@@ -134,6 +139,7 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             "stripWidthPt": snapshot.stripWidthPt,
             "nativeTabBarHeightPt": snapshot.nativeTabBarHeightPt,
             "reservedRegions": snapshot.reservedRegions.map(\.payload),
+            "display": snapshot.display,
         ]
     }
 }

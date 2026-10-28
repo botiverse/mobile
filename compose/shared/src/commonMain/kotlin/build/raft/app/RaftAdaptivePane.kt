@@ -93,7 +93,14 @@ internal data class RaftAdaptivePaneEvent(
     /** Height the native tab bar takes at the bottom of the strip, in points (0 when there is none). */
     val nativeTabBarHeightPt: Float = 0f,
     /** Camera and fold regions to keep content out of, in points. */
-    val reservedRegions: List<RaftAdaptiveReservedRegion> = emptyList()
+    val reservedRegions: List<RaftAdaptiveReservedRegion> = emptyList(),
+    /**
+     * Which of the iPhone Duo's displays the window is on: "duoOuter" (folded), "duoInner"
+     * (unfolded) or "other" (any other device). The Duo's inner display can be held portrait,
+     * where the side column is gone but the top bar is still not wanted, so shared needs to know
+     * which display it is looking at and not only the shape of the window.
+     */
+    val display: RaftAdaptiveDisplay = RaftAdaptiveDisplay.Other
 )
 
 internal const val RaftAdaptivePanePagerEvent = "slockAdaptivePaneChanged"
@@ -153,8 +160,21 @@ internal fun JSONObject.toRaftAdaptivePaneEventOrNull(): RaftAdaptivePaneEvent? 
         stripEdge = optString("stripEdge").toRaftAdaptiveSideColumn(),
         stripWidthPt = optDouble("stripWidthPt", 0.0).toFloat(),
         nativeTabBarHeightPt = optDouble("nativeTabBarHeightPt", 0.0).toFloat(),
-        reservedRegions = optJSONArray("reservedRegions").toRaftAdaptiveReservedRegions()
+        reservedRegions = optJSONArray("reservedRegions").toRaftAdaptiveReservedRegions(),
+        display = optString("display").toRaftAdaptiveDisplay()
     )
+}
+
+/** Which display the window is on. */
+internal enum class RaftAdaptiveDisplay {
+    /** The iPhone Duo's outer (folded) display. */
+    DuoOuter,
+
+    /** The iPhone Duo's inner (unfolded) display. */
+    DuoInner,
+
+    /** Any other device or display. */
+    Other
 }
 
 /** What a reserved region is. */
@@ -168,6 +188,13 @@ internal enum class RaftAdaptiveReservedRegionKind {
     /** The host did not say what the region is. */
     Unknown
 }
+
+private fun String.toRaftAdaptiveDisplay(): RaftAdaptiveDisplay =
+    when (trim().lowercase()) {
+        "duoouter" -> RaftAdaptiveDisplay.DuoOuter
+        "duoinner" -> RaftAdaptiveDisplay.DuoInner
+        else -> RaftAdaptiveDisplay.Other
+    }
 
 private fun String.toRaftAdaptiveReservedRegionKind(): RaftAdaptiveReservedRegionKind =
     when (trim().lowercase()) {

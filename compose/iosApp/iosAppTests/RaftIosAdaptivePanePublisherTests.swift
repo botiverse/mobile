@@ -14,7 +14,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             stripEdge: "none",
             stripWidthPoints: 0,
             nativeTabBarHeightPoints: 0,
-            reservedRegions: []
+            reservedRegions: [],
+            display: "other"
         ) as? [String: Any]
 
         XCTAssertEqual(payload?["widthPx"] as? Int, 2048)
@@ -26,7 +27,7 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             Set([
                 "widthPx", "heightPx", "density", "posture",
                 "sideColumn", "stripEdge", "stripWidthPt", "nativeTabBarHeightPt",
-                "reservedRegions",
+                "reservedRegions", "display",
             ])
         )
     }
@@ -37,12 +38,14 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         XCTAssertNotNil(publisher.nextPayload(
             widthPoints: 1024, heightPoints: 1366, scale: 2,
             sideColumn: false, stripEdge: "none",
-            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: [],
+            display: "other"
         ))
         XCTAssertNil(publisher.nextPayload(
             widthPoints: 1024, heightPoints: 1366, scale: 2,
             sideColumn: false, stripEdge: "none",
-            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: [],
+            display: "other"
         ))
 
         let landscape = publisher.nextPayload(
@@ -50,7 +53,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             heightPoints: 1024,
             scale: 2,
             sideColumn: false, stripEdge: "none",
-            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: [],
+            display: "other"
         ) as? [String: Any]
         XCTAssertEqual(landscape?["widthPx"] as? Int, 2732)
         XCTAssertEqual(landscape?["heightPx"] as? Int, 2048)
@@ -60,7 +64,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             heightPoints: 1024,
             scale: 2,
             sideColumn: false, stripEdge: "none",
-            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: [],
+            display: "other"
         ) as? [String: Any]
         XCTAssertEqual(splitView?["widthPx"] as? Int, 1366)
         XCTAssertEqual(splitView?["heightPx"] as? Int, 2048)
@@ -109,7 +114,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         let none = publisher.nextPayload(
             widthPoints: 402, heightPoints: 874, scale: 3,
             sideColumn: false, stripEdge: "none",
-            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: []
+            stripWidthPoints: 0, nativeTabBarHeightPoints: 0, reservedRegions: [],
+            display: "other"
         ) as? [String: Any]
         XCTAssertEqual(none?["sideColumn"] as? Bool, false)
         XCTAssertEqual(none?["stripEdge"] as? String, "none")
@@ -119,7 +125,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
         let duo = publisher.nextPayload(
             widthPoints: 466, heightPoints: 678, scale: 3,
             sideColumn: true, stripEdge: "right",
-            stripWidthPoints: 54, nativeTabBarHeightPoints: 120, reservedRegions: []
+            stripWidthPoints: 54, nativeTabBarHeightPoints: 120, reservedRegions: [],
+            display: "other"
         ) as? [String: Any]
         XCTAssertEqual(duo?["sideColumn"] as? Bool, true)
         XCTAssertEqual(duo?["stripEdge"] as? String, "right")
@@ -137,13 +144,31 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             reservedRegions: [
                 ["leftPt": 645.0, "topPt": 0.0, "widthPt": 24.0, "heightPt": 951.0],
                 ["leftPt": 0.0, "topPt": 0.0, "widthPt": 669.0, "heightPt": 20.0],
-            ]
+            ],
+            display: "other"
         ) as? [String: Any]
 
         let regions = payload?["reservedRegions"] as? [[String: Any]]
         XCTAssertEqual(regions?.count, 2)
         XCTAssertEqual(regions?.first?["leftPt"] as? Double, 645.0)
         XCTAssertEqual(regions?.first?["heightPt"] as? Double, 951.0)
+    }
+
+    func testTheDisplayIsPublishedAsGiven() {
+        let publisher = RaftIosAdaptivePanePublisher()
+
+        // The Duo's two displays are told apart by the host; shared uses it to know whether the
+        // inner display is in portrait (where the top bar is still not wanted).
+        for display in ["duoOuter", "duoInner", "other"] {
+            let payload = publisher.nextPayload(
+                widthPoints: 466, heightPoints: 678, scale: 3,
+                sideColumn: true, stripEdge: "right",
+                stripWidthPoints: 84, nativeTabBarHeightPoints: 69,
+                reservedRegions: [],
+                display: display
+            ) as? [String: Any]
+            XCTAssertEqual(payload?["display"] as? String, display)
+        }
     }
 
     func testReservedRegionsCarryTheirKind() {
@@ -158,7 +183,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             reservedRegions: [
                 ["leftPt": 867.0, "topPt": 0.0, "widthPt": 84.0, "heightPt": 124.0, "kind": "occlusion"],
                 ["leftPt": 0.0, "topPt": 300.0, "widthPt": 951.0, "heightPt": 12.0, "kind": "division"],
-            ]
+            ],
+            display: "other"
         ) as? [String: Any]
 
         let regions = payload?["reservedRegions"] as? [[String: Any]]
@@ -170,7 +196,8 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             widthPoints: 951, heightPoints: 669, scale: 3,
             sideColumn: true, stripEdge: "right",
             stripWidthPoints: 84, nativeTabBarHeightPoints: 0,
-            reservedRegions: [["leftPt": 1.0, "topPt": 2.0, "widthPt": 3.0, "heightPt": 4.0]]
+            reservedRegions: [["leftPt": 1.0, "topPt": 2.0, "widthPt": 3.0, "heightPt": 4.0]],
+            display: "other"
         ) as? [String: Any]
         let unknownRegions = unknown?["reservedRegions"] as? [[String: Any]]
         XCTAssertEqual(unknownRegions?.count, 1)
@@ -193,28 +220,32 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             sideColumn: plain.sideColumn,
             stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
             nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
-            reservedRegions: plain.reservedRegions
+            reservedRegions: plain.reservedRegions,
+            display: "other"
         ))
         XCTAssertNil(publisher.nextPayload(
             widthPoints: 1024, heightPoints: .nan, scale: 2,
             sideColumn: plain.sideColumn,
             stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
             nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
-            reservedRegions: plain.reservedRegions
+            reservedRegions: plain.reservedRegions,
+            display: "other"
         ))
         XCTAssertNil(publisher.nextPayload(
             widthPoints: 1024, heightPoints: 1366, scale: 0,
             sideColumn: plain.sideColumn,
             stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
             nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
-            reservedRegions: plain.reservedRegions
+            reservedRegions: plain.reservedRegions,
+            display: "other"
         ))
         XCTAssertNotNil(publisher.nextPayload(
             widthPoints: 1024, heightPoints: 1366, scale: 2,
             sideColumn: plain.sideColumn,
             stripEdge: plain.stripEdge, stripWidthPoints: plain.stripWidthPoints,
             nativeTabBarHeightPoints: plain.nativeTabBarHeightPoints,
-            reservedRegions: plain.reservedRegions
+            reservedRegions: plain.reservedRegions,
+            display: "other"
         ))
     }
 }

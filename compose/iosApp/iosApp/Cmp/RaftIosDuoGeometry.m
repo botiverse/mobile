@@ -86,13 +86,24 @@ static UIView * _Nullable RaftIosFindTabBarInView(UIView * _Nullable view) {
 
 /// The native tab bar in the window's hierarchy, if it has one.
 UIView * _Nullable RaftIosNativeTabBarView(UIWindow * _Nullable window) {
+    // The bar is hosted by the tab bar controller, which the page owns; it is not in the window's
+    // own view tree, so the live bar is asked for directly and the window tree is the fallback.
+    UIView *live = [RaftIosTabBarController liveTabBarInWindow:window];
+    if (live != nil && !live.hidden && live.superview != nil) {
+        return live;
+    }
     return RaftIosFindTabBarInView(window);
 }
 
-/// The height the native tab bar takes at the bottom of the vertical strip, in points.
+/// The space the native tab bar takes at the end of the vertical strip, in points.
 ///
-/// The tab bar is a real `UITabBarController` the host moves into the strip. Its height comes
-/// from the bar's own frame in the window, not from an assumed size.
+/// The tab bar is a real `UITabBarController` the host moves into the strip. Its extent along
+/// the strip comes from the bar's own frame in the window, not from an assumed size.
+///
+/// On the iPhone Duo the bar is laid out along the strip rather than across it: it is taller than
+/// it is wide, so the space it takes at the end of the strip is its *width* (the bar runs
+/// vertically), not its height. Measuring the height there would report the bar's length along
+/// the strip as the strip's width.
 CGFloat RaftIosNativeTabBarHeightPoints(UIWindow * _Nullable window) {
     if (!RaftIosSideColumnIsActive(window)) {
         return 0;
@@ -102,10 +113,64 @@ CGFloat RaftIosNativeTabBarHeightPoints(UIWindow * _Nullable window) {
         return 0;
     }
     CGRect frame = [tabBar convertRect:tabBar.bounds toView:window];
-    if (CGRectIsEmpty(frame) || frame.size.height <= 0) {
+    if (CGRectIsEmpty(frame) || frame.size.width <= 0 || frame.size.height <= 0) {
         return 0;
     }
-    return frame.size.height;
+    // The bar runs along the strip when it is taller than it is wide.
+    return frame.size.height > frame.size.width ? frame.size.width : frame.size.height;
+}
+
+/// Which of the iPhone Duo's displays the window is on: "duoOuter", "duoInner" or "other".
+///
+/// The Duo's two displays have fixed, different sizes: the outer (folded) one is 466 x 678
+/// points and the inner (unfolded) one is 669 x 951 points portrait (951 x 669 landscape). A
+/// full-screen window on one of those sizes is on that display; any other size - an ordinary
+/// phone, an iPad, or a window that does not fill the display, such as a Split View window on
+/// the inner display - is "other", so shared can tell "the Duo, folded" from "a small phone"
+/// without guessing.
+///
+/// The *window's* size is measured, not the screen's: the screen keeps its size whatever the
+/// window does, so a windowed app on the inner display would still read as the inner display
+/// and would keep a layout meant for the whole display.
+
+/// The iPhone Duo's outer (folded) display: 466 x 678 points.
+static const CGFloat RaftIosDuoOuterDisplayShortSide = 466.0;
+static const CGFloat RaftIosDuoOuterDisplayLongSide = 678.0;
+
+/// The iPhone Duo's inner (unfolded) display: 669 x 951 points.
+static const CGFloat RaftIosDuoInnerDisplayShortSide = 669.0;
+static const CGFloat RaftIosDuoInnerDisplayLongSide = 951.0;
+
+NSString *RaftIosDuoDisplayName(UIWindow * _Nullable window) {
+    if (window == nil) {
+        return @"other";
+    }
+    // The *window's* size, not the screen's: a window that does not fill the display is not
+    // that display's own shape - a Split View window on the Duo's inner display, for one - and
+    // such a window is left to the ordinary layout.
+    CGRect bounds = window.bounds;
+    if (bounds.size.width <= 0 || bounds.size.height <= 0) {
+        return @"other";
+    }
+    // The Duo's two displays have fixed, different sizes: the outer (folded) one is 466 x 678
+    // points and the inner (unfolded) one is 669 x 951 points portrait (951 x 669 landscape).
+    // They are compared in the orientation-agnostic way - the shorter side first - because the
+    // inner display is used in both.
+    //
+    // The sizes are the hardware's, so they do not change with the fold state: when the Duo is
+    // folded only the outer display is lit, and when it is open both are. A full-screen window on
+    // the outer display's size is on the outer display, whatever else is lit.
+    CGSize size = CGSizeMake(MIN(bounds.size.width, bounds.size.height),
+                             MAX(bounds.size.width, bounds.size.height));
+    if (fabs(size.width - RaftIosDuoOuterDisplayShortSide) < 0.5 &&
+        fabs(size.height - RaftIosDuoOuterDisplayLongSide) < 0.5) {
+        return @"duoOuter";
+    }
+    if (fabs(size.width - RaftIosDuoInnerDisplayShortSide) < 0.5 &&
+        fabs(size.height - RaftIosDuoInnerDisplayLongSide) < 0.5) {
+        return @"duoInner";
+    }
+    return @"other";
 }
 
 /// The camera (occlusion) and fold (division) regions the content must stay out of.
@@ -116,13 +181,15 @@ NSArray<NSDictionary<NSString *, id> *> *RaftIosReservedRegions(UIWindow * _Null
     if (window == nil) {
         return @[];
     }
-    NSArray *kinds = RaftIosReservedRegionKinds();
-    if (kinds.count == 0) {
+    // The kinds are looked up by name so each region carries the kind it was found under: a
+    // runtime without one of them must not shift the other's name.
+    NSDictionary<NSString *, id> *kindsByName = RaftIosReservedRegionKindsByName();
+    if (kindsByName.count == 0) {
         return @[];
     }
-    NSMutableArray<NSDictionary<NSString *, NSNumber *> *> *regions = [NSMutableArray array];
-    for (id kind in kinds) {
-        NSArray *found = RaftIosReservedRegionsForKind(window, kind);
+    NSMutableArray<NSDictionary<NSString *, id> *> *regions = [NSMutableArray array];
+    for (NSString *name in kindsByName) {
+        NSArray *found = RaftIosReservedRegionsForKind(window, kindsByName[name]);
         for (id region in found) {
             CGRect frame = RaftIosReservedRegionFrame(region);
             if (CGRectIsEmpty(frame) || frame.size.width <= 0 || frame.size.height <= 0) {
@@ -135,7 +202,7 @@ NSArray<NSDictionary<NSString *, id> *> *RaftIosReservedRegions(UIWindow * _Null
                 @"heightPt" : @(frame.size.height),
                 // The kind tells the camera's occlusion apart from the fold's division, so
                 // shared can treat them differently.
-                @"kind" : RaftIosReservedRegionKindName(kind),
+                @"kind" : name,
             }];
         }
     }
