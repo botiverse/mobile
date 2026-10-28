@@ -373,7 +373,15 @@ internal class ProcessMemberPresenceRegistry {
          * agent status back, not only the forced reconnect refill (which can fail and is then
          * retried at most once).
          */
-        val rosterRefillPending: Set<ProcessServerMembersOwner> = emptySet()
+        val rosterRefillPending: Set<ProcessServerMembersOwner> = emptySet(),
+        /**
+         * Members whose fact was carried over a transport advance (Tenny, PR #3856 option 1): the
+         * last known presence stays visible instead of the neutral "unknown", but it is the
+         * lowest-precedence fact — its old-epoch seq is dropped and ANY post-advance write for the
+         * member (realtime, agent:seen, roster/detail/historical projection, evict) replaces it
+         * and clears the mark. Owner-keyed like the facts.
+         */
+        val carriedOverMembers: Map<ProcessServerMembersOwner, Set<String>> = emptyMap()
     )
 
     private val snapshot = MutableStateFlow(Snapshot(writeGeneration = 0L, partitions = emptyMap()))
@@ -418,6 +426,10 @@ internal class ProcessMemberPresenceRegistry {
     fun factFor(owner: ProcessServerMembersOwner, memberId: String?): MemberPresenceUpdated? =
         memberId?.trim()?.takeIf { it.isNotBlank() }?.let { current(owner)[it] }
 
+    /** Members of [owner] still showing a fact carried over the last transport advance. */
+    fun carriedOverMemberIds(owner: ProcessServerMembersOwner): Set<String> =
+        snapshot.value.carriedOverMembers[owner].orEmpty()
+
     /**
      * Realtime facts (may carry serverSeq). Thread-safe via CAS update; the
      * [writeGeneration] the caller froze at binding time is re-checked inside
@@ -442,10 +454,15 @@ internal class ProcessMemberPresenceRegistry {
                 currentTransport.presenceTransportDisposition(normalizedTransport)
             if (transportDisposition == PresenceTransportDisposition.Reject) return
             val transportAdvanced = transportDisposition == PresenceTransportDisposition.Advance
+            // A transport advance carries the owner's facts over at lowest precedence instead of
+            // wiping them; a carried fact never gates this write (it is treated as absent).
             val ownerFacts =
-                if (transportAdvanced) emptyMap()
+                if (transportAdvanced) current.partitions[owner].orEmpty().carriedOverTransport()
                 else current.partitions[owner].orEmpty()
-            val previous = ownerFacts[memberId]
+            val carriedIds =
+                if (transportAdvanced) ownerFacts.keys
+                else current.carriedOverMembers[owner].orEmpty()
+            val previous = ownerFacts[memberId]?.takeUnless { memberId in carriedIds }
             val hasCurrentProjection =
                 !transportAdvanced &&
                     current.currentProjectionStamps[owner]?.containsKey(memberId) == true
@@ -490,10 +507,8 @@ internal class ProcessMemberPresenceRegistry {
                     event
                 }
             val nextOwnerFacts = ownerFacts + (memberId to mergedEvent)
-            val nextPartitions =
-                current.partitions
-                    .let { partitions -> if (transportAdvanced) partitions - owner else partitions }
-                    .let { partitions -> partitions + (owner to nextOwnerFacts) }
+            val nextPartitions = current.partitions + (owner to nextOwnerFacts)
+            val nextCarriedOverMembers = current.carriedOverMembers.withCarriedOver(owner, carriedIds - memberId)
             val nextTransportEpochs =
                 if (!transportAdvanced || normalizedTransport == null) current.transportEpochs
                 else current.transportEpochs + (owner to normalizedTransport)
@@ -514,7 +529,8 @@ internal class ProcessMemberPresenceRegistry {
                         memberMutationVersions = nextMutationVersions,
                         rosterRefillPending =
                             if (transportAdvanced) current.rosterRefillPending + owner
-                            else current.rosterRefillPending
+                            else current.rosterRefillPending,
+                        carriedOverMembers = nextCarriedOverMembers
                     )
                 )
             ) {
@@ -551,12 +567,19 @@ internal class ProcessMemberPresenceRegistry {
                     return ProcessPresenceTransportRebaselineResult.Current
                 PresenceTransportDisposition.Advance -> Unit
             }
+            // The old epoch's facts are not wiped (a wipe left every agent the roster refill could
+            // not restate on the neutral "unknown" after a server switch): they are carried over
+            // with their seq dropped and marked lowest-precedence, so any post-advance fact wins.
+            val retained = current.partitions[owner].orEmpty().carriedOverTransport()
             val next =
                 current.copy(
-                    partitions = current.partitions - owner,
+                    partitions =
+                        if (retained.isEmpty()) current.partitions - owner
+                        else current.partitions + (owner to retained),
                     transportEpochs = current.transportEpochs + (owner to normalizedTransport),
                     currentProjectionStamps = current.currentProjectionStamps - owner,
-                    rosterRefillPending = current.rosterRefillPending + owner
+                    rosterRefillPending = current.rosterRefillPending + owner,
+                    carriedOverMembers = current.carriedOverMembers.withCarriedOver(owner, retained.keys)
                 )
             if (snapshot.compareAndSet(current, next)) {
                 return ProcessPresenceTransportRebaselineResult.Applied
@@ -721,7 +744,10 @@ internal class ProcessMemberPresenceRegistry {
             val mutationVersion = current.memberMutationVersions[request.owner]?.get(memberId) ?: 0L
             if (mutationVersion != request.mutationVersion) return
             val ownerFacts = current.partitions[request.owner].orEmpty()
-            val previous = ownerFacts[memberId]
+            val carriedIds = current.carriedOverMembers[request.owner].orEmpty()
+            // A carried-over fact is the lowest precedence: treat it as absent so this
+            // post-advance projection replaces it.
+            val previous = ownerFacts[memberId]?.takeUnless { memberId in carriedIds }
             val watermark = current.projectionEvidence[request.owner]?.get(memberId)
             val currentProjectionStamp =
                 current.currentProjectionStamps[request.owner]?.get(memberId)
@@ -771,6 +797,9 @@ internal class ProcessMemberPresenceRegistry {
                     previous != null && event.hasSameVisibleRegisteredPresenceAs(previous) -> ownerFacts
                     else -> ownerFacts + (memberId to event)
                 }
+            val nextCarriedOverMembers =
+                if (nextOwnerFacts === ownerFacts) current.carriedOverMembers
+                else current.carriedOverMembers.withCarriedOver(request.owner, carriedIds - memberId)
             // The watermark advances on every accepted newer evidence even
             // when the visible fact did not change — same doctrine as the
             // seq watermark advance (a stale snapshot must not pass later
@@ -822,7 +851,8 @@ internal class ProcessMemberPresenceRegistry {
                     current.copy(
                         partitions = nextPartitions,
                         projectionEvidence = nextEvidence,
-                        currentProjectionStamps = nextCurrentProjectionStamps
+                        currentProjectionStamps = nextCurrentProjectionStamps,
+                        carriedOverMembers = nextCarriedOverMembers
                     )
                 )
             ) {
@@ -852,7 +882,12 @@ internal class ProcessMemberPresenceRegistry {
                     currentProjectionStamps =
                         current.currentProjectionStamps.withoutPresenceMember(owner, key),
                     memberMutationVersions =
-                        current.memberMutationVersions.withAdvancedPresenceMutation(owner, key)
+                        current.memberMutationVersions.withAdvancedPresenceMutation(owner, key),
+                    carriedOverMembers =
+                        current.carriedOverMembers.withCarriedOver(
+                            owner,
+                            current.carriedOverMembers[owner].orEmpty() - key
+                        )
                 )
             if (snapshot.compareAndSet(current, next)) return
         }
@@ -935,6 +970,16 @@ private fun ProcessPresenceProjectionRequest.canSupersede(
             source.authorityRank > current.source.authorityRank
         else -> false
     }
+
+/** A fact kept across a transport advance: the old epoch's seq is no floor for the new one. */
+private fun Map<String, MemberPresenceUpdated>.carriedOverTransport(): Map<String, MemberPresenceUpdated> =
+    mapValues { (_, fact) -> if (fact.serverSeq == null) fact else fact.copy(serverSeq = null) }
+
+private fun Map<ProcessServerMembersOwner, Set<String>>.withCarriedOver(
+    owner: ProcessServerMembersOwner,
+    memberIds: Set<String>
+): Map<ProcessServerMembersOwner, Set<String>> =
+    if (memberIds.isEmpty()) this - owner else this + (owner to memberIds)
 
 private fun <T> Map<ProcessServerMembersOwner, Map<String, T>>.withoutPresenceMember(
     owner: ProcessServerMembersOwner,

@@ -1039,8 +1039,9 @@ class SharedServerMembersStore internal constructor(
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
         return if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
-            // A native reconnect retired the profile's pre-connect status.
-            // Publish an explicit neutral resolution (rather than null,
+            // A native transport is live and this member has no fact at all
+            // (a reconnect carries known facts over, so this is a member never
+            // observed in the registry). Publish an explicit neutral resolution (rather than null,
             // which UI consumers interpret as permission to fall back to
             // the stale profile) until the request-fenced forced roster
             // refresh, current detail, or realtime repopulates this member.
@@ -1549,7 +1550,8 @@ class SharedServerMembersStore internal constructor(
                     request = presenceRequest,
                     serverId = key,
                     profiles = fetched,
-                    completesRosterRefill = true
+                    completesRosterRefill = true,
+                    filteredOut = agents.rosterPresenceFilteredOut(fetched)
                 )
                 var current = false
                 val snapshot =
@@ -2264,7 +2266,13 @@ class SharedServerMembersStore internal constructor(
                                 unchanged.data.members
                                     .filterServerRosterMembers(normalizedKey)
                                     .filterDeletedAgents(normalizedKey),
-                            completesRosterRefill = true
+                            completesRosterRefill = true,
+                            filteredOut =
+                                unchanged.data.members.rosterPresenceFilteredOut(
+                                    unchanged.data.members
+                                        .filterServerRosterMembers(normalizedKey)
+                                        .filterDeletedAgents(normalizedKey)
+                                )
                         )
                     }
                     processResult.result.map { Unit }
@@ -2291,7 +2299,8 @@ class SharedServerMembersStore internal constructor(
                                 request = rosterPresenceRequestForResult,
                                 serverId = normalizedKey,
                                 profiles = snapshot.members,
-                                completesRosterRefill = true
+                                completesRosterRefill = true,
+                                filteredOut = result.data.members.rosterPresenceFilteredOut(snapshot.members)
                             )
                             cacheProfiles(normalizedKey, snapshot.members)
                             // task #344 evidence lane: if this roster refresh replaced a member's
@@ -2571,30 +2580,57 @@ class SharedServerMembersStore internal constructor(
         request: ProcessPresenceRosterProjectionRequest?,
         serverId: String,
         profiles: List<MemberProfile>,
-        completesRosterRefill: Boolean = false
+        completesRosterRefill: Boolean = false,
+        filteredOut: List<MemberProfile> = emptyList()
     ) {
         if (request == null || request.owner.serverId != serverId) return
         if (completesRosterRefill) presenceRegistry.completeRosterRefill(request)
+        val diagnostics = if (completesRosterRefill) RosterPresenceProjectionDiagnostics() else null
         profiles.forEach { profile ->
+            if (profile.kind != MemberKind.Agent) return@forEach
+            val memberId = profile.id.value.trim()
+            if (!profile.agentDeletedAt.isNullOrBlank()) {
+                diagnostics?.deleted?.add(memberId)
+                return@forEach
+            }
+            // No usable roster status (e.g. lifecycle `active` with no runtime activity, which is
+            // not liveness — Tenny, PR #3856): write nothing. The registry keeps the member's
+            // fact carried over the transport advance, if any; with none it stays unknown.
             val status =
-                profile.agentStatus
-                    ?.takeIf {
-                        profile.kind == MemberKind.Agent &&
-                            profile.agentDeletedAt.isNullOrBlank()
-                    }
-                    ?: return@forEach
+                profile.agentStatus ?: run {
+                    diagnostics?.skipped?.add("$memberId:${profile.agentLifecycleStatus ?: "none"}")
+                    return@forEach
+                }
             val memberRequest = request.memberRequest(profile.id.value) ?: return@forEach
+            if (status.presence == Presence.Offline) diagnostics?.offline?.add(memberId)
+            diagnostics?.let { it.projected += 1 }
             presenceRegistry.applyProjection(
                 request = memberRequest,
                 event =
                     MemberPresenceUpdated(
                         memberId = profile.id,
-                        presence = profile.presence,
+                        presence = status.presence,
                         kind = MemberKind.Agent,
                         agentStatus = status,
                         statusLabel = status.label,
                         serverSeq = null
                     )
+            )
+        }
+        if (diagnostics != null) {
+            val filteredAgents = filteredOut.filter { it.kind == MemberKind.Agent }
+            val retained = presenceRegistry.carriedOverMemberIds(request.owner).sorted()
+            logger(
+                "roster_presence_projection serverId=$serverId agents=${profiles.count { it.kind == MemberKind.Agent }} " +
+                    "projected=${diagnostics.projected} " +
+                    "offline=${diagnostics.offline.size}${diagnostics.offline.rosterPresenceSample()} " +
+                    "retained=${retained.size}${retained.rosterPresenceSample()} " +
+                    "skipped=${diagnostics.skipped.size}${diagnostics.skipped.rosterPresenceSample()} " +
+                    "deleted=${diagnostics.deleted.size}${diagnostics.deleted.rosterPresenceSample()} " +
+                    "filtered=${filteredAgents.size}" +
+                    filteredAgents
+                        .map { "${it.id.value.trim()}:${it.serverId?.value?.trim().orEmpty().ifBlank { "none" }}" }
+                        .rosterPresenceSample()
             )
         }
     }
@@ -3866,6 +3902,24 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         serverSlug = serverSlug ?: seed.serverSlug
     )
 }
+
+/** Agents of a roster read that its server/deleted filters kept out of [kept] (diagnostics only). */
+private fun List<MemberProfile>.rosterPresenceFilteredOut(kept: List<MemberProfile>): List<MemberProfile> {
+    val keptIds = kept.mapTo(HashSet()) { it.id.value.trim() }
+    return filter { it.kind == MemberKind.Agent && it.id.value.trim() !in keptIds }
+}
+
+private class RosterPresenceProjectionDiagnostics {
+    var projected: Int = 0
+    val offline = mutableListOf<String>()
+    val skipped = mutableListOf<String>()
+    val deleted = mutableListOf<String>()
+}
+
+private const val RosterPresenceDiagnosticSampleLimit = 20
+
+private fun List<String>.rosterPresenceSample(): String =
+    if (isEmpty()) "" else take(RosterPresenceDiagnosticSampleLimit).joinToString(",", prefix = "[", postfix = "]")
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {

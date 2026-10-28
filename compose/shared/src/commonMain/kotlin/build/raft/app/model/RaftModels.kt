@@ -386,6 +386,13 @@ data class MemberProfile(
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
     /**
+     * The agent row's raw lifecycle `status` (`active` / `inactive` / `stopped` ...), trimmed and
+     * lowercased; null on humans and identity seeds. [agentStatus] deliberately reads `active` as
+     * unknown (it is lifecycle, not liveness); the roster presence projection uses this to apply
+     * web's no-live-activity fallback (`agentStatusFallbackActivity`: `active` reads online).
+     */
+    val agentLifecycleStatus: String? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via

@@ -871,6 +871,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
                 Presence.Offline
             },
         agentStatus = agentStatus,
+        agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
