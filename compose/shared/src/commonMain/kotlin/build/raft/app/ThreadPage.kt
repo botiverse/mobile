@@ -25895,7 +25895,7 @@ internal fun ThreadHistoryStatusRow(
 }
 
 @Composable
-private fun ThreadDateDivider(label: String) {
+internal fun ThreadDateDivider(label: String) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

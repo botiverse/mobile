@@ -14,6 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
@@ -153,7 +157,7 @@ class StorePlay8ScreenshotsTest {
             capture(dir, "05-agent", time) { P8AgentScene(copy, "profile") }
             capture(dir, "06-activity", time) { P8ActivityScene(copy, swipe = false) }
             capture(dir, "07-swipe", time) { P8ActivityScene(copy, swipe = true) }
-            capture(dir, "08-home", time) { P8HomeScene() }
+            capture(dir, "08-home", time) { P8HomeScene(copy) }
             // Not in the set: Forge's Workspace tab (MEMORY.md), only when asked for by name.
             if (sceneFilter?.contains("05w-workspace") == true) capture(dir, "05w-workspace", time) { P8AgentScene(copy, "workspace") }
         } finally {
@@ -292,12 +296,16 @@ internal class P8Copy(
                             replies = listOf("agent-atlas" to "Reviewed #512, approved.", "human-maya" to "Thanks, ship it."),
                         ),
                         P8Message("agent-nova", "Build 2.4.0 (320) goes to internal testing as soon as #512 merges.", "09:44 AM", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "Nice. I'll post the release notes once it's out.", "09:46 AM"),
+                        P8Message("agent-quill", "Release notes for 2.4.0 are drafted in #508 for review.", "09:47 AM"),
                     ),
                 mentionChat =
                     listOf(
                         P8Message("human-leo", "Morning! Code freeze for 2.4 is at noon.", "09:30 AM"),
                         P8Message("human-leo", "Heads up: a few beta testers can't sign in after updating to 2.4.", "09:50 AM"),
                         P8Message("agent-scout", "Reproduced on Android 15 and iOS 18: the session expires when the app resumes.", "09:52 AM"),
+                        P8Message("agent-atlas", "The 401 comes from the token refresh call right after resume.", "09:53 AM"),
+                        P8Message("human-leo", "Can someone pick this up today?", "09:53 AM"),
                     ),
                 composerText = "@Forge can you fix the login bug?",
                 threadOrigin = P8Message("human-maya", "@Forge can you fix the login bug?", "09:54 AM", mentions = listOf("agent-forge")),
@@ -308,6 +316,7 @@ internal class P8Copy(
                         P8Message("agent-atlas", "Reviewed #512 and approved.", "10:05 AM"),
                         P8Message("agent-forge", "Merged. @Nova it's ready for build 320.", "10:06 AM", mentions = listOf("agent-nova")),
                         P8Message("agent-nova", "Build 2.4.0 (320) is uploading to internal testing.", "10:09 AM", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "Thanks, everyone. Shipping it to beta testers now.", "10:11 AM", reactions = listOf("🎉" to 2)),
                     ),
                 tasks =
                     tasks(
@@ -359,12 +368,16 @@ internal class P8Copy(
                             replies = listOf("agent-atlas" to "#512 审完了，已批准。", "human-maya" to "谢谢，发吧。"),
                         ),
                         P8Message("agent-nova", "#512 合并后，2.4.0 (320) 就发到内部测试。", "09:44", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "好，发出去后我来写更新说明。", "09:46"),
+                        P8Message("agent-quill", "2.4.0 的更新说明草稿已放在 #508，等大家看。", "09:47"),
                     ),
                 mentionChat =
                     listOf(
                         P8Message("human-leo", "大家早，2.4 中午代码冻结。", "09:30"),
                         P8Message("human-leo", "提醒一下：有几位内测用户升级到 2.4 后登录不了。", "09:50"),
                         P8Message("agent-scout", "在 Android 15 和 iOS 18 上复现了：App 从后台回来时会话就过期了。", "09:52"),
+                        P8Message("agent-atlas", "401 来自恢复后的那次 token 刷新请求。", "09:53"),
+                        P8Message("human-leo", "今天谁能接一下？", "09:53"),
                     ),
                 composerText = "@Forge 能帮忙修一下登录的 bug 吗？",
                 threadOrigin = P8Message("human-maya", "@Forge 能帮忙修一下登录的 bug 吗？", "09:54", mentions = listOf("agent-forge")),
@@ -375,6 +388,7 @@ internal class P8Copy(
                         P8Message("agent-atlas", "#512 审完了，已批准。", "10:05"),
                         P8Message("agent-forge", "已合并。@Nova 可以打 320 版本了。", "10:06", mentions = listOf("agent-nova")),
                         P8Message("agent-nova", "2.4.0 (320) 正在上传到内部测试。", "10:09", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "谢谢大家，现在就发给内测用户。", "10:11", reactions = listOf("🎉" to 2)),
                     ),
                 tasks = tasks(listOf("设置页支持深色模式", "优化旧手机冷启动速度", "修复登录 bug", "在 319 版本上跑发版检查")),
                 agentDescriptions =
@@ -418,12 +432,16 @@ internal class P8Copy(
                             replies = listOf("agent-atlas" to "#512 をレビューして承認しました。", "human-maya" to "ありがとう、出しましょう。"),
                         ),
                         P8Message("agent-nova", "#512 がマージされたら、ビルド 2.4.0 (320) を内部テストに出します。", "09:44", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "了解。公開されたらリリースノートを出します。", "09:46"),
+                        P8Message("agent-quill", "2.4.0 のリリースノート案を #508 に用意しました。", "09:47"),
                     ),
                 mentionChat =
                     listOf(
                         P8Message("human-leo", "おはようございます。2.4 のコードフリーズは正午です。", "09:30"),
                         P8Message("human-leo", "注意：2.4 に更新したベータテスターの一部がログインできないそうです。", "09:50"),
                         P8Message("agent-scout", "Android 15 と iOS 18 で再現しました。アプリがバックグラウンドから戻るとセッションが切れます。", "09:52"),
+                        P8Message("agent-atlas", "401 は復帰直後のトークン更新リクエストから返っています。", "09:53"),
+                        P8Message("human-leo", "今日中に誰か対応できますか？", "09:53"),
                     ),
                 composerText = "@Forge ログインの不具合を直してもらえる？",
                 threadOrigin = P8Message("human-maya", "@Forge ログインの不具合を直してもらえる？", "09:54", mentions = listOf("agent-forge")),
@@ -434,6 +452,7 @@ internal class P8Copy(
                         P8Message("agent-atlas", "#512 をレビューして承認しました。", "10:05"),
                         P8Message("agent-forge", "マージしました。@Nova ビルド 320 に入れられます。", "10:06", mentions = listOf("agent-nova")),
                         P8Message("agent-nova", "ビルド 2.4.0 (320) を内部テストにアップロード中です。", "10:09", reactions = listOf("🚀" to 3)),
+                        P8Message("human-maya", "みんなありがとう。ベータテスターに配信します。", "10:11", reactions = listOf("🎉" to 2)),
                     ),
                 tasks =
                     tasks(
@@ -472,7 +491,12 @@ internal class P8Copy(
 
 // ---- Conversation pieces ---------------------------------------------------------------------------
 
-private fun p8MessageItems(messages: List<P8Message>, idPrefix: String = "m"): List<RaftThreadMessageItem> =
+/** [descriptions]: the agents' descriptions, the sender subtitle the app shows after an agent's name. */
+private fun p8MessageItems(
+    messages: List<P8Message>,
+    idPrefix: String = "m",
+    descriptions: Map<String, String> = emptyMap(),
+): List<RaftThreadMessageItem> =
     messages.mapIndexed { index, message ->
         val isAgent = message.authorId.startsWith("agent-")
         val name = p8Name(message.authorId)
@@ -480,6 +504,7 @@ private fun p8MessageItems(messages: List<P8Message>, idPrefix: String = "m"): L
             id = "$idPrefix-$index",
             authorId = message.authorId,
             authorName = name,
+            authorDescription = descriptions[message.authorId],
             authorKind = if (isAgent) "agent" else "human",
             isOwn = message.authorId == "human-maya",
             avatarLabel = p8Initials(name),
@@ -517,6 +542,16 @@ private fun p8MessageItems(messages: List<P8Message>, idPrefix: String = "m"): L
         )
     }
 
+/** An agent's model after its name, as the app reads it from the members directory: Claude Opus. */
+private val P8ModelLabelResolver =
+    RaftMemberModelLabelResolver(
+        currentLabel = { id -> p8ModelLabel(id) },
+        labelFlow = { id -> flowOf(p8ModelLabel(id)) },
+    )
+
+private fun p8ModelLabel(id: String?): String? =
+    if (p8Agent(id.orEmpty()) != null) build.raft.app.model.getModelLabel(runtimeId = "claude", modelId = "opus") else null
+
 @Composable
 private fun P8MessageCard(message: RaftThreadMessageItem, time: String, showReplyAction: Boolean = true) {
     ThreadMessageCard(
@@ -524,6 +559,7 @@ private fun P8MessageCard(message: RaftThreadMessageItem, time: String, showRepl
         messageBodyTextStyle = raftMessageBodyTextStyle("md"),
         agentStatusResolver = P8StatusResolver,
         memberAvatarResolver = P8AvatarResolver,
+        memberModelLabelResolver = P8ModelLabelResolver,
         showReplyAction = showReplyAction,
         isMarkdownTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.UserMention },
         timestampLabel = time,
@@ -605,24 +641,51 @@ private fun P8ChannelHeader(copy: P8Copy) {
 }
 
 /**
- * The list scrolled so [messages]`[topIndex]` starts at the top, whole, in every language (Kirby and
- * Ginny's review, 10-28): older messages are scrolled away above it, the newest end above the
- * optional typing line.
+ * Fills [modifier]'s height with whole messages and no blank band (artin and Ginny, 10-28): from
+ * [messages]`[topIndex]` (the same first message in every language, never cut by the header) it
+ * takes as many messages as fit whole, and spreads the few dp left over between them, so the
+ * newest one ends right above the optional typing line, and the typing line right above the
+ * composer.
  */
 @Composable
 private fun P8MessageList(
     messages: List<P8Message>,
     modifier: Modifier,
     topIndex: Int,
+    descriptions: Map<String, String>,
     typing: List<String> = emptyList(),
     idPrefix: String = "m",
+    /** False: the messages simply run on past the bottom (under an overlay), clipped there. */
+    fill: Boolean = true,
+    /**
+     * With [fill] false, the top edge of the overlay in this list, in px: a message that would
+     * start just above it (its name a sliver over the overlay) starts under it instead.
+     */
+    overlayTopPx: Int? = null,
 ) {
-    val items = remember(messages) { p8MessageItems(messages, idPrefix) }
+    val items = remember(messages) { p8MessageItems(messages, idPrefix, descriptions) }
     Box(modifier.clipToBounds().background(RaftColor.SurfaceWhite)) {
-        Column(
-            Modifier.fillMaxSize().wrapContentHeight(Alignment.Top, unbounded = true).padding(bottom = if (typing.isEmpty()) 12.dp else 36.dp),
-        ) {
-            items.forEachIndexed { index, message -> if (index >= topIndex) P8MessageCard(message, messages[index].time) }
+        if (fill) {
+            P8FillColumn(Modifier.fillMaxSize(), bottomPadding = if (typing.isEmpty()) 12.dp else 36.dp) {
+                items.forEachIndexed { index, message -> if (index >= topIndex) P8MessageCard(message, messages[index].time) }
+            }
+        } else {
+            androidx.compose.ui.layout.Layout(
+                content = { items.forEachIndexed { index, message -> if (index >= topIndex) P8MessageCard(message, messages[index].time) } },
+                modifier = Modifier.fillMaxSize(),
+            ) { measurables, constraints ->
+                val loose = constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)
+                val placeables = measurables.map { it.measure(loose) }
+                val sliver = 22.dp.roundToPx()
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    var y = 0
+                    for (placeable in placeables) {
+                        if (overlayTopPx != null && y < overlayTopPx && y > overlayTopPx - sliver) y = overlayTopPx
+                        placeable.place(0, y)
+                        y += placeable.height
+                    }
+                }
+            }
         }
         if (typing.isNotEmpty()) {
             ThreadMessageListEndFade(typingLineShown = true, modifier = Modifier.align(Alignment.BottomCenter))
@@ -634,11 +697,51 @@ private fun P8MessageList(
     }
 }
 
+/**
+ * Lays its children like the app's bottom-anchored list: the longest run (from the first child)
+ * that fits whole above [bottomPadding], the last one ending right above it. The height left over
+ * widens each gap by at most [MaxExtraGap]; the rest stays above the first child, as the app
+ * leaves room above a short conversation. Children past that run are not drawn.
+ */
+private val MaxExtraGap = 10.dp
+
+@Composable
+private fun P8FillColumn(modifier: Modifier, bottomPadding: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(content, modifier) { measurables, constraints ->
+        val loose = constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity)
+        val placeables = measurables.map { it.measure(loose) }
+        val available = constraints.maxHeight - bottomPadding.roundToPx()
+        var used = 0
+        var count = 0
+        for (placeable in placeables) {
+            if (count > 0 && used + placeable.height > available) break
+            used += placeable.height
+            count++
+        }
+        val spare = (available - used).coerceAtLeast(0)
+        val gap = if (count > 1) minOf(spare / (count - 1), MaxExtraGap.roundToPx()) else 0
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            var y = spare - gap * (count - 1).coerceAtLeast(0)
+            for (i in 0 until count) {
+                placeables[i].place(0, y)
+                y += placeables[i].height + gap
+            }
+        }
+    }
+}
+
 @Composable
 private fun P8Composer(placeholder: String, surfaceKind: String = RaftThreadSurfaceKind.Channel) {
     ThreadComposerDock {
         ThreadComposerContent(
-            payload = RaftThreadComposerPayload(instanceId = "p8-dock", placeholder = placeholder, surfaceKind = surfaceKind),
+            // The app offers "As Task" in a channel, never in a reply thread (ThreadComposerPage).
+            payload =
+                RaftThreadComposerPayload(
+                    instanceId = "p8-dock",
+                    placeholder = placeholder,
+                    surfaceKind = surfaceKind,
+                    showAsTaskToggle = surfaceKind != RaftThreadSurfaceKind.ReplyThread,
+                ),
             onEvent = { _, _, _, _ -> },
             attachmentPreviewEnabled = false,
         )
@@ -652,7 +755,7 @@ private fun P8ChatScene(copy: P8Copy) {
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         P8ChannelHeader(copy)
         // From Maya's request to Scout down: the same messages on screen in every language.
-        P8MessageList(copy.chat, Modifier.weight(1f).fillMaxWidth(), topIndex = 2, typing = listOf("agent-forge", "agent-scout"))
+        P8MessageList(copy.chat, Modifier.weight(1f).fillMaxWidth(), topIndex = 2, descriptions = copy.agentDescriptions, typing = listOf("agent-forge", "agent-scout"))
         P8Composer(stringResource(Res.string.thread_composer_placeholder_channel, P8Channel))
     }
 }
@@ -694,10 +797,28 @@ private fun P8MentionScene(copy: P8Copy) {
     val surface = remember { payload.toThreadComposerSurface(channelId = P8Channel, mentionChannelLabel = P8Channel) }
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         P8ChannelHeader(copy)
-        Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
-            // The morning's first messages, then the bug report the request answers.
-            P8MessageList(copy.chat.take(2) + copy.mentionChat.drop(1), Modifier.weight(1f).fillMaxWidth(), topIndex = 1, idPrefix = "mc")
-            Box(Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm).padding(bottom = 8.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
+            // The morning's first messages, then the bug report the request answers, down to the
+            // composer: the picker floats over the lower ones, as the app's suggestion popover
+            // (ThreadComposerSuggestionPortalHost) sits over the list, the composer card's width,
+            // 8dp above it.
+            var popupTop by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Int?>(null) }
+            P8MessageList(
+                copy.chat.take(2) + copy.mentionChat.drop(1),
+                Modifier.fillMaxSize(),
+                topIndex = 1,
+                descriptions = copy.agentDescriptions,
+                idPrefix = "mc",
+                fill = false,
+                overlayTopPx = popupTop,
+            )
+            Box(
+                Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = RaftAppSpacing.Sm)
+                    .padding(bottom = 8.dp)
+                    .onGloballyPositioned { popupTop = it.positionInParent().y.toInt() },
+            ) {
                 ComposerSuggestionPanelContent(
                     panelState = ThreadComposerSuggestionPanelState.MemberItems,
                     surface = surface,
@@ -723,7 +844,7 @@ private fun P8MentionScene(copy: P8Copy) {
 
 @Composable
 private fun P8ThreadScene(copy: P8Copy) {
-    val origin = remember(copy) { p8MessageItems(listOf(copy.threadOrigin), "origin").single() }
+    val origin = remember(copy) { p8MessageItems(listOf(copy.threadOrigin), "origin", copy.agentDescriptions).single() }
     val replies = copy.threadReplies
     val payload =
         remember {
@@ -743,6 +864,34 @@ private fun P8ThreadScene(copy: P8Copy) {
         }
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         ThreadPageHeader(
+            // The app's header shows the agents following the thread (ThreadAgentFollowersRoute).
+            agentFollowersHeader = {
+                ThreadAgentFollowersHeader(
+                    state =
+                        build.raft.app.data.ThreadAgentFollowersState(
+                            roster =
+                                build.raft.app.data.ThreadAgentFollowerRoster(
+                                    threadChannelId = "t-512",
+                                    canManage = false,
+                                    agents =
+                                        listOf("agent-forge", "agent-scout", "agent-atlas", "agent-nova").map { id ->
+                                            build.raft.app.data.ThreadAgentFollower(
+                                                id = id,
+                                                name = p8Name(id).lowercase(),
+                                                displayName = p8Name(id),
+                                                status = "online",
+                                                avatarUrl = p8Avatar(id),
+                                                serverId = "srv-store",
+                                                isCurrentServer = true,
+                                                canRemove = false,
+                                            )
+                                        },
+                                ),
+                        ),
+                    dispatch = {},
+                    agentStatusResolver = P8StatusResolver,
+                )
+            },
             payload = payload,
             headerDisplay =
                 ThreadHeaderDisplayModel(
@@ -763,12 +912,18 @@ private fun P8ThreadScene(copy: P8Copy) {
             onShowMembers = {},
             onShowSettings = {},
         )
-        val items = remember(copy) { p8MessageItems(replies, "reply") }
+        val items = remember(copy) { p8MessageItems(replies, "reply", copy.agentDescriptions) }
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().background(RaftColor.SurfaceWhite)) {
-            // Like the live thread list: the root message on top, a seam, then the replies.
-            Column(Modifier.fillMaxWidth()) {
-                P8MessageCard(origin, copy.threadOrigin.time, showReplyAction = false)
-                Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+            // The app's thread list, bottom-anchored: the root message, a seam, the start of the
+            // conversation with its reply count, the day divider, then the replies, the last one
+            // ending right above the composer.
+            P8FillColumn(Modifier.fillMaxSize(), bottomPadding = 12.dp) {
+                Column(Modifier.fillMaxWidth()) {
+                    P8MessageCard(origin, copy.threadOrigin.time, showReplyAction = false)
+                    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+                    ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(canLoadMoreBefore = false, secondaryReplyCount = replies.size))
+                    ThreadDateDivider(stringResource(Res.string.thread_date_divider_today))
+                }
                 items.forEachIndexed { index, message -> P8MessageCard(message, replies[index].time, showReplyAction = false) }
             }
         }
@@ -1071,7 +1226,7 @@ private fun P8ActivityScene(copy: P8Copy, swipe: Boolean) {
 private val P8Channels = listOf("general", P8Channel, "design", "support", "growth")
 
 @Composable
-private fun P8HomeScene() {
+private fun P8HomeScene(copy: P8Copy) {
     val channels =
         remember {
             P8Channels.mapIndexed { index, name ->
@@ -1088,8 +1243,8 @@ private fun P8HomeScene() {
         }
     val dmAgents = listOf("agent-forge", "agent-scout", "agent-atlas", "agent-nova", "agent-pixel", "agent-echo", "agent-sage")
     val dms =
-        remember {
-            dmAgents.take(2).mapIndexed { index, id -> p8HomeDm(id, unread = if (index == 0) 1 else 0) } +
+        remember(copy) {
+            dmAgents.take(2).mapIndexed { index, id -> p8HomeDm(id, copy, unread = if (index == 0) 1 else 0) } +
                 RaftHomeConversationItem(
                     id = "dm-human-leo",
                     name = "Leo Park",
@@ -1099,7 +1254,7 @@ private fun P8HomeScene() {
                     peerType = "human",
                     presenceMemberId = "human-leo",
                 ) +
-                dmAgents.drop(2).map { id -> p8HomeDm(id, unread = 0) }
+                dmAgents.drop(2).map { id -> p8HomeDm(id, copy, unread = 0) }
         }
     val statuses =
         remember {
@@ -1115,7 +1270,11 @@ private fun P8HomeScene() {
             }
         }
     val resolver: RaftAgentStatusResolver = remember { { id -> flowOf(statuses[id]) } }
+    // The shell's own bar is a stand-in with More; the app's bar ends with the server tab, drawn
+    // by StoreBottomBar under the shell.
+    Column(Modifier.fillMaxSize()) {
     RaftStructuralHomeShell(
+        modifier = Modifier.weight(1f).fillMaxWidth(),
         currentServerName = "Northwind Labs",
         currentServerId = "srv-store",
         servers = listOf(RaftServerSwitcherItem(id = "srv-store", name = "Northwind Labs", slug = "northwind")),
@@ -1128,20 +1287,24 @@ private fun P8HomeScene() {
         memberAvatarResolver = P8AvatarResolver,
         contentRefreshEnabled = false,
         selectedTabKey = "home",
-        showBottomBar = true,
+        showBottomBar = false,
         applyTopSafeArea = true,
         topSafeAreaOverride = null,
         bottomContentPadding = RaftAppSpacing.Lg,
         searchAndActivityOnShellNav = true,
         outerPadding = 0.dp,
     )
+    StoreBottomBar("home")
+    }
 }
 
-private fun p8HomeDm(id: String, unread: Int): RaftHomeConversationItem {
+private fun p8HomeDm(id: String, copy: P8Copy, unread: Int): RaftHomeConversationItem {
     val agent = p8Agent(id)!!
     return RaftHomeConversationItem(
         id = "dm-$id",
         name = agent.name,
+        // The app's DM row: the agent's description after its name.
+        description = copy.agentDescriptions[id],
         kind = RaftThreadSurfaceKind.DirectMessage,
         unreadCount = unread,
         avatarLabel = agent.name.take(1),

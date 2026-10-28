@@ -72,6 +72,7 @@ import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.resources.RaftBundledFiles
 import build.raft.app.resources.Res
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftMobileNavServerPopoverState
 import build.raft.designsystem.tokens.RaftThemeId
 import java.io.File
 import java.time.Duration
@@ -1264,6 +1265,12 @@ private fun StoreWideComputersScene(copy: StoreCopy, @Suppress("UNUSED_PARAMETER
 
 // ---- shared -----------------------------------------------------------------------------------------
 
+private val StoreServerMenu =
+    RaftServerMenuModel(
+        servers = listOf(RaftServerSwitcherItem(id = "srv-store", name = "Northwind Labs", slug = "northwind")),
+        currentServer = RaftServerSwitcherItem(id = "srv-store", name = "Northwind Labs", slug = "northwind"),
+    )
+
 @Composable
 internal fun StoreBottomBar(selected: String) {
     val home = stringResource(Res.string.tab_home)
@@ -1280,6 +1287,17 @@ internal fun StoreBottomBar(selected: String) {
             tasksLabel = tasks,
             moreLabel = more,
             activityUnreadCount = if (selected == "activity") 0 else 4,
+            serverTab = StoreServerMenu,
+            serverTabAccessibilityLabel = StoreServerMenu.currentServer.name,
         )
-    RaftAppBottomTabBarHost(items = items, onSelect = {}, modifier = Modifier.fillMaxWidth(), bottomSafeArea = 0.dp)
+    // The app's last tab is the current server (its avatar and name), not More.
+    RaftAppBottomTabBarHost(
+        items = items,
+        onSelect = {},
+        modifier = Modifier.fillMaxWidth(),
+        bottomSafeArea = 0.dp,
+        serverTab = { modifier ->
+            RaftAppServerTab(model = StoreServerMenu, state = remember { RaftMobileNavServerPopoverState() }, onPick = {}, modifier = modifier)
+        },
+    )
 }
