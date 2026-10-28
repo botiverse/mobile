@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
+import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
@@ -149,6 +151,30 @@ class TopBarScreenshotTest {
                     Bar(width = 1100.dp, currentKey = "b", arrows = true)
                     Bar(width = 840.dp, currentKey = "b", name = "Botiverse Research Group", arrows = true)
                     Bar(width = 700.dp, currentKey = "b", name = "Botiverse Research Group", arrows = true)
+                }
+            }
+        }
+
+    /**
+     * The bar's tooltips open below their items (raft-ui #174), away from the window's edge and
+     * its title-bar controls, even with room above: the bell's tooltip under it, caret up.
+     */
+    @Test
+    fun topBarTooltipBelow() =
+        appearances.forEach { appearance ->
+            RaftScreenshot.capture("top_bar_tooltip_below_${appearance.name.lowercase()}", appearance, settleFrames = 2) {
+                CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
+                    Column(Modifier.padding(top = 64.dp).height(160.dp)) {
+                        RaftTopBar(
+                            modifier = Modifier.width(720.dp),
+                            center = { RaftSearchTrigger(label = "Search", onClick = {}, windowWidth = 720.dp) },
+                            trailing = {
+                                RaftIconButton(onClick = {}, tooltip = "Notifications", variant = RaftButtonVariant.OnFrame) {
+                                    RaftGlyphIcon(RaftGlyph.Info, size = 20.dp)
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

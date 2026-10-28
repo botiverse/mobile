@@ -6,21 +6,34 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftThemeDecorDefaults
 import build.raft.designsystem.theme.RaftThemeDecorSlot
 import build.raft.designsystem.theme.raftThemeDecor
+import build.raft.designsystem.theme.raftThemeDecorTopPlacement
 import build.raft.designsystem.tokens.RaftStroke
 
 // The web's top bar at desktop width (packages/web/src/components/topbar/AppTopBar.tsx): one row
@@ -49,6 +62,71 @@ object RaftTopBarDefaults {
 
     /** From the centre-leading items (the history arrows) to the centre (the search field). */
     val CenterLeadingGap: Dp = 8.dp
+
+    /**
+     * The end-side room system window controls take over the bar (raft-ui
+     * `--raft-frame-inset-end`): the end side of the caption bar's insets, for a window whose
+     * caption controls overlay the app's content. Zero where the system keeps its controls in a
+     * title bar of its own or on the start side (macOS traffic lights, iPadOS windowed mode).
+     * The horizontal safe area ([LocalRaftSafeAreaInsets]) is separate: the bar pads it anyway.
+     */
+    @Composable
+    fun windowControlsEndInset(): Dp {
+        val insets = WindowInsets.captionBar
+        val density = LocalDensity.current
+        val direction = LocalLayoutDirection.current
+        val px = if (direction == LayoutDirection.Ltr) insets.getRight(density, direction) else insets.getLeft(density, direction)
+        return with(density) { px.toDp() }
+    }
+}
+
+/**
+ * What the theme decor needs to know of the bar's end, measured in the layout phase and read
+ * only by the decor's draw (no recomposition): the trailing region's width (from the centre's
+ * end to the bar's content end) and the width of the trailing content inside it.
+ */
+@Stable
+private class RaftTopBarDecorRoom {
+    var trailingRegionPx by mutableIntStateOf(-1)
+    var trailingContentPx by mutableIntStateOf(0)
+
+    /** The strip's end offset in [density] for an [artWidth] strip ([raftThemeDecorTopPlacement]). */
+    fun placement(density: Density, endInset: Dp, artWidth: Dp): Dp? =
+        with(density) {
+            val region = trailingRegionPx
+            raftThemeDecorTopPlacement(
+                trailingOccupied = trailingContentPx.toDp() + RaftTopBarDefaults.TrailingEndPadding,
+                endInset = endInset,
+                centerEndOffset = if (region < 0) Dp.Infinity else region.toDp() + endInset.coerceAtLeast(0.dp),
+                artWidth = artWidth,
+            )
+        }
+}
+
+/**
+ * The trailing region: [content] end-aligned in a wrap-content row, so [room] learns how far the
+ * actions actually reach rather than the region's half share.
+ */
+@Composable
+private fun RaftTopBarTrailing(
+    modifier: Modifier,
+    room: RaftTopBarDecorRoom,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier
+            .onSizeChanged { room.trailingRegionPx = it.width }
+            .padding(start = RaftTopBarDefaults.TrailingStartPadding, end = RaftTopBarDefaults.TrailingEndPadding),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.onSizeChanged { room.trailingContentPx = it.width },
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
 }
 
 /**
@@ -56,7 +134,10 @@ object RaftTopBarDefaults {
  * mode, the dark frame in dark) with a 1dp `line-seam` underneath, content in
  * `foreground-on-frame`. [topInset] (the status bar) is added above the row, on the frame.
  * A decorated theme paints its pixel art on the row's end from a 1024dp window
- * ([RaftThemeDecorSlot.Top], web AppTopBar `frame-decor-top`).
+ * ([RaftThemeDecorSlot.Top], web AppTopBar `frame-decor-top`): before the trailing actions and
+ * the end inset, only in the empty room after the centre, whole or not at all
+ * ([raftThemeDecorTopPlacement]). Tooltips of the bar's items open below them
+ * ([RaftTooltipPlacement.Below]), away from the window's edge and its controls.
  *
  * [leading] and [trailing] each take half of the room the [center] leaves (`flex-1`), so the
  * centre stays centred on the bar; [leading] lays out from the start, [trailing] from the end.
@@ -85,12 +166,25 @@ fun RaftTopBar(
      * own width.
      */
     windowWidth: Dp = Dp.Unspecified,
+    /**
+     * The end-side room the system's window controls take over the bar (raft-ui
+     * `--raft-frame-inset-end`): the frame runs under it, the items stay out of it, and the decor
+     * moves in by it.
+     */
+    endInset: Dp = RaftTopBarDefaults.windowControlsEndInset(),
 ) {
     val colors = RaftTheme.colors
+    val density = LocalDensity.current
+    val room = remember { RaftTopBarDecorRoom() }
+    val inset = endInset.coerceAtLeast(0.dp)
+    val decorEnd: (Dp) -> Dp? = { artWidth -> room.placement(density, inset, artWidth) }
     // The frame runs up under the status bar when the bar pads for it: the host's icons follow it.
     RaftStatusBarBackdropClaim(colors.layerFrame, enabled = topInset > 0.dp)
     Column(modifier.fillMaxWidth().background(colors.layerFrame)) {
-        CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundOnFrame) {
+        CompositionLocalProvider(
+            LocalRaftContentColor provides colors.foregroundOnFrame,
+            LocalRaftTooltipPlacement provides RaftTooltipPlacement.Below,
+        ) {
             if (centerLeading != null && center != null) {
                 RaftTopBarWithCenterLeading(
                     modifier = Modifier
@@ -100,7 +194,10 @@ fun RaftTopBar(
                         .raftSafeAreaHorizontalPadding()
                         .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
                         // The theme's pixel art on the bar's end, over the frame, under the items.
-                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth),
+                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
+                        // The items stay out of the window controls; the frame and the decor's offset don't.
+                        .padding(end = inset),
+                    room = room,
                     leading = leading,
                     centerLeading = centerLeading,
                     center = center,
@@ -115,7 +212,8 @@ fun RaftTopBar(
                         // The frame runs edge to edge; its items stay out of the horizontal safe area.
                         .raftSafeAreaHorizontalPadding()
                         .height(RaftTopBarDefaults.Height - RaftStroke.Hairline)
-                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth),
+                        .raftThemeDecor(RaftThemeDecorSlot.Top, windowWidth, decorEnd)
+                        .padding(end = inset),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
@@ -126,14 +224,7 @@ fun RaftTopBar(
                         content = leading,
                     )
                     if (center != null) Box(contentAlignment = Alignment.Center) { center() }
-                    Row(
-                        Modifier
-                            .weight(1f)
-                            .padding(start = RaftTopBarDefaults.TrailingStartPadding, end = RaftTopBarDefaults.TrailingEndPadding),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically,
-                        content = trailing,
-                    )
+                    RaftTopBarTrailing(Modifier.weight(1f), room, trailing)
                 }
             }
         }
@@ -152,6 +243,7 @@ fun RaftTopBar(
 @Composable
 private fun RaftTopBarWithCenterLeading(
     modifier: Modifier,
+    room: RaftTopBarDecorRoom,
     leading: @Composable RowScope.() -> Unit,
     centerLeading: @Composable RowScope.() -> Unit,
     center: @Composable () -> Unit,
@@ -172,12 +264,7 @@ private fun RaftTopBarWithCenterLeading(
                 content = centerLeading,
             )
             Box(contentAlignment = Alignment.Center) { center() }
-            Row(
-                Modifier.padding(start = RaftTopBarDefaults.TrailingStartPadding, end = RaftTopBarDefaults.TrailingEndPadding),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-                content = trailing,
-            )
+            RaftTopBarTrailing(Modifier, room, trailing)
         },
     ) { measurables, constraints ->
         val (leadingM, centerLeadingM, centerM, trailingM) = measurables

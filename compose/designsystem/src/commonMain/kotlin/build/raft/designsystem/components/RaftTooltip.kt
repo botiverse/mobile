@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TooltipState
@@ -51,6 +52,24 @@ internal object RaftTooltipMetrics {
     const val TouchDuration = 1500L
 }
 
+/** Which side of its anchor a [RaftTooltip] opens on. */
+enum class RaftTooltipPlacement {
+    /** Above, or below when there is no room above (raft-ui's default `side="top"`). */
+    Above,
+
+    /**
+     * Below, or above when there is no room below: the top bar's items (raft-ui), where above
+     * would run into the window's edge and its title-bar controls.
+     */
+    Below,
+}
+
+/**
+ * The placement [RaftTooltip]s in the subtree take by default: [RaftTopBar] provides
+ * [RaftTooltipPlacement.Below] for its items.
+ */
+val LocalRaftTooltipPlacement = staticCompositionLocalOf { RaftTooltipPlacement.Above }
+
 /**
  * Opens every [RaftTooltip] in the subtree, persistent (screenshot fixtures only: an
  * offscreen frame can neither hover nor hold a long press).
@@ -66,7 +85,8 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
 
 /**
  * raft-ui 0.8.0 Tooltip around [content]: a short label in the dark HUD bubble with a
- * small caret pointing at [content], above it (below when there is no room above).
+ * small caret pointing at [content], above it (below when there is no room above), or below it
+ * with [placement] [RaftTooltipPlacement.Below] (the default inside [RaftTopBar]).
  *
  * - Look (tooltip.tsx): `layer-hud` fill, `foreground-on-hud` type, `radius-chip` (6dp),
  *   10 x 4dp padding, `text-footnote` 13/18 in medium weight, `shadow-float`, a 10 x 5.25dp
@@ -93,6 +113,7 @@ fun RaftTooltip(
     text: String,
     modifier: Modifier = Modifier,
     openOnLongPress: Boolean = true,
+    placement: RaftTooltipPlacement = LocalRaftTooltipPlacement.current,
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
@@ -105,7 +126,13 @@ fun RaftTooltip(
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
     Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
         TooltipBox(
-            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing),
+            positionProvider =
+                when (placement) {
+                    RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
+                    // Material's own Below provider: its caret follows the side it picks.
+                    RaftTooltipPlacement.Below ->
+                        TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
+                },
             tooltip = {
                 PlainTooltip(
                     modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
