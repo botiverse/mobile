@@ -37,6 +37,41 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
+    fun taskV2OffersCreateTaskFromMessageInsteadOfConvertAndTheTaskStatusItems() {
+        // Web MessageItem menu (slock staging 3e8ad99e): with task v2 a message's tasks are its list
+        // (no single linked task), so no Mark as Done / Reopen, and "Create Task from Message" is
+        // offered even on a message that already has a task; flag off keeps Convert to Task.
+        // (message, task v2) -> (task item shown, it is "Create from Message", task status shown)
+        val withTask = message(taskId = "task-1", taskNumber = 11, taskStatus = "in_review")
+        data class Case(val name: String, val message: RaftThreadMessageItem, val taskV2: Boolean, val item: Boolean, val create: Boolean, val status: Boolean)
+        listOf(
+            Case("plain, off", message(), false, item = true, create = false, status = false),
+            Case("plain, on", message(), true, item = true, create = true, status = false),
+            Case("has a task, off", withTask, false, item = false, create = false, status = true),
+            Case("has a task, on", withTask, true, item = true, create = true, status = false),
+            Case("system, on", message(messageType = "System"), true, item = false, create = true, status = false),
+        ).forEach { case ->
+            val capabilities =
+                threadMessageMenuCapabilities(
+                    message = case.message,
+                    replyMetadata = case.message.toThreadReplyMetadata(),
+                    slice = slice(),
+                    writeActionsEnabled = true,
+                    taskV2Enabled = case.taskV2,
+                )
+            assertEquals(case.item, capabilities.convertToTask, case.name)
+            assertEquals(case.create, capabilities.createTaskFromMessage, case.name)
+            assertEquals(case.status, capabilities.taskStatus, case.name)
+            val availability = capabilities.toThreadNewMessageMenuActionAvailability(case.message, case.message.toThreadReplyMetadata())
+            assertEquals(
+                if (case.create) Res.string.thread_action_create_task_from_message else Res.string.thread_action_convert_to_task,
+                ThreadNewMessageMenuTool.ConvertToTask.compactLabelResource(availability),
+                case.name,
+            )
+        }
+    }
+
+    @Test
     fun guestsGetNeitherForwardNorSelectMessage() {
         val guestSlice = slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)
         val capabilities = capabilities(message(), slice = guestSlice)

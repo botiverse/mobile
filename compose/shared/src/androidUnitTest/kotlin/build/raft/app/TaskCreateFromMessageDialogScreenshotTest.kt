@@ -1,0 +1,106 @@
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
+import kotlin.test.Test
+import org.junit.Rule
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
+
+/**
+ * Task v2 "Create Task from Message" (slock web `CreateTaskDialog` with a source message), light
+ * and dark: the quoted message (sender, three lines) and the first title prefilled from it; the
+ * failed state shows web's "Failed to create task" banner.
+ * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
+class TaskCreateFromMessageDialogScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    @Test
+    fun dialogLight() = dialog("thread.create-task-from-message", RaftAppAppearance.Light, failed = false)
+
+    @Test
+    fun dialogDark() = dialog("thread.create-task-from-message.dark", RaftAppAppearance.Dark, failed = false)
+
+    @Test
+    fun failedLight() = dialog("thread.create-task-from-message.failed", RaftAppAppearance.Light, failed = true)
+
+    private fun dialog(name: String, appearance: RaftAppAppearance, failed: Boolean) =
+        RaftRobolectricScreenshot.capture(
+            name,
+            appearance,
+            reportDir = "build/reports/home-screenshots",
+            activities = activities,
+            root = { dialogFittedToItsWindow() },
+        ) {
+            Page {
+                TaskCreateFromMessageDialog(
+                    source =
+                        TaskCreateSourceMessage(
+                            channelId = ChannelId("channel-1"),
+                            messageId = MessageId("msg-1"),
+                            senderName = "artin",
+                            text = "preview 包好了把下载方式贴给我，我在模拟器上逐项测，结果贴在这里。",
+                        ),
+                    submitting = false,
+                    errorText = if (failed) "Cannot create more than 50 tasks at once" else null,
+                    onDismiss = {},
+                    onSubmit = {},
+                )
+            }
+        }
+
+    @Composable
+    private fun Page(content: @Composable () -> Unit) {
+        val pager =
+            remember {
+                object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+            }
+        CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { RaftDesignSystemTheme { content() } }
+    }
+
+    /**
+     * The dialog window with its compose content measured to the window. The content (a
+     * full-window scrim with the dialog centred) sometimes measured a pixel taller than its window
+     * (1170x2533 under a 2532 window: always for dark, and for light depending on what the run's
+     * earlier tests left behind), so the same head passed one CI run and failed the next (run
+     * 40635290293; its light capture was the golden moved down one row). Measuring it to the
+     * window makes every capture the window's size, laid out for it.
+     */
+    private fun dialogFittedToItsWindow(): android.view.View? {
+        val decor = ShadowDialog.getLatestDialog()?.window?.decorView ?: return null
+        val content = findCompose(decor) ?: return decor
+        val parent = content.parent as? android.view.View ?: return decor
+        val exactly = android.view.View.MeasureSpec.EXACTLY
+        content.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.width, exactly),
+            android.view.View.MeasureSpec.makeMeasureSpec(parent.height, exactly),
+        )
+        content.layout(0, 0, parent.width, parent.height)
+        return decor
+    }
+
+    private fun findCompose(view: android.view.View): android.view.View? {
+        if (view is androidx.compose.ui.platform.ViewRootForTest) return view
+        if (view is android.view.ViewGroup) {
+            for (index in 0 until view.childCount) findCompose(view.getChildAt(index))?.let { return it }
+        }
+        return null
+    }
+}

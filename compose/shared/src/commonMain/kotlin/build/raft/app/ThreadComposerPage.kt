@@ -509,7 +509,9 @@ internal data class ThreadComposerSurface(
     val mentionChannelId: String? = null,
     val mentionChannelLabel: String? = null,
     val memberSuggestionHeadersVisible: Boolean = kind != RaftThreadSurfaceKind.DirectMessage,
-    val showTaskButton: Boolean = true
+    val showTaskButton: Boolean = true,
+    /** False under task v2: nothing this composer sends is a task ([withTaskV2]). */
+    val sendsAsTask: Boolean = true
 ) {
     val sendChannelId: String?
         get() = streamChannelId?.takeIf { it.isNotBlank() } ?: channelId.takeIf { it.isNotBlank() }
@@ -521,6 +523,14 @@ internal data class ThreadComposerSurface(
                 ?: streamChannelId?.takeIf { it.isNotBlank() }
                 ?: channelId.takeIf { it.isNotBlank() }
 }
+
+/**
+ * Task v2 (web ChatPanel / ThreadPanel `showTaskButton={... && !taskV2}`, credited to stdrc): people
+ * send a normal message and create the task from it, so the composer has no "As Task" toggle and
+ * nothing it sends is a task. Off (or unresolved), the surface keeps its toggle as before.
+ */
+internal fun ThreadComposerSurface.withTaskV2(taskV2Enabled: Boolean): ThreadComposerSurface =
+    if (taskV2Enabled) copy(showTaskButton = false, sendsAsTask = false) else this
 
 internal fun ThreadComposerSurface.threadComposerDraftKey(): String? {
     val sendTarget = sendChannelId?.takeIf { it.isNotBlank() } ?: return null
@@ -2119,7 +2129,8 @@ internal fun ThreadComposerContentLeaf(
     traceMarkdownSection(RaftComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
     val fieldValue = editorValue
     val text = fieldValue.text
-    val asTask = editorAsTask
+    // Task v2: never sends as a task, whatever a restored draft held.
+    val asTask = editorAsTask && surface.sendsAsTask
     val ownedNativeEditingStateReader =
         remember(state.instanceId, editorSessionId) { RaftTextFieldNativeEditingStateReader() }
     val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader

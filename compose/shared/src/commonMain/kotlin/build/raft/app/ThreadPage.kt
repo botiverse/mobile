@@ -143,6 +143,7 @@ import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -697,6 +698,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
     val convertToTask: Boolean = false,
+    /** Task v2: the task slot reads "Create Task from Message" (web) instead of "Convert to Task". */
+    val createTaskFromMessage: Boolean = false,
     /** Shown for an in-place text selection: Copy copies the selection. */
     val selectionContext: Boolean = false,
     /** The in-place selection covers only part of the message: Copy reads "Copy selection" and Select All appears. */
@@ -758,7 +761,8 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         threadFollowed = replyMetadata.isThreadFollowed,
         taskStatus = taskStatus,
         taskDone = message.isThreadTaskDone(),
-        convertToTask = convertToTask
+        convertToTask = convertToTask,
+        createTaskFromMessage = createTaskFromMessage
     )
 
 internal fun threadMessageMetadataSlotLayout(
@@ -1923,7 +1927,7 @@ private object ThreadLocalSendNextId {
     }
 }
 
-private fun newThreadSendRandomId(): String =
+internal fun newThreadSendRandomId(): String =
     "mobile-${Random.nextLong().toULong().toString(36)}-${Random.nextLong().toULong().toString(36)}"
 
 /**
@@ -3793,6 +3797,9 @@ internal sealed interface MarkdownTaskNumberOpenResult {
         val source: SharedTaskReferenceResolutionSource
     ) : MarkdownTaskNumberOpenResult
 
+    /** The task opens without a page of its own: its empty conversation or its legacy panel. */
+    data class OpensInPlace(val task: TaskSummary) : MarkdownTaskNumberOpenResult
+
     data object NotFound : MarkdownTaskNumberOpenResult
     data object AuthRequired : MarkdownTaskNumberOpenResult
     data object Failed : MarkdownTaskNumberOpenResult
@@ -3817,6 +3824,8 @@ internal suspend fun openMarkdownTaskNumberPayload(
     currentTaskChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore?,
+    /** `task_v2_conversations_v0` for the server ([taskOpenTarget]). */
+    taskV2Enabled: Boolean = false,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null
 ): MarkdownTaskNumberOpenResult {
     return when (
@@ -3830,6 +3839,9 @@ internal suspend fun openMarkdownTaskNumberPayload(
             )
     ) {
         is SharedTaskReferenceResolution.Found -> {
+            if (resolution.task.taskOpenSurface(taskV2Enabled) != null) {
+                return MarkdownTaskNumberOpenResult.OpensInPlace(resolution.task)
+            }
             val payload =
                 currentPayload.taskThreadLaunchPayload(
                     task = resolution.task,
@@ -3840,6 +3852,7 @@ internal suspend fun openMarkdownTaskNumberPayload(
                             task = resolution.task,
                             serverId = serverId.value,
                             tasksDataSource = tasksDataSource,
+                            taskV2Enabled = taskV2Enabled,
                         ),
                 ) ?: return MarkdownTaskNumberOpenResult.Failed
             MarkdownTaskNumberOpenResult.Found(
@@ -3919,6 +3932,10 @@ internal fun RaftThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
         !surfaceKind.equals(RaftThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
         parentMessageId.isNullOrBlank() &&
         originParentMessageId.isNullOrBlank()
+
+/** Task v2: any sent, non-system message can have tasks created from it (several, too). */
+internal fun RaftThreadMessageItem.canCreateTaskFromMessage(): Boolean =
+    !isSystemMessage() && !hasLocalSendState()
 
 internal fun RaftThreadMessageItem.canConvertToTask(): Boolean =
     !isSystemMessage() &&
@@ -7330,6 +7347,11 @@ private fun SharedThreadRouteContentContent(
     }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
+    val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
+    // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
+    val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
+    val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var markdownReferencePending by remember(threadInstanceKey) {
         mutableStateOf(ThreadMarkdownReferencePendingState())
@@ -7659,6 +7681,8 @@ private fun SharedThreadRouteContentContent(
     val unableToDeleteChannelLabel = stringResource(Res.string.thread_error_delete_channel)
     val unableToConvertMessageLabel = stringResource(Res.string.thread_error_convert_message)
     val taskCreatedLabel = stringResource(Res.string.thread_feedback_task_created)
+    val unableToCreateTaskLabel = stringResource(Res.string.tasks_create_failed)
+    val unableToSendTaskMessageLabel = stringResource(Res.string.task_conversation_send_failed)
     val unsupportedTaskStatusLabel = stringResource(Res.string.thread_error_task_status_unsupported)
     val unableToUpdateTaskLabel = stringResource(Res.string.thread_error_update_task)
     val unableToUpdateAssigneeLabel = stringResource(Res.string.thread_error_update_assignee)
@@ -7986,6 +8010,16 @@ private fun SharedThreadRouteContentContent(
                     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
                 )
         }
+    // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
+    // source message and the composer drops "As Task".
+    val taskV2Enabled =
+        remember(featureFlagSnapshotRevision, currentServerId) {
+            currentServerId != null &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    ServerId(currentServerId),
+                    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
+                )
+        }
     // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
     // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
     val threadUnreadBadgeEnabled =
@@ -8262,12 +8296,29 @@ private fun SharedThreadRouteContentContent(
                 loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
+    val sourceTaskListsEnabled = payload.supportsChannelTasks()
     val linkedTasksProjection =
-        remember(taskProjectionSlice, serverTaskProjectionSlice, taskProjectionReferences) {
+        remember(
+            taskProjectionSlice,
+            serverTaskProjectionSlice,
+            taskProjectionReferences,
+            taskV2Enabled,
+            sourceTaskListsEnabled,
+            currentSession?.user?.id
+        ) {
             threadLinkedTasksProjection(
                 channelProjectionSlice = taskProjectionSlice,
                 serverProjectionSlice = serverTaskProjectionSlice,
                 references = taskProjectionReferences
+            ).copy(
+                sourceTaskLists =
+                    if (sourceTaskListsEnabled) {
+                        taskProjectionSlice.tasks.threadSourceTaskLists(taskV2Enabled)
+                    } else {
+                        emptyMap()
+                    },
+                viewerUserId = currentSession?.user?.id,
+                taskV2Enabled = taskV2Enabled
             )
         }
     val taskAssigneeOptions =
@@ -8775,14 +8826,15 @@ private fun SharedThreadRouteContentContent(
             headerDisplayModel.title,
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
-            renderedPayload.parentSurfaceKind
+            renderedPayload.parentSurfaceKind,
+            taskV2Enabled
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-            )
+            ).withTaskV2(taskV2Enabled)
         }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
@@ -10752,7 +10804,7 @@ private fun SharedThreadRouteContentContent(
                         draftText = draftText,
                         attachmentCount = pendingAttachments.size
                     ),
-                asTask = currentDraftState.seedAsTask,
+                asTask = currentDraftState.seedAsTask && composerSurface.sendsAsTask,
                 attachmentIds = attachmentIds,
                 attachments = pendingAttachments,
                 ownedTemporaryFileRefs = ownedTemporaryFileRefs,
@@ -11356,25 +11408,127 @@ private fun SharedThreadRouteContentContent(
             onOpenThreadPayload(loadingPayload)
         }
     }
-    val openCanonicalTask: (TaskSummary, String) -> Unit = { task, source ->
-        if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
-            // Task v2: the local conversation id comes from the server first.
+    val latestTaskOpenServerId by rememberUpdatedState(currentServerId)
+    val openCanonicalTask: (TaskSummary, String) -> Unit = open@{ task, source ->
+        // Web useOpenTask: the legacy panel, or the empty conversation of a task without one
+        // (opening never creates it), or a page.
+        task.taskOpenSurface(taskV2Enabled)?.let { surface ->
+            bridge.log("thread_task_open result=surface kind=${surface::class.simpleName} source=$source taskId=${task.id.value}")
+            taskOpenSurfaceFlow.open(surface)
+            return@open
+        }
+        if (!taskOpenGate.tryBegin(task.id.value)) {
+            bridge.log("thread_task_open result=ignored reason=in_flight source=$source taskId=${task.id.value}")
+            return@open
+        }
+        if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+            // Task v2: a joint surface's local conversation id comes from the server first.
             coroutineScope.launch {
-                openCanonicalTaskWith(
-                    task = task,
-                    source = source,
-                    resolvedConversationChannelId =
-                        resolveTaskOpenConversationChannelId(
-                            task = task,
-                            serverId = currentServerId.orEmpty(),
-                            tasksDataSource = tasksDataSource,
-                            log = bridge::log,
-                        ),
-                )
+                try {
+                    openCanonicalTaskWith(
+                        task = task,
+                        source = source,
+                        resolvedConversationChannelId =
+                            resolveTaskOpenConversationChannelId(
+                                task = task,
+                                serverId = currentServerId.orEmpty(),
+                                tasksDataSource = tasksDataSource,
+                                taskV2Enabled = taskV2Enabled,
+                                log = bridge::log,
+                            ),
+                    )
+                } finally {
+                    taskOpenGate.finish(task.id.value)
+                }
             }
         } else {
             openCanonicalTaskWith(task, source, null)
+            taskOpenGate.finish(task.id.value)
         }
+    }
+
+    TaskOpenSurfaceHost(
+        flow = taskOpenSurfaceFlow,
+        // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
+        joined = { task ->
+            task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
+        },
+        onJoin = { task ->
+            val channelId = task.channelId
+            if (channelId != null) {
+                coroutineScope.launch {
+                    when (val result = dataSource.joinChannel(channelId)) {
+                        is DataResult.Content -> {
+                            threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                            currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                            }
+                            realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
+                            bridge.toast(joinedChannelLabel)
+                        }
+                        is DataResult.NoPermission -> if (!routeAuthRequired(result)) bridge.toast(unableToJoinChannelLabel)
+                        else -> bridge.toast(unableToJoinChannelLabel)
+                    }
+                }
+            }
+        },
+        onSend = { task, text ->
+            val serverId = currentServerId?.takeIf { it.isNotBlank() }
+            if (serverId != null) {
+                coroutineScope.launch {
+                    val opened =
+                        taskOpenSurfaceFlow.send(
+                            text = text,
+                            serverId = serverId,
+                            tasksDataSource = tasksDataSource,
+                            sendMessage = { channelId, body, randomId ->
+                                dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
+                            },
+                            currentServerId = { latestTaskOpenServerId },
+                            fallbackError = unableToSendTaskMessageLabel,
+                        )
+                    bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
+                    opened?.let { (sentTask, conversationId) -> openCanonicalTaskWith(sentTask, "task_first_send", conversationId) }
+                }
+            }
+        },
+    )
+    // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
+    // sheet follows the store's copy of its task and gives way to the conversation page.
+    val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
+    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice, taskV2Enabled) {
+        val taskId = taskOpenSurfaceTaskId ?: return@LaunchedEffect
+        val fresh =
+            taskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+                ?: serverTaskProjectionSlice.tasks.firstOrNull { it.id == taskId }
+        taskOpenSurfaceFlow.onTaskChanged(fresh, taskV2Enabled)?.let { arrived ->
+            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+            openCanonicalTask(arrived, "task_conversation_arrived")
+        }
+    }
+
+    createTaskFromMessage.source?.let { source ->
+        TaskCreateFromMessageDialog(
+            source = source,
+            submitting = createTaskFromMessage.submitting,
+            errorText = createTaskFromMessage.errorText,
+            onDismiss = { createTaskFromMessage.dismiss() },
+            onSubmit = { titles ->
+                val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                if (serverId != null && !createTaskFromMessage.submitting) {
+                    coroutineScope.launch {
+                        val outcome =
+                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel)
+                        bridge.log(
+                            "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
+                                "messageId=${source.messageId.value}"
+                        )
+                        val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
+                        if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
+                    }
+                }
+            },
+        )
     }
 
     RaftForegroundBannerHost(
@@ -12331,6 +12485,17 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                action == "openSourceTask" && !itemId.isNullOrBlank() -> {
+                    // Task v2: a row of the list under a message opens its task (web useOpenTask):
+                    // its own conversation, or a pre-v2 task's host thread.
+                    val task = linkedTasksProjection.sourceTaskById(itemId)
+                    if (task == null) {
+                        bridge.logWarn("thread_task_open_rejected reason=source_task_missing taskId=$itemId")
+                        bridge.toast(unableToOpenTaskLabel)
+                    } else {
+                        openCanonicalTask(task, "message_task_list")
+                    }
+                }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
@@ -12440,6 +12605,7 @@ private fun SharedThreadRouteContentContent(
                                     currentTaskChannelId = taskChannelId,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = tasksDataStore,
+                                    taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider
                                 )
                             val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
@@ -12475,6 +12641,9 @@ private fun SharedThreadRouteContentContent(
                                             taskNumber = result.taskNumber,
                                             candidates = result.candidates
                                         )
+                                }
+                                is MarkdownTaskNumberOpenResult.OpensInPlace -> {
+                                    openCanonicalTask(result.task, "markdown_task")
                                 }
                                 MarkdownTaskNumberOpenResult.NotFound -> {
                                     bridge.log(
@@ -12826,6 +12995,23 @@ private fun SharedThreadRouteContentContent(
                             }
                         }
                     }
+                }
+                action == "convertMessageToTask" && !itemId.isNullOrBlank() && taskV2Enabled -> {
+                    // Task v2 (web MessageItem `openCreateFromMessage`): tasks are created FROM the
+                    // message (several, under it), never converted from it.
+                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
+                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canCreateTaskFromMessage() || taskChannelId == null) {
+                        bridge.toast(unableToCreateTaskLabel)
+                        return@ThreadPageContent
+                    }
+                    createTaskFromMessage.open(
+                        TaskCreateSourceMessage(
+                            channelId = taskChannelId,
+                            messageId = MessageId(message.id),
+                            senderName = message.threadAvatarName().ifBlank { message.authorName },
+                            text = message.body,
+                        )
+                    )
                 }
                 action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
                     if (itemId in pendingTaskConvertMessageIds) {
@@ -22024,10 +22210,19 @@ private fun ThreadMessagesListContent(
                 }
                 val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
+                // Task v2: the list under the message replaces its single task chip (web MessageItem).
+                // In a reply thread only the parent message carries it (web ThreadPanel), never a reply.
+                val replyInThread =
+                    threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
                 val displayMessage =
-                    remember(message, linkedTasksProjection) {
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
                         val startedAt = TimeSource.Monotonic.markNow()
                         message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
                             .also {
                                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
                                 if (shouldLogThreadPerformance(durationMs)) {
@@ -22128,6 +22323,8 @@ private fun ThreadMessagesListContent(
                                 message = displayMessage,
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 replyMetadata = replyMetadata,
+                                sourceTasks = sourceTasks,
+                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
                                 hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id),
                                 actionCard = actionCard,
                                 messageIndex = absoluteMessageIndex,
@@ -22684,7 +22881,8 @@ private fun ThreadMessagesListContent(
                         translationState = translationState,
                         translationAvailable = translationStore != null
                     ),
-                taskConvertPending = message.id in pendingTaskConvertMessageIds
+                taskConvertPending = message.id in pendingTaskConvertMessageIds,
+                taskV2Enabled = linkedTasksProjection.taskV2Enabled
             ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
         // New Message Menu toggle: a text selection shows this same Compact menu in place
         // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
@@ -22739,7 +22937,8 @@ private fun ThreadMessagesListContent(
                                 translationState = translationState,
                                 translationAvailable = translationStore != null
                             ),
-                        taskConvertPending = message.id in pendingTaskConvertMessageIds
+                        taskConvertPending = message.id in pendingTaskConvertMessageIds,
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled
                     )
                 val closeActionMenu: () -> Unit = {
                     actionMessageId = null
@@ -22818,6 +23017,7 @@ private fun ThreadMessagesListContent(
                         showFollowAction = capabilities.follow,
                         showTaskStatusAction = capabilities.taskStatus,
                         showConvertToTaskAction = capabilities.convertToTask,
+                        createTaskFromMessage = capabilities.createTaskFromMessage,
                         showReactionActions = capabilities.quickReactions,
                         showCopyLinkAction = capabilities.copyLink,
                         showShareMessagesAction = capabilities.selectMessage,
@@ -25316,6 +25516,7 @@ private data class ThreadMessageCardData(
     val messageBodyTextStyle: TextStyle,
     val replyMetadata: ThreadReplyMetadata,
     val hasReplyDraft: Boolean,
+    val sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
     val actionCard: ThreadActionCard?,
     val messageIndex: Int,
     val highlightedMentions: Set<String>,
@@ -25359,6 +25560,7 @@ private data class ThreadMessageCardData(
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
 private class ThreadMessageCardCallbacks(
     val diagnosticsLogger: (String) -> Unit,
+    val onOpenSourceTask: (String) -> Unit = {},
     val agentStatusResolver: RaftAgentStatusResolver,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
@@ -25402,6 +25604,9 @@ fun ThreadMessageCard(
     messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
+    /** Task v2: the tasks listed under the message (web `TaskChipList`); tapping one opens it. */
+    sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
+    onOpenSourceTask: (String) -> Unit = {},
     actionCard: ThreadActionCard? = message.threadActionCard(),
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
@@ -25484,6 +25689,8 @@ fun ThreadMessageCard(
                 messageBodyTextStyle = messageBodyTextStyle,
                 replyMetadata = replyMetadata,
                 hasReplyDraft = hasReplyDraft,
+                // A retracted message keeps none of its content (web hides the list with it).
+                sourceTasks = if (retracted) emptyList() else sourceTasks,
                 actionCard = if (retracted) null else actionCard,
                 messageIndex = messageIndex,
                 highlightedMentions = highlightedMentions,
@@ -25522,6 +25729,7 @@ fun ThreadMessageCard(
         callbacks =
             ThreadMessageCardCallbacks(
                 diagnosticsLogger = diagnosticsLogger,
+                onOpenSourceTask = onOpenSourceTask,
                 agentStatusResolver = agentStatusResolver,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 isMarkdownTagValid = isMarkdownTagValid,
@@ -25569,6 +25777,8 @@ private fun ThreadMessageCardContent(
     val messageBodyTextStyle = data.messageBodyTextStyle
     val replyMetadata = data.replyMetadata
     val hasReplyDraft = data.hasReplyDraft
+    val sourceTasks = data.sourceTasks
+    val onOpenSourceTask = callbacks.onOpenSourceTask
     val actionCard = data.actionCard
     val messageIndex = data.messageIndex
     val diagnosticsLogger = callbacks.diagnosticsLogger
@@ -26446,8 +26656,21 @@ private fun ThreadMessageCardContent(
                         threadMessageTrailingSectionOrder(
                             hasMetaChips = hasFooterMeta,
                             hasInlineReplies = inlineReplyPresentation != null,
+                            hasSourceTasks = sourceTasks.isNotEmpty(),
                         ).forEach { section ->
                             when (section) {
+                                ThreadMessageTrailingSection.SourceTasks -> {
+                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                        ThreadMessageSourceTaskList(
+                                            tasks = sourceTasks,
+                                            memberAvatarResolver = memberAvatarResolver,
+                                            agentStatusResolver = agentStatusResolver,
+                                            onOpenTask = onOpenSourceTask,
+                                            // web `mt-1.5`: 6dp under the body (the column adds 4).
+                                            modifier = Modifier.padding(top = RaftAppSpacing.Xxs)
+                                        )
+                                    }
+                                }
                                 ThreadMessageTrailingSection.MetaChips -> {
                                     Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                         ThreadMessageFooterMeta(
@@ -26737,7 +26960,12 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
             } else {
                 Res.string.thread_action_mark_done
             }
-        ThreadNewMessageMenuTool.ConvertToTask -> Res.string.thread_action_convert_to_task
+        ThreadNewMessageMenuTool.ConvertToTask ->
+            if (availability.createTaskFromMessage) {
+                Res.string.thread_action_create_task_from_message
+            } else {
+                Res.string.thread_action_convert_to_task
+            }
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
     }
@@ -29457,15 +29685,22 @@ internal fun RaftThreadMessageItem.hasThreadFooterMeta(
         reactions.any { it.count > 0 }
 
 internal enum class ThreadMessageTrailingSection {
+    SourceTasks,
     MetaChips,
     InlineReplies,
 }
 
+/**
+ * Below the body, in web MessageItem's order: the task list (task v2), then the footer chips
+ * (reactions, saved), then the replies, which stay the message's own discussion.
+ */
 internal fun threadMessageTrailingSectionOrder(
     hasMetaChips: Boolean,
     hasInlineReplies: Boolean,
+    hasSourceTasks: Boolean = false,
 ): List<ThreadMessageTrailingSection> =
     buildList {
+        if (hasSourceTasks) add(ThreadMessageTrailingSection.SourceTasks)
         if (hasMetaChips) add(ThreadMessageTrailingSection.MetaChips)
         if (hasInlineReplies) add(ThreadMessageTrailingSection.InlineReplies)
     }
@@ -29773,7 +30008,9 @@ internal data class ThreadMessageMenuCapabilities(
     val taskStatus: Boolean,
     val convertToTask: Boolean,
     val cancelLocalSend: Boolean,
-    val deleteLocalSend: Boolean
+    val deleteLocalSend: Boolean,
+    /** Task v2: [convertToTask] is "Create Task from Message" (web CreateTaskDialog), not the legacy convert. */
+    val createTaskFromMessage: Boolean = false
 )
 
 internal fun threadMessageMenuCapabilities(
@@ -29782,7 +30019,13 @@ internal fun threadMessageMenuCapabilities(
     slice: ThreadTimelineSlice,
     writeActionsEnabled: Boolean,
     translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
-    taskConvertPending: Boolean = false
+    taskConvertPending: Boolean = false,
+    /**
+     * `task_v2_conversations_v0` (web MessageItem menu): a message's tasks are its list, never a
+     * single linked task, so there is no Mark as Done / Reopen here, and "Create Task from Message"
+     * replaces "Convert to Task" — offered on a message that already has tasks too.
+     */
+    taskV2Enabled: Boolean = false
 ): ThreadMessageMenuCapabilities {
     val localSend = message.hasLocalSendState()
     val system = message.isSystemMessage()
@@ -29813,7 +30056,8 @@ internal fun threadMessageMenuCapabilities(
                 threadFollowSurface &&
                 shouldShowThreadFollowAction(message, replyMetadata),
         taskStatus =
-            slice.showTaskStatusActions &&
+            !taskV2Enabled &&
+                slice.showTaskStatusActions &&
                 !localSend &&
                 !external &&
                 !message.taskId.isNullOrBlank(),
@@ -29821,9 +30065,10 @@ internal fun threadMessageMenuCapabilities(
             slice.canConvertMessagesToTasks &&
                 !taskConvertPending &&
                 !external &&
-                message.canConvertToTask(),
+                if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
-        deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend()
+        deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
+        createTaskFromMessage = taskV2Enabled
     )
 }
 
@@ -29846,6 +30091,8 @@ internal fun threadMessageMenuActions(
     translatePending: Boolean = false,
     showForwardAction: Boolean = false,
     showAddReactionAction: Boolean = false,
+    /** Task v2: the task item is "Create Task from Message". */
+    createTaskFromMessage: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -29991,10 +30238,15 @@ internal fun threadMessageMenuActions(
                 )
             )
         }
-        if (showConvertToTaskAction && message.canConvertToTask()) {
+        if (showConvertToTaskAction && (createTaskFromMessage || message.canConvertToTask())) {
             add(
                 ThreadMessageMenuAction(
-                    label = Res.string.thread_action_convert_to_task.desc(),
+                    label =
+                        if (createTaskFromMessage) {
+                            Res.string.thread_action_create_task_from_message.desc()
+                        } else {
+                            Res.string.thread_action_convert_to_task.desc()
+                        },
                     icon = RaftLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
@@ -30013,6 +30265,7 @@ private fun ThreadMessageActionMenu(
     showFollowAction: Boolean,
     showTaskStatusAction: Boolean,
     showConvertToTaskAction: Boolean,
+    createTaskFromMessage: Boolean = false,
     showReactionActions: Boolean,
     showCopyLinkAction: Boolean,
     showShareMessagesAction: Boolean,
@@ -30051,6 +30304,7 @@ private fun ThreadMessageActionMenu(
             showFollowAction,
             showTaskStatusAction,
             showConvertToTaskAction,
+            createTaskFromMessage,
             showCopyLinkAction,
             showShareMessagesAction,
             showCancelAction,
@@ -30083,6 +30337,7 @@ private fun ThreadMessageActionMenu(
                 showFollowAction = showFollowAction,
                 showTaskStatusAction = showTaskStatusAction,
                 showConvertToTaskAction = showConvertToTaskAction,
+                createTaskFromMessage = createTaskFromMessage,
                 showCopyLinkAction = showCopyLinkAction,
                 showShareMessagesAction = showShareMessagesAction,
                 showCancelAction = showCancelAction,
@@ -30612,7 +30867,11 @@ private fun ThreadOriginCard(
             else -> {
                 timelineSlice.originMessage?.let { origin ->
                     val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(origin)
-                    val displayOrigin = origin.withLinkedTaskProjection(linkedTasksProjection)
+                    // Task v2 (web ThreadPanel `parentSourceTasks`): the parent's tasks list under it here too.
+                    val originSourceTasks = linkedTasksProjection.sourceTasksFor(origin)
+                    val displayOrigin =
+                        origin.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (originSourceTasks.isEmpty()) it else it.withoutLinkedTask() }
                     val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                     val originActionCard = if (contentExtrasVisible) origin.threadActionCard() else null
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
@@ -30627,6 +30886,8 @@ private fun ThreadOriginCard(
                                 message = displayOrigin,
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 hasReplyDraft = false,
+                                sourceTasks = originSourceTasks,
+                                onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
                                 actionCard = originActionCard,
                                 highlightedMentions = highlightedMentions,
                                 agentStatusResolver = agentStatusResolver,
@@ -32245,7 +32506,7 @@ private fun String.threadTaskAssigneeKey(): String =
         .ifBlank { "unknown" }
 
 @Composable
-private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
+internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     // task #176: last element of the page, like the composer it replaces, so it
     // keeps clear of the system navigation bar.
     val bottomSafeArea = raftBottomSafeAreaPadding()

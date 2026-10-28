@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
@@ -7238,10 +7239,88 @@ private fun RaftAppShellReadyContent(
                         }
                     }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // Task v2: a task opened without a page of its own (its empty conversation, a legacy panel).
+                        val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow() }
+                        val tasksOpenGate = remember { TaskOpenGate() }
+                        val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
+                        val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         // Foreground is the shell's visible-route refresh; a socket reconnect re-reads missed task pushes.
                         RaftLiveCatchUpEffect(serverId = selectedServerId, visible = active, foreground = false) {
                             tasksViewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+                        }
+                        fun openTaskPage(task: TaskSummary, resolvedConversationChannelId: ChannelId?) {
+                            val taskLaunchPayload =
+                                buildStandaloneTaskThreadLaunchPayload(
+                                    task = task,
+                                    serverId = readyServerId.orEmpty(),
+                                    conversationDirectory = appShellConversationDirectory,
+                                    timeContext = threadTimeContext,
+                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                    compactConsecutiveMessages = compactConsecutiveMessages,
+                                    resolvedConversationChannelId = resolvedConversationChannelId,
+                                )
+                            if (taskLaunchPayload == null) {
+                                bridge.logWarn("tasks_open_rejected task=${task.id.value} reason=launch_unresolved")
+                                return
+                            }
+                            // page_viewed: the thread page this opens counts as `task`.
+                            RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
+                            // task #34: wide desktop mode keeps the board and opens the task's
+                            // thread in a bounded overlay; otherwise the full-page push stays.
+                            val overlaySelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
+                            if (overlaySelection != null) {
+                                tasksDetailOverlayActive = true
+                                bridge.log(
+                                    "tasks_detail_overlay_open task=${task.id} " +
+                                        "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
+                                )
+                                return
+                            }
+                            pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope)
+                        }
+                        TaskOpenSurfaceHost(
+                            flow = tasksOpenSurfaceFlow,
+                            onSend = { task, text ->
+                                val serverId = readyServerId?.takeIf { it.isNotBlank() }
+                                if (serverId != null) {
+                                    appShellCoroutineScope.launch {
+                                        val opened =
+                                            tasksOpenSurfaceFlow.send(
+                                                text = text,
+                                                serverId = serverId,
+                                                tasksDataSource = tasksDataSource,
+                                                sendMessage = { channelId, body, randomId ->
+                                                    homeActivityReplyThreadPrewarmDataSource.sendMessage(
+                                                        channelId = channelId,
+                                                        body = body,
+                                                        asTask = false,
+                                                        randomId = randomId,
+                                                    )
+                                                },
+                                                currentServerId = { latestTasksOpenServerId },
+                                                fallbackError = tasksSendFailedLabel,
+                                            )
+                                        bridge.log("tasks_task_first_send task=${task.id.value} opened=${opened != null}")
+                                        opened?.let { (sentTask, conversationId) -> openTaskPage(sentTask, conversationId) }
+                                    }
+                                }
+                            },
+                        )
+                        // The open sheet follows the board's copy of its task; when its conversation
+                        // appears (someone wrote first) the conversation page opens instead.
+                        val tasksOpenSurfaceTaskId = tasksOpenSurfaceFlow.surface?.task?.id
+                        val tasksOpenTaskV2Enabled =
+                            readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
+                                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+                            } == true
+                        LaunchedEffect(tasksOpenSurfaceTaskId, tasksState, tasksOpenTaskV2Enabled) {
+                            val taskId = tasksOpenSurfaceTaskId ?: return@LaunchedEffect
+                            val fresh = (tasksState.loadState as? build.raft.app.data.ScreenLoadState.Content)?.data?.tasks.orEmpty().firstOrNull { it.id == taskId }
+                            tasksOpenSurfaceFlow.onTaskChanged(fresh, tasksOpenTaskV2Enabled)?.let { arrived ->
+                                bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
+                                openTaskPage(arrived, null)
+                            }
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
                         key(tasksRoute) {
@@ -7261,52 +7340,43 @@ private fun RaftAppShellReadyContent(
                             },
                             identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
-                            onOpenTask = { task ->
+                            onOpenTask = open@{ task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
-                                fun openTaskLaunchPayload(taskLaunchPayload: WireThreadLaunchPayload?) {
-                                    if (taskLaunchPayload == null) {
-                                        bridge.logWarn("tasks_open_rejected task=${task.id.value} reason=launch_unresolved")
-                                        return
-                                    }
-                                    // page_viewed: the thread page this opens counts as `task`.
-                                    RaftProductEvents.recorder.markTaskThreadOpening(taskLaunchPayload.instanceId)
-                                    // task #34: wide desktop mode keeps the board and opens the task's
-                                    // thread in a bounded overlay; otherwise the full-page push stays.
-                                    val overlaySelection = openLaunchPayloadInAdaptiveDetail(taskLaunchPayload)
-                                    if (overlaySelection != null) {
-                                        tasksDetailOverlayActive = true
-                                        bridge.log(
-                                            "tasks_detail_overlay_open task=${task.id} " +
-                                                "selection=${overlaySelection.identity.key} generation=${overlaySelection.generation}"
-                                        )
-                                        return
-                                    }
-                                    pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope)
+                                // Task v2 (web useOpenTask): with the flag on every non-legacy task opens as its conversation.
+                                val taskV2Enabled =
+                                    readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
+                                        sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+                                    } == true
+                                // The legacy panel, or the empty conversation of a task without one (opening never creates it).
+                                task.taskOpenSurface(taskV2Enabled)?.let { surface ->
+                                    bridge.log("tasks_open_surface kind=${surface::class.simpleName} task=${task.id.value}")
+                                    tasksOpenSurfaceFlow.open(surface)
+                                    return@open
                                 }
-                                fun buildLaunch(resolvedConversationChannelId: ChannelId?) =
-                                    buildStandaloneTaskThreadLaunchPayload(
-                                        task = task,
-                                        serverId = readyServerId.orEmpty(),
-                                        conversationDirectory = appShellConversationDirectory,
-                                        timeContext = threadTimeContext,
-                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                        compactConsecutiveMessages = compactConsecutiveMessages,
-                                        resolvedConversationChannelId = resolvedConversationChannelId,
-                                    )
-                                if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
-                                    // Task v2: the local conversation id comes from the server first.
+                                if (!tasksOpenGate.tryBegin(task.id.value)) {
+                                    bridge.log("tasks_open_ignored reason=in_flight task=${task.id.value}")
+                                    return@open
+                                }
+                                if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+                                    // Task v2: a joint surface's local conversation id comes from the server first.
                                     appShellCoroutineScope.launch {
-                                        val conversationId =
-                                            resolveTaskOpenConversationChannelId(
-                                                task = task,
-                                                serverId = readyServerId.orEmpty(),
-                                                tasksDataSource = tasksDataSource,
-                                                log = bridge::log,
-                                            )
-                                        openTaskLaunchPayload(buildLaunch(conversationId))
+                                        try {
+                                            val conversationId =
+                                                resolveTaskOpenConversationChannelId(
+                                                    task = task,
+                                                    serverId = readyServerId.orEmpty(),
+                                                    tasksDataSource = tasksDataSource,
+                                                    taskV2Enabled = taskV2Enabled,
+                                                    log = bridge::log,
+                                                )
+                                            openTaskPage(task, conversationId)
+                                        } finally {
+                                            tasksOpenGate.finish(task.id.value)
+                                        }
                                     }
                                 } else {
-                                    openTaskLaunchPayload(buildLaunch(null))
+                                    openTaskPage(task, null)
+                                    tasksOpenGate.finish(task.id.value)
                                 }
                             }
                         )
