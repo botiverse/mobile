@@ -21,6 +21,7 @@ import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
+import build.raft.app.network.sync.CanonicalMessageV2LiveCoverageTracker
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
@@ -299,6 +300,78 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         }
     }
 
+    // ---- hardening (follow-up to #3857) -----------------------------------------------------------------
+
+    @Test
+    fun aThrowingLogSinkNeverStopsStorageNorDelaysDisplay() = withFile { file ->
+        file.rig().session { rig ->
+            rig.connect(1L)
+            rig.throwingLogger = true
+            listOf(5L, 6L, 7L).forEach { seq -> assertTrue(rig.deliver(rig.messageNew(other, "m$seq", seq), epoch = 1L)) }
+            rig.ingest.awaitIdle()
+            assertEquals(listOf(5L, 6L, 7L), assertNotNull(rig.coldRead(other)).seqs())
+            assertTrue(rig.logs.none { "outcome=display_only" in it }, "display waited out the timeout: ${rig.logs}")
+        }
+    }
+
+    @Test
+    fun aQueueFullSkipIsReportedBeforeTheNextFrameIsTrackedWithoutWaitingForIdle() = withFile { file ->
+        file.rig(queueCapacity = 1).session { rig ->
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            rig.slowUnrecordedMs = 600L
+            val release = CompletableDeferred<Unit>()
+            val held = CompletableDeferred<Unit>()
+            val holder = CoroutineScope(Dispatchers.IO).launch {
+                rig.engine.withScopeWriter(channel) {
+                    held.complete(Unit)
+                    release.await()
+                }
+            }
+            held.await()
+            assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
+            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
+            assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped
+            release.complete(Unit)
+            holder.join()
+            // Straight on, no idle wait: the next frames must already see the skip.
+            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
+            assertTrue(rig.deliver(rig.messageNew(channel, "m70", 70L), epoch = 1L))
+            rig.ingest.awaitIdle()
+            val segments = rig.segments(channel)
+            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
+        }
+    }
+
+    @Test
+    fun withTheFlagOffAFrameSkipsTheQueueAndEndsTheWindowsContinuity() = withFile { file ->
+        file.rig().session { rig ->
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            rig.enabled = false
+            assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L))
+            rig.ingest.awaitIdle()
+            assertTrue(rig.logs.none { "canonical_v2_realtime" in it && "msg=m30" in it }, rig.logs.toString())
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            // Back on: the frames missed meanwhile are never claimed over.
+            rig.enabled = true
+            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L))
+            assertEquals(listOf(10L to 20L), rig.segments(channel))
+            assertEquals(listOf(10L, 20L, 40L), assertNotNull(rig.coldRead(channel)).seqs())
+        }
+    }
+
+    @Test
+    fun theT4RouteAlsoCommitsOffTheGrantAndBeforeDisplay() = withFile { file ->
+        file.rig(t4 = true).session { rig ->
+            rig.connect(1L)
+            listOf(5L, 6L, 7L).forEach { seq -> assertTrue(rig.deliver(rig.messageNew(other, "m$seq", seq), epoch = 1L)) }
+            assertEquals(0, rig.storeCallsUnderGrant.get(), "T4 route did disk work under the grant")
+            assertEquals(listOf("m5", "m6", "m7"), rig.projectedIds())
+            assertEquals(listOf(5L, 6L, 7L), assertNotNull(rig.coldRead(other)).seqs())
+        }
+    }
+
     // ---- retention -----------------------------------------------------------------------------------
 
     @Test
@@ -337,13 +410,14 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             queueCapacity: Int = CANONICAL_MESSAGE_V2_REALTIME_QUEUE_CAPACITY,
             partitionRetentionEvery: Int = CANONICAL_MESSAGE_V2_REALTIME_PARTITION_RETENTION_EVERY,
             retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
+            t4: Boolean = false,
         ): Rig {
             val driver = JdbcSqliteDriver(url)
             if (!created) {
                 RaftSqlDatabase.Schema.create(driver).value
                 created = true
             }
-            return Rig(driver, queueCapacity, partitionRetentionEvery, retention)
+            return Rig(driver, queueCapacity, partitionRetentionEvery, retention, t4)
         }
     }
 
@@ -352,7 +426,16 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         queueCapacity: Int,
         partitionRetentionEvery: Int,
         retention: CanonicalMessageV2RetentionPolicy,
+        t4: Boolean,
     ) : AutoCloseable {
+        /** The `sync_core_messages` flag for the server (canary and ingest read it). */
+        @Volatile var enabled = true
+
+        /** The ingest's log sink throws (a broken platform logger). */
+        @Volatile var throwingLogger = false
+
+        /** The tracker's skipped-frame report is slow (it races the worker's next frame in a racy implementation). */
+        @Volatile var slowUnrecordedMs = 0L
         val database = RaftSqlDatabase(driver)
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         @Volatile var killBeforeCommit = false
@@ -376,12 +459,27 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             store = store,
             snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
         )
-        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine, logger = { logs += it })
+        val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { enabled }, generationEngine = engine, logger = { logs += it })
+        private val tracker = object : CanonicalMessageV2LiveCoverageTracker {
+            override suspend fun accept(
+                partition: DurablePartitionKey,
+                foldInput: CanonicalMessageFoldInput,
+                frameTransportEpoch: Long?,
+            ) = canary.accept(partition, foldInput, frameTransportEpoch)
+
+            override suspend fun noteFrameUnrecorded(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput) {
+                if (slowUnrecordedMs > 0) kotlinx.coroutines.delay(slowUnrecordedMs)
+                canary.noteFrameUnrecorded(partition, foldInput)
+            }
+        }
         val ingest = CanonicalMessageV2RealtimeIngest(
-            tracker = canary,
+            tracker = tracker,
             generationEngine = engine,
-            isEnabledForServer = { true },
-            logger = { logs += it },
+            isEnabledForServer = { enabled },
+            logger = {
+                if (throwingLogger) throw IllegalStateException("log sink down")
+                logs += it
+            },
             dispatcher = Dispatchers.IO,
             queueCapacity = queueCapacity,
             partitionRetentionEvery = partitionRetentionEvery,
@@ -413,6 +511,17 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 } else {
                     false
                 }
+            },
+            canonicalFinalOwnerGateway = if (!t4) null else RealtimeCanonicalFinalOwnerGateway { _, captured, _, _, _, _, _, legacyWithCurrentT3, _ ->
+                // The dormant T4 route (flag: T3 only): its own grant check around the legacy display.
+                if (captured != currentGrant) return@RealtimeCanonicalFinalOwnerGateway false
+                holdingGrant = true
+                try {
+                    legacyWithCurrentT3(CurrentMessageCommitContext(captured.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)))
+                } finally {
+                    holdingGrant = false
+                }
+                true
             },
             canonicalMessageV2CommitTimeoutMs = 300L,
         ).also { owner ->

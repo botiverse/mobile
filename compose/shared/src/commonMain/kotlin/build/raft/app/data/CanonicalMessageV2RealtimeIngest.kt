@@ -30,6 +30,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * How long the realtime owner lets one frame's durable V2 commit hold its display (message storage Phase 3a,
@@ -99,7 +101,7 @@ internal class CanonicalMessageV2RealtimeIngest(
     private val tracker: CanonicalMessageV2LiveCoverageTracker,
     private val generationEngine: CanonicalMessageV2GenerationEngine,
     private val isEnabledForServer: (serverId: String) -> Boolean,
-    private val logger: (String) -> Unit = {},
+    logger: (String) -> Unit = {},
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val queueCapacity: Int = CANONICAL_MESSAGE_V2_REALTIME_QUEUE_CAPACITY,
     private val partitionRetentionEvery: Int = CANONICAL_MESSAGE_V2_REALTIME_PARTITION_RETENTION_EVERY,
@@ -116,32 +118,95 @@ internal class CanonicalMessageV2RealtimeIngest(
         class Barrier(val done: CompletableDeferred<Unit>) : Work
     }
 
+    /** Never throws: a throwing log sink must not take the worker (and with it all realtime storage) down. */
+    private val logger: (String) -> Unit = { line ->
+        try {
+            logger(line)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // Diagnostics are best-effort.
+        }
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val queue = Channel<Work>(capacity = queueCapacity)
+
+    /**
+     * Frames skipped because the queue was full, recorded synchronously in [enqueue] and reported to the tracker by
+     * the worker before its next [CanonicalMessageV2LiveCoverageTracker.accept], so a frame queued after a skipped
+     * one can never extend a claim over it. Guarded by [pendingUnrecordedLock].
+     */
+    private val pendingUnrecordedLock = SynchronizedObject()
+    private val pendingUnrecorded = ArrayList<Pair<DurablePartitionKey, CanonicalMessageFoldInput>>()
 
     // Worker-confined (only the single worker coroutine reads or writes these).
     private val recentLooseByFact = LinkedHashMap<Pair<DurablePartitionKey, String>, ArrayDeque<CanonicalMessageFoldInput>>()
     private val looseWritesByPartition = mutableMapOf<DurablePartitionKey, Long>()
 
     init {
+        launchWorker()
+    }
+
+    /**
+     * The single ordered worker. Every item is guarded as a whole: whatever one frame (or its logging) throws, the
+     * frame completes as failed and the loop goes on. Should the worker still end while the ingest is open, it is
+     * relaunched, so storage never silently stops while callers wait out their timeout on every frame.
+     */
+    private fun launchWorker() {
         scope.launch {
-            for (work in queue) {
-                when (work) {
-                    is Work.Barrier -> work.done.complete(Unit)
-                    is Work.Commit -> work.done.complete(
-                        try {
-                            commitNow(work)
-                        } catch (cancelled: CancellationException) {
-                            // Only the ingest's own shutdown ends the worker; a stray cancellation is one failed frame.
-                            if (!isActive) throw cancelled
-                            fail(work.partition, work.foldInput, "cancelled")
-                        } catch (throwable: Throwable) {
-                            fail(work.partition, work.foldInput, "error=${throwable::class.simpleName ?: "unknown"}")
-                        },
-                    )
+            try {
+                for (work in queue) {
+                    try {
+                        when (work) {
+                            is Work.Barrier -> {
+                                reportPendingUnrecorded()
+                                work.done.complete(Unit)
+                            }
+                            is Work.Commit -> work.done.complete(commitNow(work))
+                        }
+                    } catch (cancelled: CancellationException) {
+                        // Only the ingest's own shutdown ends the worker; a stray cancellation is one failed frame.
+                        if (!isActive) throw cancelled
+                        work.fail("cancelled")
+                    } catch (throwable: Throwable) {
+                        work.fail("error=${throwable::class.simpleName ?: "unknown"}")
+                    }
                 }
+            } finally {
+                if (scope.isActive && !queue.isClosedForReceive) launchWorker()
             }
         }
+    }
+
+    /** Completes a work item that threw, without logging (the logger may be what threw). */
+    private fun Work.fail(reason: String) {
+        when (this) {
+            is Work.Barrier -> done.complete(Unit)
+            is Work.Commit -> done.complete(CanonicalMessageV2RealtimeIngestOutcome.Failed(reason))
+        }
+    }
+
+    /** Worker only: hands every skipped frame to the tracker, in skip order. */
+    private suspend fun reportPendingUnrecorded() {
+        val pending = synchronized(pendingUnrecordedLock) {
+            if (pendingUnrecorded.isEmpty()) return
+            pendingUnrecorded.toList().also { pendingUnrecorded.clear() }
+        }
+        withContext(NonCancellable) {
+            pending.forEach { (partition, foldInput) -> tracker.noteFrameUnrecorded(partition, foldInput) }
+        }
+    }
+
+    /** Whether the `sync_core_messages` flag lets [serverId]'s frames be stored at all. */
+    fun isEnabledFor(serverId: String): Boolean = isEnabledForServer(serverId)
+
+    /**
+     * The flag is off: nothing is stored and no disk is touched, but the frame is still reported to the tracker so a
+     * window it held cannot claim across the frames missed while the flag was off. In-memory only.
+     */
+    suspend fun noteFlagOffFrame(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput) {
+        tracker.noteFrameUnrecorded(partition, foldInput)
     }
 
     /** The generation a commit of [partition] is bound to; read it under the exact current grant. */
@@ -161,8 +226,9 @@ internal class CanonicalMessageV2RealtimeIngest(
         val done = CompletableDeferred<CanonicalMessageV2RealtimeIngestOutcome>()
         val queued = queue.trySend(Work.Commit(partition, foldInput, transportEpoch, expectedPartitionGeneration, done))
         if (queued.isFailure) {
-            scope.launch(NonCancellable) { tracker.noteFrameUnrecorded(partition, foldInput) }
-            done.complete(skip(partition, foldInput, "queue_full capacity=$queueCapacity"))
+            // Recorded before this call returns: the worker reports it ahead of any frame queued after it.
+            synchronized(pendingUnrecordedLock) { pendingUnrecorded += partition to foldInput }
+            done.complete(skip(partition, foldInput, if (queued.isClosed) "ingest_closed" else "queue_full capacity=$queueCapacity"))
         }
         return done
     }
@@ -195,6 +261,7 @@ internal class CanonicalMessageV2RealtimeIngest(
             // Cleared after the grant check (server access lost): the canary's state went with it.
             return skip(partition, foldInput, "partition_revoked")
         }
+        reportPendingUnrecorded()
         val tracked = try {
             tracker.accept(partition, foldInput, work.transportEpoch)
         } catch (cancelled: CancellationException) {
@@ -351,6 +418,8 @@ internal class RealtimeIngestCanonicalMessageV2OwnerGateway(
         transportEpoch: Long?,
     ): suspend () -> Unit {
         val partition = grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        // Flag off: no queue round-trip and no disk, only the in-memory continuity report.
+        if (!ingest.isEnabledFor(partition.serverId)) return { ingest.noteFlagOffFrame(partition, foldInput) }
         val expectedGeneration = ingest.partitionGeneration(partition)
         return { ingest.enqueue(partition, foldInput, transportEpoch, expectedGeneration).await() }
     }
