@@ -72,6 +72,7 @@ import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.resources.RaftBundledFiles
 import build.raft.app.resources.Res
 import build.raft.app.resources.*
+import build.raft.designsystem.tokens.RaftThemeId
 import java.io.File
 import java.time.Duration
 import kotlin.test.AfterTest
@@ -178,50 +179,68 @@ class StoreScreenshotsTest {
 
     private fun capture(dir: File, name: String, content: @Composable () -> Unit) {
         if (sceneFilter != null && name !in sceneFilter) return
-        val previous = RaftAppThemeState.appearance
-        RaftAppThemeState.apply(RaftAppAppearance.Light)
-        try {
-            val activity = activities.launch()
-            build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
-            activity.setContent {
-                val atlas =
-                    remember {
-                        val bytes = runBlocking { Res.readBytes(RaftBundledFiles.reactionAtlasV1.path) }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
-                    }
-                val clock = remember { RaftTimeContextProvider(StoreTime) }
-                CompositionLocalProvider(
-                    LocalActivity provides RaftPageActivity(livePager),
-                    LocalRaftTimeContextProvider provides clock,
-                    build.raft.designsystem.components.LocalRaftSpinnerStillStep provides 0,
-                ) {
-                    RaftDesignSystemTheme {
-                        CompositionLocalProvider(LocalThreadReactionAtlasImage provides atlas) {
-                            Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) { content() }
-                        }
+        captureStoreScreen(activities, livePager, File(dir, "$name.png"), content = content)
+    }
+}
+
+/**
+ * Renders [content] full screen in a fresh activity (light appearance, app theme [theme] with its
+ * decor off, clock fixed at [StoreTime]) and writes the window as a PNG to [file].
+ */
+internal fun captureStoreScreen(
+    activities: RobolectricComposeActivityRule,
+    pager: Pager,
+    file: File,
+    theme: RaftThemeId = RaftThemeId.Raft,
+    content: @Composable () -> Unit,
+) {
+    val previous = RaftAppThemeState.appearance
+    val previousTheme = RaftAppThemeState.raftTheme
+    val previousDecor = RaftAppThemeState.decor
+    RaftAppThemeState.apply(RaftAppAppearance.Light)
+    RaftAppThemeState.setRaftTheme(theme, decor = false)
+    try {
+        val activity = activities.launch()
+        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
+        activity.setContent {
+            val atlas =
+                remember {
+                    val bytes = runBlocking { Res.readBytes(RaftBundledFiles.reactionAtlasV1.path) }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
+                }
+            val clock = remember { RaftTimeContextProvider(StoreTime) }
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides clock,
+                build.raft.designsystem.components.LocalRaftSpinnerStillStep provides 0,
+            ) {
+                RaftDesignSystemTheme {
+                    CompositionLocalProvider(LocalThreadReactionAtlasImage provides atlas) {
+                        Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) { content() }
                     }
                 }
             }
-            repeat(15) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
-            val root = findComposeRoot(activity.window.decorView)
-            assertNotNull(root, "no compose root")
-            val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
-            root.draw(android.graphics.Canvas(bitmap))
-            val file = File(dir.apply { mkdirs() }, "$name.png")
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            println("store screenshot ${file.path} (${bitmap.width}x${bitmap.height})")
-        } finally {
-            RaftAppThemeState.apply(previous)
         }
+        repeat(15) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
+        val root = findComposeRoot(activity.window.decorView)
+        assertNotNull(root, "no compose root")
+        val bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+        root.draw(android.graphics.Canvas(bitmap))
+        file.parentFile?.mkdirs()
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        println("store screenshot ${file.path} (${bitmap.width}x${bitmap.height})")
+    } finally {
+        RaftAppThemeState.apply(previous)
+        RaftAppThemeState.setRaftTheme(previousTheme, previousDecor)
     }
+}
 
-    private fun findComposeRoot(view: View): View? {
-        if (view is ViewRootForTest) return view
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) findComposeRoot(view.getChildAt(index))?.let { return it }
-        }
-        return null
+private fun findComposeRoot(view: View): View? {
+    if (view is ViewRootForTest) return view
+    if (view is ViewGroup) {
+        for (index in 0 until view.childCount) findComposeRoot(view.getChildAt(index))?.let { return it }
     }
+    return null
 }
 
 private fun String?.csvSet(): Set<String>? =
@@ -265,7 +284,7 @@ internal enum class StoreLang(val key: String, val locale: AppLocale, val qualif
 }
 
 // 2026-10-27T05:00:00Z (13:00 in UTC+8): every row reads "N hours ago", short enough not to cut.
-private val StoreTime =
+internal val StoreTime =
     RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = 20_753L, nowEpochMillis = 1_793_077_200_000L)
 
 private const val ServerName = "Northwind Labs"
@@ -1245,7 +1264,7 @@ private fun StoreWideComputersScene(copy: StoreCopy, @Suppress("UNUSED_PARAMETER
 // ---- shared -----------------------------------------------------------------------------------------
 
 @Composable
-private fun StoreBottomBar(selected: String) {
+internal fun StoreBottomBar(selected: String) {
     val home = stringResource(Res.string.tab_home)
     val activity = stringResource(Res.string.tab_activity)
     val tasks = stringResource(Res.string.tab_tasks)

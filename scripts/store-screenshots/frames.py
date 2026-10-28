@@ -96,6 +96,79 @@ SCENES = [
     }),
 ]
 
+# The 8-shot Play phone set (StorePlay8ScreenshotsTest; Ginny's final copy 2026-10-28, msg a8fcfa93).
+# zh-Hant serves Play zh-TW and zh-HK.
+PLAY8_LANGS = ["en", "zh-Hans", "zh-Hant", "ja"]
+PLAY8_SCENES = [
+    ("01-chat", YELLOW, {
+        "en": ("Team chat with [AI agents]", "Humans and AI teammates, in one place"),
+        "zh-Hans": ("有 [AI Agent]|一起协作的|团队聊天", "人类和 AI 队友，|在同一个地方"),
+        "zh-Hant": ("有 [AI Agent]|一起協作的|團隊聊天", "人類和 AI 隊友，|在同一個地方"),
+        "ja": ("[AIエージェント]と|働く|チームチャット", "人とAIのチームメイトが、|ひとつの場所に"),
+    }),
+    ("02-mention", PINK, {
+        "en": ("[@mention] an AI agent", "Ask for help like you would a teammate"),
+        "zh-Hans": ("[@ 一下]|AI Agent", "像找同事一样|请它帮忙"),
+        "zh-Hant": ("[@ 一下]|AI Agent", "像找同事一樣|請它幫忙"),
+        "ja": ("[AIエージェント]を|@メンション", "同僚に頼むように、|気軽にお願い"),
+    }),
+    ("03-thread", CYAN, {
+        "en": ("Agents work together [in threads]", "They hand off, review and solve it"),
+        "zh-Hans": ("多个 Agent|[在消息列里协作]", "交接、|审阅，|一起把问题解决"),
+        "zh-Hant": ("多個 Agent|[在討論串裡協作]", "交接、|審閱，|一起把問題解決"),
+        "ja": ("スレッドで|[エージェント同士が協力]", "引き継ぎ、|レビューして、|解決まで"),
+    }),
+    ("04-tasks", LIME, {
+        "en": ("Assign tasks, [watch them get done]", "Track every task from to-do to done"),
+        "zh-Hans": ("分配任务，|[看着它完成]", "从待办到已完成，|全程可追踪"),
+        "zh-Hant": ("指派任務，|[看著它完成]", "從待辦到已完成，|全程可追蹤"),
+        "ja": ("タスクを任せて、|[完了を見届ける]", "未着手から完了まで、|すべて追跡"),
+    }),
+    ("05-agent", LAVENDER, {
+        "en": ("AI teammates [that remember]", "Persistent identity and memory"),
+        "zh-Hans": ("[记性好的]|AI 队友", "身份不变，|记忆一直都在"),
+        "zh-Hant": ("[記性好的]|AI 隊友", "身分不變，|記憶一直都在"),
+        "ja": ("[覚えてくれる]|AIチームメイト", "名前も記憶も、|ずっと引き継がれる"),
+    }),
+    ("06-activity", ORANGE, {
+        "en": ("Never miss [what needs you]", "Jump straight to the conversation"),
+        "zh-Hans": ("不错过|[任何需要你的事]", "一点直达|那条对话"),
+        "zh-Hant": ("不錯過|[任何需要你的事]", "一點直達|那則對話"),
+        "ja": ("[あなたの出番]を|見逃さない", "ワンタップで|その会話へ"),
+    }),
+    ("07-swipe", CYAN, {
+        "en": ("Built for [your phone]", "Swipe to clear, reply on the go"),
+        "zh-Hans": ("[为手机而生]", "左滑处理，|随时回复"),
+        "zh-Hant": ("[為手機而生]", "左滑處理，|隨時回覆"),
+        "ja": ("[スマホのための]|デザイン", "スワイプで処理、|外出先でも返信"),
+    }),
+    ("08-home", YELLOW, {
+        "en": ("Your whole AI team, [organized]", "Channels, DMs and tasks at a glance"),
+        "zh-Hans": ("你的整个 AI 团队，|[井井有条]", "频道、|私信、|任务一目了然"),
+        "zh-Hant": ("你的整個 AI 團隊，|[井然有序]", "頻道、|私訊、|任務一目了然"),
+        "ja": ("AIチーム全体を、|[すっきり整理]", "チャンネル・DM・タスクを|ひと目で"),
+    }),
+]
+PLAY8_HEADLINE_SCALE = 1.12
+
+
+def contact_sheet(paths, out_png, cols=4, scale=3, gap=24):
+    """The set at 1/[scale] size in a [cols]-wide grid on white, each shot labelled with its file name."""
+    from PIL import ImageDraw
+    thumbs = [Image.open(p).convert("RGB") for p in paths]
+    tw, th = thumbs[0].width // scale, thumbs[0].height // scale
+    rows = (len(thumbs) + cols - 1) // cols
+    label = 34
+    sheet = Image.new("RGB", (cols * tw + (cols + 1) * gap, rows * (th + label) + (rows + 1) * gap), "white")
+    draw = ImageDraw.Draw(sheet)
+    for i, (im, p) in enumerate(zip(thumbs, paths)):
+        x, y = gap + (i % cols) * (tw + gap), gap + (i // cols) * (th + label + gap)
+        sheet.paste(im.resize((tw, th), Image.LANCZOS), (x, y))
+        draw.text((x, y + th + 8), os.path.basename(p), fill=(20, 17, 17))
+    sheet.save(out_png, "PNG", optimize=True)
+    return out_png
+
+
 FEATURE = {
     "en": ("Your [AI teammates], in every channel", "Chat, tasks and agents in one place"),
     "zh-Hans": ("[AI 队友]，|就在你的频道里", "频道、|任务和 Agent，|都在一处"),
@@ -105,8 +178,10 @@ FEATURE = {
 
 def fonts_css(fonts):
     css = []
-    for pkg in ("noto-sans-sc", "noto-sans-jp"):
+    for pkg in ("noto-sans-sc", "noto-sans-jp", "noto-sans-tc"):
         base = os.path.join(fonts, pkg)
+        if pkg == "noto-sans-tc" and not os.path.isdir(base):
+            continue  # only the zh-Hant set needs it
         for w in (400, 500, 700):
             css.append(open(os.path.join(base, f"{w}.css")).read().replace("url(./files/", f"url(file://{base}/files/"))
     faces = [
@@ -121,7 +196,10 @@ def fonts_css(fonts):
 
 
 def sans(lang):
-    cjk = "'Noto Sans JP','Noto Sans SC'" if lang == "ja" else "'Noto Sans SC','Noto Sans JP'"
+    cjk = {
+        "ja": "'Noto Sans JP','Noto Sans SC'",
+        "zh-Hant": "'Noto Sans TC','Noto Sans SC','Noto Sans JP'",
+    }.get(lang, "'Noto Sans SC','Noto Sans JP'")
     return f"'Space Grotesk',{cjk},sans-serif"
 
 
@@ -175,13 +253,13 @@ document.fonts.ready.then(function(){
 </script>"""
 
 
-def page(style, shot, profile, accent, headline, sub, idx, lang, w, h):
+def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=1.0):
     landscape = w > h
     tablet = profile in TABLET_PROFILES
     raw = Image.open(shot)
     s = (h / 1080 * 0.92) if landscape else (w / 1080)
     cjk = lang != "en"
-    hl = (66 if cjk else 72) * s if landscape else (68 if cjk else 74) * s
+    hl = ((66 if cjk else 72) * s if landscape else (68 if cjk else 74) * s) * hl_scale
     fit = {
         "rawW": raw.width,
         "rawH": raw.height,
@@ -206,6 +284,8 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h):
                    "-webkit-box-decoration-break:clone;box-decoration-break:clone}")
         device_css = (f"border:{6*s:.1f}px solid {INK};box-shadow:var(--sh) var(--sh) 0 {accent},var(--sh) var(--sh) 0 {6*s:.1f}px {INK}")
         kicker = f'<span class="kicker">RAFT · {idx:02d}</span>'
+        if cjk:  # no word spaces in CJK: keep the sticker clear of the characters beside it
+            hl_mark += f"h1 .m{{margin:0 {8*s:.0f}px}}"
         sub_color = "#3b3535"
         align = "left"
         cls = "m"
@@ -247,7 +327,7 @@ p{{margin-top:{30*s:.0f}px;font-size:{33*s:.0f}px;line-height:1.4;font-weight:50
 .sig{{display:inline-block;width:calc(var(--u)*16);height:calc(var(--u)*10);background:currentColor;clip-path:polygon(0 100%,100% 0,100% 100%)}}
 .wifi{{display:inline-block;width:calc(var(--u)*14);height:calc(var(--u)*10);background:currentColor;clip-path:polygon(50% 100%,0 20%,100% 20%)}}
 .bat{{display:inline-block;width:calc(var(--u)*22);height:calc(var(--u)*11);border:calc(var(--u)*1.5) solid currentColor;border-radius:calc(var(--u)*3);position:relative}}
-.bat:after{{content:'';position:absolute;left:calc(var(--u)*1.5);top:calc(var(--u)*1.5);bottom:calc(var(--u)*1.5);width:65%;background:currentColor;border-radius:1px}}
+.bat:after{{content:'';position:absolute;left:calc(var(--u)*1.5);top:calc(var(--u)*1.5);bottom:calc(var(--u)*1.5);right:calc(var(--u)*1.5);background:currentColor;border-radius:1px}}
 .hb{{height:calc(var(--u)*{fit['hbDp']});flex:none;display:flex;align-items:center;justify-content:center}}
 .hb i{{display:block;width:calc(var(--u)*{200 if tablet else 134});height:calc(var(--u)*5);border-radius:calc(var(--u)*3);background:{INK}}}
 </style></head><body>
@@ -334,6 +414,8 @@ def main():
     ap.add_argument("--langs")
     ap.add_argument("--scenes")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--set", default="store", choices=["store", "play8"],
+                    help="play8: the 8 Play phone shots per language, <out>/<lang>/NN-scene.png + contact-<lang>.png")
     a = ap.parse_args()
     raw, out = os.path.abspath(a.raw), os.path.abspath(a.out)
     FONTS_CSS = fonts_css(os.path.abspath(a.fonts))
@@ -342,6 +424,27 @@ def main():
     langs = a.langs.split(",") if a.langs else LANGS
     scenes = set(a.scenes.split(",")) if a.scenes else None
     jobs = []
+    if a.set == "play8":
+        langs = a.langs.split(",") if a.langs else PLAY8_LANGS
+        for lang in langs:
+            for idx, (key, accent, copy) in enumerate(PLAY8_SCENES, start=1):
+                shot = os.path.join(raw, "phone", lang, key + ".png")
+                if scenes and key not in scenes:
+                    continue
+                if not os.path.exists(shot):
+                    raise SystemExit(f"missing raw render {shot}")
+                headline, sub = copy[lang]
+                jobs.append((page(a.style, shot, "phone", accent, headline, sub, idx, lang, 1080, 1920, PLAY8_HEADLINE_SCALE),
+                             f"{out}/{lang}/{key}.png", 1080, 1920))
+        with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
+            for done in pool.map(lambda j: render(*j), jobs):
+                print("wrote", done)
+        for lang in langs:
+            paths = [f"{out}/{lang}/{key}.png" for key, _, _ in PLAY8_SCENES]
+            if all(os.path.exists(p) for p in paths):
+                print("wrote", contact_sheet(paths, f"{out}/contact-{lang}.png"))
+        print(len(jobs), "images")
+        return
     for store, device, profile, w, h in TARGETS:
         if devices and device not in devices:
             continue

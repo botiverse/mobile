@@ -4976,13 +4976,51 @@ internal fun MembersAgentDetailVisualVariantContent(
     )
 }
 
+/**
+ * Store screenshots (`StorePlay8ScreenshotsTest`): the agent detail page for a typed demo [member]
+ * and [snapshot] on the demo [machines], through the same seed path as the visual fixture pages
+ * (no route parsing, no network). [workspaceTree] feeds the Workspace tab.
+ */
+@Composable
+internal fun MembersAgentDetailStoreContent(
+    payload: RaftMemberDetailPayload,
+    member: MemberProfile,
+    snapshot: AgentDetailSnapshot,
+    machines: List<ComputerSummary>,
+    workspaceTree: AgentWorkspaceTreeSnapshot,
+) {
+    val seed =
+        remember(member, snapshot) {
+            MemberDetailVisualSeed(
+                member = member,
+                agentDetailState = MembersAgentDetailLoadState.Content(snapshot),
+                agentScopeSet = membersAgentDetailVisualScopeSet.copy(agentId = member.id)
+            )
+        }
+    MemberDetailVisualSeedContent(
+        payload = payload,
+        seed = seed,
+        pageVisibleTick = 1,
+        machineStatusRow = { machineId ->
+            membersMachineStatusRow(
+                machineId = machineId,
+                machines = machines,
+                loadStatus = SharedComputersLoadStatus.Loaded,
+                hasSnapshot = true
+            )
+        },
+        workspaceTree = workspaceTree
+    )
+}
+
 @Composable
 private fun MemberDetailVisualSeedContent(
     payload: RaftMemberDetailPayload,
     seed: MemberDetailVisualSeed,
     pageVisibleTick: Int,
     // Gated visual fixture pages inject other computers-store states (e.g. still loading).
-    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow
+    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow,
+    workspaceTree: AgentWorkspaceTreeSnapshot = membersAgentDetailVisualWorkspaceTreeSnapshot
 ) {
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
@@ -5028,7 +5066,7 @@ private fun MemberDetailVisualSeedContent(
                     )
                 )
             },
-            agentWorkspaceTreeLoader = { DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot) },
+            agentWorkspaceTreeLoader = { DataResult.Content(workspaceTree) },
             agentWorkspaceChildrenLoader = { _, _ ->
                 DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
             },

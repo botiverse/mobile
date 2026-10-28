@@ -38,3 +38,24 @@ devices `phone`, `tablet-7`, `tablet-10`, `iphone-6.9`, `iphone-6.5`, `ipad-13`,
 `duo-inner-portrait`, `duo-inner-landscape`, `duo-outer`) and the Play feature graphic
 (`play/feature-graphic/<lang>/feature-graphic.png`, 1024×500). Headlines live in `SCENES` /
 `FEATURE`. Every PNG is flattened to RGB; `review.py` fails if any size or alpha is wrong.
+
+## Play phone set of 8 (`--set play8`)
+
+`StorePlay8ScreenshotsTest` renders the 8 Google Play phone scenes (01-chat, 02-mention, 03-thread,
+04-tasks, 05-agent, 06-activity, 07-swipe, 08-home) in en, zh-Hans, zh-Hant and ja, with the app
+in the server theme Weather (pixel decor off) and the demo cast Maya Chen, Leo Park, Forge, Scout
+and the fixture agents. The app has no Traditional Chinese UI, so zh-Hant shows the Simplified UI
+with Traditional demo content; its framed copy is Traditional (Play zh-TW and zh-HK).
+
+```bash
+cd compose
+# each language takes ~15 min, past the 60 s per-test hang watchdog: raise it
+RAFT_STORE_SCREENSHOTS=/tmp/store-raw8 ./gradlew :shared:testDebugUnitTest \
+  -Draft.test.watchdog.timeout.ms=1200000 --tests 'build.raft.app.StorePlay8ScreenshotsTest'
+npm install --prefix /tmp/store-fonts @fontsource/noto-sans-tc   # zh-Hant headlines
+python3 scripts/store-screenshots/frames.py --set play8 --raw /tmp/store-raw8 --out /tmp/play8 \
+  --fonts /tmp/store-fonts/node_modules/@fontsource
+```
+
+Output: `<out>/<lang>/NN-scene.png` (1080×1920, RGB) and `<out>/contact-<lang>.png`. The copy
+lives in `PLAY8_SCENES`.
