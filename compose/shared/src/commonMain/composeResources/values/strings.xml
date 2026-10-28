@@ -222,7 +222,7 @@
     <string name="settings_appearance_activity_sender_avatars_detail">Show the latest sender avatar beside each Activity item.</string>
     <string name="settings_appearance_activity_sender_avatars_enabled">Shown</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">Hidden</string>
-    <string name="settings_appearance_subtitle">Theme, message font size and reading density</string>
+    <string name="settings_appearance_subtitle">Message font size and reading density</string>
     <string name="settings_appearance_theme_title">Theme</string>
     <string name="settings_appearance_theme_description">Choose light, dark, or follow your device. Your choice is saved on this device.</string>
     <string name="settings_appearance_mode_light">Light</string>
