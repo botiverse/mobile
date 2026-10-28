@@ -313,6 +313,13 @@ final class RaftIosSystemTabs {
                         return existing
                     }
                     let tab = UISearchTab { _ in make(key) }
+                    // iOS 27 draws a search tab inside the bar's capsule unless it activates its
+                    // own search field; iOS 26 always drew it as the round button beside the
+                    // capsule. Turning this on keeps the server's avatar in its own round
+                    // button on both. The server tab is never selected (the tab bar delegate
+                    // refuses every selection and runs the shell's handler), so the embedded
+                    // search field never opens.
+                    tab.automaticallyActivatesSearch = true
                     tab.title = spec.title
                     // No badge on the server tab (artin 10-23).
                     tab.image = RaftIosServerAvatarImage.circle(
