@@ -5092,12 +5092,6 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportFileName = fileName;
     self.raft_attachmentExportTrackProgress = RaftBridgeBool(params[@"trackProgress"]);
 
-    // Save to Files / Save to Photos reuses the durable local copy when the attachment was
-    // already downloaded ("Open with" keeps one), instead of fetching it again.
-    if ([self raft_reuseCachedAttachmentForExportWithParams:params fileName:fileName]) {
-        return;
-    }
-
     if (!savesToPhotos) {
         [self raft_beginAttachmentExportDownloadWithParams:params];
         return;
@@ -5159,10 +5153,14 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
 // file "Open with" downloaded earlier. When the same attachment is saved to Files or Photos,
 // that copy is presented instead of downloading the bytes a second time.
 //
+// `requestedFileName` is the name the attachment was stored under (the raw name, which the
+// store sanitizes); `exportFileName` is the name the exported file gets.
+//
 // Returns YES when the export was served from the local copy (the callback is answered through
 // the normal presentation path); NO when there is no usable copy and the caller must download.
 - (BOOL)raft_reuseCachedAttachmentForExportWithParams:(NSDictionary *)params
-                                            fileName:(NSString *)fileName {
+                                   requestedFileName:(NSString *)requestedFileName
+                                       exportFileName:(NSString *)exportFileName {
     NSString *ownerKey = RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
     NSString *attachmentId = RaftBridgeString(params[@"attachmentId"]);
     if (ownerKey.length == 0 || attachmentId.length == 0) {
@@ -5174,7 +5172,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     }
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSArray<NSString *> *storedNames = [fileManager contentsOfDirectoryAtPath:cachedDir error:nil];
-    NSString *reusableName = RaftAttachmentReusableExportFileName(storedNames, fileName);
+    NSString *reusableName = RaftAttachmentReusableExportFileName(storedNames, requestedFileName);
     if (!reusableName) {
         return NO;
     }
@@ -5190,7 +5188,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSURL *root = [NSURL fileURLWithPath:RaftAttachmentExportRootPath() isDirectory:YES];
     NSString *requestId = NSUUID.UUID.UUIDString;
     NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
-    NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
+    NSURL *targetURL = [directory URLByAppendingPathComponent:exportFileName isDirectory:NO];
     NSError *error = nil;
     [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error];
     if (error) {
@@ -5206,6 +5204,15 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)raft_beginAttachmentExportDownloadWithParams:(NSDictionary *)params {
+    // Save to Files / Save to Photos reuses the durable local copy when the attachment was
+    // already downloaded ("Open with" keeps one), instead of fetching it again. This sits at
+    // the point where a download would start, so the Photos path still asks for the photo
+    // library permission first and reports it on the result.
+    if ([self raft_reuseCachedAttachmentForExportWithParams:params
+                                       requestedFileName:RaftBridgeString(params[@"fileName"])
+                                           exportFileName:self.raft_attachmentExportFileName ?: @"attachment"]) {
+        return;
+    }
     NSString *urlText = RaftBridgeString(params[@"url"]);
     NSString *fileName = self.raft_attachmentExportFileName ?: @"attachment";
     NSString *requestId = NSUUID.UUID.UUIDString;
