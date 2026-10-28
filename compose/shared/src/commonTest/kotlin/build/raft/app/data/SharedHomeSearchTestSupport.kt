@@ -124,7 +124,14 @@ internal fun savedListRow(messageId: String): InboxItem =
 internal class InMemoryRaftOfflineResourceRows : RaftOfflineResourceRows {
     val rows = linkedMapOf<String, RaftOfflineResourceRow>()
 
-    override suspend fun read(id: String): RaftOfflineResourceRow? = rows[id]
+    /** Runs after each read, before it returns (to interleave concurrent read-modify-writes). */
+    var afterRead: suspend () -> Unit = {}
+
+    override suspend fun read(id: String): RaftOfflineResourceRow? {
+        val row = rows[id]
+        afterRead()
+        return row
+    }
 
     override suspend fun writeAndEvict(
         id: String,
@@ -140,7 +147,11 @@ internal class InMemoryRaftOfflineResourceRows : RaftOfflineResourceRows {
         ids.forEach(rows::remove)
     }
 
+    /** Runs before a wipe-all deletes (e.g. a gate, to cancel the wiping caller mid-delete). */
+    var beforeDeleteAll: suspend () -> Unit = {}
+
     override suspend fun deleteAll() {
+        beforeDeleteAll()
         rows.clear()
     }
 
