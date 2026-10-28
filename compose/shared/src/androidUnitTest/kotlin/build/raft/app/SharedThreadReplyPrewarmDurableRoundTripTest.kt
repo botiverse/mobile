@@ -141,7 +141,7 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
                     isEnabledForServer = { true },
                     logger = logs::add,
                 ),
-            ) { synchronized(repository.replyRequests) { repository.replyRequests.size.toLong() } }
+            ) { repository.replyRequests.size.toLong() }
         private val sessionStore = InMemoryRaftAuthSessionStore(session)
         val dataSource =
             testSharedThreadDataSource(

@@ -861,6 +861,7 @@ class SharedThreadStoreReplyOriginAndPagingTest {
         assertEquals(2, extender.calls.size)
         scope.cancel()
     }
+
     @Test
     fun olderAndNewerPagingReadTheDurableHeadEpochBeforeTheirRequests() = runTest {
         // Message storage Phase 3b: the epoch handed to the extender is the one read BEFORE each page request. The

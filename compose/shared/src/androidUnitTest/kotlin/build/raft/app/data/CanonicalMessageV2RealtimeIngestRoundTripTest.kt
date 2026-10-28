@@ -39,6 +39,7 @@ import build.raft.app.network.sync.windowEnvelopes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
@@ -331,16 +332,17 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             held.await()
             assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
             assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
+            val reportStarted = CompletableDeferred<Unit>().also { rig.unrecordedStarted["m50"] = it }
             assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped
             release.complete(Unit)
             holder.join()
-            // m30 lands, so the worker moves on to m40 and the queue has room again (no idle wait).
-            while (rig.segments(channel) != listOf(10L to 30L)) kotlinx.coroutines.delay(10)
-            kotlinx.coroutines.delay(50)
-            // Straight on: the next frames must already see the skip, though its report is still running.
+            // The worker took m40 off the queue and is reporting the skip of m50 (slowly): the queue has room.
+            reportStarted.await()
+            // Straight on, no idle wait: the next frames must already see the skip, though its report still runs.
             assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
             assertTrue(rig.deliver(rig.messageNew(channel, "m70", 70L), epoch = 1L))
             rig.ingest.awaitIdle()
+            assertTrue(rig.logs.none { "queue_full" in it && "msg=m60" in it }, "m60 must have been queued: ${rig.logs}")
             val segments = rig.segments(channel)
             assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
         }
@@ -382,23 +384,14 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             val second = SyncScopeKey(partition, "channel-2", "channel")
             rig.enter(channel, 10L, 20L)
             rig.enter(second, 11L, 21L)
-            val release = CompletableDeferred<Unit>()
-            val held = CompletableDeferred<Unit>()
-            val holder = CoroutineScope(Dispatchers.IO).launch {
-                rig.engine.withScopeWriter(channel) {
-                    held.complete(Unit)
-                    release.await()
-                }
+            rig.whileWriterHeld(channel) {
+                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
+                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
+                // Two skips; the first one's report throws once.
+                rig.failUnrecordedTimes["m50"] = 1
+                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L))
+                assertTrue(rig.deliver(rig.messageNew(second, "n55", 55L), epoch = 1L))
             }
-            held.await()
-            assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
-            // Two skips; the first one's report throws once.
-            rig.failUnrecordedOnce += "m50"
-            assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L))
-            assertTrue(rig.deliver(rig.messageNew(second, "n55", 55L), epoch = 1L))
-            release.complete(Unit)
-            holder.join()
             rig.ingest.awaitIdle()
             // The skip after the failed report was still reported, and the failed one was retried.
             assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(second))
@@ -407,6 +400,55 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             assertTrue(rig.deliver(rig.messageNew(second, "n60", 60L), epoch = 1L))
             rig.ingest.awaitIdle()
             assertEquals(listOf(11L to 21L), rig.segments(second), "a claim covers the skipped 55")
+        }
+    }
+
+    @Test
+    fun aFrameAfterAFailedSkipReportOfItsChannelIsStoredLooseNotClaimed() = withFile { file ->
+        file.rig(queueCapacity = 1).session { rig ->
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            // The report of the skipped m50 fails twice, then lands.
+            rig.failUnrecordedTimes["m50"] = 2
+            rig.whileWriterHeld(channel) {
+                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
+                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
+                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped
+            }
+            // m40 runs after the first failed report; m60 after the second (no idle wait in between).
+            kotlinx.coroutines.withTimeout(10_000L) {
+                while (rig.logs.none { "unrecorded_report_failed" in it }) kotlinx.coroutines.delay(10)
+            }
+            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
+            rig.ingest.awaitIdle()
+            val segments = rig.segments(channel)
+            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
+            assertTrue(rig.logs.any { "outcome=loose" in it && "msg=m60" in it && "tracker=held" in it }, rig.logs.toString())
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+        }
+    }
+
+    @Test
+    fun aSkipReportThatNeverLandsEscalatesToAPartitionHoleOnceAndIsDropped() = withFile { file ->
+        file.rig(queueCapacity = 1).session { rig ->
+            rig.connect(1L)
+            val second = SyncScopeKey(partition, "channel-2", "channel")
+            rig.enter(channel, 10L, 20L)
+            rig.enter(second, 11L, 21L)
+            rig.failUnrecordedTimes["m50"] = Int.MAX_VALUE
+            rig.whileWriterHeld(channel) {
+                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
+                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
+                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped, never reported
+            }
+            rig.ingest.awaitIdle()
+            repeat(3) { i -> assertTrue(rig.deliver(rig.messageNew(second, "n${60 + i}", 60L + i), epoch = 1L)) }
+            rig.ingest.awaitIdle()
+            assertEquals(listOf("unrecorded_report_failed"), rig.partitionHoles.toList(), "escalated exactly once")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(second))
+            assertEquals(listOf(11L to 21L), rig.segments(second), "no window of the partition claims across the hole")
+            assertEquals(1, rig.logs.count { "unrecorded_report_failed" in it && "msg=m50" in it }, "first failure logged once")
+            assertEquals(1, rig.logs.count { "unrecorded_report_dropped" in it && "msg=m50" in it }, "final drop logged once")
         }
     }
 
@@ -475,8 +517,14 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         /** The tracker's skipped-frame report is slow (it races the worker's next frame in a racy implementation). */
         @Volatile var slowUnrecordedMs = 0L
 
-        /** Frames (by id) whose skipped-frame report throws the first time it is made. */
-        val failUnrecordedOnce: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+        /** Frames (by id) whose skipped-frame report throws, and how many more times it does. */
+        val failUnrecordedTimes: MutableMap<String, Int> = java.util.concurrent.ConcurrentHashMap()
+
+        /** Completed when the skipped-frame report of that frame (by id) starts. */
+        val unrecordedStarted: MutableMap<String, CompletableDeferred<Unit>> = java.util.concurrent.ConcurrentHashMap()
+
+        /** Partition holes reported to the tracker (reasons). */
+        val partitionHoles: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val database = RaftSqlDatabase(driver)
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         @Volatile var killBeforeCommit = false
@@ -509,7 +557,12 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             ) = canary.accept(partition, foldInput, frameTransportEpoch)
 
             override suspend fun noteFrameUnrecorded(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput) {
-                if (failUnrecordedOnce.remove(foldInput.row.id)) throw IllegalStateException("report failed once")
+                unrecordedStarted[foldInput.row.id]?.complete(Unit)
+                val failures = failUnrecordedTimes[foldInput.row.id] ?: 0
+                if (failures > 0) {
+                    failUnrecordedTimes[foldInput.row.id] = failures - 1
+                    throw IllegalStateException("report failed")
+                }
                 if (slowUnrecordedMs > 0) kotlinx.coroutines.delay(slowUnrecordedMs)
                 canary.noteFrameUnrecorded(partition, foldInput)
             }
@@ -517,8 +570,10 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             override suspend fun noteScopeHole(partition: DurablePartitionKey, scopeId: String, reason: String) =
                 canary.noteScopeHole(partition, scopeId, reason)
 
-            override suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String) =
+            override suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String) {
+                partitionHoles += reason
                 canary.notePartitionHole(partition, reason)
+            }
         }
         val ingest = CanonicalMessageV2RealtimeIngest(
             tracker = tracker,
@@ -732,6 +787,27 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
     }
 
     private fun ThreadDurableLastKnownFrame.seqs(): List<Long> = envelopes.map { it.fact.seq }.sorted()
+
+    /** Holds [scope]'s writer while [block] runs (and always releases it, even when [block] fails). */
+    private suspend fun <T> Rig.whileWriterHeld(scope: SyncScopeKey, block: suspend () -> T): T {
+        val release = CompletableDeferred<Unit>()
+        val held = CompletableDeferred<Unit>()
+        val holderScope = CoroutineScope(Dispatchers.IO)
+        val holder = holderScope.launch {
+            engine.withScopeWriter(scope) {
+                held.complete(Unit)
+                release.await()
+            }
+        }
+        try {
+            held.await()
+            return block()
+        } finally {
+            release.complete(Unit)
+            holder.join()
+            holderScope.cancel()
+        }
+    }
 
     private fun <T> Rig.session(block: suspend (Rig) -> T): T = try {
         // Bounded below the build's 60 s hang watchdog: a dead ingest worker fails the test instead of killing the JVM.

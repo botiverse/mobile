@@ -146,7 +146,7 @@ class SharedThreadAnchorContextDurableRoundTripTest {
                     isEnabledForServer = { writerFlag },
                     logger = logs::add,
                 ),
-            ) { synchronized(repository.parentRequests) { repository.parentRequests.size.toLong() } }
+            ) { repository.parentRequests.size.toLong() }
         private val enterBody = """{"messages":${page(50, 60, 70, 80)},"historyLimited":false}"""
         val enterNetwork =
             RecordingNetworkClient(enterBody, channelIds = if (enterReachable) setOf("channel-1") else emptySet())
