@@ -25,6 +25,7 @@ class RaftSideColumnPostureTest {
         stripWidthPt: Float,
         nativeTabBarHeightPt: Float = 0f,
         reservedRegions: List<RaftAdaptiveReservedRegion> = emptyList(),
+        display: RaftAdaptiveDisplay = RaftAdaptiveDisplay.Other,
     ) = RaftAdaptivePaneEvent(
         widthPx = widthPt * 3,
         heightPx = heightPt * 3,
@@ -35,6 +36,7 @@ class RaftSideColumnPostureTest {
         stripWidthPt = stripWidthPt,
         nativeTabBarHeightPt = nativeTabBarHeightPt,
         reservedRegions = reservedRegions,
+        display = display,
     )
 
     @Test
@@ -175,5 +177,22 @@ class RaftSideColumnPostureTest {
             ),
             event.toRaftSideColumnPosture(),
         )
+    }
+
+    @Test
+    fun `the inner Duo display held upright has no column but is marked inner`() {
+        val upright =
+            event(669, 951, sideColumn = false, stripEdge = RaftAdaptiveSideColumn.None, stripWidthPt = 0f, display = RaftAdaptiveDisplay.DuoInner)
+                .toRaftSideColumnPosture()
+        assertEquals(RaftSideColumnPosture(duoInner = true), upright)
+        val sideways =
+            event(951, 669, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f, display = RaftAdaptiveDisplay.DuoInner)
+                .toRaftSideColumnPosture()
+        assertEquals(true, sideways.duoInner)
+        assertEquals(true, sideways.sideColumn)
+        val outer =
+            event(466, 678, sideColumn = true, stripEdge = RaftAdaptiveSideColumn.Right, stripWidthPt = 84f, display = RaftAdaptiveDisplay.DuoOuter)
+                .toRaftSideColumnPosture()
+        assertEquals(false, outer.duoInner)
     }
 }

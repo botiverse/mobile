@@ -34,12 +34,13 @@ import build.raft.designsystem.tokens.RaftStroke
 
 /**
  * The wide layout drops its top bar for the rail's header and footer: on iPhone Duo's inner screen
- * (the side-column posture) while the rail shows. Off Duo (iPad, Android tablets, the Compose
- * desktop app) the top bar stays.
+ * while the rail shows, held sideways (the side-column posture) or upright (the host's
+ * `display == duoInner`, no column). Off Duo (iPad, Android tablets, the Compose desktop app) the
+ * top bar stays.
  */
 @Composable
 internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
-    navRailActive && LocalRaftSideColumnPosture.current.sideColumn
+    navRailActive && LocalRaftSideColumnPosture.current.let { it.sideColumn || it.duoInner }
 
 /**
  * The rail header's workspace tile (raft-ui AppRail `AppRailHeader` with the docs' app-owned
