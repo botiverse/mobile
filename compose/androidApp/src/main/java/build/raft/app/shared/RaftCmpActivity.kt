@@ -5759,7 +5759,7 @@ internal class RaftBridgeModule(
         val downloadManager =
                 ContextCompat.getSystemService(appContext, DownloadManager::class.java)
                         ?: error("DownloadManager not available")
-        val fileName = "raft-hands-${latest.version_code}.apk"
+        val fileName = handsApkDownloadFileName(latest.version_code)
         val key = response.handsDownloadKey(arch)
         val title =
                 buildString {

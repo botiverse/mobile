@@ -48,6 +48,8 @@ class RaftApplication : Application() {
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
+        // Finished in-app update APKs for installed versions: drop them and their system notification.
+        build.raft.app.shared.HandsUpdateDownloadCleanup.start(this)
         // task #6 WebView warm-up is scheduled from the first CMP frame (RaftCmpActivity), not
         // here: from onCreate it ran before the launch activity existed and lengthened cold start.
         RaftAndroidLocalDiagnostics.init(this)
