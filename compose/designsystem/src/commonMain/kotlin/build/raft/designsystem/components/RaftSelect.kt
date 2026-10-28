@@ -305,7 +305,8 @@ fun RaftPickerTriggerButton(
     val shape = RoundedCornerShape(radius)
     Row(
         modifier
-            .then(if (size == RaftPickerTriggerSize.Chip) Modifier.height(size.height) else Modifier.heightIn(min = size.height))
+            // At least the size's height: large text grows the chip instead of clipping its label.
+            .heightIn(min = size.height)
             .raftTouchTarget(enabled, source, onClick)
             .raftFocusRing(focused, radius, colors)
             .background(look.fill, shape)

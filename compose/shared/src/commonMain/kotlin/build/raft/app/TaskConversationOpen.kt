@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -8,6 +9,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.ThreadId
 import build.raft.app.model.topLevelThreadId
 
 /**
@@ -161,5 +163,60 @@ internal fun parseRaftTaskConversationPushTarget(
         conversationChannelId = ChannelId(conversation),
         taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
         taskMessageId = taskMessageId?.trim()?.takeIf { it.isNotBlank() }?.let(::MessageId),
+    )
+}
+
+/**
+ * Task v2 (web `TaskConversationBar.viewInChannel`): the message the task hangs under in its
+ * channel — its source, or a pre-v2 task's host — and null for a task created without one (the
+ * channel itself opens).
+ */
+internal fun TaskSummary.taskViewInChannelAnchor(): MessageId? = sourceMessageId ?: hostMessageId
+
+/**
+ * Where View in Channel and the Source row lead (web `nav.toMessage` / `nav.toDmMessage` /
+ * `nav.toChannel`): the task's channel (a DM, a joint or an ordinary channel, as its `channelType`
+ * says), anchored on [anchorMessageId] when there is one. Null without a channel.
+ */
+internal fun TaskSummary.taskChannelOpenRequest(
+    serverId: String,
+    anchorMessageId: MessageId?,
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+): HomeMessageOpenRequest? {
+    val channel = channelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val kind =
+        parseConversationKindOrNull(channelType)
+            ?.takeIf { it == ConversationKind.Channel || it == ConversationKind.DirectMessage || it == ConversationKind.Joint }
+            ?: ConversationKind.Channel
+    val identity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.Task,
+            messageId = anchorMessageId?.value?.takeIf { it.isNotBlank() },
+            channelId = channel,
+            conversationKind = kind,
+        )
+    return (resolveOpenRequest(serverId, identity, conversationDirectory) as? ConversationOpenResolution.Resolved)?.request
+}
+
+/**
+ * Task v2 (web `TaskEarlierDiscussionProperty`): a pre-v2 task's earlier discussion is the thread
+ * of its host message; [threadChannelId] is that thread when the lookup named it. Null for a task
+ * without a host message.
+ */
+internal fun TaskSummary.taskEarlierDiscussionOpenRequest(
+    serverId: String,
+    threadChannelId: ChannelId?,
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+): HomeMessageOpenRequest? {
+    val host = hostMessageId ?: return null
+    if (channelId == null) return null
+    return copy(
+        messageId = host,
+        parentMessageId = host,
+        threadId = threadChannelId?.value?.let(::ThreadId) ?: threadId,
+    ).resolveTaskThreadOpenRequest(
+        serverId = serverId,
+        conversationDirectory = conversationDirectory,
+        parentConversationKind = parseConversationKindOrNull(channelType),
     )
 }

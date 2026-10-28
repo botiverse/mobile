@@ -20,10 +20,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.TaskConversationDetailsRepository
+import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
@@ -212,11 +217,20 @@ internal fun TaskOpenSurfaceHost(
     /** Whether the reader is a member of the task's channel; null = not known here. */
     joined: (TaskSummary) -> Boolean? = { null },
     onJoin: (TaskSummary) -> Unit = {},
+    /** The pending sheet's head reads (history, source, earlier discussion); null reads nothing. */
+    detailsRepository: TaskConversationDetailsRepository? = null,
+    serverId: String? = null,
+    timeContext: RaftTimeContext? = null,
+    /** The task channel's members, so the sheet names people as the conversation page does. */
+    membersStore: SharedServerMembersStore? = null,
 ) {
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending ->
             TaskConversationPendingSheet(
                 task = surface.task,
+                details = rememberTaskConversationDetails(surface.task, detailsRepository, serverId),
+                members = rememberTaskChannelMembers(membersStore, serverId, surface.task.channelId),
+                timeContext = timeContext,
                 sending = flow.sending,
                 errorText = flow.errorText,
                 joined = joined(surface.task),
@@ -233,7 +247,7 @@ internal fun TaskOpenSurfaceHost(
 
 /**
  * A task conversation before its first message (web `TaskConversationDialog` with no conversation
- * yet): the task's status and assignee, its title and description and the empty state ("No
+ * yet): the conversation page's head read-only (title, description, facts, History) and the empty state ("No
  * discussion in this task yet", and for a pre-v2 task where its earlier discussion is) at the
  * top, and at the bottom what the conversation page has there, so nothing moves when the first
  * send opens it: the conversation composer (its own send button), or for a reader who has not
@@ -245,6 +259,9 @@ internal fun TaskOpenSurfaceHost(
 @Composable
 internal fun TaskConversationPendingSheet(
     task: TaskSummary,
+    details: TaskHeadDetailsHandle,
+    members: List<MemberProfile>,
+    timeContext: RaftTimeContext?,
     sending: Boolean,
     errorText: String?,
     joined: Boolean?,
@@ -261,7 +278,8 @@ internal fun TaskConversationPendingSheet(
         onCommit = {},
         closeEnabled = !sending,
     ) {
-        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange)
+        TaskConversationPendingBody(task, sending, errorText, joined, onSend, onJoin, Modifier.weight(1f), draft, onDraftChange,
+            task.taskPendingHeadModel(details.state, members, timeContext), details.retryHistory)
     }
 }
 
@@ -277,6 +295,9 @@ internal fun TaskConversationPendingBody(
     modifier: Modifier = Modifier,
     seedText: String = "",
     onDraftChange: (String) -> Unit = {},
+    /** The conversation page's head, read-only (title, description, facts, History). */
+    head: TaskConversationHeadModel = task.taskPendingHeadModel(TaskConversationDetailsState(), emptyList(), null),
+    onRetryHistory: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -286,7 +307,8 @@ internal fun TaskConversationPendingBody(
             Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TaskFacts(task)
+            // The conversation page's head, read-only: what the page shows once the first send opens it.
+            TaskHeadContent(head, onRetryHistory = onRetryHistory)
             Column(
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -403,27 +425,6 @@ internal fun TaskLegacyPanelBody(task: TaskSummary, modifier: Modifier = Modifie
                 description = stringResource(Res.string.task_legacy_read_only_hint),
                 status = RaftBannerStatus.Info,
             )
-        }
-    }
-}
-
-@Composable
-private fun TaskFacts(task: TaskSummary) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            RaftTaskStatusBadge(status = task.status.raftTaskStatus(), text = task.status.localizedLabel())
-            RaftText(
-                text = task.assignee?.displayName?.let { "@$it" } ?: stringResource(Res.string.tasks_assignee_unassigned),
-                style = typography.caption,
-                color = colors.foregroundMuted,
-                maxLines = 1,
-            )
-        }
-        RaftText(task.title, style = typography.headline, color = colors.foreground)
-        task.description?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            RaftText(it, style = typography.callout, color = colors.foregroundMuted)
         }
     }
 }

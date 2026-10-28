@@ -3,6 +3,7 @@ package build.raft.designsystem.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.offset
@@ -19,6 +20,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,7 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import kotlin.math.max
+import kotlin.math.min
 
 /** raft-ui DescriptionList `direction`. */
 enum class RaftDescriptionListDirection {
@@ -40,6 +43,14 @@ enum class RaftDescriptionListDirection {
      * 358dp of list) each value sits 2dp under its label and 10dp above the next label.
      */
     Horizontal,
+
+    /**
+     * raft-ui `direction="inline"` (the task dialog's facts row): every fact on one wrapping
+     * row, its label and value side by side on one first baseline 12dp apart, 24dp between
+     * facts and 8dp between lines. A label never shrinks; a value takes what is left of its
+     * line and wraps inside it.
+     */
+    Inline,
 }
 
 /**
@@ -98,6 +109,13 @@ fun RaftDescriptionList(
     when (direction) {
         RaftDescriptionListDirection.Vertical ->
             Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) { VerticalScope.content() }
+        RaftDescriptionListDirection.Inline ->
+            // `flex flex-wrap items-baseline gap-x-6 gap-y-2`.
+            FlowRow(
+                modifier,
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) { InlineScope(this).content() }
         RaftDescriptionListDirection.Horizontal -> {
             val slots = remember(content) { HorizontalSlots(content) }
             SubcomposeLayout(modifier) { constraints ->
@@ -162,7 +180,14 @@ private class HorizontalSlots(private val content: @Composable RaftDescriptionLi
  * empty. A value is long-press copyable ([raftCopyable], the value only) unless [copyable] is false.
  */
 @Composable
-fun RaftDescriptionValue(text: String?, modifier: Modifier = Modifier, mono: Boolean = false, copyable: Boolean = true) {
+fun RaftDescriptionValue(
+    text: String?,
+    modifier: Modifier = Modifier,
+    mono: Boolean = false,
+    copyable: Boolean = true,
+    /** One line cut with an ellipsis (the inline list); unlimited wraps. */
+    maxLines: Int = Int.MAX_VALUE,
+) {
     val typography = RaftTheme.typography
     val colors = RaftTheme.colors
     if (text.isNullOrEmpty()) {
@@ -173,6 +198,8 @@ fun RaftDescriptionValue(text: String?, modifier: Modifier = Modifier, mono: Boo
             modifier = modifier.raftCopyable(text, enabled = copyable),
             style = if (mono) typography.monoMeta else typography.callout,
             color = colors.foreground,
+            maxLines = maxLines,
+            overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis,
         )
     }
 }
@@ -232,6 +259,71 @@ private object VerticalScope : RaftDescriptionListScope {
         }
     }
 }
+
+/**
+ * One fact of an inline list: the label, then 12dp on its value (`items-baseline gap-3`), on the
+ * value's first baseline; the item sits on its line's first baseline too. The value has no
+ * 28dp row to centre in: a chip or a frameless trigger lines its text up with the label's.
+ */
+private class InlineScope(private val row: FlowRowScope) : RaftDescriptionListScope {
+    /** raft-ui inline facts truncate: a text value is one line, cut with an ellipsis. */
+    @Composable
+    override fun Item(term: String, value: String?, mono: Boolean, copyable: Boolean) {
+        Item(term) { RaftDescriptionValue(value, mono = mono, copyable = copyable, maxLines = 1) }
+    }
+
+    @Composable
+    override fun Item(term: String, termAccessory: (@Composable () -> Unit)?, details: @Composable RowScope.() -> Unit) {
+        with(row) {
+            Layout(
+                content = {
+                    DescriptionTerm(term, termAccessory)
+                    DescriptionDetails(0.dp, details)
+                },
+                modifier = Modifier.alignByBaseline().semantics(mergeDescendants = true) {},
+            ) { measurables, constraints ->
+                val (termMeasurable, detailsMeasurable) = measurables
+                val gapX = 12.dp.roundToPx()
+                // A fact is at most 24rem wide (web `max-w-[min(100%,24rem)]`): on a tablet a long
+                // value wraps instead of running across the panel.
+                val maxW =
+                    if (constraints.hasBoundedWidth) min(constraints.maxWidth, RaftDescriptionInlineMaxWidth.roundToPx()) else RaftDescriptionInlineMaxWidth.roundToPx()
+                // The label never takes more than the line (large text). A value is cut to the
+                // room beside its label (raft-ui truncates; text values are one line with an
+                // ellipsis); only when the label leaves under 96dp does the value go under it.
+                val t = termMeasurable.measure(Constraints(maxWidth = maxW))
+                val beside = (maxW - t.width - gapX).coerceAtLeast(0)
+                val stacked = beside < RaftDescriptionInlineMinValueWidth.roundToPx()
+                if (stacked) {
+                    val gapY = 2.dp.roundToPx()
+                    val v = detailsMeasurable.measure(Constraints(maxWidth = maxW))
+                    val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
+                    layout(max(t.width, v.width), t.height + gapY + v.height, mapOf(FirstBaseline to tb)) {
+                        t.place(0, 0)
+                        v.place(0, t.height + gapY)
+                    }
+                } else {
+                    val v = detailsMeasurable.measure(Constraints(maxWidth = beside))
+                    val tb = t[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: 0
+                    val vb = v[FirstBaseline].takeIf { it != AlignmentLine.Unspecified } ?: tb
+                    val baseline = max(tb, vb)
+                    val tTop = baseline - tb
+                    val vTop = baseline - vb
+                    layout(t.width + gapX + v.width, max(tTop + t.height, vTop + v.height), mapOf(FirstBaseline to baseline)) {
+                        t.place(0, tTop)
+                        v.place(t.width + gapX, vTop)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Below this beside its label, an inline value goes under the label. */
+private val RaftDescriptionInlineMinValueWidth = 96.dp
+
+/** web inline facts: `max-w-[min(100%,24rem)]`. */
+private val RaftDescriptionInlineMaxWidth = 384.dp
 
 /** Measures the labels for the column width; never placed, hidden from accessibility. */
 private object TermsScope : RaftDescriptionListScope {

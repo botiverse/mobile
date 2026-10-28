@@ -1349,6 +1349,7 @@ internal fun TaskWireDto.toTaskSummary(
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
         conversationFollowed = conversationFollowed,
+        createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

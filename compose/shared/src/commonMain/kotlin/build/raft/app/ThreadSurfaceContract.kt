@@ -107,12 +107,19 @@ internal fun String?.normalizedThreadChannelKind(): String? =
     // visibility ("public"/"private") that a kind parse would collapse; normalization only.
     this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
 
+/** Task v2: a task conversation's composer placeholder (web `message.threadPanel.taskComposerPlaceholder`). */
+internal const val ThreadTaskComposerPlaceholder = "Message this task"
+
 internal fun threadSurfaceComposerPlaceholder(
     surfaceKind: String,
     displayName: String,
-    fallbackId: String
+    fallbackId: String,
+    /** The conversation's channel kind: a task conversation (`task`) is not addressed by its name. */
+    channelKind: String? = null,
 ): String =
-    when (surfaceKind) {
+    if (channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind) {
+        ThreadTaskComposerPlaceholder
+    } else when (surfaceKind) {
         RaftThreadSurfaceKind.DirectMessage ->
             "Message @${displayName.removePrefix("@").ifBlank { fallbackId }}"
         RaftThreadSurfaceKind.ReplyThread -> "Reply in thread"

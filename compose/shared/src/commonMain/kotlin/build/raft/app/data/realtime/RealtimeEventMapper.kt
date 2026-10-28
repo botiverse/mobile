@@ -1159,6 +1159,7 @@ private fun TaskInfoWireDto.toDomain(
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
+        createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 

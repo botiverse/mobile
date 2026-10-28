@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -132,7 +133,8 @@ fun RaftTaskStatusBadge(
             modifier
                 .then(if (clickable) Modifier.raftTouchTarget(true, source, onClick!!) else Modifier)
                 .raftFocusRing(focused, RaftRadius.Chip, colors)
-                .height(size.height)
+                // At least the chip's height: large text grows it instead of clipping the label.
+                .heightIn(min = size.height)
                 .background(status.softColor(colors), shape)
                 .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Chip)
                 .then(

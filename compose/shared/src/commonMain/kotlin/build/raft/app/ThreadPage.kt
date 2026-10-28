@@ -193,7 +193,12 @@ import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.TaskConversationDetailsRepository
+import build.raft.app.data.TaskConversationDetailsState
+import build.raft.app.data.TaskConversationDetailsViewModel
 import build.raft.app.data.TaskConversationHeaderEvent
+import build.raft.app.data.taskHeadSourceMessageId
+import build.raft.app.data.valueOrNull
 import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.tasksIdentityFilterId
@@ -326,6 +331,8 @@ import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -2727,7 +2734,11 @@ internal fun RaftThreadScreenPayload.toThreadMemberDetailPageData(
 internal fun RaftThreadScreenPayload.threadChannelSearchChannelId(): String? =
     sourceThreadId
         ?.trim()
-        ?.takeIf { it.isNotBlank() && surfaceKind == RaftThreadSurfaceKind.Channel }
+        ?.takeIf { it.isNotBlank() && surfaceKind == RaftThreadSurfaceKind.Channel && !isTaskConversationSurface() }
+
+/** Task v2: this page is a task's own conversation (`channels.type = 'task'`). */
+internal fun RaftThreadScreenPayload.isTaskConversationSurface(): Boolean =
+    channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind
 
 internal enum class ThreadHeaderSearchAction {
     ChannelSearch,
@@ -2737,7 +2748,8 @@ internal enum class ThreadHeaderSearchAction {
 internal fun RaftThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderSearchAction? =
     when {
         threadChannelSearchChannelId() != null -> ThreadHeaderSearchAction.ChannelSearch
-        surfaceKind == RaftThreadSurfaceKind.ReplyThread -> ThreadHeaderSearchAction.InlineThreadSearch
+        // Web Search in Task runs the conversation's own search (ThreadPanel searchCommandRef).
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread || isTaskConversationSurface() -> ThreadHeaderSearchAction.InlineThreadSearch
         else -> null
     }
 
@@ -7999,6 +8011,35 @@ private fun SharedThreadRouteContentContent(
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    // Task v2 (web TaskConversationDialog head): the task's history, its source message and a pre-v2
+    // task's earlier discussion, read for the task the head shows (again for each newer revision).
+    val taskConversationDetailsServerId by rememberUpdatedState(currentServerId)
+    val taskConversationDetailsRepository =
+        remember(sharedStores, storeScope) { TaskConversationDetailsRepository(sharedStores.networkClient(storeScope)) }
+    val taskConversationDetailsViewModel: TaskConversationDetailsViewModel? =
+        taskConversationId?.let { conversationId ->
+            viewModel(key = "task-conversation-details-${conversationId.value}") {
+                fun server(): ServerId? = taskConversationDetailsServerId?.let(::ServerId)
+                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true))
+                TaskConversationDetailsViewModel(
+                    loadHistory = { taskId ->
+                        server()?.let { taskConversationDetailsRepository.loadHistory(it, taskId) } ?: noServer
+                    },
+                    loadSource = { channelId, messageId ->
+                        server()?.let { taskConversationDetailsRepository.loadSourceMessage(it, channelId, messageId) } ?: noServer
+                    },
+                    loadEarlierDiscussion = { channelId, hostMessageId ->
+                        server()?.let { taskConversationDetailsRepository.loadEarlierDiscussion(it, channelId, hostMessageId) } ?: noServer
+                    },
+                    log = { bridge.log(it) },
+                )
+            }
+        }
+    val taskConversationDetailsState =
+        taskConversationDetailsViewModel?.state?.collectAsState()?.value ?: TaskConversationDetailsState()
+    LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
+        if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
+    }
     // `feedback:submit` cards open the Feedback WebView only where the viewing server has
     // `product_feedback_multi_app` on; follow the flag live as its evaluation lands.
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
@@ -11449,6 +11490,10 @@ private fun SharedThreadRouteContentContent(
 
     TaskOpenSurfaceHost(
         flow = taskOpenSurfaceFlow,
+        detailsRepository = taskConversationDetailsRepository,
+        membersStore = serverMembersStore,
+        serverId = currentServerId,
+        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
         joined = { task ->
             task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
@@ -11688,22 +11733,101 @@ private fun SharedThreadRouteContentContent(
         }.collectAsState(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
         val taskConversationServerRole =
             currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role
+        // Task v2: leave the task for a place in its channel (web `onLeave` + `nav.toMessage`): its
+        // source / host message, the channel itself, or a pre-v2 task's earlier discussion thread.
+        fun openTaskConversationTarget(request: HomeMessageOpenRequest?, action: String) {
+            val loadingPayload =
+                request?.let { openRequest ->
+                    buildAppShellThreadPayload(
+                        conversation = openRequest.conversationIdentity,
+                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                        anchorMessageId = openRequest.anchorMessageId,
+                        originFallback = openRequest.originFallback,
+                        onWarn = bridge::logWarn
+                    )
+                }
+            if (loadingPayload == null) {
+                bridge.logWarn(
+                    "task_conversation_open_rejected action=$action reason=identity_unresolved " +
+                        "taskId=${taskConversationTask?.id?.value.orEmpty()}"
+                )
+                bridge.toast(unableToOpenTaskLabel)
+                return
+            }
+            bridge.log(
+                "task_conversation_open action=$action taskId=${taskConversationTask?.id?.value.orEmpty()} " +
+                    "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
+                    "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()}"
+            )
+            onOpenThreadPayload(loadingPayload)
+        }
+        fun taskConversationDirectory(task: TaskSummary): SharedConversationDirectoryState =
+            listOfNotNull(
+                currentServerId?.let(::ServerId)?.let { server ->
+                    task.channelId?.let { conversationIdentityProvider?.resolveProjection(server, it.value) }
+                }
+            ).toSharedConversationDirectoryState()
+        val openTaskInChannel: ((TaskSummary, MessageId?, String) -> Unit) = { task, anchor, action ->
+            openTaskConversationTarget(
+                task.taskChannelOpenRequest(currentServerId.orEmpty(), anchor, taskConversationDirectory(task)),
+                action,
+            )
+        }
+        // Task v2 on a phone: the head scrolls with the conversation (web mobile); the top bar names
+        // the task's state while it is out of view.
+        val taskHeadScrollState = remember(taskConversationId) { TaskHeadScrollState() }
+        val taskConversationChrome: TaskConversationHeaderChrome? =
+            if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
+                taskConversationTask.taskConversationHeaderChrome(
+                    state = taskConversationHeaderState,
+                    summarized = taskHeadScrollState.collapsed,
+                    onBackToHead = { taskHeadScrollState.expand() },
+                    onViewInChannel = {
+                        openTaskInChannel(taskConversationTask, taskConversationTask.taskViewInChannelAnchor(), "view_in_channel")
+                    },
+                    onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
+                )
+            } else {
+                null
+            }
+        val taskConversationTimeContext = renderedThread.toRaftTimeCapabilities().staticContext()
         val taskConversationBar: (@Composable () -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 {
-                    TaskConversationBarRoute(
+                    TaskConversationHeadRoute(
                         task = taskConversationTask,
                         state = taskConversationHeaderState,
+                        details = taskConversationDetailsState,
                         serverRole = taskConversationServerRole,
                         statusUpdating = taskConversationTasksState?.statusUpdatingTaskId == taskConversationTask.id.value,
                         assigneeCandidates = taskConversationMembersSlice.members,
+                        timeContext = taskConversationTimeContext,
                         onUpdateStatus = { status ->
                             taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.UpdateStatus(taskConversationTask, status))
                         },
                         onAssign = { member ->
                             taskConversationTasksViewModel?.dispatch(SharedTasksRouteIntent.AssignTask(taskConversationTask, member))
                         },
-                        onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
+                        onOpenSource = {
+                            openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
+                        },
+                        onOpenEarlierDiscussion = {
+                            val earlier = taskConversationDetailsState.earlierDiscussion.valueOrNull
+                            openTaskConversationTarget(
+                                taskConversationTask.taskEarlierDiscussionOpenRequest(
+                                    serverId = currentServerId.orEmpty(),
+                                    threadChannelId = earlier?.threadChannelId,
+                                    conversationDirectory = taskConversationDirectory(taskConversationTask),
+                                ),
+                                "earlier_discussion",
+                            )
+                        },
+                        scrollState = taskHeadScrollState,
+                        // Typing on a phone: the head folds away so the conversation keeps its room.
+                        keyboardUp = adaptivePageKeyboardInsetDp > 0f,
+                        onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                     )
                 }
             } else {
@@ -11716,8 +11840,12 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
+            taskConversationChrome = taskConversationChrome,
+            taskConversationScroll = taskHeadScrollState.connection.takeIf { taskConversationBar != null },
             agentFollowersHeader = {
-                if (renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+                // Task v2: a task conversation's bar carries its Agent followers too (web
+                // ThreadAgentFollowers `subject="task"` on the conversation channel).
+                if (renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread || renderedThread.isTaskConversationSurface()) {
                     ThreadAgentFollowersRoute(
                         threadId = renderedThread.streamChannelId,
                         serverId = currentServerId,
@@ -14947,6 +15075,10 @@ private data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
+    /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
+    val taskConversationChrome: TaskConversationHeaderChrome? = null,
+    /** Task v2 on a phone: the head moves with the conversation's scroll. */
+    val taskConversationScroll: NestedScrollConnection? = null,
     val threadInstanceKey: String,
     val routeActive: Boolean,
     val hostForeground: Boolean,
@@ -15053,6 +15185,8 @@ private @Composable
 fun ThreadPageContent(
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
+    taskConversationChrome: TaskConversationHeaderChrome? = null,
+    taskConversationScroll: NestedScrollConnection? = null,
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
     routeActive: Boolean,
@@ -15158,6 +15292,8 @@ fun ThreadPageContent(
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
+                taskConversationChrome = taskConversationChrome,
+                taskConversationScroll = taskConversationScroll,
                 threadInstanceKey = threadInstanceKey,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
@@ -16296,9 +16432,11 @@ private fun ThreadPageContentContent(
                     // task #180 (artin): the follow row is derived by a pure helper from the same
                     // per-message state the long-press menu reads, so the two cannot disagree and the
                     // decision is unit-testable. Null = nothing to follow -> row is absent.
-                    threadFollowed = panelFollowAction?.followed,
+                    threadFollowed = data.taskConversationChrome?.followed ?: panelFollowAction?.followed,
+                    taskConversationChrome = data.taskConversationChrome,
                     onToggleThreadFollow =
-                        panelFollowAction?.let { follow ->
+                        data.taskConversationChrome?.takeIf { it.followed != null }?.onToggleFollow
+                            ?: panelFollowAction?.let { follow ->
                             {
                                 // The existing handler reads the thread channel from the attachmentId
                                 // slot: onThreadEvent(action, itemId, attachmentId, tab).
@@ -16352,7 +16490,9 @@ private fun ThreadPageContentContent(
             } else {
                 renderThreadTabContent(
                     selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite),
+                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
+                        // Task v2 on a phone: the head above moves with the conversation's scroll.
+                        .then(data.taskConversationScroll?.let { Modifier.nestedScroll(it) } ?: Modifier),
                     true
                 )
             }
@@ -16904,7 +17044,11 @@ internal fun ThreadPageHeader(
     /** task #180: null when this thread has no message column to follow. */
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
+    /** Task v2: the task's title block and More menu rows (null: not a task, or not known yet). */
+    taskConversationChrome: TaskConversationHeaderChrome? = null,
 ) {
+    // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
+    val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
         if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
@@ -16948,6 +17092,7 @@ internal fun ThreadPageHeader(
         showActions &&
             (
                 headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
+                    taskConversation ||
                     payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.threadHeaderOpenInParentActionVisible()
@@ -16993,6 +17138,11 @@ internal fun ThreadPageHeader(
             }
         },
         titleContent = {
+            if (taskConversationChrome != null) {
+                // Task v2 (web TaskConversationBar): the ref over "Task #7", and the task's state once
+                // the head has scrolled away.
+                TaskConversationBarTitle(taskConversationChrome, Modifier.weight(1f))
+            } else
             Column(
                 modifier =
                     Modifier
@@ -17051,7 +17201,7 @@ internal fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
                     agentFollowersHeader()
-                    if (payload.threadHeaderSearchAction() != null) {
+                    if (!taskConversation && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
@@ -17061,14 +17211,17 @@ internal fun ThreadPageHeader(
                         ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                     val toggleFocus = onToggleFocusMode
-                    val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
+                    val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null || taskConversation
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
                             onSelect = { toggleFocus?.invoke() },
                             followed = threadFollowed,
                             onToggleFollow = onToggleThreadFollow,
-                            focusEnabled = focusModeActive || toggleFocus != null
+                            focusEnabled = focusModeActive || toggleFocus != null,
+                            onSearchInTask = onOpenSearch.takeIf { taskConversation },
+                            onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
+                            taskFollowLabels = taskConversation,
                         )
                     }
                 }
@@ -17623,6 +17776,12 @@ private fun ThreadHeaderFocusModeMenu(
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
+    /** Task v2 (web ThreadOverflowMenu `subject="task"`): Search in Task, after Focus mode. */
+    onSearchInTask: (() -> Unit)? = null,
+    /** Task v2: View in Channel (the task's message in its channel, or the channel). */
+    onViewInChannel: (() -> Unit)? = null,
+    /** Task v2: the follow row reads Follow / Unfollow Task. */
+    taskFollowLabels: Boolean = false,
 ) {
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
@@ -17643,6 +17802,27 @@ private fun ThreadHeaderFocusModeMenu(
                     enabled = focusEnabled
                 )
             )
+            // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
+            if (onSearchInTask != null) {
+                add(
+                    RaftBrutalDropdownMenuItem(
+                        id = SEARCH_IN_TASK_MENU_ITEM_ID,
+                        label = stringResource(Res.string.task_conversation_search),
+                        icon = RaftLucideIconName.Search,
+                        enabled = true
+                    )
+                )
+            }
+            if (onViewInChannel != null) {
+                add(
+                    RaftBrutalDropdownMenuItem(
+                        id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
+                        label = stringResource(Res.string.task_conversation_view_in_channel),
+                        icon = RaftLucideIconName.MapPin,
+                        enabled = true
+                    )
+                )
+            }
             // task #180 (artin): follow/unfollow of this thread's message column sits in the same
             // panel menu. `followed` is null when the thread has no message to follow, in which case
             // the row is not offered at all rather than shown disabled.
@@ -17652,10 +17832,11 @@ private fun ThreadHeaderFocusModeMenu(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
-                                if (followed) {
-                                    Res.string.thread_action_unfollow_thread
-                                } else {
-                                    Res.string.thread_action_follow_thread
+                                when {
+                                    taskFollowLabels && followed -> Res.string.task_conversation_unfollow
+                                    taskFollowLabels -> Res.string.task_conversation_follow
+                                    followed -> Res.string.thread_action_unfollow_thread
+                                    else -> Res.string.thread_action_follow_thread
                                 }
                             ),
                         icon = threadFollowMenuIcon(followed),
@@ -17674,9 +17855,10 @@ private fun ThreadHeaderFocusModeMenu(
     // RaftSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
     // actually post on (the same path the rest of ThreadPage already uses).
     val localPager = LocalActivity.current.getPager() as Pager
+    val eventBusOverride = LocalThreadHeaderMenuEventBus.current
     val pageEventBus: build.raft.app.data.RaftEventBus =
-        remember(localPager.pagerId) {
-            RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+        remember(localPager.pagerId, eventBusOverride) {
+            eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
     // This page's registry key, mirroring what RaftChildPage publishes for it.
     // This page's registry key, mirroring what RaftChildPage publishes for it. Verified by
@@ -17701,6 +17883,8 @@ private fun ThreadHeaderFocusModeMenu(
                 when (selectedId) {
                     FOCUS_MODE_MENU_ITEM_ID -> onSelect()
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                    VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     else -> Unit // dismissed
                 }
             }
@@ -17768,8 +17952,17 @@ private fun ThreadHeaderFocusModeMenu(
     )
 }
 
+/**
+ * Screenshot fixtures only: the bus the header's More menu posts on, instead of the live page's
+ * shared store registry (null in the app).
+ */
+internal val LocalThreadHeaderMenuEventBus =
+    androidx.compose.runtime.staticCompositionLocalOf<build.raft.app.data.RaftEventBus?> { null }
+
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
+internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
+internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
 
 @Composable
 internal fun ThreadHeaderActionButton(
@@ -30432,9 +30625,10 @@ private fun ThreadMessageActionMenu(
     // composable with the app-shell host instead; the shell owns a window-sized surface while the
     // action callbacks and reaction bitmap remain in this page's process-local state.
     val localPager = LocalActivity.current.getPager() as Pager
+    val eventBusOverride = LocalThreadHeaderMenuEventBus.current
     val pageEventBus: build.raft.app.data.RaftEventBus =
-        remember(localPager.pagerId) {
-            RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+        remember(localPager.pagerId, eventBusOverride) {
+            eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
     val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     val pageKey =

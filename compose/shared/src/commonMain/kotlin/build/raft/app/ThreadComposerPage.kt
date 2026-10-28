@@ -1923,7 +1923,8 @@ internal fun RaftThreadScreenPayload.resolveThreadComposer(displayName: String =
             threadSurfaceComposerPlaceholder(
                 surfaceKind = resolvedSurfaceKind,
                 displayName = displayName,
-                fallbackId = sourceThreadId ?: instanceId
+                fallbackId = sourceThreadId ?: instanceId,
+                channelKind = channelKind
             )
         } else {
             composer.placeholder
@@ -3248,6 +3249,7 @@ private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
     return when {
         normalized == "Message" -> stringResource(Res.string.thread_composer_placeholder_message)
         normalized == "Reply in thread" -> stringResource(Res.string.thread_composer_placeholder_reply)
+        normalized == ThreadTaskComposerPlaceholder -> stringResource(Res.string.task_conversation_composer_placeholder)
         normalized.startsWith("Message @") ->
             stringResource(
                 Res.string.thread_composer_placeholder_dm,

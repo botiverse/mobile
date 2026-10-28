@@ -91,6 +91,7 @@ class TaskOpenSurfacesScreenshotTest {
             modifier = Modifier.fillMaxSize(),
         ) {
             TaskConversationPendingBody(
+                head = task.taskPendingHeadModel(build.raft.app.data.TaskConversationDetailsState(), emptyList(), null),
                 task = task,
                 sending = false,
                 errorText = if (refused) "You must join this channel to reply in this task" else null,
