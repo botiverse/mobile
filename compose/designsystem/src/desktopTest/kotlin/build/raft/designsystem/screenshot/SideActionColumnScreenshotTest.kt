@@ -25,6 +25,7 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftSideAction
 import build.raft.designsystem.components.RaftSideActionColumn
+import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftSideActionColumnSide
 import build.raft.designsystem.components.RaftSideColumnKeepOut
 import build.raft.designsystem.text.RaftText
@@ -66,7 +67,8 @@ class SideActionColumnScreenshotTest {
     fun sideActionColumnTabBar() =
         capture("side_action_column_tab_bar") {
             Page(520.dp) {
-                Box(Modifier.fillMaxHeight()) {
+                // As wide as the column, so the stand-ins sit on it.
+                Box(Modifier.fillMaxHeight().width(RaftSideActionColumnDefaults.Width)) {
                     RaftSideActionColumn(
                         primary = emptyList(),
                         // Two actions, then the ⋯: its slot would cross the camera band, so it goes above it.
