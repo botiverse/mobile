@@ -1410,7 +1410,7 @@ class ConversationRepositoryDataSourceTest {
                 headAtVerify = false,
                 source = build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Older,
             ),
-            decoded.toCoverage(page.historyLimited, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Older),
+            decoded.toCoverage("server-1", "channel-1", page.historyLimited, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Older),
         )
 
         // A malformed window decodes to null; the page and its rows are unaffected.

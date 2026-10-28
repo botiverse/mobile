@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ThreadId
+import build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Latest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -78,7 +79,7 @@ class MessageParserTest {
         val window = assertNotNull(
             parse(
                 ", \"messageWindow\": {\"schemaVersion\":1,\"domain\":\"receiver_visible_messages_v1\"," +
-                    "\"scopeId\":\"channel-1\",\"coveredAfterSeq\":0,\"coveredFromSeq\":7,\"coveredThroughSeq\":7," +
+                    "\"serverId\":\"server-1\",\"scopeId\":\"channel-1\",\"coveredAfterSeq\":0,\"coveredFromSeq\":7,\"coveredThroughSeq\":7," +
                     "\"remoteHighWaterSeq\":7,\"hasGap\":false,\"hasNewer\":false,\"completeThroughLatest\":true}",
             ).messageWindow,
         )
@@ -88,10 +89,16 @@ class MessageParserTest {
             build.raft.app.network.sync.CanonicalMessageV2Coverage(
                 1, 7, reachesOldest = true, headAtVerify = true, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Latest,
             ),
-            window.toCoverage(historyLimited = false, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Latest),
+            window.toCoverage("server-1", "channel-1", historyLimited = false, Latest),
         )
-        // An unknown schema proves nothing.
-        assertNull(window.copy(schemaVersion = 2).toCoverage(historyLimited = false, build.raft.app.network.sync.CanonicalMessageV2SegmentSource.Latest))
+        // An unknown schema or domain proves nothing.
+        assertNull(window.copy(schemaVersion = 2).toCoverage("server-1", "channel-1", historyLimited = false, Latest))
+        assertNull(window.copy(domain = "other").toCoverage("server-1", "channel-1", historyLimited = false, Latest))
+        // A window naming another channel or server (or none) is not this scope's proof.
+        assertNull(window.toCoverage("server-1", "channel-2", historyLimited = false, Latest))
+        assertNull(window.toCoverage("server-2", "channel-1", historyLimited = false, Latest))
+        assertNull(window.copy(scopeId = null).toCoverage("server-1", "channel-1", historyLimited = false, Latest))
+        assertNull(window.copy(serverId = null).toCoverage("server-1", "channel-1", historyLimited = false, Latest))
         // Absent or malformed: no window, same rows.
         assertNull(parse("").messageWindow)
         val malformed = parse(", \"messageWindow\": {\"coveredAfterSeq\": \"x\"}")

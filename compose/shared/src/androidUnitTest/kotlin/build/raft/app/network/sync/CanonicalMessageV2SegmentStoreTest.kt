@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -84,6 +85,59 @@ class CanonicalMessageV2SegmentStoreTest {
         // A page fetched before the clear and the live write must not overwrite the live fact.
         store.cover(listOf(1L), coverage = null, content = "stale", revAtRequest = revAtStaleRequest)
         assertEquals("live", store.content(1))
+    }
+
+    @Test
+    fun theWriteRevisionSurvivesAPartitionClear() = withStore { store, _ ->
+        store.cover(listOf(1L, 2L), coverage = null, content = "a")
+        store.cover(listOf(1L), coverage = null, content = "a2")
+        val revAtStaleRequest = store.maxLocalRev(scope)
+        // Server-access loss / revoke clears the whole partition while the request is in flight.
+        store.clearPartition(partition)
+        assertEquals(revAtStaleRequest, store.maxLocalRev(scope), "a partition clear never resets the revision")
+        store.cover(listOf(1L), coverage = null, content = "live")
+        store.cover(listOf(1L), coverage = null, content = "stale", revAtRequest = revAtStaleRequest)
+        assertEquals("live", store.content(1))
+    }
+
+    @Test
+    fun theEngineRefusesACoverageWriteFromBeforeAPartitionClear() = withStore { store, _ ->
+        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { }
+        val generation = engine.partitionGeneration(partition)
+        val rev = engine.storedLocalRev(scope)
+        engine.clearPartition(partition)
+        assertEquals(
+            CanonicalMessageV2CommitResult.PartitionRevoked,
+            engine.applyCoverage(scope, listOf(envelope(1)), CanonicalMessageV2Coverage(1, 1, true, true, Latest), rev, true, generation),
+        )
+        assertTrue(store.ids().isEmpty(), "a refused write stores nothing")
+        // Positive control: the same write at the current generation commits, and the engine caches its header.
+        assertEquals(
+            CanonicalMessageV2CommitResult.Committed,
+            engine.applyCoverage(
+                scope, listOf(envelope(1)), CanonicalMessageV2Coverage(1, 1, true, true, Latest), rev, true,
+                engine.partitionGeneration(partition),
+            ),
+        )
+        assertEquals(listOf(id(1)), store.ids())
+        assertEquals(store.readCursor(scope), engine.currentCursor(scope))
+    }
+
+    @Test
+    fun onlyABaselineCoverageWriteMakesTheScopeWritableForRealtime() = withStore { store, _ ->
+        val observed = mutableListOf<SyncScopeKey>()
+        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { observed += it }
+        val generation = engine.partitionGeneration(partition)
+        val incremental = CanonicalMessageV2IncrementalFrame(scope, listOf(envelope(3)), legacyCursor(1, 3))
+        engine.applyCoverage(scope, listOf(envelope(1)), CanonicalMessageV2Coverage(1, 1, true, true, Latest), 0L, true, generation)
+        assertIs<CanonicalMessageV2CommitResult.BaselineRequired>(engine.applyIncremental(incremental, generation))
+        assertTrue(observed.isEmpty())
+        engine.applyCoverage(
+            scope, listOf(envelope(2)), CanonicalMessageV2Coverage(1, 2, true, true, Latest), 0L, true, generation,
+            establishesBaseline = true,
+        )
+        assertEquals(listOf(scope), observed)
+        assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applyIncremental(incremental, generation))
     }
 
     @Test
