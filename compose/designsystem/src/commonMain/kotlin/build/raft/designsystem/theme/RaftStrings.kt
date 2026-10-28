@@ -39,6 +39,8 @@ data class RaftStrings(
     val dismiss: String = "Dismiss",
     /** The long-press copy's screen-reader action ([build.raft.designsystem.components.raftCopyable]). */
     val copy: String = "Copy",
+    /** The ⋯ that holds the actions a side column has no room for ([build.raft.designsystem.components.RaftSideActionColumn]). */
+    val moreActions: String = "More Actions",
 )
 
 /** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */

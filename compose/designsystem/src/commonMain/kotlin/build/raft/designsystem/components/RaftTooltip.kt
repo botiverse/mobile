@@ -15,17 +15,30 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TooltipState
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupPositionProvider
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -77,6 +90,17 @@ val LocalRaftTooltipPlacement = staticCompositionLocalOf { RaftTooltipPlacement.
 internal val LocalRaftTooltipPreview = staticCompositionLocalOf { false }
 
 /**
+ * The physical side of its anchor a [RaftTooltip] opens on, beside it and centred on it, with
+ * the caret on the bubble's edge facing the anchor. It flips to the other side when the window
+ * has no room on this one. Not public API: [RaftSideActionColumn] sets it so its tooltips open
+ * toward the content, never off the screen edge the column stands on.
+ */
+internal enum class RaftTooltipSide { Left, Right }
+
+/** See [RaftTooltipSide]; null (the default) opens above the anchor, below without room. */
+internal val LocalRaftTooltipSide = staticCompositionLocalOf<RaftTooltipSide?> { null }
+
+/**
  * Waits out a long-press tooltip's [RaftTooltipMetrics.TouchDuration] before it closes
  * (`delay`). Tests swap in a gate they release, as the scene's effect dispatcher takes its
  * delays from the wall clock, not `mainClock`. A mouse-opened tooltip never calls it.
@@ -117,6 +141,7 @@ fun RaftTooltip(
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
+    val side = LocalRaftTooltipSide.current
     val touchTimer = LocalRaftTooltipTouchTimer.current
     val colors = RaftTheme.colors
     // Persistent: open until dismissed. The touch path bounds it with a timeout.
@@ -125,29 +150,56 @@ fun RaftTooltip(
     // TooltipBox puts [modifier] on an inner box, where parent-data modifiers (`align`,
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
     Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
+        val label: @Composable () -> Unit = {
+            RaftText(
+                text = text,
+                modifier = Modifier.padding(horizontal = RaftTooltipMetrics.ExtraPaddingX),
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                color = colors.foregroundOnHud,
+            )
+        }
+        val density = LocalDensity.current
+        val sideProvider =
+            if (side == null) {
+                null
+            } else {
+                remember(side, density) {
+                    RaftTooltipSidePositionProvider(side, with(density) { RaftTooltipMetrics.AnchorSpacing.roundToPx() })
+                }
+            }
         TooltipBox(
             positionProvider =
-                when (placement) {
-                    RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
-                    // Material's own Below provider: its caret follows the side it picks.
-                    RaftTooltipPlacement.Below ->
-                        TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
-                },
+                sideProvider
+                    ?: when (placement) {
+                        RaftTooltipPlacement.Above -> TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing)
+                        // Material's own Below provider: its caret follows the side it picks.
+                        RaftTooltipPlacement.Below ->
+                            TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below, RaftTooltipMetrics.AnchorSpacing)
+                    },
             tooltip = {
-                PlainTooltip(
-                    modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
-                    // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
-                    // TooltipDefaults.caretShape(size) draws the same triangle.
-                    caretShape = TooltipDefaults.caretShape(RaftTooltipMetrics.CaretSize),
-                    shape = RoundedCornerShape(RaftRadius.Chip),
-                    contentColor = colors.foregroundOnHud,
-                    containerColor = colors.layerHud,
-                ) {
-                    RaftText(
-                        text = text,
-                        modifier = Modifier.padding(horizontal = RaftTooltipMetrics.ExtraPaddingX),
-                        style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-                        color = colors.foregroundOnHud,
+                if (sideProvider == null) {
+                    PlainTooltip(
+                        modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
+                        // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
+                        // TooltipDefaults.caretShape(size) draws the same triangle.
+                        caretShape = TooltipDefaults.caretShape(RaftTooltipMetrics.CaretSize),
+                        shape = RoundedCornerShape(RaftRadius.Chip),
+                        contentColor = colors.foregroundOnHud,
+                        containerColor = colors.layerHud,
+                        content = label,
+                    )
+                } else {
+                    // Material's caret only points up or down: no caret of its own here, ours
+                    // is drawn on the edge facing the anchor, on whichever side it opened.
+                    PlainTooltip(
+                        modifier =
+                            Modifier
+                                .raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip)
+                                .raftSideCaret(sideProvider, colors.layerHud),
+                        shape = RoundedCornerShape(RaftRadius.Chip),
+                        contentColor = colors.foregroundOnHud,
+                        containerColor = colors.layerHud,
+                        content = label,
                     )
                 }
             },
@@ -160,6 +212,79 @@ fun RaftTooltip(
         )
     }
 }
+
+/**
+ * Places a tooltip beside its anchor ([RaftTooltipSide]); [resolved] is the side it took (it
+ * flips without room), read by the caret's draw.
+ */
+private class RaftTooltipSidePositionProvider(
+    private val preferred: RaftTooltipSide,
+    private val spacing: Int,
+) : PopupPositionProvider {
+    var resolved by mutableStateOf(preferred)
+        private set
+
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val (offset, side) = raftTooltipSidePosition(anchorBounds, windowSize, popupContentSize, spacing, preferred)
+        if (resolved != side) resolved = side
+        return offset
+    }
+}
+
+/**
+ * Where a [popup] beside [anchor] goes, [spacing] px from it on the [preferred] side, else on the
+ * other side when only that one has room; vertically centred on the anchor and kept inside the
+ * window. Returns the popup's top-left and the side it took.
+ */
+internal fun raftTooltipSidePosition(
+    anchor: IntRect,
+    window: IntSize,
+    popup: IntSize,
+    spacing: Int,
+    preferred: RaftTooltipSide,
+): Pair<IntOffset, RaftTooltipSide> {
+    val leftX = anchor.left - spacing - popup.width
+    val rightX = anchor.right + spacing
+    val fitsLeft = leftX >= 0
+    val fitsRight = rightX + popup.width <= window.width
+    val side =
+        when (preferred) {
+            RaftTooltipSide.Left -> if (!fitsLeft && fitsRight) RaftTooltipSide.Right else RaftTooltipSide.Left
+            RaftTooltipSide.Right -> if (!fitsRight && fitsLeft) RaftTooltipSide.Left else RaftTooltipSide.Right
+        }
+    val x = if (side == RaftTooltipSide.Left) leftX else rightX
+    val y = (anchor.top + (anchor.height - popup.height) / 2).coerceAtMost(window.height - popup.height).coerceAtLeast(0)
+    return IntOffset(x, y) to side
+}
+
+/**
+ * The tooltip's caret ([RaftTooltipMetrics.CaretSize], the same triangle turned on its side) in
+ * [color], hanging off the bubble's edge toward the anchor and centred on it, outside the
+ * bubble's bounds (as Material's own caret and the float shadow are).
+ */
+private fun Modifier.raftSideCaret(provider: RaftTooltipSidePositionProvider, color: Color): Modifier =
+    drawBehind {
+        val width = RaftTooltipMetrics.CaretSize.width.toPx()
+        val depth = RaftTooltipMetrics.CaretSize.height.toPx()
+        val cy = size.height / 2f
+        // The bubble is left of the anchor: the caret is on its right edge, pointing right.
+        val pointsRight = provider.resolved == RaftTooltipSide.Left
+        val base = if (pointsRight) size.width else 0f
+        val tip = if (pointsRight) base + depth else base - depth
+        val path =
+            Path().apply {
+                moveTo(base, cy - width / 2f)
+                lineTo(tip, cy)
+                lineTo(base, cy + width / 2f)
+                close()
+            }
+        drawPath(path, color)
+    }
 
 /** Opens [state] for [RaftTooltipMetrics.TouchDuration] (outside the restricted pointer scope). */
 @OptIn(ExperimentalMaterial3Api::class)
