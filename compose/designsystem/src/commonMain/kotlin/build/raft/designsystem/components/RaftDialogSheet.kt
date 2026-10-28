@@ -1,7 +1,6 @@
 package build.raft.designsystem.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -37,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -166,8 +166,6 @@ object RaftDialogSheetDefaults {
 /** True when a window [windowWidth] wide shows [RaftDialogSheet] as a centred dialog. */
 fun raftDialogSheetCentered(windowWidth: Dp): Boolean = windowWidth >= RaftDialogSheetDefaults.CenteredMinWindowWidth
 
-/** raft `--ease-slide`. */
-private val RaftDialogSheetEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 
 /**
  * raft-ui Dialog with several fields, a long list or steps.
@@ -264,7 +262,7 @@ private fun RaftDialogSheetBottom(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val slide = remember { Animatable(1f) }
-    LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftDialogSheetEase)) }
+    LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide)) }
     Box(
         Modifier
             .fillMaxSize()
