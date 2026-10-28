@@ -53,14 +53,14 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     // ---- gap catch-up -------------------------------------------------------------------------------
 
     @Test
-    fun aRealtimeWindowsLargeGapCatchUpReplacesTheWindowOnDisk() {
+    fun aRealtimeWindowsLargeGapCatchUpKeepsTheOldWindowAsAnIslandOnDisk() {
         val continuous = withFreshDatabase { database ->
             val rig = Rig(database)
             runBlocking {
                 rig.enter(pageOf(10L, 20L, 30L))
                 assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
                 rig.latest(pageOf(100L, 110L, 120L), limit = 3)
-                rig.assertReplacedTo100To120()
+                rig.assertIslandKeptAndHeadIs100To120()
                 assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
                 rig.coldStartSeqs()
             }
@@ -73,7 +73,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             runBlocking {
                 assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, rig.canary.continuityOf(scope))
                 rig.latest(pageOf(100L, 110L, 120L), limit = 3)
-                rig.assertReplacedTo100To120()
+                rig.assertIslandKeptAndHeadIs100To120()
                 rig.coldStartSeqs()
             }
         }
@@ -98,10 +98,11 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             assertEquals(paths, rig.networkPaths(), "no re-snapshot (task #168 step 3)")
             assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(scope))
 
-            // The user opens the channel: continuous again, the next frame appends.
+            // The user opens the channel: continuous again, the next frame appends. Its short page (4 < limit)
+            // proves nothing exists below it, so the older stored messages join the head range again.
             rig.enter(pageOf(100L, 110L, 120L, 130L))
             assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(140L))
-            assertEquals(listOf(100L, 110L, 120L, 130L, 140L), rig.coldStartSeqs())
+            assertEquals(listOf(10L, 20L, 30L, 40L, 100L, 110L, 120L, 130L, 140L), rig.coldStartSeqs())
         }
     }
 
@@ -115,12 +116,14 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             val snapshotsBefore = rig.store.snapshotWrites
             rig.enter(pageOf(50L, 60L))
             assertEquals(snapshotsBefore + 1, rig.store.snapshotWrites)
-            assertEquals(listOf(50L, 60L), rig.coldStartSeqs())
+            // Phase 2a: the second enter adds its page; its short page reaches the oldest, so the first page's
+            // messages are inside the same head range (never dropped by a rebaseline).
+            assertEquals(listOf(10L, 20L, 30L, 50L, 60L), rig.coldStartSeqs())
             assertTrue(rig.logs.any { it.startsWith("canonical_v2_enter_snapshot ") && "outcome=committed facts=2" in it }, rig.logs.toString())
             assertTrue(rig.logs.none { "canary_owned" in it }, rig.logs.toString())
 
             assertEquals(CanonicalMessageV2CanaryOutcome.Committed, rig.accept(70L))
-            assertEquals(listOf(50L, 60L, 70L), rig.coldStartSeqs())
+            assertEquals(listOf(10L, 20L, 30L, 50L, 60L, 70L), rig.coldStartSeqs())
         }
     }
 
@@ -191,6 +194,30 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         }
     }
 
+    @Test
+    fun anEnterWhosePageProvesNoRangeIsNoRealtimeBaseline() {
+        // Message storage Phase 2a. Pair: the same second enter (rows 100..120 over a stored 10..30) whose server
+        // window is usable ([100, 120]) or names another channel (no claim: the rows are stored loose). Only the
+        // proven page may become the realtime baseline; the unproven one must not continue the old head past
+        // the hole between 30 and 100.
+        fun run(windowScopeId: String) = withFreshDatabase { database ->
+            val rig = Rig(database)
+            runBlocking {
+                rig.enter(pageOf(10L, 20L, 30L))
+                rig.enter(pageOf(100L, 110L, 120L), window = channelWindow(99, 120, scopeId = windowScopeId))
+                Triple(rig.canary.continuityOf(scope), rig.accept(130L), rig.store.readSegments(scope).map { it.lowSeq to it.highSeq })
+            }
+        }
+        assertEquals(
+            Triple(CanonicalMessageV2ScopeContinuity.Continuous, CanonicalMessageV2CanaryOutcome.Committed, listOf(10L to 30L, 100L to 130L)),
+            run("channel-1"),
+        )
+        val (continuity, outcome, segments) = run("channel-2")
+        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, continuity)
+        assertEquals(CanonicalMessageV2CanaryOutcome.NotSelected, outcome)
+        assertEquals(listOf(10L to 30L), segments, "no claim over the hole")
+    }
+
     // ---- log lines --------------------------------------------------------------------------------------
 
     @Test
@@ -203,9 +230,9 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
             rig.enter(pageOf(10L, 20L, 30L))
             rig.latest(pageOf(100L, 110L, 120L), limit = 3)
         }
-        val (tag, line) = lines.single { "window_replaced" in it.second }
+        val (tag, line) = lines.single { "island_kept" in it.second }
         assertEquals("CanonicalMessageV2AdjacentPage", tag)
-        assertTrue(line.startsWith("canonical_v2_latest_page server=server-1 scope=channel-1 outcome=window_replaced "), line)
+        assertTrue(line.startsWith("canonical_v2_latest_page server=server-1 scope=channel-1 outcome=island_kept "), line)
         assertFalse("canonical_v2_adjacent_page" in line, line)
     }
 
@@ -262,9 +289,10 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         }
 
         /** The user opens channel-1 and the server answers [rawMessages] (after [gate], when given). */
-        suspend fun enter(rawMessages: JsonArray, gate: CompletableDeferred<Unit>? = null) {
+        suspend fun enter(rawMessages: JsonArray, gate: CompletableDeferred<Unit>? = null, window: ChannelMessageWindow? = null) {
             if (!connected) connect(1L)
-            val body = """{"messages":$rawMessages,"historyLimited":false}"""
+            val windowField = window?.let { ""","messageWindow":${channelWindowJson(it)}""" }.orEmpty()
+            val body = """{"messages":$rawMessages,"historyLimited":false$windowField}"""
             val network = RecordingNetworkClient(body).also { it.pageGate = gate; networks += it }
             CanonicalMessageV2EnteredScopeLoader(
                 canary = canary,
@@ -296,9 +324,12 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
 
         suspend fun coldStartCursor(): PersistedCursor? = coldStartReader().read(partition, "channel-1")?.cursor
 
-        fun assertReplacedTo100To120() {
-            val replaced = logs.single { "canonical_v2_latest_page" in it && "window_replaced" in it }
-            assertTrue("old=10..30 oldFacts=3 new=100..120 committed facts=3" in replaced, replaced)
+        /** Phase 2a: the old window is not replaced; it stays on disk below the page's head range. */
+        suspend fun assertIslandKeptAndHeadIs100To120() {
+            val kept = logs.single { "canonical_v2_latest_page" in it && "island_kept" in it }
+            assertTrue("new=100..120 committed facts=3" in kept, kept)
+            val onDisk = store.restore(scope).envelopes.map { it.fact.seq }.sorted()
+            assertEquals(listOf(10L, 20L, 30L, 100L, 110L, 120L), onDisk, "nothing stored is dropped")
         }
 
         private fun input(seq: Long) = CanonicalMessageFoldInput(
@@ -343,6 +374,24 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         override suspend fun baselinedScopeKinds(partition: DurablePartitionKey, scopeId: SyncScopeId): List<String> =
             delegate.baselinedScopeKinds(partition, scopeId)
         override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = delegate.readCursor(scope)
+        override suspend fun readSegments(scope: SyncScopeKey) = delegate.readSegments(scope)
+        override suspend fun maxLocalRev(partition: DurablePartitionKey): Long = delegate.maxLocalRev(partition)
+
+        /** Since message storage Phase 2a the enter / catch-up page is a coverage write: counted with the snapshots. */
+        override suspend fun applyCoverage(
+            scope: SyncScopeKey,
+            envelopes: List<build.raft.app.network.sync.CanonicalMessageEnvelopeV2>,
+            coverage: build.raft.app.network.sync.CanonicalMessageV2Coverage?,
+            revAtRequest: Long,
+            userDriven: Boolean,
+            threadParent: build.raft.app.network.sync.CanonicalMessageV2ThreadParent?,
+            insertOnly: Boolean,
+            unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
+            runPartitionRetention: Boolean,
+        ): CanonicalMessageV2StoreWriteResult {
+            snapshotWrites += 1
+            return delegate.applyCoverage(scope, envelopes, coverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId, runPartitionRetention)
+        }
     }
 
     private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {

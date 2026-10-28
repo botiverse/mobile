@@ -5,6 +5,7 @@ import build.raft.app.SharedThreadStoreTest.Companion.message
 import build.raft.app.SharedThreadStoreTest.Companion.threadSnapshot
 import build.raft.app.SharedThreadStoreTestFixtures.member
 import build.raft.app.data.AddChannelMemberRequest
+import build.raft.app.data.ChannelMessageWindow
 import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.AddChannelMembersBatchResult
 import build.raft.app.data.AgentActivitySnapshot
@@ -165,10 +166,12 @@ internal object SharedThreadStoreTestFakes {
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
             baseline: CanonicalMessageV2EnterBaseline?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
             stillCurrent: () -> Boolean,
         ) {
             baselineEvents += "apply:${baseline != null}"
-            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, stillCurrent)
+            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, stillCurrent)
         }
 
         override suspend fun applyLatestPage(
@@ -177,6 +180,8 @@ internal object SharedThreadStoreTestFakes {
             rawMessages: JsonArray,
             requestedLimit: Int,
             replyParent: ThreadDurableReplyParent?,
+            messageWindow: ChannelMessageWindow?,
+            historyLimited: Boolean,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent

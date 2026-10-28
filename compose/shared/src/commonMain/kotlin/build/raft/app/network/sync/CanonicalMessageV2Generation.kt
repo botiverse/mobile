@@ -161,11 +161,11 @@ interface CanonicalMessageV2Store {
     suspend fun readSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> = emptyList()
 
     /**
-     * The current fact write revision of the scope's partition (0 = none yet). It only grows: no prune and
+     * The current fact write revision of [partition] (0 = none yet). It only grows: no prune and
      * no clear — scope or whole partition (server-access loss, revoke) — lowers or resets it. Read it before a
      * request and pass it as revAtRequest.
      */
-    suspend fun maxLocalRev(scope: SyncScopeKey): Long = 0L
+    suspend fun maxLocalRev(partition: DurablePartitionKey): Long = 0L
 }
 
 /** The parent a reply-thread scope's header names (its cursor's parent columns). */
@@ -341,6 +341,9 @@ class CanonicalMessageV2GenerationEngine(
         establishesBaseline: Boolean = false,
     ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
+        // Only a page proven to reach the scope's newest message can be the realtime baseline: anything else would
+        // let realtime appends extend a claim over messages between the page and the head.
+        require(!establishesBaseline || coverage?.headAtVerify == true) { "a realtime baseline needs a head coverage" }
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
@@ -358,9 +361,15 @@ class CanonicalMessageV2GenerationEngine(
     }
 
     /** Pass-through of [CanonicalMessageV2Store.maxLocalRev]: read it before a request (revAtRequest). */
-    suspend fun storedLocalRev(scope: SyncScopeKey): Long {
+    suspend fun storedLocalRev(partition: DurablePartitionKey): Long {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        return store.maxLocalRev(partition)
+    }
+
+    /** Pass-through of [CanonicalMessageV2Store.readSegments]; reads only, no coordinator effect. */
+    suspend fun storedSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> {
         requireV2Scope(scope)
-        return store.maxLocalRev(scope)
+        return store.readSegments(scope)
     }
 
     suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
@@ -521,9 +530,23 @@ internal class SqlDelightCanonicalMessageV2Store(
         var committedCursor: PersistedCursor? = null
         database.transaction {
             val header = selectHeader(scope)
-            val stored = header?.toPersistedCursor()
-            if (stored != null && threadParent != null && stored.threadParent() != threadParent) {
+            val storedHeader = header?.toPersistedCursor()
+            val storedParent = storedHeader?.threadParent()
+            if (
+                storedParent != null && threadParent != null &&
+                (storedParent.parentScopeId != threadParent.parentScopeId || storedParent.rootMessageId != threadParent.rootMessageId)
+            ) {
+                // Never re-parented: a thread under another parent channel or root is another thread.
                 throw CanonicalMessageV2ScopePoisoned(scope)
+            }
+            // The same parent whose kind changed on the server (e.g. a channel made private): a user-driven page
+            // writer's server-confirmed kind wins, as a snapshot's cursor used to. A realtime (not user-driven)
+            // writer only names the kind its frame claimed — possibly stale — so it never changes the stored kind
+            // (the canary decides a reply thread's continuity from it); its fact is still stored.
+            val stored = if (userDriven && storedParent != null && threadParent != null && storedParent != threadParent) {
+                storedHeader.copy(parentScopeKind = threadParent.parentScopeKind)
+            } else {
+                storedHeader
             }
             val base = stored ?: PersistedCursor(
                 latestSeq = null,
@@ -536,7 +559,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 parentScopeId = threadParent?.parentScopeId,
                 rootMessageId = threadParent?.rootMessageId,
             )
-            requireCursorMatchesScope(scope, base, envelopes)
+            requireCursorMatchesScope(scope, base, envelopes, checkParentKind = userDriven)
             // 1. Facts. A fact rewritten after the request started is newer than the page: it stays.
             val localRev = if (envelopes.isEmpty()) 0L else nextLocalRevInsideTransaction(scope.partition)
             envelopes.forEach { incoming ->
@@ -927,9 +950,9 @@ internal class SqlDelightCanonicalMessageV2Store(
         return oldest to newest
     }
 
-    override suspend fun maxLocalRev(scope: SyncScopeKey): Long {
-        requireV2Scope(scope)
-        return selectLocalRevInsideTransaction(scope.partition)
+    override suspend fun maxLocalRev(partition: DurablePartitionKey): Long {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        return selectLocalRevInsideTransaction(partition)
     }
 
     override suspend fun readSegments(scope: SyncScopeKey): List<CanonicalMessageV2Segment> {
@@ -1593,7 +1616,7 @@ private fun requireUnknownFieldsInFrame(
     ) { "unknown V2 aggregates outside the allowed set or the frame" }
 }
 
-private fun PersistedCursor.threadParent(): CanonicalMessageV2ThreadParent? {
+internal fun PersistedCursor.threadParent(): CanonicalMessageV2ThreadParent? {
     val kind = parentScopeKind ?: return null
     val id = parentScopeId ?: return null
     val root = rootMessageId ?: return null
@@ -1616,6 +1639,8 @@ private fun requireCursorMatchesScope(
     scope: SyncScopeKey,
     cursor: PersistedCursor,
     envelopes: List<CanonicalMessageEnvelopeV2>,
+    /** `false` for a realtime loose write: a frame may name a stale parent KIND; id and root must still match. */
+    checkParentKind: Boolean = true,
 ) {
     if (scope.scopeKind != "thread") {
         if (cursor.parentScopeKind != null || cursor.parentScopeId != null || cursor.rootMessageId != null) {
@@ -1633,7 +1658,7 @@ private fun requireCursorMatchesScope(
         val context = envelope.context as? CanonicalConversationContextV2.Thread
             ?: throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)
         if (
-            context.parentTopLevelScope.scopeKind != parentKind ||
+            (checkParentKind && context.parentTopLevelScope.scopeKind != parentKind) ||
             context.parentTopLevelScope.scopeId != parentScopeId ||
             context.rootMessageRef.messageId != rootMessageId
         ) throw CanonicalMessageV2ScopePoisoned(scope, envelope.fact.id)

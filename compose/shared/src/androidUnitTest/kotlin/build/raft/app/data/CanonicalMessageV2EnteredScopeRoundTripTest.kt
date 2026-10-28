@@ -83,9 +83,9 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
     }
 
     @Test
-    fun emptyChannelIsReadableOfflineAsEmptyAndALaterPageReplacesIt() = withFreshDatabase { database ->
+    fun emptyChannelIsReadableOfflineAsEmptyAndALaterPageFillsIt() = withFreshDatabase { database ->
         // Task #1137 on the real schema: an empty page is committed, read back as an empty frame, and a
-        // later entry with messages rebaselines it.
+        // later entry with messages fills it (message storage Phase 2a: added, never a rebaseline).
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
         val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
@@ -115,9 +115,9 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
             assertEquals(listOf("message-1"), filled.envelopes.map { it.fact.id })
             assertEquals(7L, filled.cursor.latestSeq)
 
-            // And the reverse: a channel whose messages are all gone reads empty again, not the old facts.
+            // An empty page never erases a stored message (the server deletes none; Phase 2a: no absence deletion).
             loaderFor("""{"messages":[],"historyLimited":false}""").loadOnEnter(partition, "channel-1") { true }
-            assertEquals(emptyList(), assertNotNull(reader.read(partition, "channel-1")).envelopes)
+            assertEquals(listOf("message-1"), assertNotNull(reader.read(partition, "channel-1")).envelopes.map { it.fact.id })
         }
     }
 

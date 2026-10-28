@@ -63,10 +63,10 @@ class CanonicalMessageV2SegmentStoreTest {
     @Test
     fun aFactRewrittenAfterTheRequestStartedIsKeptAndAnOlderOneIsOverwritten() = withStore { store, _ ->
         store.cover(listOf(1L), coverage = null, content = "a")
-        assertEquals(1L, store.maxLocalRev(scope))
-        val revAtStaleRequest = store.maxLocalRev(scope)
-        store.cover(listOf(1L), coverage = null, content = "c", revAtRequest = store.maxLocalRev(scope))
-        assertEquals(2L, store.maxLocalRev(scope))
+        assertEquals(1L, store.maxLocalRev(scope.partition))
+        val revAtStaleRequest = store.maxLocalRev(scope.partition)
+        store.cover(listOf(1L), coverage = null, content = "c", revAtRequest = store.maxLocalRev(scope.partition))
+        assertEquals(2L, store.maxLocalRev(scope.partition))
         // The stale page (requested at rev 1) arrives after the rev-2 write: the newer fact stays.
         store.cover(listOf(1L), coverage = null, content = "b", revAtRequest = revAtStaleRequest)
         assertEquals("c", store.content(1))
@@ -78,9 +78,9 @@ class CanonicalMessageV2SegmentStoreTest {
     @Test
     fun theWriteRevisionNeverGoesBackWhenTheScopeIsCleared() = withStore { store, _ ->
         store.cover(1..3L, coverage = null, content = "a")
-        val revAtStaleRequest = store.maxLocalRev(scope)
+        val revAtStaleRequest = store.maxLocalRev(scope.partition)
         CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { }.clearScope(scope)
-        assertEquals(revAtStaleRequest, store.maxLocalRev(scope), "a scope clear never lowers the revision")
+        assertEquals(revAtStaleRequest, store.maxLocalRev(scope.partition), "a scope clear never lowers the revision")
         store.cover(listOf(1L), coverage = null, content = "live")
         // A page fetched before the clear and the live write must not overwrite the live fact.
         store.cover(listOf(1L), coverage = null, content = "stale", revAtRequest = revAtStaleRequest)
@@ -91,10 +91,10 @@ class CanonicalMessageV2SegmentStoreTest {
     fun theWriteRevisionSurvivesAPartitionClear() = withStore { store, _ ->
         store.cover(listOf(1L, 2L), coverage = null, content = "a")
         store.cover(listOf(1L), coverage = null, content = "a2")
-        val revAtStaleRequest = store.maxLocalRev(scope)
+        val revAtStaleRequest = store.maxLocalRev(scope.partition)
         // Server-access loss / revoke clears the whole partition while the request is in flight.
         store.clearPartition(partition)
-        assertEquals(revAtStaleRequest, store.maxLocalRev(scope), "a partition clear never resets the revision")
+        assertEquals(revAtStaleRequest, store.maxLocalRev(scope.partition), "a partition clear never resets the revision")
         store.cover(listOf(1L), coverage = null, content = "live")
         store.cover(listOf(1L), coverage = null, content = "stale", revAtRequest = revAtStaleRequest)
         assertEquals("live", store.content(1))
@@ -104,7 +104,7 @@ class CanonicalMessageV2SegmentStoreTest {
     fun theEngineRefusesACoverageWriteFromBeforeAPartitionClear() = withStore { store, _ ->
         val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { }
         val generation = engine.partitionGeneration(partition)
-        val rev = engine.storedLocalRev(scope)
+        val rev = engine.storedLocalRev(partition)
         engine.clearPartition(partition)
         assertEquals(
             CanonicalMessageV2CommitResult.PartitionRevoked,
@@ -138,6 +138,67 @@ class CanonicalMessageV2SegmentStoreTest {
         )
         assertEquals(listOf(scope), observed)
         assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applyIncremental(incremental, generation))
+    }
+
+    @Test
+    fun aBaselineNeedsAHeadCoverage() = withStore { store, _ ->
+        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), store) { }
+        val generation = engine.partitionGeneration(partition)
+        // Same page, same range: only the head proof differs.
+        assertFailsWith<IllegalArgumentException> {
+            engine.applyCoverage(
+                scope, listOf(envelope(2)), CanonicalMessageV2Coverage(1, 2, true, headAtVerify = false, Latest), 0L, true,
+                generation, establishesBaseline = true,
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.applyCoverage(scope, listOf(envelope(2)), null, 0L, true, generation, establishesBaseline = true)
+        }
+        assertTrue(store.ids().isEmpty(), "a refused baseline writes nothing")
+        assertEquals(
+            CanonicalMessageV2CommitResult.Committed,
+            engine.applyCoverage(
+                scope, listOf(envelope(2)), CanonicalMessageV2Coverage(1, 2, true, headAtVerify = true, Latest), 0L, true,
+                generation, establishesBaseline = true,
+            ),
+        )
+    }
+
+    @Test
+    fun onlyAPageWriterChangesAThreadsParentKindALooseWriteKeepsTheStoredOne() {
+        // Pair: the stored thread header says the parent is `private`; a reply arrives naming parent kind `channel`
+        // (e.g. a stale realtime frame). A loose (realtime, not user-driven) write stores the reply and keeps
+        // `private`; a page (user-driven, server-confirmed) write with the same reply takes `channel`.
+        val thread = SyncScopeKey(partition, "thread-a", "thread")
+        fun reply(seq: Long) = CanonicalMessageEnvelopeV2(
+            fact = envelope(seq).fact,
+            context = CanonicalConversationContextV2.Thread(
+                replyScope = ReplyScopeRefV2("server-a", "thread-a"),
+                parentTopLevelScope = TopLevelScopeRefV2.Channel("server-a", "channel-a"),
+                rootMessageRef = MessageRefV2("server-a", "root-1"),
+            ),
+            replyMembership = ReplyMembershipV2(
+                root = MessageRefV2("server-a", "root-1"),
+                parentScope = ReplyScopeRefV2("server-a", "thread-a"),
+            ),
+        )
+        fun run(userDriven: Boolean): Pair<String?, List<String>> {
+            var result: Pair<String?, List<String>>? = null
+            withStore { store, _ ->
+                store.applyCoverage(
+                    thread, emptyList(), CanonicalMessageV2Coverage(0, 0, true, true, Latest), 0L, userDriven = true,
+                    threadParent = CanonicalMessageV2ThreadParent("private", "channel-a", "root-1"),
+                )
+                store.applyCoverage(
+                    thread, listOf(reply(5)), null, store.maxLocalRev(partition), userDriven = userDriven,
+                    threadParent = CanonicalMessageV2ThreadParent("channel", "channel-a", "root-1"),
+                )
+                result = store.readCursor(thread)?.parentScopeKind to store.ids(thread)
+            }
+            return result!!
+        }
+        assertEquals("private" to listOf(id(5)), run(userDriven = false))
+        assertEquals("channel" to listOf(id(5)), run(userDriven = true))
     }
 
     @Test
@@ -187,6 +248,12 @@ class CanonicalMessageV2SegmentStoreTest {
         assertFailsWith<CanonicalMessageV2ScopePoisoned> {
             store.applyCoverage(thread, emptyList(), null, 0L, userDriven = true, threadParent = parent.copy(rootMessageId = "root-2"))
         }
+        assertFailsWith<CanonicalMessageV2ScopePoisoned> {
+            store.applyCoverage(thread, emptyList(), null, 0L, userDriven = true, threadParent = parent.copy(parentScopeId = "channel-b"))
+        }
+        // The same parent made private on the server: the writer's server-confirmed kind wins (never stuck).
+        store.applyCoverage(thread, emptyList(), null, 0L, userDriven = true, threadParent = parent.copy(parentScopeKind = "private"))
+        assertEquals("private", store.readCursor(thread)!!.parentScopeKind)
     }
 
     @Test
@@ -424,12 +491,12 @@ class CanonicalMessageV2SegmentStoreTest {
                             assertEquals((1..3L).map(::id), store.ids())
                             assertEquals(listOf(1L to 3L), segments)
                             assertEquals(PersistedCursor(3, 1, 3, hasLoadedOldest = true, hasLoadedNewest = false), cursor)
-                            assertEquals(1L, store.maxLocalRev(scope))
+                            assertEquals(1L, store.maxLocalRev(scope.partition))
                         } else {
                             assertEquals((1..6L).map(::id), store.ids())
                             assertEquals(listOf(1L to 6L), segments)
                             assertEquals(PersistedCursor(6, 1, 6, hasLoadedOldest = true, hasLoadedNewest = true), cursor)
-                            assertEquals(2L, store.maxLocalRev(scope))
+                            assertEquals(2L, store.maxLocalRev(scope.partition))
                         }
                     }
                     driver.close()
@@ -471,7 +538,7 @@ class CanonicalMessageV2SegmentStoreTest {
         scope = target,
         envelopes = seqs.map { envelope(it, content, target.scopeId) },
         coverage = coverage,
-        revAtRequest = revAtRequest ?: maxLocalRev(target),
+        revAtRequest = revAtRequest ?: maxLocalRev(target.partition),
         userDriven = userDriven,
     ).evictedScopes
 

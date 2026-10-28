@@ -56,7 +56,15 @@ sealed interface CanonicalMessageV2CanaryOutcome {
 
 /** Result of one server page fetch (enter snapshot, reply-thread snapshot). */
 sealed interface CanonicalMessageV2SnapshotLoadResult {
-    data class Loaded(val frame: CanonicalMessageV2SnapshotFrame) : CanonicalMessageV2SnapshotLoadResult
+    /**
+     * [coverage] (message storage Phase 2a): the seq range the page proves — from the server `messageWindow`
+     * when the page has one, else the legacy latest-page claim; `null` = the page proves no range (its facts
+     * are still stored).
+     */
+    data class Loaded(
+        val frame: CanonicalMessageV2SnapshotFrame,
+        val coverage: CanonicalMessageV2Coverage? = null,
+    ) : CanonicalMessageV2SnapshotLoadResult
     data class Unavailable(val diagnostic: String) : CanonicalMessageV2SnapshotLoadResult
 }
 
@@ -1299,7 +1307,9 @@ internal class CanonicalMessageV2ProductionCanary(
                 return discontinuous("parent_mismatch")
             }
             if (snapshotLatestSeq != null && seq <= snapshotLatestSeq) {
-                if (input.row.id in snapshotFactIds) {
+                // Message storage Phase 2a: the committed page may have joined older stored ranges, so a fact the
+                // page lacks can still be on disk (a redelivery of a stored message): same as on the page.
+                if (input.row.id in snapshotFactIds || generationEngine.storedFactExists(scope, input.row.id)) {
                     // The snapshot already holds it: never written twice.
                     stateMutex.withLock { state.recordCommitted(delivery) }
                     continue
