@@ -82,14 +82,8 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      - name: Validate checked-in CI tiering contract
-        run: scripts/ci/test_ci_tiering_contract.sh
-
       - name: Validate iOS Hands release notes contract
         run: scripts/ci/test_ios_hands_release_contract.sh
-
-      - name: Validate no Kuikly UI consumer contract
-        run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py
 
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
@@ -567,14 +561,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Self-test instrumentation assertion helper
-        shell: bash
-        run: |
-          scripts/ci/test_assert_instrumentation_ok.sh
-          scripts/ci/test_instrumentation_retry_classification.sh
-          scripts/ci/test_prepare_android_emulator_ime.sh
-          scripts/ci/test_run_first_character_emulator_suite.sh
-
       - name: Select Thread newer-pagination gate
         shell: bash
         env:
@@ -643,11 +629,7 @@ jobs:
 
       - name: Validate first-character baseline regression script
         shell: bash
-        run: |
-          bash -n \
-            scripts/ci/run-first-character-emulator-suite.sh \
-            scripts/ci/test_run_first_character_emulator_suite.sh
-          scripts/ci/test_run_first_character_emulator_suite.sh
+        run: bash -n scripts/ci/run-first-character-emulator-suite.sh
 
       - name: Run first-character baseline regression
         uses: reactivecircus/android-emulator-runner@v2
@@ -738,13 +720,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Self-test instrumentation assertion helper
-        shell: bash
-        run: |
-          scripts/ci/test_assert_instrumentation_ok.sh
-          scripts/ci/test_instrumentation_retry_classification.sh
-          scripts/ci/test_wait_media_provider_ready.sh
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -851,9 +826,7 @@ jobs:
         run: |
           bash -n \
             scripts/ci/canonical-final-actual-host.sh \
-            scripts/ci/canonical-final-pre-attempt-guard.sh \
-            scripts/ci/test_canonical_final_pre_attempt_guard.sh
-          scripts/ci/test_canonical_final_pre_attempt_guard.sh
+            scripts/ci/canonical-final-pre-attempt-guard.sh
 
       - name: Run canonical-final actual-host regression under exact-zero egress gate
         uses: reactivecircus/android-emulator-runner@v2

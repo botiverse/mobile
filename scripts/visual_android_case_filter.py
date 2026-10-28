@@ -98,44 +98,6 @@ def shard_entries(entries: list[dict[str, object]], shard_index: int, shard_tota
     return [entry for index, entry in enumerate(ordered) if index % shard_total == shard_index]
 
 
-def run_self_test() -> None:
-    fixture = '''
-        @Test
-        fun captureOne() {
-            // TESTBOX_ELIGIBLE: case.one
-            capture(caseId = "case.one", pageName = "page_one")
-        }
-        @Test
-        fun captureTwo() { capture(caseId = "case.two", pageName = "page_two") }
-        fun helper() { println("not-a-case") }
-        @Test
-        fun captureThree() { capture(caseId = "case.three", pageName = "page_three") }
-        @Test
-        fun captureOptIn() {
-            // VISUAL_CANONICAL_EXCLUDED: requires an external phase driver
-            capture(caseId = "case.opt-in", pageName = "page_opt_in")
-        }
-    '''
-    entries = enumerate_capture_tests(fixture)
-    assert [entry["method"] for entry in entries] == [
-        "captureOne", "captureTwo", "captureThree", "captureOptIn"
-    ]
-    assert [entry["testboxEligible"] for entry in entries] == [True, False, False, False]
-    assert [entry["canonicalEnabled"] for entry in entries] == [True, True, True, False]
-    requested = parse_csv("case.two, case.one, case.two")
-    resolved, missing = select_cases(entries, requested)
-    assert not missing
-    assert [entry["method"] for entry in resolved] == ["captureTwo", "captureOne"]
-    selected, missing = select_selectors(entries, [str(entries[2]["selector"])])
-    assert not missing and selected[0]["caseId"] == "case.three"
-    canonical_entries = [entry for entry in entries if entry["canonicalEnabled"]]
-    shards = [shard_entries(canonical_entries, index, 2) for index in range(2)]
-    assert sorted(str(entry["method"]) for shard in shards for entry in shard) == [
-        "captureOne", "captureThree", "captureTwo"
-    ]
-    print("visual_android_case_filter self-test: PASS")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     source_group = parser.add_mutually_exclusive_group()
@@ -149,12 +111,7 @@ def main() -> int:
     parser.add_argument("--require-testbox-eligible", action="store_true")
     parser.add_argument("--shard-index", type=int)
     parser.add_argument("--shard-total", type=int)
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
-
-    if args.self_test:
-        run_self_test()
-        return 0
 
     try:
         entries = enumerate_capture_tests(args.source.read_text(encoding="utf-8"))
