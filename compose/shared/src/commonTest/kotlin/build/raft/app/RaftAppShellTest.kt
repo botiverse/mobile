@@ -541,6 +541,66 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun appShellSecondForegroundOfTheSameAppearanceRefreshesAgain() {
+        // Hands f6c3f3a6 (iOS 1.17.0): show (epoch 6) and hide 130 ms later, then the app stayed
+        // suspended for 1h44m; the next show (epoch 7) logged `same_appearance_or_foreground_epoch`
+        // and Activity kept the old rows. No page appearance happened between the two shows.
+        var now = 0L
+        val gate = AppShellVisibleRefreshGate(nowEpochMillis = { now })
+        assertTrue(
+            gate.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 3, target = "activity:", foregroundEpoch = 5L)
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 3, foregroundEpoch = 5L)
+        now += 1_000L
+        assertTrue(
+            gate.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 3, target = "activity:", foregroundEpoch = 6L)
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 3, foregroundEpoch = 6L)
+        now += 130L
+
+        assertTrue(
+            gate.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 3, target = "activity:", foregroundEpoch = 7L),
+            "the second process foreground over the same appearance refreshes"
+        )
+        assertEquals("repeated_foreground_same_appearance", gate.lastDecisionCause)
+        // The same foreground's duplicate show / pageDidAppear still coalesce.
+        assertFalse(
+            gate.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 3, target = "activity:", foregroundEpoch = 7L)
+        )
+        assertFalse(gate.shouldRefresh(AppShellVisibleRefreshSignal.PageDidAppear, appearanceGeneration = 4, target = "activity:"))
+    }
+
+    @Test
+    fun appShellResumeLongAfterTheLastRefreshAlwaysRefreshes() {
+        fun gateRefreshedByAppearance(clock: () -> Long): AppShellVisibleRefreshGate =
+            AppShellVisibleRefreshGate(nowEpochMillis = clock).also { gate ->
+                // pageDidAppear refreshed the route before the lifecycle show reported its epoch.
+                assertTrue(gate.shouldRefresh(AppShellVisibleRefreshSignal.PageDidAppear, appearanceGeneration = 2, target = "activity:"))
+            }
+
+        var now = 1_000_000L
+        val soon = gateRefreshedByAppearance { now }
+        now += 500L
+        assertFalse(
+            soon.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 2, target = "activity:", foregroundEpoch = 2L),
+            "a show right after the appearance refresh coalesces with it"
+        )
+
+        now = 1_000_000L
+        val late = gateRefreshedByAppearance { now }
+        now += 2 * 60 * 60 * 1_000L
+        assertTrue(
+            late.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 2, target = "activity:", foregroundEpoch = 2L),
+            "a resume 2h after the last refresh refreshes the visible route"
+        )
+        assertEquals("stale_since_last_refresh", late.lastDecisionCause)
+        assertFalse(
+            late.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 2, target = "activity:", foregroundEpoch = 2L),
+            "once per foreground"
+        )
+    }
+
+    @Test
     fun appShellPageAppearanceConsumesANewProcessEpochMissedWhileHidden() {
         val gate = AppShellVisibleRefreshGate()
 

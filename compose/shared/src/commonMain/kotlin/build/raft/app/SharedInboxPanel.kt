@@ -689,6 +689,16 @@ internal data class ActivityRefreshPresentation(
  * The tag/prefix are the ones `SettingsHomePage` already shipped, so wiring the
  * previously-unlogged call site does not change what existing consumers grep.
  */
+private val activityPullDiagnosticsLogger: (String) -> Unit by lazy { sharedActivityStoreDiagnosticsLogger() }
+
+/**
+ * Hands f6c3f3a6: a pull released past the threshold that started no refresh is logged with its
+ * reason (see RaftPullToRefreshController.onPullIgnored); before, such a pull left no line at all.
+ */
+internal fun logActivityPullIgnored(reason: String) {
+    activityPullDiagnosticsLogger("store_load domain=activity phase=pull_ignored reason=$reason source=pull_indicator")
+}
+
 internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
     val delegate = raftLogger("SlockHomeActivity", "shared_home_activity")
     return { message -> delegate(stampSharedActivityDiagnosticsSequence(message)) }
@@ -2024,6 +2034,7 @@ private fun SharedActivityList(
             isRefreshing = pullRefreshing,
             onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
             modifier = Modifier.fillMaxSize(),
+            onPullIgnored = ::logActivityPullIgnored,
         ) {
             // A touch while the list still flings only stops it: neither a row's swipe nor the filter
             // pager takes that gesture (artin, #proj-mobile:34aed863; iOS / RecyclerView behaviour).
@@ -2664,6 +2675,7 @@ private fun SharedActivityRefreshableStateBody(
         isRefreshing = pullRefreshing,
         onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
+        onPullIgnored = ::logActivityPullIgnored,
     ) {
         LazyColumn(
             state = listState,

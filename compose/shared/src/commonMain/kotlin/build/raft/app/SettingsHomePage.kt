@@ -460,6 +460,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlin.time.Clock
 import kotlin.time.TimeSource
 import build.raft.app.model.isExternalAgent
 
@@ -1436,7 +1437,23 @@ internal data class AppShellVisibleRefreshKey(
     val target: String
 )
 
-internal class AppShellVisibleRefreshGate {
+/**
+ * Hands f6c3f3a6: a process foreground this long after the gate's last refresh always refreshes
+ * the visible route, whatever the appearance bookkeeping says. Wall clock: the monotonic clock
+ * does not advance while an iOS device sleeps, and a suspension is exactly that.
+ */
+internal const val AppShellResumeStaleRefreshMillis: Long = 60_000L
+
+internal class AppShellVisibleRefreshGate(
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val staleRefreshMillis: Long = AppShellResumeStaleRefreshMillis
+) {
+    private var lastRefreshAtMillis: Long? = null
+
+    /** Why the last [shouldRefresh] refreshed or skipped, for the shell's diagnostics line. */
+    var lastDecisionCause: String = "none"
+        private set
+
     private val seenSignalsByKey =
         mutableMapOf<AppShellVisibleRefreshKey, MutableSet<AppShellVisibleRefreshSignal>>()
     private val keyOrder = mutableListOf<AppShellVisibleRefreshKey>()
@@ -1478,8 +1495,37 @@ internal class AppShellVisibleRefreshGate {
             effectiveForegroundEpoch <=
                 (refreshedProcessForegroundEpoch ?: Long.MIN_VALUE)
         ) {
+            lastDecisionCause = "same_foreground_epoch"
             return false
         }
+        // A lifecycle signal past the check above carries a process foreground not refreshed yet.
+        val newProcessForeground =
+            signal == AppShellVisibleRefreshSignal.Lifecycle && foregroundEpoch != null && effectiveForegroundEpoch != null
+        val refresh = shouldRefreshForAppearance(signal, appearanceGeneration, target, effectiveForegroundEpoch, newProcessForeground)
+        val now = nowEpochMillis()
+        val lastRefreshAt = lastRefreshAtMillis
+        if (refresh) {
+            lastRefreshAtMillis = now
+            return true
+        }
+        if (newProcessForeground && (lastRefreshAt == null || now - lastRefreshAt >= staleRefreshMillis)) {
+            // Backstop: the bookkeeping above judged this foreground already served, but the route
+            // was last refreshed long ago (an app suspended for 1h44m stayed on old Activity rows).
+            refreshedProcessForegroundEpoch = effectiveForegroundEpoch
+            lastRefreshAtMillis = now
+            lastDecisionCause = "stale_since_last_refresh"
+            return true
+        }
+        return false
+    }
+
+    private fun shouldRefreshForAppearance(
+        signal: AppShellVisibleRefreshSignal,
+        appearanceGeneration: Int,
+        target: String,
+        effectiveForegroundEpoch: Long?,
+        newProcessForeground: Boolean
+    ): Boolean {
         val currentKey = AppShellVisibleRefreshKey(appearanceGeneration, target)
         val currentSignals = seenSignalsByKey[currentKey]
         val retiredThroughGeneration =
@@ -1514,17 +1560,24 @@ internal class AppShellVisibleRefreshGate {
             if (signal == AppShellVisibleRefreshSignal.Lifecycle && effectiveForegroundEpoch != null) {
                 refreshedProcessForegroundEpoch = effectiveForegroundEpoch
             }
+            lastDecisionCause = if (newProcessForeground) "retired_appearance_new_epoch" else "retired_appearance"
             return false
         }
         val seenSignals = seenSignalsByKey[key]
         if (seenSignals != null) {
+            // Hands f6c3f3a6: hide -> show -> hide -> show with no page appearance in between
+            // maps both shows to the same pending appearance key. The second show is a new
+            // process foreground (the epoch moved), not a duplicate of the first, so it refreshes.
+            val repeatedForeground = newProcessForeground && AppShellVisibleRefreshSignal.Lifecycle in seenSignals
             seenSignals += signal
             if (signal == AppShellVisibleRefreshSignal.Lifecycle && effectiveForegroundEpoch != null) {
                 refreshedProcessForegroundEpoch = effectiveForegroundEpoch
             }
-            return false
+            lastDecisionCause = if (repeatedForeground) "repeated_foreground_same_appearance" else "same_appearance"
+            return repeatedForeground
         }
         seenSignalsByKey[key] = mutableSetOf(signal)
+        lastDecisionCause = "new_appearance"
         if (effectiveForegroundEpoch != null) {
             refreshedProcessForegroundEpoch = effectiveForegroundEpoch
         }
@@ -4253,14 +4306,14 @@ private fun RaftAppShellReadyContent(
         ) {
             bridge.log(
                 "app_shell_visible_refresh_skip reason=$reason " +
-                    "cause=same_appearance_or_foreground_epoch tab=${latestSelectedTab} " +
-                    "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+                    "cause=same_appearance_or_foreground_epoch detail=${visibleRefreshGate.lastDecisionCause} " +
+                    "tab=${latestSelectedTab} homeDestination=${latestSelectedHomeDestination.orEmpty()}"
             )
             return false
         }
         bridge.log(
-            "app_shell_visible_refresh reason=$reason tab=${latestSelectedTab} " +
-                "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+            "app_shell_visible_refresh reason=$reason cause=${visibleRefreshGate.lastDecisionCause} " +
+                "tab=${latestSelectedTab} homeDestination=${latestSelectedHomeDestination.orEmpty()}"
         )
         when (retainedAppShellSelectedTab(latestSelectedTab)) {
             "home" ->
