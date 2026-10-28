@@ -140,10 +140,41 @@ final class RaftIosAdaptivePanePublisherTests: XCTestCase {
             ]
         ) as? [String: Any]
 
-        let regions = payload?["reservedRegions"] as? [[String: NSNumber]]
+        let regions = payload?["reservedRegions"] as? [[String: Any]]
         XCTAssertEqual(regions?.count, 2)
-        XCTAssertEqual(regions?.first?["leftPt"] as? CGFloat, 645.0)
-        XCTAssertEqual(regions?.first?["heightPt"] as? CGFloat, 951.0)
+        XCTAssertEqual(regions?.first?["leftPt"] as? Double, 645.0)
+        XCTAssertEqual(regions?.first?["heightPt"] as? Double, 951.0)
+    }
+
+    func testReservedRegionsCarryTheirKind() {
+        let publisher = RaftIosAdaptivePanePublisher()
+
+        // The camera's occlusion and the fold's division are not interchangeable, so the kind
+        // travels with the rectangle instead of being guessed from its geometry.
+        let payload = publisher.nextPayload(
+            widthPoints: 951, heightPoints: 669, scale: 3,
+            sideColumn: true, stripEdge: "right",
+            stripWidthPoints: 84, nativeTabBarHeightPoints: 0,
+            reservedRegions: [
+                ["leftPt": 867.0, "topPt": 0.0, "widthPt": 84.0, "heightPt": 124.0, "kind": "occlusion"],
+                ["leftPt": 0.0, "topPt": 300.0, "widthPt": 951.0, "heightPt": 12.0, "kind": "division"],
+            ]
+        ) as? [String: Any]
+
+        let regions = payload?["reservedRegions"] as? [[String: Any]]
+        XCTAssertEqual(regions?.count, 2)
+        XCTAssertEqual(regions?[0]["kind"] as? String, "occlusion")
+        XCTAssertEqual(regions?[1]["kind"] as? String, "division")
+        // A region without a kind is reported as unknown rather than dropped.
+        let unknown = publisher.nextPayload(
+            widthPoints: 951, heightPoints: 669, scale: 3,
+            sideColumn: true, stripEdge: "right",
+            stripWidthPoints: 84, nativeTabBarHeightPoints: 0,
+            reservedRegions: [["leftPt": 1.0, "topPt": 2.0, "widthPt": 3.0, "heightPt": 4.0]]
+        ) as? [String: Any]
+        let unknownRegions = unknown?["reservedRegions"] as? [[String: Any]]
+        XCTAssertEqual(unknownRegions?.count, 1)
+        XCTAssertEqual(unknownRegions?[0]["kind"] as? String, "unknown")
     }
 
     func testRejectsInvalidWindowFactsWithoutPoisoningDeduplication() {

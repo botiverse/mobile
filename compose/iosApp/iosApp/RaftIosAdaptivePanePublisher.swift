@@ -6,6 +6,26 @@ import UIKit
 /// The host owns only facts; shared code remains the sole owner of compact vs dual-pane policy.
 @objcMembers
 final class RaftIosAdaptivePanePublisher: NSObject {
+    /// A rectangle the host must keep content out of, in window points. `kind` tells the
+    /// camera's occlusion apart from the fold's division.
+    private struct ReservedRegion: Equatable {
+        let leftPt: Double
+        let topPt: Double
+        let widthPt: Double
+        let heightPt: Double
+        let kind: String
+
+        var payload: [String: Any] {
+            [
+                "leftPt": leftPt,
+                "topPt": topPt,
+                "widthPt": widthPt,
+                "heightPt": heightPt,
+                "kind": kind,
+            ]
+        }
+    }
+
     private struct Snapshot: Equatable {
         let widthPx: Int
         let heightPx: Int
@@ -14,7 +34,7 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         let stripEdge: String
         let stripWidthPt: CGFloat
         let nativeTabBarHeightPt: CGFloat
-        let reservedRegions: [[String: NSNumber]]
+        let reservedRegions: [ReservedRegion]
     }
 
     private var latest: Snapshot?
@@ -62,8 +82,17 @@ final class RaftIosAdaptivePanePublisher: NSObject {
         stripEdge: String,
         stripWidthPoints: CGFloat,
         nativeTabBarHeightPoints: CGFloat,
-        reservedRegions: [[String: NSNumber]]
+        reservedRegions: [[String: Any]]
     ) -> NSDictionary? {
+        let regions = reservedRegions.map { region -> ReservedRegion in
+            ReservedRegion(
+                leftPt: (region["leftPt"] as? NSNumber)?.doubleValue ?? 0,
+                topPt: (region["topPt"] as? NSNumber)?.doubleValue ?? 0,
+                widthPt: (region["widthPt"] as? NSNumber)?.doubleValue ?? 0,
+                heightPt: (region["heightPt"] as? NSNumber)?.doubleValue ?? 0,
+                kind: (region["kind"] as? String) ?? "unknown"
+            )
+        }
         guard widthPoints.isFinite,
               heightPoints.isFinite,
               scale.isFinite,
@@ -90,7 +119,7 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             stripEdge: stripEdge,
             stripWidthPt: stripWidthPoints.isFinite ? max(0, stripWidthPoints) : 0,
             nativeTabBarHeightPt: nativeTabBarHeightPoints.isFinite ? max(0, nativeTabBarHeightPoints) : 0,
-            reservedRegions: reservedRegions
+            reservedRegions: regions
         )
         guard snapshot != latest else { return nil }
         latest = snapshot
@@ -104,7 +133,7 @@ final class RaftIosAdaptivePanePublisher: NSObject {
             "stripEdge": snapshot.stripEdge,
             "stripWidthPt": snapshot.stripWidthPt,
             "nativeTabBarHeightPt": snapshot.nativeTabBarHeightPt,
-            "reservedRegions": snapshot.reservedRegions,
+            "reservedRegions": snapshot.reservedRegions.map(\.payload),
         ]
     }
 }
