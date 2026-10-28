@@ -6927,6 +6927,18 @@ private fun RaftAppShellReadyContent(
             topNavigation =
                 if (navRailActive) {
                     {
+                        // iPhone Duo's inner screen held sideways (raft-design #859): the system's
+                        // side column holds Back (the wide history's), so the bar draws no arrows.
+                        val historyBackInColumn =
+                            raftSideColumnFallbackBack(
+                                raftSideColumnBackAction(
+                                    onBack = {
+                                        appShellTopBar.bellOpen.value = false
+                                        navigateWideHistory(RaftWideNavDirection.Back, source = "side_column")
+                                    },
+                                    enabled = wideNavHistory.canGoBack,
+                                )
+                            )
                         RaftAppShellTopBar(
                             currentServer = serverMenuModel?.currentServer,
                             servers = serverMenuModel?.servers.orEmpty(),
@@ -6961,7 +6973,7 @@ private fun RaftAppShellReadyContent(
                             bell = appShellTopBar,
                             onBellToggle = { serverMenuState.dismiss() },
                             history =
-                                RaftAppShellTopBarHistory(
+                                if (historyBackInColumn) null else RaftAppShellTopBarHistory(
                                     canGoBack = wideNavHistory.canGoBack,
                                     canGoForward = wideNavHistory.canGoForward,
                                     onBack = {
@@ -12265,6 +12277,10 @@ private fun SharedHomeSearchToolbar(
         }
         return
     }
+    // iPhone Duo (raft-design #859): beside the system's side column Back is the column's.
+    val backInColumn = onClose != null && raftSideColumnControls(back = raftSideColumnBackAction(onClose))
+    @Suppress("NAME_SHADOWING")
+    val onClose = onClose.takeUnless { backInColumn }
     SharedHomeSearchControlsRow(
         topSafeAreaPadding = topSafeAreaPadding,
         // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.

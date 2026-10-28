@@ -28,6 +28,7 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftSideAction
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftReadOnlyComposer
@@ -17128,19 +17129,50 @@ internal fun ThreadPageHeader(
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
+    // iPhone Duo (raft-design #859): beside the system's side column, Back and the page's actions
+    // are the column's (Back first, two actions, the rest in its ⋯); the header keeps the title
+    // and the subtitle, from the 16dp margin, without Back and without icon buttons.
+    val showsBack = threadHeaderShowsBack(showBack, headerDisplay.surfaceKind)
+    val controlsInColumn =
+        raftSideColumnControls(
+            back = if (showsBack) raftSideColumnBackAction(onBack) else null,
+            actions =
+                if (showActions) {
+                    threadHeaderSideColumnActions(
+                        payload = payload,
+                        surfaceKind = headerDisplay.surfaceKind,
+                        taskConversation = taskConversation,
+                        onOpenSearch = onOpenSearch,
+                        onShowSettings = onShowSettings,
+                        onOpenInChannel = onOpenInChannel,
+                        onToggleFocusMode = onToggleFocusMode,
+                        focusModeActive = focusModeActive,
+                        threadFollowed = threadFollowed,
+                        onToggleThreadFollow = onToggleThreadFollow,
+                        onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                    )
+                } else {
+                    emptyList()
+                },
+        )
     RaftTopPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
-        contentStartPadding = if (showBack) ThreadHeaderEdgeInset else ThreadSplitDetailEdgeInset,
+        contentStartPadding =
+            when {
+                controlsInColumn -> RaftTopPageHeaderContentEndPadding
+                showBack -> ThreadHeaderEdgeInset
+                else -> ThreadSplitDetailEdgeInset
+            },
         // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
         // without one the title keeps the default end padding instead of running to the edge.
-        contentEndPadding = if (showHeaderActions) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+        contentEndPadding = if (showHeaderActions && !controlsInColumn) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
             // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
-            if (threadHeaderShowsBack(showBack, headerDisplay.surfaceKind)) {
+            if (showsBack && !controlsInColumn) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
@@ -17225,7 +17257,10 @@ internal fun ThreadPageHeader(
             }
         },
         trailingContent =
-            if (showHeaderActions) {
+            if (showHeaderActions && controlsInColumn) {
+                // The Agent followers are the task's facts, not a button: they stay in the header.
+                { agentFollowersHeader() }
+            } else if (showHeaderActions) {
                 {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -17263,6 +17298,76 @@ internal fun ThreadPageHeader(
             },
         showBodyTopBanner = false,
     )
+}
+
+/**
+ * The conversation header's actions for the Duo side column, in the header's order: Search and
+ * Settings (or Open in Channel) first, so they are the two the column shows; the More menu's rows
+ * (Focus mode, Search in Task, View in Channel, Follow) after them, in its ⋯.
+ */
+@Composable
+private fun threadHeaderSideColumnActions(
+    payload: RaftThreadScreenPayload,
+    surfaceKind: String,
+    taskConversation: Boolean,
+    onOpenSearch: () -> Unit,
+    onShowSettings: () -> Unit,
+    onOpenInChannel: () -> Unit,
+    onToggleFocusMode: (() -> Unit)?,
+    focusModeActive: Boolean,
+    threadFollowed: Boolean?,
+    onToggleThreadFollow: (() -> Unit)?,
+    onViewTaskInChannel: (() -> Unit)?,
+): List<RaftSideAction> {
+    val searchLabel = stringResource(Res.string.thread_action_search)
+    val settingsLabel = stringResource(Res.string.settings_title)
+    val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
+    val focusLabel =
+        stringResource(if (focusModeActive) Res.string.thread_focus_mode_standard else Res.string.thread_focus_mode_focus)
+    val searchInTaskLabel = stringResource(Res.string.task_conversation_search)
+    val followLabel =
+        threadFollowed?.let { followed ->
+            stringResource(
+                when {
+                    taskConversation && followed -> Res.string.task_conversation_unfollow
+                    taskConversation -> Res.string.task_conversation_follow
+                    followed -> Res.string.thread_action_unfollow_thread
+                    else -> Res.string.thread_action_follow_thread
+                }
+            )
+        }
+    return buildList {
+        if (!taskConversation && payload.threadHeaderSearchAction() != null) {
+            add(raftSideColumnLucideAction("thread-search", searchLabel, RaftLucideIconName.Search, onOpenSearch))
+        }
+        if (threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind)) {
+            add(raftSideColumnLucideAction("thread-settings", settingsLabel, RaftLucideIconName.Settings, onShowSettings))
+        }
+        if (payload.threadHeaderOpenInParentActionVisible()) {
+            add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
+        }
+        if (onToggleFocusMode != null) {
+            val icon = if (focusModeActive) RaftLucideIconName.Square else RaftLucideIconName.Maximize2
+            add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, focusLabel, icon, onToggleFocusMode, priority = -1))
+        }
+        if (taskConversation) {
+            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, searchInTaskLabel, RaftLucideIconName.Search, onOpenSearch))
+            if (onViewTaskInChannel != null) {
+                add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
+            }
+        }
+        if (followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
+            add(
+                raftSideColumnLucideAction(
+                    FOLLOW_THREAD_MENU_ITEM_ID,
+                    followLabel,
+                    threadFollowMenuIcon(threadFollowed),
+                    onToggleThreadFollow,
+                    priority = -1,
+                )
+            )
+        }
+    }
 }
 
 @Composable

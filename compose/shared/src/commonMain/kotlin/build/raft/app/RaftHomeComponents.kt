@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftSideAction
+import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -2330,6 +2332,20 @@ private fun RaftStructuralHomeShellContent(
             bottomContentPadding
         }
     val bottomBarOverlaysContent = showBottomBar && raftAppBottomTabBarOverlaysContent()
+    // iPhone Duo (raft-design #859): beside the system's side column the bell is Home's page
+    // action in the column, and the head is the server switcher line on paper.
+    val sideColumnPosture = LocalRaftSideColumnPosture.current
+    val bellInColumn =
+        !serverSwitcherInTopBar &&
+            raftSideColumnControls(
+                back = null,
+                actions =
+                    listOf(
+                        homeSideColumnBellAction(visibleNotifications) {
+                            notificationCenterExpanded = !notificationCenterExpanded
+                        }
+                    ),
+            )
     val dismissNotificationCenterForFocusLoss = {
         if (notificationCenterExpanded) {
             notificationCenterExpanded = false
@@ -2387,6 +2403,7 @@ private fun RaftStructuralHomeShellContent(
                         notificationCenterExpanded = notificationCenterExpanded,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
+                        bellInColumn = bellInColumn,
                         onServerBadgeClick = onServerBadgeClickWithDismiss,
                         onBlankClick = {
                             dismissNotificationCenterForFocusLoss()
@@ -3081,7 +3098,7 @@ private fun RaftStructuralHomeShellContent(
                             modifier =
                                 Modifier
                                     .padding(
-                                        top = homeServerSwitcherPanelTopOffset(topSafeArea),
+                                        top = homeServerSwitcherPanelTopOffset(topSafeArea, bellInColumn),
                                         start = RaftAppSpacing.Lg
                                     )
                                     .clickable(onClick = {})
@@ -3101,11 +3118,22 @@ private fun RaftStructuralHomeShellContent(
                             visibleNotifications,
                             onNotificationView,
                             onNotificationDismiss,
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = homeNotificationPopoverTopOffset(topSafeArea))
-                                .homeNotificationPopoverPhoneWidth()
-                                .raftFloatingContentClickTarget(),
+                            if (bellInColumn) {
+                                // Beside the column's bell, toward the content: its bottom edge level
+                                // with the bell's, 8dp from the column (MobileNav's vertical tab bar
+                                // popover; page-structure "Frame insets").
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(bottom = homeSideColumnBellPopoverBottomOffset(sideColumnPosture))
+                                    .homeNotificationPopoverPhoneWidth()
+                                    .raftFloatingContentClickTarget()
+                            } else {
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = homeNotificationPopoverTopOffset(topSafeArea))
+                                    .homeNotificationPopoverPhoneWidth()
+                                    .raftFloatingContentClickTarget()
+                            },
                             minWidth = 0.dp,
                             maxWidth = HomeNotificationPopoverPhoneMaxWidth
                         )
@@ -4100,11 +4128,42 @@ internal fun homeServerSwitcherJoinCommunityActions(
         }
     }
 
-internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
-    topSafeArea + RaftAppSize.PageHeaderHeight + HomeServerSwitcherTopGap
+internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp, sideColumnTitleLine: Boolean = false): Dp =
+    homeShellHeaderHeight(topSafeArea, sideColumnTitleLine) + HomeServerSwitcherTopGap
 
-internal fun homeShellHeaderHeight(topSafeArea: Dp): Dp =
-    topSafeArea + RaftAppSize.PageHeaderHeight
+/** The Home head: the 56dp navigation row, or beside the Duo side column the 44pt switcher line. */
+internal fun homeShellHeaderHeight(topSafeArea: Dp, sideColumnTitleLine: Boolean = false): Dp =
+    topSafeArea + if (sideColumnTitleLine) RaftSideColumnTitleLineHeight else RaftAppSize.PageHeaderHeight
+
+/**
+ * From the window's bottom to the bottom of the bell's popover beside the Duo side column: level
+ * with the bell's bottom, which stands [RaftSideActionColumnDefaults.Inset] over the native tab bar.
+ */
+internal fun homeSideColumnBellPopoverBottomOffset(posture: RaftSideColumnPosture): Dp =
+    posture.nativeTabBarHeight + RaftSideActionColumnDefaults.Inset
+
+/** Home's one page action in the Duo side column: the bell, its pixel for unseen notifications. */
+@Composable
+private fun homeSideColumnBellAction(
+    notifications: List<RaftHomeNotificationItem>,
+    onToggle: () -> Unit,
+): RaftSideAction {
+    val visible = remember(notifications) { notifications.visibleHomeNotifications() }
+    val attentionDescription =
+        when (visible.size) {
+            0 -> null
+            1 -> Res.string.home_notification_center_item_count_one.format(listOf(1)).localized()
+            else -> Res.string.home_notification_center_item_count_many.format(listOf(visible.size)).localized()
+        }
+    return raftSideColumnLucideAction(
+        id = "home-bell",
+        label = stringResource(Res.string.home_notification_center_title),
+        icon = RaftLucideIconName.Bell,
+        onClick = onToggle,
+        attention = visible.isNotEmpty(),
+        attentionDescription = attentionDescription,
+    )
+}
 
 internal fun homeShellTopSafeArea(
     applyTopSafeArea: Boolean,
@@ -4795,17 +4854,21 @@ private fun HomeTitlebar(
     notificationCenterExpanded: Boolean = false,
     refreshing: Boolean,
     topSafeArea: Dp,
+    /** iPhone Duo: the bell is in the side column; the head is the switcher line on paper. */
+    bellInColumn: Boolean = false,
     onServerBadgeClick: () -> Unit,
     onBlankClick: (() -> Unit)? = null,
     onNotificationToggle: () -> Unit
 ) {
+    val background = if (bellInColumn) RaftColor.Canvas else RaftColor.Frame
     // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam. The seam is
     // flattened onto the canvas like RaftTopPageHeader's, so it reads the same grey on every tab
     // (an alpha seam over the yellow frame came out yellow-brown).
     // The frame runs up under the status bar: the host's status bar icons follow it.
-    RaftStatusBarBackdropClaim(RaftColor.Frame, enabled = topSafeArea > 0.dp)
-    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(RaftColor.Frame)) {
-        Box(
+    RaftStatusBarBackdropClaim(background, enabled = topSafeArea > 0.dp)
+    Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea, bellInColumn)).background(background)) {
+        // Beside the Duo side column the switcher line is the page's own first line: no seam.
+        if (!bellInColumn) Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(RaftAppStroke.Thin)
@@ -4816,7 +4879,7 @@ private fun HomeTitlebar(
             modifier =
                 Modifier
                     .padding(top = topSafeArea)
-                    .height(RaftAppSize.PageHeaderContentHeight)
+                    .height(if (bellInColumn) RaftSideColumnTitleLineHeight else RaftAppSize.PageHeaderContentHeight)
                     // The frame runs edge to edge; the identity and bell stay in the safe area.
                     .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = RaftAppSpacing.Md),
@@ -4838,7 +4901,7 @@ private fun HomeTitlebar(
             }
             // The bell's icon box ends on the content line (16dp), mirroring the server avatar on
             // the left; its 44dp target reaches past it.
-            HomeNotificationCenter(
+            if (!bellInColumn) HomeNotificationCenter(
                 notifications = notifications,
                 open = notificationCenterExpanded,
                 onToggle = onNotificationToggle,
