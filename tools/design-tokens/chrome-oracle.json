@@ -8270,6 +8270,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -17422,6 +17435,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -26578,6 +26604,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -35730,6 +35769,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -44886,6 +44938,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -54038,6 +54103,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -63194,6 +63272,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -72346,6 +72437,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -81502,6 +81606,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -90654,6 +90771,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -99810,6 +99940,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -108962,6 +109105,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -118118,6 +118274,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -127270,6 +127439,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -136426,6 +136608,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -145578,6 +145773,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -154734,6 +154942,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -163886,6 +164107,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -173042,6 +173276,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -182194,6 +182441,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {
@@ -191350,6 +191610,19 @@
      64
     ]
    },
+   "--presence-busy-soft": {
+    "css": "oklch(0.9547 0.0674 93.62)",
+    "onWhite": [
+     255,
+     240,
+     189
+    ],
+    "onBlack": [
+     255,
+     240,
+     189
+    ]
+   },
    "--presence-error": {
     "css": "oklch(0.7855 0.1227 50.11)",
     "onWhite": [
@@ -200502,6 +200775,19 @@
      255,
      212,
      64
+    ]
+   },
+   "--presence-busy-soft": {
+    "css": "oklch(0.5501 0.0999 91.5 / 0.2)",
+    "onWhite": [
+     231,
+     226,
+     210
+    ],
+    "onBlack": [
+     27,
+     22,
+     6
     ]
    },
    "--presence-error": {

@@ -204,14 +204,15 @@ fun RaftRuntimeChip(
 internal fun raftPresenceChipVariant(presence: RaftPresence): RaftBadgeVariant =
     when (presence) {
         RaftPresence.Online -> RaftBadgeVariant.Success
-        RaftPresence.Busy -> RaftBadgeVariant.Primary
+        RaftPresence.Busy -> RaftBadgeVariant.Busy
         RaftPresence.Error -> RaftBadgeVariant.Warning
         RaftPresence.Offline -> RaftBadgeVariant.Muted
         RaftPresence.External -> RaftBadgeVariant.Information
     }
 
 /**
- * An agent state chip: a soft badge in the light's tint (`brand-soft` for Working) with
+ * An agent state chip: a soft badge in the light's tint (`presence-busy-soft` for Working, which
+ * no theme recolours) with
  * the presence pixel and its word ([RaftPresence.word], Title Case).
  */
 @Composable

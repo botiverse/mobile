@@ -2,10 +2,10 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.37.0/dist/styles.css sha256=48f3861f4a9c26d5
-//   npm:@botiverse/raft-ui@0.37.0/dist/foundation.css sha256=a82f6e5ffffc2bf8
-//   npm:@botiverse/raft-ui@0.37.0/dist/themes.css sha256=d676bb4b3ad783cf
-//   botiverse/slock@6924ec3a016ebfc956d58863f81046d59d07c05c:packages/web/src/index.css sha256=c8226ab77a793855
+//   npm:@botiverse/raft-ui@0.40.0/dist/styles.css sha256=11aa2b5f719b65d9
+//   npm:@botiverse/raft-ui@0.40.0/dist/foundation.css sha256=c4bb801876e48174
+//   npm:@botiverse/raft-ui@0.40.0/dist/themes.css sha256=d676bb4b3ad783cf
+//   botiverse/slock@d1285e2439b77d3343bcedd80cc93812170b8839:packages/web/src/index.css sha256=1d0b5bd93dd7cf5d
 
 package build.raft.app.designtokens
 
@@ -1399,6 +1399,8 @@ internal sealed class RaftUiThemeColors {
     abstract val lineSeam: Color
     /** `--line-strong` */
     abstract val lineStrong: Color
+    /** `--presence-busy-soft` */
+    abstract val presenceBusySoft: Color
     /** `--primary-400` */
     abstract val primary400: Color
     /** `--primary-active` */
@@ -1543,6 +1545,7 @@ internal sealed class RaftUiThemeColors {
         override val lineMuted = Color(0x26141111)
         override val lineSeam = Color(0x73141111)
         override val lineStrong = Color(0xFF141111)
+        override val presenceBusySoft = Color(0xFFFFF0BD)
         override val primary400 = Color(0xFFFFD440)
         override val primaryActive = Color(0xFFE8C13B)
         override val primaryEdge = Color(0xFF141111)
@@ -1658,6 +1661,7 @@ internal sealed class RaftUiThemeColors {
         override val lineMuted = Color(0x1AFAFAF7)
         override val lineSeam = Color(0x42FAFAF7)
         override val lineStrong = Color(0xFFE5E5E2)
+        override val presenceBusySoft = Color(0x33876F1F)
         override val primary400 = Color(0xFFFFD440)
         override val primaryActive = Color(0xFFE8C13B)
         override val primaryEdge = Color(0xFF141111)

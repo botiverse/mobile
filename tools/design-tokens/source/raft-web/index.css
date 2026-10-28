@@ -819,12 +819,60 @@
   }
 }
 
+/* Covering with the columns that don't fit beside it merged into its tabs
+   (ChannelSideArea ThreadColumnTabs; Kirby, c394e7a9): the tabs head is the
+   column's first row and has the one Back, so the thread's head drops its
+   own; the thread's panel shares the column with that head. While another
+   tab shows its section over it (ThreadColumnMerged's layer), the thread and
+   the sections stacked with it stay laid out at their size, only unseen (and
+   inert): no display none, which would drop their scroll (Kirby, #11439).
+   The column draws the left seam for all its rows. */
+.thread-side-column[data-cover-tab] {
+  border-left: 1px solid var(--line-seam);
+}
+
+.thread-side-column[data-cover-tab] > [data-slot="thread-panel-root"] {
+  height: auto;
+  min-height: 0;
+  flex: var(--side-thread-flex, 1 1 0px);
+  border-left-width: 0;
+}
+
+.thread-side-column[data-cover-tab]:not([data-cover-tab="thread"]) > :not([data-testid="thread-cover-tabs"]):not([data-testid="thread-cover-merged"]) {
+  visibility: hidden;
+}
+
+.thread-side-column[data-covers][data-cover-tab] [data-testid="thread-mobile-back"] {
+  display: none;
+}
+
 /* Covering and first in the row, the thread's column draws no left edge: the
    sidebar already has it. Behind a column the person put left of it, it keeps
    its seam, as beside the channel. */
 .thread-side-column[data-covers="first"],
 .thread-side-column[data-covers="first"] > [data-slot="thread-panel-root"] {
   border-left-width: 0;
+}
+
+/* Where the thread covers its channel (the thread-only modes above: a narrow
+   window, a phone), opening something from the thread in the channel's side
+   column (a workspace Artifact, F41) puts the thread behind the channel: still
+   mounted where it was, back on top when it is opened again. The split row
+   keeps both on screen, so there the thread stays. */
+.thread-layout-container[data-thread-behind="true"]:has(> .thread-side-column) > .thread-main-column {
+  display: flex;
+}
+
+.thread-layout-container[data-thread-behind="true"] > .thread-side-column {
+  display: none;
+}
+
+@media (orientation: landscape), (min-width: 1280px) {
+  @container thread-layout (min-width: 720px) {
+    .thread-layout-container[data-thread-behind="true"] > .thread-side-column {
+      display: flex;
+    }
+  }
 }
 
 /* ProfilePanel switches from an absolute mobile surface to an inline desktop

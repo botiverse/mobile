@@ -2,6 +2,8 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftMessageActionCardStatusTone
+import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftStepStatus
 import build.raft.designsystem.components.raftActiveStickerLook
 import build.raft.designsystem.components.raftBadgeLook
@@ -10,6 +12,7 @@ import build.raft.designsystem.components.raftSwitchLook
 import build.raft.designsystem.components.raftSpinnerLitCell
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftThemeState
+import build.raft.designsystem.tokens.RaftThemeId
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
@@ -124,5 +127,57 @@ class RaftBadgeLookTest {
         assertEquals(light.brand, RaftUiPalette.you)
         // A theme that grays the brand (Boring Gray) keeps them yellow.
         assertNotEquals(RaftUiThemeColors.BoringLight.brand, RaftUiPalette.selected)
+    }
+
+    /**
+     * raft-ui 0.39 (#832): a working agent is yellow in every theme. `presence-busy` is one
+     * unthemed colour, and `presence-busy-soft` (the Working chip's tint) changes with the mode
+     * only, never with the theme, unlike `brand` / `brand-soft`, which Boring Gray grays.
+     */
+    @Test
+    fun presenceBusyIsTheSameInEveryThemeAndMode() {
+        assertEquals(11, RaftThemeId.entries.size)
+        for (dark in listOf(false, true)) {
+            val raft = RaftUiThemeColors.of(RaftThemeId.Raft, dark)
+            // Raft Yellow's own brand values.
+            assertEquals(raft.brand, RaftUiPalette.presenceBusy, "dark=$dark")
+            assertEquals(raft.brandSoft, raft.presenceBusySoft, "dark=$dark")
+            for (theme in RaftThemeId.entries) {
+                val colors = RaftUiThemeColors.of(theme, dark)
+                assertEquals(raft.presenceBusySoft, colors.presenceBusySoft, "$theme dark=$dark")
+            }
+        }
+        assertNotEquals(RaftUiThemeColors.BoringLight.brand, RaftUiPalette.presenceBusy)
+        assertNotEquals(RaftUiThemeColors.BoringLight.brandSoft, RaftUiThemeColors.BoringLight.presenceBusySoft)
+        assertNotEquals(RaftUiThemeColors.BoringLight.presenceBusySoft, RaftUiThemeColors.BoringDark.presenceBusySoft)
+    }
+
+    /** Badge `busy`: soft, the `presence-busy-soft` tint; solid, a `presence-busy` sticker; outline as `default`. */
+    @Test
+    fun busyBadgeResolvesToBusyTokensInEveryTheme() {
+        for (dark in listOf(false, true)) {
+            for (theme in RaftThemeId.entries) {
+                val colors = RaftUiThemeColors.of(theme, dark)
+                val soft = raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Busy, true, colors)
+                assertEquals(colors.presenceBusySoft, soft.fill, "soft $theme dark=$dark")
+                assertEquals(colors.foreground, soft.ink, "soft $theme dark=$dark")
+                assertEquals(0.dp, soft.edgeWidth)
+                val solid = raftBadgeLook(RaftBadgeAppearance.Solid, RaftBadgeVariant.Busy, true, colors)
+                assertEquals(RaftUiPalette.presenceBusy, solid.fill, "solid $theme dark=$dark")
+                assertEquals(RaftUiPalette.stickerInk, solid.ink)
+                assertEquals(RaftUiPalette.stickerInk, solid.edge)
+                assertEquals(
+                    raftBadgeLook(RaftBadgeAppearance.Outline, RaftBadgeVariant.Default, true, colors),
+                    raftBadgeLook(RaftBadgeAppearance.Outline, RaftBadgeVariant.Busy, true, colors),
+                )
+            }
+        }
+    }
+
+    /** Status `primary` and the MessageActionCardStatus primary pixel are `presence-busy` (raft-ui 0.39). */
+    @Test
+    fun primaryStatusPixelsArePresenceBusy() {
+        assertEquals(RaftUiPalette.presenceBusy, RaftStatusVariant.Primary.color)
+        assertEquals(RaftUiPalette.presenceBusy, RaftMessageActionCardStatusTone.Primary.color)
     }
 }
