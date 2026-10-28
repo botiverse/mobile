@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -676,6 +679,22 @@ class InteractiveComponentScreenshotTest {
                         RaftPickerTriggerButton("Label", {}, enabled = false)
                         RaftPickerTriggerButton("Mine", {}, hasValue = true, showIndicator = false, leadingIcon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 14.dp) })
                     }
+                    // A scrolling filter row measures its triggers at an unbounded width: each keeps
+                    // its whole label (a weighted label once measured to nothing, icon-only chips).
+                    Caption("In a scrolling row; capped at 200dp, the label ellipsizes")
+                    Row(Modifier.width(360.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RaftPickerTriggerButton("Scope", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 14.dp) })
+                        RaftPickerTriggerButton("design", {}, hasValue = true, leadingIcon = { RaftGlyphIcon(RaftGlyph.Hash, size = 14.dp) })
+                        RaftPickerTriggerButton("Relevant", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.ArrowUpDown, size = 14.dp) })
+                        RaftPickerTriggerButton("Clear All", {}, showIndicator = false)
+                    }
+                    RaftPickerTriggerButton(
+                        "proj-mobile-design-system-migration",
+                        {},
+                        modifier = Modifier.widthIn(max = 200.dp),
+                        hasValue = true,
+                        leadingIcon = { RaftGlyphIcon(RaftGlyph.Hash, size = 14.dp) },
+                    )
                 }
             }
         }

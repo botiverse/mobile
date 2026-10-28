@@ -12489,7 +12489,7 @@ private fun SharedHomeSavedHeader(
 }
 
 @Composable
-private fun SharedHomeSearchFilters(
+internal fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
     scopeAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
@@ -12516,90 +12516,103 @@ private fun SharedHomeSearchFilters(
     val scopeLabel = stringResource(Res.string.search_filter_scope)
     val channelLabel = stringResource(Res.string.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
-    // `info-soft` wash.
+    // `info-soft` wash. Web MessageSearchPage labels every chip (From, Scope, Channel, the time
+    // range, the sort) and wraps them; a phone row scrolls sideways instead, its first and last
+    // chips 16dp in from the edges (content padding, so a scrolled chip runs to the edge). A chip
+    // is never wider than the row (web `max-w-full`): a long sender or channel name ends in an
+    // ellipsis.
     SharedHomeSearchControlsBlock {
         val backSwipeRowState = rememberLazyListState()
         val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-        LazyRow(
-            state = backSwipeRowState,
-            userScrollEnabled = backSwipeRow.userScrollEnabled,
-            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = SearchControlsHorizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            homeSearchFilterOrder(showSenderFilter).forEach { filter ->
-                item(key = "search-filter-${filter.id}") {
-                    when (filter) {
-                        HomeSearchFilter.Sender ->
-                            RaftAnchoredPickerTrigger(
-                                label = state.localizedSenderFilterLabel(),
-                                anchorIdentity = "search_filter:sender",
-                                hasValue = senderActive,
-                                iconName = RaftLucideIconName.CircleUser,
-                                onAnchorChanged = senderAnchorChanged,
-                                onClick = { anchor ->
-                                    onOpenFilter("sender", anchor)
-                                }
-                            )
-                        HomeSearchFilter.Scope ->
-                            RaftAnchoredPickerTrigger(
-                                label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
-                                anchorIdentity = "search_filter:scope",
-                                hasValue = scopeActive,
-                                iconName = RaftLucideIconName.AtSign,
-                                onAnchorChanged = scopeAnchorChanged,
-                                onClick = { anchor ->
-                                    onOpenFilter("scope", anchor)
-                                }
-                            )
-                        HomeSearchFilter.Channel ->
-                            RaftAnchoredPickerTrigger(
-                                label = selectedChannel?.label ?: channelLabel,
-                                anchorIdentity = "search_filter:channel",
-                                hasValue = channelActive,
-                                iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
-                                onAnchorChanged = channelAnchorChanged,
-                                onClick = { anchor ->
-                                    onOpenFilter("channel", anchor)
-                                }
-                            )
-                        HomeSearchFilter.Time ->
-                            RaftAnchoredPickerTrigger(
-                                label = state.timeRange.localizedSearchLabel(),
-                                anchorIdentity = "search_filter:time",
-                                hasValue = timeActive,
-                                iconName = RaftLucideIconName.Calendar,
-                                onAnchorChanged = timeAnchorChanged,
-                                onClick = { anchor ->
-                                    onOpenFilter("time", anchor)
-                                }
-                            )
+        BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
+            val chipModifier = Modifier.widthIn(max = (maxWidth - SearchControlsHorizontalPadding * 2).coerceAtLeast(0.dp))
+            LazyRow(
+                state = backSwipeRowState,
+                userScrollEnabled = backSwipeRow.userScrollEnabled,
+                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = SearchControlsHorizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                homeSearchFilterOrder(showSenderFilter).forEach { filter ->
+                    item(key = "search-filter-${filter.id}") {
+                        when (filter) {
+                            HomeSearchFilter.Sender ->
+                                RaftAnchoredPickerTrigger(
+                                    modifier = chipModifier,
+                                    label = state.localizedSenderFilterLabel(),
+                                    anchorIdentity = "search_filter:sender",
+                                    hasValue = senderActive,
+                                    iconName = RaftLucideIconName.CircleUser,
+                                    onAnchorChanged = senderAnchorChanged,
+                                    onClick = { anchor ->
+                                        onOpenFilter("sender", anchor)
+                                    }
+                                )
+                            HomeSearchFilter.Scope ->
+                                RaftAnchoredPickerTrigger(
+                                    modifier = chipModifier,
+                                    label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
+                                    anchorIdentity = "search_filter:scope",
+                                    hasValue = scopeActive,
+                                    iconName = RaftLucideIconName.AtSign,
+                                    onAnchorChanged = scopeAnchorChanged,
+                                    onClick = { anchor ->
+                                        onOpenFilter("scope", anchor)
+                                    }
+                                )
+                            HomeSearchFilter.Channel ->
+                                RaftAnchoredPickerTrigger(
+                                    modifier = chipModifier,
+                                    label = selectedChannel?.label ?: channelLabel,
+                                    anchorIdentity = "search_filter:channel",
+                                    hasValue = channelActive,
+                                    iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
+                                    onAnchorChanged = channelAnchorChanged,
+                                    onClick = { anchor ->
+                                        onOpenFilter("channel", anchor)
+                                    }
+                                )
+                            HomeSearchFilter.Time ->
+                                RaftAnchoredPickerTrigger(
+                                    modifier = chipModifier,
+                                    label = state.timeRange.localizedSearchLabel(),
+                                    anchorIdentity = "search_filter:time",
+                                    hasValue = timeActive,
+                                    iconName = RaftLucideIconName.Calendar,
+                                    onAnchorChanged = timeAnchorChanged,
+                                    onClick = { anchor ->
+                                        onOpenFilter("time", anchor)
+                                    }
+                                )
+                        }
                     }
                 }
-            }
-            item {
-                RaftAnchoredPickerTrigger(
-                    label = state.sort.localizedSearchLabel(),
-                    anchorIdentity = "search_filter:sort",
-                    hasValue = sortActive,
-                    iconName = RaftLucideIconName.ArrowUpDown,
-                    onAnchorChanged = sortAnchorChanged,
-                    onClick = { anchor ->
-                        onOpenFilter("sort", anchor)
-                    }
-                )
-            }
-            if (hasActiveFilters) {
                 item {
-                    RaftPickerTriggerButton(
-                        text = stringResource(Res.string.search_filter_clear_all),
-                        showIndicator = false,
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                    RaftAnchoredPickerTrigger(
+                        modifier = chipModifier,
+                        label = state.sort.localizedSearchLabel(),
+                        anchorIdentity = "search_filter:sort",
+                        hasValue = sortActive,
+                        iconName = RaftLucideIconName.ArrowUpDown,
+                        onAnchorChanged = sortAnchorChanged,
+                        onClick = { anchor ->
+                            onOpenFilter("sort", anchor)
+                        }
                     )
                 }
-            }
-            if (!showSenderFilter) {
-                item {
-                    Spacer(Modifier.width(0.dp))
+                if (hasActiveFilters) {
+                    item {
+                        RaftPickerTriggerButton(
+                            text = stringResource(Res.string.search_filter_clear_all),
+                            showIndicator = false,
+                            onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                        )
+                    }
+                }
+                if (!showSenderFilter) {
+                    item {
+                        Spacer(Modifier.width(0.dp))
+                    }
                 }
             }
         }
