@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ServerId
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,8 +28,10 @@ class SharedClientConfigStoreTest {
 
     private class FakeApi(var next: () -> HomeNetworkResponse) : RaftClientConfigApi {
         var calls = 0
-        override suspend fun read(): HomeNetworkResponse {
+        val environments = mutableListOf<String>()
+        override suspend fun read(environment: String): HomeNetworkResponse {
             calls += 1
+            environments += environment
             return next()
         }
     }
@@ -79,11 +82,54 @@ class SharedClientConfigStoreTest {
         runCurrent()
         assertEquals(listOf("app.raft.build", "raft.build"), store.appHosts.value)
         assertEquals(3, api.calls)
+        assertEquals(
+            listOf("https://api.raft.build/api", "https://staging-api.raft.build/api", "https://api.raft.build/api"),
+            api.environments,
+            "each read is for the environment it is stored under",
+        )
 
         // A new process starts from the disk cache before its read lands.
         val restarted = SharedClientConfigStore(FakeApi { error("offline") }, preferences, { environment.value }, environment, backgroundScope)
         assertEquals(listOf("app.raft.build", "raft.build"), restarted.appHosts.value)
         // What message links read: this environment's list, not the fallback.
         assertEquals(setOf("app.raft.build", "raft.build"), RaftClientConfigAppHosts.current)
+    }
+
+    /**
+     * Device check 2026-10-29: after switching to staging (which signs out) the read went through
+     * the authenticated request, answered 401 locally with no session, and nothing read again after
+     * sign-in: Artifact links stayed plain until a restart. The read is public, on the asked environment.
+     */
+    @Test
+    fun theReadIsPublicAndOnTheAskedEnvironmentWithoutASession() = runTest {
+        val raw = mutableListOf<String>()
+        val client =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse = HomeNetworkResponse(401, null)
+
+                override suspend fun requestRawAbsoluteUrl(
+                    priority: DataRequestPriority,
+                    url: String,
+                    method: String,
+                    headers: Map<String, String>,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    raw += "$method $url ${headers.keys.sorted()}"
+                    return ok("""{"appHosts":["app.raft.build","raft-app-staging.botiverse.dev"]}""")
+                }
+            }
+        val environment = MutableStateFlow("https://api-aws-staging.botiverse.dev/api/")
+        val store = SharedClientConfigStore(NetworkRaftClientConfigApi(client), MemoryPreferences(), { environment.value }, environment, backgroundScope)
+        store.start()
+        runCurrent()
+        assertEquals(listOf("GET https://api-aws-staging.botiverse.dev/api/public/client-config []"), raw)
+        assertEquals(listOf("app.raft.build", "raft-app-staging.botiverse.dev"), store.appHosts.value)
     }
 }

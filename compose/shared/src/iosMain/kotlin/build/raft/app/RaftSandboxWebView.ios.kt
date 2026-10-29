@@ -667,3 +667,6 @@ private class RaftIosWebViewScriptMessageHandler(
         owner.didReceiveScriptMessage(userContentController, didReceiveScriptMessage)
     }
 }
+
+/** WKWebView applies the safe area and the keyboard itself. */
+internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false

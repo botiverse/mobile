@@ -126,3 +126,5 @@ internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =
             file.toURI().toString()
         }
     }
+
+internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false

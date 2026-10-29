@@ -19,10 +19,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
@@ -280,10 +282,13 @@ private fun RaftArtifactViewerScreen() {
     // Latest): the page draws no version of its own under the embed contract, this header does.
     var addressed by remember(params.toString()) { mutableStateOf<RaftArtifactViewerNavigation.Stay?>(null) }
     var latestVersion by remember(params.toString()) { mutableStateOf<Int?>(null) }
+    // Moves when the page goes from a pinned version to the latest (View latest, Back to Latest):
+    // the latest may be newer than the one read on open, so it is read again.
+    var latestReads by remember(params.toString()) { mutableStateOf(0) }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
-    LaunchedEffect(scope, target) {
+    LaunchedEffect(scope, target, latestReads) {
         val serverId = scope?.serverId ?: return@LaunchedEffect
         val store = host.sharedStores.artifactSummaryStore
         store.refresh(serverId, target)
@@ -320,7 +325,7 @@ private fun RaftArtifactViewerScreen() {
     }
 
     val untitled = stringResource(Res.string.artifacts_activity_untitled)
-    val shownVersion = addressed?.let { it.version ?: latestVersion } ?: header?.version
+    val shownVersion = raftArtifactViewerShownVersion(addressed, latestVersion, header?.version)
     val versionLabel = shownVersion?.let { stringResource(Res.string.artifacts_card_version, it) }
     RaftArtifactViewerFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
@@ -345,7 +350,10 @@ private fun RaftArtifactViewerScreen() {
                         scope = scope,
                         target = target,
                         pageUrl = embeddedPageUrl,
-                        onStay = { addressed = it },
+                        onStay = { next ->
+                            if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
+                            addressed = next
+                        },
                         onLeave = { bodyState = RaftArtifactViewerBodyState.Left(it) },
                     )
                 }
@@ -422,7 +430,20 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(navigated) { if (navigated && kept != null) visible = true }
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+    val density = LocalDensity.current
+    val bottomInsetPx =
+        raftArtifactViewerWebBottomInsetPx(
+            imeBottomPx = raftImeBottomPx(density),
+            navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
+            hostPadsWebView = raftWebViewNeedsHostBottomInsets,
+        )
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(RaftColor.SurfaceWhite)
+                .padding(bottom = with(density) { bottomInsetPx.toDp() }),
+    ) {
         RaftSandboxWebView(
             url = src,
             modifier = Modifier.fillMaxSize().alpha(if (visible) 1f else 0f),

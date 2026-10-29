@@ -58,12 +58,21 @@ fun parseRaftClientConfig(bodyText: String?): RaftClientConfig? {
 }
 
 internal interface RaftClientConfigApi {
-    suspend fun read(): HomeNetworkResponse
+    /** Reads [environment]'s config (its API base URL, as [SharedClientConfigStore] normalizes it). */
+    suspend fun read(environment: String): HomeNetworkResponse
 }
 
+/** `<API base>/public/client-config` for [environment] (an API base URL, with or without its trailing `/`). */
+internal fun clientConfigUrl(environment: String): String = normalizedEnvironment(environment) + "/public/client-config"
+
+/**
+ * A public read: no session, no server (the authenticated request answers 401 without a request
+ * while signed out, so the read on an environment switch, which signs out, never went out and
+ * nothing read it again after sign-in until the next app start), on the environment asked for.
+ */
 internal class NetworkRaftClientConfigApi(private val networkClient: RaftNetworkClient) : RaftClientConfigApi {
-    override suspend fun read(): HomeNetworkResponse =
-        networkClient.request(priority = DataRequestPriority.Background, path = "public/client-config")
+    override suspend fun read(environment: String): HomeNetworkResponse =
+        networkClient.requestRawAbsoluteUrl(priority = DataRequestPriority.Background, url = clientConfigUrl(environment))
 }
 
 /** Declared before any store reads it (a member would still be null in the initializer). */
@@ -119,7 +128,7 @@ class SharedClientConfigStore internal constructor(
     internal suspend fun refresh(environment: String = normalizedEnvironment(currentEnvironment())) {
         val response =
             try {
-                api.read()
+                api.read(environment)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
