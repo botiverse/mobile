@@ -30,6 +30,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.answersFor
 import build.raft.app.markdown.lucideIcon
@@ -74,7 +75,8 @@ internal fun raftArtifactViewerPageData(target: ArtifactLinkTarget): JSONObject 
     }
 
 internal fun JSONObject.raftArtifactViewerTargetOrNull(): ArtifactLinkTarget? {
-    val id = optString(VIEWER_ARTIFACT_ID).trim().takeIf { it.matches(Regex("^pt_[A-Za-z0-9-]{1,64}$")) } ?: return null
+    // `pt_…` or a short id, as the link wrote it.
+    val id = artifactIdOrNull(optString(VIEWER_ARTIFACT_ID).trim()) ?: return null
     val version = optInt(VIEWER_VERSION, 0).takeIf { it > 0 }
     return ArtifactLinkTarget(id, version)
 }
@@ -271,7 +273,7 @@ private fun RaftArtifactViewerScreen() {
     val embeddedPageUrl = remember(webBaseUrl, target) { raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target) }
     // Paint the header at once: the opener's card (put in the cache on tap), else the last one seen,
     // in this scope only.
-    var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.id)) }
+    var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.canonicalId)) }
     LaunchedEffect(Unit) { if (header != null) RaftArtifactOpenTrace.mark("header_painted", "from=card_or_cache") }
     var bodyState by remember(params.toString()) { mutableStateOf<RaftArtifactViewerBodyState>(RaftArtifactViewerBodyState.Viewing) }
     // The version the page shows, from its address (a version picked in the page's ⋯, Back to
@@ -300,7 +302,7 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(bodyState) {
         // After the WebView left the screen (and was parked), so the eviction destroys it too.
         if (bodyState == RaftArtifactViewerBodyState.Unavailable) {
-            RaftArtifactViewerMemory.cache.evict(scope, target.id)
+            RaftArtifactViewerMemory.cache.evict(scope, target.canonicalId)
             raftWebViewKeepAliveClear()
             host.bridge.log("artifact_viewer_unavailable action=replace_and_evict")
         }

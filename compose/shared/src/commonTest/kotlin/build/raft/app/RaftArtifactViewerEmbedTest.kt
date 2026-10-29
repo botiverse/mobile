@@ -71,6 +71,22 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
+    fun aShortLinkOpensTheViewerOnItsShortAddress() {
+        // slock staging 380482116 artifactShortId.test.ts vector: 0b6f1c2e-… is 2QthvfPeGfDnqwr7LG6itx.
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        val pt = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val target = build.raft.app.data.parseArtifactLinkTarget("https://app.raft.build/artifacts/$short/v/3", listOf("app.raft.build"))!!
+        assertEquals("$web/artifacts/$short/v/3?$embed", raftArtifactViewerEmbeddedPageUrl(web, target))
+        assertTrue("\"/artifacts/$short/v/3?$embed\"" in raftArtifactViewerNavigateScript(web, "", target))
+        // Either form of the same Artifact in the address keeps the viewer (the web writes the short
+        // id when a version is picked); another Artifact closes it.
+        assertEquals(RaftArtifactViewerNavigation.Stay(4), raftArtifactViewerNavigation("$web/artifacts/$short/v/4?$embed", web, short))
+        assertEquals(RaftArtifactViewerNavigation.Stay(4), raftArtifactViewerNavigation("$web/artifacts/$short/v/4?$embed", web, pt))
+        assertEquals(RaftArtifactViewerNavigation.Stay(null), raftArtifactViewerNavigation("$web/artifacts/$pt", web, short))
+        assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$web/artifacts/ScAiFjjtiUvoyEYA6Ry12u", web, short))
+    }
+
+    @Test
     fun aKeptDocumentThatLeftItsArtifactIsNotKept() {
         val scope = RaftArtifactViewerScope(web, "https://api-aws-staging.botiverse.dev/api", "user-maya", "server-northwind")
         var drops = 0

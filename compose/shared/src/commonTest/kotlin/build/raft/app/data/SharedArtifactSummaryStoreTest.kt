@@ -65,6 +65,21 @@ class SharedArtifactSummaryStoreTest {
     }
 
     @Test
+    fun aShortIdIsAskedForByItsPtId() {
+        // slock staging 380482116: the summaries route reads `id` as written (webCards.ts
+        // parseArtifactObjectRef, visibility.ts homesWhere), so a short id is sent as `pt_<uuid>`.
+        val body = Json.parseToJsonElement(encodeArtifactSummariesRequest(listOf(ArtifactLinkTarget("2QthvfPeGfDnqwr7LG6itx", 2)))).jsonObject
+        val ref = body["refs"]!!.jsonArray.single() as JsonObject
+        assertEquals("pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21", ref["id"]?.jsonPrimitive?.content)
+        // The answer echoes the pt ref; it answers the short link's key.
+        val answers =
+            parseArtifactSummariesAnswer(
+                """{"kind":"artifact","summaries":[{"ref":{"id":"pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21","version":2},"ok":false,"reason":"unavailable"}]}""",
+            )!!
+        assertEquals(ArtifactSummaryAnswer.Unavailable, answers[ArtifactLinkTarget("2QthvfPeGfDnqwr7LG6itx", 2).key])
+    }
+
+    @Test
     fun parsesOkAndUnavailableAndAnUnreadableSummaryAsUnavailable() {
         val answers =
             parseArtifactSummariesAnswer(
