@@ -95,6 +95,26 @@ class DuoSideColumnScreenshotTest {
     fun innerScreenLandscapeChannel() =
         capture("duo.inner-landscape.channel", innerPosture, tabBarStandIn = 0.dp) { WideShell(channelOpen = true) }
 
+    @Test
+    @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
+    fun innerScreenUprightHome() =
+        capture("duo.inner-upright.home", RaftSideColumnPosture(duoInner = true), tabBarStandIn = 0.dp) { WideShell(listWidth = 260.dp) }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
+    fun innerScreenUprightChannel() =
+        capture("duo.inner-upright.channel", RaftSideColumnPosture(duoInner = true), tabBarStandIn = 0.dp) {
+            WideShell(channelOpen = true, listWidth = 260.dp)
+        }
+
+    // Before #3910: the inner screen held upright reported no side column and kept the top bar.
+    @Test
+    @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
+    fun innerScreenUprightChannelBefore() =
+        capture("duo.inner-upright.channel.before", RaftSideColumnPosture.None, tabBarStandIn = 0.dp) {
+            WideShell(channelOpen = true, listWidth = 260.dp)
+        }
+
     private fun capture(
         name: String,
         posture: RaftSideColumnPosture,
@@ -272,7 +292,12 @@ private fun ChannelPage(showBack: Boolean = true) {
 }
 
 @Composable
-private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false, serverPanelOpen: Boolean = false) {
+private fun WideShell(
+    channelOpen: Boolean = false,
+    bellOpen: Boolean = false,
+    serverPanelOpen: Boolean = false,
+    listWidth: Dp = 280.dp,
+) {
     val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive = true)
     val topBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
     val serverPanel = remember { RaftMobileNavServerPopoverState().apply { if (serverPanelOpen) show() } }
@@ -287,20 +312,32 @@ private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false, s
     if (channelOpen) raftSideColumnFallbackBack(raftSideColumnBackAction(onBack = {}))
     CompositionLocalProvider(LocalRaftAppShellTopBar provides topBar) {
         Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+          androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+            if (!railWithoutTopBar) {
+                RaftAppShellTopBar(
+                    currentServer = duoServerMenu.currentServer,
+                    servers = duoServers,
+                    serverMenuOpen = false,
+                    onWorkspaceClick = {},
+                    onServerPick = {},
+                    searchLabel = "Search",
+                    onSearchClick = {},
+                    windowWidth = 669.dp,
+                    bell = topBar,
+                )
+            }
             Row(Modifier.fillMaxSize()) {
                 RaftNavigationRailTabBar(
                     items =
-                        appShellRailItemsWithSearch(
-                            items =
-                                listOf(
-                                    RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
-                                    RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
-                                    RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
-                                    RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
-                                ),
-                            searchLabel = "Search",
-                            searchOpen = false,
-                        ),
+                        listOf(
+                            RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
+                            RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
+                            RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
+                            RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
+                        ).let { items ->
+                            // As the shell: Search joins the rail only when the top bar (and its search field) is gone.
+                            if (railWithoutTopBar) appShellRailItemsWithSearch(items, searchLabel = "Search", searchOpen = false) else items
+                        },
                     onSelect = {},
                     modifier = Modifier.fillMaxHeight(),
                     bottomItems = listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
@@ -312,9 +349,10 @@ private fun WideShell(channelOpen: Boolean = false, bellOpen: Boolean = false, s
                         },
                     footerTools = if (railWithoutTopBar) ({ RaftAppRailNotificationBell(topBar, onToggle = {}) }) else null,
                 )
-                Box(Modifier.width(280.dp).fillMaxHeight()) { HomeList(serverSwitcherInTopBar = true) }
+                Box(Modifier.width(listWidth).fillMaxHeight()) { HomeList(serverSwitcherInTopBar = true) }
                 Box(Modifier.weight(1f).fillMaxHeight()) { if (channelOpen) ChannelPage(showBack = false) }
             }
+          }
             RaftAppTopBarNotificationOverlay(topBar, topInset = 0.dp, besideRail = true)
             RaftAppServerMenuOverlay(
                 model = duoServerMenu,
