@@ -1162,8 +1162,8 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             return
         }
     }
-    // artin 10-29: a chip whose open is in flight is busy — the spinner leads its label inside the
-    // box and the chip is dimmed (raft-ui `--opacity-dimmed`, busy controls), until it settles.
+    // artin 10-29: a chip whose open is in flight is busy — the spinner follows its label inside the
+    // box (as the web's trailing spinner) and the chip is dimmed (raft-ui `--opacity-dimmed`, busy controls), until it settles.
     val busy = token.active && token.trailingIndicator.isEmpty()
     val boxStyle = raftMarkdownRichTextTagInlineBoxStyle(token.chrome)?.let { if (busy) it.raftBusyDimmed() else it }
     withRaftInlineChipGaps(boxStyle) {
@@ -1182,12 +1182,13 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             withRaftInlineBox(boxStyle) {
                 val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
                 val appendChipText: AnnotatedString.Builder.() -> Unit = {
-                    if (busy) {
-                        appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
-                        // A word joiner keeps the spinner and the label on one line.
-                        append(RaftMarkdownTaskChipWordJoiner)
-                    }
                     append(label)
+                    if (busy) {
+                        // A word joiner keeps the label and the spinner on one line.
+                        append(RaftMarkdownTaskChipWordJoiner)
+                        append(" ")
+                        appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+                    }
                 }
                 if (fontSizeStyle == null) appendChipText() else withStyle(fontSizeStyle) { appendChipText() }
             }
