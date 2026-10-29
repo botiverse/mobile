@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.emoji.RaftEmojiCatalog
+import build.raft.app.emoji.RaftEmojiPickerPreferences
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.markdown.markdownToPreviewText
@@ -444,6 +446,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -20150,6 +20153,8 @@ private fun ThreadMessagesListContent(
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Add Reaction: the message whose full emoji picker is open (web hover-toolbar picker).
     var reactionPickerMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // Where the message menu was, kept for the picker: on wide screens it opens there, like web's.
+    var reactionPickerAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
 
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
@@ -23354,12 +23359,14 @@ private fun ThreadMessagesListContent(
         }
         // The Compact menu's message actions, shared by the long-press menu and the in-place
         // selection menu; [close] dismisses whichever surface showed them. [track] is off for the
-        // in-place selection menu, which is not the long-press menu.
+        // in-place selection menu, which is not the long-press menu. [anchor]: where the menu
+        // was, for Add Reaction's picker (none for the selection menu: the picker is a dialog).
         fun compactMenuMessageActions(
             message: RaftThreadMessageItem,
             replyMetadata: ThreadReplyMetadata,
             close: () -> Unit,
-            track: Boolean = true
+            track: Boolean = true,
+            anchor: RaftPopoverAnchor? = null
         ): ThreadNewMessageMenuMessageActions {
             val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
             fun trackTool(tool: ThreadNewMessageMenuTool) {
@@ -23414,6 +23421,7 @@ private fun ThreadMessagesListContent(
                         onAddReaction = {
                             close()
                             trackTool(ThreadNewMessageMenuTool.AddReaction)
+                            reactionPickerAnchor = anchor
                             reactionPickerMessageId = message.id
                         },
                         onCopyLink = {
@@ -23545,6 +23553,7 @@ private fun ThreadMessagesListContent(
                 val onAddReaction: () -> Unit = {
                     closeActionMenu()
                     trackLongPressMenuAction(message, RaftMessageAction.OpenReactionPicker)
+                    reactionPickerAnchor = resolvedActionAnchor
                     reactionPickerMessageId = message.id
                 }
                 val onTranslate: () -> Unit = {
@@ -23582,7 +23591,8 @@ private fun ThreadMessagesListContent(
                         )
                     }
                 if (variant == ThreadMessageMenuVariant.Compact) {
-                    val actions = compactMenuMessageActions(message, replyMetadata, close = closeActionMenu)
+                    val actions =
+                        compactMenuMessageActions(message, replyMetadata, close = closeActionMenu, anchor = resolvedActionAnchor)
                     ThreadNewMessageMenu(
                         anchor = resolvedActionAnchor,
                         availability = capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata),
@@ -23720,14 +23730,35 @@ private fun ThreadMessagesListContent(
             )
         }
         reactionPickerMessageId?.let { messageId ->
-            RaftEmojiPickerDialog(
-                title = stringResource(Res.string.thread_action_add_reaction),
-                onDismiss = { reactionPickerMessageId = null },
-                onSelect = { emoji ->
-                    reactionPickerMessageId = null
-                    onThreadEvent("toggleReaction", messageId, null, emoji)
-                }
-            )
+            val closeReactionPicker: () -> Unit = {
+                reactionPickerMessageId = null
+                reactionPickerAnchor = null
+            }
+            val onPickReaction: (String) -> Unit = { emoji ->
+                closeReactionPicker()
+                onThreadEvent("toggleReaction", messageId, null, emoji)
+            }
+            // Read here: the shell host and the dialog host compose the picker outside this page.
+            val emojiPickerPreferences = rememberRaftEmojiPickerPreferences()
+            val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+            val pickerAnchor = reactionPickerAnchor
+            if (raftEmojiPickerUsesPopover(windowWidthDp, hasAnchor = pickerAnchor != null) && pickerAnchor != null) {
+                ThreadMessageEmojiPickerPopover(
+                    messageId = messageId,
+                    anchor = pickerAnchor,
+                    preferences = emojiPickerPreferences,
+                    onDismiss = closeReactionPicker,
+                    onSelect = onPickReaction,
+                    diagnosticsLogger = diagnosticsLogger
+                )
+            } else {
+                RaftEmojiPickerDialog(
+                    title = stringResource(Res.string.thread_action_add_reaction),
+                    onDismiss = closeReactionPicker,
+                    onSelect = onPickReaction,
+                    preferences = emojiPickerPreferences
+                )
+            }
         }
         taskStatusMenuMessageId?.let { messageId ->
             val resolvedTaskStatusAnchor =
@@ -31359,6 +31390,99 @@ private fun ThreadMessageActionMenu(
         width = menuWidth,
         height = menuHeight
     )
+    val shellItems =
+        actions.mapIndexed { index, action ->
+            RaftShellOverlayItem(
+                id = index.toString(),
+                label = action.label.localized(),
+                iconName = action.icon.name,
+                enabled = action.enabled
+            )
+        }
+    ThreadShellAwareAnchoredPopover(
+        anchor = anchor,
+        contentSize = contentSize,
+        viewportGapPx = viewportGapPx,
+        onDismiss = onDismiss,
+        shellRequestId = { pageRootAnchor ->
+            "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
+        },
+        shellItems = shellItems,
+        shellContentKey = showReactionActions,
+        shellContent = { onSelected ->
+            // The shell host composes this in its own page. Decode the reaction atlas
+            // there instead of capturing this page's `reactionAtlasImage`: the atlas
+            // loads asynchronously, so a lambda registered before it was ready kept
+            // the first-frame null forever and every reaction rendered as an empty
+            // box (HuaTuo device check of 6de03d9a, all layouts).
+            ThreadReactionAtlasProvider {
+                ThreadMessageMenuChrome(
+                    actions = actions.mapIndexed { index, action ->
+                        action.copy(onClick = { onSelected(index.toString()) })
+                    },
+                    showReactionActions = showReactionActions,
+                    reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                    onReact = { emoji ->
+                        onReact(emoji)
+                    },
+                    modifier = Modifier
+                )
+            }
+        },
+        onShellSelected = { id ->
+            actions.getOrNull(id.toIntOrNull() ?: -1)
+                ?.takeIf { it.enabled }
+                ?.onClick
+                ?.invoke()
+        },
+        onShellRequested = { requestId, pageWindowAnchor ->
+            diagnosticsLogger(
+                "thread_message_menu_shell_request messageId=${message.id} requestId=$requestId " +
+                    "anchor=$pageWindowAnchor menuW=$menuWidth menuH=$menuHeight"
+            )
+        },
+        inPageContent = { inShellFallback ->
+            if (!inShellFallback) {
+                LaunchedEffect(message.id, anchor) {
+                    diagnosticsLogger(
+                        "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
+                    )
+                }
+            }
+            ThreadMessageMenuChrome(
+                actions = actions,
+                showReactionActions = showReactionActions,
+                reactionAtlasImage = reactionAtlasImage,
+                onReact = onReact,
+                modifier = Modifier
+            )
+        }
+    )
+}
+
+/**
+ * A popover opened from a thread message, at [anchor] with web's context menu placement. A thread
+ * is often rendered in a 400dp child page, and a Modal created there receives that page's native
+ * surface and clips whatever overflows it; on such a page the popover goes through the app-shell
+ * host instead ([RaftShellOverlayContentRegistry]), which owns a window-sized surface while the
+ * callbacks stay in this page. [shellContent] is composed in the shell's page, so it must not read
+ * this page's composition locals; [inPageContent] gets whether it is the shell path's fallback.
+ */
+@Composable
+private fun ThreadShellAwareAnchoredPopover(
+    anchor: RaftPopoverAnchor,
+    contentSize: Size,
+    viewportGapPx: Float,
+    onDismiss: () -> Unit,
+    shellRequestId: (pageRootAnchor: Offset?) -> String,
+    // The shell's contract wants at least one row; it draws them only when no content was registered.
+    shellItems: List<RaftShellOverlayItem>,
+    shellContentKey: Any?,
+    shellContent: @Composable (onSelected: (String) -> Unit) -> Unit,
+    onShellSelected: (String) -> Unit,
+    onShellRequested: (requestId: String, pageWindowAnchor: Offset) -> Unit,
+    inPageContent: @Composable (inShellFallback: Boolean) -> Unit
+) {
     // Task #185 (narrowed for 1.14.2): only an adaptive split-pane detail page clips a Modal to
     // its 400dp child surface. Everywhere else (single-pane phones, full-width pages) keep the
     // original in-page Modal path unchanged; only the clipping case goes through the shell host.
@@ -31394,18 +31518,7 @@ private fun ThreadMessageActionMenu(
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
             horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
         ) {
-            LaunchedEffect(message.id, anchor) {
-                diagnosticsLogger(
-                    "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
-                )
-            }
-            ThreadMessageMenuChrome(
-                actions = actions,
-                showReactionActions = showReactionActions,
-                reactionAtlasImage = reactionAtlasImage,
-                onReact = onReact,
-                modifier = Modifier
-            )
+            inPageContent(false)
         }
         return
     }
@@ -31428,17 +31541,7 @@ private fun ThreadMessageActionMenu(
     val pageRootAnchor = anchor.rootOffsetOrNull()
     val pageWindowAnchor =
         pageRootAnchor?.plus(RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
-    val requestId =
-        "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
-    val shellItems =
-        actions.mapIndexed { index, action ->
-            RaftShellOverlayItem(
-                id = index.toString(),
-                label = action.label.localized(),
-                iconName = action.icon.name,
-                enabled = action.enabled
-            )
-        }
+    val requestId = shellRequestId(pageRootAnchor)
     DisposableEffect(pageEventBus, requestId) {
         val subscription =
             pageEventBus.observe(RAFT_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
@@ -31469,16 +31572,10 @@ private fun ThreadMessageActionMenu(
             verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
             horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
         ) {
-            ThreadMessageMenuChrome(
-                actions = actions,
-                showReactionActions = showReactionActions,
-                reactionAtlasImage = reactionAtlasImage,
-                onReact = onReact,
-                modifier = Modifier
-            )
+            inPageContent(true)
         }
     } else {
-        LaunchedEffect(requestId, pageWindowAnchor, showReactionActions, shellItems) {
+        LaunchedEffect(requestId, pageWindowAnchor, shellContentKey, shellItems) {
             RaftShellOverlayContentRegistry.register(
                 RaftShellOverlayContentEntry(
                     requestId = requestId,
@@ -31486,32 +31583,8 @@ private fun ThreadMessageActionMenu(
                     viewportGap = viewportGapPx,
                     horizontalOffset = 0f,
                     verticalOffset = 0f,
-                    content = { onSelected ->
-                        // The shell host composes this in its own page. Decode the reaction atlas
-                        // there instead of capturing this page's `reactionAtlasImage`: the atlas
-                        // loads asynchronously, so a lambda registered before it was ready kept
-                        // the first-frame null forever and every reaction rendered as an empty
-                        // box (HuaTuo device check of 6de03d9a, all layouts).
-                        ThreadReactionAtlasProvider {
-                            ThreadMessageMenuChrome(
-                                actions = actions.mapIndexed { index, action ->
-                                    action.copy(onClick = { onSelected(index.toString()) })
-                                },
-                                showReactionActions = showReactionActions,
-                                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
-                                onReact = { emoji ->
-                                    onReact(emoji)
-                                },
-                                modifier = Modifier
-                            )
-                        }
-                    },
-                    onSelected = { id ->
-                        actions.getOrNull(id.toIntOrNull() ?: -1)
-                            ?.takeIf { it.enabled }
-                            ?.onClick
-                            ?.invoke()
-                    },
+                    content = shellContent,
+                    onSelected = onShellSelected,
                 )
             )
             pageEventBus.post(
@@ -31523,12 +31596,55 @@ private fun ThreadMessageActionMenu(
                     items = shellItems
                 ).toJson()
             )
-            diagnosticsLogger(
-                "thread_message_menu_shell_request messageId=${message.id} requestId=$requestId " +
-                    "anchor=$pageWindowAnchor menuW=$menuWidth menuH=$menuHeight"
-            )
+            onShellRequested(requestId, pageWindowAnchor)
         }
     }
+}
+
+/**
+ * Add Reaction's picker on a wide screen: web's floating panel, opened where the message menu was
+ * and kept inside the window; through the app-shell host on a split-pane page, like the menu.
+ */
+@Composable
+private fun ThreadMessageEmojiPickerPopover(
+    messageId: String,
+    anchor: RaftPopoverAnchor,
+    preferences: RaftEmojiPickerPreferences,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
+) {
+    val density = LocalDensity.current
+    val shellItemLabel = stringResource(Res.string.thread_action_add_reaction)
+    ThreadShellAwareAnchoredPopover(
+        anchor = anchor,
+        contentSize = raftEmojiPickerPopoverSize(density),
+        viewportGapPx = with(density) { RaftEmojiPickerPopoverViewportGap.toPx() },
+        onDismiss = onDismiss,
+        shellRequestId = { pageRootAnchor -> "thread-emoji-picker-$messageId-${pageRootAnchor?.hashCode() ?: 0}" },
+        // Never drawn: the panel below is registered with the request.
+        shellItems = listOf(RaftShellOverlayItem(id = "emoji-picker", label = shellItemLabel)),
+        shellContentKey = preferences,
+        shellContent = { onSelected ->
+            RaftEmojiPickerPopoverSurface(
+                preferences = preferences,
+                catalog = RaftEmojiCatalog.Default,
+                onSelect = onSelected
+            )
+        },
+        // The panel reports the picked emoji as the selected id.
+        onShellSelected = onSelect,
+        onShellRequested = { requestId, pageWindowAnchor ->
+            diagnosticsLogger("thread_emoji_picker_shell_request messageId=$messageId requestId=$requestId anchor=$pageWindowAnchor")
+        },
+        inPageContent = {
+            RaftEmojiPickerPopoverSurface(
+                preferences = preferences,
+                catalog = RaftEmojiCatalog.Default,
+                onSelect = onSelect
+            )
+        }
+    )
 }
 
 /** A double tap's quick reaction bar: which message, anchored where the second tap landed. */

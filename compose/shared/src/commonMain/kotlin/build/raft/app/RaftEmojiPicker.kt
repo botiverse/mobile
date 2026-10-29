@@ -6,7 +6,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -39,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +57,7 @@ import build.raft.app.emoji.raftEmojiFrequentlyUsed
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.raftPointerHover
@@ -84,6 +89,25 @@ private val RaftEmojiPickerCellSize = 40.dp
 private val RaftEmojiPickerTabHeight = 34.dp
 private val RaftEmojiPickerGridHeight = 280.dp
 private val RaftEmojiPickerToneButtonSize = 44.dp
+
+/** Web's reaction picker panel (MessageItem `REACTION_EMOJI_PICKER_WIDTH/HEIGHT`). */
+internal val RaftEmojiPickerPopoverWidth = 340.dp
+internal val RaftEmojiPickerPopoverHeight = 420.dp
+
+/** How far the floating panel keeps from the window's edges (web `REACTION_PICKER_VIEWPORT_MARGIN`). */
+internal val RaftEmojiPickerPopoverViewportGap = 8.dp
+
+/**
+ * Whether Add Reaction opens the picker as a floating panel where the message menu was (web's
+ * picker) rather than the centered dialog: on a window as wide as the app's dual-pane layout
+ * (Mac, iPad and tablets held wide), and only when the menu left a place to open it at.
+ */
+internal fun raftEmojiPickerUsesPopover(windowWidthDp: Float, hasAnchor: Boolean): Boolean =
+    hasAnchor && windowWidthDp >= DualPaneMinimumWidthDp
+
+/** The floating panel's size in px, for placing it. */
+internal fun raftEmojiPickerPopoverSize(density: Density): Size =
+    with(density) { Size(RaftEmojiPickerPopoverWidth.toPx(), RaftEmojiPickerPopoverHeight.toPx()) }
 
 /** A row of the grid: "Frequently used" or one category. [key] keeps grid item keys unique. */
 internal class RaftEmojiPickerSection(
@@ -172,7 +196,38 @@ internal fun RaftEmojiPickerDialog(
     }
 }
 
-/** The picker itself: search and skin tone, category tabs, and the emoji grid. */
+/**
+ * The picker as a floating panel on wide screens: the popover surface the menus use, web's
+ * 340x420. The caller places it ([raftEmojiPickerPopoverSize], context menu placement) and
+ * closes it on a pick.
+ */
+@Composable
+internal fun RaftEmojiPickerPopoverSurface(
+    preferences: RaftEmojiPickerPreferences,
+    catalog: RaftEmojiCatalog,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    RaftPopoverSurface(
+        modifier = modifier.raftFloatingContentClickTarget().height(RaftEmojiPickerPopoverHeight),
+        width = RaftEmojiPickerPopoverWidth,
+        contentPadding = PaddingValues(12.dp),
+    ) {
+        // The grid takes the height the panel leaves, so opening the skin tones keeps it 420 high.
+        RaftEmojiPickerPanel(
+            preferences = preferences,
+            catalog = catalog,
+            onSelect = onSelect,
+            modifier = Modifier.fillMaxHeight(),
+            gridHeight = null,
+        )
+    }
+}
+
+/**
+ * The picker itself: search and skin tone, category tabs, and the emoji grid. [gridHeight] null:
+ * the grid fills what [modifier]'s bounded height leaves (the floating panel).
+ */
 @Composable
 internal fun RaftEmojiPickerPanel(
     preferences: RaftEmojiPickerPreferences,
@@ -181,6 +236,7 @@ internal fun RaftEmojiPickerPanel(
     modifier: Modifier = Modifier,
     initialQuery: String = "",
     initialToneMenuOpen: Boolean = false,
+    gridHeight: Dp? = RaftEmojiPickerGridHeight,
 ) {
     var query by remember { mutableStateOf(initialQuery) }
     var skinTone by remember(preferences) { mutableStateOf(preferences.readSkinTone()) }
@@ -285,7 +341,7 @@ internal fun RaftEmojiPickerPanel(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(RaftEmojiPickerCellSize),
             state = gridState,
-            modifier = Modifier.fillMaxWidth().height(RaftEmojiPickerGridHeight),
+            modifier = Modifier.fillMaxWidth().then(if (gridHeight != null) Modifier.height(gridHeight) else Modifier.weight(1f)),
         ) {
             if (searching) {
                 if (results.isEmpty()) {

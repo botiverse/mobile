@@ -1,8 +1,14 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -25,7 +31,9 @@ import org.robolectric.shadows.ShadowDialog
 /**
  * The Add Reaction emoji picker (Web's emoji-picker-react set), light and dark: search and skin
  * tone, the category tabs, "Frequently Used" from stored picks, then Smileys & People; a search
- * for "heart"; the skin tone choices open with Medium chosen (the grid in that tone).
+ * for "heart"; the skin tone choices open with Medium chosen (the grid in that tone); the
+ * floating panel wide screens open where the message menu was (drawn in the page, flipped and
+ * kept 8dp inside the window as the menu was opened near its right edge).
  * Filtered as on a device ([RaftEmojiCatalog.drawable] with the real `Paint.hasGlyph`): the
  * emoji font Robolectric bundles for this SDK is fixed, so the goldens stay stable and show what
  * an Android 14 phone shows, with no empty boxes. Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
@@ -50,6 +58,37 @@ class RaftEmojiPickerScreenshotTest {
     @Test
     fun skinToneLight() =
         picker("thread.emoji-picker.skin-tone", RaftAppAppearance.Light, tone = RaftEmojiSkinTone.Medium, toneMenuOpen = true)
+
+    @Test
+    fun popoverLight() = popover("thread.emoji-picker.popover", RaftAppAppearance.Light)
+
+    @Test
+    fun popoverDark() = popover("thread.emoji-picker.popover.dark", RaftAppAppearance.Dark)
+
+    private fun popover(name: String, appearance: RaftAppAppearance) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+            Page {
+                val preferences = remember { fixturePreferences(RaftEmojiSkinTone.Neutral) }
+                val density = LocalDensity.current
+                val anchor =
+                    remember(density) {
+                        RaftPopoverAnchor.forRootOffset(with(density) { Offset(300.dp.toPx(), 160.dp.toPx()) })
+                    }
+                Box(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+                    RaftAnchoredPopover(
+                        anchor = anchor,
+                        contentSize = raftEmojiPickerPopoverSize(density),
+                        onDismiss = {},
+                        viewportGap = with(density) { RaftEmojiPickerPopoverViewportGap.toPx() },
+                        verticalOffset = 0f,
+                        verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+                        horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu,
+                    ) {
+                        RaftEmojiPickerPopoverSurface(preferences = preferences, catalog = drawableCatalog, onSelect = {})
+                    }
+                }
+            }
+        }
 
     private fun picker(
         name: String,
