@@ -254,8 +254,9 @@ fun parseReadReceiptResult(
  * OpenAPI artifact (`readState` module, [MarkConversationUnreadResponseDto]). Null on contract
  * mismatch (including `ok: false`) so the caller collapses it to an error.
  *
- * A 202 [ReadMutationPendingResponseDto] (admitted, result not known yet) keeps today's reading: a
- * result with no count, no mark and no outcome, i.e. inferred as nothing to mark.
+ * A 202 [ReadMutationPendingResponseDto] (admitted, result not known yet) is a pending result
+ * ([ReadReceiptResult.markUnreadPending], read as [MarkUnreadOutcome.Pending]): no count, no mark, no
+ * outcome; the `read_state:updated` that follows decides (Tenny, #proj-mobile:#70).
  */
 fun parseMarkConversationUnreadResult(bodyText: String, channelId: ChannelId): ReadReceiptResult? {
     val answer = runCatching {
@@ -276,6 +277,6 @@ fun parseMarkConversationUnreadResult(bodyText: String, channelId: ChannelId): R
     }
     return runCatching {
         unreadJson.decodeFromString(ReadMutationPendingResponseDto.serializer(), bodyText)
-        ReadReceiptResult(channelId = channelId, changed = true)
+        ReadReceiptResult(channelId = channelId, changed = true, markUnreadPending = true)
     }.getOrNull()
 }

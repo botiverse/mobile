@@ -34,6 +34,7 @@ class MarkedUnreadStoreTest {
     private val markedAnswer = ReadReceiptResult(unreadCount = 0, maxReadSeq = 12, readStateVersion = 9, markedUnread = true)
     private val refusedAnswer = ReadReceiptResult(unreadCount = 0, maxReadSeq = 0, readStateVersion = 0, markedUnread = false)
     private val olderServerAnswer = ReadReceiptResult(unreadCount = 0, maxReadSeq = 0, readStateVersion = 0)
+    private val pendingAnswer = ReadReceiptResult(markUnreadPending = true)
 
     @Test
     fun homeMarkUnreadShowsTheMarkWithNoCountAndAReadClearsIt() = runTest {
@@ -69,6 +70,50 @@ class MarkedUnreadStoreTest {
             assertEquals(emptySet(), store.snapshot().markedUnreadIds, name)
             assertEquals(listOf(RaftReadToggleNotice.MarkUnreadNothing), notices, name)
         }
+    }
+
+    // #proj-mobile:#70 (contract cases R1-202-pending, R2-optimistic-badge): a 202 keeps the optimistic
+    // state with no toast; the read-state event that follows corrects it.
+    @Test
+    fun homePendingKeepsTheOptimisticCountUntilTheReadStateEvent() = runTest {
+        val store = homeStore(unreadAnswer = pendingAnswer)
+        val notices = collectNotices(store.readToggleNotices)
+
+        store.accept(SharedHomeIntent.MarkUnread("dm-1"))
+        runCurrent()
+
+        assertEquals(1, store.snapshot().directMessages.single().unreadCount, "the optimistic count stays")
+        assertEquals(emptySet(), store.snapshot().markedUnreadIds)
+        assertEquals(emptyList(), notices, "no toast for a pending answer")
+
+        // Asserted before the summary reconcile the event schedules (this fake's summary has no mark).
+        store.accept(SharedHomeIntent.ApplyRealtimeEvent("server-1", readState("dm-1", version = 9, marked = true)))
+
+        assertEquals(setOf("dm-1"), store.snapshot().markedUnreadIds, "the event brings the mark")
+        assertEquals(emptyList(), notices)
+    }
+
+    @Test
+    fun activityPendingKeepsTheOptimisticCountWithNoToast() = runTest {
+        val read = FakeReadReceiptRepository(unreadResult = { pendingAnswer.copy(channelId = it) })
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1")))))
+        val store = activityStore(backgroundScope, inbox, readReceiptRepository = read)
+        val notices = collectNotices(store.readToggleNotices)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkUnread(store.state.value.items.single()))
+        runCurrent()
+
+        val row = store.state.value.items.single()
+        assertEquals(1 to false, row.unreadCount to row.markedUnread, "the optimistic count stays")
+        assertEquals(emptyList(), notices)
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readState("channel-1", version = 9, marked = true)))
+        runCurrent()
+
+        assertTrue(store.state.value.items.single().markedUnread, "the event brings the mark")
+        assertEquals(emptyList(), notices)
     }
 
     @Test
