@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 /*
@@ -40,6 +41,26 @@ dependencies {
 tasks.withType<Test>().configureEach {
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
 }
+
+// The embedded WebView's native engine bridge (io.github.kdroidfilter:wrywebview, via :shared
+// desktopMain) is a frozen upstream release carrying native code, maintained by Lagoon (fork it if it
+// needs a fix). This repo has no gradle/verification-metadata.xml, so its jar is pinned here: any
+// other bytes fail the build before the app is run, tested or packaged. Bump together with
+// libs.versions.toml `wrywebview`.
+val wryWebviewSha256 = "513d30357154de4c5494abe4b133729fc1c111331cc18100ec3a9bf338b7947f"
+val verifyWryWebviewChecksum by tasks.registering {
+    val artifacts = configurations.named("runtimeClasspath").flatMap { it.incoming.artifacts.resolvedArtifacts }
+    inputs.files(artifacts.map { all -> all.map { it.file } })
+    doLast {
+        val wry = artifacts.get().filter { it.id.componentIdentifier.displayName.startsWith("io.github.kdroidfilter:wrywebview:") }
+        check(wry.size == 1) { "expected one wrywebview artifact, found ${wry.map { it.id.displayName }}" }
+        val bytes = wry.single().file.readBytes()
+        val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        check(sha == wryWebviewSha256) { "wrywebview checksum mismatch: $sha (pinned $wryWebviewSha256)" }
+    }
+}
+tasks.matching { it.name in setOf("test", "run", "createDistributable", "createReleaseDistributable", "packageDmg", "packageReleaseDmg") }
+    .configureEach { dependsOn(verifyWryWebviewChecksum) }
 
 // macOS requires MAJOR.MINOR.PATCH with MAJOR > 0 for the bundle version.
 val raftDesktopVersion = providers.gradleProperty("raft.desktop.version").orElse("1.0.0")

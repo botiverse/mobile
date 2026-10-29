@@ -30,6 +30,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactIdOrNull
@@ -103,6 +104,7 @@ internal fun raftArtifactViewerWebViewConfig(
         hostEventsEnabled = false,
         // Rule 2: top-level documents stay on the web origin.
         mainFrameOrigin = scope.webOrigin,
+        frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
         keepAliveKey = scope.keepAliveKey,
     )
 
@@ -457,6 +459,8 @@ private fun RaftArtifactViewerWebBody(
             controller = controller,
             allowedNavigationSchemes = setOf("http", "https"),
             mainFrameOrigin = scope.webOrigin,
+            // The content frame (desktop declares it; see RaftWebViewConfig.frameHosts).
+            frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
             keepAliveKey = scope.keepAliveKey,
             onLoadCommit = {
                 visible = true

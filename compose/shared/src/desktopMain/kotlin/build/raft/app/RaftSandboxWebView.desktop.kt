@@ -7,7 +7,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
-import androidx.compose.ui.graphics.Color
 import build.raft.app.data.RaftDesktopPaths
 import io.github.kdroidfilter.webview.wry.Rgba
 import io.github.kdroidfilter.webview.wry.WryWebViewPanel
@@ -22,6 +21,9 @@ import kotlinx.coroutines.delay
  *
  * Wry's engine has no switch to turn JavaScript off, so a surface that asks for no scripts keeps
  * the notice (fail closed). Any change to the policy inputs or the data store rebuilds the WebView.
+ *
+ * Windows keeps the notice too for now: WebView2 injects the document-start script into every
+ * frame, a path not yet verified on a Windows machine (Tenny, #3968); it ships separately.
  */
 @Composable
 internal actual fun RaftSandboxWebViewHost(
@@ -30,7 +32,7 @@ internal actual fun RaftSandboxWebViewHost(
     controller: RaftWebViewController,
     modifier: Modifier,
 ) {
-    if (!config.allowScripts) {
+    if (!config.allowScripts || RaftDesktopWebViewOnWindows) {
         RaftDesktopUnsupportedNotice("Web content is not available on desktop yet.", modifier)
         return
     }
@@ -42,6 +44,7 @@ internal actual fun RaftSandboxWebViewHost(
             config.mainFrameOrigin,
             config.hostEventsEnabled,
             config.injectedJavaScript,
+            config.frameHosts,
         ) {
             RaftDesktopWebViewPolicy(
                 url = config.url,
@@ -50,12 +53,13 @@ internal actual fun RaftSandboxWebViewHost(
                 mainFrameOrigin = config.mainFrameOrigin,
                 hostEventsEnabled = config.hostEventsEnabled,
                 injectedJavaScript = config.injectedJavaScript,
+                frameHosts = config.frameHosts,
             )
         }
     key(policy, config.ephemeral) {
         val host = remember { RaftDesktopWryWebView(policy, config.ephemeral, events) }
         host.events = events
-        SwingPanel(background = Color.White, factory = { host.panel }, modifier = modifier)
+        SwingPanel(factory = { host.panel.apply { background = java.awt.Color.WHITE } }, modifier = modifier)
         DisposableEffect(controller) {
             host.bind(controller)
             onDispose { host.unbind(controller) }
@@ -71,10 +75,13 @@ internal actual fun RaftSandboxWebViewHost(
     }
 }
 
+private val RaftDesktopWebViewOnWindows: Boolean =
+    System.getProperty("os.name").orEmpty().lowercase().startsWith("windows")
+
 /** Poll interval for address / loading / title / host messages (iOS polls at the same rate). */
 private const val RaftDesktopWebViewPollMs = 250L
 
-/** Quicker check after a navigation that may have been top-level ([RaftDesktopWebViewNavigation.AllowUnverifiedFrame]). */
+/** Poll interval while a declared-frame navigation ([RaftDesktopWebViewNavigation.AllowUnverifiedFrame]) is unverified. */
 private const val RaftDesktopWebViewVerifyMs = 50L
 
 /** Times the host takes a fenced-off top-level page back to the last trusted address before giving up. */
@@ -106,6 +113,7 @@ internal class RaftDesktopWryWebView(
 
     @Volatile private var disposed = false
     @Volatile private var verifySoon = false
+    private val topLevelCheck = RaftDesktopWebViewTopLevelCheck()
     private var boundController: RaftWebViewController? = null
     private var currentUrl = initialUrl ?: ""
     private var lastTrustedUrl: String? = initialUrl
@@ -127,8 +135,9 @@ internal class RaftDesktopWryWebView(
         notifyState(force = true)
     }
 
+    /** Quick polls while a declared-frame navigation is unverified, so its timeout is honoured. */
     fun nextPollDelayMs(): Long =
-        if (verifySoon) {
+        if (verifySoon || topLevelCheck.armed) {
             verifySoon = false
             RaftDesktopWebViewVerifyMs
         } else {
@@ -160,6 +169,7 @@ internal class RaftDesktopWryWebView(
         when (policy.navigation(url)) {
             RaftDesktopWebViewNavigation.Allow -> true
             RaftDesktopWebViewNavigation.AllowUnverifiedFrame -> {
+                topLevelCheck.markUnverified(System.currentTimeMillis())
                 verifySoon = true
                 true
             }
@@ -172,11 +182,21 @@ internal class RaftDesktopWryWebView(
     fun poll() {
         if (disposed || !panel.isReady()) return
         for (raw in panel.drainIpcMessages()) onChannelMessage(raw)
-        panel.evaluateJavaScript(HrefScript) { result ->
-            val href = RaftDesktopWebViewPolicy.decodeEvaluatedString(result)
-            if (href != null) SwingUtilities.invokeLater { onTopLevelUrl(href) }
+        val now = System.currentTimeMillis()
+        if (topLevelCheck.timedOut(now)) {
+            // A declared-frame navigation happened and the page does not answer: it may be a foreign
+            // top-level page holding its main thread. Fail closed, without waiting for it.
+            takeBack(blockedUrl = null)
+            return
         }
         val nowLoading = panel.isLoading()
+        topLevelCheck.beginRequest(now)?.let { token ->
+            val idle = !nowLoading
+            panel.evaluateJavaScript(HrefScript) { result ->
+                val href = RaftDesktopWebViewPolicy.decodeEvaluatedString(result)
+                SwingUtilities.invokeLater { onTopLevelUrl(token, idle, href) }
+            }
+        }
         currentTitle = panel.getTitle().orEmpty()
         if (nowLoading && !loading) {
             loading = true
@@ -194,21 +214,19 @@ internal class RaftDesktopWryWebView(
         notifyState(force = false)
     }
 
-    private fun onTopLevelUrl(href: String) {
-        if (disposed || href.isBlank()) return
-        if (!policy.isTrustedTopLevel(href)) {
-            // Before the first document the engine reports about:blank: nothing to fence yet.
-            if (href == "about:blank") return
-            if (href != lastBlockedUrl) {
-                lastBlockedUrl = href
-                events.onNavigationBlocked(href)
-            }
-            panel.stopLoading()
-            val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
-            restores += 1
-            panel.loadUrl(back)
+    private fun onTopLevelUrl(token: Long, idle: Boolean, href: String?) {
+        if (disposed) return
+        // Before the first document the engine reports about:blank: nothing to fence yet.
+        // No readable answer (script error) is trusted only while no declared-frame check is pending.
+        val trusted =
+            if (href == null) !topLevelCheck.armed else href == "about:blank" || policy.isTrustedTopLevel(href)
+        val verdict = topLevelCheck.answer(token, trusted, idle, System.currentTimeMillis())
+        if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Stale) return
+        if (verdict == RaftDesktopWebViewTopLevelCheck.Verdict.Untrusted) {
+            takeBack(blockedUrl = href?.takeIf { it.isNotBlank() })
             return
         }
+        if (href == null || href.isBlank() || href == "about:blank") return
         lastBlockedUrl = ""
         // A trusted page the user reached (not the one restored to) re-arms the restore budget.
         if (href != lastTrustedUrl) restores = 0
@@ -223,10 +241,23 @@ internal class RaftDesktopWryWebView(
         notifyState(force = false)
     }
 
+    /** The top-level document left the fence (or stopped answering): report it and load back. */
+    private fun takeBack(blockedUrl: String?) {
+        topLevelCheck.reset()
+        if (blockedUrl != null && blockedUrl != lastBlockedUrl) {
+            lastBlockedUrl = blockedUrl
+            events.onNavigationBlocked(blockedUrl)
+        }
+        panel.stopLoading()
+        val back = lastTrustedUrl?.takeIf { restores < RaftDesktopWebViewMaxRestores } ?: "about:blank"
+        restores += 1
+        panel.loadUrl(back)
+    }
+
     private fun onChannelMessage(raw: String) {
         when (val message = policy.unwrapChannelMessage(raw) ?: return) {
             is RaftDesktopWebViewChannelMessage.OpenWindow -> events.onNavigationBlocked(message.url)
-            // The secret already ties the message to the guarded top-level script; the address check
+            // The secret already ties the message to the trusted top-level script; the address check
             // is the iOS one (the active document is the configured page / origin).
             is RaftDesktopWebViewChannelMessage.Host ->
                 if (policy.canRunRuntimeScript(currentUrl)) events.dispatchHostMessage(message.raw)
