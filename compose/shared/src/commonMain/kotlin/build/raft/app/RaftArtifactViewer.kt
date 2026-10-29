@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.artifactWebUrl
@@ -121,9 +122,9 @@ internal class RaftArtifactViewerCache(
         keptDocument = null
     }
 
-    /** Whether the kept document shows exactly [target] for [scope] (show it at once). */
+    /** Whether the kept document shows exactly [target] for [scope] (show it at once): either id form. */
     fun keptDocumentShows(scope: RaftArtifactViewerScope?, target: ArtifactLinkTarget): Boolean =
-        scope != null && scope == this.scope && keptDocument?.target == target
+        scope != null && scope == this.scope && keptDocument?.target?.key == target.key
 
     /** Whether a kept document of [scope] may be reused for another Artifact (client-side navigation). */
     fun keptDocumentUsable(scope: RaftArtifactViewerScope?): Boolean = scope != null && scope == this.scope
@@ -132,7 +133,7 @@ internal class RaftArtifactViewerCache(
     fun evict(scope: RaftArtifactViewerScope?, id: String) {
         if (scope == null || scope != this.scope) return
         headers.remove(id)
-        if (keptDocument?.target?.id == id) dropKeptDocument()
+        if (keptDocument?.target?.canonicalId == artifactCanonicalId(id)) dropKeptDocument()
     }
 
     /**
@@ -342,7 +343,9 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
     val segments = path.split('/').filter { it.isNotEmpty() }
     // `/artifacts/<id>[/v/<n>]`, or the same under a server (`/s/<slug>/artifacts/…`).
     val artifact = if (segments.size >= 2 && segments[0] == "s") segments.drop(2) else segments
-    if (artifact.firstOrNull() == "artifacts" && artifact.getOrNull(1) == artifactId) {
+    // Either id form: the web writes the short id when a version is picked (slock `artifactPagePath`).
+    val shown = artifact.getOrNull(1)?.let(::artifactCanonicalId)
+    if (artifact.firstOrNull() == "artifacts" && shown == artifactCanonicalId(artifactId)) {
         when (artifact.size) {
             2 -> return RaftArtifactViewerNavigation.Stay(null)
             4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.Stay(it) }

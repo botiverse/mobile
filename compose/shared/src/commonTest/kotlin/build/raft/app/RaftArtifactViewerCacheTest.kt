@@ -179,5 +179,9 @@ class RaftArtifactViewerCacheTest {
         assertEquals(ArtifactLinkTarget(target.id, 3), pageData.raftArtifactViewerTargetOrNull())
         assertFalse(pageData.toString().contains(header.title))
         assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "https://evil.test/").raftArtifactViewerTargetOrNull())
+        // A short id is route identity as written (slock staging 380482116 artifactShortId.ts).
+        val short = ArtifactLinkTarget("2QthvfPeGfDnqwr7LG6itx", 2)
+        assertEquals(short, raftArtifactViewerPageData(short).raftArtifactViewerTargetOrNull())
+        assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "YcVfxkQb6JRzqk5kF2tNLw").raftArtifactViewerTargetOrNull())
     }
 }

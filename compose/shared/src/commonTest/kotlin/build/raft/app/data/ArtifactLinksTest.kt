@@ -115,6 +115,60 @@ class ArtifactLinksTest {
         assertEquals((1..10).map { ArtifactLinkTarget("pt_$it") }, targets)
     }
 
+    /**
+     * slock staging 3804821160552389b4c7b9ec306317e12605f44d `packages/shared/src/artifactRef.test.ts`
+     * "a short id is the same id as pt_<uuid>, bare and in every link form" (the link cases; bare
+     * ids and names are not links here). Where web reads the short id as `pt_<uuid>`, the app keeps
+     * it as written ([ArtifactLinkTarget.id]) and agrees on [ArtifactLinkTarget.canonicalId] / key.
+     */
+    @Test
+    fun shortIdsInEveryLinkFormUpstreamVectors() {
+        val webId = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        val appHosts = listOf("app.raft.build")
+        val cases =
+            listOf(
+                "https://app.raft.build/artifacts/$short" to ArtifactLinkTarget(short),
+                "https://app.raft.build/artifacts/$short/v/4?c=1#x" to ArtifactLinkTarget(short, 4),
+                "https://app.raft.build/s/raft/artifacts/$short/v/2" to ArtifactLinkTarget(short, 2),
+                "https://artifacts.raft.build/$short" to ArtifactLinkTarget(short),
+            )
+        for ((link, expected) in cases) {
+            val parsed = parseArtifactLinkTarget(link, appHosts)
+            assertEquals(expected, parsed, link)
+            assertEquals(webId, parsed!!.canonicalId, link)
+        }
+        assertNull(parseArtifactLinkTarget("https://evil.example/artifacts/$short", appHosts))
+        // Not a short id: one character short, out of the alphabet, or over 16 bytes.
+        for (bad in listOf(short.substring(1), short.substring(0, 21) + "0", "YcVfxkQb6JRzqk5kF2tNLw")) {
+            assertNull(parseArtifactLinkTarget("https://app.raft.build/artifacts/$bad", appHosts), bad)
+            assertNull(artifactIdOrNull(bad), bad)
+        }
+        // parseArtifactId: a bare id exactly as written.
+        assertEquals(short, artifactIdOrNull(short))
+        assertEquals(webId, artifactIdOrNull(webId))
+        for (bad in listOf("", " $webId", "$short ", "workspace-prototype", "https://app.raft.build/artifacts/$short")) assertNull(artifactIdOrNull(bad), bad)
+        // A 22-character name of digits and lowercase that starts with a digit decodes: an id.
+        assertEquals("pt_04b0e052-5c59-038c-dd43-b1f482e10dc9", artifactCanonicalId("1abcdefghijkmnopqrstuv"))
+        // Lowercase-led, it is over 16 bytes: not an id.
+        assertNull(parseArtifactLinkTarget("https://app.raft.build/artifacts/abcdefghijkmnopqrstuvw", appHosts))
+        // A pt_ id (fixtures' too) is its own canonical id.
+        assertEquals("pt_fake-roadmap", artifactCanonicalId("pt_fake-roadmap"))
+    }
+
+    @Test
+    fun aShortLinkAndItsPtLinkAreOneReference() {
+        val webId = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val short = "2QthvfPeGfDnqwr7LG6itx"
+        assertEquals("$webId;version=3", ArtifactLinkTarget(short, 3).key)
+        assertEquals(ArtifactLinkTarget(webId).key, ArtifactLinkTarget(short).key)
+        // As web's distinct-by-objectRefKey: the first link's form is kept.
+        val content = "https://app.raft.build/artifacts/$short and https://app.raft.build/artifacts/$webId"
+        assertEquals(listOf(ArtifactLinkTarget(short)), artifactMessageLinkTargets(content, hosts))
+        // The viewer's page gets the short id as written.
+        assertEquals("https://app.raft.build/artifacts/$short/v/2", artifactWebUrl("https://app.raft.build", ArtifactLinkTarget(short, 2)))
+    }
+
     @Test
     fun theWebUrlIsOnTheEnvironmentsWebOrigin() {
         assertEquals("https://staging.raft.build/artifacts/$id", artifactWebUrl("https://staging.raft.build/", ArtifactLinkTarget(id)))

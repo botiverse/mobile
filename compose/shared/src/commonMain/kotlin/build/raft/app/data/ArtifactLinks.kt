@@ -10,7 +10,8 @@ import build.raft.app.sharedSettingsResolvedWebBaseUrl
  *
  * A link names an Artifact only on one of Raft's own app hosts (`appHosts`, from
  * `GET /api/public/client-config`, [SharedClientConfigStore]), each compared whole:
- * `https://<app host>/artifacts/<id>[/v/<n>]` and the accepted `…/s/<server>/artifacts/<id>[/v/<n>]`.
+ * `https://<app host>/artifacts/<id>[/v/<n>]` and the accepted `…/s/<server>/artifacts/<id>[/v/<n>]`,
+ * `<id>` either `pt_…` or a short id (slock staging 380482116, `artifactShortId.ts`).
  * `evil.example/artifacts/pt_x` and `app.raft.build.evil.example/artifacts/pt_x` stay plain links.
  *
  * Like the shared parser, two fixed hosts name an Artifact by id whatever `appHosts` says: the
@@ -21,14 +22,36 @@ import build.raft.app.sharedSettingsResolvedWebBaseUrl
  * config says. The standalone app's legacy links (`raft-artifacts.com/p/<server>/<name>`) name an
  * Artifact by name, not id, and are not read (the shared parser doesn't resolve them to an id either).
  */
-/** An Artifact by id, pinned to a version or following the latest (null). */
+/**
+ * An Artifact by id, pinned to a version or following the latest (null). [id] is as the link wrote
+ * it: `pt_…` or a 22-character short id ([ArtifactShortId.kt]); the viewer's page gets it as it is.
+ */
 data class ArtifactLinkTarget(val id: String, val version: Int? = null) {
     /**
-     * The reference's key, as the web's `objectRefKey` spells it (`pt_x`, `pt_x;version=2`): one
-     * answer per key, and the summaries answer echoes the reference it answers.
+     * `pt_<uuid>` for a short id, else [id] (slock `parseArtifactId`): what the API's `id` fields
+     * and `POST /api/objects/summaries` name the Artifact by (the summaries route doesn't read
+     * short ids), and what tells two links to the same Artifact apart from two Artifacts.
      */
-    val key: String get() = if (version == null) id else "$id;version=$version"
+    val canonicalId: String get() = artifactCanonicalId(id)
+
+    /**
+     * The reference's key, as the web's `objectRefKey` spells it (`pt_x`, `pt_x;version=2`, on
+     * [canonicalId] as the web's parsed id is): one answer per key, and the summaries answer
+     * echoes the reference it answers.
+     */
+    val key: String get() = if (version == null) canonicalId else "$canonicalId;version=$version"
 }
+
+/**
+ * A bare Artifact id exactly as written (no trimming), kept as written: `pt_…`, or a short id
+ * (22 characters of Base58 that fit 16 bytes). Null for anything else. slock `parseArtifactId`,
+ * which reads a short id as `pt_<uuid>`; here [artifactCanonicalId] does that.
+ */
+fun artifactIdOrNull(value: String): String? =
+    value.takeIf { ARTIFACT_ID.matches(it) || decodeArtifactShortId(it) != null }
+
+/** `pt_<uuid>` for a short id; anything else as it is. */
+fun artifactCanonicalId(id: String): String = decodeArtifactShortId(id)?.let { "pt_$it" } ?: id
 
 /** The content origin's registrable domain: Artifact bytes, never a Raft page. */
 internal const val ARTIFACT_CONTENT_DOMAIN: String = "raftusercontent.com"
@@ -83,7 +106,7 @@ fun parseArtifactLinkTarget(link: String, appHosts: Collection<String>): Artifac
 
 /** An id, then an optional `v/<n>`; anything after that (a file path, `raw`) is ignored. */
 private fun artifactIdWithVersion(segments: List<String>): ArtifactLinkTarget? {
-    val id = segments.getOrNull(0)?.takeIf(ARTIFACT_ID::matches) ?: return null
+    val id = segments.getOrNull(0)?.let(::artifactIdOrNull) ?: return null
     val v = segments.getOrNull(1)
     val n = segments.getOrNull(2)
     if (v == "v" && n != null) {

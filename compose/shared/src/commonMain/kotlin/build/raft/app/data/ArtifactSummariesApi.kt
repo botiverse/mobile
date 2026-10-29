@@ -137,7 +137,12 @@ private val artifactSummariesJson = Json {
     ignoreUnknownKeys = true
 }
 
-internal fun ArtifactLinkTarget.toWireRef(): ArtifactObjectRefWireDto = ArtifactObjectRefWireDto(id = id, version = version)
+/**
+ * The ref by [ArtifactLinkTarget.canonicalId]: the summaries route reads `id` as written (slock
+ * `webCards.ts` `parseArtifactObjectRef`, core `readObjectRefs` requires the same id back, and
+ * `visibility.ts` `homesWhere` looks it up as `pt_<uuid>`), so a short id would answer `unavailable`.
+ */
+internal fun ArtifactLinkTarget.toWireRef(): ArtifactObjectRefWireDto = ArtifactObjectRefWireDto(id = canonicalId, version = version)
 
 /** `kind` always written; an unpinned ref has no `version` key (never `null`). */
 private val artifactSummariesRequestJson = Json {
