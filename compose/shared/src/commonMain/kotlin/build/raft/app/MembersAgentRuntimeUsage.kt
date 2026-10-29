@@ -330,69 +330,10 @@ internal fun MembersRuntimeUsageAccountCard(
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = account.planLabel ?: stringResource(Res.string.member_runtime_usage_account_fallback),
-                    style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 17.sp)
-                        .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                account.identityLabel?.let { identity ->
-                    Text(
-                        text = identity,
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            MembersRuntimeUsageHealthBadge(account.health)
-        }
-        if (account.health == RuntimeAccountUsageHealth.Unsupported) {
-            MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_unsupported))
-        }
-        // The same "X% left · resets …" line as the Computers page and the web (never "X% used").
-        account.windows.forEach { window -> ComputerRuntimeUsageWindowRow(window, timeContext) }
+        // The Computers sheet's account block: the raft-ui StatusChip and "X% left · resets …"
+        // rows, the same as the web (artin 10-29: no square badge, no "X% used").
+        ComputerRuntimeUsageAccountBlock(account, timeContext)
     }
-}
-
-@Composable
-private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
-    val (label, color) =
-        when (health) {
-            RuntimeAccountUsageHealth.Ok -> stringResource(Res.string.member_runtime_usage_health_ok) to RaftColor.AccentLime
-            RuntimeAccountUsageHealth.RateLimited ->
-                stringResource(Res.string.member_runtime_usage_health_rate_limited) to RaftColor.AccentOrange
-            RuntimeAccountUsageHealth.ReauthRequired ->
-                stringResource(Res.string.member_runtime_usage_health_reauth_required) to RaftColor.AccentOrange
-            RuntimeAccountUsageHealth.Unsupported ->
-                stringResource(Res.string.member_runtime_usage_health_unsupported) to RaftColor.SurfaceCream
-            RuntimeAccountUsageHealth.Error ->
-                stringResource(Res.string.member_runtime_usage_health_error) to RaftColor.AccentRed
-            RuntimeAccountUsageHealth.Unknown ->
-                stringResource(Res.string.member_runtime_usage_health_unknown) to RaftColor.SurfaceCream
-        }
-    // Accent fills are stickers (fixed ink); the cream fill is a themed surface.
-    val sticker = color != RaftColor.SurfaceCream
-    Text(
-        text = label,
-        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
-        color = if (sticker) RaftColor.StickerInk else RaftColor.TextBlack,
-        maxLines = 1,
-        modifier =
-            Modifier
-                .background(color)
-                .border(RaftAppStroke.Thin, if (sticker) RaftColor.StickerInk else RaftColor.BorderBlack)
-                .padding(horizontal = 6.dp, vertical = 2.dp)
-    )
 }
 
 @Composable

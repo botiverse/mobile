@@ -536,7 +536,7 @@ private fun ComputerRuntimeUsageSnapshot(read: RuntimeAccountUsageRead.Available
 }
 
 @Composable
-private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount, timeContext: RaftTimeContext?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
