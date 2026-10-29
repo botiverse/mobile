@@ -30,6 +30,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import build.raft.app.raftPlatformPageVisibleLifecycleState
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import build.raft.app.cmp.RaftPageProvider
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.host.LocalRaftHost
@@ -175,11 +178,18 @@ fun RaftPagerHost(
             host.events.subscribe { event, data -> pager.onReceivePagerEvent(event, data.toKuiklyJson()) }
         onDispose { unsubscribe() }
     }
+    // Each pager owns its view models, as each Kuikly page did. Without this, `viewModel(key = ...)` in a
+    // child page (the wide layout's detail pane) resolved against the hosting window's store
+    // (Android Activity / iOS view controller / desktop page), so reopening a conversation handed back
+    // the view model of an earlier visit: started once, never refreshed, and deaf to realtime while it
+    // was off screen (artin, Compose 版: a thread stuck at his own last message).
+    val viewModelStoreOwner = remember(pager) { RaftPagerViewModelStoreOwner() }
     DisposableEffect(pager) {
         onDispose {
             if (pager.isAppeared) pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_DISAPPEAR, JSONObject())
             pager.onReceivePagerEvent(Pager.PAGER_EVENT_WILL_DESTROY, JSONObject())
             PagerManager.unregister(pager)
+            viewModelStoreOwner.viewModelStore.clear()
         }
     }
 
@@ -199,6 +209,7 @@ fun RaftPagerHost(
             }
         )
     CompositionLocalProvider(
+        LocalViewModelStoreOwner provides viewModelStoreOwner,
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalRaftPageArgs provides args,
         // The host-drawn tab bar registered for this page (iOS app shell), if any.
@@ -230,6 +241,11 @@ fun RaftPagerHost(
         }
     }
     }
+}
+
+/** The view model store of one [RaftPagerHost] page; cleared when that page is destroyed. */
+internal class RaftPagerViewModelStoreOwner : ViewModelStoreOwner {
+    override val viewModelStore: ViewModelStore = ViewModelStore()
 }
 
 /**
