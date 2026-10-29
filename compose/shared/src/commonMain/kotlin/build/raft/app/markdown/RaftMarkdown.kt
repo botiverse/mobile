@@ -1494,6 +1494,8 @@ internal fun AnnotatedString.withRaftMarkdownBodyClick(onClick: (() -> Unit)?): 
     val openBody =
         LinkAnnotation.Clickable(
             tag = RaftMarkdownBodyClickTag,
+            // The body looks as it is: a null style would get Material3 Text's default link look.
+            styles = RaftUnstyledLinkStyles,
             linkInteractionListener = LinkInteractionListener { onClick() }
         )
     return AnnotatedString.Builder(length)
@@ -1852,10 +1854,7 @@ private fun raftMessagePermalinkChipLinkStyles(): TextLinkStyles {
         )
     // raft-ui `active:overlay-medium`; link styles cannot reach the box annotation, so a span wash
     // over the chip's text stands in for the overlay.
-    return TextLinkStyles(
-        style = base,
-        pressedStyle = base.copy(background = RaftAppThemeState.colors.fillPressed)
-    )
+    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillPressed))
 }
 
 private object RaftMarkdownPreparedBodyCache {
@@ -3044,8 +3043,10 @@ internal fun raftMarkdownLinkUnderlineStyle(): RaftInlineUnderlineStyle =
 internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
     val links = getLinkAnnotations(0, length).filter { it.item is LinkAnnotation.Url && it.end > it.start }
     if (links.isEmpty()) return this
-    val boxes = raftInlineBoxRanges()
-    val underlined = links.filter { link -> boxes.none { box -> box.start <= link.start && link.end <= box.end } }
+    // A chip's extent includes its padding (gap placeholders / spacers glued by word joiners), so a
+    // link spanning the chip's padding as well as its label is still the chip, never underlined.
+    val chips = raftInlineChipExtents()
+    val underlined = links.filter { link -> chips.none { chip -> chip.first <= link.start && link.end <= chip.last + 1 } }
     if (underlined.isEmpty()) return this
     val encoded = raftMarkdownLinkUnderlineStyle().encode()
     return AnnotatedString.Builder(this)
@@ -3310,10 +3311,20 @@ internal fun raftMarkdownRichTextTagLinkStyles(
     if (busy) {
         // A busy chip ignores taps, so it has no pressed look either.
         val dimmed = token.toTagSpanStyle().let { it.copy(color = it.color.copy(alpha = it.color.alpha * RaftOpacity.Dimmed)) }
-        return TextLinkStyles(style = dimmed, pressedStyle = dimmed)
+        return if (token.chipFill != null) {
+            raftChipLinkStyles(dimmed)
+        } else {
+            TextLinkStyles(style = dimmed, focusedStyle = dimmed, hoveredStyle = dimmed, pressedStyle = dimmed)
+        }
     }
+    // A boxed chip (self mention, channel, thread, task) is never underlined, at rest, hovered,
+    // focused or pressed. A plain @mention underlines on hover and press (MessageReferenceText
+    // `hover:underline`).
+    if (token.chipFill != null) return raftChipLinkStyles(token.toTagSpanStyle(), pressed = token.toPressedTagSpanStyle())
     return TextLinkStyles(
         style = token.toTagSpanStyle(),
+        focusedStyle = token.toTagSpanStyle(),
+        hoveredStyle = token.toPressedTagSpanStyle(),
         pressedStyle = token.toPressedTagSpanStyle()
     )
 }

@@ -158,7 +158,8 @@ class RaftMarkdownTest {
         assertEquals(0.dp, chipBox?.borderWidth)
         assertEquals(4.dp, chipBox?.cornerRadius)
         assertEquals(4.5.dp, chipBox?.paddingStart)
-        assertEquals(null, link.styles?.style?.textDecoration)
+        // A chip link is never underlined: an explicit None in every state (artin 10-29).
+        assertEquals(TextDecoration.None, link.styles?.style?.textDecoration)
         // A chip is not a web link: no link underline over it.
         assertTrue(resolved.withRaftMarkdownLinkUnderlines().raftInlineUnderlineRanges().isEmpty())
     }
@@ -917,7 +918,7 @@ class RaftMarkdownTest {
         assertEquals(TextDecoration.Underline, ordinaryPressed?.textDecoration)
         assertEquals(Color.Unspecified, ordinaryPressed?.background)
         val channelPressed = raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.Channel).pressedStyle
-        assertEquals(null, channelPressed?.textDecoration)
+        assertEquals(TextDecoration.None, channelPressed?.textDecoration)
         assertEquals(RaftAppThemeState.colors.fillPressed, channelPressed?.background)
         assertEquals(
             RaftColor.StickerPressed,
@@ -1217,7 +1218,7 @@ class RaftMarkdownTest {
 
         assertEquals(raftFontFamilyForWeight(FontWeight.SemiBold), channelStyle.fontFamily)
         assertEquals(raftFontFamilyForWeight(FontWeight.SemiBold), richChannelStyle.fontFamily)
-        assertEquals(null, richChannelStyle.textDecoration)
+        assertEquals(TextDecoration.None, richChannelStyle.textDecoration)
         assertEquals(RaftRichTextFontWeightToken.SemiBold, RaftRichTextChromeKind.Channel.styleToken.fontWeight)
 
         val ordinaryMention = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention)
