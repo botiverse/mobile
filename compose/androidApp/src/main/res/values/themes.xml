@@ -33,9 +33,28 @@
          A translucent window lets the underlying page show through the
          open/close transition instead of flashing the opaque cream
          window background while the Kuikly render surface attaches.
-         The app-shell activities keep their opaque splash themes. -->
+         The app-shell activities keep their opaque splash themes.
+         A translucent window alone would also change the open transition: Android swaps the
+         platform's activity_open_enter / activity_close_exit for the translucent pair, which
+         rises from the bottom and sinks back down (a DM opened from Home slid up like a sheet,
+         Android 1.16.1). Animation.Raft.PagePush names app-owned animations, so pushed pages
+         enter from the right and leave to the right, as on iOS. -->
     <style name="Theme.Raft.Translucent" parent="Theme.Raft">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Raft.PagePush</item>
     </style>
+
+    <!-- Push/pop for pages stacked in RaftCmpActivity (channel, DM, thread, settings detail,
+         ...). Only the activity open/close attributes are set; dialog windows keep the window
+         enter/exit animations the parent gives them (RaftPagePushTransitionTest). -->
+    <style name="Animation.Raft.PagePush" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/raft_page_push_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/raft_page_push_hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/raft_page_push_hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/raft_page_pop_exit</item>
+    </style>
+
+    <!-- raft-ui Motion: slides take 220ms to 380ms (RaftMotion). -->
+    <integer name="raft_page_push_millis">300</integer>
 </resources>
