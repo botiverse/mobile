@@ -34,7 +34,7 @@ class ThreadAttachmentUploadOrchestratorTest {
             )
 
             orchestrator.launch("picked-large", draftA) {
-                val failedIds = orchestrator.failActive(draftA, setOf("picked-large"))
+                val failedIds = orchestrator.failAttempts(draftA, setOf("picked-large"))
                 store.dispatch(
                     SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
                         attachmentIds = failedIds,
@@ -60,7 +60,7 @@ class ThreadAttachmentUploadOrchestratorTest {
     }
 
     @Test
-    fun siblingFailureMarksEveryUnfinishedTileAndDropsCancelledLateCompletion() = runBlocking {
+    fun siblingFailureFailsOnlyItsOwnTileAndSiblingStillPublishes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             val store = SharedThreadComposerDraftStore(scope = scope)
@@ -77,31 +77,20 @@ class ThreadAttachmentUploadOrchestratorTest {
 
             first.release.complete(ControlledUploadResult.Failure("network_error"))
             first.finished.await()
-            val failedIds = setOf("picked-first", "picked-second")
 
-            assertEquals(setOf("picked-first", "picked-second"), failedIds)
-            assertTrue(store.state.value.uploadedAttachments.all { it.status == "failed" })
-            assertFalse(store.state.value.uploadedAttachments.toPendingItems().hasUploadingThreadAttachment())
+            assertEquals(
+                mapOf("picked-first" to "failed", "picked-second" to "uploading"),
+                store.state.value.uploadedAttachments.associate { it.id to it.status }
+            )
+            assertTrue(orchestrator.isActive("picked-second", draftA))
 
             second.release.complete(ControlledUploadResult.Success("server-second"))
             second.finished.await()
 
             assertEquals(
-                listOf("picked-first", "picked-second"),
-                store.state.value.uploadedAttachments.map { it.id }
+                listOf("picked-first" to "failed", "server-second" to "ready"),
+                store.state.value.visibleAttachments().map { it.id to it.status }
             )
-            assertTrue(store.state.value.uploadedAttachments.none { it.id == "server-second" })
-
-            orchestrator.remove("picked-first", draftA)
-            store.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment("picked-first"))
-            store.dispatch(SharedThreadComposerDraftIntent.RetryAttachment("picked-second"))
-            store.dispatch(
-                SharedThreadComposerDraftIntent.AddLocalAttachments(
-                    listOf(localAttachment("picked-second"))
-                )
-            )
-            assertTrue("picked-first" in store.state.value.removedAttachmentIds)
-            assertEquals("uploading", store.state.value.uploadedAttachments.single { it.id == "picked-second" }.status)
         } finally {
             scope.cancel()
         }
@@ -159,7 +148,7 @@ class ThreadAttachmentUploadOrchestratorTest {
             )
             launchControlledUpload(orchestrator, store, draftA, "picked-retry", failedAttempt)
 
-            val failedIds = orchestrator.failActive(draftA, setOf("picked-retry"))
+            val failedIds = orchestrator.failAttempts(draftA, setOf("picked-retry"))
             store.dispatch(SharedThreadComposerDraftIntent.MarkAttachmentsFailed(failedIds, "timeout"))
             store.dispatch(SharedThreadComposerDraftIntent.RetryAttachment("picked-retry"))
             store.dispatch(
@@ -369,7 +358,7 @@ class ThreadAttachmentUploadOrchestratorTest {
                             )
                         }
                     is ControlledUploadResult.Failure -> {
-                        val failedIds = orchestrator.failActive(draftKey, setOf(localAttachmentId))
+                        val failedIds = orchestrator.failAttempts(draftKey, setOf(localAttachmentId))
                         store.dispatch(
                             SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
                                 attachmentIds = failedIds,
