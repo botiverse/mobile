@@ -202,6 +202,12 @@ class RaftDesktopWebViewPolicyTest {
         assertNull(RaftDesktopWebViewPolicy.decodeEvaluatedString("{}"))
     }
 
+    @Test fun `the native view's bounds sync reaches the pinned Wry panel`() {
+        // RaftDesktopWryNativeView moves the native view by reflection into WryWebViewPanel; a
+        // different jar must fail here, not leave web content on screen.
+        assertTrue(build.raft.app.RaftDesktopWryPanelAccess.available)
+    }
+
     @Test fun `the macOS arm64 engine bridge ships on the app classpath`() {
         // JNA loads it from here; the packaged app's jar is the same artifact.
         assertNotNull(javaClass.classLoader.getResource("darwin-aarch64/libcomposewebview_wry.dylib"))
