@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.markdown.markdownToPreviewText
-import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.components.raftSoftWash
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftIconSpinner
@@ -7173,7 +7172,6 @@ private fun MembersHumanDetailHeader(
         ) != MembersDirectMessageEligibility.Unavailable
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val backLabel = stringResource(Res.string.common_back)
     val messageLabel = stringResource(Res.string.member_label_message)
     RaftTopPageHeader(
         title = member.displayName,
@@ -7183,7 +7181,7 @@ private fun MembersHumanDetailHeader(
         contentSpacing = MembersHumanHeaderContentSpacing,
         showBodyTopBanner = false,
         titleLeadingContent = {
-            RaftBackButton(onClick = onBack, label = backLabel)
+            RaftPaneAwareBackButton(onClick = onBack)
             MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
         },
         titleContent = {
@@ -7283,7 +7281,7 @@ private fun MembersDetailHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+            RaftPaneAwareBackButton(onClick = onBack)
             // The web's panel head shows the avatar only; it is changed from the profile hero.
             MembersRaftAvatar(
                 member = member,

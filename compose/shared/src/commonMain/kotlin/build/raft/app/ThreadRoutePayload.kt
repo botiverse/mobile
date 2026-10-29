@@ -11,6 +11,8 @@ import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.TimeSource
 
 internal const val THREAD_PAGE = "compose_thread"
@@ -609,6 +611,13 @@ internal fun threadLaunchPageData(launchPayload: WireThreadLaunchPayload): JSONO
 
 internal fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
     threadLaunchPageData(this)
+
+/** The launch payload a THREAD_PAGE [pageData] ([threadLaunchPageData]) carries, or null. */
+internal fun threadLaunchPayloadOrNull(pageData: JsonObject): WireThreadLaunchPayload? {
+    val payload = (pageData["payload"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    if (payload.isNullOrBlank()) return null
+    return runCatching { threadPageJson.decodeFromString<WireThreadLaunchPayload>(payload) }.getOrNull()
+}
 
 internal fun parseThreadScreenPayload(
     payload: String,
