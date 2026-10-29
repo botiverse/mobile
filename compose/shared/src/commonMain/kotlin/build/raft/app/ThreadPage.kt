@@ -34,6 +34,8 @@ import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftSideAction
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftToast
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -17452,15 +17454,31 @@ internal fun ThreadPageHeader(
                         dmAgentActivity?.let { ThreadDmAgentActivity(state = it) }
                     }
                 }
-                headerSubtitle?.let {
-                    Text(
-                        text = it,
-                        // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
-                        style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                        color = RaftColor.ForegroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                // Web #10285: a reply thread's channel name does what Open in Channel does (the
+                // parent message in its channel), under a View in Channel tooltip.
+                val channelLinkLabel =
+                    headerDisplay.subtitle?.takeIf {
+                        it.isNotBlank() &&
+                            headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                            payload.threadHeaderOpenInParentActionVisible()
+                    }
+                if (channelLinkLabel != null) {
+                    ThreadHeaderChannelLinkSubtitle(
+                        channelLabel = channelLinkLabel,
+                        replyCountLabel = replyThreadReplyCountLabel,
+                        onOpenInChannel = onOpenInChannel
                     )
+                } else {
+                    headerSubtitle?.let {
+                        Text(
+                            text = it,
+                            // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
+                            style = ThreadHeaderMetaStyle,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         },
@@ -17508,6 +17526,43 @@ internal fun ThreadPageHeader(
             },
         showBodyTopBanner = false,
     )
+}
+
+/** raft-ui `PanelMeta` (md): sans text-footnote. */
+private val ThreadHeaderMetaStyle = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp)
+
+/**
+ * A reply thread's header meta line with its channel name as a link (web ThreadPanel #10285): the
+ * name opens the parent message in its channel, the reply count after it stays plain text.
+ */
+@Composable
+internal fun ThreadHeaderChannelLinkSubtitle(
+    channelLabel: String,
+    replyCountLabel: String?,
+    onOpenInChannel: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RaftTooltip(
+            text = stringResource(Res.string.task_conversation_view_in_channel),
+            modifier = Modifier.weight(1f, fill = false)
+        ) {
+            RaftTextLink(
+                text = channelLabel,
+                onClick = onOpenInChannel,
+                style = ThreadHeaderMetaStyle,
+                maxLines = 1
+            )
+        }
+        replyCountLabel?.takeIf { it.isNotBlank() }?.let { count ->
+            Text(
+                text = " · $count",
+                style = ThreadHeaderMetaStyle,
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
 }
 
 /**
