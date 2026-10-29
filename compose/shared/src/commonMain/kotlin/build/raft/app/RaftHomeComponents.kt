@@ -111,6 +111,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import build.raft.app.data.messageBodyFontSizeOwnerKey
+import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -838,6 +841,15 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
     fun unsupportedStandaloneHomeAction(action: String, itemId: String? = null) {
         bridge.log("standalone_home_unsupported_action action=$action itemId=${itemId.orEmpty()}")
     }
+    // The emoji picker (section icons) keeps skin tone and frequently used emoji per account,
+    // keyed like the thread's Add Reaction picker (sindresorhus, #3963).
+    val emojiPickerOwnerKey by produceState<String?>(null, sharedStores) {
+        value =
+            runCatchingPreservingCancellation { sharedStores.authStore.readSession() }.getOrNull()?.user?.id?.let { accountId ->
+                messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, accountId)
+            }
+    }
+    CompositionLocalProvider(LocalRaftEmojiPickerOwnerKey provides emojiPickerOwnerKey) {
     RaftStructuralHomeShell(
         currentServerName = payload.currentServerName,
         currentServerId = payload.currentServerId,
@@ -934,6 +946,7 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
         pinnedMemberProfileResolver = pinnedMemberProfileResolver,
         diagnosticsLogger = bridge::log
     )
+    }
 }
 
 internal fun homeDirectMessageOpenFailureMessage(
