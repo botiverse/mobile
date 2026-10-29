@@ -157,6 +157,7 @@ final class RaftIosTabBarController: UIViewController {
         overlayView.addSubview(tabs.view)
         tabs.didMove(toParent: self)
         overlayView.tabBar = tabs.tabBar
+        overlayView.barHost = tabs.view
         RaftIosTabBarController.setLiveTabBarProvider { [weak tabs] in tabs?.tabBar }
         tabs.tabBar.tintColor = .label
         applyAppearance()
@@ -404,16 +405,33 @@ private final class RaftIosTabBarOverlayView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// The system tab bar controller's view. In the iPhone Duo's vertical strip (iOS 27.1 SDK) the
+    /// buttons are not in `tabBar`: UIKit draws them in a toolbar host elsewhere in this view
+    /// (`_UITabButton` < `_UITabBarExpansionPlatterContainer` < `ToolbarTAMICAdaptorView` < ...).
+    weak var barHost: UIView?
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let hit = super.hitTest(point, with: event),
               let tabBar = tabBar else {
             return nil
         }
-        guard hit.isDescendant(of: tabBar) else { return nil }
+        guard hit.isDescendant(of: tabBar) || isBarControl(hit) else { return nil }
         if let event = event, event.type == .touches {
             lastTouchBeganAt = event.timestamp
         }
         return hit
+    }
+
+    /// A control, or a view inside one or inside a tab bar part, among the controller's own views.
+    /// The full-size containers are neither, so touches on the page still pass through.
+    private func isBarControl(_ view: UIView) -> Bool {
+        guard let host = barHost, view !== host, view.isDescendant(of: host) else { return false }
+        var current: UIView? = view
+        while let candidate = current, candidate !== host {
+            if candidate is UIControl || String(describing: type(of: candidate)).contains("TabBar") { return true }
+            current = candidate.superview
+        }
+        return false
     }
 }
 
