@@ -39,13 +39,20 @@ internal class RaftAppScopeApiEnvironmentHolder(
 }
 
 internal object RaftAppScopeApiEnvironment {
-    private val holder =
+    private var holder = newHolder()
+
+    private fun newHolder() =
         RaftAppScopeApiEnvironmentHolder {
             RaftSharedKeyValueStoreProvider.create(
                 namespace = SharedApiEnvironmentStore.Namespace,
                 storageName = "API environment",
             )
         }
+
+    /** Forgets the process store so the next read binds the currently installed key-value store. */
+    internal fun resetForTests() {
+        holder = newHolder()
+    }
 
     fun binding(): RaftSharedKeyValueStoreBinding = holder.binding()
 

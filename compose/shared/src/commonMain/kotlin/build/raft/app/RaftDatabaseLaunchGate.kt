@@ -14,7 +14,8 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.attemptRaftDatabaseLaunch
 
 /**
- * The app shell's outermost layer: creates the shared store provider (whose database-open entry
+ * A page's outermost layer ([build.raft.app.base.raftPageLayers]: the app shell, or the first
+ * page in the process to need the store): creates the shared store provider (whose database-open entry
  * refuses a database newer than the app with a typed error, before SQLDelight opens it) and shows
  * the "database is newer than the app" recovery page instead of [content] when it does.
  *

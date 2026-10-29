@@ -4,7 +4,8 @@ area: app-shell
 platforms:
   - android
   - ios
-pull_request: TBD
+  - desktop
+pull_request: 3925
 rollout: full
 ---
 

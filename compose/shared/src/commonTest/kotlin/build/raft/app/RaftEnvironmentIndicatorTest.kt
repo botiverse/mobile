@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftAppScopeApiEnvironment
 import build.raft.app.data.RaftAppScopeApiEnvironmentHolder
 import build.raft.app.data.RaftSharedKeyValueStoreBinding
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
@@ -9,6 +10,8 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.compat.json.JSONObject
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +21,18 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftEnvironmentIndicatorTest {
+    @BeforeTest
+    fun resetAppScopeEnvironment() {
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        RaftAppScopeApiEnvironment.resetForTests()
+    }
+
+    @AfterTest
+    fun clearAppScopeEnvironment() {
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        RaftAppScopeApiEnvironment.resetForTests()
+    }
+
     @Test
     fun productionEndpointVariantsDoNotRenderAnIndicator() {
         val production = SharedApiEnvironmentStore.Production
@@ -83,17 +98,14 @@ class RaftEnvironmentIndicatorTest {
     fun indicatorReadsTheAppScopeEnvironmentSettingWithoutCreatingTheSharedStore() {
         val keyValueStore = InMemoryRaftKeyValueStore(mapOf("environment" to SharedApiEnvironmentStore.Staging.key))
         RaftSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) { keyValueStore }
-        try {
-            val environmentStore = assertNotNull(raftEnvironmentIndicatorEnvironmentStoreOrNull())
 
-            assertEquals("Staging", raftEnvironmentIndicatorLabel(environmentStore.state.value))
-            assertNull(
-                RaftSharedStoreRegistry.currentOrNull(),
-                "the indicator must not build the shared store provider (it opens the database)",
-            )
-        } finally {
-            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
-        }
+        val environmentStore = assertNotNull(raftEnvironmentIndicatorEnvironmentStoreOrNull())
+
+        assertEquals("Staging", raftEnvironmentIndicatorLabel(environmentStore.state.value))
+        assertNull(
+            RaftSharedStoreRegistry.currentOrNull(),
+            "the indicator must not build the shared store provider (it opens the database)",
+        )
     }
 
     @Test
