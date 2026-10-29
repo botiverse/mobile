@@ -8,6 +8,10 @@ import build.raft.app.markdown.lucideIcon
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.designsystem.components.RaftIconButton
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -740,6 +744,11 @@ internal fun ActivityConversationListRow(
     modifier: Modifier = Modifier,
     /** The swipe's Done button (ActivitySwipeActionsBox); null: no Done button. */
     onSwipeDone: (() -> Unit)? = null,
+    /**
+     * The trailing Mark as Done button a mouse or trackpad shows on the row it hovers (web ThreadsInbox
+     * `InboxItemActions reveal="hover"`): the menu's Done. Null, or [canMarkDone] false: no button.
+     */
+    onHoverDone: (() -> Unit)? = null,
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
@@ -756,6 +765,8 @@ internal fun ActivityConversationListRow(
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
     /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
+    /** Screenshots only: draw the row as a pointer hovers it (the trailing Done button shown). */
+    hoverPreview: Boolean = false,
     /**
      * The row's screen-reader actions (raft-design #776 / #777): the row menu's items
      * ([activityContextMenuActionIds]), named as in the menu, run through [onAccessibilityAction] with
@@ -805,7 +816,11 @@ internal fun ActivityConversationListRow(
     // raft-ui InboxItem is a list cell: a mouse or trackpad lays `fill-cell-hover` (150ms ease-out),
     // never a finger. A selected row, a row with its menu open and a pressed row keep their own fill.
     val hoverSource = remember { MutableInteractionSource() }
-    val hover = rememberRaftStateOverlay(hoverSource, RaftHoverTier.Cell, selected = selected || menuOpen || pressed)
+    val hover =
+        rememberRaftStateOverlay(hoverSource, RaftHoverTier.Cell, selected = selected || menuOpen || pressed, highlighted = hoverPreview)
+    // A mouse or trackpad over the row (never a finger: raftPointerHoverPosition drops touch).
+    var pointerHovering by remember(item.key) { mutableStateOf(false) }
+    val showHoverDone = activityRowShowsHoverDone(pointerHovering || hoverPreview, canMarkDone, onHoverDone != null)
     val swipeButtons =
         activitySwipeButtons(
             doneEnabled = canMarkDone && onSwipeDone != null,
@@ -824,7 +839,7 @@ internal fun ActivityConversationListRow(
         onOpenRowPlaced = onSwipeOpenRowPlaced,
         previewRevealFraction = swipePreviewRevealFraction,
     ) {
-        Row(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -839,6 +854,7 @@ internal fun ActivityConversationListRow(
                     )
                     .raftStateOverlay(hover, RectangleShape)
                     .raftPointerHover(hoverSource)
+                    .raftPointerHoverPosition { position -> pointerHovering = position != null }
                     .then(
                         if (divider) {
                             Modifier.drawBehind {
@@ -852,12 +868,12 @@ internal fun ActivityConversationListRow(
                     // The washes above run edge to edge; the row's content (and its actions)
                     // stays out of the horizontal safe area.
                     .raftSafeAreaHorizontalPadding(),
-            verticalAlignment = Alignment.CenterVertically,
+            contentAlignment = Alignment.CenterStart,
         ) {
             Row(
                 modifier =
                     Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu, onPressedChange = { pressed = it })
                         // One focusable button per row for screen readers: title, preview and marks read
                         // together, and the accessibility click opens the row like a tap.
@@ -908,7 +924,9 @@ internal fun ActivityConversationListRow(
                                 )
                             }
                         }
-                        ActivityConversationTime(item, timeContext)
+                        // web `reveal="hover"`: the Done button takes the trailing column's place and the
+                        // timestamp and marks step aside (transparent, so nothing moves).
+                        ActivityConversationTime(item, timeContext, Modifier.alpha(if (showHoverDone) 0f else 1f))
                     }
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
@@ -970,13 +988,35 @@ internal fun ActivityConversationListRow(
                         color = bodyColor,
                         inlineContent = inlineContent,
                         lineHeight = bodyLine,
-                        marks = { ActivityConversationMarks(model, marksHeight = bodyLine) },
+                        marks = {
+                            Box(Modifier.alpha(if (showHoverDone) 0f else 1f)) {
+                                ActivityConversationMarks(model, marksHeight = bodyLine)
+                            }
+                        },
                     )
+                }
+            }
+            if (showHoverDone && onHoverDone != null) {
+                // web: an outline icon-md Button with Lucide Check, tooltip "Mark as Done", at the end of
+                // the trailing column (the content's 16dp end inset), centred on the compact row. Outside
+                // the row's gesture area, so a click marks the row done without opening it.
+                RaftIconButton(
+                    onClick = onHoverDone,
+                    tooltip = stringResource(Res.string.thread_action_mark_done),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp).testTag(ActivityRowHoverDoneTag),
+                ) {
+                    RaftContentLucideIcon(RaftLucideIconName.Check, size = 18.dp)
                 }
             }
         }
     }
 }
+
+internal const val ActivityRowHoverDoneTag = "activity-row-hover-done"
+
+/** The trailing Done button shows only while a pointer hovers a row that offers Done. */
+internal fun activityRowShowsHoverDone(pointerHovering: Boolean, canMarkDone: Boolean, hasAction: Boolean): Boolean =
+    pointerHovering && canMarkDone && hasAction
 
 /** The body wraps to a second line before it ellipsizes; a one-line body still reserves both lines. */
 internal const val ActivityConversationPreviewMaxLines = 2
@@ -1095,7 +1135,7 @@ private fun ActivityConversationLeading(
 }
 
 @Composable
-private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeContext?) {
+private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeContext?, modifier: Modifier = Modifier) {
     RaftRelativeTimestampText(
         value = item.latestActivityAt ?: item.lastMessageAt,
         timeContext = timeContext,
@@ -1106,7 +1146,7 @@ private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeConte
         clampFuture = true,
         // Web InboxItemTimestamp is plain text: a tap near the time opens the row.
         toggleEnabled = false,
-        modifier = Modifier.widthIn(max = 96.dp),
+        modifier = modifier.widthIn(max = 96.dp),
     )
 }
 
