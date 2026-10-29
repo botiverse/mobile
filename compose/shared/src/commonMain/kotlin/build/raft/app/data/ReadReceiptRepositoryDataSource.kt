@@ -182,8 +182,8 @@ class RealReadReceiptRepository(
             block = { networkClient.markChannelUnread(DataRequestPriority.Visible, channelId) },
             source = "read_channel_unread",
             mapper = { bodyText ->
-                parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
-                    ?: throw IllegalStateException("Unread response missing ok")
+                parseMarkConversationUnreadResult(bodyText, channelId)
+                    ?: throw IllegalStateException("Unread response does not match MarkConversationUnreadResponse")
             }
         )
     }
