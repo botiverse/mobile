@@ -127,4 +127,16 @@ class ThreadMessageMenuLayoutTest {
         )
         assertEquals(50f, anchorX)
     }
+
+    @Test
+    fun watchingAgentsPopoverHangsFromTheTriggerNotTheWindowCentre() {
+        // Wide window: the popover's right edge sits under the chip's right edge (anchor x).
+        assertEquals(712f, raftHorizontalPosition(localAnchorX = 1000f, contentWidth = 288f, viewportWidth = 1280f,
+            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
+        // Phone: same rule, still kept inside the viewport gap.
+        assertEquals(92f, raftHorizontalPosition(localAnchorX = 380f, contentWidth = 288f, viewportWidth = 390f,
+            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
+        assertEquals(8f, raftHorizontalPosition(localAnchorX = 200f, contentWidth = 288f, viewportWidth = 390f,
+            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
+    }
 }
