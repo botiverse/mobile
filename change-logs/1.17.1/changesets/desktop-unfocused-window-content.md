@@ -3,7 +3,7 @@ type: fixed
 area: app-shell
 platforms:
   - desktop
-pull_request: TBD
+pull_request: 3944
 rollout: full
 ---
 
