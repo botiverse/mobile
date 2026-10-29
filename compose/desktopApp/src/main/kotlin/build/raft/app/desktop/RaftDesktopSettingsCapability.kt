@@ -1,21 +1,25 @@
 package build.raft.app.desktop
 
+import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.isAllowedAppLoginUrl
 import build.raft.app.toRaftJsonString
 import java.awt.Desktop
+import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * `settingsCapability`: the action-multiplexed settings host. M1 serves the browser sign-in
  * (`appLoginPrepare` / `appLoginOpen`, the Android host's contract); the callback comes back as
- * [APP_LOGIN_RETURN_URI] (see [RaftDesktopLoginCallbacks]). TODO(desktop): every other action
- * (storage, about, developer environment, diagnostics, notifications, account linking) answers
+ * [APP_LOGIN_RETURN_URI] (see [RaftDesktopLoginCallbacks]); `loadStorage` measures the app's data
+ * directory ([storagePayload]; clearing is not offered yet). TODO(desktop): every other action
+ * (about, developer environment, diagnostics, notifications, account linking) answers
  * "not implemented" and the shared pages fall back as for an unsupported host action.
  */
 object RaftDesktopSettingsCapability {
@@ -29,6 +33,10 @@ object RaftDesktopSettingsCapability {
 
     fun handle(command: JsonObject, callback: ((String?) -> Unit)?) {
         val action = command.string("action")
+        if (action == "loadStorage") {
+            callback?.invoke(storagePayload(RaftDesktopPaths.databaseDir, RaftDesktopPaths.cacheDir, RaftDesktopPaths.dataDir).toRaftJsonString())
+            return
+        }
         val result =
             when (action) {
                 "appLoginPrepare" -> prepareAppLogin()
@@ -41,6 +49,40 @@ object RaftDesktopSettingsCapability {
             }
         callback?.invoke(JsonObject(result.mapValues { JsonPrimitive(it.value) }).toRaftJsonString())
     }
+
+    /**
+     * Settings > Storage: the local database and the cache (images, snapshots, clipboard pastes),
+     * plus the whole data directory as the total. Nothing is clearable yet (no row offers Clear),
+     * so `clearStorage` stays unimplemented. Titles as the Android host's (host-provided rows).
+     */
+    internal fun storagePayload(databaseDir: File, cacheDir: File, dataDir: File): JsonObject {
+        fun row(target: String, title: String, detail: String, dir: File) =
+            JsonObject(
+                mapOf(
+                    "target" to JsonPrimitive(target),
+                    "title" to JsonPrimitive(title),
+                    "detail" to JsonPrimitive(detail),
+                    "sizeBytes" to JsonPrimitive(directorySize(dir)),
+                    "clearEnabled" to JsonPrimitive(false),
+                ),
+            )
+        return JsonObject(
+            mapOf(
+                "status" to JsonPrimitive("ok"),
+                "totalSizeBytes" to JsonPrimitive(directorySize(dataDir)),
+                "rows" to
+                    JsonArray(
+                        listOf(
+                            row("database", "Local database", "Messages, task metadata, and server snapshots stored on this computer.", databaseDir),
+                            row("cache", "Cache", "Image previews, snapshots and pasted files kept for faster viewing.", cacheDir),
+                        ),
+                    ),
+            ),
+        )
+    }
+
+    private fun directorySize(dir: File): Long =
+        runCatching { dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } }.getOrDefault(0L)
 
     private fun prepareAppLogin(): Map<String, String> {
         val verifier = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))

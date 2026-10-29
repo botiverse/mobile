@@ -112,6 +112,13 @@ internal enum class SettingsWebViewBackAction {
 internal fun settingsWebViewBackAction(canGoBack: Boolean): SettingsWebViewBackAction =
     if (canGoBack) SettingsWebViewBackAction.NavigateWebHistory else SettingsWebViewBackAction.ClosePage
 
+/**
+ * Whether a Settings web page handles Back itself (header arrow and system Back): always as a
+ * pushed page; in the wide detail pane only to step back through the web page's own history (the
+ * list beside it, and the pane's Back to the default section, cover the rest).
+ */
+internal fun settingsWebViewHandlesBack(wideDetail: Boolean, canGoBack: Boolean): Boolean = !wideDetail || canGoBack
+
 internal fun performSettingsWebViewBack(
     canGoBack: Boolean,
     goBack: () -> Unit,
@@ -148,6 +155,9 @@ private fun SettingsWebViewScreen() {
         remember(pager.pageData.params) {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
+    val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+    fun closeSection() =
+        settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     when (surface) {
         SettingsWebViewSurface.Onboarding,
         // The Artifact viewer is its own page (RAFT_ARTIFACT_VIEWER_PAGE), never a Settings route.
@@ -183,10 +193,10 @@ private fun SettingsWebViewScreen() {
                     },
                 onHostMessage = { kind, _ ->
                     when (kind) {
-                        "close" -> pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        "close" -> closeSection()
                         "auth-required" -> Unit // keep the page and draft; auth/session reconciliation supplies the next token
                         "integration-unavailable" -> {
-                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                            closeSection()
                             pager.openSettingsHandsFeedbackPage(
                                 pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
                             )
@@ -303,8 +313,13 @@ internal fun SettingsWebViewPageScaffold(
         bodyReady = true
     }
 
+    // In the wide Settings detail pane the page is the pane's content: no Back of its own unless the
+    // web page has history, closing returns to the default section (SettingsWideSplit.kt).
+    val wideDetail = LocalRaftSettingsWideDetail.current
+    val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+
     fun closePage() {
-        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
 
     fun goBackOrClose() {
@@ -316,7 +331,7 @@ internal fun SettingsWebViewPageScaffold(
     }
 
     RaftBackHandler(
-        enabled = true,
+        enabled = settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack),
         label = "settings_webview_${surface.diagnosticsName}",
         blocksBackSwipe = false,
         onBack = ::goBackOrClose,
@@ -335,7 +350,8 @@ internal fun SettingsWebViewPageScaffold(
                     },
                 iconName = iconName,
                 backgroundColor = RaftColor.SurfaceWhite,
-                onBack = ::goBackOrClose,
+                applyTopSafeArea = !wideDetail,
+                onBack = if (settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack)) ::goBackOrClose else null,
             )
         }
         Box(

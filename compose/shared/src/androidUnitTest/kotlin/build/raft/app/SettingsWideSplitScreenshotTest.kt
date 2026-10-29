@@ -47,6 +47,13 @@ class SettingsWideSplitScreenshotTest {
     fun appearancePickedLight() =
         capture("settings.wide.appearance", RaftAppAppearance.Light) { WideSettings(picked = SettingsNativeDetailPage.Appearance.key) }
 
+    /**
+     * A web-backed section (Billing) in the detail pane: the real Settings web page scaffold (title,
+     * no Back, under the top bar) with a placeholder where the WebView goes (Robolectric draws no web).
+     */
+    @Test
+    fun billingInThePaneLight() = capture("settings.wide.billing", RaftAppAppearance.Light) { WideSettings(picked = SettingsDestinationBilling) }
+
     @Composable
     private fun WideSettings(picked: String?) {
         SettingsWideListDetail(
@@ -60,7 +67,17 @@ class SettingsWideSplitScreenshotTest {
             bottomContentPadding = 0.dp,
             detailPane = { key, modifier ->
                 Box(modifier) {
-                    if (key == SettingsDestinationAccount) {
+                    if (key == SettingsDestinationBilling) {
+                        val pager = LocalActivity.current.getPager() as Pager
+                        SettingsWebViewPageScaffold(
+                            pager = pager,
+                            surface = SettingsWebViewSurface.Billing,
+                            title = "Plans & billing",
+                            iconName = RaftLucideIconName.CreditCard,
+                        ) { _, _ ->
+                            Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+                        }
+                    } else if (key == SettingsDestinationAccount) {
                         SettingsDetailShell(title = "Account", subtitle = "", onBack = {}) {
                             SettingsAccountContent(payload = wideAccountFixture, applyTopSafeArea = false, onEvent = { _, _ -> })
                         }
