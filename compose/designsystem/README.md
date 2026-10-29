@@ -164,17 +164,27 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
 Each component has one golden per appearance holding its full state matrix, rendered
 offscreen with skiko (`ImageComposeScene`, no window or GPU) at density 2 and sized to
 the content. Goldens: `compose/designsystem/screenshots/<component>_<light|dark>.png`.
+[Roborazzi](https://github.com/takahirom/roborazzi) compares, records and reports them
+(`RaftScreenshot`); the render is ours.
 
 ```sh
 cd compose
-./gradlew --no-daemon :designsystem:desktopTest                                # verify
-./gradlew --no-daemon :designsystem:desktopTest -Praft.screenshot.record=true  # record
+./gradlew --no-daemon :designsystem:verifyRoborazziDesktop   # verify (plain desktopTest verifies too)
+./gradlew --no-daemon :designsystem:recordRoborazziDesktop   # record
+./gradlew --no-daemon :designsystem:compareRoborazziDesktop  # comparison images, never fails
 ```
 
 - Verify fails when more than 0.1% of the pixels differ by more than 8/255 in any
-  channel, or the size changed. The actual image and a diff (mismatches in red) go to
-  `compose/designsystem/build/reports/screenshots/`.
-- Record after an intended visual change, then review the PNG diff in the PR.
+  channel, or the size changed. `<name>_actual.png` and `<name>_compare.png` (golden, diff,
+  actual side by side) go to `compose/designsystem/build/reports/screenshots/`; the
+  Roborazzi tasks also write an HTML report to `build/reports/roborazzi/desktop/`. CI uploads
+  both as the `designsystem-screenshot-diffs` artifact when the job fails.
+- Record after an intended visual change, then review the PNG diff in the PR. Record only
+  rewrites goldens that are new or changed beyond the tolerance; the rest keep their bytes.
+- Record without local Gradle: run the Test workflow by hand (`gh workflow run test.yml
+  --ref <branch> -f record_screenshots=true`) and download the
+  `designsystem-screenshots-recorded` artifact (only the new or changed goldens); copy them
+  into `compose/designsystem/screenshots/` and commit.
 - Goldens are recorded on Linux (the CI runner). Skia rasterises text slightly
   differently on macOS, so a macOS run may need a Linux re-record rather than a looser
   tolerance.
