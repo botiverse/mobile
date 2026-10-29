@@ -26,17 +26,72 @@ class SettingsWideSplitTest {
     }
 
     @Test
-    fun webBackedRowsStillOpenAsAPageAndKeepTheSelection() {
+    fun webBackedRowsOpenInThePaneLikeNativeOnes() {
         listOf(
             SettingsDestinationBilling,
             SettingsDestinationAdministration,
             SettingsDestinationConnectedApps,
-            SettingsDestinationHandsFeedback,
             SettingsDestinationReleaseNotes,
         ).forEach { key ->
-            assertEquals(SettingsWidePick.Push, settingsWidePick(key), key)
-            // Never a selection: the pane falls back to the default if one leaked in.
-            assertEquals(SettingsDestinationAccount, settingsWideDetailKey(key, rows), key)
+            assertEquals(SettingsWidePick.Detail(key), settingsWidePick(key), key)
+            assertEquals(key, settingsWideDetailKey(key, rows), key)
+            assertTrue(settingsWideBackReturnsToDefault(key, rows), key)
+        }
+    }
+
+    @Test
+    fun feedbackOpensInThePaneOnlyAsTheWebPage() {
+        assertEquals(SettingsWidePick.Push, settingsWidePick(SettingsDestinationHandsFeedback, feedbackWeb = false))
+        assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsDestinationHandsFeedback, rows, feedbackWeb = false))
+        assertEquals(
+            SettingsWidePick.Detail(SettingsDestinationHandsFeedback),
+            settingsWidePick(SettingsDestinationHandsFeedback, feedbackWeb = true),
+        )
+        assertEquals(SettingsDestinationHandsFeedback, settingsWideDetailKey(SettingsDestinationHandsFeedback, rows, feedbackWeb = true))
+    }
+
+    @Test
+    fun webSectionsInThePaneAreTheSettingsWebPage() {
+        val scope = RaftShellStoreScope.create("shell-wide-settings")
+        mapOf(
+            SettingsDestinationBilling to SettingsWebViewSurface.Billing,
+            SettingsDestinationAdministration to SettingsWebViewSurface.Administration,
+            SettingsDestinationConnectedApps to SettingsWebViewSurface.Marketplace,
+            SettingsDestinationReleaseNotes to SettingsWebViewSurface.ReleaseNotes,
+        ).forEach { (key, surface) ->
+            val page = settingsWideDetailPage(key, scope)
+            assertEquals(SETTINGS_WEB_VIEW_PAGE, page?.first, key)
+            assertEquals(surface, page?.second?.let(::settingsWebViewSurfaceFromPageData), key)
+        }
+        assertNull(settingsWideDetailPage(SettingsDestinationHandsFeedback, scope, feedbackWeb = false))
+        assertEquals(
+            SettingsWebViewSurface.Feedback,
+            settingsWideDetailPage(SettingsDestinationHandsFeedback, scope, feedbackWeb = true)?.second?.let(::settingsWebViewSurfaceFromPageData),
+        )
+    }
+
+    @Test
+    fun aWebSectionInThePaneHasNoBackOfItsOwnAndClosesToTheDefault() {
+        assertTrue(settingsWebViewHandlesBack(wideDetail = false, canGoBack = false))
+        assertFalse(settingsWebViewHandlesBack(wideDetail = true, canGoBack = false))
+        assertTrue(settingsWebViewHandlesBack(wideDetail = true, canGoBack = true))
+        val calls = mutableListOf<String>()
+        settingsPageClose(wideDetailClose = { calls += "pane" }) { calls += "router" }
+        settingsPageClose(wideDetailClose = null) { calls += "router" }
+        assertEquals(listOf("pane", "router"), calls)
+    }
+
+    @Test
+    fun everySettingsWebSurfaceAsksTheWebForTheHostShell() {
+        // The native shell (phone header or wide pane) owns the title bar and navigation; the web
+        // must lay out one section, never its own Settings nav (slock packages/web/src/embed.ts).
+        listOf(
+            settingsBillingWebViewUrl("https://raft.example", session = null),
+            settingsAdministrationWebViewUrl("https://raft.example", session = null),
+            settingsMarketplaceWebViewUrl("https://raft.example", session = null),
+        ).forEach { url ->
+            assertTrue("embed=$SharedSettingsEmbedContract" in url, url)
+            assertTrue("shell=$SharedSettingsEmbedHostShell" in url, url)
         }
     }
 
@@ -53,8 +108,6 @@ class SettingsWideSplitTest {
         assertFalse(settingsWideBackReturnsToDefault(SettingsDestinationAccount, rows))
         assertTrue(settingsWideBackReturnsToDefault(SettingsNativeDetailPage.Notifications.key, rows))
         assertTrue(settingsWideBackReturnsToDefault(SettingsDestinationStorage, rows))
-        // A pushed (web-backed) row never became the selection: Back stays the shell's.
-        assertFalse(settingsWideBackReturnsToDefault(SettingsDestinationBilling, rows))
     }
 
     @Test
@@ -68,7 +121,6 @@ class SettingsWideSplitTest {
         assertEquals("notifications", notifications?.second?.optString(SETTINGS_NATIVE_DETAIL_PAGE_KEY))
         SettingsWideDetailKeys.forEach { key -> assertTrue(settingsWideDetailPage(key, scope) != null, key) }
         assertNull(settingsWideDetailPage(SettingsNativeDetailPage.Developer.key, scope))
-        assertNull(settingsWideDetailPage(SettingsDestinationBilling, scope))
     }
 
     @Test
