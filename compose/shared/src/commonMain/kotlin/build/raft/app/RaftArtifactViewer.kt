@@ -313,8 +313,12 @@ internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: S
  * is not shown under the Artifact's title bar.
  */
 internal sealed interface RaftArtifactViewerNavigation {
-    /** Still this Artifact; [version] is the one in the address (null: the latest). */
-    data class Stay(val version: Int?) : RaftArtifactViewerNavigation
+    /**
+     * Still this Artifact; [version] is the one in the address (null: the latest). [shown]: the
+     * `shown=<n>` the page adds (replaced, not pushed) when it read the latest again in place
+     * (slock #12043; host-shell embed, unpinned only); null when absent or malformed.
+     */
+    data class Stay(val version: Int?, val shown: Int? = null) : RaftArtifactViewerNavigation
 
     /** A Raft message (the Artifact's original message): close the viewer, open it natively. */
     data class OpenMessage(val url: String) : RaftArtifactViewerNavigation
@@ -336,39 +340,44 @@ internal sealed interface RaftArtifactViewerNavigation {
 internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerNavigation {
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerNavigation.Ignore
     if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerNavigation.SystemBrowser(url)
-    val path = url.substringAfter("://").let { rest ->
+    val pathAndQuery = url.substringAfter("://").let { rest ->
         val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
-        if (start < 0 || rest[start] != '/') "/" else rest.substring(start).substringBefore('#').substringBefore('?')
+        if (start < 0) "/" else rest.substring(start).substringBefore('#')
     }
+    val path = if (pathAndQuery.startsWith('/')) pathAndQuery.substringBefore('?') else "/"
     val segments = path.split('/').filter { it.isNotEmpty() }
     // `/artifacts/<id>[/v/<n>]`, or the same under a server (`/s/<slug>/artifacts/…`).
     val artifact = if (segments.size >= 2 && segments[0] == "s") segments.drop(2) else segments
     // Either id form: the web writes the short id when a version is picked (slock `artifactPagePath`).
     val shown = artifact.getOrNull(1)?.let(::artifactCanonicalId)
     if (artifact.firstOrNull() == "artifacts" && shown == artifactCanonicalId(artifactId)) {
+        // `shown` never decides staying or leaving: only the path does.
+        val shownParam = artifactShownParam(pathAndQuery.substringAfter('?', ""))
         when (artifact.size) {
-            2 -> return RaftArtifactViewerNavigation.Stay(null)
-            4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.Stay(it) }
+            2 -> return RaftArtifactViewerNavigation.Stay(null, shownParam)
+            4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.Stay(it, shownParam) }
         }
     }
     if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
     return RaftArtifactViewerNavigation.Close
 }
 
+/** The positive integer value of the first `shown` query parameter in [query], else null. */
+private fun artifactShownParam(query: String): Int? =
+    query.split('&').firstOrNull { it.substringBefore('=') == "shown" }
+        ?.substringAfter('=', "")?.toIntOrNull()?.takeIf { it > 0 }
+
 /**
- * The version the native header shows: the one in the page's address once it has one (null there:
- * the latest, as last read), else the opener's card or the cached header.
- *
- * Not seen here: View latest while the page already shows the latest (not pinned) reads the
- * latest again in place, address unchanged (slock `ArtifactStandalonePage` `showLatest`), and the
- * viewer has no bridge (rule 3), so the header keeps the version read on open until the web
- * reports the version it shows (see the PR notes for the ask).
+ * The version the native header shows, once the page has an address: the pinned one (`/v/<n>`),
+ * else the one the page says it shows (`shown=<n>`, added when View latest on the latest read it
+ * again in place, slock #12043), else the latest as last read. Before any address: the opener's
+ * card or the cached header.
  */
 internal fun raftArtifactViewerShownVersion(
     addressed: RaftArtifactViewerNavigation.Stay?,
     latestVersion: Int?,
     headerVersion: Int?,
-): Int? = addressed?.let { it.version ?: latestVersion } ?: headerVersion
+): Int? = addressed?.let { it.version ?: it.shown ?: latestVersion } ?: headerVersion
 
 /**
  * Whether the page moving to [next] needs the latest version read again: from a pinned version to

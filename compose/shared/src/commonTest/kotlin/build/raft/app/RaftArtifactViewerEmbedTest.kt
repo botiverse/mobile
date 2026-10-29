@@ -50,6 +50,12 @@ class RaftArtifactViewerEmbedTest {
                 "$web/artifacts/$id/" to RaftArtifactViewerNavigation.Stay(null),
                 "$web/artifacts/$id/v/4?$embed" to RaftArtifactViewerNavigation.Stay(4),
                 "$web/s/acme/artifacts/$id/v/2" to RaftArtifactViewerNavigation.Stay(2),
+                // `shown=<n>` (the latest read again in place, slock #12043) is still this Artifact: never leaving.
+                "$web/artifacts/$id?$embed&shown=4" to RaftArtifactViewerNavigation.Stay(null, 4),
+                "$web/s/acme/artifacts/$id?shown=x&$embed" to RaftArtifactViewerNavigation.Stay(null),
+                // On another page `shown` keeps nothing open.
+                "$web/artifacts/pt_other?$embed&shown=4" to RaftArtifactViewerNavigation.Close,
+                "$web/s/acme?shown=4" to RaftArtifactViewerNavigation.Close,
                 // Its original message (the toolbar's link): open it natively.
                 "$web/s/acme/channel/ch_1?msg=m_9&$embed" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/channel/ch_1?msg=m_9&$embed"),
                 "$web/s/acme/dm/dm_2?msg=m_3&thread=dm_2%3Am_1" to RaftArtifactViewerNavigation.OpenMessage("$web/s/acme/dm/dm_2?msg=m_3&thread=dm_2%3Am_1"),
