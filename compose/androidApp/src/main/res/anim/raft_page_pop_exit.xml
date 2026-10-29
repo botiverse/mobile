@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A closing page leaves to the right (Theme.Raft.Translucent, Animation.Raft.PagePush). -->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="@integer/raft_page_push_millis"
+    android:fromXDelta="0"
+    android:fromYDelta="0"
+    android:interpolator="@interpolator/raft_ease_slide"
+    android:toXDelta="100%"
+    android:toYDelta="0"
+    android:zAdjustment="top" />
