@@ -2240,9 +2240,18 @@ void RaftIosInstallHandsReporting(void) {
     dispatch_once(&onceToken, ^{
         // App-owned Hands reporting config (client key is DSN-class: it
         // identifies the app; rotate from the Hands console if leaked).
+        // Debug builds and anything running in the Simulator report to the `debug`
+        // channel so local development crashes stay out of the users' feedback list
+        // (they are still reported). Decided at compile time, not from the version:
+        // a hand-archived Release build also shows 1.0 (1) and must stay on `main`.
+#if DEBUG || TARGET_OS_SIMULATOR
+        NSString *handsChannel = @"debug";
+#else
+        NSString *handsChannel = @"main";
+#endif
         [Hands installWithConfig:[HandsConfig configWithBaseUrl:@"https://hands.build"
                                                           appSlug:@"raft-ios"
-                                                          channel:@"main"
+                                                          channel:handsChannel
                                                         clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
         // Install fatal handlers before our diagnostic registration/logging.
         // The provider is evaluated on a later upload, not during registration.
