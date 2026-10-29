@@ -18,6 +18,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.model.TaskStatus
 import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftMarkdownMentionAnnotationTag
+import build.raft.app.RaftMarkdownMentionPreviewCardHost
+import build.raft.app.rememberRaftMarkdownMentionPreviewCards
 import build.raft.app.RaftType
 import build.raft.app.withRaftUserContentLocale
 import build.raft.app.ReplyCacheProvenance
@@ -1172,6 +1175,9 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             tag = RaftMarkdownTagAnnotationTag,
             annotation = action.id
         )
+        // An @mention's words, for its profile preview card (RaftMarkdownMentionPreviewCards).
+        val mention = action.refKind == RaftRichTextRefKind.UserMention
+        if (mention) pushStringAnnotation(tag = RaftMarkdownMentionAnnotationTag, annotation = action.label)
         withLink(
             LinkAnnotation.Clickable(
                 tag = action.id,
@@ -1194,6 +1200,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
                 if (fontSizeStyle == null) appendChipText() else withStyle(fontSizeStyle) { appendChipText() }
             }
         }
+        if (mention) pop()
         pop()
     }
     rendererInput.mentionReadStateFor(action)?.let { read -> appendRaftMarkdownMentionReadBadge(read) }
@@ -1478,32 +1485,43 @@ private object RaftMarkdownTextProvider : TextProvider {
                     if (next != hoveredLink) hoveredLink = next
                 }
             }
-        KuiklyText(
-            text = displayText,
-            modifier =
-                modifier
-                    .then(hoverModifier)
-                    .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
-            color = color,
-            fontSize = fontSize,
-            fontStyle = fontStyle,
-            fontWeight = fontWeight,
-            fontFamily = fontFamily ?: resolvedStyle.fontFamily,
-            letterSpacing = letterSpacing,
-            textDecoration = textDecoration,
-            textAlign = textAlign,
-            lineHeight = lineHeight,
-            overflow = markdownOverflow,
-            softWrap = softWrap,
-            maxLines = maxLines,
-            minLines = minLines,
-            inlineContent = resolvedInlineContent,
-            onTextLayout = { result ->
-                if (!inlineDecorations.isEmpty) decorationLayout = result
-                resolvedOnTextLayout(result)
-            },
-            style = resolvedStyle
-        )
+        // An @mention's profile card under a mouse or trackpad pointer (web MentionLink), where the
+        // page provides who mentions are (the Thread message list); otherwise the text as it was.
+        val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
+        val text: @Composable (Modifier) -> Unit = { textModifier ->
+            KuiklyText(
+                text = displayText,
+                modifier =
+                    textModifier
+                        .then(hoverModifier)
+                        .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
+                color = color,
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                fontWeight = fontWeight,
+                fontFamily = fontFamily ?: resolvedStyle.fontFamily,
+                letterSpacing = letterSpacing,
+                textDecoration = textDecoration,
+                textAlign = textAlign,
+                lineHeight = lineHeight,
+                overflow = markdownOverflow,
+                softWrap = softWrap,
+                maxLines = maxLines,
+                minLines = minLines,
+                inlineContent = resolvedInlineContent,
+                onTextLayout = { result ->
+                    if (!inlineDecorations.isEmpty) decorationLayout = result
+                    mentionCards?.layout = result
+                    resolvedOnTextLayout(result)
+                },
+                style = resolvedStyle
+            )
+        }
+        if (mentionCards == null) {
+            text(modifier)
+        } else {
+            RaftMarkdownMentionPreviewCardHost(mentionCards, resolvedText, modifier, text)
+        }
     }
 }
 
