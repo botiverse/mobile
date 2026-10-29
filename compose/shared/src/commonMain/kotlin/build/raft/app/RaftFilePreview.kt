@@ -4601,6 +4601,7 @@ internal fun RaftFilePreviewComposerImageEditor(
     val platformContext = LocalPlatformContext.current
     val textMeasurer = rememberTextMeasurer()
     val annotationTextStyle =
+        // common-map-compat: allow-nonmap-merge
         LocalTextStyle.current.merge(
             RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)) // raft-color: text annotation drawn on the photo
         )
