@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -1953,6 +1954,8 @@ private fun AppShellTabPager(
     mountedTabs: Set<String>,
     childTabSwitchEpoch: Int,
     childPageTabKeys: List<String> = AppShellChildPageTabKeys,
+    /** Android's phone bottom tabs: Material fade through between child tabs (see the stack). */
+    fadeThrough: Boolean = false,
     log: (String) -> Unit = {},
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
@@ -1978,16 +1981,23 @@ private fun AppShellTabPager(
                 "retained=$retainedChildTabs mountedTabs=$mountedTabs"
         )
     }
+    // The fade through (Android phone bar) animates these kept-alive layers; it never re-creates a
+    // tab, so a switch keeps each tab's state and reloads nothing. Reduced motion: at once.
+    val reducedMotion = rememberRaftReducedMotion()
     Box(modifier = Modifier.fillMaxSize()) {
         if (activeChildTab != null) {
-            retainedChildTabs.forEach { tab ->
-                key("app-shell-$tab") {
-                    RaftAppShellChildTabHost(
-                        shellId = childHostShellId,
-                        tab = tab,
-                        active = tab == activeChildTab
-                    )
-                }
+            AppShellTabFadeThroughStack(
+                activeTab = activeChildTab,
+                tabs = retainedChildTabs,
+                fadeThrough = fadeThrough,
+                reducedMotion = reducedMotion,
+            ) { tab, active, placed ->
+                RaftAppShellChildTabHost(
+                    shellId = childHostShellId,
+                    tab = tab,
+                    active = active,
+                    placed = placed
+                )
             }
         } else {
             key("app-shell-$activeTab") {
@@ -2001,7 +2011,8 @@ private fun AppShellTabPager(
 private fun RaftAppShellChildTabHost(
     shellId: String,
     tab: String,
-    active: Boolean
+    active: Boolean,
+    placed: Boolean = active
 ) {
     val glassStyle = appShellChildPageGlassStyle(raftAppBottomTabBarOverlaysContent())
     val pageData =
@@ -2019,6 +2030,7 @@ private fun RaftAppShellChildTabHost(
                 Modifier
                     .fillMaxSize(),
             active = active,
+            placed = placed,
             glassStyle = glassStyle
         )
     }
@@ -8167,6 +8179,8 @@ private fun RaftAppShellReadyContent(
                         mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         childPageTabKeys = slackNavTabKeys,
+                        // Android's phone bottom bar only: the wide rail keeps its instant switch.
+                        fadeThrough = raftPlatformAppShellTabFadeThrough() && !navRailActive,
                         log = { bridge.log(it) }
                     ) { tab, active ->
                         CompositionLocalProvider(LocalRaftTimeContextProvider provides hostThreadTimeContextProvider) {

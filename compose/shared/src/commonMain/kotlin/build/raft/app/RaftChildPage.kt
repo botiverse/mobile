@@ -45,6 +45,8 @@ internal fun RaftChildPage(
     pageData: JSONObject,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    /** On screen though inactive (the outgoing shell tab during its fade); defaults to [active]. */
+    placed: Boolean = active,
     glassStyle: String? = null,
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: () -> Unit = {}
@@ -111,7 +113,7 @@ internal fun RaftChildPage(
                 "host_measure originKey=$originKey origin=$measured windowOrigin=" +
                     "${childPageOriginState.windowOrigin}"
             )
-        }.raftPlacedOnlyWhenActive(active)
+        }.raftPlacedOnlyWhenActive(placed)
     ) {
         if (factory != null) {
             RaftPagerHost(factory = factory, args = childArgs, active = active)
