@@ -9,7 +9,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RaftEmojiPickerPreferencesTest {
-    private val catalog = RaftEmojiCatalog.Default
+    private val catalog = RaftEmojiCatalog.All
 
     private fun emoji(unified: String): RaftEmoji = requireNotNull(catalog.byUnified(unified))
 

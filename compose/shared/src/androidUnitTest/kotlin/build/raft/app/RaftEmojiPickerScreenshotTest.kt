@@ -26,7 +26,8 @@ import org.robolectric.shadows.ShadowDialog
  * The Add Reaction emoji picker (Web's emoji-picker-react set), light and dark: search and skin
  * tone, the category tabs, "Frequently Used" from stored picks, then Smileys & People; a search
  * for "heart"; the skin tone choices open with Medium chosen (the grid in that tone).
- * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * The whole set ([RaftEmojiCatalog.All]), not filtered by the test JVM's fonts, so the goldens
+ * do not depend on them. Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -66,7 +67,7 @@ class RaftEmojiPickerScreenshotTest {
             RaftUnifiedDialog(title = "Add Reaction", onDismiss = {}, contentSpacing = 12.dp) {
                 RaftEmojiPickerPanel(
                     preferences = preferences,
-                    catalog = RaftEmojiCatalog.Default,
+                    catalog = RaftEmojiCatalog.All,
                     onSelect = {},
                     initialQuery = query,
                     initialToneMenuOpen = toneMenuOpen,
@@ -78,7 +79,7 @@ class RaftEmojiPickerScreenshotTest {
     /** Stored picks: 👍 three times, 🎉 twice, then ❤️, 😂 and 👀 once (the row shows them by count). */
     private fun fixturePreferences(tone: RaftEmojiSkinTone): RaftEmojiPickerPreferences {
         val preferences = RaftEmojiPickerPreferences(RaftEmojiInMemoryPreferenceStore(), "fixture-owner")
-        val catalog = RaftEmojiCatalog.Default
+        val catalog = RaftEmojiCatalog.All
         listOf("1f440", "1f602", "2764-fe0f", "1f389", "1f389", "1f44d", "1f44d", "1f44d").forEach { unified ->
             preferences.recordPick(requireNotNull(catalog.byUnified(unified)))
         }

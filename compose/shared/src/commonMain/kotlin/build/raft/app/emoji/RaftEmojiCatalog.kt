@@ -69,6 +69,18 @@ internal class RaftEmoji(
     fun matches(normalizedTerm: String): Boolean =
         names.any { it.contains(normalizedTerm) } || zhKeywords.any { it.contains(normalizedTerm) }
 
+    /**
+     * This emoji as [canDraw] lets it show: null when the emoji itself cannot be drawn; otherwise
+     * with every skin tone [canDraw] rejects falling back to the emoji without a tone.
+     */
+    fun drawable(canDraw: (String) -> Boolean): RaftEmoji? {
+        if (!canDraw(emoji)) return null
+        if (toneVariants.isEmpty()) return this
+        val tones = toneVariants.map { if (canDraw(it)) it else emoji }
+        if (tones == toneVariants) return this
+        return RaftEmoji(category, unified, emoji, addedIn, tones, names, zhKeywords)
+    }
+
     override fun toString(): String = "RaftEmoji($unified)"
 }
 
@@ -93,10 +105,22 @@ internal class RaftEmojiCatalog private constructor(
         return emojis.filter { it.matches(term) }
     }
 
+    /**
+     * The emoji [canDraw] accepts ([RaftEmoji.drawable]): what the picker offers, so a device
+     * without a newer emoji's glyph (Android 10-13 fonts lack Emoji 12.1+) shows no empty box.
+     * Sections, search and the frequently used row all read the result.
+     */
+    fun drawable(canDraw: (String) -> Boolean = ::raftCanDrawEmoji): RaftEmojiCatalog =
+        RaftEmojiCatalog(emojis.mapNotNull { it.drawable(canDraw) })
+
     companion object {
-        val Default: RaftEmojiCatalog by lazy {
+        /** Every emoji of [RaftEmojiData], drawable or not. */
+        val All: RaftEmojiCatalog by lazy {
             parse(RaftEmojiData.CategoryIds, RaftEmojiData.categoryRows())
         }
+
+        /** What the picker shows: [All] without the emoji this device cannot draw, filtered on first use. */
+        val Default: RaftEmojiCatalog by lazy { All.drawable() }
 
         fun parse(categoryIds: List<String>, rows: List<List<String>>): RaftEmojiCatalog {
             require(categoryIds.size == rows.size) { "${categoryIds.size} categories, ${rows.size} row lists" }

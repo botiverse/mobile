@@ -8,7 +8,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RaftEmojiCatalogTest {
-    private val catalog = RaftEmojiCatalog.Default
+    private val catalog = RaftEmojiCatalog.All
 
     @Test
     fun generatedDataHasEveryCategoryInThePickersOrder() {
