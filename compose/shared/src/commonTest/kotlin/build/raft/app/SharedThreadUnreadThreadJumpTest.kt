@@ -30,6 +30,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -299,6 +300,66 @@ class SharedThreadUnreadThreadJumpTest {
             assertEquals("chat", payload.selectedTab)
             assertEquals(payload.focusedMessageRequestNonce, store.state.value.unreadThreadJumpFocusNonce)
         } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /**
+     * Web #11358: the pill is busy from the tap until the parent's messages land, and a second tap
+     * meanwhile starts no second jump; once they land (or the load fails) it can be pressed again.
+     */
+    @Test
+    fun aJumpThatLoadsItsParentIsBusyUntilItLandsAndIgnoresAnotherTap() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val release = CompletableDeferred<Unit>()
+        repository.releaseParent = release
+        repository.parentResult = DataResult.Content(channelContext("p-old", "p-old-next"))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+
+        try {
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(true, store.state.value.unreadThreadJumpLoading, "busy while the parent loads")
+
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-other", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(listOf(MessageId("p-old")), repository.parentRequests.map { it.first }, "the second tap starts nothing")
+
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            assertEquals("p-old", store.state.value.payload.focusedMessageId)
+
+            // A failed load ends the busy state too.
+            repository.parentResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-far", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            assertEquals(2, repository.parentRequests.size)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /** A parent already loaded is focused at once: the pill never turns busy. */
+    @Test
+    fun aJumpToALoadedParentIsNeverBusy() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val store = SharedThreadStore(dataSource = dataSource(repository()), scope = scope, initialPayload = channelWindow())
+        val busy = mutableListOf<Boolean>()
+        val collector = scope.launch { store.unreadThreadJumpLoadingFlow().collect { busy += it } }
+
+        try {
+            advanceUntilIdle()
+            store.dispatch(SharedThreadIntent.JumpToMessage("m2", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(listOf(false), busy)
+        } finally {
+            collector.cancel()
             scopeJob.cancelAndJoin()
         }
     }

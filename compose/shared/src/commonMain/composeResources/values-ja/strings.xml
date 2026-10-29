@@ -865,6 +865,7 @@
     <string name="thread_jump_next_unread_thread">次の未読スレッド（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最も古い未読スレッド（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">閉じる</string>
+    <string name="thread_jump_unread_thread_loading">スレッドを読み込み中…</string>
     <string name="thread_label_saved">保存済み</string>
     <string name="thread_state_refreshing_original">元のメッセージを更新中…</string>
     <string name="thread_error_refresh_original">更新に失敗しました: %1$s</string>

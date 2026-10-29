@@ -6979,6 +6979,12 @@ internal data class SharedThreadState(
      * value never matches a later focus.
      */
     val unreadThreadJumpFocusNonce: Int = 0,
+    /**
+     * Web ThreadUnreadJumpPill busy (#11358): a pill jump is loading the messages around a parent
+     * that was not loaded. The pill shows "Loading Thread…" and a further tap starts no second
+     * jump until the parent lands (or the load fails).
+     */
+    val unreadThreadJumpLoading: Boolean = false,
 )
 
 /**
@@ -7327,6 +7333,11 @@ internal class SharedThreadStore(
     fun unreadThreadJumpFocusNonceFlow(): Flow<Int> =
         state
             .map { threadState -> threadState.unreadThreadJumpFocusNonce }
+            .distinctUntilChanged()
+
+    fun unreadThreadJumpLoadingFlow(): Flow<Boolean> =
+        state
+            .map { threadState -> threadState.unreadThreadJumpLoading }
             .distinctUntilChanged()
 
     // Event-driven drainer for durably journaled pending sends. Resends reuse the journaled
@@ -11992,6 +12003,11 @@ internal class SharedThreadStore(
      */
     private suspend fun jumpToMessage(messageId: String, switchToTab: String?) {
         val target = messageId.trim().takeIf { it.isNotBlank() } ?: return
+        // Web: a second tap while the pill is busy starts no second jump.
+        if (_state.value.unreadThreadJumpLoading) {
+            diagnosticsLogger?.invoke("thread_jump_to_message result=ignored reason=busy target=${target.take(8)}")
+            return
+        }
         // Mark this focus request as the pill's before the payload carries it, so the page sees
         // the mark by the time its focus anchor runs for this nonce (lands on the replies block).
         val nonce = nextThreadFocusedMessageRequestNonce()
@@ -12038,7 +12054,13 @@ internal class SharedThreadStore(
         diagnosticsLogger?.invoke(
             "thread_jump_to_message result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}"
         )
-        refresh(basePayload = focusRoute, staleToken = staleToken)
+        reduceState(_state.value.copy(unreadThreadJumpLoading = true))
+        try {
+            refresh(basePayload = focusRoute, staleToken = staleToken)
+        } finally {
+            // The parent landed, or the load ended without it: the pill can be pressed again.
+            if (_state.value.unreadThreadJumpLoading) reduceState(_state.value.copy(unreadThreadJumpLoading = false))
+        }
         val loaded = _state.value.payload.messages.any { it.id == target }
         diagnosticsLogger?.invoke(
             "thread_jump_to_message result=${if (loaded) "applied" else "failed"} target=${target.take(8)} " +
@@ -12324,6 +12346,7 @@ internal class SharedThreadViewModel(
     fun unreadThreadParentsFlow(): Flow<Map<String, ThreadUnreadThreadParent>> = store.unreadThreadParentsFlow()
 
     fun unreadThreadJumpFocusNonceFlow(): Flow<Int> = store.unreadThreadJumpFocusNonceFlow()
+    fun unreadThreadJumpLoadingFlow(): Flow<Boolean> = store.unreadThreadJumpLoadingFlow()
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)

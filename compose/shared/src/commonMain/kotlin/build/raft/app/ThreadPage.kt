@@ -8102,6 +8102,9 @@ private fun SharedThreadRouteContentContent(
     val jumpFocusNonce by remember(threadViewModel) {
         threadViewModel.unreadThreadJumpFocusNonceFlow()
     }.collectAsState(threadViewModel.state.value.unreadThreadJumpFocusNonce)
+    val jumpLoading by remember(threadViewModel) {
+        threadViewModel.unreadThreadJumpLoadingFlow()
+    }.collectAsState(threadViewModel.state.value.unreadThreadJumpLoading)
     val jumpInputs =
         remember(
             jumpChannelId,
@@ -8111,6 +8114,7 @@ private fun SharedThreadRouteContentContent(
             jumpConversationUnreadCount,
             jumpUnreadThreadParents,
             jumpFocusNonce,
+            jumpLoading,
         ) {
             ThreadJumpInputs(
                 channelId = jumpChannelId,
@@ -8121,6 +8125,7 @@ private fun SharedThreadRouteContentContent(
                 conversationUnreadCount = jumpConversationUnreadCount,
                 unreadThreadParents = jumpUnreadThreadParents.filterValues { parent -> parent.parentChannelId == jumpChannelId },
                 jumpFocusNonce = jumpFocusNonce,
+                jumpLoading = jumpLoading,
             )
         }
     // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
@@ -23165,16 +23170,20 @@ private fun ThreadMessagesListContent(
         val unreadThreadPill: @Composable (ThreadUnreadThreadJump) -> Unit = { jump ->
             ThreadUnreadThreadJumpPill(
                 jump = jump,
+                busy = jumpInputs.jumpLoading,
                 onJump = {
-                    diagnosticsLogger(
-                        "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
-                            "target=${jump.targetMessageId.take(8)}"
-                    )
-                    onThreadEvent(
-                        ThreadJumpToUnreadThreadParentAction,
-                        jump.targetMessageId,
-                        threadChannelId = jump.targetThreadChannelId,
-                    )
+                    // Web: busy from the tap until the parent lands; a second tap does nothing.
+                    if (!jumpInputs.jumpLoading) {
+                        diagnosticsLogger(
+                            "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
+                                "target=${jump.targetMessageId.take(8)}"
+                        )
+                        onThreadEvent(
+                            ThreadJumpToUnreadThreadParentAction,
+                            jump.targetMessageId,
+                            threadChannelId = jump.targetThreadChannelId,
+                        )
+                    }
                 },
                 onDismiss = { unreadThreadJumpDismissedAtCount = jump.count },
             )
@@ -25588,22 +25597,25 @@ private const val ThreadJumpControlsZIndex = 5f
 
 /** raft-ui MessageListJumpPillGroup: the unread-thread pill with its dismiss. */
 @Composable
-private fun ThreadUnreadThreadJumpPill(
+internal fun ThreadUnreadThreadJumpPill(
     jump: ThreadUnreadThreadJump,
     onJump: () -> Unit,
     onDismiss: () -> Unit,
+    /** Web ThreadUnreadJumpPill busy (#11358): "Loading Thread…" with the spinner, taps ignored. */
+    busy: Boolean = false,
 ) {
     RaftMessageListJumpPillGroup {
         RaftMessageListJumpPill(
             text =
-                when (jump.direction) {
-                    ThreadUnreadThreadJumpDirection.Next ->
+                when {
+                    busy -> stringResource(Res.string.thread_jump_unread_thread_loading)
+                    jump.direction == ThreadUnreadThreadJumpDirection.Next ->
                         stringResource(Res.string.thread_jump_next_unread_thread, jump.count)
-                    ThreadUnreadThreadJumpDirection.Earliest ->
-                        stringResource(Res.string.thread_jump_earliest_unread_thread, jump.count)
+                    else -> stringResource(Res.string.thread_jump_earliest_unread_thread, jump.count)
                 },
             onClick = onJump,
             icon = if (jump.direction == ThreadUnreadThreadJumpDirection.Earliest) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
+            busy = busy,
         )
         RaftMessageListJumpPillDismiss(
             label = stringResource(Res.string.thread_jump_unread_thread_dismiss),

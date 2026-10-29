@@ -377,6 +377,8 @@ internal data class ThreadJumpInputs(
     val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
     /** The focus request nonce of the last pill jump ([SharedThreadState.unreadThreadJumpFocusNonce]). */
     val jumpFocusNonce: Int = 0,
+    /** A pill jump is loading its parent ([SharedThreadState.unreadThreadJumpLoading]): the pill is busy. */
+    val jumpLoading: Boolean = false,
 )
 
 /** The loaded messages as thread-parent candidates, with the list's live reply state where it has one. */

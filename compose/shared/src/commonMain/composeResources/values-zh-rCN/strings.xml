@@ -863,6 +863,7 @@
     <string name="thread_jump_next_unread_thread">下一个未读 thread（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最早的未读 thread（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">关闭</string>
+    <string name="thread_jump_unread_thread_loading">正在加载消息列…</string>
     <string name="thread_label_saved">已收藏</string>
     <string name="thread_state_refreshing_original">正在刷新原消息…</string>
     <string name="thread_error_refresh_original">刷新失败：%1$s</string>

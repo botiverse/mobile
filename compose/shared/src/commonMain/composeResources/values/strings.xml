@@ -863,6 +863,7 @@
     <string name="thread_jump_next_unread_thread">Next Unread Thread (%1$d)</string>
     <string name="thread_jump_earliest_unread_thread">Earliest Unread Thread (%1$d)</string>
     <string name="thread_jump_unread_thread_dismiss">Dismiss</string>
+    <string name="thread_jump_unread_thread_loading">Loading Thread…</string>
     <string name="thread_label_saved">Saved</string>
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
     <string name="thread_error_refresh_original">Refresh failed: %1$s</string>
