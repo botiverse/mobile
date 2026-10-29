@@ -175,7 +175,6 @@ import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.data.RaftAuthApi
-import build.raft.app.data.RaftDatabaseLaunchAttempt
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftSharedStoreProvider
@@ -188,7 +187,6 @@ import build.raft.app.data.raftShellShouldDropOverlayRequest
 import build.raft.app.data.shellOverlayRequestIdOrNull
 import build.raft.app.data.toRaftShellOverlayRequestOrNull
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.attemptRaftDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.isAuthSessionError
 import build.raft.app.data.isEdgeBlockedMarker
@@ -2066,47 +2064,21 @@ internal fun RaftAppShellContent(
     RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    var databaseLaunchRetryEpoch by remember { mutableStateOf(0) }
-    val databaseLaunchAttempt =
-        remember(bridge, databaseLaunchRetryEpoch) {
-            attemptRaftDatabaseLaunch { RaftSharedStoreRegistry.get(bridge) }
-        }
-    when (databaseLaunchAttempt) {
-        is RaftDatabaseLaunchAttempt.Ready ->
-            RaftAppShellReadyContent(
-                pageVisibleTick = pageVisibleTick,
-                initialAuthRestoreTick = initialAuthRestoreTick,
-                pageVisible = pageVisible,
-                adaptivePane = adaptivePane,
-                conversationForwardRequestTick = conversationForwardRequestTick,
-                wideHistoryRequest = wideHistoryRequest,
-                searchHandoff = searchHandoff,
-                onSearchHandoffApplied = onSearchHandoffApplied,
-                sharedStores = databaseLaunchAttempt.value,
-            )
-        is RaftDatabaseLaunchAttempt.UpgradeRequired -> {
-            val mismatch = databaseLaunchAttempt.mismatch
-            LaunchedEffect(mismatch) {
-                bridge.logWarn(
-                    "database_launch_guard result=upgrade_required " +
-                        "databaseVersion=${mismatch.databaseVersion} " +
-                        "supportedVersion=${mismatch.supportedVersion}",
-                )
-            }
-            RaftDatabaseLaunchRecoveryContent(
-                mismatch = mismatch,
-                onRetry = {
-                    bridge.logWarn(
-                        "database_launch_guard action=retry " +
-                            "databaseVersion=${mismatch.databaseVersion} " +
-                            "supportedVersion=${mismatch.supportedVersion}",
-                    )
-                    databaseLaunchRetryEpoch += 1
-                },
-            )
-        }
-        is RaftDatabaseLaunchAttempt.Fatal -> throw databaseLaunchAttempt.throwable
-    }
+    // The shell page's RaftDatabaseLaunchGate (BasePager, outside the environment indicator) has
+    // already created the provider or shown the database recovery page, so this is the same
+    // instance and never the first database open.
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    RaftAppShellReadyContent(
+        pageVisibleTick = pageVisibleTick,
+        initialAuthRestoreTick = initialAuthRestoreTick,
+        pageVisible = pageVisible,
+        adaptivePane = adaptivePane,
+        conversationForwardRequestTick = conversationForwardRequestTick,
+        wideHistoryRequest = wideHistoryRequest,
+        searchHandoff = searchHandoff,
+        onSearchHandoffApplied = onSearchHandoffApplied,
+        sharedStores = sharedStores,
+    )
 }
 
 @Composable

@@ -17,6 +17,9 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
     override val raftSearchTabHandoffRole: RaftSearchTabHandoffRole
         get() = RaftSearchTabHandoffRole.Shell
 
+    override val raftOwnsDatabaseLaunch: Boolean
+        get() = true
+
     override fun onRaftSearchTabHandoff(request: RaftSearchTabQueryRequest) {
         searchHandoff = request
     }

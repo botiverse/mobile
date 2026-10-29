@@ -2,6 +2,7 @@
 
 package build.raft.app.data
 
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.addressOf
@@ -22,20 +23,18 @@ import platform.posix.open as posixOpen
 import platform.posix.pread
 import platform.posix.stat
 
-internal actual fun createRaftSqlDatabase(): RaftSqlDatabase =
-    RaftSqlDatabase(
-        NativeSqliteDriver(
-            schema = RaftSqlDatabase.Schema,
-            name = RaftSqlDatabase.DatabaseName,
-            onConfiguration = { configuration ->
-                configuration.copy(
-                    extendedConfig =
-                        configuration.extendedConfig.copy(
-                            basePath = requireIosDatabaseBasePath()
-                        )
-                )
-            }
-        )
+internal actual fun openPlatformRaftSqlDriver(): SqlDriver =
+    NativeSqliteDriver(
+        schema = RaftSqlDatabase.Schema,
+        name = RaftSqlDatabase.DatabaseName,
+        onConfiguration = { configuration ->
+            configuration.copy(
+                extendedConfig =
+                    configuration.extendedConfig.copy(
+                        basePath = requireIosDatabaseBasePath()
+                    )
+            )
+        }
     )
 
 internal actual fun readSqliteUserVersionReadOnly(

@@ -1,17 +1,16 @@
 package build.raft.app.data
 
 import android.content.Context
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import java.io.File
 import java.io.RandomAccessFile
 
-internal actual fun createRaftSqlDatabase(): RaftSqlDatabase =
-    RaftSqlDatabase(
-        AndroidSqliteDriver(
-            schema = RaftSqlDatabase.Schema,
-            context = RaftAndroidSqlDatabaseContext.require(),
-            name = RaftSqlDatabase.DatabaseName
-        )
+internal actual fun openPlatformRaftSqlDriver(): SqlDriver =
+    AndroidSqliteDriver(
+        schema = RaftSqlDatabase.Schema,
+        context = RaftAndroidSqlDatabaseContext.require(),
+        name = RaftSqlDatabase.DatabaseName
     )
 
 internal actual fun readSqliteUserVersionReadOnly(

@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftAppScopeApiEnvironmentHolder
+import build.raft.app.data.RaftSharedKeyValueStoreBinding
+import build.raft.app.data.RaftSharedKeyValueStoreProvider
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
@@ -8,7 +12,9 @@ import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftEnvironmentIndicatorTest {
@@ -71,6 +77,47 @@ class RaftEnvironmentIndicatorTest {
             )
 
         assertEquals(custom, store.state.value)
+    }
+
+    @Test
+    fun indicatorReadsTheAppScopeEnvironmentSettingWithoutCreatingTheSharedStore() {
+        val keyValueStore = InMemoryRaftKeyValueStore(mapOf("environment" to SharedApiEnvironmentStore.Staging.key))
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) { keyValueStore }
+        try {
+            val environmentStore = assertNotNull(raftEnvironmentIndicatorEnvironmentStoreOrNull())
+
+            assertEquals("Staging", raftEnvironmentIndicatorLabel(environmentStore.state.value))
+            assertNull(
+                RaftSharedStoreRegistry.currentOrNull(),
+                "the indicator must not build the shared store provider (it opens the database)",
+            )
+        } finally {
+            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        }
+    }
+
+    @Test
+    fun indicatorAndProviderShareOneEnvironmentStoreSoSwitchesReachTheIndicator() {
+        var bindingCreations = 0
+        val holder =
+            RaftAppScopeApiEnvironmentHolder {
+                bindingCreations += 1
+                RaftSharedKeyValueStoreBinding(store = InMemoryRaftKeyValueStore(), scope = "app")
+            }
+        val indicatorStore = assertNotNull(raftEnvironmentIndicatorEnvironmentStoreOrNull(holder::store))
+
+        // The provider, created later, takes the same holder's binding and store.
+        holder.binding()
+        holder.store().select(SharedApiEnvironmentStore.Staging.key)
+
+        assertSame(holder.store(), indicatorStore)
+        assertEquals(SharedApiEnvironmentStore.Staging, indicatorStore.state.value)
+        assertEquals(1, bindingCreations)
+    }
+
+    @Test
+    fun unavailableEnvironmentSettingHidesTheIndicatorInsteadOfFailingThePage() {
+        assertNull(raftEnvironmentIndicatorEnvironmentStoreOrNull { error("app-scope store missing") })
     }
 
     @Test

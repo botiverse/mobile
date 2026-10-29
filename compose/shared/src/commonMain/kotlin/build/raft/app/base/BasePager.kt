@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
 import build.raft.app.RaftSearchTabHandoff
@@ -64,7 +65,7 @@ internal abstract class BasePager : ComposeContainer() {
      */
     override fun setContent(content: @Composable () -> Unit) {
         val embedded = pageData.params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false)
-        super.setContent {
+        val pageContent: @Composable () -> Unit = {
             RaftEnvironmentIndicatorHost(
                 enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
             ) {
@@ -75,7 +76,23 @@ internal abstract class BasePager : ComposeContainer() {
                 }
             }
         }
+        super.setContent {
+            if (raftOwnsDatabaseLaunch) {
+                // Outermost layer: the database launch classification (and its recovery page)
+                // happens before anything else in the page can reach the shared store.
+                RaftDatabaseLaunchGate(content = pageContent)
+            } else {
+                pageContent()
+            }
+        }
     }
+
+    /**
+     * Whether this page is the launch owner that gates the first shared-store creation behind
+     * [RaftDatabaseLaunchGate] (the app shell). Other pages open over a shell that already passed it.
+     */
+    protected open val raftOwnsDatabaseLaunch: Boolean
+        get() = false
 
     private fun registerRaftExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {

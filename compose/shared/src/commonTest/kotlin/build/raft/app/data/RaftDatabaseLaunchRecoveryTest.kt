@@ -10,27 +10,103 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class RaftDatabaseLaunchRecoveryTest {
     @Test
-    fun newerStoredDatabaseVersionRequiresUpgradeWithoutCreatingProvider() {
-        var createCalls = 0
-        val attempt =
-            attemptRaftDatabaseLaunch(
-                readDatabaseVersion = { 7L },
-                supportedVersion = 6L,
-                create = {
-                    createCalls += 1
-                    "ready"
-                },
-            )
+    fun coldLaunchWithNewerDatabaseShowsRecoveryWithoutEverOpeningSqlDelight() {
+        // Production chain: RaftDatabaseLaunchGate -> attemptRaftDatabaseLaunch ->
+        // RaftSharedStoreRegistry.get -> provider factory -> openRaftSqlDatabase.
+        val launch = CountingDatabaseLaunch(storedVersion = 10L, supportedVersion = 9L)
+
+        val attempt = launch.attempt()
 
         assertEquals(
-            RaftDatabaseVersionMismatch(databaseVersion = 7, supportedVersion = 6),
+            RaftDatabaseVersionMismatch(databaseVersion = 10, supportedVersion = 9),
             assertIs<RaftDatabaseLaunchAttempt.UpgradeRequired>(attempt).mismatch,
         )
-        assertEquals(0, createCalls)
+        assertEquals(0, launch.driverOpens, "SQLDelight driver must never be opened")
+        assertEquals(1, launch.providerFactoryCalls)
+        assertNull(launch.registry.currentOrNull(), "a refused launch must not seal a provider")
+    }
+
+    @Test
+    fun recoveryRetryOpensSqlDelightOnlyOnceTheStoredVersionIsSupported() {
+        val launch = CountingDatabaseLaunch(storedVersion = 10L, supportedVersion = 9L)
+
+        assertIs<RaftDatabaseLaunchAttempt.UpgradeRequired>(launch.attempt())
+        assertIs<RaftDatabaseLaunchAttempt.UpgradeRequired>(launch.attempt())
+        assertEquals(0, launch.driverOpens)
+
+        launch.storedVersion = 9L
+        val ready = assertIs<RaftDatabaseLaunchAttempt.Ready<RaftSqlDatabase>>(launch.attempt())
+
+        assertEquals(1, launch.driverOpens)
+        assertSame(ready.value, launch.registry.currentOrNull())
+        assertEquals(listOf("PRAGMA user_version"), launch.drivers.single().queries)
+    }
+
+    @Test
+    fun missingSameAndOlderDatabaseVersionsStayOnSqlDelightCreateOrMigrationPath() {
+        listOf<Long?>(null, 9L, 8L).forEach { storedVersion ->
+            val launch = CountingDatabaseLaunch(storedVersion = storedVersion, supportedVersion = 9L)
+
+            assertIs<RaftDatabaseLaunchAttempt.Ready<RaftSqlDatabase>>(
+                launch.attempt(),
+                "storedVersion=$storedVersion",
+            )
+            assertEquals(1, launch.driverOpens, "storedVersion=$storedVersion")
+        }
+    }
+
+    @Test
+    fun newerDatabaseErrorIsRecognizedWhenWrappedByAProviderFactory() {
+        val mismatch = RaftDatabaseVersionMismatch(databaseVersion = 10, supportedVersion = 9)
+
+        val attempt =
+            attemptRaftDatabaseLaunch<String> {
+                throw IllegalStateException("provider creation failed", RaftDatabaseNewerThanAppException(mismatch))
+            }
+
+        assertEquals(mismatch, assertIs<RaftDatabaseLaunchAttempt.UpgradeRequired>(attempt).mismatch)
+    }
+
+    @Test
+    fun versionPreflightFailureRemainsFatalAndNeverOpensSqlDelight() {
+        val failure = IllegalStateException("Invalid SQLite database header")
+        var driverOpens = 0
+
+        val attempt =
+            attemptRaftDatabaseLaunch {
+                openRaftSqlDatabase(
+                    readDatabaseVersion = { throw failure },
+                    supportedVersion = 9L,
+                    openDriver = {
+                        driverOpens += 1
+                        RecordingOpenSqlDriver()
+                    },
+                )
+            }
+
+        assertSame(failure, assertIs<RaftDatabaseLaunchAttempt.Fatal>(attempt).throwable)
+        assertEquals(0, driverOpens)
+    }
+
+    @Test
+    fun sqlDelightCreateOrMigrationFailureRemainsFatal() {
+        val failure = IllegalStateException("migration failed: no such column")
+
+        val attempt =
+            attemptRaftDatabaseLaunch {
+                openRaftSqlDatabase(
+                    readDatabaseVersion = { 8L },
+                    supportedVersion = 9L,
+                    openDriver = { FailingOpenSqlDriver(failure) },
+                )
+            }
+
+        assertSame(failure, assertIs<RaftDatabaseLaunchAttempt.Fatal>(attempt).throwable)
     }
 
     @Test
@@ -54,95 +130,36 @@ class RaftDatabaseLaunchRecoveryTest {
         assertEquals(listOf("PRAGMA user_version"), driver.queries)
         assertEquals(0, driver.executeCalls)
     }
+}
 
-    @Test
-    fun missingSameAndOlderDatabaseVersionsStayOnSqlDelightCreateOrMigrationPath() {
-        listOf<Long?>(null, 6L, 5L).forEach { storedVersion ->
-            val provider = Any()
-            val attempt =
-                attemptRaftDatabaseLaunch(
+/**
+ * The launch chain with a fake on-disk version and a counting driver factory in place of the
+ * platform SQLDelight driver, so a test can prove how many times SQLDelight was opened.
+ */
+private class CountingDatabaseLaunch(
+    var storedVersion: Long?,
+    private val supportedVersion: Long,
+) {
+    var providerFactoryCalls = 0
+        private set
+    val drivers = mutableListOf<RecordingOpenSqlDriver>()
+    val driverOpens: Int
+        get() = drivers.size
+
+    val registry =
+        RaftSharedStoreRegistryState<RaftSqlDatabase, Unit>(
+            defaultFactory = {
+                providerFactoryCalls += 1
+                openRaftSqlDatabase(
                     readDatabaseVersion = { storedVersion },
-                    supportedVersion = 6L,
-                    create = { provider },
+                    supportedVersion = supportedVersion,
+                    openDriver = { RecordingOpenSqlDriver().also(drivers::add) },
                 )
+            },
+            updateExisting = { _, _ -> },
+        )
 
-            assertSame(
-                provider,
-                assertIs<RaftDatabaseLaunchAttempt.Ready<Any>>(attempt).value,
-                "storedVersion=$storedVersion",
-            )
-        }
-    }
-
-    @Test
-    fun versionPreflightFailureRemainsFatalAndDoesNotCreateProvider() {
-        val failure = IllegalStateException("read-only SQLite open failed")
-        var createCalls = 0
-
-        val attempt =
-            attemptRaftDatabaseLaunch(
-                readDatabaseVersion = { throw failure },
-                supportedVersion = 6L,
-                create = {
-                    createCalls += 1
-                    "ready"
-                },
-            )
-
-        assertSame(failure, assertIs<RaftDatabaseLaunchAttempt.Fatal>(attempt).throwable)
-        assertEquals(0, createCalls)
-    }
-
-    @Test
-    fun sqlDelightCreateOrMigrationFailureRemainsFatal() {
-        val failure = IllegalStateException("migration failed: no such column")
-
-        val attempt =
-            attemptRaftDatabaseLaunch<String>(
-                readDatabaseVersion = { 5L },
-                supportedVersion = 6L,
-                create = { throw failure },
-            )
-
-        assertSame(failure, assertIs<RaftDatabaseLaunchAttempt.Fatal>(attempt).throwable)
-    }
-
-    @Test
-    fun failedRegistryCreationDoesNotSealRetryAfterUpgradeBlock() {
-        var versionReads = 0
-        var providerCreations = 0
-        val registry =
-            RaftSharedStoreRegistryState<String, Unit>(
-                defaultFactory = {
-                    providerCreations += 1
-                    "ready"
-                },
-                updateExisting = { _, _ -> },
-            )
-        val readDatabaseVersion = {
-            versionReads += 1
-            if (versionReads == 1) 7L else 6L
-        }
-
-        val first =
-            attemptRaftDatabaseLaunch(
-                readDatabaseVersion = readDatabaseVersion,
-                supportedVersion = 6L,
-                create = { registry.get(Unit) },
-            )
-        val second =
-            attemptRaftDatabaseLaunch(
-                readDatabaseVersion = readDatabaseVersion,
-                supportedVersion = 6L,
-                create = { registry.get(Unit) },
-            )
-
-        assertIs<RaftDatabaseLaunchAttempt.UpgradeRequired>(first)
-        assertEquals("ready", assertIs<RaftDatabaseLaunchAttempt.Ready<String>>(second).value)
-        assertEquals(2, versionReads)
-        assertEquals(1, providerCreations)
-        assertEquals("ready", registry.currentOrNull())
-    }
+    fun attempt(): RaftDatabaseLaunchAttempt<RaftSqlDatabase> = attemptRaftDatabaseLaunch { registry.get(Unit) }
 }
 
 private class FailingOpenSqlDriver(
