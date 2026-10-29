@@ -1,18 +1,12 @@
 package build.raft.app.markdown
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -20,8 +14,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +21,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.sp
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppThemeState
 import build.raft.app.designtokens.RaftUiPalette
@@ -101,9 +92,9 @@ internal data class RaftTaskStatusPixelStyle(
  * Unknown task (web `<Badge variant="muted">`, solid appearance): `bg-inactive`, 1.5px sticker-ink
  * edge, `rounded-sticker`, `px-1.5`, bold sticker-ink text, no pixel.
  *
- * Horizontal padding is carried by placeholders ([leadingGap], [trailingGap]) inside the boxed
- * range (the pixel lives in the leading one); the box's margin is reserved outside the chip by
- * [withRaftInlineChipGaps].
+ * Horizontal padding is carried by glued spacers ([leadingGap], [trailingGap],
+ * [appendRaftInlineSpacer]) inside the boxed range (the painter draws the pixel in the leading
+ * one); the box's margin is reserved outside the chip by [withRaftInlineChipGaps].
  */
 @Immutable
 internal data class RaftMarkdownTaskChipStyle(
@@ -210,12 +201,6 @@ internal fun RaftMarkdownTaskChipStyle.linkStyles(): TextLinkStyles =
         pressedStyle = textSpanStyle().copy(background = RaftAppThemeState.colors.fillPressed),
     )
 
-internal fun RaftMarkdownTaskChipStyle.leadingInlineId(): String =
-    "raft-task-chip-lead:${status?.toWireValue() ?: "unknown"}"
-
-internal fun RaftMarkdownTaskChipStyle.trailingInlineId(): String =
-    "raft-task-chip-trail:${status?.toWireValue() ?: "unknown"}"
-
 internal fun taskNumberFromRefLabel(label: String): Int? =
     label.trim().removePrefix("#").toIntOrNull()?.takeIf { it > 0 }
 
@@ -228,79 +213,30 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     label: String,
     trailing: AnnotatedString.Builder.() -> Unit = {},
 ) {
-    // Word joiners keep the pixel, label and trailing pad on one line: a chip
-    // never wraps between its status pixel and its number. The whole chip is set at the inline
-    // chip's 0.875em, so the painted box measures the chip's own text.
+    // The lead (with the painted status pixel) and the trail are glued spacers, not placeholders,
+    // so the chip never wraps between its pixel / padding and its number on either renderer: a
+    // placeholder lead could end a line on iOS and leave a sliver of the box there (artin 10-29).
+    // The whole chip is set at the inline chip's 0.875em, so the painted box measures its own text.
     withRaftInlineBox(style.box) {
         withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
-            appendInlineContent(style.leadingInlineId(), "\uFFFC")
-            append(RaftMarkdownTaskChipWordJoiner)
+            appendRaftInlineSpacer(style.leadingGap, style.pixel?.toInlineMark())
             withStyle(style.textSpanStyle()) { append(label) }
             trailing()
-            append(RaftMarkdownTaskChipWordJoiner)
-            appendInlineContent(style.trailingInlineId(), "\uFFFC")
+            appendRaftInlineSpacer(style.trailingGap)
         }
     }
 }
 
-private val RaftMarkdownTaskChipInlineContentLight: Map<String, InlineTextContent> by lazy {
-    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftLight) // raft-color: light half of the per-theme cache (dark sibling below)
-}
-private val RaftMarkdownTaskChipInlineContentDark: Map<String, InlineTextContent> by lazy {
-    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftDark)
-}
-
-/**
- * Inline content for every chip style (each status plus the unknown badge) in one theme. Built
- * once per theme: the placeholders and pixel colours depend only on status and theme.
- */
-internal fun raftMarkdownTaskChipInlineContent(dark: Boolean): Map<String, InlineTextContent> =
-    if (dark) RaftMarkdownTaskChipInlineContentDark else RaftMarkdownTaskChipInlineContentLight
-
-private fun raftMarkdownTaskChipInlineContentForColors(colors: RaftUiThemeColors): Map<String, InlineTextContent> =
-    raftMarkdownTaskChipInlineContent(
-        (TaskStatus.entries + listOf<TaskStatus?>(null)).map { status -> raftMarkdownTaskChipStyle(status, colors) }
+/** The status pixel as the painter's mark: [RaftTaskStatusPixel]'s square, inset by the chip's start padding. */
+internal fun RaftTaskStatusPixelStyle.toInlineMark(): RaftInlineMarkStyle =
+    RaftInlineMarkStyle(
+        fill = fill,
+        stroke = stroke,
+        inset = RaftMarkdownTaskChipPaddingStart,
+        size = RaftMarkdownTaskChipPixelSize,
+        strokeWidth = RaftMarkdownTaskChipPixelStroke,
+        cornerRadius = RaftMarkdownTaskChipPixelRadius,
     )
-
-/** Inline content for every chip style used in a document (shared ids per status). */
-internal fun raftMarkdownTaskChipInlineContent(
-    styles: Collection<RaftMarkdownTaskChipStyle>
-): Map<String, InlineTextContent> =
-    buildMap {
-        styles.forEach { style ->
-            put(style.leadingInlineId(), style.leadingInlineContent())
-            put(style.trailingInlineId(), raftMarkdownTaskChipSpacer(style.trailingGap))
-        }
-    }
-
-private fun RaftMarkdownTaskChipStyle.leadingInlineContent(): InlineTextContent {
-    val pixel = pixel ?: return raftMarkdownTaskChipSpacer(leadingGap)
-    return InlineTextContent(
-        placeholder =
-            Placeholder(
-                width = leadingGap.value.sp,
-                height = RaftMarkdownTaskChipPixelSize.value.sp,
-                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
-            )
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-            RaftTaskStatusPixel(
-                style = pixel,
-                modifier = Modifier.padding(start = RaftMarkdownTaskChipPaddingStart),
-            )
-        }
-    }
-}
-
-private fun raftMarkdownTaskChipSpacer(width: Dp): InlineTextContent =
-    InlineTextContent(
-        placeholder =
-            Placeholder(
-                width = width.value.sp,
-                height = 1.sp,
-                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
-            )
-    ) {}
 
 /** raft-ui `TaskStatusPixel`: 8.5px rect, 1.5px sticker-ink stroke, 1.25px radius (10px outer, raft-design #722). */
 @Composable
