@@ -28,15 +28,18 @@ internal fun SettingsDetailShell(
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
+    // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
+    // so no Back, and the head sits under the wide top bar (no status-bar inset).
+    val wideDetail = LocalRaftSettingsWideDetail.current
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         RaftTopPageHeader(
             title = title,
             subtitle = subtitle,
             iconName = iconName,
             backgroundColor = RaftColor.SurfaceWhite,
-            applyTopSafeArea = applyTopSafeArea,
+            applyTopSafeArea = applyTopSafeArea && !wideDetail,
             headerHeight = headerHeight,
-            onBack = onBack,
+            onBack = settingsDetailHeaderBack(onBack, wideDetail),
             trailingContent = if (trailingContent != null) {
                 { trailingContent() }
             } else {
@@ -70,3 +73,7 @@ internal fun SettingsSharedPlaceholder(
         Text(detail, style = RaftType.Body.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
+
+/** The Back a Settings page head shows: its own on the phone, none in the wide detail pane. */
+internal fun settingsDetailHeaderBack(onBack: () -> Unit, wideDetail: Boolean): (() -> Unit)? =
+    onBack.takeUnless { wideDetail }
