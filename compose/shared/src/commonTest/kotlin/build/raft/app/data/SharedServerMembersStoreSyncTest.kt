@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
+import build.raft.app.currentMemberAvatarWireValue
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -97,6 +98,25 @@ class SharedServerMembersStoreSyncTest {
         )
         assertEquals(1, repository.memberCalls)
         assertEquals(1, repository.agentCalls)
+    }
+
+    @Test
+    fun `an agents refresh brings an avatar changed on the web into the roster`() = runTest {
+        // Edgar (10-29): set to the Desk `pencil` on the web; agent:updated -> refreshAgents.
+        val before = agent("a-1", "Edgar").copy(avatarUrl = "pixel:antenna")
+        val repository =
+            SyncRosterRepository(
+                members = listOf(human("u-1", "Ann"), before),
+                agents = listOf(before.copy(avatarUrl = "pixel:pencil")),
+            )
+        val store = syncStore(repository)
+        store.refreshMembers(serverId, force = true)
+        assertEquals("pixel:antenna", store.state.value.currentMemberAvatarWireValue(serverId, "a-1"))
+
+        store.refreshAgents(serverId, reason = "realtime_agent:updated")
+
+        assertEquals("pixel:pencil", store.state.value.currentMemberAvatarWireValue(serverId, "a-1"))
+        assertEquals(1, repository.memberCalls)
     }
 
     @Test

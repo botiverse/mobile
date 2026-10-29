@@ -4445,6 +4445,15 @@ internal fun RealtimeEvent.deletedAgentIdOrNull(): String? =
         ?.takeIf { it.scope == RealtimeRefreshScope.Agents && it.reason == build.raft.app.data.realtime.RealtimeSocketEvents.AgentDeleted }
         ?.let { event -> event.subjectId?.trim()?.takeIf(String::isNotEmpty) ?: event.memberId?.value?.trim()?.takeIf(String::isNotEmpty) }
 
+/**
+ * A realtime `agent:updated`: an agent's stored profile (avatar, name, description) changed. It
+ * carries only the id; like web, the roster's agents are read again (`/agents`).
+ */
+internal fun RealtimeEvent.isAgentProfileUpdate(): Boolean =
+    this is RealtimeRefreshRequired &&
+        scope == RealtimeRefreshScope.Agents &&
+        reason == build.raft.app.data.realtime.RealtimeSocketEvents.AgentUpdated
+
 private fun RealtimeEvent.updatesSharedTaskProjection(): Boolean =
     this is TaskCreated || this is TaskUpdated || this is TaskDeleted
 

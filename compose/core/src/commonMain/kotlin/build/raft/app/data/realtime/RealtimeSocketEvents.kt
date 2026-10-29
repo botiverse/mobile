@@ -51,6 +51,11 @@ object RealtimeSocketEvents {
     const val AgentTyping = GeneratedRealtimeContract.SocketEvent.AgentTyping
     const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
     const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
+    /**
+     * `{ agentId }` to `server:<id>` after any stored agent profile write (name, description, avatar,
+     * pause; botiverse/slock #8954 `routes/agentUpdatedBroadcast.ts`). Like web, re-read `/agents`.
+     */
+    const val AgentUpdated = GeneratedRealtimeContract.SocketEvent.AgentUpdated
     const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted
     const val MachineStatus = GeneratedRealtimeContract.SocketEvent.MachineStatus
     const val MachineCapabilities = GeneratedRealtimeContract.SocketEvent.MachineCapabilities

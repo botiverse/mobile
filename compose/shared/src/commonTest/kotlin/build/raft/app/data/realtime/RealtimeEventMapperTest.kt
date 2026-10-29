@@ -24,7 +24,9 @@ import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.data.isAgentProfileUpdate
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -906,6 +908,26 @@ class RealtimeEventMapperTest {
         assertTrue(RealtimeSocketEvents.ComputerUpgradeProgress in events)
         assertTrue(RealtimeSocketEvents.ComputerUpgradeDone in events)
         assertTrue(RealtimeSocketEvents.DaemonStatus in events)
+    }
+
+    @Test
+    fun agentUpdatedIsSubscribedAndRefreshesTheAgentProfiles() {
+        // botiverse/slock #8954: an agent profile edit (e.g. the web's Change avatar) emits
+        // `agent:updated { agentId }`; without it the roster kept the old avatar until a restart.
+        assertTrue(RealtimeSocketEvents.AgentUpdated in RealtimeSocketEvents.ServerWireEvents)
+
+        val event = RealtimeEventMapper().map(RealtimeSocketEvents.AgentUpdated, """{"agentId":"agent-1"}""")
+
+        val refresh = assertIs<RealtimeRefreshRequired>(event)
+        assertEquals(RealtimeRefreshScope.Agents, refresh.scope)
+        assertEquals("agent:updated", refresh.reason)
+        assertEquals("agent-1", refresh.subjectId)
+        assertTrue(refresh.isAgentProfileUpdate())
+        assertFalse(
+            RealtimeEventMapper()
+                .map(RealtimeSocketEvents.AgentSession, """{"agentId":"agent-1","sessionId":"s-1"}""")!!
+                .isAgentProfileUpdate()
+        )
     }
 
     @Test

@@ -927,6 +927,7 @@ final class RaftIosRealtimeHost: NSObject {
         GeneratedRealtimeContract.SocketEvent.agentTyping,
         GeneratedRealtimeContract.SocketEvent.agentSession,
         GeneratedRealtimeContract.SocketEvent.agentCreated,
+        GeneratedRealtimeContract.SocketEvent.agentUpdated,
         GeneratedRealtimeContract.SocketEvent.agentDeleted,
         GeneratedRealtimeContract.SocketEvent.machineStatus,
         GeneratedRealtimeContract.SocketEvent.machineCapabilities,

@@ -286,6 +286,8 @@ class RealtimeEventMapper(
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentCreated ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.AgentUpdated ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentDeleted ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.MachineStatus,

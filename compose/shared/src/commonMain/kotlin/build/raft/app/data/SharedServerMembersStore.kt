@@ -4214,9 +4214,15 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
         return statusMerged
     }
     // A pixel/fallback avatar is a render candidate, not authoritative identity. It may
-    // populate an empty slot, but it must never erase a concrete URL learned earlier.
+    // populate an empty slot, but it must never erase a concrete URL learned earlier. A cached
+    // pixel avatar is not a concrete URL: the agent's new pixel avatar replaces it (an agent set
+    // from `pixel:antenna` to `pixel:pencil` on the web kept the antenna, even across restarts,
+    // as the durable roster re-seeded it — Edgar, artin 10-29).
     if (incomingAvatar !is AvatarReference.Url &&
-        ((this.avatar as? AvatarReference.Url) != null || !this.avatarUrl.isNullOrBlank())
+        (
+            (this.avatar as? AvatarReference.Url) != null ||
+                (!this.avatarUrl.isNullOrBlank() && !this.avatarUrl.trim().startsWith("pixel:"))
+            )
     ) {
         return statusMerged.copy(
             avatarUrl = this.avatarUrl,
