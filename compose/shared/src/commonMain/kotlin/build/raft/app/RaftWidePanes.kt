@@ -68,8 +68,12 @@ internal data class RaftPaneStack(val entries: List<RaftPaneEntry> = emptyList()
 /** What a wide Back (system Back, Esc, Cmd+[, the top bar's Back) does first. */
 internal enum class RaftWideBackStep { PopSupportingPane, Existing }
 
-internal fun raftWideBackStep(supporting: RaftPaneStack): RaftWideBackStep =
-    if (supporting.isOpen) RaftWideBackStep.PopSupportingPane else RaftWideBackStep.Existing
+/**
+ * [shown] is whether the pane is on screen (the same condition that draws it). Pages can sit in the
+ * stack while it isn't, e.g. under the task overlay; Back must not spend a press closing it unseen.
+ */
+internal fun raftWideBackStep(supporting: RaftPaneStack, shown: Boolean): RaftWideBackStep =
+    if (shown && supporting.isOpen) RaftWideBackStep.PopSupportingPane else RaftWideBackStep.Existing
 
 /**
  * The host navigator for pages the shell hosts: [openInPane] takes the pages [raftPaneRoute] sends

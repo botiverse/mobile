@@ -6054,6 +6054,8 @@ private fun RaftAppShellReadyContent(
     // beside it. They belong to that conversation: picking another one closes them. When the window
     // leaves the wide layout they reopen as pages on the platform stack, as they would have opened there.
     var supportingPanes by remember { mutableStateOf(RaftPaneStack()) }
+    // Whether the pane is drawn right now (set where it is drawn); Back goes by this, not the stack alone.
+    var supportingPaneShown by remember { mutableStateOf(false) }
     val shellHostNavigator = LocalRaftHost.current.navigator
     LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { supportingPanes = supportingPanes.cleared() }
     LaunchedEffect(navRailActive) {
@@ -6159,7 +6161,7 @@ private fun RaftAppShellReadyContent(
         val serverId = readyServerId ?: return
         if (!navRailActive) return
         // An open supporting pane is the topmost thing: Back closes it before stepping the history.
-        if (direction == RaftWideNavDirection.Back && raftWideBackStep(supportingPanes) == RaftWideBackStep.PopSupportingPane) {
+        if (direction == RaftWideNavDirection.Back && raftWideBackStep(supportingPanes, supportingPaneShown) == RaftWideBackStep.PopSupportingPane) {
             bridge.log("wide_history_back source=$source pops=supporting_pane")
             supportingPanes = supportingPanes.pop()
             return
@@ -7248,6 +7250,10 @@ private fun RaftAppShellReadyContent(
                         // The task overlay has no room for one: its pages open as before.
                         val supportingPaneHost = navRailActive && allowSideColumn
                         val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
+                        DisposableEffect(supportingOpen) {
+                            supportingPaneShown = supportingOpen
+                            onDispose { supportingPaneShown = false }
+                        }
                         RaftSupportingPaneLayout(
                             modifier =
                                 paneModifier

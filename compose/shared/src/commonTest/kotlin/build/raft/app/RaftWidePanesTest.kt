@@ -112,10 +112,13 @@ class RaftWidePanesTest {
     @Test
     fun backPopsTheSupportingPaneBeforeAnythingElse() {
         val open = RaftPaneStack().replace("settings", data).push("members", data)
-        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open))
-        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open.pop()))
-        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open.pop().pop()))
-        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftPaneStack()))
+        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open, shown = true))
+        assertEquals(RaftWideBackStep.PopSupportingPane, raftWideBackStep(open.pop(), shown = true))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open.pop().pop(), shown = true))
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(RaftPaneStack(), shown = true))
+        // Pages kept in the stack while the pane isn't drawn (e.g. under the task overlay): Back
+        // goes straight to the existing step instead of closing an invisible pane.
+        assertEquals(RaftWideBackStep.Existing, raftWideBackStep(open, shown = false))
     }
 
     @Test
