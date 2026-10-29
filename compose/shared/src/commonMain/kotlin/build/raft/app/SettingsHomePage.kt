@@ -8028,13 +8028,17 @@ private fun RaftAppShellReadyContent(
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt).
+                            // Feedback is the web page (and opens in the pane) behind this flag.
+                            val feedbackWeb =
+                                sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
                                 picked = settingsWidePicked,
+                                feedbackWeb = feedbackWeb,
                                 onPick = { key ->
-                                    when (val pick = settingsWidePick(key)) {
+                                    when (val pick = settingsWidePick(key, feedbackWeb)) {
                                         is SettingsWidePick.Detail -> {
                                             if (pick.key == SettingsDestinationComputers) {
                                                 writeComputerAttentionSeen(
@@ -8055,7 +8059,8 @@ private fun RaftAppShellReadyContent(
                                 bottomContentPadding = appShellBottomContentInset,
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
-                                    val detailPage = remember(key, storeScope) { settingsWideDetailPage(key, storeScope) }
+                                    val detailPage =
+                                        remember(key, storeScope, feedbackWeb) { settingsWideDetailPage(key, storeScope, feedbackWeb) }
                                     if (detailPage != null) {
                                         RaftChildPage(
                                             pageName = detailPage.first,
