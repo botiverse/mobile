@@ -841,6 +841,9 @@
     <string name="thread_image_preview_loading_full">Loading full image…</string>
     <string name="thread_image_preview_unavailable">Image unavailable</string>
     <string name="thread_image_preview_loading">Loading image…</string>
+    <string name="image_lightbox_counter">%1$d of %2$d</string>
+    <string name="image_lightbox_previous">Previous image</string>
+    <string name="image_lightbox_next">Next image</string>
     <string name="thread_video_preview_unavailable">Video preview unavailable</string>
     <string name="thread_video_preview_loading">Loading video preview</string>
     <string name="thread_video_preview_processing">Video is still processing…</string>

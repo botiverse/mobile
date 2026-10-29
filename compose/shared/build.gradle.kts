@@ -141,6 +141,8 @@ kotlin {
                 // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
                 // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
                 implementation(libs.coil.svg)
+                // Zoom / pan of the desktop & wide image lightbox (RaftImageLightbox.kt).
+                implementation(libs.engawapg.zoomable)
                 // Message math (task #775): KaTeX-style layout in pure Kotlin; the KaTeX fonts
                 // come from :designsystem, so the library's optional font module is not used.
                 implementation(libs.hrm.latex.renderer)

@@ -42,6 +42,10 @@ sqldelight = "2.4.1"
 # Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyWryWebviewChecksum): bump both together.
 wrywebview = "1.0.0-beta-02"
 coil = "3.6.3"
+# net.engawapg.lib:zoomable (usuiat/Zoomable): the desktop / wide image lightbox's zoom and pan
+# (mouse wheel without a modifier key, drag, double click; inside a HorizontalPager). Apache-2.0;
+# built against CMP 1.12.1 / Kotlin 2.4.20; Android, iOS and desktop artifacts.
+zoomable = "2.16.0"
 # huarangmeng/latex: message math (task #775). Pure Kotlin, MIT.
 hrmLatex = "1.6.1"
 # dev.snipme:highlights: message code block syntax colours (artin task #20 lane K). Pure Kotlin
@@ -128,6 +132,7 @@ androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }
 coil-gif = { group = "io.coil-kt.coil3", name = "coil-gif", version.ref = "coil" }
+engawapg-zoomable = { group = "net.engawapg.lib", name = "zoomable", version.ref = "zoomable" }
 hrm-latex-renderer = { group = "io.github.huarangmeng", name = "latex-renderer", version.ref = "hrmLatex" }
 snipme-highlights = { group = "dev.snipme", name = "highlights", version.ref = "snipmeHighlights" }
 store5 = { group = "org.mobilenativefoundation.store", name = "store5", version.ref = "store5" }
