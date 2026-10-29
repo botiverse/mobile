@@ -12,12 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import build.raft.app.designtokens.RaftUiPalette
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftAvatarAttentionLight
@@ -91,7 +91,7 @@ internal fun RaftAppRailServerTile(
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(RaftAppRailServerTileOpenFill, RoundedCornerShape(RaftRadius.Sticker))
+                    .background(RaftUiPalette.stickerInkMedium, RoundedCornerShape(RaftRadius.Sticker))
             )
         }
     }
@@ -157,6 +157,3 @@ internal fun appShellRailItemsWithSearch(
             selected = searchOpen,
         )
     ) + items.map { if (searchOpen) it.copy(selected = false) else it }
-
-// raft-ui --sticker-ink-medium (raft-design #875); generated token after the 0.48 bump
-private val RaftAppRailServerTileOpenFill = Color.White.copy(alpha = 0.06f) // raft-color: sticker-ink-medium is paper 6% in both themes (raft-design #875)
