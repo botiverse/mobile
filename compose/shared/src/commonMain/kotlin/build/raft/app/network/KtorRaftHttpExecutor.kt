@@ -108,14 +108,14 @@ internal class KtorRaftHttpExecutor(
             byte.toUByte().toString(radix = 16).padStart(2, '0')
         }
         val progress = uploadProgress.route(onUploadProgress)
-        return perform(
+        val spec =
             KtorCallSpec(
                 logPrefix = "slock_http_multipart",
                 path = url.substringBefore('?'),
                 url = url,
                 method = "POST",
                 priority = priority,
-                kind = RaftKtorCallKind.NonIdempotent,
+                kind = RaftKtorCallKind.MultipartUpload,
                 headers = requestHeaders,
                 content = {
                     RaftMultipartContent(
@@ -134,7 +134,17 @@ internal class KtorRaftHttpExecutor(
                 extraLogFields = "fields=${fields.size} files=${files.size} streaming=$streaming",
                 progress = progress,
             )
+        val first = perform(spec)
+        if (!first.isRetryableUploadReset()) return first
+        // The connection was reset after the body may already have reached the server (a VPN or
+        // proxy cutting the stream). Re-send once on a fresh attempt; the legacy endpoint does not
+        // dedupe, so a rare extra stored copy is accepted (Tenny 2026-10-29). Each attempt reopens
+        // the file streams through RaftMultipartContent.
+        warningLogger(
+            "slock_http_multipart_retry path=${spec.path} reason=connection_reset " +
+                "firstError=${first.errorBodyText?.take(80)?.toSafeHeaderValue()}"
         )
+        return perform(spec)
     }
 
     override suspend fun executeBytes(
@@ -486,7 +496,16 @@ internal enum class RaftKtorCallKind {
     NonIdempotent,
 
     /** Presigned object-store PUT: never re-sent, separate HTTP/1.1 connection on Android. */
-    PresignedUpload;
+    PresignedUpload,
+
+    /**
+     * Multipart upload to the API: never re-sent by the engine, and on Android its own HTTP/1.1
+     * connection, like [PresignedUpload]. A long upload on the API's shared HTTP/2 connection can be
+     * reset mid-stream by a VPN or proxy (`RST_STREAM PROTOCOL_ERROR`, Hands a5eae49e, artin 10-29);
+     * HTTP/1.1 is what such middleboxes handle best, and the upload stops sharing a stream with the
+     * app's other calls.
+     */
+    MultipartUpload;
 
     fun logValue(priority: RaftRequestPriority): String =
         "${priority.name.lowercase()}_${name.lowercase()}"
@@ -533,6 +552,13 @@ internal class RaftHttpOutcome(
 private val RaftKtorCallScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /** The transport error kinds diagnostics and the reachability gate already understand (`kind=`). */
+/**
+ * A multipart upload ended by the connection, not by the server or a timeout: no status, an
+ * unclassified network error (stream reset, connection reset or closed mid-body).
+ */
+internal fun RaftHttpExecutorResponse.isRetryableUploadReset(): Boolean =
+    code == 0 && errorBodyText?.startsWith(RaftTransportFailureKind.UNKNOWN.errorToken) == true
+
 internal enum class RaftTransportFailureKind(val errorToken: String) {
     TIMEOUT("network_timeout"),
     DNS("network_dns"),

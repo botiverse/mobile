@@ -78,6 +78,8 @@ class RaftOkHttpTransportTest {
             assertFalse(clients.getValue(RaftKtorCallKind.NonIdempotent).retryOnConnectionFailure)
             assertFalse(clients.getValue(RaftKtorCallKind.PresignedUpload).retryOnConnectionFailure)
             assertEquals(listOf(Protocol.HTTP_1_1), clients.getValue(RaftKtorCallKind.PresignedUpload).protocols)
+            assertFalse(clients.getValue(RaftKtorCallKind.MultipartUpload).retryOnConnectionFailure)
+            assertEquals(listOf(Protocol.HTTP_1_1), clients.getValue(RaftKtorCallKind.MultipartUpload).protocols)
         }
         assertNotSame(
             lanes.getValue(RaftRequestPriority.Foreground).getValue(RaftKtorCallKind.Idempotent).dispatcher,

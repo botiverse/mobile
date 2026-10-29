@@ -83,7 +83,7 @@ class KtorRaftHttpExecutorTest {
                 RaftKtorCallKind.NonIdempotent,
                 RaftKtorCallKind.NonIdempotent,
                 RaftKtorCallKind.NonIdempotent,
-                RaftKtorCallKind.NonIdempotent,
+                RaftKtorCallKind.MultipartUpload,
                 RaftKtorCallKind.PresignedUpload,
             )
         assertEquals(
@@ -135,6 +135,44 @@ class KtorRaftHttpExecutorTest {
         assertEquals("attachment_presigned_upload_http_403", response.errorBodyText)
         assertTrue(response.responseHeaders.isEmpty())
         assertFalse(harness.logs.any { "X-Amz" in it || "bucket.r2" in it || "secret-body" in it }, harness.logs.joinToString("\n"))
+    }
+
+    @Test
+    fun aMultipartUploadResetByTheConnectionIsSentOnceMore() = runBlocking {
+        // Hands a5eae49e: a VPN reset the upload's stream after the body reached the server.
+        var calls = 0
+        val harness =
+            Harness {
+                calls += 1
+                if (calls == 1) throw IllegalStateException("stream was reset: PROTOCOL_ERROR")
+                respond("""{"ok":true}""", HttpStatusCode.OK)
+            }
+
+        val response =
+            harness.executor.executeMultipart(
+                RaftRequestPriority.Foreground, "https://api.raft.test/api/attachments/upload", mapOf("channelId" to "c1"), emptyList(), emptyMap()
+            )
+
+        assertEquals(200, response.code)
+        assertEquals(2, harness.requests.size)
+        assertTrue(harness.logs.any { it.startsWith("slock_http_multipart_retry") }, harness.logs.joinToString("\n"))
+    }
+
+    @Test
+    fun aMultipartUploadIsRetriedOnlyOnceAndNeverAfterATimeout() = runBlocking {
+        val reset = Harness { throw IllegalStateException("stream was reset: PROTOCOL_ERROR") }
+        val resetResponse =
+            reset.executor.executeMultipart(RaftRequestPriority.Foreground, "https://api.raft.test/api/attachments/upload", emptyMap(), emptyList(), emptyMap())
+        assertEquals(0, resetResponse.code)
+        assertEquals(2, reset.requests.size)
+
+        val timeout = Harness { throw HttpRequestTimeoutException("https://api.raft.test/api/attachments/upload", 180_000L) }
+        timeout.executor.executeMultipart(RaftRequestPriority.Foreground, "https://api.raft.test/api/attachments/upload", emptyMap(), emptyList(), emptyMap())
+        assertEquals(1, timeout.requests.size)
+
+        val server = Harness { respond("""{"error":"too_large"}""", HttpStatusCode.PayloadTooLarge) }
+        server.executor.executeMultipart(RaftRequestPriority.Foreground, "https://api.raft.test/api/attachments/upload", emptyMap(), emptyList(), emptyMap())
+        assertEquals(1, server.requests.size)
     }
 
     @Test
@@ -213,7 +251,7 @@ class KtorRaftHttpExecutorTest {
         assertEquals(progress.map { it.bytesTransferred }.sorted(), progress.map { it.bytesTransferred })
         assertEquals(RaftWireTransferProgress(total, total), progress.last())
         assertTrue(harness.requests.single().body.contentType.toString().startsWith("multipart/form-data; boundary="))
-        assertEquals(listOf(RaftRequestPriority.Foreground to RaftKtorCallKind.NonIdempotent), harness.lanes)
+        assertEquals(listOf(RaftRequestPriority.Foreground to RaftKtorCallKind.MultipartUpload), harness.lanes)
     }
 
     @Test
