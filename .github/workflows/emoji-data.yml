@@ -1,0 +1,29 @@
+name: Emoji data
+
+# The emoji picker's data is generated from the same emoji-picker-react version the Web picker
+# uses plus CLDR zh keywords (tools/emoji). This gate keeps the vendored sources and the
+# generated Kotlin in lockstep.
+on:
+  pull_request:
+    paths:
+      - "tools/emoji/**"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/emoji/RaftEmojiData.g.kt"
+      - ".github/workflows/emoji-data.yml"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  emoji:
+    name: Generated emoji data current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check sources and generated Kotlin
+        run: python3 tools/emoji/gen_emoji.py --check
