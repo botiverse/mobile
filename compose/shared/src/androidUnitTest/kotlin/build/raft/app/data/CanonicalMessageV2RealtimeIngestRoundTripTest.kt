@@ -423,7 +423,7 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             rig.ingest.awaitIdle()
             val segments = rig.segments(channel)
             assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
-            assertTrue(rig.logs.any { "outcome=loose" in it && "msg=m60" in it && "tracker=held" in it }, rig.logs.toString())
+            assertTrue(rig.logs.any { "outcome=loose" in it && "msg=m60" in it && "tracker=held:unrecorded_report_pending" in it }, rig.logs.toString())
             assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
         }
     }
@@ -449,6 +449,42 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             assertEquals(listOf(11L to 21L), rig.segments(second), "no window of the partition claims across the hole")
             assertEquals(1, rig.logs.count { "unrecorded_report_failed" in it && "msg=m50" in it }, "first failure logged once")
             assertEquals(1, rig.logs.count { "unrecorded_report_dropped" in it && "msg=m50" in it }, "final drop logged once")
+        }
+    }
+
+    @Test
+    fun aSkipWhoseEscalationFailsIsKeptAndItsChannelStaysLooseUntilTheHoleLands() = withFile { file ->
+        file.rig(queueCapacity = 1).session { rig ->
+            rig.connect(1L)
+            rig.enter(channel, 10L, 20L)
+            rig.failUnrecordedTimes["m50"] = Int.MAX_VALUE
+            rig.failPartitionHoleTimes.set(1)
+            rig.whileWriterHeld(channel) {
+                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
+                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued: report 1 fails
+                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped, never reported
+            }
+            rig.ingest.awaitIdle() // a barrier retries but spends no attempt
+            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L)) // report 2 fails
+            assertTrue(rig.deliver(rig.messageNew(channel, "m70", 70L), epoch = 1L)) // report 3 fails, the hole too
+            rig.ingest.awaitIdle()
+            assertEquals(emptyList(), rig.partitionHoles.toList(), "the hole report failed")
+            assertEquals(1, rig.logs.count { "unrecorded_report_escalation_failed" in it && "msg=m50" in it }, rig.logs.toString())
+            assertTrue(rig.logs.none { "unrecorded_report_dropped" in it }, "skip dropped though its hole failed: ${rig.logs}")
+            // The skip is still pending: the frame after the failed escalation is stored loose, not tracked.
+            assertTrue(
+                rig.logs.any { "outcome=loose" in it && "msg=m70" in it && "tracker=held:unrecorded_report_pending" in it },
+                rig.logs.toString(),
+            )
+            // The next frame retries the hole, which lands now: only then is the skip dropped.
+            assertTrue(rig.deliver(rig.messageNew(channel, "m80", 80L), epoch = 1L))
+            rig.ingest.awaitIdle()
+            assertEquals(listOf("unrecorded_report_failed"), rig.partitionHoles.toList())
+            assertEquals(1, rig.logs.count { "unrecorded_report_dropped" in it && "msg=m50" in it && "partitionHole=reported" in it })
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
+            val segments = rig.segments(channel)
+            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
+            assertEquals(listOf(10L, 20L, 30L, 40L, 60L, 70L, 80L), assertNotNull(rig.coldRead(channel)).seqs())
         }
     }
 
@@ -523,6 +559,9 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         /** Completed when the skipped-frame report of that frame (by id) starts. */
         val unrecordedStarted: MutableMap<String, CompletableDeferred<Unit>> = java.util.concurrent.ConcurrentHashMap()
 
+        /** How many more partition-hole reports throw. */
+        val failPartitionHoleTimes = java.util.concurrent.atomic.AtomicInteger(0)
+
         /** Partition holes reported to the tracker (reasons). */
         val partitionHoles: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         val database = RaftSqlDatabase(driver)
@@ -571,6 +610,9 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 canary.noteScopeHole(partition, scopeId, reason)
 
             override suspend fun notePartitionHole(partition: DurablePartitionKey, reason: String) {
+                if (failPartitionHoleTimes.getAndUpdate { if (it > 0) it - 1 else 0 } > 0) {
+                    throw IllegalStateException("hole report failed")
+                }
                 partitionHoles += reason
                 canary.notePartitionHole(partition, reason)
             }

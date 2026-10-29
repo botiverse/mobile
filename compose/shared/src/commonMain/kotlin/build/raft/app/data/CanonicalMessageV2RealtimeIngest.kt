@@ -140,9 +140,13 @@ internal class CanonicalMessageV2RealtimeIngest(
     private val pendingUnrecordedLock = SynchronizedObject()
     private val pendingUnrecorded = ArrayList<PendingSkip>()
 
-    /** One skipped frame waiting for its continuity report, with the reports that already failed. */
+    /**
+     * One skipped frame waiting for its continuity report, with the counted reports that already failed and whether
+     * an escalation to a partition hole already failed (logged once).
+     */
     private class PendingSkip(val partition: DurablePartitionKey, val foldInput: CanonicalMessageFoldInput) {
         var failedReports = 0
+        var escalationFailed = false
     }
 
     // Worker-confined (only the single worker coroutine reads or writes these).
@@ -165,7 +169,8 @@ internal class CanonicalMessageV2RealtimeIngest(
                     try {
                         when (work) {
                             is Work.Barrier -> {
-                                reportPendingUnrecorded()
+                                // A barrier retries but never spends a skip's retry budget (only frames do).
+                                reportPendingUnrecorded(countFailures = false)
                                 work.done.complete(Unit)
                             }
                             is Work.Commit -> work.done.complete(commitNow(work))
@@ -192,45 +197,64 @@ internal class CanonicalMessageV2RealtimeIngest(
         }
     }
 
-    /** Worker only: hands every skipped frame to the tracker, in skip order. */
-    private suspend fun reportPendingUnrecorded() {
+    /**
+     * Worker only: hands every skipped frame to the tracker, in skip order.
+     *
+     * A skip is removed only once reported: a report that throws keeps its skip (retried before the next frame) and
+     * never costs the skips after it. Only passes made for a frame ([countFailures]) count against the budget, so a
+     * barrier ([awaitIdle]) cannot burn it. After [MAX_FAILED_SKIP_REPORTS] counted failures the whole partition is
+     * reported as a hole instead; the skip is dropped only once that report lands. Should it throw too, the skip stays
+     * pending (its channel's frames stay loose) and the hole is retried on the next counted pass.
+     */
+    private suspend fun reportPendingUnrecorded(countFailures: Boolean) {
         val pending = synchronized(pendingUnrecordedLock) {
             if (pendingUnrecorded.isEmpty()) return
             pendingUnrecorded.toList()
         }
         withContext(NonCancellable) {
             pending.forEach { skip ->
-                // Removed only once reported: a report that throws keeps its skip (retried before the next frame)
-                // and never costs the skips after it. After MAX_FAILED_SKIP_REPORTS failures the whole partition is
-                // reported as a hole instead, once, and the skip is dropped (no unbounded retries or growth).
-                val failure = try {
-                    tracker.noteFrameUnrecorded(skip.partition, skip.foldInput)
-                    null
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (throwable: Throwable) {
-                    throwable
-                }
+                val failure = attempt { tracker.noteFrameUnrecorded(skip.partition, skip.foldInput) }
                 if (failure == null) {
                     synchronized(pendingUnrecordedLock) { pendingUnrecorded.remove(skip) }
                     return@forEach
                 }
+                if (!countFailures) return@forEach
                 skip.failedReports += 1
                 val label = "server=${skip.partition.serverId} scope=${skip.foldInput.row.channelId} ${skip.foldInput.frameLabel()}"
                 if (skip.failedReports == 1) {
-                    logger("canonical_v2_realtime unrecorded_report_failed $label error=${failure::class.simpleName ?: "unknown"}")
+                    logger("canonical_v2_realtime unrecorded_report_failed $label error=${failure.errorName()}")
                 }
-                if (skip.failedReports >= MAX_FAILED_SKIP_REPORTS) {
-                    val escalated = runCatching { tracker.notePartitionHole(skip.partition, "unrecorded_report_failed") }.isSuccess
+                if (skip.failedReports < MAX_FAILED_SKIP_REPORTS) return@forEach
+                val holeFailure = attempt { tracker.notePartitionHole(skip.partition, "unrecorded_report_failed") }
+                if (holeFailure == null) {
                     synchronized(pendingUnrecordedLock) { pendingUnrecorded.remove(skip) }
                     logger(
                         "canonical_v2_realtime unrecorded_report_dropped $label attempts=${skip.failedReports} " +
-                            "partitionHole=${if (escalated) "reported" else "failed"}",
+                            "partitionHole=reported",
+                    )
+                } else if (!skip.escalationFailed) {
+                    skip.escalationFailed = true
+                    logger(
+                        "canonical_v2_realtime unrecorded_report_escalation_failed $label attempts=${skip.failedReports} " +
+                            "error=${holeFailure.errorName()} skip=kept",
                     )
                 }
             }
         }
     }
+
+    /** Runs [block]; returns what it threw (never a cancellation, which is rethrown), or null. */
+    private suspend fun attempt(block: suspend () -> Unit): Throwable? =
+        try {
+            block()
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Throwable) {
+            throwable
+        }
+
+    private fun Throwable.errorName(): String = this::class.simpleName ?: "unknown"
 
     /** Whether a skipped frame of [foldInput]'s channel is still waiting for its continuity report. */
     private fun hasPendingSkip(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput): Boolean =
@@ -301,7 +325,7 @@ internal class CanonicalMessageV2RealtimeIngest(
             // Cleared after the grant check (server access lost): the canary's state went with it.
             return skip(partition, foldInput, "partition_revoked")
         }
-        reportPendingUnrecorded()
+        reportPendingUnrecorded(countFailures = true)
         // A skip of this channel whose report has not landed yet: the tracker may still believe the stream whole, so
         // this frame must not extend any claim. Stored loose instead.
         if (hasPendingSkip(partition, foldInput)) {
@@ -311,10 +335,10 @@ internal class CanonicalMessageV2RealtimeIngest(
         val tracked = try {
             tracker.accept(partition, foldInput, work.transportEpoch)
         } catch (cancelled: CancellationException) {
-            withContext(NonCancellable) { tracker.noteFrameUnrecorded(partition, foldInput) }
+            withContext(NonCancellable) { noteUnrecordedNow(partition, foldInput) }
             throw cancelled
         } catch (throwable: Throwable) {
-            tracker.noteFrameUnrecorded(partition, foldInput)
+            noteUnrecordedNow(partition, foldInput)
             logger(
                 "canonical_v2_realtime tracker_failed server=${partition.serverId} scope=${foldInput.row.channelId} " +
                     "${foldInput.frameLabel()} error=${throwable::class.simpleName ?: "unknown"}",
@@ -324,6 +348,15 @@ internal class CanonicalMessageV2RealtimeIngest(
         if (tracked == CanonicalMessageV2CanaryOutcome.Committed) return CanonicalMessageV2RealtimeIngestOutcome.Covered
         if (!isEnabledForServer(partition.serverId)) return skip(partition, foldInput, "flag_off")
         return writeLoose(work, tracked)
+    }
+
+    /**
+     * Worker only: [foldInput] was not recorded by the tracker. It goes through the pending skips, so a report that
+     * throws is kept and retried (and its channel's frames stay loose) instead of being lost.
+     */
+    private suspend fun noteUnrecordedNow(partition: DurablePartitionKey, foldInput: CanonicalMessageFoldInput) {
+        synchronized(pendingUnrecordedLock) { pendingUnrecorded += PendingSkip(partition, foldInput) }
+        reportPendingUnrecorded(countFailures = true)
     }
 
     private suspend fun writeLoose(
@@ -429,7 +462,7 @@ internal class CanonicalMessageV2RealtimeIngest(
         CanonicalMessageV2CanaryOutcome.Committed -> "covered"
         CanonicalMessageV2CanaryOutcome.NotSelected -> "no_claim"
         CanonicalMessageV2CanaryOutcome.Pending -> "enter_pending"
-        is CanonicalMessageV2CanaryOutcome.Held -> "held"
+        is CanonicalMessageV2CanaryOutcome.Held -> "held:$diagnostic"
     }
 
     private companion object {
@@ -439,7 +472,7 @@ internal class CanonicalMessageV2RealtimeIngest(
         const val RECENT_FACT_MEMORY = 256
         const val RECENT_FRAMES_PER_FACT = 8
 
-        /** A skipped frame's continuity report is tried this many times before the whole partition is reported. */
+        /** A skipped frame's continuity report is tried (by frames) this many times before the whole partition is reported. */
         const val MAX_FAILED_SKIP_REPORTS = 3
     }
 }
