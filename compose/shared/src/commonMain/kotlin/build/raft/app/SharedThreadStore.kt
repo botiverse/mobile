@@ -202,6 +202,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -11830,6 +11831,18 @@ internal class SharedThreadStore(
             diagnosticsLogger = { line -> diagnosticsLogger?.invoke(line) },
         )
 
+    /** The thread parents loaded in [payload] when it is a channel's timeline, else none. */
+    private fun loadedChannelThreadParents(payload: RaftThreadScreenPayload): Map<String, ThreadUnreadThreadParent> {
+        val routeIdentity = payload.resolveThreadRouteIdentity()
+        val channelId =
+            routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
+                ?: return emptyMap()
+        return payload.messages.toLoadedThreadParents(channelId)
+    }
+
+    /** Ids asked for while a lookup was in flight: looked up right after it instead of dropped. */
+    private val unreadThreadParentsQueued = LinkedHashSet<String>()
+
     private suspend fun resolveUnreadThreadParents(threadChannelIds: Set<String>) {
         val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
         val channelId = routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
@@ -11837,7 +11850,12 @@ internal class SharedThreadStore(
             unreadThreadParentsRecovery.reset()
             return
         }
-        if (unreadThreadParentsInFlight) return
+        if (unreadThreadParentsInFlight) {
+            // The page asks again only when its id set changes, so a request dropped here was lost
+            // for good and its threads stayed without a target (artin: the pill worked once).
+            unreadThreadParentsQueued += threadChannelIds
+            return
+        }
         val pending =
             threadChannelIds.filterTo(LinkedHashSet()) { id ->
                 id.isNotBlank() && id !in unreadThreadParentsRequested && id !in _state.value.unreadThreadParents
@@ -11891,6 +11909,11 @@ internal class SharedThreadStore(
             }
         } finally {
             unreadThreadParentsInFlight = false
+            if (unreadThreadParentsQueued.isNotEmpty() && currentCoroutineContext().isActive) {
+                val queued = unreadThreadParentsQueued.toSet()
+                unreadThreadParentsQueued.clear()
+                resolveUnreadThreadParents(queued)
+            }
         }
     }
 
@@ -11972,7 +11995,16 @@ internal class SharedThreadStore(
         // Mark this focus request as the pill's before the payload carries it, so the page sees
         // the mark by the time its focus anchor runs for this nonce (lands on the replies block).
         val nonce = nextThreadFocusedMessageRequestNonce()
-        reduceState(_state.value.copy(unreadThreadJumpFocusNonce = nonce))
+        // Keep the parents of the threads loaded now, before the jump may replace the window: the
+        // pill's next tap must still reach them (see toLoadedThreadParents).
+        val before = _state.value
+        val remembered = loadedChannelThreadParents(before.payload).filterKeys { it !in before.unreadThreadParents }
+        reduceState(
+            before.copy(
+                unreadThreadJumpFocusNonce = nonce,
+                unreadThreadParents = if (remembered.isEmpty()) before.unreadThreadParents else before.unreadThreadParents + remembered,
+            )
+        )
         val initial = _state.value.payload
         if (initial.messages.any { it.id == target }) {
             focusMessage(target, switchToTab, nonce)

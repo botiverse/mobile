@@ -159,6 +159,31 @@ internal fun List<InboxItem>.toThreadUnreadThreadParents(parentChannelId: String
     return parents
 }
 
+/**
+ * The thread parents among the loaded messages of [parentChannelId], by thread id, as pill parents.
+ *
+ * Kept before a jump replaces the loaded window (artin: the pill worked once on the phone). A thread
+ * whose parent was loaded was never looked up ([threadUnreadThreadIdsNeedingParents] skips loaded
+ * ones), so once the jump loaded only the messages around another parent it still counted in N but
+ * had no target, and the pill disappeared. Remembered here, it is placed like any resolved parent.
+ */
+internal fun List<RaftThreadMessageItem>.toLoadedThreadParents(parentChannelId: String): Map<String, ThreadUnreadThreadParent> {
+    val parents = LinkedHashMap<String, ThreadUnreadThreadParent>()
+    for (message in this) {
+        val threadId = message.threadChannelId?.takeIf { it.isNotBlank() } ?: continue
+        if (message.id.isBlank()) continue
+        parents.getOrPut(threadId) {
+            ThreadUnreadThreadParent(
+                threadChannelId = threadId,
+                parentChannelId = parentChannelId,
+                parentMessageId = message.id,
+                parentCreatedAtEpochMillis = message.createdAtEpochMillis,
+            )
+        }
+    }
+    return parents
+}
+
 /** Web `LoadedMessageRange`: where the loaded messages end, to place a parent that is not loaded. */
 internal data class ThreadJumpLoadedRange(
     /** createdAt of the newest loaded message, if known. */
