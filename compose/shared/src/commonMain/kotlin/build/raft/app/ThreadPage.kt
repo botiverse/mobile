@@ -9250,6 +9250,10 @@ private fun SharedThreadRouteContentContent(
             routeAuthRequired(renderedThread.errorCode)
         }
     }
+    // The desktop / wide image lightbox (RaftImageLightbox.kt): open while non-null.
+    val imageLightboxWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    val imageLightboxEnabled = raftImageLightboxEnabled(raftPlatformHasFinePointer(), imageLightboxWindowWidthDp)
+    var imageLightboxRequest by remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
     fun requestInlineImageFallback(attachmentId: String) {
         val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
         inlineImageFallbackState = nextState
@@ -9271,10 +9275,29 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun openImagePreview(group: ThreadImageAttachmentGroup) {
+    /**
+     * Desktop and wide windows open images in the lightbox over the app (artin 10-29); phones
+     * keep the full-page viewer. [conversationWide]: step through every loaded image of the
+     * conversation (a click in the timeline) rather than only [group] (the Files tab's list).
+     */
+    fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true) {
         if (group.images.isEmpty()) return
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
+        if (imageLightboxEnabled) {
+            imageLightboxRequest =
+                (if (conversationWide) {
+                    raftImageLightboxRequestFor(
+                        messages = listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages,
+                        attachmentId = attachment.id,
+                        isImage = { it.isImageAttachment() }
+                    )
+                } else {
+                    null
+                }) ?: RaftImageLightboxRequest(group.images.map { RaftImageLightboxItem(it) }, currentIndex)
+            bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
+            return
+        }
         pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
@@ -9440,6 +9463,23 @@ private fun SharedThreadRouteContentContent(
                 kind = attachment.threadAttachmentOpenRoute().requestedPreviewKind,
                 attachmentCommentsEnabled = attachmentCommentsEnabled
             )
+        )
+    }
+    imageLightboxRequest?.let { request ->
+        RaftImageLightbox(
+            request = request,
+            resolveFullUrl = { attachmentId ->
+                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                    is ThreadApiResult.Success -> response.data.url
+                    is ThreadApiResult.Failure -> {
+                        bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                        null
+                    }
+                }
+            },
+            onDismiss = { imageLightboxRequest = null },
+            onDownload = { attachment -> saveAttachmentExternally(attachment) },
+            onOpenWith = { attachment -> openAttachmentExternally(attachment) }
         )
     }
     fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
@@ -12096,7 +12136,7 @@ private fun SharedThreadRouteContentContent(
             onFilesAuthRequired = { code -> routeAuthRequired(code) },
             onOpenFilesAttachment = { attachment, imageGroup ->
                 if (imageGroup != null) {
-                    openImagePreview(imageGroup)
+                    openImagePreview(imageGroup, conversationWide = false)
                 } else {
                     openAttachmentNoPreview(attachment)
                 }

@@ -46,8 +46,12 @@ import build.raft.designsystem.theme.RaftTheme
  * inside this wrapper: outside any designsystem theme that read throws.
  */
 @Composable
-internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
-    val appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light
+internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) = RaftDesignSystemTheme(forceDark = false, content = content)
+
+/** [RaftDesignSystemTheme]; [forceDark]: dark tokens whatever the app's appearance (chrome over a photo viewer's dark backdrop). */
+@Composable
+internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -> Unit) {
+    val appearance = if (forceDark || RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light
     val appSelectionColors = LocalTextSelectionColors.current
     val fonts =
         remember {

@@ -841,6 +841,9 @@
     <string name="thread_image_preview_loading_full">正在加载完整图片…</string>
     <string name="thread_image_preview_unavailable">图片不可用</string>
     <string name="thread_image_preview_loading">正在加载图片…</string>
+    <string name="image_lightbox_counter">第 %1$d 张，共 %2$d 张</string>
+    <string name="image_lightbox_previous">上一张</string>
+    <string name="image_lightbox_next">下一张</string>
     <string name="thread_video_preview_unavailable">视频预览不可用</string>
     <string name="thread_video_preview_loading">正在加载视频预览</string>
     <string name="thread_video_preview_processing">视频处理中…</string>
