@@ -6,7 +6,6 @@ import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
-import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.components.raftCopyable
@@ -46,7 +45,6 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.RaftHashGlobeIcon
@@ -618,7 +616,6 @@ data class RaftHomeShellLabels(
     val createSection: String = "Create section",
     val sectionNameLabel: String = "Name",
     val sectionNamePlaceholder: String = "My Project",
-    val sectionEmojiLabel: String = "Emoji",
     val addChannel: String = "Add channel",
     val createJointChannel: String = "Create Joint Channel",
     val noServersAvailable: String = "No servers available",
@@ -671,7 +668,6 @@ data class RaftHomeShellLabels(
             createSection = stringResource(Res.string.home_section_create),
             sectionNameLabel = stringResource(Res.string.home_section_name_label),
             sectionNamePlaceholder = stringResource(Res.string.home_section_name_placeholder),
-            sectionEmojiLabel = stringResource(Res.string.home_section_emoji_label),
             addChannel = stringResource(Res.string.home_action_add_channel),
             createJointChannel = stringResource(Res.string.home_section_create_joint_channel),
             noServersAvailable = stringResource(Res.string.home_state_no_servers),
@@ -3409,7 +3405,6 @@ private fun RaftStructuralHomeShellContent(
                         submitLabel = if (editingSection != null) null else labels.createSection,
                         nameLabel = labels.sectionNameLabel,
                         namePlaceholder = labels.sectionNamePlaceholder,
-                        emojiLabel = labels.sectionEmojiLabel,
                         initialName = editingSection?.name.orEmpty(),
                         initialEmoji = editingSection?.emoji.orEmpty(),
                         onDismiss = { sectionDialogTarget = null },
@@ -3981,63 +3976,6 @@ private sealed interface RaftHomeSectionDialogTarget {
     ) : RaftHomeSectionDialogTarget
 
     data class Edit(val sectionId: String) : RaftHomeSectionDialogTarget
-}
-
-/**
- * task #512: create/rename dialog for a custom section — web
- * SidebarSectionDialog.tsx reduced to a name field plus a plain emoji text
- * field (no emoji picker on mobile). Web caps the name at 80 chars.
- */
-@Composable
-private fun RaftHomeSectionDialog(
-    title: String,
-    submitLabel: String?,
-    nameLabel: String,
-    namePlaceholder: String,
-    emojiLabel: String,
-    initialName: String,
-    initialEmoji: String,
-    onDismiss: () -> Unit,
-    onSubmit: (name: String, emoji: String?) -> Unit
-) {
-    var name by remember { mutableStateOf(textFieldValueAtEnd(initialName)) }
-    var emoji by remember { mutableStateOf(textFieldValueAtEnd(initialEmoji)) }
-    val trimmedName = name.text.trim()
-    RaftUnifiedDialog(
-        title = title,
-        onDismiss = onDismiss,
-        maxWidth = 384.dp
-    ) {
-        Text(text = nameLabel, style = RaftType.Caption, color = RaftColor.TextMutedGray)
-        RaftBrutalInputField(
-            value = name,
-            onValueChange = { name = it.coerceTextLength(80) },
-            placeholder = namePlaceholder,
-            autoFocus = true,
-            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
-        )
-        Text(text = emojiLabel, style = RaftType.Caption, color = RaftColor.TextMutedGray)
-        RaftBrutalInputField(
-            value = emoji,
-            onValueChange = { emoji = it.coerceTextLength(8) },
-            placeholder = "🙂"
-        )
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg
-            )
-            RaftButton(
-                text = submitLabel ?: stringResource(Res.string.common_save),
-                onClick = { onSubmit(trimmedName, emoji.text.trim().takeIf { it.isNotEmpty() }) },
-                enabled = trimmedName.isNotEmpty(),
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg
-            )
-        }
-    }
 }
 
 enum class RaftSidebarSortTarget { Channels, JointChannels, DirectMessages, Pinned }

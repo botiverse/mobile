@@ -51,6 +51,7 @@ import build.raft.app.emoji.RaftEmojiPickerPreferences
 import build.raft.app.emoji.RaftEmojiSkinTone
 import build.raft.app.emoji.raftEmojiFrequentlyUsed
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
@@ -138,6 +139,9 @@ internal fun raftEmojiPickerSectionAt(headerIndices: List<Int>, firstVisibleInde
  * categories, a search field, a skin tone and a "Frequently used" row kept per user. Selecting
  * an emoji reports it through [onSelect] as text in the chosen skin tone; the caller closes the
  * dialog.
+ *
+ * [removeLabel] / [onRemove]: a full-width button above the picker that clears the current
+ * emoji (web `SidebarSectionEmojiPicker`'s "Remove Emoji" row); pass them only when there is one.
  */
 @Composable
 internal fun RaftEmojiPickerDialog(
@@ -147,6 +151,8 @@ internal fun RaftEmojiPickerDialog(
     // Read here, not in the dialog content: the dialog host composes that outside the page.
     preferences: RaftEmojiPickerPreferences = rememberRaftEmojiPickerPreferences(),
     catalog: RaftEmojiCatalog = RaftEmojiCatalog.Default,
+    removeLabel: String? = null,
+    onRemove: (() -> Unit)? = null,
 ) {
     RaftUnifiedDialog(
         title = title,
@@ -154,6 +160,14 @@ internal fun RaftEmojiPickerDialog(
         contentSpacing = 12.dp,
         keyboardAvoidanceEnabled = true,
     ) {
+        if (removeLabel != null && onRemove != null) {
+            RaftButton(
+                text = removeLabel,
+                onClick = onRemove,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
+            )
+        }
         RaftEmojiPickerPanel(preferences = preferences, catalog = catalog, onSelect = onSelect)
     }
 }

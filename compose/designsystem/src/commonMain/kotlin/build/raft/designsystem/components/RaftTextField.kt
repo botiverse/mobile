@@ -163,6 +163,10 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * (show the password, copy) or [RaftTextFieldClearAction] (show it once there is text). It
  * is embedded in the field (raft-design Shape > Inside a frame): 32dp, 6dp inside the field's
  * outer edge on every side, after any [suffix] or [trailing] icon.
+ *
+ * [leadingAction] is the same button addon at the very start (InputGroup `inline-start` with a
+ * button, e.g. the web's sidebar section emoji picker): 6dp inside the start edge, the text
+ * 4dp after it, before any [leading] icon or [prefix].
  */
 @Composable
 fun RaftTextField(
@@ -182,6 +186,7 @@ fun RaftTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
+    leadingAction: (@Composable () -> Unit)? = null,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -199,6 +204,7 @@ fun RaftTextField(
         outputTransformation = visualTransformation.toRaftOutputTransformation(),
         interactionSource = interactionSource,
         trailingAction = trailingAction,
+        leadingAction = leadingAction,
     )
 }
 
@@ -221,6 +227,7 @@ fun RaftTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
+    leadingAction: (@Composable () -> Unit)? = null,
 ) {
     RaftTextField(
         state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
@@ -238,6 +245,7 @@ fun RaftTextField(
         outputTransformation = visualTransformation.toRaftOutputTransformation(),
         interactionSource = interactionSource,
         trailingAction = trailingAction,
+        leadingAction = leadingAction,
     )
 }
 
@@ -263,6 +271,7 @@ fun RaftTextField(
     outputTransformation: OutputTransformation? = null,
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
+    leadingAction: (@Composable () -> Unit)? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
@@ -284,7 +293,7 @@ fun RaftTextField(
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
         outputTransformation = outputTransformation,
         decorator = { inner ->
-            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
+            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, leadingAction, inner)
         },
     )
 }
@@ -517,6 +526,7 @@ private fun RaftInputBox(
     prefix: String?,
     suffix: String?,
     trailingAction: (@Composable () -> Unit)?,
+    leadingAction: (@Composable () -> Unit)?,
     inner: @Composable () -> Unit,
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
@@ -528,7 +538,9 @@ private fun RaftInputBox(
     val hasAction = trailingAction != null
     // Before a button addon, the addons on its side end 4dp from it.
     val endEdge = if (hasAction) 4.dp else edge
-    val hasStart = leading != null || prefix != null
+    // After a button addon at the start, the same 4dp mirrored.
+    val startEdge = if (leadingAction != null) 4.dp else edge
+    val hasStart = leading != null || prefix != null || leadingAction != null
     val hasEnd = trailing != null || suffix != null || hasAction
     Row(
         Modifier
@@ -538,10 +550,16 @@ private fun RaftInputBox(
             .raftFieldChrome(look, focused),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (leadingAction != null) {
+            Box(
+                Modifier.padding(start = actionEdge, end = if (leading != null || prefix != null) 0.dp else 4.dp),
+                contentAlignment = Alignment.Center,
+            ) { leadingAction() }
+        }
         CompositionLocalProvider(LocalRaftContentColor provides look.addon) {
             if (leading != null) {
                 Box(
-                    Modifier.padding(start = edge, end = if (prefix != null) 0.dp else 8.dp).size(RaftTextFieldDefaults.AddonIconSize),
+                    Modifier.padding(start = startEdge, end = if (prefix != null) 0.dp else 8.dp).size(RaftTextFieldDefaults.AddonIconSize),
                     contentAlignment = Alignment.Center,
                 ) { leading() }
             }
@@ -556,7 +574,7 @@ private fun RaftInputBox(
                             val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = constraints.maxWidth / 2))
                             layout(placeable.width, placeable.height) { placeable.place(0, 0) }
                         }
-                        .padding(start = if (leading != null) 8.dp else edge, end = 2.dp),
+                        .padding(start = if (leading != null) 8.dp else startEdge, end = 2.dp),
                     look.addon,
                 )
             }

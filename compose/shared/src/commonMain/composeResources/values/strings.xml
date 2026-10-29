@@ -1913,7 +1913,9 @@
     <string name="home_section_create">Create</string>
     <string name="home_section_name_label">Name</string>
     <string name="home_section_name_placeholder">My Project</string>
-    <string name="home_section_emoji_label">Emoji</string>
+    <string name="home_section_choose_emoji">Choose section emoji</string>
+    <string name="home_section_change_emoji">Change section emoji, currently %1$s</string>
+    <string name="home_section_remove_emoji">Remove Emoji</string>
     <string name="home_section_move_to_pinned">Pinned</string>
     <string name="home_section_menu_sort_title">Sort</string>
     <string name="home_section_menu_display_title">Display</string>
