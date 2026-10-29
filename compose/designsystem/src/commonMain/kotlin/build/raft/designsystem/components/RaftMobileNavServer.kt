@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
@@ -768,11 +769,22 @@ private fun RaftMobileNavLabel(
 ) {
     // Sized to the bar's fixed 58dp geometry: like a native tab bar it does not grow with the
     // system font size (it would run out of the bar).
-    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val density = LocalDensity.current
+    val fontScale = density.fontScale.coerceAtLeast(1f)
+    val lineBox = with(density) { (RaftMobileNavDefaults.LabelLineHeight / fontScale).toDp() }
     RaftText(
         text = text,
         // The server tab names itself (its contentDescription); a plain tab is read by its label.
-        modifier = (if (readable) Modifier else Modifier.clearAndSetSemantics { }).padding(horizontal = 2.dp),
+        // The label takes the spec's 14dp line in the bar and centres its own text box on it,
+        // overflowing it like a CSS line box (artin 10-29). A CJK label's line is taller than
+        // 14sp whatever lineHeight says: Android sizes it from the CJK fallback font's
+        // ascent/descent (~1.45em, 16.7dp at 11.5sp). Squeezed into 14dp the text node clips to
+        // its bounds and cut the strokes under the baseline (主页 动态 任务 搜索).
+        modifier =
+            (if (readable) Modifier else Modifier.clearAndSetSemantics { })
+                .height(lineBox)
+                .wrapContentHeight(Alignment.CenterVertically, unbounded = true)
+                .padding(horizontal = 2.dp),
         style =
             RaftTheme.typography.label.copy(
                 fontSize = RaftMobileNavDefaults.LabelFontSize / fontScale,
