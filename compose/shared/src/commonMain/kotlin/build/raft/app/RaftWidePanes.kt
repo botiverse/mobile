@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -74,6 +75,29 @@ internal enum class RaftWideBackStep { PopSupportingPane, Existing }
  */
 internal fun raftWideBackStep(supporting: RaftPaneStack, shown: Boolean): RaftWideBackStep =
     if (shown && supporting.isOpen) RaftWideBackStep.PopSupportingPane else RaftWideBackStep.Existing
+
+/**
+ * The shell's wide Back: an open supporting pane is the topmost thing, so Back closes it before
+ * stepping the history; the task overlay sits above it, so while [overlayOpen] Back is the
+ * overlay's (Tenny, #3953). [paneShown] is what [RaftSupportingPaneShownReport] last reported.
+ */
+internal fun raftWideBackStep(supporting: RaftPaneStack, paneShown: Boolean, overlayOpen: Boolean): RaftWideBackStep =
+    raftWideBackStep(supporting, shown = paneShown && !overlayOpen)
+
+/**
+ * Reports through [report] whether the supporting pane is [shown] in this detail pane. Only the
+ * pane that hosts it ([host]: the main detail, not the task overlay's copy) reports, so the
+ * overlay's copy leaving the composition when the overlay closes does not reset it (Tenny, #3953).
+ */
+@Composable
+internal fun RaftSupportingPaneShownReport(host: Boolean, shown: Boolean, report: (Boolean) -> Unit) {
+    if (host) {
+        DisposableEffect(shown) {
+            report(shown)
+            onDispose { report(false) }
+        }
+    }
+}
 
 /**
  * The host navigator for pages the shell hosts: [openInPane] takes the pages [raftPaneRoute] sends
