@@ -3,7 +3,7 @@ type: improved
 area: settings
 platforms:
   - desktop
-pull_request: TBD
+pull_request: 3968
 rollout: full
 ---
 
