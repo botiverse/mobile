@@ -427,6 +427,7 @@
     <string name="thread_error_open_parent_message">无法打开原消息</string>
     <string name="thread_error_open_task">无法打开任务</string>
     <string name="thread_error_open_target">无法打开 %1$s</string>
+    <string name="thread_error_open_thread_ref">无法打开消息列，它可能不可用或已被删除。</string>
     <string name="thread_error_open_task_number">无法打开 #%1$s</string>
     <string name="thread_error_attachment_picker">附件选择器不可用</string>
     <string name="thread_error_file_source">文件来源不可用</string>

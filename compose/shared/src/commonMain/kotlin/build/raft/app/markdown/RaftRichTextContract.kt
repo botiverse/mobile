@@ -346,7 +346,8 @@ internal fun buildRaftRichTextDocumentFromMarkdownPlan(
                         chrome =
                             tag.toRichTextChromeKind(
                                 highlighted = token.highlighted,
-                                active = actionPending || activeTagKey == threadMarkdownTagActivationKey(tag)
+                                // A busy (pending) chip keeps its own colours, dimmed when drawn.
+                                active = activeTagKey == threadMarkdownTagActivationKey(tag)
                             ),
                         actionId = action.id,
                         refKind = tag.kind.toRichTextRefKind(),

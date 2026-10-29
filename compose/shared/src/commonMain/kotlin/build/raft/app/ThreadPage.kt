@@ -7374,18 +7374,13 @@ private fun SharedThreadRouteContentContent(
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    var markdownReferencePending by remember(threadInstanceKey) {
-        mutableStateOf(ThreadMarkdownReferencePendingState())
-    }
-    fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? {
-        val started = markdownReferencePending.start(actionId.orEmpty())
-        markdownReferencePending = started.state
-        return started.token
-    }
+    // Reference-chip opens are single-flight in their store: busy chip, ignored repeat taps.
+    val markdownRefOpenStore = remember(threadInstanceKey) { ThreadMarkdownRefOpenStore(coroutineScope) }
+    val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
+    fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
+        markdownRefOpenStore.begin(actionId)
     fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
-        if (token != null) {
-            markdownReferencePending = markdownReferencePending.finish(token)
-        }
+        markdownRefOpenStore.finish(token)
     }
     var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
@@ -7726,6 +7721,7 @@ private fun SharedThreadRouteContentContent(
         attachmentTooLargeTemplate
             .replace(ThreadLocalizedFeedbackPlaceholder, RaftFormat.bytes(fileSize))
             .replace("__RAFT_ATTACHMENT_LIMIT__", RaftFormat.byteLimit(maxBytes))
+    val unableToOpenThreadRefLabel = stringResource(Res.string.thread_error_open_thread_ref)
     fun localizedUnableToOpenTarget(target: String): String =
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
@@ -12026,7 +12022,7 @@ private fun SharedThreadRouteContentContent(
             },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-            markdownReferencePendingActionId = markdownReferencePending.active?.actionId,
+            markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
@@ -12985,7 +12981,7 @@ private fun SharedThreadRouteContentContent(
                                 dataSource.replyCacheProvenanceState.value
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
-                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                bridge.toast(unableToOpenThreadRefLabel)
                                 return@launch
                             }
                             when (
@@ -13028,10 +13024,10 @@ private fun SharedThreadRouteContentContent(
                                     }
                                 }
                                 is DataResult.Empty -> {
-                                    bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                    bridge.toast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.Error -> {
-                                    bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
+                                    bridge.toast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     routeAuthRequired(result)
