@@ -20,6 +20,7 @@ import androidx.compose.ui.use
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftTextField
@@ -131,17 +132,21 @@ class RaftInteractionTest {
         }
     }
 
-    /** A finger never hovers: a tap shows the press, and nothing stays once it lifts. */
+    /**
+     * A finger never hovers: a tap shows the press, and nothing stays once it lifts. A list row,
+     * not a menu item: a menu item also wears `brand-soft` while it has the keyboard focus, which
+     * a press on the desktop test scene gives it.
+     */
     @Test
     fun aTapLeavesNoHoverBehind() {
         ImageComposeScene(width = 260, height = 100, density = Density(1f)) {
             RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
                 Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {
-                    RaftMenuItem("Copy Link", {}, Modifier.width(200.dp))
+                    RaftListRow("Notifications", Modifier.width(200.dp), onClick = {})
                 }
             }
         }.use { scene ->
-            scene.render()
+            assertTrue(pixelIs(scene.render(), 24, 38, canvas), "no fill at rest")
             val at = Offset(120f, 38f)
             scene.sendPointerEvent(PointerEventType.Press, at, type = PointerType.Touch)
             scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Touch)
