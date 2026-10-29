@@ -30,11 +30,14 @@ class RaftDesktopPage internal constructor(
 /**
  * The window's Navigation 3 back stack ([pages], drawn by [RaftDesktopHost]'s `NavDisplay`). Same
  * routing contract as the Android host (RaftCmpActivity): `slockReplaceCurrentPage` replaces the
- * top page, the app shell starts a fresh stack, and closing the last page quits. Shared pages reach
+ * top page and the app shell starts a fresh stack. Unlike Android, the root page never closes: Back
+ * on it (Esc, Cmd+[, the shell's root back handler calling closePage) does nothing, closePage from
+ * the root page is ignored even while pages are open over it, and only closing
+ * the window quits (Tenny; artin's Esc in a chat quit the app). Shared pages reach
  * it through [navigatorFor] (the unchanged [RaftCmpNavigator] `openPage` / `closePage`), which push
  * and pop entries here.
  */
-class RaftDesktopNavigator(private val onEmpty: () -> Unit) {
+class RaftDesktopNavigator {
     private var nextId = 0L
 
     /** The back stack, bottom first; the last entry is the page on screen. */
@@ -62,9 +65,14 @@ class RaftDesktopNavigator(private val onEmpty: () -> Unit) {
     }
 
     fun close(page: RaftDesktopPage) {
+        // The bottom entry stays, covered or not: the shell's root back handler calls closePage
+        // when it has nothing left to pop (Android finishes the Activity there).
+        if (page === pages.firstOrNull()) {
+            log("close page=${page.args.pageName} ignored: root page")
+            return
+        }
         log("close page=${page.args.pageName}")
         pages.remove(page)
-        if (pages.isEmpty()) onEmpty()
     }
 
     fun back(): Boolean {

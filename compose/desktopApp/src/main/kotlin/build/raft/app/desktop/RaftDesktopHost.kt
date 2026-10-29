@@ -41,10 +41,27 @@ import build.raft.app.cmp.host.RaftCmpHost
  * store, cleared when the page leaves the stack. Esc / Cmd+[ go back. A mouse's back / forward
  * buttons step through the shell's history ([RaftDesktopNavigator.history]).
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
-    // Closing the last page quits; NavDisplay needs a non-empty stack until then.
+    Box(Modifier.fillMaxSize()) {
+        RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
+        RaftDesktopToasts.Overlay()
+    }
+}
+
+/**
+ * The back stack's `NavDisplay` with the window's back input; [pageContent] draws one entry.
+ * Back with only the root page left does nothing here: the key handler leaves the key unconsumed
+ * (the shell's own back handling — closing a pane, its wide history — gets it) and `NavDisplay`'s
+ * back handler is off (no previous entry) and a no-op anyway.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun RaftDesktopNavDisplay(
+    navigator: RaftDesktopNavigator,
+    pageContent: @Composable (RaftDesktopPage) -> Unit,
+) {
+    // The root page never leaves the stack; guard NavDisplay's non-empty requirement anyway.
     if (navigator.pages.isEmpty()) return
     val sceneStrategy = remember { RaftDesktopStackSceneStrategy<RaftDesktopPage>() }
     Box(
@@ -66,16 +83,16 @@ fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
     ) {
         NavDisplay(
             backStack = navigator.pages,
-            // The window's back event (Esc that nothing focused took): same as the keys above.
-            onBack = { navigator.back() },
+            // The window's back event (Esc that nothing focused or no page handler took): close the
+            // pushed page on top; never the root (back() is false there).
+            onBack = { if (navigator.pages.size > 1) navigator.back() },
             sceneStrategies = listOf(sceneStrategy),
             entryProvider = { page ->
                 NavEntry(page, contentKey = page.contentKey, metadata = raftDesktopPaneRoleMetadata(page.args.pageName)) {
-                    RaftDesktopPageContent(navigator, page)
+                    pageContent(page)
                 }
             },
         )
-        RaftDesktopToasts.Overlay()
     }
 }
 

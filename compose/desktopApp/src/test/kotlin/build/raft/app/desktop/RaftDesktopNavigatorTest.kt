@@ -12,8 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * the unchanged RaftCmpNavigator; Esc / Cmd+[ / mouse back and the window history route here.
  */
 class RaftDesktopNavigatorTest {
-    private var emptied = 0
-    private val navigator = RaftDesktopNavigator(onEmpty = { emptied++ })
+    private val navigator = RaftDesktopNavigator()
 
     private fun names() = navigator.pages.map { it.args.pageName }
 
@@ -32,7 +31,6 @@ class RaftDesktopNavigatorTest {
 
         navigator.navigatorFor(navigator.pages.last()).closePage()
         assertEquals(listOf(RaftDesktopPages.APP_SHELL), names())
-        assertEquals(0, emptied)
     }
 
     @Test fun `back pops the top page first and never the last one`() {
@@ -44,7 +42,6 @@ class RaftDesktopNavigatorTest {
         assertEquals(listOf(RaftDesktopPages.APP_SHELL), names())
         assertFalse(navigator.back())
         assertEquals(listOf(RaftDesktopPages.APP_SHELL), names())
-        assertEquals(0, emptied)
     }
 
     @Test fun `closing a page under the top keeps the order of the rest`() {
@@ -55,10 +52,15 @@ class RaftDesktopNavigatorTest {
         assertEquals(listOf(RaftDesktopPages.APP_SHELL, "b"), names())
     }
 
-    @Test fun `closing the last page quits`() {
-        navigator.close(navigator.pages.single())
-        assertTrue(navigator.pages.isEmpty())
-        assertEquals(1, emptied)
+    @Test fun `the root page never closes, alone or covered`() {
+        val shell = navigator.pages.single()
+        // The shell's root back handler calls closePage when it has nothing left to pop.
+        navigator.navigatorFor(shell).closePage()
+        assertEquals(listOf(shell), navigator.pages.toList())
+
+        navigator.open("thread", data(), from = shell)
+        navigator.close(shell)
+        assertEquals(listOf(RaftDesktopPages.APP_SHELL, "thread"), names())
     }
 
     @Test fun `replace current page swaps the opener in place`() {
