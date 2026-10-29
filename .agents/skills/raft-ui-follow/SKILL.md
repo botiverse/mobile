@@ -94,9 +94,12 @@ Without this, the next person to sync "fixes" it back.
 
 ## 6. Goldens and images
 
-- Re-record goldens through CI (no local Gradle on agent machines): cherry-pick
-  the TEMP dump commit, run `test.yml`, download `designsystem-screenshot-diffs`
-  and `shared-home-screenshots`, drop the TEMP commit, copy the actuals.
+- Re-record goldens through CI (no local Gradle on agent machines). Design
+  system: `gh workflow run test.yml --ref <branch> -f record_screenshots=true`,
+  download `designsystem-screenshots-recorded` (only new or changed goldens) and
+  copy them into `compose/designsystem/screenshots/`. Shared Home: cherry-pick the
+  TEMP dump commit, run `test.yml`, download `shared-home-screenshots`, drop the
+  TEMP commit, copy the actuals.
 - **Compare images in RGB.** `ImageChops.difference(a, b).getbbox()` on RGBA
   images only looks at alpha, so every opaque screenshot reads as unchanged.
   Use `a.convert("RGB")` on both sides, and count pixels over a small threshold

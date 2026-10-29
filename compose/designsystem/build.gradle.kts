@@ -7,6 +7,8 @@ plugins {
     id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
+    // Screenshot tests: recordRoborazziDesktop / verifyRoborazziDesktop / compareRoborazziDesktop.
+    id("io.github.takahirom.roborazzi")
 }
 
 kotlin {
@@ -60,6 +62,15 @@ kotlin {
                 implementation(kotlin("test-junit"))
                 // Semantics and input tests (runComposeUiTest).
                 implementation(libs.cmp.ui.test)
+                // Screenshot compare / record / report (RaftScreenshot); the capture stays ours.
+                // Its runtime pins CMP 1.10.3's macOS arm64 desktop natives: the host's come from
+                // compose.desktop.currentOs, and ui-test-junit4 is lifted to composePlugin.
+                implementation("io.github.takahirom.roborazzi:roborazzi-compose-desktop:${libs.versions.roborazzi.get()}") {
+                    exclude(group = "org.jetbrains.compose.desktop", module = "desktop-jvm-macos-arm64")
+                }
+                // AwtRoboCanvas (runtime-only in roborazzi-compose-desktop).
+                implementation(libs.roborazzi.painter)
+                implementation(libs.cmp.ui.test.junit4)
             }
         }
     }
@@ -71,22 +82,30 @@ compose.resources {
     generateResClass = always
 }
 
-// Screenshot tests (src/desktopTest): verify against the committed goldens by default;
-// `-Praft.screenshot.record=true` rewrites them instead. See README.md.
+// Screenshot tests (src/desktopTest), compared and recorded by Roborazzi. See README.md.
+// - desktopTest / verifyRoborazziDesktop: verify against the committed goldens.
+// - recordRoborazziDesktop: write goldens whose render changed (or are new); others stay as is.
+// - compareRoborazziDesktop: write the comparison images without failing.
+// Goldens stay at screenshots/<name>.png (RaftScreenshot passes that path to Roborazzi);
+// actual and comparison images go to build/reports/screenshots, the HTML report (Roborazzi
+// tasks only) to build/reports/roborazzi/desktop.
 val screenshotGoldenDir = layout.projectDirectory.dir("screenshots")
-val screenshotRecord =
-    providers.gradleProperty("raft.screenshot.record").map { it.equals("true", ignoreCase = true) }.orElse(false)
+val screenshotReportDir = layout.buildDirectory.dir("reports/screenshots")
+// A roborazzi.test.* Gradle property picks the mode itself; otherwise a bare desktopTest verifies.
+val roborazziModeProperty =
+    providers.gradlePropertiesPrefixedBy("roborazzi.test.").map { props -> props.values.any { it == "true" } }
+
+roborazzi {
+    compare {
+        outputDir.set(screenshotReportDir)
+    }
+}
 
 tasks.named<Test>("desktopTest") {
-    val record = screenshotRecord.get()
     inputs.files(fileTree(screenshotGoldenDir)).withPropertyName("screenshotGoldens")
-    inputs.property("screenshotRecord", record)
-    if (record) outputs.upToDateWhen { false }
-    systemProperty("raft.screenshot.record", record.toString())
+    // The Roborazzi tasks overwrite this (record / compare / verify) when the test starts.
+    if (!roborazziModeProperty.get()) systemProperty("roborazzi.test.verify", "true")
     systemProperty("raft.screenshot.goldenDir", screenshotGoldenDir.asFile.absolutePath)
-    systemProperty(
-        "raft.screenshot.reportDir",
-        layout.buildDirectory.dir("reports/screenshots").get().asFile.absolutePath
-    )
+    systemProperty("raft.screenshot.reportDir", screenshotReportDir.get().asFile.absolutePath)
     systemProperty("java.awt.headless", "true")
 }

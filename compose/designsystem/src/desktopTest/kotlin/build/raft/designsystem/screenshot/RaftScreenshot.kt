@@ -15,23 +15,38 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import com.dropbox.differ.Image
+import com.dropbox.differ.ImageComparator
+import com.dropbox.differ.Mask
+import com.github.takahirom.roborazzi.AwtRoboCanvas
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.JvmImageIoFormat
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.RoborazziTaskType
+import com.github.takahirom.roborazzi.roborazziSystemPropertyTaskType
+import io.github.takahirom.roborazzi.processOutputImageAndReportWithDefaults
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
-import kotlin.test.fail
+import kotlin.math.roundToInt
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
  * Offscreen screenshot harness: renders a composable with skiko ([ImageComposeScene], no
- * window, no GPU) and compares it with a committed golden PNG.
+ * window, no GPU) and hands the image to Roborazzi, which compares, records and reports it
+ * against the committed golden `<goldenDir>/<name>.png`. Rendering is unchanged from before
+ * Roborazzi: Roborazzi only sees the decoded PNG of our own render.
  *
- * Mode comes from system properties set by the `desktopTest` Gradle task:
- * - verify (default): fail when the render differs from `<goldenDir>/<name>.png` beyond
- *   [Tolerance]; the actual image and a diff go to `<reportDir>`.
- * - record (`-Praft.screenshot.record=true`): (re)write the golden and pass.
+ * Mode comes from Roborazzi's `roborazzi.test.*` system properties (set by its Gradle tasks):
+ * - verify (`desktopTest`, `verifyRoborazziDesktop`): fail when the render differs from the
+ *   golden beyond [Tolerance]; `<name>_actual.png` and `<name>_compare.png` go to `<reportDir>`.
+ * - record (`recordRoborazziDesktop`): write the golden when it is missing or the render
+ *   differs beyond [Tolerance]; a golden within tolerance is left untouched (same bytes).
+ * - compare (`compareRoborazziDesktop`): write the report images, never fail.
  */
+@OptIn(ExperimentalRoborazziApi::class)
 object RaftScreenshot {
     /** Logical-pixel density of every capture: 1dp = 2px. */
     const val DENSITY = 2f
@@ -46,9 +61,19 @@ object RaftScreenshot {
         const val maxMismatchRatio = 0.001
     }
 
-    private val record = System.getProperty("raft.screenshot.record").toBoolean()
     private val goldenDir = File(System.getProperty("raft.screenshot.goldenDir") ?: "screenshots")
     private val reportDir = File(System.getProperty("raft.screenshot.reportDir") ?: "build/reports/screenshots")
+
+    /**
+     * No Roborazzi mode set (an IDE run of one test): verify. A plain record becomes
+     * compare-and-record so a golden that still matches is not re-encoded.
+     */
+    private val taskType: RoborazziTaskType =
+        when (val requested = roborazziSystemPropertyTaskType()) {
+            RoborazziTaskType.None -> RoborazziTaskType.Verify
+            RoborazziTaskType.Record -> RoborazziTaskType.CompareAndRecord
+            else -> requested
+        }
 
     /**
      * Renders [content] inside [RaftTheme] ([appearance], on the theme canvas with 16dp of
@@ -95,63 +120,89 @@ object RaftScreenshot {
                 image.encodeToData(EncodedImageFormat.PNG)?.bytes ?: error("PNG encode failed for $name")
             }
         val actual = ImageIO.read(ByteArrayInputStream(png))
-        val golden = File(goldenDir, "$name.png")
-        if (record) {
-            golden.parentFile.mkdirs()
-            golden.writeBytes(png)
-            println("recorded ${golden.path} (${actual.width}x${actual.height})")
-            return
-        }
-        if (!golden.exists()) {
-            writeReport(name, png, diff = null)
-            fail("missing golden ${golden.path}; record with -Praft.screenshot.record=true")
-        }
-        val expected = ImageIO.read(golden)
-        if (expected.width != actual.width || expected.height != actual.height) {
-            writeReport(name, png, diff = null)
-            fail(
-                "$name: size ${actual.width}x${actual.height} != golden ${expected.width}x${expected.height}; " +
-                    "actual in ${reportDir.path}",
+        // load() copies the image in with AlphaComposite.Src (a straight pixel copy, alpha
+        // included), exactly as Roborazzi loads the golden; the loader hands it our render.
+        val canvas =
+            AwtRoboCanvas.load(
+                file = File(reportDir, "$name.png"),
+                bufferedImageType = BufferedImage.TYPE_INT_ARGB,
+                imageIoFormat = JvmImageIoFormat(awtImageLoader = { actual }),
             )
-        }
-        val (mismatched, diff) = compare(expected, actual)
-        val ratio = mismatched.toDouble() / (actual.width * actual.height)
-        if (ratio > Tolerance.maxMismatchRatio) {
-            writeReport(name, png, diff)
-            fail(
-                "$name: $mismatched pixels (${"%.4f".format(ratio * 100)}%) differ from ${golden.path} " +
-                    "beyond ±${Tolerance.channelDelta}/channel; actual and diff in ${reportDir.path}",
+        try {
+            processOutputImageAndReportWithDefaults(
+                canvas = canvas,
+                goldenFile = File(goldenDir, "$name.png"),
+                roborazziOptions = options(name, png),
+                density = density,
             )
+        } finally {
+            canvas.release()
         }
     }
 
-    /** Count of pixels outside tolerance, and a diff image (mismatches red over a faded actual). */
-    internal fun compare(expected: BufferedImage, actual: BufferedImage): Pair<Int, BufferedImage> {
-        val diff = BufferedImage(actual.width, actual.height, BufferedImage.TYPE_INT_ARGB)
-        var mismatched = 0
-        for (y in 0 until actual.height) {
-            for (x in 0 until actual.width) {
-                val a = actual.getRGB(x, y)
-                val e = expected.getRGB(x, y)
-                val same = (0 until 32 step 8).all { shift ->
-                    abs(((a ushr shift) and 0xFF) - ((e ushr shift) and 0xFF)) <= Tolerance.channelDelta
-                }
-                if (same) {
-                    val gray = (((a ushr 16) and 0xFF) + ((a ushr 8) and 0xFF) + (a and 0xFF)) / 3
-                    val faded = 0xFF000000.toInt() or (0xC0 + gray / 4).let { (it shl 16) or (it shl 8) or it }
-                    diff.setRGB(x, y, faded)
-                } else {
-                    mismatched++
-                    diff.setRGB(x, y, 0xFFFF0000.toInt())
+    private fun options(name: String, png: ByteArray) =
+        RoborazziOptions(
+            taskType = taskType,
+            compareOptions =
+                RoborazziOptions.CompareOptions(
+                    outputDirectoryPath = reportDir.absolutePath,
+                    imageComparator = ToleranceComparator,
+                    resultValidator = { result ->
+                        result.pixelDifferences.toDouble() / result.pixelCount <= Tolerance.maxMismatchRatio
+                    },
+                ),
+            recordOptions =
+                RoborazziOptions.RecordOptions(
+                    // Never rescale: goldens are at DENSITY, pixel for pixel.
+                    resizeScale = 1.0,
+                    imageIoFormat =
+                        JvmImageIoFormat(
+                            awtImageWriter = { file, _, image ->
+                                // The render itself (a recorded golden, or `<name>_actual.png`) is
+                                // written as skia encoded it, as before Roborazzi; Roborazzi's own
+                                // comparison image goes through ImageIO.
+                                file.parentFile?.mkdirs()
+                                if (file.name == "$name.png" || file.name == "${name}_actual.png") {
+                                    file.writeBytes(png)
+                                } else {
+                                    ImageIO.write(image, "png", file)
+                                }
+                            },
+                        ),
+                ),
+        )
+
+    /**
+     * Counts the pixels where some ARGB channel differs by more than [Tolerance.channelDelta]:
+     * the comparison this harness made before Roborazzi, in place of its colour-distance one.
+     */
+    private object ToleranceComparator : ImageComparator {
+        override fun compare(left: Image, right: Image, diff: Mask?): ImageComparator.ComparisonResult {
+            val width = maxOf(left.width, right.width)
+            val height = maxOf(left.height, right.height)
+            var mismatched = 0
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    val same =
+                        x < left.width && y < left.height && x < right.width && y < right.height &&
+                            left.getPixel(x, y).let { a ->
+                                val e = right.getPixel(x, y)
+                                within(a.a, e.a) && within(a.r, e.r) && within(a.g, e.g) && within(a.b, e.b)
+                            }
+                    if (!same) mismatched++
+                    diff?.setValue(x, y, if (same) 0f else 1f)
                 }
             }
+            return ImageComparator.ComparisonResult(
+                pixelDifferences = mismatched,
+                pixelCount = width * height,
+                width = width,
+                height = height,
+            )
         }
-        return mismatched to diff
-    }
 
-    private fun writeReport(name: String, png: ByteArray, diff: BufferedImage?) {
-        reportDir.mkdirs()
-        File(reportDir, "$name.actual.png").writeBytes(png)
-        if (diff != null) ImageIO.write(diff, "png", File(reportDir, "$name.diff.png"))
+        // differ hands channels over as n / 255f; rounding recovers n exactly.
+        private fun within(a: Float, b: Float) =
+            abs((a * 255f).roundToInt() - (b * 255f).roundToInt()) <= Tolerance.channelDelta
     }
 }

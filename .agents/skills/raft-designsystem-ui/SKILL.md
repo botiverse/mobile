@@ -57,8 +57,8 @@ Discipline".
 3. Record goldens (Linux; macOS text rasterises differently):
    ```bash
    cd compose
-   ./gradlew --no-daemon :designsystem:desktopTest -Praft.screenshot.record=true
-   ./gradlew --no-daemon :designsystem:desktopTest   # verify
+   ./gradlew --no-daemon :designsystem:recordRoborazziDesktop
+   ./gradlew --no-daemon :designsystem:verifyRoborazziDesktop   # verify
    ```
    Goldens: `compose/designsystem/screenshots/<component>_<light|dark>.png`.
    Review the PNG diff in the PR. Do not loosen the tolerance.

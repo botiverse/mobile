@@ -29,6 +29,10 @@ on:
         description: "Public-download authority runner mode: ci (default), reboot, or ab-fresh (clear MediaProvider + reboot each iteration; odd iterations skip the readiness wait as a control)."
         type: string
         default: ci
+      record_screenshots:
+        description: "Record the design system screenshot goldens (recordRoborazziDesktop) instead of verifying them; new or changed goldens are uploaded as the designsystem-screenshots-recorded artifact (compose/designsystem/README.md)."
+        type: boolean
+        default: false
       xcode_app_path:
         description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires scope=full (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, full tier and compose/iosApp changes) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
         required: false
@@ -379,13 +383,17 @@ jobs:
       #   every local assembleDebug because only :shared was compiled here (task #217 follow-up).
       # - Hard run gate since #215 cleared the legacy failures: the shared JVM suite must pass, and
       #   the androidApp unit tests run in the same gate so stale Android host tests cannot stay
-      #   hidden until a local developer run. :designsystem:desktopTest is the CMP design system's
-      #   unit tests plus its screenshot goldens in verify mode (compose/designsystem/README.md).
+      #   hidden until a local developer run. :designsystem:verifyRoborazziDesktop is the CMP design system's
+      #   unit tests plus its screenshot goldens in verify mode (compose/designsystem/README.md);
+      #   it runs desktopTest and writes Roborazzi's HTML report. A dispatch
+      #   with record_screenshots=true records the goldens instead (recordRoborazziDesktop).
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
       - name: Compile, test and package Android (one Gradle invocation)
         working-directory: compose
+        env:
+          RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
         run: |
           set -euo pipefail
           tasks=(
@@ -426,8 +434,12 @@ jobs:
             :shared:testDebugUnitTest
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
-            :designsystem:desktopTest
           )
+          if [ "$RECORD_SCREENSHOTS" = true ]; then
+            tasks+=(:designsystem:recordRoborazziDesktop)
+          else
+            tasks+=(:designsystem:verifyRoborazziDesktop)
+          fi
           ./gradlew "${tasks[@]}" \
             --continue \
             --no-daemon \
@@ -461,12 +473,35 @@ jobs:
           ./gradlew -p buildSrc test --no-daemon --console=plain --stacktrace
           grep -ho 'tests="[0-9]*"' buildSrc/build/test-results/test/*.xml | grep -qv 'tests="0"'
 
+      # <name>_actual.png / <name>_compare.png and Roborazzi's HTML report (roborazzi/desktop/).
       - name: Upload design system screenshot diffs
-        if: failure()
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && inputs.record_screenshots) }}
         uses: actions/upload-artifact@v7
         with:
           name: designsystem-screenshot-diffs
-          path: compose/designsystem/build/reports/screenshots/
+          path: |
+            compose/designsystem/build/reports/screenshots/
+            compose/designsystem/build/reports/roborazzi/
+          if-no-files-found: ignore
+
+      # record_screenshots dispatch: the goldens recordRoborazziDesktop added or rewrote, to copy
+      # into compose/designsystem/screenshots/ and commit (no local Gradle needed).
+      - name: Collect recorded design system screenshots
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/designsystem-screenshots-recorded"
+          mkdir -p "$out"
+          git ls-files --modified --others --exclude-standard -z -- compose/designsystem/screenshots \
+            | xargs -0 -r cp -t "$out"
+          echo "Recorded design system goldens: $(ls "$out" | wc -l)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload recorded design system screenshots
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: designsystem-screenshots-recorded
+          path: ${{ runner.temp }}/designsystem-screenshots-recorded/
           if-no-files-found: ignore
 
       # HomeChannelListScreenshotTest (Robolectric, :shared:testDebugUnitTest) writes every

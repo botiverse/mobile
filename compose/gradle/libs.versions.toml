@@ -59,6 +59,10 @@ googleServices = "4.5.0"
 benchmarkMacro = "1.5.0"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
+# Roborazzi: record / verify / compare tasks and diff reports for the design system's desktop
+# screenshot tests (compose/designsystem). 1.77.0 is the latest release; its Compose Desktop
+# module is built against CMP 1.10.3, aligned to composePlugin by cmp-ui-test-junit4 below.
+roborazzi = "1.77.0"
 
 [libraries]
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
@@ -115,6 +119,7 @@ cmp-foundation = { group = "org.jetbrains.compose.foundation", name = "foundatio
 cmp-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "composePlugin" }
 cmp-ui-backhandler = { group = "org.jetbrains.compose.ui", name = "ui-backhandler", version.ref = "composePlugin" }
 cmp-ui-test = { group = "org.jetbrains.compose.ui", name = "ui-test", version.ref = "composePlugin" }
+cmp-ui-test-junit4 = { group = "org.jetbrains.compose.ui", name = "ui-test-junit4", version.ref = "composePlugin" }
 cmp-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "cmpMaterial3" }
 cmp-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composePlugin" }
 cmp-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "cmpLifecycle" }
@@ -132,6 +137,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
+roborazzi-painter = { group = "io.github.takahirom.roborazzi", name = "roborazzi-painter", version.ref = "roborazzi" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -146,3 +152,4 @@ jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composePlugin
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
