@@ -1,5 +1,11 @@
 package build.raft.designsystem.screenshot
 
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.RaftPointerHoverInteraction
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -20,7 +26,6 @@ import androidx.compose.ui.use
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftTextField
@@ -133,25 +138,29 @@ class RaftInteractionTest {
     }
 
     /**
-     * A finger never hovers: a tap shows the press, and nothing stays once it lifts. A list row,
-     * not a menu item: a menu item also wears `brand-soft` while it has the keyboard focus, which
-     * a press on the desktop test scene gives it.
+     * A finger never hovers: [raftPointerHover] emits Raft's hover for a mouse and never for a
+     * touch, whatever enter events the platform sends with it. Checked on the interactions, not
+     * on pixels, so a component's own press or focus look can't mask it.
      */
     @Test
     fun aTapLeavesNoHoverBehind() {
-        ImageComposeScene(width = 260, height = 100, density = Density(1f)) {
-            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
-                Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {
-                    RaftListRow("Notifications", Modifier.width(200.dp), onClick = {})
-                }
-            }
+        val source = MutableInteractionSource()
+        val seen = mutableListOf<Interaction>()
+        ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+            LaunchedEffect(source) { source.interactions.collect { seen += it } }
+            Box(Modifier.size(100.dp).raftPointerHover(source))
         }.use { scene ->
-            assertTrue(pixelIs(scene.render(), 24, 38, canvas), "no fill at rest")
-            val at = Offset(120f, 38f)
+            scene.render()
+            val at = Offset(50f, 50f)
+            scene.sendPointerEvent(PointerEventType.Enter, at, type = PointerType.Touch)
             scene.sendPointerEvent(PointerEventType.Press, at, type = PointerType.Touch)
             scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Touch)
-            // Past the 120ms minimum press and its fade.
-            assertTrue(pixelIs(settle(scene, fromMillis = 100), 24, 38, canvas), "no fill after a tap")
+            scene.sendPointerEvent(PointerEventType.Exit, at, type = PointerType.Touch)
+            scene.render(100_000_000L)
+            assertTrue(seen.none { it is RaftPointerHoverInteraction }, "no hover from a finger: $seen")
+            scene.sendPointerEvent(PointerEventType.Move, at, type = PointerType.Mouse)
+            scene.render(200_000_000L)
+            assertTrue(seen.any { it is RaftPointerHoverInteraction.Enter }, "a mouse hovers: $seen")
         }
     }
 
