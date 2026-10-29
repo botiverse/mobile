@@ -33,6 +33,10 @@ internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = false
 
 internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
+internal actual fun raftPlatformHasFinePointer(): Boolean = false
+
+internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
+
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false
 
 internal actual fun raftPlatformReadClipboardAttachments(): List<PlatformFile> = emptyList()

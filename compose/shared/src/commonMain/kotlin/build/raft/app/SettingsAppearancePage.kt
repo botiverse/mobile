@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -49,6 +50,12 @@ internal fun SettingsAppearanceContent(
      * it only where there is no Theme page, so it has one place: [settingsAppearanceShowsModeCard].
      */
     showModeCard: Boolean,
+    /**
+     * On a fine pointer, the app preference cards ([settingsAppPreferenceItems]) after the
+     * appearance ones: the web keeps its device preferences in AppearanceSection, and the app has
+     * no "Mobile" page there.
+     */
+    appPreferenceItems: (LazyListScope.() -> Unit)? = null,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
@@ -116,6 +123,7 @@ internal fun SettingsAppearanceContent(
                     )
                 }
         }
+        appPreferenceItems?.invoke(this)
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }

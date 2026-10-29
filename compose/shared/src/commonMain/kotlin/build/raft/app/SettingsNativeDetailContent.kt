@@ -451,6 +451,61 @@ internal fun SettingsNativeDetailPageContent(
         }
     }
 
+    val appPreferenceActions =
+        SettingsAppPreferenceActions(
+            onAlignmentChange = { itemId ->
+                onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
+                onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
+            },
+            onLinkOpenModeChange = { itemId ->
+                onSettingsIntent(
+                    SharedSettingsIntent.SetLinkOpenMode(
+                        itemId ?: LinkOpenMode.Default.storageKey
+                    )
+                )
+            },
+            onCompactConsecutiveMessagesChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
+                onCompactConsecutiveMessagesSelected(enabled)
+            },
+            onLongMessageCollapseChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
+            },
+            onNewMessageMenuChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
+            },
+            onConversationForwardGestureChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
+                onConversationForwardGestureSelected(enabled)
+            },
+            onActivityTaskStatusBadgesChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
+                onActivityTaskStatusBadgesSelected(enabled)
+            },
+            onComposerSendKeyChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
+            },
+            onMultiShellHostChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
+            },
+            onDesktopModeOnLargeScreenChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetDesktopModeOnLargeScreen(enabled))
+            },
+            onServerDrawerChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
+                onServerDrawerSelected(enabled)
+            },
+            onHomeServerAvatarChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
+                onHomeServerAvatarSelected(enabled)
+            },
+            onThreadReverseLayoutChange = { enabled ->
+                onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
+            },
+            diagnosticsLogger = diagnosticsLogger,
+        )
+    val appPreferenceVisibility = settingsAppPreferenceVisibility()
+
     SettingsDetailShell(
         title = settingsNativeDetailPageTitle(route),
         subtitle = "",
@@ -553,6 +608,19 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     showModeCard = settingsAppearanceShowsModeCard(session),
+                    appPreferenceItems =
+                        if (settingsAppPreferencesUnderAppearance()) {
+                            {
+                                settingsAppPreferenceItems(
+                                    settingsState.mobile,
+                                    settingsState.actionState,
+                                    appPreferenceActions,
+                                    appPreferenceVisibility,
+                                )
+                            }
+                        } else {
+                            null
+                        },
                 )
             SettingsNativeDetailPage.Theme -> {
                 val serverTheme =
@@ -663,58 +731,9 @@ internal fun SettingsNativeDetailPageContent(
                 SettingsMobileContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
-                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile),
                     bottomContentPadding = bottomContentPadding,
-                    onAlignmentChange = { itemId ->
-                        onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
-                        onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
-                    },
-                    onLinkOpenModeChange = { itemId ->
-                        onSettingsIntent(
-                            SharedSettingsIntent.SetLinkOpenMode(
-                                itemId ?: LinkOpenMode.Default.storageKey
-                            )
-                        )
-                    },
-                    onCompactConsecutiveMessagesChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
-                        onCompactConsecutiveMessagesSelected(enabled)
-                    },
-                    onLongMessageCollapseChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
-                    },
-                    onNewMessageMenuChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
-                    },
-                    onConversationForwardGestureChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
-                        onConversationForwardGestureSelected(enabled)
-                    },
-                    onActivityTaskStatusBadgesChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
-                        onActivityTaskStatusBadgesSelected(enabled)
-                    },
-                    onComposerSendKeyChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
-                    },
-                    onMultiShellHostChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
-                    },
-                    onDesktopModeOnLargeScreenChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetDesktopModeOnLargeScreen(enabled))
-                    },
-                    onServerDrawerChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
-                        onServerDrawerSelected(enabled)
-                    },
-                    onHomeServerAvatarChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
-                        onHomeServerAvatarSelected(enabled)
-                    },
-                    onThreadReverseLayoutChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
-                    },
-                    diagnosticsLogger = diagnosticsLogger,
+                    actions = appPreferenceActions,
+                    visibility = appPreferenceVisibility,
                 )
             SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
