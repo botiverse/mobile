@@ -362,7 +362,7 @@ private fun RaftBottomTabItem(
     // cell), the label 4dp under it, the attention pixel on the slot's top-right corner. The
     // app adds its glyph (the Activity one optically scaled) and its unread count.
     val attentionDescription =
-        if (item.key == "more") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
+        if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftDesignSystemTheme {
         RaftMobileNavItem(
             label = item.label,
@@ -561,7 +561,7 @@ private fun RaftNavigationRailTabItem(
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
     val attentionDescription =
-        if (item.key == "more") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
+        if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftAppRailItem(
         label = item.label,
         selected = item.selected,
