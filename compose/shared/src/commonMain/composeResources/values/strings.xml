@@ -3389,4 +3389,23 @@
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">Unfollow</string>
     <string name="activity_unfollowed_artifact">Unfollowed %1$s</string>
+    <string name="emoji_picker_search_placeholder">Search emoji</string>
+    <string name="emoji_picker_no_results">No emoji found</string>
+    <string name="emoji_picker_frequently_used">Frequently Used</string>
+    <string name="emoji_picker_category_smileys_people">Smileys &amp; People</string>
+    <string name="emoji_picker_category_animals_nature">Animals &amp; Nature</string>
+    <string name="emoji_picker_category_food_drink">Food &amp; Drink</string>
+    <string name="emoji_picker_category_travel_places">Travel &amp; Places</string>
+    <string name="emoji_picker_category_activities">Activities</string>
+    <string name="emoji_picker_category_objects">Objects</string>
+    <string name="emoji_picker_category_symbols">Symbols</string>
+    <string name="emoji_picker_category_flags">Flags</string>
+    <string name="emoji_picker_skin_tone">Skin tone</string>
+    <string name="emoji_picker_skin_tone_neutral">Default skin tone</string>
+    <string name="emoji_picker_skin_tone_light">Light skin tone</string>
+    <string name="emoji_picker_skin_tone_medium_light">Medium-light skin tone</string>
+    <string name="emoji_picker_skin_tone_medium">Medium skin tone</string>
+    <string name="emoji_picker_skin_tone_medium_dark">Medium-dark skin tone</string>
+    <string name="emoji_picker_skin_tone_dark">Dark skin tone</string>
+    <string name="emoji_picker_names_language">en</string>
 </resources>

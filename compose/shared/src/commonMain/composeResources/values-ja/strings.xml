@@ -3389,4 +3389,23 @@
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">フォロー解除</string>
     <string name="activity_unfollowed_artifact">%1$s のフォローを解除しました</string>
+    <string name="emoji_picker_search_placeholder">絵文字を検索</string>
+    <string name="emoji_picker_no_results">絵文字が見つかりません</string>
+    <string name="emoji_picker_frequently_used">よく使う絵文字</string>
+    <string name="emoji_picker_category_smileys_people">顔と人</string>
+    <string name="emoji_picker_category_animals_nature">動物と自然</string>
+    <string name="emoji_picker_category_food_drink">食べ物と飲み物</string>
+    <string name="emoji_picker_category_travel_places">旅行と場所</string>
+    <string name="emoji_picker_category_activities">アクティビティ</string>
+    <string name="emoji_picker_category_objects">物</string>
+    <string name="emoji_picker_category_symbols">記号</string>
+    <string name="emoji_picker_category_flags">旗</string>
+    <string name="emoji_picker_skin_tone">肌の色</string>
+    <string name="emoji_picker_skin_tone_neutral">標準の肌の色</string>
+    <string name="emoji_picker_skin_tone_light">明るい肌の色</string>
+    <string name="emoji_picker_skin_tone_medium_light">やや明るい肌の色</string>
+    <string name="emoji_picker_skin_tone_medium">中間の肌の色</string>
+    <string name="emoji_picker_skin_tone_medium_dark">やや濃い肌の色</string>
+    <string name="emoji_picker_skin_tone_dark">濃い肌の色</string>
+    <string name="emoji_picker_names_language">en</string>
 </resources>

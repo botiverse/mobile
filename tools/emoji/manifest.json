@@ -1,0 +1,47 @@
+{
+  "comment": "Pinned emoji sources. emojiPickerReactVersion must match slock packages/web/package.json `emoji-picker-react` at slockCommit. Files are copied unchanged from the npm tarballs (tarballSha256).",
+  "slockCommit": "e165feda2c19633f90ab20b78c794e91ef8b5f3f",
+  "emojiPickerReactVersion": "4.19.1",
+  "cldrVersion": "49.0.0",
+  "tarballs": {
+    "emoji-picker-react": {
+      "origin": "npm:emoji-picker-react@4.19.1",
+      "sha256": "01e95c6f77fcfa212d93d80445a6a13594766a40358440b7c84147bc57baacde"
+    },
+    "cldr-annotations-full": {
+      "origin": "npm:cldr-annotations-full@49.0.0",
+      "sha256": "ce415a4898da7a4ca755437de2593863c05045fc6b1649d8da5ee05fa3bdc33b"
+    },
+    "cldr-annotations-derived-full": {
+      "origin": "npm:cldr-annotations-derived-full@49.0.0",
+      "sha256": "e83ab0348ec09f4b5bb27f658b9c424c9c8fbf512484b728903515b9f01c3c28"
+    }
+  },
+  "sources": {
+    "emojiPickerReact": {
+      "path": "source/emoji-picker-react-4.19.1/emojis.json",
+      "origin": "npm:emoji-picker-react@4.19.1/src/data/emojis.json",
+      "sha256": "001de05839cc490ac775a5445153c9e9a065ad17cc8ac7d4516801a04c78ceb5"
+    },
+    "emojiPickerReactLicense": {
+      "path": "source/emoji-picker-react-4.19.1/LICENSE",
+      "origin": "npm:emoji-picker-react@4.19.1/LICENSE",
+      "sha256": "03686cc5661b83d5dd4c983f17a3a6d85748e520526fb8dce7e6ede0ff578983"
+    },
+    "cldrAnnotationsZh": {
+      "path": "source/cldr-json-49.0.0/annotations-zh.json",
+      "origin": "npm:cldr-annotations-full@49.0.0/annotations/zh/annotations.json",
+      "sha256": "7d49968f977021fefe6ceea2613e0313de5ea416d8f3c0a8fe3032c9b7f2ebfb"
+    },
+    "cldrAnnotationsDerivedZh": {
+      "path": "source/cldr-json-49.0.0/annotationsDerived-zh.json",
+      "origin": "npm:cldr-annotations-derived-full@49.0.0/annotationsDerived/zh/annotations.json",
+      "sha256": "1b86f6dd0b295e64efddaf6028151b6c5c95616b8c98c15f5727cff2b2429d48"
+    },
+    "cldrLicense": {
+      "path": "source/cldr-json-49.0.0/LICENSE",
+      "origin": "npm:cldr-annotations-full@49.0.0/LICENSE",
+      "sha256": "65eb33419e22a297550a811b5b535f5e532f9a7e0114b516c0ea18afd53c3804"
+    }
+  }
+}

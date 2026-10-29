@@ -3389,4 +3389,23 @@
     <string name="activity_list_object_home">· %1$s</string>
     <string name="activity_action_unfollow_artifact">取消关注</string>
     <string name="activity_unfollowed_artifact">已取消关注 %1$s</string>
+    <string name="emoji_picker_search_placeholder">搜索表情</string>
+    <string name="emoji_picker_no_results">没有找到表情</string>
+    <string name="emoji_picker_frequently_used">常用</string>
+    <string name="emoji_picker_category_smileys_people">笑脸与人物</string>
+    <string name="emoji_picker_category_animals_nature">动物与自然</string>
+    <string name="emoji_picker_category_food_drink">食物与饮料</string>
+    <string name="emoji_picker_category_travel_places">旅行与地点</string>
+    <string name="emoji_picker_category_activities">活动</string>
+    <string name="emoji_picker_category_objects">物品</string>
+    <string name="emoji_picker_category_symbols">符号</string>
+    <string name="emoji_picker_category_flags">旗帜</string>
+    <string name="emoji_picker_skin_tone">肤色</string>
+    <string name="emoji_picker_skin_tone_neutral">默认肤色</string>
+    <string name="emoji_picker_skin_tone_light">较浅肤色</string>
+    <string name="emoji_picker_skin_tone_medium_light">中等-浅肤色</string>
+    <string name="emoji_picker_skin_tone_medium">中等肤色</string>
+    <string name="emoji_picker_skin_tone_medium_dark">中等-深肤色</string>
+    <string name="emoji_picker_skin_tone_dark">较深肤色</string>
+    <string name="emoji_picker_names_language">zh</string>
 </resources>

@@ -11797,6 +11797,8 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
+                // The Add Reaction picker keeps its skin tone and frequently used emoji per account.
+                LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
                 LocalThreadActionCardSpecHost provides actionCardSpecHost,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
