@@ -6161,7 +6161,9 @@ private fun RaftAppShellReadyContent(
         val serverId = readyServerId ?: return
         if (!navRailActive) return
         // An open supporting pane is the topmost thing: Back closes it before stepping the history.
-        if (direction == RaftWideNavDirection.Back && raftWideBackStep(supportingPanes, supportingPaneShown) == RaftWideBackStep.PopSupportingPane) {
+        // The task overlay sits above it, so while the overlay is open Back is the overlay's (Tenny, #3953).
+        val supportingPaneOnTop = supportingPaneShown && !tasksDetailOverlayOpen
+        if (direction == RaftWideNavDirection.Back && raftWideBackStep(supportingPanes, supportingPaneOnTop) == RaftWideBackStep.PopSupportingPane) {
             bridge.log("wide_history_back source=$source pops=supporting_pane")
             supportingPanes = supportingPanes.pop()
             return
@@ -7250,9 +7252,14 @@ private fun RaftAppShellReadyContent(
                         // The task overlay has no room for one: its pages open as before.
                         val supportingPaneHost = navRailActive && allowSideColumn
                         val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
-                        DisposableEffect(supportingOpen) {
-                            supportingPaneShown = supportingOpen
-                            onDispose { supportingPaneShown = false }
+                        // Only the main detail pane hosts the supporting pane, so only it reports whether
+                        // the pane is shown; the task overlay's copy (allowSideColumn = false) must not
+                        // reset it when the overlay closes (Tenny, #3953).
+                        if (supportingPaneHost) {
+                            DisposableEffect(supportingOpen) {
+                                supportingPaneShown = supportingOpen
+                                onDispose { supportingPaneShown = false }
+                            }
                         }
                         RaftSupportingPaneLayout(
                             modifier =
