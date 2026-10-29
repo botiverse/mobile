@@ -1130,6 +1130,7 @@
     <string name="member_section_threads">スレッド</string>
     <string name="member_section_tasks">タスク</string>
     <string name="member_section_server">サーバー</string>
+    <string name="member_section_from">所属サーバー</string>
     <string name="member_section_messages">メッセージ</string>
     <string name="member_section_inbox">受信トレイ</string>
     <string name="member_section_knowledge">ナレッジ</string>

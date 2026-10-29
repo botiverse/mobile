@@ -1119,6 +1119,7 @@
     <string name="member_section_threads">消息列</string>
     <string name="member_section_tasks">任务</string>
     <string name="member_section_server">服务器</string>
+    <string name="member_section_from">来自</string>
     <string name="member_section_messages">消息</string>
     <string name="member_section_inbox">收件箱</string>
     <string name="member_section_knowledge">知识</string>

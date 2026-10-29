@@ -322,6 +322,7 @@ import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
+import build.raft.app.data.ResolvedActor
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.isInternalJointStorageIdentity
 import androidx.compose.runtime.Composable
@@ -2430,7 +2431,10 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
     )
 }
 
-private fun ThreadMembersPageRoute.toMemberDetailPageData(identity: MemberDetailIdentity): JSONObject? {
+private fun ThreadMembersPageRoute.toMemberDetailPageData(
+    identity: MemberDetailIdentity,
+    sourceServerName: String? = null
+): JSONObject? {
     val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
     return JSONObject().apply {
         put("pageName", MEMBER_DETAIL_PAGE)
@@ -2438,6 +2442,7 @@ private fun ThreadMembersPageRoute.toMemberDetailPageData(identity: MemberDetail
         put("memberId", selected)
         put("memberKind", identity.kind.memberKindWireValue())
         identity.sourceServerId?.value?.let { put("sourceServerId", it) }
+        sourceServerName?.takeIf { it.isNotBlank() }?.let { put("sourceServerName", it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -2770,6 +2775,11 @@ internal fun RaftThreadScreenPayload.toThreadMemberDetailPageData(
         put("memberId", selected)
         put("memberKind", identity.kind.memberKindWireValue())
         identity.sourceServerId?.value?.let { put("sourceServerId", it) }
+        members
+            .firstOrNull { it.id == selected && it.sourceServerId == identity.sourceServerId?.value }
+            ?.sourceServerLabel
+            ?.takeIf { it.isNotBlank() }
+            ?.let { put("sourceServerName", it) }
         put("localOffsetMinutes", localOffsetMinutes)
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -2996,6 +3006,21 @@ private fun RaftThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =
         sourceServerId = sourceServerId,
         source = MemberDetailIdentitySource.ThreadMember
     )
+
+/**
+ * A joint channel's sender from another server (web `isRemoteJointAgent`): the resolved actor's
+ * home server is the identity's source server, so the profile opens as the remote profile.
+ */
+internal fun MemberDetailIdentity.withJointAuthorHomeServer(jointAuthor: ResolvedActor?): MemberDetailIdentity {
+    if (sourceServerId != null) return this
+    val home = jointAuthor
+        ?.takeIf { it.id == memberId.value && it.kind == kind }
+        ?.homeServerId
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: return this
+    return copy(sourceServerId = ServerId(home))
+}
 
 private fun RaftThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
     // External authors are never member-detail identities; short-circuit before the
@@ -5086,7 +5111,7 @@ private fun ThreadMembersPageScreen() {
 
     fun openMember(member: RaftThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
-        val pageData = route.toMemberDetailPageData(identity) ?: return
+        val pageData = route.toMemberDetailPageData(identity, member.sourceServerLabel) ?: return
         memberScope.launch {
             if (authorityGateway.capture(routeOwner) == null) {
                 return@launch
@@ -26672,8 +26697,8 @@ private fun ThreadMessageCardContent(
             message.threadAuthorGestureIdentity()
         }
     val authorProfileIdentity =
-        remember(message.id, message.authorId, message.authorKind) {
-            message.memberDetailIdentity()
+        remember(message.id, message.authorId, message.authorKind, jointAuthor?.homeServerId) {
+            message.memberDetailIdentity()?.withJointAuthorHomeServer(jointAuthor)
         }
     val longPressGestureOwner =
         rememberThreadMessageLongPressGestureOwner(
