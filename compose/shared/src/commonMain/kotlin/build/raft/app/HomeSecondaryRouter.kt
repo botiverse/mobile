@@ -935,7 +935,7 @@ private fun HomeSearchRouterContent(
             items = searchSavedState.search.items
         )
     }
-    val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot)
+    val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot, railInline = environment.inlineOnClose != null)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = searchHomeState,
@@ -952,6 +952,7 @@ private fun HomeSearchRouterContent(
             } else {
                 null
             },
+        showCloseButton = chrome.showsBackButton,
         onOpenItem = { item ->
             when (
                 val resolution =
@@ -1067,7 +1068,7 @@ private fun HomeSearchRouterContent(
                 }
             },
         initialOpenFilterId = initialOpenFilterId,
-        initialFocusInput = initialFocusInput,
+        initialFocusInput = initialFocusInput || chrome.focusesInputOnOpen,
         inputActive = inputActive,
         focusInputRequest = focusInputRequest,
         tabHead = environment.tabRoot,

@@ -1520,6 +1520,12 @@ class RaftAppShellTest {
         assertEquals(HomeSearchPageChrome(showsBack = false, aboveBottomBar = true), homeSearchPageChrome(tabRoot = true))
         // Pushed (rail Home head, channel search): Back, covers the bar.
         assertEquals(HomeSearchPageChrome(showsBack = true, aboveBottomBar = false), homeSearchPageChrome(tabRoot = false))
+        // The wide layout's inline Search: no Back button, the field focuses on open; close stays
+        // reachable (system side column, Esc / Back through the shell).
+        assertEquals(
+            HomeSearchPageChrome(showsBack = true, aboveBottomBar = false, showsBackButton = false, focusesInputOnOpen = true),
+            homeSearchPageChrome(tabRoot = false, railInline = true),
+        )
     }
 
     @Test
