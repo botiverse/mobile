@@ -92,19 +92,8 @@ internal actual fun RaftVideoPlayer(
     RaftDesktopUnsupportedNotice("Video playback is not available on desktop yet.", modifier)
 }
 
-// TODO(desktop): no embedded web view yet (sandboxed app views, feedback).
 @Composable
-internal actual fun RaftSandboxWebViewHost(
-    config: RaftWebViewConfig,
-    events: RaftWebViewEvents,
-    controller: RaftWebViewController,
-    modifier: Modifier,
-) {
-    RaftDesktopUnsupportedNotice("Web content is not available on desktop yet.", modifier)
-}
-
-@Composable
-private fun RaftDesktopUnsupportedNotice(text: String, modifier: Modifier) {
+internal fun RaftDesktopUnsupportedNotice(text: String, modifier: Modifier) {
     Box(modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) { BasicText(text) }
 }
 

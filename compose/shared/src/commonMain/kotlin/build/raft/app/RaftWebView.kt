@@ -128,6 +128,7 @@ internal fun RaftSandboxWebView(
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     mainFrameOrigin: String? = null,
+    frameHosts: Set<String> = emptySet(),
     keepAliveKey: String? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
@@ -152,6 +153,7 @@ internal fun RaftSandboxWebView(
             allowedNavigationSchemesValue,
             hostEventsEnabled,
             mainFrameOrigin,
+            frameHosts,
             keepAliveKey
         ) {
             RaftWebViewConfig(
@@ -167,6 +169,7 @@ internal fun RaftSandboxWebView(
                     allowedNavigationSchemesValue.split(',').filter { it.isNotEmpty() }.toSet(),
                 hostEventsEnabled = hostEventsEnabled,
                 mainFrameOrigin = mainFrameOrigin,
+                frameHosts = frameHosts,
                 keepAliveKey = keepAliveKey
             )
         }

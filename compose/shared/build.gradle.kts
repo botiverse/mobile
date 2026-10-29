@@ -224,6 +224,9 @@ kotlin {
             dependencies {
                 implementation(libs.sqldelight.sqlite.driver)
                 implementation(libs.kotlinx.coroutines.swing)
+                // Embedded web content (RaftSandboxWebView.desktop.kt): desktop only, never on the
+                // Android / iOS graphs. Its JNA-loaded natives ship inside the jar.
+                implementation(libs.wrywebview)
             }
         }
         val androidUnitTest by getting {

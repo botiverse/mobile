@@ -29,6 +29,14 @@ internal data class RaftWebViewConfig(
      */
     val mainFrameOrigin: String? = null,
     /**
+     * Hostnames (each also covering its subdomains, https only) whose documents this page loads as
+     * sub-frames, e.g. the Artifact content domain. Only the desktop host needs it: its engine
+     * cannot tell a sub-frame navigation from a top-level one, so anything off the top-level
+     * fence that is not listed here (or about:/blob:/data:) is refused before it loads. Android
+     * and iOS see the frame and ignore this.
+     */
+    val frameHosts: Set<String> = emptySet(),
+    /**
      * Keeps the native WebView (and its document) when the composable leaves, under this key, so
      * the next host with the same key gets it back at once ([RaftWebViewKeepAlive]). A different
      * key, [RaftWebViewKeepAlive.clear] or the keep-alive time running out destroys it. Null:
