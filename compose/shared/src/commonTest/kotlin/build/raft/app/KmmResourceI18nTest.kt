@@ -894,6 +894,7 @@ class KmmResourceI18nTest {
             Res.string.settings_mobile_activity_task_badges_disabled,
             Res.string.settings_mobile_composer_key,
             Res.string.settings_mobile_composer_key_detail,
+            Res.string.settings_mobile_composer_key_detail_hardware_keyboard,
             Res.string.settings_mobile_composer_key_send,
             Res.string.settings_mobile_composer_key_new_line,
             Res.string.settings_mobile_composer_key_enabled,

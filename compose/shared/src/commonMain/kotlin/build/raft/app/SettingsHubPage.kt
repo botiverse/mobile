@@ -121,14 +121,19 @@ internal fun SettingsAppShellHomeContent(
  * Personal; "On {server}", the member's own settings in the current server, with Theme (the web
  * then has the server's Notifications; the app keeps that mute on Notifications); Workspace;
  * Resources. Theme is there only with a current server ([hasThemeServer]), as is the web's group.
+ * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
+ * of Appearance, the web's home for them, and there is no Mobile row.
  */
-internal fun settingsHomeRowKeys(hasThemeServer: Boolean): List<String> =
+internal fun settingsHomeRowKeys(
+    hasThemeServer: Boolean,
+    appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
+): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
         SettingsNativeDetailPage.LanguageRegion.key,
         SettingsNativeDetailPage.Appearance.key,
         SettingsNativeDetailPage.Notifications.key,
-        SettingsNativeDetailPage.Mobile.key,
+        SettingsNativeDetailPage.Mobile.key.takeUnless { appPreferencesUnderAppearance },
         SettingsDestinationStorage,
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
@@ -141,9 +146,17 @@ internal fun settingsHomeRowKeys(hasThemeServer: Boolean): List<String> =
         SettingsDestinationReleaseNotes,
     )
 
+/**
+ * Whether the app preferences (message alignment, compact messages, composer key, ...) sit under
+ * Appearance, as on the web (packages/web SettingsPanel AppearanceSection), instead of a "Mobile"
+ * page: on a fine pointer, the desktop app. Phones keep Mobile.
+ */
+internal fun settingsAppPreferencesUnderAppearance(finePointer: Boolean = raftPlatformHasFinePointer()): Boolean = finePointer
+
 @Composable
 internal fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
+    appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
@@ -264,7 +277,11 @@ internal fun appShellSettingsHomePayload(
     return RaftSettingsHomePayload(
         title = stringResource(Res.string.settings_title),
         subtitle = "",
-        items = settingsHomeRowKeys(hasThemeServer = themeServer != null).mapNotNull(rows::get),
+        items =
+            settingsHomeRowKeys(
+                hasThemeServer = themeServer != null,
+                appPreferencesUnderAppearance = appPreferencesUnderAppearance,
+            ).mapNotNull(rows::get),
     )
 }
 

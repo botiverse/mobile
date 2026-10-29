@@ -207,7 +207,7 @@ internal fun rememberRaftLinkNavigator(
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage) {
         RaftLinkNavigator(
-            modeProvider = preferenceRepository::getLinkOpenModeSync,
+            modeProvider = { effectiveLinkOpenMode(preferenceRepository.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
                 when (routeScope) {
                     RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
@@ -222,3 +222,12 @@ internal fun rememberRaftLinkNavigator(
         )
     }
 }
+
+/**
+ * The link mode in effect: the saved one where an in-app browser can show a page; the default
+ * browser on desktop, which has no embedded web view yet (and no "Open web links" choice).
+ */
+internal fun effectiveLinkOpenMode(
+    saved: LinkOpenMode,
+    supportsInAppBrowser: Boolean = raftPlatformSupportsInAppBrowser(),
+): LinkOpenMode = if (supportsInAppBrowser) saved else LinkOpenMode.SystemBrowser

@@ -52,6 +52,21 @@ internal expect fun raftPlatformComposerEnterSendsByDefault(): Boolean
 internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
 
 /**
+ * The app is driven by a mouse or trackpad and a hardware keyboard, like the web on a fine pointer
+ * (`(pointer: fine)`): the Compose desktop app. Settings follows the web's grouping there (the
+ * device's app preferences sit under Appearance, web AppearanceSection, not a "Mobile" page) and
+ * the composer copy talks about Enter. Phones and tablets keep their touch layout and copy.
+ */
+internal expect fun raftPlatformHasFinePointer(): Boolean
+
+/**
+ * An in-app browser page can show a web page. Desktop has no embedded web view yet
+ * (RaftDesktopActuals `RaftSandboxWebViewHost`), so its web links always open in the default
+ * browser and Settings does not offer the "Open web links" choice.
+ */
+internal expect fun raftPlatformSupportsInAppBrowser(): Boolean
+
+/**
  * Desktop paste into the composer (web MessageInput `handlePaste`): whether the system clipboard
  * holds files or an image, and those as attachments. Phones paste text only (false / empty).
  */

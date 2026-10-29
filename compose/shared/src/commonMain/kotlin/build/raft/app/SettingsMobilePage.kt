@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,44 +49,86 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+/**
+ * The callbacks of the app preference cards ([settingsAppPreferenceItems]): Settings > Mobile on a
+ * phone, Settings > Appearance on a fine pointer ([raftPlatformHasFinePointer]).
+ */
+internal class SettingsAppPreferenceActions(
+    val onAlignmentChange: (String?) -> Unit = {},
+    val onLinkOpenModeChange: (String?) -> Unit = {},
+    val onCompactConsecutiveMessagesChange: (Boolean) -> Unit = {},
+    val onLongMessageCollapseChange: (Boolean) -> Unit = {},
+    val onNewMessageMenuChange: (Boolean) -> Unit = {},
+    val onConversationForwardGestureChange: (Boolean) -> Unit = {},
+    val onActivityTaskStatusBadgesChange: (Boolean) -> Unit = {},
+    val onComposerSendKeyChange: (Boolean) -> Unit = {},
+    val onMultiShellHostChange: (Boolean) -> Unit = {},
+    val onDesktopModeOnLargeScreenChange: (Boolean) -> Unit = {},
+    val onServerDrawerChange: (Boolean) -> Unit = {},
+    val onHomeServerAvatarChange: (Boolean) -> Unit = {},
+    val onThreadReverseLayoutChange: (Boolean) -> Unit = {},
+    val diagnosticsLogger: (String) -> Unit = {},
+)
+
+/** Which app preference cards, and which copy, this platform shows. */
+internal data class SettingsAppPreferenceVisibility(
+    /** "Open web links": only where an in-app browser can show a page (not desktop yet). */
+    val linkOpenMode: Boolean,
+    val multiShellHost: Boolean,
+    /** Composer key copy about Enter / Shift+Enter instead of the soft keyboard's action key. */
+    val hardwareKeyboardComposerCopy: Boolean,
+)
+
+internal fun settingsAppPreferenceVisibility(
+    finePointer: Boolean = raftPlatformHasFinePointer(),
+    supportsInAppBrowser: Boolean = raftPlatformSupportsInAppBrowser(),
+    supportsMultiShellHost: Boolean = raftPlatformSupportsMultiShellHost(),
+): SettingsAppPreferenceVisibility =
+    SettingsAppPreferenceVisibility(
+        linkOpenMode = supportsInAppBrowser,
+        multiShellHost = supportsMultiShellHost,
+        hardwareKeyboardComposerCopy = finePointer,
+    )
+
+/**
+ * Settings > Mobile. On a fine pointer the hub has no Mobile row and these cards sit at the end of
+ * Appearance instead (the web keeps its device preferences in AppearanceSection); this page stays
+ * reachable by its route.
+ */
 @Composable
 internal fun SettingsMobileContent(
     state: ScreenLoadState<SettingsMobileSnapshot>,
     actionState: SharedSettingsActionState?,
-    refreshing: Boolean,
     bottomContentPadding: Dp,
-    onAlignmentChange: (String?) -> Unit,
-    onLinkOpenModeChange: (String?) -> Unit,
-    onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
-    onLongMessageCollapseChange: (Boolean) -> Unit,
-    onNewMessageMenuChange: (Boolean) -> Unit,
-    onConversationForwardGestureChange: (Boolean) -> Unit,
-    onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
-    onComposerSendKeyChange: (Boolean) -> Unit,
-    onMultiShellHostChange: (Boolean) -> Unit,
-    onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
-    onServerDrawerChange: (Boolean) -> Unit,
-    onHomeServerAvatarChange: (Boolean) -> Unit,
-    onThreadReverseLayoutChange: (Boolean) -> Unit = {},
-    diagnosticsLogger: (String) -> Unit = {},
+    actions: SettingsAppPreferenceActions,
+    visibility: SettingsAppPreferenceVisibility = settingsAppPreferenceVisibility(),
 ) {
-    val snapshot =
-        when (state) {
-            is ScreenLoadState.Content -> state.data
-            else -> null
-        }
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (snapshot != null) {
-            item {
-                SettingsMessageAlignmentCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onAlignmentChange = onAlignmentChange
-                )
-            }
+        settingsAppPreferenceItems(state, actionState, actions, visibility)
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+/** The app preference cards, once [state] has content. */
+internal fun LazyListScope.settingsAppPreferenceItems(
+    state: ScreenLoadState<SettingsMobileSnapshot>,
+    actionState: SharedSettingsActionState?,
+    actions: SettingsAppPreferenceActions,
+    visibility: SettingsAppPreferenceVisibility,
+) {
+    val snapshot = (state as? ScreenLoadState.Content)?.data ?: return
+    with(actions) {
+        item {
+            SettingsMessageAlignmentCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onAlignmentChange = onAlignmentChange
+            )
+        }
+        if (visibility.linkOpenMode) {
             item {
                 SettingsLinkOpenModeCard(
                     snapshot = snapshot,
@@ -92,93 +136,93 @@ internal fun SettingsMobileContent(
                     onLinkOpenModeChange = onLinkOpenModeChange
                 )
             }
+        }
+        item {
+            SettingsCompactMessagesCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+            )
+        }
+        item {
+            SettingsLongMessageCollapseCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onLongMessageCollapseChange = onLongMessageCollapseChange
+            )
+        }
+        if (snapshot.threadReverseLayout.available) {
             item {
-                SettingsCompactMessagesCard(
+                SettingsThreadReverseLayoutCard(
                     snapshot = snapshot,
                     actionState = actionState,
-                    onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
-                )
-            }
-            item {
-                SettingsLongMessageCollapseCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onLongMessageCollapseChange = onLongMessageCollapseChange
-                )
-            }
-            if (snapshot.threadReverseLayout.available) {
-                item {
-                    SettingsThreadReverseLayoutCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onThreadReverseLayoutChange = onThreadReverseLayoutChange
-                    )
-                }
-            }
-            item {
-                SettingsNewMessageMenuCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onNewMessageMenuChange = onNewMessageMenuChange
-                )
-            }
-            if (snapshot.conversationForwardGesture.available) {
-                item {
-                    SettingsConversationForwardGestureCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onConversationForwardGestureChange = onConversationForwardGestureChange
-                    )
-                }
-            }
-            item {
-                SettingsActivityTaskStatusBadgesCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
-                )
-            }
-            item {
-                SettingsComposerSendKeyCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onComposerSendKeyChange = onComposerSendKeyChange
-                )
-            }
-            if (raftPlatformSupportsMultiShellHost()) {
-                item {
-                    SettingsMultiShellHostCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onMultiShellHostChange = onMultiShellHostChange
-                    )
-                }
-            }
-            item {
-                SettingsDesktopModeCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
-                    diagnosticsLogger = diagnosticsLogger
-                )
-            }
-            item {
-                SettingsServerDrawerCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onServerDrawerChange = onServerDrawerChange,
-                    diagnosticsLogger = diagnosticsLogger
-                )
-            }
-            item {
-                SettingsHomeServerAvatarCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onHomeServerAvatarChange = onHomeServerAvatarChange
+                    onThreadReverseLayoutChange = onThreadReverseLayoutChange
                 )
             }
         }
-        item { Spacer(Modifier.height(bottomContentPadding)) }
+        item {
+            SettingsNewMessageMenuCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onNewMessageMenuChange = onNewMessageMenuChange
+            )
+        }
+        if (snapshot.conversationForwardGesture.available) {
+            item {
+                SettingsConversationForwardGestureCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onConversationForwardGestureChange = onConversationForwardGestureChange
+                )
+            }
+        }
+        item {
+            SettingsActivityTaskStatusBadgesCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
+            )
+        }
+        item {
+            SettingsComposerSendKeyCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onComposerSendKeyChange = onComposerSendKeyChange,
+                hardwareKeyboard = visibility.hardwareKeyboardComposerCopy
+            )
+        }
+        if (visibility.multiShellHost) {
+            item {
+                SettingsMultiShellHostCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onMultiShellHostChange = onMultiShellHostChange
+                )
+            }
+        }
+        item {
+            SettingsDesktopModeCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onDesktopModeOnLargeScreenChange = onDesktopModeOnLargeScreenChange,
+                diagnosticsLogger = diagnosticsLogger
+            )
+        }
+        item {
+            SettingsServerDrawerCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onServerDrawerChange = onServerDrawerChange,
+                diagnosticsLogger = diagnosticsLogger
+            )
+        }
+        item {
+            SettingsHomeServerAvatarCard(
+                snapshot = snapshot,
+                actionState = actionState,
+                onHomeServerAvatarChange = onHomeServerAvatarChange
+            )
+        }
     }
 }
 
@@ -817,12 +861,13 @@ private fun SettingsActivityTaskStatusBadgesCard(
 private fun SettingsComposerSendKeyCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onComposerSendKeyChange: (Boolean) -> Unit
+    onComposerSendKeyChange: (Boolean) -> Unit,
+    hardwareKeyboard: Boolean,
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
     SettingsFormSectionCard(iconName = RaftLucideIconName.Send, title = stringResource(Res.string.settings_mobile_composer_key)) {
-        SettingsFormDetailText(stringResource(Res.string.settings_mobile_composer_key_detail))
+        SettingsFormDetailText(stringResource(settingsComposerKeyDetail(hardwareKeyboard)))
         Row(
             modifier =
                 Modifier
@@ -877,4 +922,12 @@ private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
         !available -> stringResource(Res.string.settings_state_unavailable)
         enabled -> stringResource(Res.string.settings_mobile_status_enabled)
         else -> stringResource(Res.string.settings_state_off)
+    }
+
+/** The composer key card's detail: Enter / Shift+Enter with a hardware keyboard, else the soft keyboard's action key. */
+internal fun settingsComposerKeyDetail(hardwareKeyboard: Boolean): StringResource =
+    if (hardwareKeyboard) {
+        Res.string.settings_mobile_composer_key_detail_hardware_keyboard
+    } else {
+        Res.string.settings_mobile_composer_key_detail
     }

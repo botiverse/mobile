@@ -17569,7 +17569,11 @@ internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): Shared
                 ScreenLoadState.Loading
             },
         mobile =
-            if (destination == SharedSettingsDestination.Notifications || destination == SharedSettingsDestination.Mobile) {
+            if (
+                destination == SharedSettingsDestination.Notifications ||
+                    destination == SharedSettingsDestination.Mobile ||
+                    destination == SharedSettingsDestination.Appearance
+            ) {
                 ScreenLoadState.Content(settingsVisualMobileSnapshot())
             } else {
                 ScreenLoadState.Loading

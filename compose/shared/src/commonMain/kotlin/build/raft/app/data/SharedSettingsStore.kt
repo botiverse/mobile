@@ -2795,8 +2795,11 @@ class SharedSettingsStore(
                 dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
                 dataSource.loadLanguageRegion().applyToState(destination) { copy(languageRegion = it) }
             }
-            SharedSettingsDestination.Appearance ->
+            SharedSettingsDestination.Appearance -> {
+                // The desktop app shows the app preferences (Mobile's cards) under Appearance, like the web.
+                dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
                 dataSource.loadAppearance().applyToState(destination) { copy(appearance = it) }
+            }
             SharedSettingsDestination.Notifications ->
                 dataSource.loadMobile().preservingPendingServerNotificationMode()
                     .applyToState(destination) { copy(mobile = it) }
