@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.31}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.35}"
 APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 CHANNEL="${HANDS_CHANNEL:-${SLOCK_HANDS_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
@@ -107,7 +107,7 @@ Environment overrides:
   HANDS_API=https://hands.build
   HANDS_AUTH_TOKEN=<agent or CI bearer token>
   HANDS_CLI=hands
-  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.31
+  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.35
   SLOCK_ANDROID_VERSION_MAJOR=1
   SLOCK_ANDROID_VERSION_MINOR=0
   SLOCK_ANDROID_VERSION_PATCH=0
