@@ -285,8 +285,10 @@ private fun FollowersPopover(
     RaftAnchoredPopover(
         anchor = anchor, contentSize = size,
         onDismiss = { dispatch(ThreadAgentFollowersIntent.Close) },
-        horizontalOffset = 0f,
-        horizontalPlacement = RaftFloatingHorizontalPlacement.Center,
+        // Hangs from the trigger like the web's menu (its right edge under the avatar chip's),
+        // not centred in the window: the window can be a wide desktop one (artin, 10-29).
+        horizontalOffset = -size.width,
+        horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor,
         verticalOffset = with(density) { 6.dp.toPx() },
         viewportGap = with(density) { 8.dp.toPx() },
         verticalPlacement = RaftFloatingVerticalPlacement.Auto,
