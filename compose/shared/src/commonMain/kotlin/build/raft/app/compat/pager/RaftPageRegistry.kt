@@ -38,6 +38,10 @@ import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.LocalRaftNativeTabBarBridge
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
 import build.raft.app.RaftNativeTabBarRegistry
+import build.raft.app.RaftSideActionHostIdPageDataKey
+import build.raft.app.RaftSideActionHostRegistry
+import build.raft.app.rememberRaftSideActionHost
+import build.raft.designsystem.components.LocalRaftSideActionHost
 import build.raft.app.RaftPageHorizontalSafeAreaShell
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.image.raftInstallImageLoader
@@ -183,6 +187,14 @@ fun RaftPagerHost(
     // stayed on the old channel while the shell had already selected the new one. Kuikly gave each
     // page its own render view, so this is that contract.
     key(pager) {
+    // iPhone Duo: the host's system bar buttons for this page's side column (iOS), while the host
+    // has switched them on; null everywhere else, and the column draws itself.
+    val sideActionHost =
+        rememberRaftSideActionHost(
+            remember(pager) {
+                RaftSideActionHostRegistry.bridgeFor(pager.pageData.params.optString(RaftSideActionHostIdPageDataKey))
+            }
+        )
     CompositionLocalProvider(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalRaftPageArgs provides args,
@@ -191,6 +203,7 @@ fun RaftPagerHost(
             remember(pager) {
                 RaftNativeTabBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeTabBarHostIdPageDataKey))
             },
+        LocalRaftSideActionHost provides sideActionHost,
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {

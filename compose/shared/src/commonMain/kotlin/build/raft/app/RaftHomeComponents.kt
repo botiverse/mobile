@@ -4208,6 +4208,8 @@ private fun homeSideColumnBellAction(
         onClick = onToggle,
         attention = visible.isNotEmpty(),
         attentionDescription = attentionDescription,
+        // The iOS host may draw Home's column (the bell alone) with a system bar button.
+        systemSymbol = "bell",
     )
 }
 

@@ -68,6 +68,9 @@ data class RaftSideColumnKeepOut(val top: Dp, val bottom: Dp)
  *   [priority] stays longer, and on a tie the action listed first does. Neither makes room
  *   that is not there, nor lifts the two-action cap
  *   ([RaftSideActionColumnDefaults.MaxActions]).
+ * - [systemSymbol] names the SF Symbol ("chevron.backward") a host draws for it when the host
+ *   draws the column with its own system bar buttons ([RaftSideActionHost]); null keeps the
+ *   column drawing [icon]. Ignored without such a host.
  */
 @Immutable
 data class RaftSideAction(
@@ -79,6 +82,7 @@ data class RaftSideAction(
     val attentionDescription: String? = null,
     val keepVisible: Boolean = false,
     val priority: Int = 0,
+    val systemSymbol: String? = null,
     val icon: @Composable (size: Dp) -> Unit,
 )
 
@@ -162,6 +166,12 @@ object RaftSideActionColumnDefaults {
  *
  * The column needs a bounded height (it fills it, like [RaftAppRail]); under an unbounded one
  * it takes the height its buttons need.
+ *
+ * Under a [LocalRaftSideActionHost], the host may draw the buttons with its own system bar
+ * buttons (iOS 27.1's vertical bar items), and only when every [primary] and [actions] entry has
+ * a [RaftSideAction.systemSymbol]: never half the host's, half ours. The column then keeps its
+ * [width] and height, so the page still ends at its inner edge, but draws neither buttons nor the
+ * hairline (the system strip has its own). See [RaftSideActionHost].
  */
 @Composable
 fun RaftSideActionColumn(
@@ -175,6 +185,11 @@ fun RaftSideActionColumn(
     keepOut: List<RaftSideColumnKeepOut> = emptyList(),
     overflowLabel: String = RaftTheme.strings.moreActions,
 ) {
+    if (raftSideActionHostHandoff(primary, actions, overflowLabel)) {
+        // The host's system strip draws the buttons and its own edge: hold the column's place only.
+        Box(modifier.fillMaxHeight().width(width))
+        return
+    }
     val colors = RaftTheme.colors
     val onRight = side == RaftSideActionColumnSide.Right
     val hairline = colors.lineHairline

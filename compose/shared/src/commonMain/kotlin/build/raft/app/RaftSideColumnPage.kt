@@ -40,6 +40,8 @@ import build.raft.designsystem.components.RaftSideColumnKeepOut
 // The page ends at the column's inner edge and the column holds the page's controls: Back first on
 // a pushed page, then at most two page actions and a ⋯; on a top-level page the actions over the
 // host's native (icon-only) tab bar. Off Duo nothing here draws or measures anything.
+// Where the iOS host can (RaftSideActionHostBridge) and every button has an SF Symbol, the system
+// draws the column's buttons and the column only keeps its width.
 
 /**
  * The side-column facts for this window, mapped from the host's [RaftAdaptivePaneEvent] by
@@ -257,18 +259,32 @@ internal fun raftSideColumnFallbackBack(back: RaftSideAction): Boolean {
 @Composable
 internal fun raftSideColumnActive(): Boolean = LocalRaftSideColumnHost.current != null
 
-/** The column's Back (`arrow-left`, 44pt): first in the column, never in the ⋯. */
+/** The SF Symbol of the column's Back when the iOS host draws the column (see [RaftSideAction.systemSymbol]). */
+internal const val RaftSideColumnBackSystemSymbol = "chevron.backward"
+
+/**
+ * The column's Back (`arrow-left`, 44pt): first in the column, never in the ⋯. [systemSymbol]: see
+ * [RaftSideAction.systemSymbol] ([RaftSideColumnBackSystemSymbol] on a page the host may draw).
+ */
 @Composable
-internal fun raftSideColumnBackAction(onBack: () -> Unit, enabled: Boolean = true): RaftSideAction =
+internal fun raftSideColumnBackAction(
+    onBack: () -> Unit,
+    enabled: Boolean = true,
+    systemSymbol: String? = null,
+): RaftSideAction =
     RaftSideAction(
         id = "back",
         label = stringResource(Res.string.common_back),
         onClick = onBack,
         enabled = enabled,
         keepVisible = true,
+        systemSymbol = systemSymbol,
     ) { size -> RaftGlyphIcon(RaftGlyph.ArrowLeft, size = size) }
 
-/** A page action drawn with a Lucide icon in the column's ink. */
+/**
+ * A page action drawn with a Lucide icon in the column's ink; [systemSymbol] is the SF Symbol the
+ * iOS host draws instead (see [RaftSideAction.systemSymbol]).
+ */
 internal fun raftSideColumnLucideAction(
     id: String,
     label: String,
@@ -277,6 +293,7 @@ internal fun raftSideColumnLucideAction(
     attention: Boolean = false,
     attentionDescription: String? = null,
     priority: Int = 0,
+    systemSymbol: String? = null,
 ): RaftSideAction =
     RaftSideAction(
         id = id,
@@ -285,4 +302,5 @@ internal fun raftSideColumnLucideAction(
         attention = attention,
         attentionDescription = attentionDescription,
         priority = priority,
+        systemSymbol = systemSymbol,
     ) { size -> RaftContentLucideIcon(icon, size = size) }
