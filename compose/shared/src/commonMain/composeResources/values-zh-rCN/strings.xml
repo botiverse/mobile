@@ -1913,7 +1913,9 @@
     <string name="home_section_create">创建</string>
     <string name="home_section_name_label">名称</string>
     <string name="home_section_name_placeholder">我的项目</string>
-    <string name="home_section_emoji_label">表情</string>
+    <string name="home_section_choose_emoji">选择分区表情</string>
+    <string name="home_section_change_emoji">更改分区表情，当前为 %1$s</string>
+    <string name="home_section_remove_emoji">移除表情</string>
     <string name="home_section_move_to_pinned">已置顶</string>
     <string name="home_section_menu_sort_title">排序</string>
     <string name="home_section_menu_display_title">显示</string>

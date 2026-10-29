@@ -188,6 +188,29 @@ class InteractiveComponentScreenshotTest {
             }
         }
 
+    /** InputGroup with a button addon at the start (web sidebar section dialog: the emoji picker trigger). */
+    @Test
+    fun textFieldLeadingAction() =
+        capture("text_field_leading_action") {
+            Column(Modifier.width(310.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Caption("Start button addon: placeholder, value, focused, pressed, disabled")
+                RaftTextField("", {}, placeholder = "My Project", leadingAction = { RaftTextFieldAction({}, "Choose Emoji") { RaftGlyphIcon(RaftGlyph.Info) } })
+                RaftTextField("Design lab", {}, leadingAction = { RaftTextFieldAction({}, "Choose Emoji") { RaftGlyphIcon(RaftGlyph.Info) } })
+                StateCell(focused = true) {
+                    RaftTextField("Design lab", {}, leadingAction = { RaftTextFieldAction({}, "Choose Emoji") { RaftGlyphIcon(RaftGlyph.Info) } })
+                }
+                StateCell(pressed = true) {
+                    RaftTextField("Design lab", {}, leadingAction = { RaftTextFieldAction({}, "Choose Emoji") { RaftGlyphIcon(RaftGlyph.Info) } })
+                }
+                RaftTextField(
+                    "Design lab",
+                    {},
+                    enabled = false,
+                    leadingAction = { RaftTextFieldAction({}, "Choose Emoji", enabled = false) { RaftGlyphIcon(RaftGlyph.Info) } },
+                )
+            }
+        }
+
     @Test
     fun textarea() =
         capture("textarea") {

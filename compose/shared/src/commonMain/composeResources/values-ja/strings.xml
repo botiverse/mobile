@@ -1915,7 +1915,9 @@
     <string name="home_section_create">作成</string>
     <string name="home_section_name_label">名前</string>
     <string name="home_section_name_placeholder">マイプロジェクト</string>
-    <string name="home_section_emoji_label">絵文字</string>
+    <string name="home_section_choose_emoji">セクションの絵文字を選択</string>
+    <string name="home_section_change_emoji">セクションの絵文字を変更（現在：%1$s）</string>
+    <string name="home_section_remove_emoji">絵文字を削除</string>
     <string name="home_section_move_to_pinned">ピン留め済み</string>
     <string name="home_section_menu_sort_title">並べ替え</string>
     <string name="home_section_menu_display_title">表示</string>
