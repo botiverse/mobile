@@ -575,10 +575,10 @@ private fun P8MessageCard(message: RaftThreadMessageItem, time: String, showRepl
     )
 }
 
-private const val P8Channel = "ship-mobile"
+internal const val P8Channel = "ship-mobile"
 
 @Composable
-private fun P8ChannelHeader(copy: P8Copy) {
+private fun P8ChannelHeader(copy: P8Copy, showBack: Boolean = true) {
     val payload =
         remember {
             RaftThreadScreenPayload(
@@ -608,6 +608,7 @@ private fun P8ChannelHeader(copy: P8Copy) {
         agentStatusResolver = P8StatusResolver,
         memberAvatarResolver = P8AvatarResolver,
         applyTopSafeArea = false,
+        showBack = showBack,
         onBack = {},
         onOpenInChannel = {},
         onOpenMemberProfile = {},
@@ -751,9 +752,9 @@ private fun P8Composer(placeholder: String, surfaceKind: String = RaftThreadSurf
 // ---- 1. Team chat ----------------------------------------------------------------------------------
 
 @Composable
-private fun P8ChatScene(copy: P8Copy) {
+internal fun P8ChatScene(copy: P8Copy, showBack: Boolean = true) {
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        P8ChannelHeader(copy)
+        P8ChannelHeader(copy, showBack)
         // From Maya's request to Scout down: the same messages on screen in every language.
         P8MessageList(copy.chat, Modifier.weight(1f).fillMaxWidth(), topIndex = 2, descriptions = copy.agentDescriptions, typing = listOf("agent-forge", "agent-scout"))
         P8Composer(stringResource(Res.string.thread_composer_placeholder_channel, P8Channel))
@@ -769,7 +770,7 @@ private fun P8ChatScene(copy: P8Copy) {
  * editor's popover, which needs a focused IME the JVM capture does not have.
  */
 @Composable
-private fun P8MentionScene(copy: P8Copy) {
+internal fun P8MentionScene(copy: P8Copy, showBack: Boolean = true) {
     val placeholder = stringResource(Res.string.thread_composer_placeholder_channel, P8Channel)
     val payload =
         remember(copy) {
@@ -796,7 +797,7 @@ private fun P8MentionScene(copy: P8Copy) {
         }
     val surface = remember { payload.toThreadComposerSurface(channelId = P8Channel, mentionChannelLabel = P8Channel) }
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        P8ChannelHeader(copy)
+        P8ChannelHeader(copy, showBack)
         Box(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             // The morning's first messages, then the bug report the request answers, down to the
             // composer: the picker floats over the lower ones, as the app's suggestion popover
@@ -843,7 +844,7 @@ private fun P8MentionScene(copy: P8Copy) {
 // ---- 3. A reply thread: Forge answers, Scout joins in ---------------------------------------------------
 
 @Composable
-private fun P8ThreadScene(copy: P8Copy) {
+internal fun P8ThreadScene(copy: P8Copy, showBack: Boolean = true) {
     val origin = remember(copy) { p8MessageItems(listOf(copy.threadOrigin), "origin", copy.agentDescriptions).single() }
     val replies = copy.threadReplies
     val payload =
@@ -905,6 +906,7 @@ private fun P8ThreadScene(copy: P8Copy) {
             agentStatusResolver = P8StatusResolver,
             memberAvatarResolver = P8AvatarResolver,
             applyTopSafeArea = false,
+            showBack = showBack,
             onBack = {},
             onOpenInChannel = {},
             onOpenMemberProfile = {},
@@ -933,7 +935,7 @@ private fun P8ThreadScene(copy: P8Copy) {
 
 // ---- 4. Tasks, to do through done -------------------------------------------------------------------------
 
-private fun p8TaskSummaries(copy: P8Copy): List<TaskSummary> =
+internal fun p8TaskSummaries(copy: P8Copy): List<TaskSummary> =
     copy.tasks.mapIndexed { index, task ->
         TaskWireDto(
             id = "task-p8-${task.number}",
@@ -958,7 +960,7 @@ private fun p8TaskSummaries(copy: P8Copy): List<TaskSummary> =
     }
 
 @Composable
-private fun P8TasksScene(copy: P8Copy) {
+internal fun P8TasksScene(copy: P8Copy, bottomBar: Boolean = true, mode: TasksViewMode = TasksViewMode.List) {
     val tasks = remember(copy) { p8TaskSummaries(copy) }
     Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -968,11 +970,12 @@ private fun P8TasksScene(copy: P8Copy) {
                 showHeader = true,
                 showChannelFilter = true,
                 initialPresentationOverride =
-                    TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List, collapsedStatuses = setOf(TaskStatus.Closed)),
+                    TasksPresentationState.Default.copy(selectedMode = mode, collapsedStatuses = setOf(TaskStatus.Closed)),
                 timeContext = StoreTime,
             )
         }
-        StoreBottomBar("tasks")
+        // iPhone: iOS draws its own tab bar over the page (frames.py); the page runs under it.
+        if (bottomBar) StoreBottomBar("tasks")
     }
 }
 
@@ -1000,7 +1003,7 @@ private val P8Machines =
     )
 
 @Composable
-private fun P8AgentScene(copy: P8Copy, tab: String) {
+internal fun P8AgentScene(copy: P8Copy, tab: String) {
     val forge = P8Agents.first()
     val member =
         remember(copy) {
@@ -1148,7 +1151,7 @@ private fun p8DmRow(agentId: String, unread: Int, preview: String, at: String) =
 
 private const val P8SwipedRowKey = "thread:t-512"
 
-private fun p8ActivityRows(copy: P8Copy): List<InboxItem> {
+internal fun p8ActivityRows(copy: P8Copy): List<InboxItem> {
     val a = copy.activity
     return listOf(
         p8ChannelRow(P8Channel, 3, true, "agent-nova", a.channelPreview, "2026-10-27T02:12:00Z"),
@@ -1161,7 +1164,7 @@ private fun p8ActivityRows(copy: P8Copy): List<InboxItem> {
 }
 
 @Composable
-private fun P8ActivityScene(copy: P8Copy, swipe: Boolean) {
+internal fun P8ActivityScene(copy: P8Copy, swipe: Boolean, bottomBar: Boolean = true, selectedKey: String? = null) {
     val rows = remember(copy) { p8ActivityRows(copy) }
     val context =
         remember {
@@ -1198,7 +1201,7 @@ private fun P8ActivityScene(copy: P8Copy, swipe: Boolean) {
                         item = item,
                         model = item.activityConversationRowModel(context, InboxFilter.All),
                         divider = index > 0,
-                        selected = false,
+                        selected = item.key == selectedKey,
                         timeContext = StoreTime,
                         agentStatusResolver = P8StatusResolver,
                         canMarkDone = true,
@@ -1217,7 +1220,7 @@ private fun P8ActivityScene(copy: P8Copy, swipe: Boolean) {
                 }
             }
         }
-        StoreBottomBar("activity")
+        if (bottomBar) StoreBottomBar("activity")
     }
 }
 
@@ -1226,7 +1229,19 @@ private fun P8ActivityScene(copy: P8Copy, swipe: Boolean) {
 private val P8Channels = listOf("general", P8Channel, "design", "support", "growth")
 
 @Composable
-private fun P8HomeScene(copy: P8Copy) {
+internal fun P8HomeScene(copy: P8Copy, bottomBar: Boolean = true) {
+    Column(Modifier.fillMaxSize()) {
+        P8HomeList(copy, Modifier.weight(1f).fillMaxWidth())
+        if (bottomBar) StoreBottomBar("home")
+    }
+}
+
+/**
+ * Home's channels and DMs. [wide]: the wide layout's list pane (no server switcher, the shell's
+ * rail has it), [selectedChannelId] highlighted.
+ */
+@Composable
+internal fun P8HomeList(copy: P8Copy, modifier: Modifier, wide: Boolean = false, selectedChannelId: String? = null) {
     val channels =
         remember {
             P8Channels.mapIndexed { index, name ->
@@ -1272,9 +1287,8 @@ private fun P8HomeScene(copy: P8Copy) {
     val resolver: RaftAgentStatusResolver = remember { { id -> flowOf(statuses[id]) } }
     // The shell's own bar is a stand-in with More; the app's bar ends with the server tab, drawn
     // by StoreBottomBar under the shell.
-    Column(Modifier.fillMaxSize()) {
     RaftStructuralHomeShell(
-        modifier = Modifier.weight(1f).fillMaxWidth(),
+        modifier = modifier,
         currentServerName = "Northwind Labs",
         currentServerId = "srv-store",
         servers = listOf(RaftServerSwitcherItem(id = "srv-store", name = "Northwind Labs", slug = "northwind")),
@@ -1287,15 +1301,15 @@ private fun P8HomeScene(copy: P8Copy) {
         memberAvatarResolver = P8AvatarResolver,
         contentRefreshEnabled = false,
         selectedTabKey = "home",
+        selectedChannelId = selectedChannelId,
         showBottomBar = false,
-        applyTopSafeArea = true,
-        topSafeAreaOverride = null,
-        bottomContentPadding = RaftAppSpacing.Lg,
+        serverSwitcherInTopBar = wide,
+        applyTopSafeArea = !wide,
+        topSafeAreaOverride = if (wide) 0.dp else null,
+        bottomContentPadding = if (wide) 0.dp else RaftAppSpacing.Lg,
         searchAndActivityOnShellNav = true,
         outerPadding = 0.dp,
     )
-    StoreBottomBar("home")
-    }
 }
 
 private fun p8HomeDm(id: String, copy: P8Copy, unread: Int): RaftHomeConversationItem {

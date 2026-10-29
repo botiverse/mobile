@@ -62,3 +62,26 @@ python3 scripts/store-screenshots/frames.py --set play8 --raw /tmp/store-raw8 --
 
 Output: `<out>/<lang>/NN-scene.png` (1080×1920, RGB) and `<out>/contact-<lang>.png`. The copy
 lives in `PLAY8_SCENES`.
+
+## App Store set of 8 (`--set appstore8`)
+
+`StorePlay8AppStoreScreenshotsTest` renders the Play 8 scenes (same demo content, Raft yellow) for
+the App Store: `iphone` (430×836dp, every scene) and iPhone Duo on the current Duo layout:
+`duo-outer` (466×678dp, the pushed pages 01, 02, 03, 05 beside the side column) and
+`duo-inner-portrait` (669×907dp) / `duo-inner-landscape` (951×669dp), the desktop mode without
+the top bar (rail with the server tile, Search first, the bell in the footer; 01, 02, 03, 04, 06).
+zh-Hant uses en's renders (English UI). On iPhone the tab scenes render no Compose bar: the frame
+draws the iOS 26 glass tab bar (Home, Activity, Tasks, Search + the server's round button), the
+iOS status bar with the Dynamic Island and the home indicator.
+
+```bash
+cd compose
+RAFT_STORE_SCREENSHOTS=/tmp/store-rawA8 ./gradlew :shared:testDebugUnitTest \
+  -Draft.test.watchdog.timeout.ms=3600000 --tests 'build.raft.app.StorePlay8AppStoreScreenshotsTest'
+python3 scripts/store-screenshots/frames.py --set appstore8 --raw /tmp/store-rawA8 --out /tmp/appstore8 \
+  --fonts /tmp/store-fonts/node_modules/@fontsource
+```
+
+Output: `<out>/<device>/<lang>/NN-scene.png` for `iphone-6.9` (1320×2868), `iphone-6.5`
+(1284×2778), `duo-outer`, `duo-inner-portrait`, `duo-inner-landscape`; `<out>/contact-<device>.png`
+and `<out>/index.html`.

@@ -155,7 +155,178 @@ PLAY8_HEADLINE_SCALE = 1.12
 PLAY8_TEXT_LINES = (2, 1)
 
 
-def contact_sheet(paths, out_png, cols=4, scale=3, gap=24):
+# The App Store 8-shot set (`--set appstore8`, StorePlay8AppStoreScreenshotsTest): the Play 8 scenes
+# and copy at iPhone size with the iPhone's own chrome, plus iPhone Duo. (device, raw profile, w, h,
+# scenes). Duo takes the scenes that read on its shape: the outer screen's pushed pages; the inner
+# screen's list + detail scenes.
+APPSTORE8_DEVICES = [
+    ("iphone-6.9", "iphone", 1320, 2868, [k for k, _, _ in PLAY8_SCENES]),
+    ("iphone-6.5", "iphone", 1284, 2778, [k for k, _, _ in PLAY8_SCENES]),
+    ("duo-outer", "duo-outer", 1398, 2034, ["01-chat", "02-mention", "03-thread", "05-agent"]),
+    ("duo-inner-portrait", "duo-inner-portrait", 2007, 2853, ["01-chat", "02-mention", "03-thread", "04-tasks", "06-activity"]),
+    ("duo-inner-landscape", "duo-inner-landscape", 2853, 2007, ["01-chat", "02-mention", "03-thread", "04-tasks", "06-activity"]),
+]
+# The iOS tab bar's selected tab per scene; the other scenes are pushed pages with no bar.
+APPSTORE8_TAB_SCENES = {"04-tasks": "tasks", "06-activity": "activity", "07-swipe": "activity", "08-home": "home"}
+# zh-Hant shows the English UI (StorePlay8ScreenshotsTest): its raw renders are en's.
+APPSTORE8_RAW_LANG = {"zh-Hant": "en"}
+# Raw content size per profile in dp (rendered at 3x): the frame's chrome is drawn around it.
+APPSTORE8_RAW_DP = {"iphone": (430, 836), "duo-outer": (466, 678), "duo-inner-portrait": (669, 907), "duo-inner-landscape": (951, 669)}
+RES_DIR = f"{REPO}/compose/shared/src/commonMain/composeResources"
+ICON_DIR = f"{REPO}/compose/iosApp/iosApp/Assets.xcassets"
+
+
+def app_strings(lang, keys):
+    """The app's own strings for [keys] in [lang]'s UI (zh-Hant: the English UI)."""
+    import re
+    folder = {"zh-Hans": "values-zh-rCN", "ja": "values-ja"}.get(lang, "values")
+    text = open(f"{RES_DIR}/{folder}/strings.xml", encoding="utf-8").read()
+    out = {}
+    for k in keys:
+        m = re.search(rf'<string name="{k}">(.*?)</string>', text)
+        out[k] = html.unescape(m.group(1)) if m else k
+    return out
+
+
+def lucide(name, size_dp, color="currentColor", stroke=2):
+    """The app's Lucide tab glyph (the iOS asset catalog's SVG), [size_dp] square."""
+    import re
+    svg = open(f"{ICON_DIR}/lucide-{name}.imageset/{name}.svg").read()
+    body = re.search(r">\s*(.*)</svg>", svg, re.S).group(1)
+    return (f'<svg viewBox="0 0 24 24" style="width:calc(var(--u)*{size_dp});height:calc(var(--u)*{size_dp})" fill="none" '
+            f'stroke="{color}" stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+
+
+IOS_FONT = "'Noto Sans SC','Noto Sans JP',sans-serif"
+IOS_CSS = """
+.ios-sb{position:relative;flex:none;color:#000}
+.ios-sb .t{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+ font-family:%(font)s;font-weight:600;letter-spacing:calc(var(--u)*-0.2)}
+.ios-sb .r{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:calc(var(--u)*5)}
+.ios-sb .island{position:absolute;left:50%%;transform:translateX(-50%%);top:calc(var(--u)*11);width:calc(var(--u)*126);
+ height:calc(var(--u)*37);border-radius:calc(var(--u)*19);background:#000}
+.ios-hi{position:absolute;left:50%%;transform:translateX(-50%%);bottom:calc(var(--u)*8);width:calc(var(--u)*144);
+ height:calc(var(--u)*5);border-radius:calc(var(--u)*3);background:#000}
+.glass{background:rgba(250,250,250,.62);-webkit-backdrop-filter:blur(calc(var(--u)*10)) saturate(1.8);backdrop-filter:blur(calc(var(--u)*10)) saturate(1.8);
+ box-shadow:0 calc(var(--u)*6) calc(var(--u)*24) rgba(0,0,0,.13),0 0 0 calc(var(--u)*.5) rgba(0,0,0,.07),
+ inset 0 calc(var(--u)*1) calc(var(--u)*1) rgba(255,255,255,.95),inset 0 calc(var(--u)*-1) calc(var(--u)*1) rgba(255,255,255,.5)}
+.tabbar{position:absolute;left:calc(var(--u)*21);right:calc(var(--u)*21);bottom:calc(var(--u)*21);height:calc(var(--u)*62);
+ display:flex;gap:calc(var(--u)*10)}
+.tabbar .cap{flex:1;border-radius:calc(var(--u)*31);display:flex;align-items:stretch;padding:calc(var(--u)*4)}
+.tabbar .it{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:calc(var(--u)*1);color:#000;border-radius:calc(var(--u)*27)}
+.tabbar .it.sel{background:rgba(0,0,0,.075)}
+.tabbar .it span{font-family:%(font)s;font-size:calc(var(--u)*10);font-weight:600;line-height:1.2;white-space:nowrap}
+.tabbar .badge{position:absolute;top:calc(var(--u)*3);left:calc(50%% + var(--u)*6);min-width:calc(var(--u)*18);
+ height:calc(var(--u)*18);padding:0 calc(var(--u)*5);border-radius:calc(var(--u)*9);background:#FF3B30;color:#fff;display:flex;
+ align-items:center;justify-content:center;font-family:%(font)s;font-size:calc(var(--u)*12);font-weight:600}
+.tabbar .srv{width:calc(var(--u)*62);flex:none;border-radius:50%%;display:flex;align-items:center;justify-content:center}
+.tabbar .av{width:calc(var(--u)*40);height:calc(var(--u)*40);border-radius:50%%;background:#141111;color:#FFD441;display:flex;
+ align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:calc(var(--u)*18)}
+.cam{position:absolute;border-radius:50%%;background:radial-gradient(circle at 40%% 40%%,#2a2f3a 0,#0b0b0d 55%%);
+ box-shadow:0 0 0 calc(var(--u)*1.5) #1d1d1f}
+""" % {"font": IOS_FONT}
+
+
+def ios_status_icons():
+    """Cellular bars, Wi-Fi and the battery, drawn as iOS draws them (black on a light bar)."""
+    u = "var(--u)"
+    bars = "".join(f'<rect x="{i * 4.6:.1f}" y="{11 - h}" width="3.2" height="{h}" rx="1"/>' for i, h in enumerate((4.2, 6.4, 8.7, 11)))
+    cell = f'<svg viewBox="0 0 17 11" style="width:calc({u}*17);height:calc({u}*11)" fill="#000">{bars}</svg>'
+    wifi = (f'<svg viewBox="0 0 16 12" style="width:calc({u}*15.5);height:calc({u}*11.5)" fill="none" stroke="#000" stroke-linecap="round">'
+            '<path d="M1.6 4.6 A9.2 9.2 0 0 1 14.4 4.6" stroke-width="2.3"/><path d="M4.4 7.5 A5.2 5.2 0 0 1 11.6 7.5" stroke-width="2.3"/>'
+            '<path d="M8 11.2 L6.6 9.9 A2 2 0 0 1 9.4 9.9 Z" fill="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>')
+    bat = (f'<svg viewBox="0 0 28 13" style="width:calc({u}*27.3);height:calc({u}*13)">'
+           '<rect x=".5" y=".5" width="24" height="12" rx="3.8" fill="none" stroke="#000" stroke-opacity=".35"/>'
+           '<rect x="2.5" y="2.5" width="20" height="8" rx="2.2" fill="#000"/>'
+           '<path d="M26 4.4 v4.2 a2 2 0 0 0 0 -4.2z" fill="#000" fill-opacity=".4"/></svg>')
+    return cell + wifi + bat
+
+
+def ios_status(width_dp, height_dp, island, time_size=17):
+    """The iOS status bar over [top_color]: 9:41 in the left ear, the icons in the right one; the
+    Dynamic Island between them on an iPhone."""
+    ear = (width_dp - 126) / 2 if island else 120
+
+    def build(top_color):
+        right = f"left:calc(var(--u)*{width_dp - ear})" if island else f"right:calc(var(--u)*18)"
+        return (f'<div class="ios-sb" style="height:calc(var(--u)*{height_dp});background:{top_color}">'
+                f'<span class="t" style="left:calc(var(--u)*{12 if island else 18});width:calc(var(--u)*{ear - 6:.1f});font-size:calc(var(--u)*{time_size})'
+                f'{"" if island else ";justify-content:flex-start"}">9:41</span>'
+                + ('<i class="island"></i>' if island else "")
+                + f'<span class="r" style="{right};{f"width:calc(var(--u)*{ear - 12:.1f})" if island else ""}">{ios_status_icons()}</span></div>')
+    return build
+
+
+def ios_tab_bar(lang, selected):
+    """iOS 26's tab bar as the app's RaftIosTabBarController lays it out: a Liquid Glass capsule
+    with Home, Activity, Tasks and Search (the app's Lucide glyphs, tinted `.label`, the selected
+    one on the glass's platter, Activity's unread count as UIKit's red badge), and the current
+    server as its own round glass button (its initial tile: ink, yellow initial)."""
+    labels = app_strings(lang, ["tab_home", "tab_activity", "tab_tasks", "home_nav_search"])
+    tabs = [("home", "house", labels["tab_home"]), ("activity", "activity", labels["tab_activity"]),
+            ("tasks", "square-check-big", labels["tab_tasks"]), ("search", "search", labels["home_nav_search"])]
+    items = []
+    for key, icon, label in tabs:
+        badge = '<b class="badge">4</b>' if key == "activity" and selected != "activity" else ""
+        items.append(f'<div class="it{" sel" if key == selected else ""}">{lucide(icon, 24, stroke=1.9)}<span>{html.escape(label)}</span>{badge}</div>')
+    return (f'<div class="tabbar"><div class="cap glass">{"".join(items)}</div>'
+            f'<div class="srv glass"><div class="av">N</div></div></div>')
+
+
+def appstore8_index(out):
+    """<out>/index.html: every device's contact sheet, then its shots per language, as found on disk."""
+    parts = ["<!doctype html><meta charset='utf-8'><title>Raft App Store screenshots</title>",
+             "<style>body{font-family:sans-serif;margin:24px;background:#f6f4ee}h2{margin-top:40px}"
+             "figure{display:inline-block;margin:0 12px 16px 0;vertical-align:top}figure img{height:360px;border:1px solid #ccc}"
+             "figcaption{font:12px monospace}.sheet{max-width:100%;border:1px solid #ccc}</style>",
+             "<h1>Raft App Store screenshots (8-shot set)</h1>"]
+    for device, _, w, h, _ in APPSTORE8_DEVICES:
+        ddir = os.path.join(out, device)
+        if not os.path.isdir(ddir):
+            continue
+        parts.append(f"<h2>{device} ({w}&times;{h})</h2>")
+        if os.path.exists(os.path.join(out, f"contact-{device}.png")):
+            parts.append(f"<p><a href='contact-{device}.png'>contact sheet</a></p>")
+        for lang in PLAY8_LANGS:
+            ldir = os.path.join(ddir, lang)
+            if not os.path.isdir(ldir):
+                continue
+            parts.append(f"<h3>{lang}</h3><div>")
+            for f in sorted(os.listdir(ldir)):
+                rel = f"{device}/{lang}/{f}"
+                parts.append(f"<figure><a href='{rel}'><img src='{rel}' loading='lazy'></a><figcaption>{rel}</figcaption></figure>")
+            parts.append("</div>")
+    path = os.path.join(out, "index.html")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(parts))
+    return path
+
+
+def appstore8_chrome(device, scene, lang):
+    """Frame metrics and the drawn system chrome per App Store device."""
+    if device.startswith("iphone"):
+        overlay = '<i class="ios-hi"></i>'
+        if scene in APPSTORE8_TAB_SCENES:
+            overlay = ios_tab_bar(lang, APPSTORE8_TAB_SCENES[scene]) + overlay
+        # 430pt wide: the 6.9" iPhone's 62pt status bar (Dynamic Island) and 34pt home indicator.
+        return {"sbDp": 62, "hbDp": 34, "bezel": 0.034, "radiusDp": 58, "css": IOS_CSS,
+                "status": ios_status(430, 62, island=True), "overlay": overlay}
+    if device == "duo-inner-portrait":
+        return {"sbDp": 24, "hbDp": 20, "bezel": 0.024, "radiusDp": 24, "css": IOS_CSS,
+                "status": ios_status(669, 24, island=False, time_size=14)}
+    # Outer screen and the inner one held sideways: the side column holds the camera and the
+    # system's status, so the page runs from the top; the camera in the column's top band.
+    band, radius = (48, 34) if device == "duo-outer" else (40, 24)
+    width = 466 if device == "duo-outer" else 951
+    cam = 12
+    overlay = (f'<i class="cam" style="left:calc(var(--u)*{width - 28 - cam / 2});top:calc(var(--u)*{band / 2 - cam / 2});'
+               f'width:calc(var(--u)*{cam});height:calc(var(--u)*{cam})"></i>')
+    return {"sbDp": 0, "hbDp": 0, "bezel": 0.03 if device == "duo-outer" else 0.022, "radiusDp": radius, "css": IOS_CSS,
+            "status": lambda _c: "", "overlay": overlay}
+
+
+def contact_sheet(paths, out_png, cols=4, scale=3, gap=24, labels=os.path.basename):
     """The set at 1/[scale] size in a [cols]-wide grid on white, each shot labelled with its file name."""
     from PIL import ImageDraw
     thumbs = [Image.open(p).convert("RGB") for p in paths]
@@ -167,7 +338,7 @@ def contact_sheet(paths, out_png, cols=4, scale=3, gap=24):
     for i, (im, p) in enumerate(zip(thumbs, paths)):
         x, y = gap + (i % cols) * (tw + gap), gap + (i // cols) * (th + label + gap)
         sheet.paste(im.resize((tw, th), Image.LANCZOS), (x, y))
-        draw.text((x, y + th + 8), os.path.basename(p), fill=(20, 17, 17))
+        draw.text((x, y + th + 8), labels(p), fill=(20, 17, 17))
     sheet.save(out_png, "PNG", optimize=True)
     return out_png
 
@@ -185,7 +356,7 @@ def fonts_css(fonts):
         base = os.path.join(fonts, pkg)
         if pkg == "noto-sans-tc" and not os.path.isdir(base):
             continue  # only the zh-Hant set needs it
-        for w in (400, 500, 700):
+        for w in (400, 500, 600, 700):
             css.append(open(os.path.join(base, f"{w}.css")).read().replace("url(./files/", f"url(file://{base}/files/"))
     faces = [
         ("Space Grotesk", 400, "space_grotesk_regular.ttf"),
@@ -256,10 +427,11 @@ document.fonts.ready.then(function(){
 </script>"""
 
 
-def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=1.0, text_lines=None):
+def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=1.0, text_lines=None, chrome=None):
     landscape = w > h
     tablet = profile in TABLET_PROFILES
     raw = Image.open(shot)
+    chrome = chrome or {}
     s = (h / 1080 * 0.92) if landscape else (w / 1080)
     cjk = lang != "en"
     hl = ((66 if cjk else 72) * s if landscape else (68 if cjk else 74) * s) * hl_scale
@@ -278,6 +450,9 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=
         "maxW": w * (0.66 if landscape else (0.90 if tablet else 0.76)),
         "vAlign": 0.5 if landscape else 0.0,
     }
+    for k in ("sbDp", "hbDp", "bezel", "radiusDp"):
+        if k in chrome:
+            fit[k] = chrome[k]
     top_color, bottom_color = edge_color(shot), edge_color(shot, bottom=True)
     if style == "A":
         bg = (f"background:{CREAM};background-image:radial-gradient(rgba(20,17,17,.13) {2*s:.1f}px,transparent {2.5*s:.1f}px);"
@@ -308,6 +483,12 @@ def page(style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale=
         # 1.3: a line holding the highlight is that tall in English too (.m line-height)
         reserve = (f"h1{{min-height:{hl_lines * hl * 1.3:.0f}px}}"
                    f"p{{min-height:{sub_lines * 33 * s * 1.4:.0f}px}}")
+    if "status" in chrome:
+        status_html = chrome["status"](top_color)
+    else:
+        status_html = (f'<div class="sb" style="background:{top_color}"><span>9:41</span>'
+                       '<span class="sbi"><i class="sig"></i><i class="wifi"></i><i class="bat"></i></span></div>')
+    hb_html = f'<div class="hb" style="background:{bottom_color}"><i></i></div>' if fit["hbDp"] else ""
     if landscape:
         layout = f"""body{{flex-direction:row}}
 .top{{width:{0.36*w:.0f}px;flex:none;display:flex;flex-direction:column;justify-content:center;padding:0 {24*s:.0f}px 0 {80*s:.0f}px}}"""
@@ -341,12 +522,14 @@ p{{margin-top:{30*s:.0f}px;font-size:{33*s:.0f}px;line-height:1.4;font-weight:50
 .bat:after{{content:'';position:absolute;left:calc(var(--u)*1.5);top:calc(var(--u)*1.5);bottom:calc(var(--u)*1.5);right:calc(var(--u)*1.5);background:currentColor;border-radius:1px}}
 .hb{{height:calc(var(--u)*{fit['hbDp']});flex:none;display:flex;align-items:center;justify-content:center}}
 .hb i{{display:block;width:calc(var(--u)*{200 if tablet else 134});height:calc(var(--u)*5);border-radius:calc(var(--u)*3);background:{INK}}}
+.screen{{position:relative}}
+{chrome.get("css", "")}
 </style></head><body>
 <div class="top">{kicker}<h1>{mark(headline, cls)}</h1><p>{mark(sub, 'm')}</p></div>
 <div class="stage"><div class="device" data-fit='{__import__("json").dumps(fit)}'><div class="screen">
-<div class="sb" style="background:{top_color}"><span>9:41</span><span class="sbi"><i class="sig"></i><i class="wifi"></i><i class="bat"></i></span></div>
+{status_html}
 <img src="file://{shot}">
-<div class="hb" style="background:{bottom_color}"><i></i></div></div></div></div>
+{hb_html}{chrome.get("overlay", "")}</div></div></div>
 {FIT_JS}
 </body></html>"""
 
@@ -425,7 +608,7 @@ def main():
     ap.add_argument("--langs")
     ap.add_argument("--scenes")
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("--set", default="store", choices=["store", "play8"],
+    ap.add_argument("--set", default="store", choices=["store", "play8", "appstore8"],
                     help="play8: the 8 Play phone shots per language, <out>/<lang>/NN-scene.png + contact-<lang>.png")
     a = ap.parse_args()
     raw, out = os.path.abspath(a.raw), os.path.abspath(a.out)
@@ -435,6 +618,44 @@ def main():
     langs = a.langs.split(",") if a.langs else LANGS
     scenes = set(a.scenes.split(",")) if a.scenes else None
     jobs = []
+    if a.set == "appstore8":
+        langs = a.langs.split(",") if a.langs else PLAY8_LANGS
+        copy_by_key = {key: (accent, copy) for key, accent, copy in PLAY8_SCENES}
+        sets = []
+        for device, profile, w, h, keys in APPSTORE8_DEVICES:
+            if devices and device not in devices:
+                continue
+            for lang in langs:
+                paths = []
+                for idx, key in enumerate(keys, start=1):
+                    if scenes and key not in scenes:
+                        continue
+                    shot = os.path.join(raw, profile, APPSTORE8_RAW_LANG.get(lang, lang), key + ".png")
+                    if not os.path.exists(shot):
+                        raise SystemExit(f"missing raw render {shot}")
+                    want = tuple(3 * d for d in APPSTORE8_RAW_DP[profile])
+                    if Image.open(shot).size != want:
+                        raise SystemExit(f"{shot}: raw render is {Image.open(shot).size}, expected {want}")
+                    accent, copy = copy_by_key[key]
+                    headline, sub = copy[lang]
+                    out_png = f"{out}/{device}/{lang}/{key}.png"
+                    jobs.append((page(a.style, shot, profile, accent, headline, sub, idx, lang, w, h, PLAY8_HEADLINE_SCALE,
+                                      PLAY8_TEXT_LINES, chrome=appstore8_chrome(device, key, lang)), out_png, w, h))
+                    paths.append(out_png)
+                sets.append((device, lang, paths))
+        with concurrent.futures.ThreadPoolExecutor(a.jobs) as pool:
+            for done in pool.map(lambda j: render(*j), jobs):
+                print("wrote", done)
+        for device in {d for d, _, _ in sets}:
+            rows = [p for d, _, paths in sets if d == device for p in paths]
+            cols = max(len(paths) for d, _, paths in sets if d == device)
+            dw, dh = next((dw, dh) for d, _, dw, dh, _ in APPSTORE8_DEVICES if d == device)
+            if rows and all(os.path.exists(p) for p in rows):
+                print("wrote", contact_sheet(rows, f"{out}/contact-{device}.png", cols=cols, scale=5 if dw < dh else 6,
+                                             labels=lambda p: os.path.relpath(p, out)))
+        print("wrote", appstore8_index(out))
+        print(len(jobs), "images")
+        return
     if a.set == "play8":
         langs = a.langs.split(",") if a.langs else PLAY8_LANGS
         for lang in langs:
