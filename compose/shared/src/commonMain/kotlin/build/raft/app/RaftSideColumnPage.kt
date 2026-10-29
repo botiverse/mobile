@@ -61,6 +61,12 @@ internal data class RaftSideColumnPosture(
     val stripWidth: Dp = RaftSideActionColumnDefaults.Width,
     val nativeTabBarHeight: Dp = 0.dp,
     val keepOut: List<RaftSideColumnKeepOut> = emptyList(),
+    /**
+     * The window is on iPhone Duo's inner display (host `display == duoInner`), held either way.
+     * Upright there is no [sideColumn], but the screen is still the apps' desktop mode without the
+     * top bar (raft-design #859 "The inner screen"; Kirby 2026-10-28).
+     */
+    val duoInner: Boolean = false,
 ) {
     companion object {
         val None = RaftSideColumnPosture()
@@ -75,12 +81,14 @@ internal data class RaftSideColumnPosture(
  * x-range on its edge of a `widthPx / density` wide window.
  */
 internal fun RaftAdaptivePaneEvent.toRaftSideColumnPosture(): RaftSideColumnPosture {
-    if (!sideColumn) return RaftSideColumnPosture.None
+    val duoInner = display == RaftAdaptiveDisplay.DuoInner
+    val noColumn = RaftSideColumnPosture(duoInner = duoInner)
+    if (!sideColumn) return noColumn
     val side =
         when (stripEdge) {
             RaftAdaptiveSideColumn.Left -> RaftSideActionColumnSide.Left
             RaftAdaptiveSideColumn.Right -> RaftSideActionColumnSide.Right
-            RaftAdaptiveSideColumn.None -> return RaftSideColumnPosture.None
+            RaftAdaptiveSideColumn.None -> return noColumn
         }
     val widthPt = if (stripWidthPt.isFinite() && stripWidthPt > 0f) stripWidthPt else RaftSideActionColumnDefaults.Width.value
     val windowWidthPt = if (density > 0f) widthPx / density else 0f
@@ -97,6 +105,7 @@ internal fun RaftAdaptivePaneEvent.toRaftSideColumnPosture(): RaftSideColumnPost
         stripWidth = widthPt.dp,
         nativeTabBarHeight = (if (nativeTabBarHeightPt.isFinite()) nativeTabBarHeightPt.coerceAtLeast(0f) else 0f).dp,
         keepOut = keepOut,
+        duoInner = duoInner,
     )
 }
 
