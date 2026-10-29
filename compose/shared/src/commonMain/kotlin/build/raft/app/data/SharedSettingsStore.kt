@@ -541,7 +541,6 @@ sealed interface SharedSettingsIntent {
     data class SetLinkOpenMode(val mode: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewMessageMenuEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetConversationForwardGestureEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
@@ -1304,14 +1303,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_single_tap_thread_unavailable", retryable = false))
-        repository.setSingleTapOpensThreadEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setNewMessageMenuEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1717,13 +1708,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Long message collapse preference is not available on this platform."
-                    ),
-            singleTapOpensThread =
-                chatLayout?.toSettingsMobileSingleTapOpensThreadSnapshot()
-                    ?: singleTapOpensThread.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Single-tap Thread opening is not available on this platform."
                     ),
             newMessageMenu =
                 chatLayout?.toSettingsMobileNewMessageMenuSnapshot()
@@ -2604,14 +2588,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setLongMessageCollapseEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
-            }
-            is SharedSettingsIntent.SetSingleTapOpensThreadEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD, inProgress = true)
-                    )
-                dataSource.setSingleTapOpensThreadEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
             }
             is SharedSettingsIntent.SetNewMessageMenuEnabled -> {
                 _state.value =
@@ -4110,7 +4086,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLinkOpenMode,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
-            is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
             is SharedSettingsIntent.SetNewMessageMenuEnabled,
             is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
@@ -4359,7 +4334,6 @@ internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
-internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
 internal const val MOBILE_ACTION_NEW_MESSAGE_MENU = "newMessageMenu"
 internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
@@ -4579,14 +4553,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnap
         available = true,
         statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
         detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
-    )
-
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = singleTapOpensThreadEnabled,
-        available = true,
-        statusLabel = if (singleTapOpensThreadEnabled) "Enabled" else "Off",
-        detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileNewMessageMenuSnapshot(): SettingsMobileToggleSnapshot =

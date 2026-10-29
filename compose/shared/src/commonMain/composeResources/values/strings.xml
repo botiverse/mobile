@@ -335,6 +335,8 @@
     <string name="thread_new_message_menu_more">More</string>
     <string name="thread_action_reply_in_thread">Reply in Thread</string>
     <string name="thread_action_add_reaction">Add Reaction</string>
+    <string name="thread_message_a11y_open_thread">Open thread</string>
+    <string name="thread_message_a11y_add_reaction">Add reaction</string>
     <string name="thread_action_remove_from_saved">Remove from Saved</string>
     <string name="thread_action_save_message">Save Message</string>
     <string name="thread_action_unfollow_thread">Unfollow Thread</string>
@@ -2104,10 +2106,6 @@
     <string name="conversation_long_message_collapse_follows_global_off">Following the Mobile setting: off</string>
     <string name="conversation_long_message_collapse_override_on">On for this conversation only (the Mobile setting is off)</string>
     <string name="conversation_long_message_collapse_override_off">Off for this conversation only (the Mobile setting is on)</string>
-    <string name="settings_mobile_single_tap_thread">Single tap opens Thread</string>
-    <string name="settings_mobile_single_tap_thread_detail">Open a message Thread by tapping its body once. Replies and the message menu remain available when this is off.</string>
-    <string name="settings_mobile_single_tap_thread_enabled">Tap message bodies to open Thread</string>
-    <string name="settings_mobile_single_tap_thread_disabled">Use replies or the message menu</string>
     <string name="settings_mobile_activity_task_badges">Activity task status badges</string>
     <string name="settings_mobile_activity_task_badges_detail">Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list.</string>
     <string name="settings_mobile_activity_task_badges_enabled">Show task status chips in Activity rows</string>

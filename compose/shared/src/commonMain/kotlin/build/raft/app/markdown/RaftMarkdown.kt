@@ -39,6 +39,10 @@ import build.raft.designsystem.tokens.RaftOpacity
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -2901,6 +2905,26 @@ private val RaftMarkdownCodeActionSize = 28.dp
 private val RaftMarkdownCodeActionRadius = 6.dp
 
 /**
+ * Told when a tap lands on a code block, so a message row's own tap can leave it alone: the web's
+ * `handleMobileTap` skips taps on `pre, code` (stdrc, 2026-10-29, #proj-raft-ui:911ccc08). Called on
+ * the tap's release, before the row dispatches its tap; the pointer is never consumed, so a long
+ * press, text selection and the copy button work as before. Null outside a message row.
+ */
+internal val LocalRaftMarkdownCodeTapObserver = compositionLocalOf<(() -> Unit)?> { null }
+
+@Composable
+private fun Modifier.raftMarkdownObserveCodeTap(): Modifier {
+    val observer = LocalRaftMarkdownCodeTapObserver.current ?: return this
+    val currentObserver by rememberUpdatedState(observer)
+    return pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            if (waitForUpOrCancellation() != null) currentObserver()
+        }
+    }
+}
+
+/**
  * Code block surface. Replaces the vendor `MarkdownCode`, whose background is
  * drawn before the clip (square corners) and which has no border.
  */
@@ -2915,6 +2939,7 @@ private fun RaftMarkdownCodeSurface(code: String, language: String?, style: Text
                 .fillMaxWidth()
                 .padding(vertical = RaftMarkdownCodeSurfaceVerticalInset)
                 .clip(shape)
+                .raftMarkdownObserveCodeTap()
                 .background(RaftMarkdownCodeBlockBackground)
                 .border(1.dp, RaftColor.BorderHairline, shape)
     ) {

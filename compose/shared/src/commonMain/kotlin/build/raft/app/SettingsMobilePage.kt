@@ -8,7 +8,6 @@ import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
-import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
 import build.raft.app.data.MOBILE_ACTION_NEW_MESSAGE_MENU
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
@@ -58,7 +57,6 @@ internal fun SettingsMobileContent(
     onLinkOpenModeChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
-    onSingleTapOpensThreadChange: (Boolean) -> Unit,
     onNewMessageMenuChange: (Boolean) -> Unit,
     onConversationForwardGestureChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
@@ -106,13 +104,6 @@ internal fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onLongMessageCollapseChange = onLongMessageCollapseChange
-                )
-            }
-            item {
-                SettingsSingleTapOpensThreadCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
                 )
             }
             if (snapshot.threadReverseLayout.available) {
@@ -646,58 +637,6 @@ private fun SettingsLongMessageCollapseCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsSingleTapOpensThreadCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onSingleTapOpensThreadChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.inProgress
-    val preference = snapshot.singleTapOpensThread
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.MessageSquare,
-        title = stringResource(Res.string.settings_mobile_single_tap_thread)
-    ) {
-        SettingsFormDetailText(stringResource(Res.string.settings_mobile_single_tap_thread_detail))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onSingleTapOpensThreadChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = preference.localizedToggleStatus(),
-                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack
-                )
-                Text(
-                    text =
-                        if (preference.enabled) {
-                            stringResource(Res.string.settings_mobile_single_tap_thread_enabled)
-                        } else {
-                            stringResource(Res.string.settings_mobile_single_tap_thread_disabled)
-                        },
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
-            }
-            RaftSwitchButton(
-                checked = preference.enabled,
-                enabled = preference.available && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

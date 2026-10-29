@@ -130,7 +130,6 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.desktopModeOnLargeScreen)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled, "long messages show in full by default (web #10275)")
-        assertEquals(false, snapshot.singleTapOpensThreadEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -184,16 +183,6 @@ class LocalPreferencesTest {
         repository.setServerDrawerEnabled(true)
 
         assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
-    }
-
-    @Test
-    fun chatLayoutSnapshotModelDefaultsSingleTapThreadOpeningOff() {
-        assertEquals(
-            false,
-            ChatLayoutPreferenceSnapshot(
-                myMessageAlignment = MyMessageAlignmentPreference.Left
-            ).singleTapOpensThreadEnabled
-        )
     }
 
     @Test
@@ -252,30 +241,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun chatLayoutRestoresExplicitSingleTapThreadChoiceAcrossDefaultChanges() = runBlocking {
-        val disabledStore = InMemoryRaftKeyValueStore()
-        val disabledPreferenceStore = KeyValueChatLayoutPreferenceStore(disabledStore)
-        disabledPreferenceStore.saveSingleTapOpensThreadEnabled(false)
-
-        val disabledRestored =
-            PersistentChatLayoutPreferenceRepository(
-                KeyValueChatLayoutPreferenceStore(disabledStore)
-            ).getChatLayoutPreference()
-
-        val enabledStore = InMemoryRaftKeyValueStore()
-        val enabledPreferenceStore = KeyValueChatLayoutPreferenceStore(enabledStore)
-        enabledPreferenceStore.saveSingleTapOpensThreadEnabled(true)
-
-        val enabledRestored =
-            PersistentChatLayoutPreferenceRepository(
-                KeyValueChatLayoutPreferenceStore(enabledStore)
-            ).getChatLayoutPreference()
-
-        assertEquals(false, disabledRestored.singleTapOpensThreadEnabled)
-        assertEquals(true, enabledRestored.singleTapOpensThreadEnabled)
-    }
-
-    @Test
     fun homeServerAvatarPreferenceDefaultsOnAndKeepsAnExplicitOff() = runBlocking {
         // Task #470: on for anyone without a stored choice; a user who turned it off stays off.
         val key = "mobile:home_server_avatar_enabled"
@@ -331,7 +296,6 @@ class LocalPreferencesTest {
         val navigation = repository.setDesktopModeOnLargeScreen(false)
         val compact = repository.setCompactConsecutiveMessages(true)
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
-        val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
         val newMessageMenu = repository.setNewMessageMenuEnabled(true)
         val conversationForwardGesture = repository.setConversationForwardGestureEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
@@ -355,7 +319,6 @@ class LocalPreferencesTest {
         assertEquals(false, navigation.desktopModeOnLargeScreen)
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
-        assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
         assertEquals(true, newMessageMenu.newMessageMenuEnabled)
         assertEquals(true, conversationForwardGesture.conversationForwardGestureEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
@@ -372,7 +335,6 @@ class LocalPreferencesTest {
         assertEquals(false, restored.desktopModeOnLargeScreen)
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.longMessageCollapseEnabled)
-        assertEquals(true, restored.singleTapOpensThreadEnabled)
         assertEquals(true, restored.newMessageMenuEnabled)
         assertEquals(true, restored.conversationForwardGestureEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)

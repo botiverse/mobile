@@ -1091,8 +1091,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-tap")
-                    .put("visualFixture", "default")
-                    .put("singleTapOpensThreadEnabled", true),
+                    .put("visualFixture", "default"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1129,8 +1128,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-markdown-link-child-tap")
-                    .put("visualFixture", "markdown_link_child")
-                    .put("singleTapOpensThreadEnabled", true),
+                    .put("visualFixture", "markdown_link_child"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1178,8 +1176,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-markdown-mention-child-tap")
-                    .put("visualFixture", "markdown_mention_child")
-                    .put("singleTapOpensThreadEnabled", true),
+                    .put("visualFixture", "markdown_mention_child"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1227,8 +1224,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-long-press")
-                    .put("visualFixture", "default")
-                    .put("singleTapOpensThreadEnabled", true),
+                    .put("visualFixture", "default"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1324,8 +1320,7 @@ class KmpVisualScreenshotCaptureTest {
                         .put("instanceId", "visual-$caseId")
                         .put("visualFixture", "new_message_menu_demo")
                         .put("newMessageMenuComposerBoundaryVisible", composerBoundaryVisible)
-                        .put("longPressMenuVisibleToken", menuVisibleToken)
-                        .put("singleTapOpensThreadEnabled", true),
+                        .put("longPressMenuVisibleToken", menuVisibleToken),
                 crop = FULL_VIEWPORT_CROP,
                 suppressSoftKeyboard = false,
                 capturedBitmapAfterBeforeScreenshot = {
@@ -1574,8 +1569,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-new-message-menu-compact-scroll")
-                    .put("visualFixture", "new_message_menu_demo")
-                    .put("singleTapOpensThreadEnabled", true),
+                    .put("visualFixture", "new_message_menu_demo"),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = {
                 dismissCompatibilityDialog()
@@ -1615,11 +1609,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-new-message-menu-compact-tap")
                     .put("visualFixture", "new_message_menu_demo")
-                    // Single-tap thread opening applies only to messages that
-                    // already have replies, so give this case's compact target
-                    // group a reply. Sibling cases omit it and stay reply-less.
-                    .put("newMessageMenuTargetReplyCount", 1)
-                    .put("singleTapOpensThreadEnabled", true),
+                    // A tap opens any message's thread, with or without replies
+                    // (stdrc, 2026-10-29); this case's compact target keeps a reply
+                    // so its thread opens on existing content.
+                    .put("newMessageMenuTargetReplyCount", 1),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = {
                 dismissCompatibilityDialog()

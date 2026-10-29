@@ -44,7 +44,6 @@ class RaftChatLayoutPreferencesTest {
             repository.setDesktopModeOnLargeScreen(false)
             repository.setCompactConsecutiveMessages(false)
             repository.setLongMessageCollapseEnabled(true)
-            repository.setSingleTapOpensThreadEnabled(false)
             repository.setNewMessageMenuEnabled(true)
             repository.setConversationForwardGestureEnabled(true)
             repository.setForegroundMessageBannersEnabled(true)
@@ -58,14 +57,13 @@ class RaftChatLayoutPreferencesTest {
             repository.setTranslationMode(TranslationModePreference.Automatic)
             repository.setTranslationTargetLanguage("ja")
 
-            assertEquals(17, firstSnapshots.size)
+            assertEquals(16, firstSnapshots.size)
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
                 assertFalse(snapshot.desktopModeOnLargeScreen)
                 assertFalse(snapshot.compactConsecutiveMessages)
                 assertTrue(snapshot.longMessageCollapseEnabled)
-                assertFalse(snapshot.singleTapOpensThreadEnabled)
                 assertTrue(snapshot.newMessageMenuEnabled)
                 assertTrue(snapshot.conversationForwardGestureEnabled)
                 assertTrue(snapshot.foregroundMessageBannersEnabled)
