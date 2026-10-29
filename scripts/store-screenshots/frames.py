@@ -166,6 +166,7 @@ APPSTORE8_DEVICES = [
     ("duo-inner-portrait", "duo-inner-portrait", 2007, 2853, ["01-chat", "02-mention", "03-thread", "04-tasks", "06-activity"]),
     ("duo-inner-landscape", "duo-inner-landscape", 2853, 2007, ["01-chat", "02-mention", "03-thread", "04-tasks", "06-activity"]),
 ]
+APPSTORE8_LANDSCAPE_HEADLINE_SCALE = 0.8
 # The iOS tab bar's selected tab per scene; the other scenes are pushed pages with no bar.
 APPSTORE8_TAB_SCENES = {"04-tasks": "tasks", "06-activity": "activity", "07-swipe": "activity", "08-home": "home"}
 # zh-Hant shows the English UI (StorePlay8ScreenshotsTest): its raw renders are en's.
@@ -639,7 +640,10 @@ def main():
                     accent, copy = copy_by_key[key]
                     headline, sub = copy[lang]
                     out_png = f"{out}/{device}/{lang}/{key}.png"
-                    jobs.append((page(a.style, shot, profile, accent, headline, sub, idx, lang, w, h, PLAY8_HEADLINE_SCALE,
+                    # Sideways the headline column is a third of the width: a size at which the
+                    # longest unbreakable highlight fits, so every shot keeps the same size.
+                    hl_scale = APPSTORE8_LANDSCAPE_HEADLINE_SCALE if w > h else PLAY8_HEADLINE_SCALE
+                    jobs.append((page(a.style, shot, profile, accent, headline, sub, idx, lang, w, h, hl_scale,
                                       PLAY8_TEXT_LINES, chrome=appstore8_chrome(device, key, lang)), out_png, w, h))
                     paths.append(out_png)
                 sets.append((device, lang, paths))

@@ -9,7 +9,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.platform.InfiniteAnimationPolicy
+import androidx.compose.ui.platform.WindowRecomposerPolicy
+import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.awaitCancellation
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IModuleCreator
@@ -78,12 +83,9 @@ class StorePlay8AppStoreScreenshotsTest {
         }
 
     private var previousFrameDelay: java.time.Duration? = null
-
     @BeforeTest
     fun registerPager() {
-        // The pulsing agent-status lights are infinite animations: at Robolectric's default frame
-        // delay the 3 s settle in captureStoreScreen runs thousands of full-screen frames (a Duo
-        // scene took over 15 min). 100 ms frames settle the same layout in ~30.
+        // Frames 100 ms apart while captureStoreScreen settles (see [captureAll] for the animations).
         previousFrameDelay = ShadowChoreographer.getFrameDelay()
         ShadowChoreographer.setFrameDelay(java.time.Duration.ofMillis(100))
         PagerManager.register(livePager)
@@ -111,7 +113,16 @@ class StorePlay8AppStoreScreenshotsTest {
 
     @Test fun ja() = captureAll(P8Lang.Ja)
 
-    private fun captureAll(lang: P8Lang) {
+    // The pulsing agent-status lights and the typing line are infinite animations: they keep
+    // Robolectric's settle producing frames for minutes per scene. Hold them at their first frame
+    // (the compose-ui-test way: an InfiniteAnimationPolicy that never runs the operation).
+    @OptIn(InternalComposeUiApi::class)
+    private fun captureAll(lang: P8Lang) =
+        WindowRecomposerPolicy.withFactory({ view -> view.createLifecycleAwareWindowRecomposer(StillInfiniteAnimations) }) {
+            captureAllStill(lang)
+        }
+
+    private fun captureAllStill(lang: P8Lang) {
         assumeTrue("set RAFT_STORE_SCREENSHOTS to render store screenshots", !outDir.isNullOrBlank())
         val copy = lang.copy
         val token = lang.locale.applyVisualCaptureLocale()
@@ -172,6 +183,11 @@ class StorePlay8AppStoreScreenshotsTest {
         if (sceneFilter != null && name !in sceneFilter) return
         captureStoreScreen(activities, livePager, File(dir, "$name.png"), theme = RaftThemeId.Raft, time = time, content = content)
     }
+}
+
+/** Infinite animations never start: the capture shows their first frame. */
+private object StillInfiniteAnimations : InfiniteAnimationPolicy {
+    override suspend fun <R> onInfiniteOperation(block: suspend () -> R): R = awaitCancellation()
 }
 
 internal data class AppStore8Profile(val key: String, val widthDp: Int, val heightDp: Int) {
