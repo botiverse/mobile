@@ -10050,7 +10050,10 @@ private fun SharedThreadRouteContentContent(
         val draftKey =
             normalizeThreadAttachmentUploadDraftKey(ownerDraftKey)
                 ?: normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-        val terminalAttachmentIds = attachmentUploadOrchestrator.failActive(draftKey, attachmentIds)
+        // Fail only this file's attempt.  Failing every active sibling here cancelled healthy
+        // uploads and produced a multi-id mark the strict reducer rejects, stranding every chip on
+        // "Checking file…" (oversize original image + small sibling, 1.17.0/1.17.1).
+        val terminalAttachmentIds = attachmentUploadOrchestrator.failAttempts(draftKey, attachmentIds)
         if (terminalAttachmentIds.isNotEmpty()) {
             // A current-state lookup is not a safe fallback here: after an A→B remount the
             // callback may carry A's local id while the state map now belongs to B.  Production

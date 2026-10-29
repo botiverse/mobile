@@ -415,14 +415,18 @@ internal class ThreadAttachmentUploadOrchestrator(
         return retiredIdentities.mapTo(mutableSetOf()) { it.localAttachmentId }
     }
 
-    fun failActive(
+    /**
+     * Terminally fails exactly [attachmentIds] in [draftKey] and returns them.  Siblings keep
+     * uploading: each file is admitted or rejected on its own, so one file's failure (for example
+     * an oversize original image rejected as UPLOAD_TOO_LARGE) must never cancel the others.
+     */
+    fun failAttempts(
         draftKey: String?,
-        additionalAttachmentIds: Set<String> = emptySet()
+        attachmentIds: Set<String>
     ): Set<String> =
         terminateAndCancel(
             draftKey = draftKey,
-            localAttachmentIds = additionalAttachmentIds,
-            includeAllActive = true
+            localAttachmentIds = attachmentIds
         )
 
     fun remove(localAttachmentId: String, draftKey: String?) {
@@ -441,8 +445,7 @@ internal class ThreadAttachmentUploadOrchestrator(
 
     private fun terminateAndCancel(
         draftKey: String?,
-        localAttachmentIds: Set<String>,
-        includeAllActive: Boolean = false
+        localAttachmentIds: Set<String>
     ): Set<String> {
         val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
         val requestedIds =
@@ -452,12 +455,7 @@ internal class ThreadAttachmentUploadOrchestrator(
         val retirement =
             publicationLockFor(normalizedDraftKey).withLock {
                 synchronized(stateLock) {
-                    val normalizedIds =
-                        if (includeAllActive) {
-                            fence.activeAttemptIds(normalizedDraftKey) + requestedIds
-                        } else {
-                            requestedIds
-                        }
+                    val normalizedIds = requestedIds
                     if (normalizedIds.isEmpty()) return@synchronized null
                     val identities =
                         normalizedIds.map { id ->
