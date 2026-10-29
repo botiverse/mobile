@@ -238,7 +238,8 @@ private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =
         else -> RaftAdaptivePanePosture.Unknown
     }
 
-private const val DualPaneMinimumWidthDp = 840f
+/** The window width (dp) from which the app lays out wide: two panes, the navigation rail. */
+internal const val DualPaneMinimumWidthDp = 840f
 
 internal fun RaftAdaptivePanePosture.toRaftAdaptivePanePostureWireName(): String =
     when (this) {
