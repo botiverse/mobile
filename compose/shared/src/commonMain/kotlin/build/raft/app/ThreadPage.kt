@@ -674,7 +674,6 @@ internal val ThreadNewMessageMenuSecondaryToolOrder =
     listOf(
         ThreadNewMessageMenuTool.CopySelection,
         ThreadNewMessageMenuTool.SelectText,
-        ThreadNewMessageMenuTool.AddReaction,
         ThreadNewMessageMenuTool.CopyLink,
         ThreadNewMessageMenuTool.MarkThreadUnread,
         ThreadNewMessageMenuTool.FollowThread,
@@ -739,6 +738,10 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val saved: Boolean = false,
     /** Translation in flight: the slot reads "Translating…" and is disabled (web parity). */
     val translatePending: Boolean = false,
+    /**
+     * The reaction row ends with Add Reaction (web `reaction-add-any`, the full emoji picker). Not a
+     * tool row entry: [ThreadNewMessageMenuTool.AddReaction] stays out of the tool orders.
+     */
     val addReaction: Boolean = false,
     val copyLink: Boolean = false,
     val followThread: Boolean = false,
@@ -27624,7 +27627,9 @@ private fun ThreadMessageCardContent(
                                             showSavedBadge = showSavedBadge,
                                             showReactionAddAction = showReactionAddAction,
                                             onToggleReaction = onToggleReaction,
-                                            onShowReactionDetails = onShowReactionDetails
+                                            onShowReactionDetails = onShowReactionDetails,
+                                            onShowQuickReactions =
+                                                if (quickReactionsEnabled) onShowQuickReactions else null
                                         )
                                     }
                                 }
@@ -27830,7 +27835,9 @@ internal fun ThreadNewMessageMenuChrome(
                     glyphSize = ThreadNewMessageMenuReactionGlyphSize,
                     horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
                     enabled = availability.reactions,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    // Eight 34dp slots over the 294dp inner width: still fits with SpaceBetween.
+                    onAddReaction = if (availability.addReaction) callbacks.onAddReaction else null
                 )
                 Box(
                     modifier =
@@ -30729,7 +30736,13 @@ internal fun ThreadMessageFooterMeta(
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null
+    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    /**
+     * The "+" beside the reactions opens the quick reaction bar at the chip (web
+     * `handleMobileReactionAddClick` opens its quick strip there); null when the message can't be
+     * quick-reacted to, where it falls back to the message menu.
+     */
+    onShowQuickReactions: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
     val hasTask = message.hasThreadTaskFooterMeta()
@@ -30807,7 +30820,7 @@ internal fun ThreadMessageFooterMeta(
             }
         }
         if (showReactionAddChip) {
-            ThreadReactionAddChip(messageId = message.id, onClick = onShowActions)
+            ThreadReactionAddChip(messageId = message.id, onClick = onShowQuickReactions ?: onShowActions)
         }
     }
 }
@@ -31128,9 +31141,13 @@ private val ThreadMessageMenuReactionPaddingHorizontal = 8.dp
 private val ThreadMessageMenuViewportGap = 8.dp
 private val ThreadMessageMenuShadowOffset = 4.dp
 
-internal fun threadMessageMenuWidthDp(showReactionActions: Boolean): Float {
+/**
+ * [showAddReactionAction]: the reaction row ends with Add Reaction (web `reaction-add-any`), one
+ * more button slot; the double-tap quick reaction bar has none.
+ */
+internal fun threadMessageMenuWidthDp(showReactionActions: Boolean, showAddReactionAction: Boolean = false): Float {
     if (!showReactionActions) return ThreadMessageMenuMinWidth.value
-    val reactionCount = ThreadQuickReactionEmojis.size
+    val reactionCount = ThreadQuickReactionEmojis.size + if (showAddReactionAction) 1 else 0
     val reactionRowWidth =
         reactionCount * ThreadMessageMenuReactionButtonSize.value +
             (reactionCount - 1).coerceAtLeast(0) * ThreadMessageMenuReactionGap.value +
@@ -31238,7 +31255,7 @@ internal fun threadFollowMenuIcon(isFollowed: Boolean): RaftLucideIconName =
 /**
  * What a message's long-press menu offers, shared by the Classic and Compact menus and aligned
  * with web MessageItem's context menu (botiverse/slock 9be029411):
- *  - quick reactions / Add Reaction: `!isSystem && canReact`
+ *  - quick reactions, and the reaction row's trailing Add Reaction (full picker): `!isSystem && canReact`
  *  - Select Message: not system, not a guest
  *  - Reply in Thread: `!hideThreadActions`
  *  - Forward: `showForwardAction` (non-guest, source channel) and `getForwardableMessages`
@@ -31296,9 +31313,11 @@ internal fun threadMessageMenuCapabilities(
         slice.showReplyActions || slice.originMessage?.id == message.id
     return ThreadMessageMenuCapabilities(
         quickReactions = canReact,
-        // Web's message menu has no "Add reaction" row (only the quick-reaction row); the full
-        // picker is the "+" beside a message's reactions (artin, 2026-10-21).
-        addReaction = false,
+        // Web's quick-reaction row ends with a SmilePlus "Add Reaction" (`reaction-add-any`) that
+        // opens the full emoji picker; it is the menu's only way there (the "+" beside a message's
+        // reactions opens the quick reaction bar). It replaced the old "no Add reaction row" rule
+        // (artin, 2026-10-21), which left the picker unreachable (Lagoon smoke, 2026-10-29).
+        addReaction = canReact,
         copyLink = !localSend,
         selectMessage = !localSend && !system && !slice.viewerIsGuest,
         translate = if (localSend) ThreadMessageMenuTranslateState.Hidden else translate,
@@ -31351,7 +31370,6 @@ internal fun threadMessageMenuActions(
     showTranslateAction: Boolean = false,
     translatePending: Boolean = false,
     showForwardAction: Boolean = false,
-    showAddReactionAction: Boolean = false,
     /** Task v2: the task item is "Create Task from Message". */
     createTaskFromMessage: Boolean = false,
     /** botiverse/slock #11687: "Mark Thread as Unread", right after Save. */
@@ -31375,20 +31393,10 @@ internal fun threadMessageMenuActions(
     onDelete: () -> Unit,
     onTranslate: () -> Unit = {},
     onForward: () -> Unit = {},
-    onAddReaction: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
+    // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     buildList {
-        if (showAddReactionAction) {
-            add(
-                ThreadMessageMenuAction(
-                    label = Res.string.thread_action_add_reaction.desc(),
-                    icon = RaftLucideIconName.SmilePlus,
-                    group = "reaction",
-                    onClick = onAddReaction
-                )
-            )
-        }
         if (onCopySelection != null) {
             add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
         }
@@ -31597,7 +31605,6 @@ private fun ThreadMessageActionMenu(
             showTranslateAction,
             translatePending,
             showForwardAction,
-            showAddReactionAction,
             showMarkThreadUnreadAction,
             onReply,
             onCopyLink,
@@ -31613,7 +31620,6 @@ private fun ThreadMessageActionMenu(
             onDelete,
             onTranslate,
             onForward,
-            onAddReaction,
             onMarkThreadUnread,
             onCopySelection
         ) {
@@ -31633,7 +31639,6 @@ private fun ThreadMessageActionMenu(
                 showTranslateAction = showTranslateAction,
                 translatePending = translatePending,
                 showForwardAction = showForwardAction,
-                showAddReactionAction = showAddReactionAction,
                 showMarkThreadUnreadAction = showMarkThreadUnreadAction,
                 onCopySelection = onCopySelection,
                 onReply = onReply,
@@ -31650,12 +31655,16 @@ private fun ThreadMessageActionMenu(
                 onDelete = onDelete,
                 onTranslate = onTranslate,
                 onForward = onForward,
-                onAddReaction = onAddReaction,
                 onMarkThreadUnread = onMarkThreadUnread
             )
         }
+    // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).
+    val showAddReaction = showReactionActions && showAddReactionAction
     val density = LocalDensity.current
-    val menuWidth = with(density) { threadMessageMenuWidthDp(showReactionActions).dp.toPx() }
+    val menuWidth =
+        with(density) {
+            threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = showAddReaction).dp.toPx()
+        }
     val menuHeight =
         with(density) {
             threadMessageMenuContentHeightDp(
@@ -31686,7 +31695,7 @@ private fun ThreadMessageActionMenu(
             "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
         },
         shellItems = shellItems,
-        shellContentKey = showReactionActions,
+        shellContentKey = showReactionActions to showAddReaction,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas
             // there instead of capturing this page's `reactionAtlasImage`: the atlas
@@ -31703,7 +31712,10 @@ private fun ThreadMessageActionMenu(
                     onReact = { emoji ->
                         onReact(emoji)
                     },
-                    modifier = Modifier
+                    modifier = Modifier,
+                    // Like the emojis: called straight into this page, which closes the menu and
+                    // opens the picker at the menu's anchor.
+                    onAddReaction = if (showAddReaction) onAddReaction else null
                 )
             }
         },
@@ -31732,7 +31744,8 @@ private fun ThreadMessageActionMenu(
                 showReactionActions = showReactionActions,
                 reactionAtlasImage = reactionAtlasImage,
                 onReact = onReact,
-                modifier = Modifier
+                modifier = Modifier,
+                onAddReaction = if (showAddReaction) onAddReaction else null
             )
         }
     )
@@ -31940,10 +31953,10 @@ internal fun threadMessageQuickReactionBarHeightDp(): Float =
 /**
  * The quick reaction bar a double tap shows (stdrc, 2026-10-29, #proj-raft-ui:911ccc08): the
  * long-press menu's popup and quick reaction row ([ThreadMessageReactionRow], same emojis and
- * glyphs) without its action rows, above the second tap (below when there is no room). The
- * Classic menu has no "Add reaction" entry ([ThreadMessageMenuCapabilities.addReaction] is off),
- * so neither has the bar. Picking an emoji toggles that reaction and closes the bar; a tap
- * outside closes it.
+ * glyphs) without its action rows, above the second tap (below when there is no room), and
+ * without the menu row's trailing Add Reaction (web's hover reaction strip has none). It also
+ * opens from the "+" beside a message's reactions (web `handleMobileReactionAddClick`). Picking an
+ * emoji toggles that reaction and closes the bar; a tap outside closes it.
  */
 @Composable
 private fun ThreadMessageQuickReactionBar(
@@ -32016,7 +32029,9 @@ internal fun ThreadMessageMenuChrome(
     showReactionActions: Boolean,
     reactionAtlasImage: ImageBitmap?,
     onReact: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Ends the reaction header with Add Reaction (web `reaction-add-any`); null: no such button. */
+    onAddReaction: (() -> Unit)? = null
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
     // RaftBrutalDropdownMenu surface — press wash, row metrics and icon specs
@@ -32039,7 +32054,7 @@ internal fun ThreadMessageMenuChrome(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
-        width = threadMessageMenuWidthDp(showReactionActions).dp,
+        width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
         // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
         rowHeight = ThreadMessageMenuRowHeight,
         showDividers = false,
@@ -32050,7 +32065,8 @@ internal fun ThreadMessageMenuChrome(
                 {
                     ThreadMessageReactionRow(
                         reactionAtlasImage = reactionAtlasImage,
-                        onReact = onReact
+                        onReact = onReact,
+                        onAddReaction = onAddReaction
                     )
                 }
             } else {
@@ -32069,7 +32085,13 @@ private fun ThreadMessageReactionRow(
     horizontalPadding: Dp = ThreadMessageMenuReactionPaddingHorizontal,
     enabled: Boolean = true,
     // The context menu packs web's `gap-1`; the wider compact menu spreads the buttons.
-    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(ThreadMessageMenuReactionGap)
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(ThreadMessageMenuReactionGap),
+    /**
+     * Web's `reaction-add-any` (a SmilePlus "Add Reaction" after the quick emojis): opens the full
+     * emoji picker where the menu was. Null: no such button (the double-tap quick reaction bar,
+     * which mirrors web's hover strip, has none).
+     */
+    onAddReaction: (() -> Unit)? = null
 ) {
     // web `reaction-quick-row`: `flex h-9 items-center gap-1 px-2`.
     Row(
@@ -32096,8 +32118,29 @@ private fun ThreadMessageReactionRow(
                 )
             }
         }
+        if (onAddReaction != null) {
+            val addReactionLabel = stringResource(Res.string.thread_action_add_reaction)
+            Button(
+                onClick = onAddReaction,
+                enabled = enabled,
+                pressFeedback = false,
+                modifier = Modifier
+                    .alpha(if (enabled) 1f else 0.45f)
+                    .size(buttonSize)
+                    .semantics { contentDescription = addReactionLabel }
+            ) {
+                // web: lucide SmilePlus 18, the button's muted foreground.
+                RaftLucideIcon(
+                    name = RaftLucideIconName.SmilePlus,
+                    modifier = Modifier.size(ThreadMessageReactionAddIconSize),
+                    color = RaftColor.TextMutedGrayArgb
+                )
+            }
+        }
     }
 }
+
+private val ThreadMessageReactionAddIconSize = 18.dp
 
 private fun threadDisplayReactionEmoji(emoji: String): String =
     emoji
