@@ -43,6 +43,13 @@ import kotlinx.coroutines.launch
  */
 internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf("integration:connect_mcp", "integration:install_marketplace_app")
 
+/**
+ * Types that exist only as a spec card (web `SPEC_ONLY_ACTION_TYPES`, slock #11937): server-built,
+ * no typed card, so drawn from their spec whatever the `action_card_spec` flag (the legacy
+ * presentation when the spec does not read). `agent:approve_call`: a hosted agent's held call.
+ */
+internal val ThreadActionCardSpecOnlyTypes: Set<String> = setOf("agent:approve_call")
+
 /** The server whose `action_card_spec` flag decides for [this] card: its own, else the viewer's (web `ActionCard`). */
 internal fun ThreadActionCard.actionCardSpecFlagServerId(viewerServerId: String?): String? =
     sourceServerId?.takeIf { it.isNotBlank() } ?: viewerServerId?.takeIf { it.isNotBlank() }
@@ -50,6 +57,7 @@ internal fun ThreadActionCard.actionCardSpecFlagServerId(viewerServerId: String?
 /**
  * The spec card to draw for [this] card (web `ActionCard` + `readActionCardSpec`), or null for the
  * typed / legacy card exactly as before: the flag is off for the card's server ([specEnabled]),
+ * unless its type is spec-only ([ThreadActionCardSpecOnlyTypes]),
  * the card has no `presentation.card` this App can read (A1's read parse; an unknown catalog or
  * a card that fails it is already null), or its type keeps its typed card
  * ([ThreadActionCardTypedOnlyTypes]). Otherwise the card stripped to [capabilities]: every
@@ -62,7 +70,7 @@ internal fun ThreadActionCard.actionCardSpecToRender(
     capabilities: Collection<String>,
     feedbackTicketVisible: Boolean = false,
 ): ActionCardSpecCard? {
-    if (!specEnabled) return null
+    if (!specEnabled && type !in ThreadActionCardSpecOnlyTypes) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
     val read = presentationCard ?: return null
     val stripped = stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities)) ?: return null

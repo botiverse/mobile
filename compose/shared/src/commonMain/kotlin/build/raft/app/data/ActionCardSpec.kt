@@ -13,7 +13,8 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock 7313a45e (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668)
+ * Contract: botiverse/slock 05e38737 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381, schemaVersion 6 #11668,
+ * schemaVersion 7 #11937)
  * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
@@ -643,8 +644,29 @@ data class ActionCardSpecAgentPickerField(
 data class ActionCardSpecForm(
     val title: ActionCardSpecMsg,
     val submitLabel: ActionCardSpecMsg,
+    val submitLabels: ActionCardSpecSubmitLabels? = null,
     val description: ActionCardSpecMsg? = null,
     val fields: List<ActionCardSpecFormField>,
+) {
+    /**
+     * The submit button's label for [values] (web ActionCardFormSheet): the [submitLabels] label of
+     * the value chosen in its field, else [submitLabel] (nothing chosen, or a value it has no label for).
+     */
+    fun submitLabelFor(values: Map<String, ActionCardFormValue>): ActionCardSpecMsg {
+        val labels = submitLabels ?: return submitLabel
+        val chosen = (values[labels.field] as? ActionCardFormValue.Text)?.value ?: return submitLabel
+        return labels.labels[chosen] ?: submitLabel
+    }
+}
+
+/**
+ * `forms[].submitLabels` (schemaVersion 7): the submit label per value of one Select of the form
+ * ([field]), by option value. Only a label: it never changes what a press does. A read keeps it as
+ * it is (emit alone checks it names a Select and its options).
+ */
+data class ActionCardSpecSubmitLabels(
+    val field: String,
+    val labels: Map<String, ActionCardSpecMsg>,
 )
 
 /**
@@ -1177,8 +1199,20 @@ private object ActionCardSpecReader {
         return ActionCardSpecForm(
             title = msg(obj["title"], 80, "$what.title"),
             submitLabel = msg(obj["submitLabel"], 24, "$what.submitLabel"),
+            submitLabels = obj.opt("submitLabels") { submitLabels(it, "$what.submitLabels") },
             description = obj.opt("description") { msg(it, 500, "$what.description") },
             fields = fields,
+        )
+    }
+
+    /** `submitLabels`: a field name and up to 32 labels by option value; unknown keys dropped. */
+    private fun submitLabels(raw: JsonElement?, what: String): ActionCardSpecSubmitLabels {
+        val obj = raw.obj(what)
+        return ActionCardSpecSubmitLabels(
+            field = name(obj["field"], "$what.field", FIELD_NAME),
+            labels = record(obj["labels"], "$what.labels", ActionCardSpecLimits.MAX_OPTIONS, key = { matching(JsonPrimitive(it), "$what.labels key", OPTION_VALUE) }) { value, label ->
+                msg(label, 24, "$what.labels.$value")
+            },
         )
     }
 

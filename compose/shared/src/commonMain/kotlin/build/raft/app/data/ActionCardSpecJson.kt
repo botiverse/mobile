@@ -191,6 +191,15 @@ private fun ActionCardSpecForm.toJsonObject(): JsonObject =
     buildJsonObject {
         put("title", title.toJsonObject())
         put("submitLabel", submitLabel.toJsonObject())
+        submitLabels?.let { labels ->
+            put(
+                "submitLabels",
+                buildJsonObject {
+                    put("field", labels.field)
+                    put("labels", JsonObject(labels.labels.mapValues { it.value.toJsonObject() }))
+                },
+            )
+        }
         description?.let { put("description", it.toJsonObject()) }
         put("fields", JsonArray(fields.map { it.toJsonObject() }))
     }

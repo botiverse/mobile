@@ -82,7 +82,8 @@ internal data class ActionCardFormCandidates(
 /**
  * The generic action card form sheet (`form.v1`, spec §3.4): what an `open_form` button opens.
  * A [RaftDialogSheet] (raft-ui Dialog "On a phone": several fields) titled by the form, with its
- * submit label as the commit; the form's description, then its fields in order:
+ * submit label as the commit (with `submitLabels`, the label of the value chosen in its Select:
+ * [ActionCardSpecForm.submitLabelFor]); the form's description, then its fields in order:
  *
  * - `TextInput` a [RaftTextField], `TextArea` a [RaftTextarea] with its counter, `Select` a
  *   [RaftChoicePicker] (radios up to 5 options, a sheet list up to 10, a searched sheet past
@@ -118,7 +119,7 @@ internal fun RaftActionCardFormSheet(
         RaftDialogSheet(
             onDismissRequest = { if (!submitting) onDismiss() },
             title = form.title.render(locale),
-            commitLabel = form.submitLabel.render(locale),
+            commitLabel = form.submitLabelFor(values).render(locale),
             onCommit = { state.submit(values, submitting, onSubmit) },
             commitLoading = submitting,
             closeLabel = stringResource(Res.string.common_close),
@@ -145,7 +146,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
     val state = rememberActionCardFormSheetState(form, fieldErrors)
     RaftDialogSheetSurface(
         title = form.title.render(displayLocale),
-        commitLabel = form.submitLabel.render(displayLocale),
+        commitLabel = form.submitLabelFor(values).render(displayLocale),
         onCommit = {},
         onClose = {},
         modifier = modifier,
