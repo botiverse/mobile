@@ -115,11 +115,15 @@ class RaftPreviewCardState(
         internal set
 
     /** A mouse or trackpad pointer is on the trigger (never a finger or a pen). */
-    var isTriggerHovered: Boolean by mutableStateOf(false)
-        private set
+    val isTriggerHovered: Boolean get() = hoverOnTrigger
 
-    internal var isCardHovered: Boolean by mutableStateOf(false)
-        private set
+    // Backing state under other names: a property isX or x gets the JVM setter setX, which
+    // would clash with setTriggerHovered / setCardHovered.
+    private var hoverOnTrigger by mutableStateOf(false)
+
+    internal val isCardHovered: Boolean get() = hoverOnCard
+
+    private var hoverOnCard by mutableStateOf(false)
 
     /** Dismissed while the pointer was on the trigger: stays shut until it leaves. */
     private var suppressed by mutableStateOf(false)
@@ -132,12 +136,12 @@ class RaftPreviewCardState(
      * pen), as [raftPreviewCardTrigger] does.
      */
     fun setTriggerHovered(hovered: Boolean) {
-        isTriggerHovered = hovered
+        hoverOnTrigger = hovered
         if (!hovered) suppressed = false
     }
 
     internal fun setCardHovered(hovered: Boolean) {
-        isCardHovered = hovered
+        hoverOnCard = hovered
     }
 
     /**
@@ -147,7 +151,7 @@ class RaftPreviewCardState(
      */
     fun dismiss() {
         isOpen = false
-        isCardHovered = false
+        hoverOnCard = false
         if (isTriggerHovered) suppressed = true
     }
 }
