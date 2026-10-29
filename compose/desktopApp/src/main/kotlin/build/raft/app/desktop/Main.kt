@@ -36,6 +36,8 @@ fun main(args: Array<String>) {
     RaftAppAppearanceRuntime.ensureLoaded()
     raftClearLegacyFontPreference()
     RaftDesktopRealtimeHost.install()
+    // macOS Hide (Cmd-H) puts the pages in the background like minimizing; losing focus does not.
+    RaftDesktopAppVisibility.install()
     // Pasted images: retired by the composer after send / removal; stale ones swept here.
     RaftDesktopComposerTemporaryFiles.install()
 
@@ -63,7 +65,7 @@ fun main(args: Array<String>) {
             },
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
-            RaftDesktopHost(navigator)
+            RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
         }
     }
 }

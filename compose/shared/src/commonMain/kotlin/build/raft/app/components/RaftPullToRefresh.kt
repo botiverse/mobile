@@ -65,6 +65,8 @@ internal fun RaftPullToRefreshBox(
             RaftMaterialPullToRefreshBox(isRefreshing, onRefresh, modifier, enabled, contentAlignment, content)
         RaftPullToRefreshStyle.Cupertino ->
             RaftCupertinoPullToRefreshBox(isRefreshing, onRefresh, modifier, enabled, contentAlignment, onPullIgnored, content)
+        // Desktop: no gesture, no indicator; refresh state is the page header's spinner.
+        RaftPullToRefreshStyle.None -> Box(modifier, contentAlignment = contentAlignment, content = content)
     }
 }
 
@@ -227,7 +229,8 @@ internal fun raftPullToRefreshGeometry(style: RaftPullToRefreshStyle, density: D
                     indicatorHoldPx = PullToRefreshDefaults.PositionalThreshold.toPx(),
                     coefficient = RaftMaterialRubberBandCoefficient,
                 )
-            RaftPullToRefreshStyle.Cupertino ->
+            RaftPullToRefreshStyle.Cupertino,
+            RaftPullToRefreshStyle.None ->
                 RaftPullToRefreshGeometry(
                     triggerPx = RaftCupertinoTrigger.toPx(),
                     indicatorHoldPx = RaftCupertinoHold.toPx(),

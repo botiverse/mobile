@@ -28,6 +28,7 @@ import build.raft.app.components.RaftProvideDesignSystemStrings
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import build.raft.app.raftPlatformPageVisibleLifecycleState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.cmp.RaftPageProvider
 import build.raft.app.cmp.RaftCmpRouter
@@ -147,22 +148,13 @@ fun RaftPagerHost(
     pager.pageData.applyRaftWindowMetrics(metrics)
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    var resumed by remember(lifecycleOwner) {
-        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-    }
+    var lifecycleState by remember(lifecycleOwner) { mutableStateOf(lifecycleOwner.lifecycle.currentState) }
     DisposableEffect(lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_RESUME -> resumed = true
-                    Lifecycle.Event.ON_PAUSE -> resumed = false
-                    else -> Unit
-                }
-            }
+        val observer = LifecycleEventObserver { _, event -> lifecycleState = event.targetState }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val visible = resumed && active
+    val visible = raftPagerHostLifecycleVisible(lifecycleState) && active
     LaunchedEffect(pager, visible) {
         if (visible != pager.isAppeared) {
             val event = if (visible) Pager.PAGER_EVENT_DID_APPEAR else Pager.PAGER_EVENT_DID_DISAPPEAR
@@ -223,6 +215,18 @@ fun RaftPagerHost(
     }
     }
 }
+
+/**
+ * Whether the host lifecycle shows the page ([Pager.PAGER_EVENT_DID_APPEAR]). Android / iOS: from
+ * RESUMED, as before. Desktop: from STARTED, because Compose Desktop drops a visible window that
+ * merely lost focus (the user clicked another app) to STARTED and only a minimized window (or the
+ * app hidden with Cmd-H, see the desktop host) to CREATED. Treating focus loss as a disappear hid
+ * the wide detail pane (blank right column) and re-ran the resume refresh on every focus regain.
+ */
+internal fun raftPagerHostLifecycleVisible(
+    state: Lifecycle.State,
+    visibleFrom: Lifecycle.State = raftPlatformPageVisibleLifecycleState(),
+): Boolean = state.isAtLeast(visibleFrom)
 
 /** Window facts a page host reports into [PageData] (dp). */
 internal data class RaftPageWindowMetrics(
