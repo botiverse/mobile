@@ -30,10 +30,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Wide pane roles, first page (artin 2026-10-29): channel settings opened from a conversation on
- * the wide layout is a supporting pane right of it (web ChannelSettingsSheet, at most 420 wide),
- * the rail, the sidebar and the conversation staying. The conversation is a fixture; the pane is
- * the channel settings fixture of [ChannelSettingsScreenshotTest]. Verify / record as
+ * Wide pane roles (artin 2026-10-29): channel settings, and a member's profile, opened from a
+ * conversation on the wide layout are a supporting pane right of it (web ChannelSettingsSheet /
+ * ProfilePanel, at most 420 wide), the rail, the sidebar and the conversation staying. The
+ * conversation is a fixture; the panes are the channel settings fixture of
+ * [ChannelSettingsScreenshotTest] and the agent profile visual fixture. Verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -49,7 +50,15 @@ class WideChannelSettingsPaneScreenshotTest {
     @Test
     fun channelSettingsPaneDark() = capture("shell.wide.channel-settings.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    // artin 2026-10-29: an agent's profile opened from the chat (avatar, mention) is the same pane
+    // (web ProfilePanel / AgentDetailPanel beside the conversation); its first page shows ×.
+    @Test
+    fun agentProfilePaneLight() = capture("shell.wide.agent-profile", RaftAppAppearance.Light, AgentProfilePane)
+
+    @Test
+    fun agentProfilePaneDark() = capture("shell.wide.agent-profile.dark", RaftAppAppearance.Dark, AgentProfilePane)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, pane: PaneFixture = ChannelSettingsPane) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -97,10 +106,10 @@ class WideChannelSettingsPaneScreenshotTest {
                                             // The pane's first page, as RaftSupportingPaneStack provides it.
                                             supporting = {
                                                 CompositionLocalProvider(LocalRaftPaneBackCloses provides true) {
-                                                    ChannelSettingsVisualContent()
+                                                    pane.content()
                                                 }
                                             },
-                                        ) { detailModifier -> FixtureConversation(detailModifier) }
+                                        ) { detailModifier -> FixtureConversation(detailModifier, pane.lines) }
                                     },
                                 )
                             }
@@ -120,13 +129,26 @@ class WideChannelSettingsPaneScreenshotTest {
         }
     }
 
+    /** What the pane shows, and the two lines of the conversation beside it. */
+    private class PaneFixture(val lines: Pair<String, String>, val content: @Composable () -> Unit)
+
+    private val ChannelSettingsPane =
+        PaneFixture(
+            "Ada: the channel settings now open beside the conversation" to "Linus: and the chat stays where it was",
+        ) { ChannelSettingsVisualContent() }
+
+    private val AgentProfilePane =
+        PaneFixture(
+            "Ada: @Product-UX-Designer can you check the release notes?" to "Linus: the profile opens beside the chat",
+        ) { MembersAgentDetailVisualContent() }
+
     @Composable
-    private fun FixtureConversation(modifier: Modifier) {
+    private fun FixtureConversation(modifier: Modifier, lines: Pair<String, String>) {
         Column(modifier.background(RaftColor.SurfaceWhite)) {
             RaftText("# triage", modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp), style = RaftTheme.typography.headline)
             Column(Modifier.weight(1f).padding(16.dp)) {
-                RaftText("Ada: the channel settings now open beside the conversation")
-                RaftText("Linus: and the chat stays where it was", modifier = Modifier.padding(top = 12.dp))
+                RaftText(lines.first)
+                RaftText(lines.second, modifier = Modifier.padding(top = 12.dp))
             }
             Box(Modifier.height(56.dp))
         }

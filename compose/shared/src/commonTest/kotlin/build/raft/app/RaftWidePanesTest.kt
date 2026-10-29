@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.base.BridgeModule
+import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
@@ -41,10 +43,73 @@ class RaftWidePanesTest {
     }
 
     @Test
-    fun channelSettingsAndItsSubViewsAreSupportingPanes() {
+    fun channelSettingsItsSubViewsAndTheProfileAreSupportingPanes() {
         val supporting = RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Supporting }.toSet()
-        assertEquals(setOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, JOINT_CHANNEL_CONNECTIONS_PAGE), supporting)
-        assertEquals(RaftPaneRole.Window, RaftPageRegistry.paneRole(MEMBER_DETAIL_PAGE))
+        assertEquals(
+            setOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, JOINT_CHANNEL_CONNECTIONS_PAGE, MEMBER_DETAIL_PAGE),
+            supporting,
+        )
+        // The registry never sends a page to the main detail: only the pane does (below).
+        assertTrue(RaftPageRegistry.pageNames.none { RaftPageRegistry.paneRole(it) == RaftPaneRole.Detail })
+        // The Members rail root keeps its own inline detail; the list page itself opens as before.
+        assertEquals(RaftPaneRole.Window, RaftPageRegistry.paneRole(MEMBERS_PAGE))
+    }
+
+    @Test
+    fun pagesOpenedFromThePaneGoByTheWeb() {
+        // The profile's Message: the conversation becomes the main detail (web closeProfile + navigate).
+        assertEquals(RaftPaneRole.Detail, raftSupportingPaneRole(THREAD_PAGE))
+        // Channel members -> a profile, a profile -> a created agent's profile: pushed in the pane.
+        assertEquals(RaftPaneRole.Supporting, raftSupportingPaneRole(MEMBER_DETAIL_PAGE))
+        assertEquals(RaftPaneRole.Supporting, raftSupportingPaneRole(THREAD_MEMBERS_PAGE))
+        // Everything else (the profile's Computers link) opens as it did.
+        assertEquals(RaftPaneRole.Window, raftSupportingPaneRole(SETTINGS_COMPUTERS_PAGE))
+    }
+
+    @Test
+    fun paneNavigatorHandsDetailRolesToThePane() {
+        val platform = RecordingNavigator()
+        val panes = mutableListOf<Pair<RaftPaneRole, String>>()
+        val navigator =
+            RaftPaneNavigator(
+                platform = platform,
+                wide = { true },
+                openInPane = { role, name, _ -> panes += role to name },
+                roleOf = ::raftSupportingPaneRole,
+            )
+        navigator.openPage(THREAD_PAGE, data)
+        navigator.openPage(MEMBER_DETAIL_PAGE, data)
+        navigator.openPage(SETTINGS_COMPUTERS_PAGE, data)
+        assertEquals(listOf(RaftPaneRole.Detail to THREAD_PAGE, RaftPaneRole.Supporting to MEMBER_DETAIL_PAGE), panes)
+        assertEquals(listOf(SETTINGS_COMPUTERS_PAGE to data), platform.opened)
+    }
+
+    @Test
+    fun paneBridgeClosesThePanePageAndPassesTheRest() {
+        val calls = mutableListOf<String>()
+        var closes = 0
+        val platform =
+            object : HostBridgeTransport {
+                override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
+                    calls += method
+                }
+
+                override fun callSync(method: String, paramsJson: String): String? = "sync:$method"
+            }
+        val transport = RaftPaneBridgeTransport(platform) { closes++ }
+        transport.call(BridgeModule.CLOSE_PAGE, "", null)
+        transport.call("toast", "{}", null)
+        assertEquals(1, closes)
+        assertEquals(listOf("toast"), calls)
+        assertEquals("sync:log", transport.callSync("log", "{}"))
+    }
+
+    @Test
+    fun threadPageDataCarriesItsLaunchPayloadBack() {
+        val launch = WireThreadLaunchPayload(instanceId = "dm-1", threadId = "t1", surfaceKind = "dm")
+        val pageData = threadLaunchPageData(launch).toJsonObject()
+        assertEquals(launch, threadLaunchPayloadOrNull(pageData))
+        assertEquals(null, threadLaunchPayloadOrNull(data))
     }
 
     @Test

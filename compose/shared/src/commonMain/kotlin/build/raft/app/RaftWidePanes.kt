@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import build.raft.app.base.BridgeModule
+import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
@@ -42,6 +44,15 @@ internal fun raftPaneRoute(
     pageName: String,
     roleOf: (String) -> RaftPaneRole = RaftPageRegistry::paneRole,
 ): RaftPaneRole = if (wide) roleOf(pageName) else RaftPaneRole.Window
+
+/**
+ * Where a page opened from inside the supporting pane goes: a conversation becomes the main detail
+ * (web: the profile's Message closes the panel and navigates to the DM); the rest by [roleOf].
+ */
+internal fun raftSupportingPaneRole(
+    pageName: String,
+    roleOf: (String) -> RaftPaneRole = RaftPageRegistry::paneRole,
+): RaftPaneRole = if (pageName == THREAD_PAGE) RaftPaneRole.Detail else roleOf(pageName)
 
 /** One page open in a shell pane; [id] keys its composition. */
 internal data class RaftPaneEntry(val id: Long, val pageName: String, val pageData: JsonObject)
@@ -121,22 +132,42 @@ internal class RaftPaneNavigator(
 }
 
 /**
+ * The bridge wire for a page in a pane: the bridge's own `closePage` (BridgeModule.closePage, which
+ * the member profile's Back uses) closes the pane page through [close], not the window under it.
+ * Every other call goes to [platform] unchanged.
+ */
+internal class RaftPaneBridgeTransport(
+    private val platform: HostBridgeTransport,
+    private val close: () -> Unit,
+) : HostBridgeTransport {
+    override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
+        if (method == BridgeModule.CLOSE_PAGE) close() else platform.call(method, paramsJson, callback)
+    }
+
+    override fun callSync(method: String, paramsJson: String): String? = platform.callSync(method, paramsJson)
+}
+
+/**
  * Gives [content]'s pages a [RaftPaneNavigator] over the current host's navigator; the rest of
- * the host (bridge, events, capabilities) is shared. [close] null: `closePage` stays the platform's.
+ * the host (events, capabilities) is shared. [close] null: `closePage` stays the platform's;
+ * otherwise both the navigator's and the bridge's `closePage` call it.
  */
 @Composable
 internal fun RaftPaneHost(
     wide: Boolean,
     openInPane: (RaftPaneRole, String, JsonObject) -> Unit,
     close: (() -> Unit)? = null,
+    roleOf: (String) -> RaftPaneRole = RaftPageRegistry::paneRole,
     content: @Composable () -> Unit,
 ) {
     val parent = LocalRaftHost.current
     val currentWide by rememberUpdatedState(wide)
     val currentOpenInPane by rememberUpdatedState(openInPane)
     val currentClose by rememberUpdatedState(close)
+    val ownClose = close != null
     val host =
-        remember(parent) {
+        remember(parent, ownClose) {
+            val closePage = { currentClose?.invoke() ?: parent.navigator.closePage() }
             RaftCmpHost(
                 capabilities = parent.capabilities,
                 navigator =
@@ -144,9 +175,13 @@ internal fun RaftPaneHost(
                         platform = parent.navigator,
                         wide = { currentWide },
                         openInPane = { role, name, data -> currentOpenInPane(role, name, data) },
-                        close = { currentClose?.invoke() ?: parent.navigator.closePage() },
+                        close = closePage,
+                        roleOf = roleOf,
                     ),
-                bridgeTransport = parent.bridgeTransport,
+                bridgeTransport =
+                    parent.bridgeTransport?.let { transport ->
+                        if (ownClose) RaftPaneBridgeTransport(transport, closePage) else transport
+                    },
                 events = parent.events,
                 childPageLoads = parent.childPageLoads,
             )
@@ -223,17 +258,22 @@ internal fun RaftSupportingPaneLayout(
 
 /**
  * The supporting pane's pages: each a child page whose `openPage` pushes onto [stack] (a page
- * with a role) and whose `closePage` closes it. Pages under the top stay composed, unplaced and
- * inactive, so going back finds them as they were. Back pops the top first ([raftWideBackStep]);
- * handlers inside the page (a dialog) are composed after it and win.
+ * with a role) and whose `closePage` closes it. A conversation opened in the pane goes to
+ * [openDetail] (the main detail; false: it could not, and the page opens on the platform stack);
+ * other pages without a role open on the platform stack. Pages under the top stay composed,
+ * unplaced and inactive, so going back finds them as they were. Back pops the top first
+ * ([raftWideBackStep]); handlers inside the page (a dialog) are composed after it and win.
  */
 @Composable
 internal fun RaftSupportingPaneStack(
     stack: RaftPaneStack,
     active: Boolean,
     onStackChange: (RaftPaneStack) -> Unit,
+    openDetail: (String, JsonObject) -> Boolean = { _, _ -> false },
 ) {
     val currentStack by rememberUpdatedState(stack)
+    val currentOpenDetail by rememberUpdatedState(openDetail)
+    val platform = LocalRaftHost.current.navigator
     RaftBackHandler(enabled = active && stack.isOpen, label = "wide_supporting_pane", blocksBackSwipe = false) {
         onStackChange(currentStack.pop())
     }
@@ -242,8 +282,14 @@ internal fun RaftSupportingPaneStack(
         key(entry.id) {
             RaftPaneHost(
                 wide = true,
-                openInPane = { _, name, data -> onStackChange(currentStack.push(name, data)) },
+                openInPane = { role, name, data ->
+                    when (role) {
+                        RaftPaneRole.Detail -> if (!currentOpenDetail(name, data)) platform.openPage(name, data)
+                        else -> onStackChange(currentStack.push(name, data))
+                    }
+                },
                 close = { onStackChange(currentStack.close(entry.id)) },
+                roleOf = ::raftSupportingPaneRole,
             ) {
                 val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
                 CompositionLocalProvider(LocalRaftPaneBackCloses provides (entry == stack.entries.first())) {

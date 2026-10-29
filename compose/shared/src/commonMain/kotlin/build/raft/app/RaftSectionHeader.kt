@@ -97,6 +97,20 @@ internal fun raftTopPageHeaderFrameMetrics(
     )
 }
 
+/**
+ * A top bar's leading Back. On the first page of the wide supporting pane Back closes the pane,
+ * so it is the design system's leading Close (web drawer ×); pages pushed in the pane, and every
+ * page elsewhere, keep Back. For heads that place the Back themselves (the member profile).
+ */
+@Composable
+internal fun RaftPaneAwareBackButton(onClick: () -> Unit) {
+    if (LocalRaftPaneBackCloses.current) {
+        RaftBackButton(onClick = onClick, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
+    } else {
+        RaftBackButton(onClick = onClick, label = stringResource(Res.string.common_back))
+    }
+}
+
 @Composable
 internal fun RaftTopPageHeader(
     title: String,
@@ -144,12 +158,7 @@ internal fun RaftTopPageHeader(
             contentSpacing = if (backInColumn) RaftTopPageHeaderContentSpacing else contentSpacing,
         ) {
             when {
-                // The first page of the wide supporting pane: Back closes the pane, so it is the
-                // design system's leading Close (web drawer ×); pages pushed in the pane keep Back.
-                onBack != null && !backInColumn && LocalRaftPaneBackCloses.current ->
-                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
-                onBack != null && !backInColumn ->
-                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
+                onBack != null && !backInColumn -> RaftPaneAwareBackButton(onClick = onBack)
                 leadingContent != null ->
                     Box(
                         modifier = Modifier.size(RaftAppSize.HeaderIcon),

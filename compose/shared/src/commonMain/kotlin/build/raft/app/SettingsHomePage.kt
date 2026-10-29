@@ -7272,7 +7272,28 @@ private fun RaftAppShellReadyContent(
                                     },
                             supporting =
                                 if (supportingOpen) {
-                                    { RaftSupportingPaneStack(supportingPanes, active, onStackChange = { supportingPanes = it }) }
+                                    {
+                                        RaftSupportingPaneStack(
+                                            supportingPanes,
+                                            active,
+                                            onStackChange = { supportingPanes = it },
+                                            // A conversation opened in the pane (the profile's
+                                            // Message) becomes the main detail and the pane
+                                            // closes, as the web's closeProfile + navigate.
+                                            openDetail = { _, pageData ->
+                                                val opened =
+                                                    threadLaunchPayloadOrNull(pageData)?.let(::openLaunchPayloadInAdaptiveDetail)
+                                                if (opened != null) {
+                                                    supportingPanes = supportingPanes.cleared()
+                                                    homeShellStore.dispatch(
+                                                        SharedHomeShellIntent.SetSelectedConversation(opened.identity.threadId)
+                                                    )
+                                                }
+                                                bridge.log("wide_supporting_pane_open_detail opened=${opened != null}")
+                                                opened != null
+                                            },
+                                        )
+                                    }
                                 } else {
                                     null
                                 },
