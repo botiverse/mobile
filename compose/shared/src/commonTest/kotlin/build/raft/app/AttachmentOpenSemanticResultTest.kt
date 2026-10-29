@@ -35,6 +35,19 @@ class AttachmentOpenSemanticResultTest {
     }
 
     @Test
+    fun apkInstallHandoffsAreSilentAndOnlyARealFailureToasts() {
+        assertNull(raftAttachmentOpenResultMessage("install_permission_required", localizedTerms))
+        assertNull(raftAttachmentOpenResultMessage("install_via_files", localizedTerms))
+        assertEquals("无法打开附件", raftAttachmentOpenResultMessage("install_unsupported", localizedTerms))
+        listOf("install_permission_required", "install_via_files", "install_unsupported").forEach { status ->
+            assertEquals(status, raftAttachmentOpenDiagnosticStatus(status))
+        }
+        assertEquals("opened", raftThreadAttachmentOpenStatus("install_permission_required"))
+        assertEquals("opened", raftThreadAttachmentOpenStatus("install_via_files"))
+        assertEquals("failed", raftThreadAttachmentOpenStatus("install_unsupported"))
+    }
+
+    @Test
     fun diagnosticStatusAllowsOnlyFixedCategories() {
         assertEquals("opened", raftAttachmentOpenDiagnosticStatus(" OPENED "))
         assertEquals("failed", raftAttachmentOpenDiagnosticStatus("failed"))

@@ -7824,6 +7824,12 @@ internal class RaftBridgeModule(
                                     allowViewFallback = isPackageArchive,
                                     launchPrimary = {
                                         appContext.startActivity(openIntents.launchIntent)
+                                        if (isPackageArchive) {
+                                            RaftAppLog.w(
+                                                    "SlockAttachmentOpen",
+                                                    "attachment_install_launch attachmentId=${attachmentId.take(8)} intent=install_package source=${source.kind.diagnosticName}"
+                                            )
+                                        }
                                     },
                                     launchViewFallback = {
                                     val viewIntents =
@@ -7837,6 +7843,10 @@ internal class RaftBridgeModule(
                                                     chooserTitle = ""
                                             )
                                     appContext.startActivity(viewIntents.launchIntent)
+                                    RaftAppLog.w(
+                                            "SlockAttachmentOpen",
+                                            "attachment_install_launch attachmentId=${attachmentId.take(8)} intent=view_fallback source=${source.kind.diagnosticName}"
+                                    )
                                     },
                                     isActivityNotFound = { throwable ->
                                         throwable is ActivityNotFoundException
@@ -7847,11 +7857,20 @@ internal class RaftBridgeModule(
                             throwable is ActivityNotFoundException
                         },
                         onFailure = { throwable ->
-                            RaftAppLog.record(
-                                    "SlockAttachmentOpen",
+                            val failure =
                                     "attachmentId=${attachmentId.take(8)} phase=launch status=failed source=${source.kind.diagnosticName} type=${throwable::class.java.simpleName}"
-                            )
-                        }
+                            if (isPackageArchive) {
+                                RaftAppLog.w("SlockAttachmentOpen", "attachment_install_failed $failure")
+                            } else {
+                                RaftAppLog.record("SlockAttachmentOpen", failure)
+                            }
+                        },
+                        packageInstallGate =
+                                if (isPackageArchive) {
+                                    AndroidPackageInstallPermission.gate(appContext, attachmentId.take(8))
+                                } else {
+                                    null
+                                }
                 ).launch(
                         source = source,
                         action =
@@ -7868,10 +7887,13 @@ internal class RaftBridgeModule(
                     "attachmentId=${attachmentId.take(8)} status=opened source=${source.kind.diagnosticName} mimeType=$openMimeType cached=${source.durableCache} durationMs=${System.currentTimeMillis() - startedAt}"
             )
         } else if (result.status == AndroidAttachmentOpenStatus.NoApp) {
-            RaftAppLog.record(
-                    "SlockAttachmentOpen",
+            val noApp =
                     "attachmentId=${attachmentId.take(8)} status=no_app source=${source.kind.diagnosticName} mimeType=$openMimeType durationMs=${System.currentTimeMillis() - startedAt}"
-            )
+            if (isPackageArchive) {
+                RaftAppLog.w("SlockAttachmentOpen", "attachment_install_no_installer $noApp")
+            } else {
+                RaftAppLog.record("SlockAttachmentOpen", noApp)
+            }
         }
         return result
     }

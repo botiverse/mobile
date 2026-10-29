@@ -64,7 +64,19 @@ internal enum class AndroidAttachmentOpenStatus(val wireName: String) {
     Missing("missing"),
     NoApp("no_app"),
     StorageFailed("storage_failed"),
-    Failed("failed")
+    Failed("failed"),
+
+    /** APK install: Raft lacks "install unknown apps"; the system settings page was offered. */
+    InstallPermissionRequired("install_permission_required"),
+
+    /** APK install: this build does not declare REQUEST_INSTALL_PACKAGES (the Google Play build). */
+    InstallUnsupported("install_unsupported"),
+
+    /**
+     * APK install on a build without the permission: the APK is in public Downloads and the
+     * system file manager was opened on it, so the user installs from there.
+     */
+    InstallViaFiles("install_via_files")
 }
 
 /**
@@ -143,6 +155,25 @@ internal data class AndroidAttachmentOpenResult(
                 status = AndroidAttachmentOpenStatus.Failed,
                 cached = cached,
                 retryable = true
+            )
+
+        fun installPermissionRequired(cached: Boolean): AndroidAttachmentOpenResult =
+            AndroidAttachmentOpenResult(
+                status = AndroidAttachmentOpenStatus.InstallPermissionRequired,
+                cached = cached,
+                retryable = true
+            )
+
+        fun installUnsupported(cached: Boolean): AndroidAttachmentOpenResult =
+            AndroidAttachmentOpenResult(
+                status = AndroidAttachmentOpenStatus.InstallUnsupported,
+                cached = cached
+            )
+
+        fun installViaFiles(): AndroidAttachmentOpenResult =
+            AndroidAttachmentOpenResult(
+                status = AndroidAttachmentOpenStatus.InstallViaFiles,
+                cached = true
             )
 
         fun terminal(status: String): AndroidAttachmentOpenResult =
@@ -414,7 +445,9 @@ internal class AndroidAttachmentSourceLauncher(
     private val runIfOwnerCurrent: (() -> Boolean) -> Boolean?,
     private val launchSource: () -> Unit,
     private val isActivityNotFound: (Throwable) -> Boolean,
-    private val onFailure: (Throwable) -> Unit = {}
+    private val onFailure: (Throwable) -> Unit = {},
+    /** Consulted only for [AndroidAttachmentOpenAction.Install]; null admits every install. */
+    private val packageInstallGate: AndroidPackageInstallGate? = null
 ) {
     fun launch(
         source: AndroidAttachmentContentUriSource,
@@ -423,6 +456,9 @@ internal class AndroidAttachmentSourceLauncher(
     ): AndroidAttachmentOpenResult {
         return try {
             if (!sourceIsReadable()) return AndroidAttachmentOpenResult.missing()
+            if (action == AndroidAttachmentOpenAction.Install) {
+                packageInstallGate?.admit(source)?.let { blocked -> return blocked }
+            }
             if (requiresVisibleHandler && !hasVisibleHandler()) {
                 return AndroidAttachmentOpenResult.noApp(source.durableCache)
             }
@@ -446,6 +482,81 @@ internal class AndroidAttachmentSourceLauncher(
             } else {
                 onFailure(throwable)
                 AndroidAttachmentOpenResult.failed(source.durableCache)
+            }
+        }
+    }
+}
+
+/**
+ * Whether Android will show its package installer for an APK Raft hands over.
+ *
+ * Since Android 8 the system installer checks the *calling* app: if it does not declare
+ * REQUEST_INSTALL_PACKAGES it finishes immediately without any UI (the Google Play build removes
+ * that permission), and if "install unknown apps" is off for Raft it needs the user to allow it.
+ */
+internal enum class AndroidPackageInstallDecision(val diagnosticName: String) {
+    Launch("launch"),
+    RequestUnknownSourcesPermission("permission_required"),
+    Unsupported("install_unsupported")
+}
+
+internal fun androidPackageInstallDecision(
+    installPermissionDeclared: Boolean,
+    canRequestPackageInstalls: Boolean
+): AndroidPackageInstallDecision =
+    when {
+        !installPermissionDeclared -> AndroidPackageInstallDecision.Unsupported
+        !canRequestPackageInstalls -> AndroidPackageInstallDecision.RequestUnknownSourcesPermission
+        else -> AndroidPackageInstallDecision.Launch
+    }
+
+/**
+ * Runs before an APK is handed to the system installer. Returns null when the installer may be
+ * launched, otherwise the terminal result whose shared copy tells the user what to do.
+ *
+ * - Permission declared but "install unknown apps" off: open Raft's own settings switch.
+ * - Permission not declared (Google Play build): never launch the installer (it would finish
+ *   silently) and never open a settings page that has no switch for Raft. A file manager does hold
+ *   the permission, so when the APK already is a public Downloads copy, open the file manager on
+ *   Raft's Downloads folder for the user to tap it there.
+ */
+internal class AndroidPackageInstallGate(
+    private val installPermissionDeclared: () -> Boolean,
+    private val canRequestPackageInstalls: () -> Boolean,
+    private val openUnknownSourcesSettings: () -> Boolean,
+    /** Returns the diagnostic name of the file-manager surface it opened, or null if none. */
+    private val openDownloadsInFileManager: () -> String? = { null },
+    private val record: (decision: AndroidPackageInstallDecision, detail: String?) -> Unit = { _, _ -> }
+) {
+    fun admit(source: AndroidAttachmentContentUriSource): AndroidAttachmentOpenResult? {
+        val decision =
+            androidPackageInstallDecision(
+                installPermissionDeclared = installPermissionDeclared(),
+                canRequestPackageInstalls = canRequestPackageInstalls()
+            )
+        return when (decision) {
+            AndroidPackageInstallDecision.Launch -> {
+                record(decision, null)
+                null
+            }
+            AndroidPackageInstallDecision.Unsupported -> {
+                val opened =
+                    if (source.kind == AndroidAttachmentOpenSourceKind.PublicDownload) {
+                        runCatching(openDownloadsInFileManager).getOrNull()
+                    } else {
+                        null
+                    }
+                record(decision, "filesOpened=${opened ?: "none"}")
+                if (opened != null) {
+                    AndroidAttachmentOpenResult.installViaFiles()
+                } else {
+                    AndroidAttachmentOpenResult.installUnsupported(source.durableCache)
+                }
+            }
+            AndroidPackageInstallDecision.RequestUnknownSourcesPermission -> {
+                val opened = runCatching(openUnknownSourcesSettings).getOrDefault(false)
+                record(decision, "settingsOpened=$opened")
+                AndroidAttachmentOpenResult.installPermissionRequired(source.durableCache)
             }
         }
     }
