@@ -1302,6 +1302,10 @@
     <string name="member_label_bot_with_app">ボット · %1$s</string>
     <string name="member_label_bot_created_by_app">%1$s アプリが作成</string>
     <string name="member_label_bot_from_app">提供元: %1$s</string>
+    <string name="profile_preview_unavailable">プロフィールを表示できません</string>
+    <string name="profile_preview_view_profile">プロフィールを表示</string>
+    <string name="profile_preview_managed_by_app">管理元アプリ</string>
+    <string name="profile_preview_unknown_app">不明なアプリ</string>
     <string name="member_label_agent_dm">エージェント DM</string>
     <string name="member_label_show_more">もっと見る</string>
     <string name="member_label_show_less">折りたたむ</string>

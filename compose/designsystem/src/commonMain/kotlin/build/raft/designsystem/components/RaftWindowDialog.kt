@@ -98,6 +98,13 @@ internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
 @Composable
 internal expect fun RaftPopupWindowPolicy()
 
+/**
+ * A popup is a window of its own that clips what it draws outside its bounds (Android), so a
+ * popup's `shadow-float` needs room inside it. Elsewhere (iOS, desktop) a popup is a layer of the
+ * host's window and draws its shadow past its bounds.
+ */
+internal expect val RaftPopupClipsDrawing: Boolean
+
 /** Which system bars draw dark icons: light ones on a dark theme, dark ones on a light theme. */
 @Immutable
 data class RaftSystemBarsAppearance(

@@ -1298,6 +1298,10 @@
     <string name="member_label_bot_with_app">机器人 · %1$s</string>
     <string name="member_label_bot_created_by_app">由 %1$s 应用创建</string>
     <string name="member_label_bot_from_app">来自 %1$s</string>
+    <string name="profile_preview_unavailable">资料不可用</string>
+    <string name="profile_preview_view_profile">查看资料</string>
+    <string name="profile_preview_managed_by_app">所属应用</string>
+    <string name="profile_preview_unknown_app">未知应用</string>
     <string name="member_label_agent_dm">Agent 私信</string>
     <string name="member_label_show_more">展开</string>
     <string name="member_label_show_less">收起</string>

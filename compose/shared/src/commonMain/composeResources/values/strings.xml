@@ -1300,6 +1300,10 @@
     <string name="member_label_bot_with_app">Bot · %1$s</string>
     <string name="member_label_bot_created_by_app">Created by the %1$s app</string>
     <string name="member_label_bot_from_app">From %1$s</string>
+    <string name="profile_preview_unavailable">Profile unavailable</string>
+    <string name="profile_preview_view_profile">View Profile</string>
+    <string name="profile_preview_managed_by_app">Managed by app</string>
+    <string name="profile_preview_unknown_app">Unknown app</string>
     <string name="member_label_agent_dm">Agent DM</string>
     <string name="member_label_show_more">Show more</string>
     <string name="member_label_show_less">Show less</string>
