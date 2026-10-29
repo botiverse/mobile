@@ -611,8 +611,12 @@ jobs:
           echo "verified_v3=${V3}" >> "$GITHUB_OUTPUT"
           echo "verified_v31=${V31}" >> "$GITHUB_OUTPUT"
 
+      # Every non-debug build keeps its signed AAB as a workflow artifact (90 days): the
+      # Play carrier for Play Console, the Hands `release` build as the backup bundle that
+      # github-release.yml attaches next to the published APK. Only the Hands upload below
+      # stays behind upload_android_artifacts.
       - name: Locate AAB
-        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
+        if: ${{ needs.resolve.outputs.android_variant != 'debug' || needs.resolve.outputs.upload_android_artifacts == 'true' }}
         id: locate-aab
         shell: bash
         run: |
@@ -623,7 +627,7 @@ jobs:
           echo "aab_path=$AAB" >> "$GITHUB_OUTPUT"
 
       - name: Sign and verify AAB
-        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
+        if: ${{ needs.resolve.outputs.android_variant != 'debug' || needs.resolve.outputs.upload_android_artifacts == 'true' }}
         id: sign-aab
         env:
           UPLOAD_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
@@ -645,6 +649,38 @@ jobs:
             "$EXPECTED_UPLOAD_CERT_SHA256" signed-aab/aab-signature.json
           echo "aab_path=signed-aab/androidApp-release.aab" >> "$GITHUB_OUTPUT"
           echo "upload_key_cert_sha256=$(jq -er .upload_key_cert_sha256 signed-aab/aab-signature.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Record AAB build identity
+        # Binds the AAB to this run's APK for github-release.yml (scripts/github_release_from_hands.py).
+        if: ${{ steps.sign-aab.outcome == 'success' }}
+        env:
+          REPOSITORY: ${{ github.repository }}
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_COMMIT_SHA: ${{ steps.source.outputs.source_sha }}
+          ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
+          HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
+          PACKAGE_NAME: ${{ steps.verify.outputs.package_id }}
+          VERSION_NAME: ${{ steps.resolve.outputs.version_name }}
+          VERSION_CODE: ${{ steps.resolve.outputs.version_code }}
+          APK_SHA256: ${{ steps.verify.outputs.sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_SHA256="$(sha256sum signed-aab/androidApp-release.aab | awk '{print $1}')"
+          [ "${AAB_SHA256}" = "$(jq -er .sha256 signed-aab/aab-signature.json)" ] || {
+            echo "Signed AAB does not match its verification receipt" >&2
+            exit 1
+          }
+          jq -n \
+            --arg repo "${REPOSITORY}" --arg run "${CI_RUN_ID}" --arg attempt "${CI_RUN_ATTEMPT}" \
+            --arg commit "${SOURCE_COMMIT_SHA}" --arg variant "${ANDROID_VARIANT}" \
+            --arg channel "${HANDS_CHANNEL}" --arg pkg "${PACKAGE_NAME}" \
+            --arg vn "${VERSION_NAME}" --argjson vc "${VERSION_CODE}" \
+            --arg apk "${APK_SHA256}" --arg aab "${AAB_SHA256}" \
+            '{schema:"raft.android-aab-build-identity.v1",repository:$repo,ci_run_id:$run,ci_run_attempt:$attempt,source_commit:$commit,android_variant:$variant,hands_channel:$channel,package_name:$pkg,version_name:$vn,version_code:$vc,apk_sha256:$apk,aab_sha256:$aab}' \
+            > signed-aab/build-identity.json
+          cat signed-aab/build-identity.json
 
       - name: Upload immutable AAB + APK to Hands
         if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' && needs.resolve.outputs.android_variant != 'play' }}
@@ -669,13 +705,13 @@ jobs:
           awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
 
       - name: Upload signed AAB and verification receipt
-        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
+        if: ${{ needs.resolve.outputs.android_variant != 'debug' || needs.resolve.outputs.upload_android_artifacts == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}-aab
           path: signed-aab/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
 
       - name: Upload APK as workflow artifact
         id: upload-apk

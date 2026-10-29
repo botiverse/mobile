@@ -1,12 +1,22 @@
 name: GitHub Release
 
 # One GitHub Release per shipped version, built from what Hands shipped:
-# the signed Android APK from the published `main` release (SHA-256 checked against
-# Hands) and the three-language notes for Android and iOS; iOS gets its TestFlight
-# build number, no IPA. See scripts/github_release_from_hands.py.
+# - Android: the signed APK from the published `main` release (SHA-256 checked against
+#   Hands) and, as a backup, the signed AAB the same android-release.yml run kept as an
+#   artifact (`*-aab`, 90 days; matched to the APK by run id, APK SHA-256 and version).
+#   Not the Google Play build. Missing or expired: APK only, with a warning.
+# - iOS: the TestFlight build number, no IPA; plus the iOS Simulator app (Debug, arm64,
+#   unsigned, Simulator only) built here from the tag's commit with Xcode 27.1 on GitHub's
+#   xcode-27 Mac (ios-simulator-app.yml), attached only if its metadata.json names the tag
+#   commit.
+# - macOS: the unsigned, not notarized desktop dmg built here from the tag's commit
+#   (desktop-macos-dmg.yml on a Blacksmith Mac), with first-launch steps.
+# Notes are the three-language notes on the Hands releases. See
+# scripts/github_release_from_hands.py.
 #
 # The `v*` tag is pushed at release closeout, after the Hands release is published.
-# If it was pushed earlier, rerun with workflow_dispatch once the release is live.
+# If it was pushed earlier, rerun with workflow_dispatch once the release is live; a
+# rerun also fills in a dmg, AAB or Simulator app that was missing the first time.
 
 on:
   push:
@@ -20,14 +30,75 @@ on:
 
 permissions:
   contents: write
+  # Read android-release.yml runs and download their signed AAB artifact.
+  actions: read
 
 concurrency:
   group: github-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  tag:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - name: Resolve version and commit
+        id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # vX.Y.Z with X > 0 (the macOS bundle version needs MAJOR > 0).
+          if [[ ! "${TAG}" =~ ^v([1-9][0-9]*\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::tag ${TAG} is not vX.Y.Z (X > 0)"
+            exit 1
+          fi
+          VERSION="${BASH_REMATCH[1]}"
+          # commits/tags/<tag> peels annotated tags to the commit.
+          COMMIT="$(gh api "repos/${REPOSITORY}/commits/tags/${TAG}" --jq .sha)"
+          [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::cannot resolve ${TAG}"; exit 1; }
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "${TAG} -> ${VERSION} @ ${COMMIT}"
+
+  dmg:
+    name: macOS dmg
+    needs: tag
+    uses: ./.github/workflows/desktop-macos-dmg.yml
+    with:
+      source_sha: ${{ needs.tag.outputs.commit }}
+      version: ${{ needs.tag.outputs.version }}
+      runner: blacksmith-12vcpu-macos-latest
+      artifact_name: raft-desktop-macos-dmg
+
+  simulator:
+    name: iOS Simulator app
+    needs: tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ios-simulator-app.yml
+    with:
+      source_sha: ${{ needs.tag.outputs.commit }}
+      archs: arm64
+      macos_runner: xcode-27
+      xcode_app_path: /Applications/Xcode_27.1.app
+      # Own concurrency group per tag commit: never queue behind, or replace, an on-demand
+      # ios-simulator-app.yml run on the same ref.
+      concurrency_scope: github-release-${{ needs.tag.outputs.commit }}
+
   release:
     name: Create or update GitHub Release
+    needs: [tag, dmg, simulator]
+    # A failed dmg or Simulator build must not hold back the Android/iOS release: attach what
+    # exists and warn; a later workflow_dispatch rerun adds the missing asset.
+    if: ${{ !cancelled() && needs.tag.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -37,15 +108,63 @@ jobs:
         with:
           sparse-checkout: scripts
 
-      - name: Prepare notes and APK from Hands
+      # JDK for scripts/verify_android_aab.sh (strict AAB signature check).
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download macOS dmg
+        if: ${{ needs.dmg.result == 'success' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: raft-desktop-macos-dmg
+          path: dmg/
+
+      # ios-simulator-app.yml names its artifact after github.run_id, which in a called
+      # workflow is this run's id.
+      - name: Download iOS Simulator app
+        if: ${{ needs.simulator.result == 'success' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-simulator-app-${{ github.run_id }}
+          path: ios-simulator/
+
+      - name: Prepare notes, APK, AAB, dmg and Simulator app
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
           HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
           HANDS_ANDROID_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
           HANDS_IOS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-        run: python3 scripts/github_release_from_hands.py --tag "${TAG}" --out release-out
-        # macOS: when the Mac app joins the release train, download its dmg here and
-        # pass --dmg <path>; the script adds a macOS section and the asset.
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DMG_RESULT: ${{ needs.dmg.result }}
+          SIMULATOR_RESULT: ${{ needs.simulator.result }}
+          COMMIT: ${{ needs.tag.outputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(--tag "${TAG}" --out release-out --aab-repo "${REPOSITORY}")
+          mapfile -t DMGS < <(find dmg -maxdepth 1 -type f -name '*.dmg' 2>/dev/null | sort)
+          if [ "${#DMGS[@]}" -eq 1 ]; then
+            ARGS+=(--dmg "${DMGS[0]}")
+          else
+            echo "::warning::no macOS dmg (dmg job: ${DMG_RESULT}, files: ${#DMGS[@]}); releasing without it"
+            mkdir -p release-out
+            echo "macOS dmg missing (dmg job: ${DMG_RESULT})" > release-out/dmg-warning.txt
+          fi
+          if [ -f ios-simulator/metadata.json ]; then
+            # The script checks source commit, Xcode lane and zip SHA-256; a mismatch is a warning.
+            ARGS+=(--ios-simulator-app ios-simulator --commit "${COMMIT}")
+          else
+            echo "::warning::no iOS Simulator app (simulator job: ${SIMULATOR_RESULT}); releasing without it"
+            mkdir -p release-out
+            echo "iOS Simulator app missing (simulator job: ${SIMULATOR_RESULT})" > release-out/simulator-warning.txt
+          fi
+          python3 scripts/github_release_from_hands.py "${ARGS[@]}"
 
       - name: Create or update the Release
         env:
@@ -67,4 +186,10 @@ jobs:
             echo "$(gh release view "${TAG}" --json url -q .url)"
             echo
             printf -- '- `%s`\n' "${ASSETS[@]##*/}"
+            jq -r '.warnings[] | "- :warning: " + .' release-out/manifest.json
+            for note in release-out/dmg-warning.txt release-out/simulator-warning.txt; do
+              if [ -f "${note}" ]; then
+                echo "- :warning: $(cat "${note}")"
+              fi
+            done
           } >> "${GITHUB_STEP_SUMMARY}"

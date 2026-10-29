@@ -49,8 +49,13 @@ Point the app at a local stack by seeding `<dataDir>/kv/slock_api_server_environ
 
 ## CI
 
-`.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) runs `:desktopApp:packageDmg`
-on a macOS runner and uploads the unsigned `.dmg` as the `raft-desktop-macos-dmg` artifact.
+`.github/workflows/desktop-macos-dmg.yml` (workflow_dispatch) runs `:desktopApp:createDistributable`
+on a macOS runner, ad-hoc signs `Raft.app` (`codesign --sign -`, no certificate; without it Apple
+silicon reports the downloaded app as "damaged"), wraps it in a `.dmg` with `hdiutil` and uploads
+it as the `raft-desktop-macos-dmg` artifact. It has no Developer ID signature and is not notarized.
+It is also a reusable workflow: `github-release.yml` calls it for each `vX.Y.Z` tag (tag
+commit, version `X.Y.Z`, Blacksmith Mac) and attaches the dmg to the GitHub Release as
+`raft-macos-X.Y.Z.dmg`, marked unsigned / not notarized with first-launch steps.
 
 ## Signing and notarization (DevOps, macOS CI)
 

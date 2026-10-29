@@ -1,10 +1,36 @@
 name: Desktop macOS dmg
 
-# Builds the Raft desktop app (compose/desktopApp) for macOS and uploads the unsigned .dmg.
+# Builds the Raft desktop app (compose/desktopApp) for macOS and uploads the .dmg (ad-hoc signed,
+# no Developer ID, not notarized).
 # Signing and notarization are DevOps' follow-up: compose/desktopApp/README.md lists the
 # Gradle properties (compose.desktop.mac.sign / signing.identity / notarization.*) a signed
 # lane would pass; this workflow adds no secrets.
+#
+# Also a reusable workflow: github-release.yml calls it with the tag's commit and version
+# on a Blacksmith Mac (GitHub-hosted Macs share a concurrency cap with iOS releases).
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: "Exact product commit to build"
+        required: true
+        type: string
+      version:
+        description: "Bundle version MAJOR.MINOR.PATCH (MAJOR > 0)"
+        required: true
+        type: string
+      runner:
+        description: "macOS runner label"
+        required: false
+        type: string
+        default: "blacksmith-12vcpu-macos-latest"
+      artifact_name:
+        required: false
+        type: string
+        default: "raft-desktop-macos-dmg"
+    outputs:
+      artifact_name:
+        value: ${{ jobs.package-dmg.outputs.artifact_name }}
   workflow_dispatch:
     inputs:
       source_sha:
@@ -26,15 +52,40 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-macos-dmg-${{ github.ref }}
+  # As a called workflow github.workflow / github.ref are the caller's; the source commit
+  # keeps a release's dmg from replacing an unrelated pending run.
+  group: desktop-macos-dmg-${{ github.workflow }}-${{ inputs.source_sha || github.ref }}
   cancel-in-progress: false
 
 jobs:
   package-dmg:
     name: Package unsigned macOS dmg
-    runs-on: macos-latest
+    # Dispatch and push keep the GitHub-hosted Mac (no `runner` input there); callers pick
+    # the runner (default Blacksmith). Do not key this on github.event_name: in a called
+    # workflow that is the caller's event.
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 60
+    outputs:
+      artifact_name: ${{ inputs.artifact_name || 'raft-desktop-macos-dmg' }}
     steps:
+      # Blacksmith macOS starts its local Actions-results proxy with the job; give it a
+      # bounded readiness window before any cache or artifact action (as ios-release.yml).
+      - name: Warm macOS artifact proxy
+        if: ${{ startsWith(inputs.runner || '', 'blacksmith') }}
+        shell: bash
+        run: sleep 5
+
+      - name: Validate version
+        env:
+          RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${RAFT_DESKTOP_VERSION}" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version ${RAFT_DESKTOP_VERSION} is not MAJOR.MINOR.PATCH with MAJOR > 0"
+            exit 1
+          }
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -52,20 +103,45 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Package dmg
+      # Unsigned for now (owner decision 2026-10-28: no Developer ID yet), but ad-hoc signed:
+      # on Apple silicon an arm64 app with no signature at all is reported as "damaged" when it
+      # carries the download quarantine flag, and Privacy & Security offers no "Open Anyway".
+      # So build the .app, ad-hoc sign and verify it, then wrap it in the dmg ourselves.
+      - name: Build app bundle
         working-directory: compose
         env:
           RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
         run: |
           set -euo pipefail
-          ./gradlew :desktopApp:packageDmg \
+          ./gradlew :desktopApp:createDistributable \
             -Praft.desktop.version="$RAFT_DESKTOP_VERSION" \
             --no-daemon --console=plain --stacktrace
+
+      - name: Ad-hoc sign the app and package dmg
+        working-directory: compose/desktopApp/build/compose/binaries/main
+        env:
+          RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
+        run: |
+          set -euo pipefail
+          app="app/Raft.app"
+          [ -d "$app" ] || { echo "::error::$app not found"; ls -la app || true; exit 1; }
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | sed 's/^/codesign: /'
+          staging="$RUNNER_TEMP/raft-dmg"
+          rm -rf "$staging" && mkdir -p "$staging" dmg
+          cp -R "$app" "$staging/"
+          ln -s /Applications "$staging/Applications"
+          dmg="dmg/Raft-${RAFT_DESKTOP_VERSION}.dmg"
+          rm -f "$dmg"
+          hdiutil create -volname "Raft" -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$dmg"
+          hdiutil verify "$dmg"
+          shasum -a 256 "$dmg"
 
       - name: Upload dmg
         uses: actions/upload-artifact@v7
         with:
-          name: raft-desktop-macos-dmg
+          name: ${{ inputs.artifact_name || 'raft-desktop-macos-dmg' }}
           path: compose/desktopApp/build/compose/binaries/main/dmg/*.dmg
           if-no-files-found: error
           retention-days: 14

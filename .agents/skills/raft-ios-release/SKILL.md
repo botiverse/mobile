@@ -107,6 +107,9 @@ scripts/create_ios_release_audit_tag.sh --version 1.15.0 --build 11500001 \
 # review output, then the same command with --confirm-push
 ```
 Tag format `ios-v<marketing>-b<CFBundleVersion>`; never reuse `vX.Y.Z`.
+The shared `vX.Y.Z` tag (Android closeout) runs `github-release.yml`: the GitHub
+Release names the TestFlight build (no IPA) and attaches a Simulator-only `.app`
+zip built from that tag's commit with Xcode 27.1 (`ios-simulator-app.yml`).
 The helper only accepts `--release-branch release-X.Y.Z` (dash form). For a
 train on a slash-named branch (`release/1.14.x`) it fails closed; ask the
 release owner how to record the tag instead of renaming branches.
