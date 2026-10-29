@@ -35445,8 +35445,15 @@ private fun threadMembersProjection(
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
             .map { it.toRaftThreadMemberItem(serverId) }
+    // The stored (offline) participants stand in while nothing else is known; read-only (no add).
+    val usesStoredStandIn =
+        channelMembersSlice.storedStandIn &&
+            channelMembersSlice.status != SharedServerMembersLoadStatus.Loaded &&
+            loadedMembers.isNotEmpty() &&
+            basePayload.members.isEmpty()
+    val usesSlice = channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded || usesStoredStandIn
     val members =
-        if (channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded) {
+        if (usesSlice) {
             loadedMembers
         } else {
             basePayload.members
@@ -35466,15 +35473,16 @@ private fun threadMembersProjection(
     return ThreadMembersProjection(
         membersCount =
             when {
-                channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded -> members.size
+                usesSlice -> members.size
                 basePayload.membersCount > 0 -> basePayload.membersCount
                 else -> members.size
             },
         members = members,
         memberCandidates = candidates,
         canAddMembers =
-            if (channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded) {
-                channelMembersSlice.canAddMembers
+            if (usesSlice) {
+                // False on a stand-in: management waits for a fresh answer.
+                channelMembersSlice.canAddMembers && !channelMembersSlice.storedStandIn
             } else {
                 basePayload.canAddMembers
             }

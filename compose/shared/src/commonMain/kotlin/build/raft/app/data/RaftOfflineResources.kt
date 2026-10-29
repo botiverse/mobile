@@ -72,6 +72,8 @@ internal class RaftOfflineResourceCache(
     private val serverWipedAt = mutableMapOf<String, Long>()
     private val accountServerWipedAt = mutableMapOf<Pair<String, String>, Long>()
     private val rowChangedAt = mutableMapOf<String, Long>()
+    // When the request behind each row's stored value started: an answer of an older request never replaces it.
+    private val rowAnswerStartedAt = mutableMapOf<String, Long>()
     private val pendingWipes = ArrayDeque<Wipe>()
 
     internal val storeScope: CoroutineScope
@@ -154,7 +156,7 @@ internal class RaftOfflineResourceCache(
                 logger("offline_resource_write result=fenced")
                 return@withLock RaftOfflineWriteOutcome.Fenced
             }
-            if (changedSince(rowId, startedAt)) {
+            if (changedSince(rowId, startedAt) || synchronized(fenceLock) { (rowAnswerStartedAt[rowId] ?: NeverTick) > startedAt }) {
                 logger("offline_resource_write result=superseded")
                 return@withLock RaftOfflineWriteOutcome.Superseded
             }
@@ -164,7 +166,10 @@ internal class RaftOfflineResourceCache(
                     runLogged("delete") { rows.delete(listOf(rowId)) }
                     RaftOfflineWriteOutcome.Failed
                 }
-                writeLocked(rowId, parts, encoded, maxEntriesPerAccount) -> RaftOfflineWriteOutcome.Written
+                writeLocked(rowId, parts, encoded, maxEntriesPerAccount) -> {
+                    synchronized(fenceLock) { rowAnswerStartedAt[rowId] = startedAt }
+                    RaftOfflineWriteOutcome.Written
+                }
                 else -> RaftOfflineWriteOutcome.Failed
             }
         }
@@ -188,15 +193,38 @@ internal class RaftOfflineResourceCache(
                 logger("offline_resource_update result=fenced")
                 return@withLock false
             }
-            // Stamped even with nothing stored: an older in-flight fetch must not write a pre-mutation value.
-            markChanged(rowId)
-            val current = readLocked(rowId, maxAgeMillis) ?: return@withLock false
+            val current = readLocked(rowId, maxAgeMillis)
+            if (current == null) {
+                // Stamped even with nothing stored: an older in-flight fetch must not write a pre-mutation value.
+                markChanged(rowId)
+                return@withLock false
+            }
             when (val next = change(current)) {
-                is RaftOfflineChange.Write -> writeLocked(rowId, parts, next.encoded, maxEntriesPerAccount)
+                is RaftOfflineChange.Write -> {
+                    markChanged(rowId)
+                    writeLocked(rowId, parts, next.encoded, maxEntriesPerAccount)
+                }
                 RaftOfflineChange.Remove -> {
+                    markChanged(rowId)
                     runLogged("delete") { rows.delete(listOf(rowId)) }
                     true
                 }
+                // Nothing changes for this row: not stamped (later writes of newer answers stay welcome).
+                RaftOfflineChange.Keep -> false
+            }
+        }
+
+    /** Ids of every stored row [matches] accepts (e.g. one resource's rows of one account + server). */
+    internal suspend fun rowIds(matches: (RaftOfflineRowId.Parts) -> Boolean): List<String> =
+        mutex.withLock {
+            drainWipes()
+            try {
+                rows.ids().filter { id -> RaftOfflineRowId.parts(id)?.let(matches) == true }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                logger("offline_resource_ids result=failure type=${error::class.simpleName}")
+                emptyList()
             }
         }
 
@@ -267,6 +295,7 @@ internal class RaftOfflineResourceCache(
                     serverWipedAt.clear()
                     accountServerWipedAt.clear()
                     rowChangedAt.clear()
+                    rowAnswerStartedAt.clear()
                 }
                 is Wipe.Server ->
                     if (wipe.accountId == null) {
@@ -358,6 +387,9 @@ internal sealed interface RaftOfflineChange {
     data class Write(val encoded: String) : RaftOfflineChange
 
     data object Remove : RaftOfflineChange
+
+    /** Leave the row as it is (a change that does not concern it). */
+    data object Keep : RaftOfflineChange
 }
 
 /**
@@ -456,6 +488,35 @@ internal class RaftOfflineResource<P : Any, T : Any>(
             val next = decodeOrNull(encoded)?.let(transform)
             next?.let(::encode)?.let { RaftOfflineChange.Write(it) } ?: RaftOfflineChange.Remove
         }
+    }
+
+    /**
+     * A confirmed change of every stored value of [accountId] on [serverId] (any params), each as [update]
+     * does it (null removes). Returns how many were changed or removed.
+     */
+    suspend fun updateEach(accountId: String, serverId: String, transform: (T) -> T?): Int {
+        val (environment, account, server) = cache.mintKey(accountId, serverId) ?: return 0
+        val resourceName = "${spec.name}:v${spec.version}"
+        val ids =
+            cache.rowIds { parts ->
+                parts.resource == resourceName && parts.environmentId == environment && parts.accountId == account && parts.serverId == server
+            }
+        var changed = 0
+        for (rowId in ids) {
+            val done =
+                cache.update(rowId, cache.tick(), spec.maxAgeMillis, spec.maxEntriesPerAccount) { encoded ->
+                    val current = decodeOrNull(encoded) ?: return@update RaftOfflineChange.Remove
+                    val next = transform(current)
+                    when {
+                        // Untouched rows are not stamped as changed.
+                        next == current -> RaftOfflineChange.Keep
+                        next == null -> RaftOfflineChange.Remove
+                        else -> encode(next)?.let { RaftOfflineChange.Write(it) } ?: RaftOfflineChange.Remove
+                    }
+                }
+            if (done) changed += 1
+        }
+        return changed
     }
 
     /** Drops the stored value (a confirmed removal: an in-flight fetch that started before cannot restore it). */
