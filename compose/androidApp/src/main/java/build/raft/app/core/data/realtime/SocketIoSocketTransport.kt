@@ -13,6 +13,7 @@ import io.socket.emitter.Emitter
 import io.socket.engineio.client.transports.WebSocket
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
+import org.json.JSONArray
 import org.json.JSONObject
 
 class SocketIoSocketTransport internal constructor(
@@ -42,7 +43,7 @@ class SocketIoSocketTransport internal constructor(
                 IO.Options().apply {
                     transports = arrayOf(WebSocket.NAME)
                     reconnection = true
-                    this.auth = auth
+                    this.auth = socketIoHandshakeAuth(auth)
                     // artin 2026-10-23: one OkHttp client with a WebSocket ping, so a dead socket is
                     // noticed within ~2 pings instead of after Engine.IO's 45 s heartbeat window.
                     callFactory = RaftRealtimeOkHttp.client
@@ -222,6 +223,16 @@ internal class RealtimeSocketGenerationFence(
         return true
     }
 }
+
+/**
+ * The handshake `auth` with `capabilities` (botiverse/slock 968d102d `socketHandshakeCapabilities`: a JSON
+ * array of strings). socket.io-client-java types `Options.auth` as `Map<String, String>` but only hands it to
+ * `JSONObject(Map)`, which keeps a [JSONArray] value as an array; the cast is erased at runtime.
+ */
+@Suppress("UNCHECKED_CAST")
+internal fun socketIoHandshakeAuth(auth: Map<String, String>): Map<String, String> =
+    (auth + ("capabilities" to JSONArray(RealtimeSocketEvents.HandshakeCapabilities)))
+        as Map<String, String>
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
     if (eventName == RealtimeSocketEvents.JoinChannel || eventName == RealtimeSocketEvents.LeaveChannel) {

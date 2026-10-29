@@ -3,6 +3,7 @@ package build.raft.app.data.realtime
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
+import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ConversationKind
@@ -725,6 +726,68 @@ class RealtimeEventMapperTest {
         assertEquals(AgentStatus.Thinking, presence.agentStatus)
         assertEquals("Planning", presence.statusLabel)
         assertEquals(42L, presence.serverSeq)
+    }
+
+    /** botiverse/slock 968d102d `AgentActivityStatePayload`: the coarse state of every agent, for status dots. */
+    @Test
+    fun agentActivityStateMapsToACoarsePresenceFact() {
+        // (state, activity) -> status: the detailed activity when it agrees with the state, else the state.
+        val cases =
+            listOf(
+                Triple("busy", "thinking", AgentStatus.Thinking),
+                Triple("busy", "working", AgentStatus.Working),
+                Triple("online", "online", AgentStatus.Online),
+                Triple("online", "idle", AgentStatus.Online),
+                Triple("offline", "offline", AgentStatus.Offline),
+                Triple("error", "error", AgentStatus.Error),
+            )
+        cases.forEach { (state, activity, expected) ->
+            val event =
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """{"agentId":"agent-1","state":"$state","activity":"$activity","timestamp":1782367200000,"serverSeq":44}"""
+                )
+            val presence = assertIs<MemberPresenceUpdated>(event, "state=$state activity=$activity")
+            assertEquals("agent-1", presence.memberId.value)
+            assertEquals(MemberKind.Agent, presence.kind)
+            assertEquals(expected, presence.agentStatus, "state=$state activity=$activity")
+            assertEquals(expected.presence, presence.presence)
+            assertEquals(44L, presence.serverSeq)
+            assertTrue(presence.coarseState)
+            assertNull(presence.statusLabel)
+            assertTrue(presence.activityEntries.isEmpty())
+        }
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivityState,
+                """{"agentId":"agent-1","state":"sleeping","activity":"x","timestamp":1,"serverSeq":45}"""
+            )
+        )
+        assertFalse(
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivity,
+                    """{"agentId":"agent-1","activity":"online","serverSeq":46}"""
+                )
+            ).coarseState
+        )
+    }
+
+    @Test
+    fun agentActivitySubscribedCarriesTheJoinedIds() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivitySubscribed,
+                """{"agentIds":["agent-1"," agent-2 ","","agent-1"]}"""
+            )
+
+        assertEquals(AgentActivitySubscribed(listOf("agent-1", "agent-2")), event)
+        assertEquals(
+            AgentActivitySubscribed(emptyList()),
+            RealtimeEventMapper().map(RealtimeSocketEvents.AgentActivitySubscribed, """{"agentIds":[]}""")
+        )
+        assertTrue(RealtimeSocketEvents.AgentActivityState in RealtimeSocketEvents.ServerWireEvents)
+        assertTrue(RealtimeSocketEvents.AgentActivitySubscribed in RealtimeSocketEvents.ServerWireEvents)
     }
 
     @Test

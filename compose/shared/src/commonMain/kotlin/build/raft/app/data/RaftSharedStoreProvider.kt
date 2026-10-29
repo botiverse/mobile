@@ -30,6 +30,7 @@ import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
+import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
@@ -731,6 +732,8 @@ internal class RaftSharedStoreProvider private constructor(
         // tail. Only a current grant may move the epoch, so a late signal from a retired identity is ignored.
         realtimeAuthorityProvider.runIfCurrentGrant(grant) {
             realtimeDomainEventOwner.noteTransportEpoch(grant, transportEpoch)
+            // A new socket has no agent activity subscriptions: ask for the open screens' agents again.
+            agentActivitySubscriptions.onConnected(grant.serverId)
         }
         var rebaselineResult: ProcessPresenceTransportRebaselineResult? = null
         var rebaselineOwner: ProcessServerMembersOwner? = null
@@ -1176,6 +1179,16 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             },
             logger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
+    }
+
+    /** The agents whose detailed `agent:activity` the open screens want, per server socket. */
+    val agentActivitySubscriptions: AgentActivitySubscriptions by lazy {
+        AgentActivitySubscriptions(
+            scope = threadSendScope,
+            send = { serverId, subscribe, agentIds ->
+                RaftRealtimeEvents(eventBus).postAgentActivitySubscription(serverId, subscribe, agentIds)
+            },
         )
     }
 
@@ -3418,6 +3431,9 @@ internal class RaftSharedStoreProvider private constructor(
                         owner.installServerAppearanceSink { principalId, event ->
                             authStore.applyRealtimeServerAppearance(principalId, event)
                         }
+                        owner.installAgentActivitySubscribedSink { serverId, event ->
+                            provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)
+                        }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -3763,6 +3779,13 @@ internal class SharedRealtimeDomainEventOwner(
         serverAppearanceSink = sink
     }
 
+    // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
+    private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
+
+    fun installAgentActivitySubscribedSink(sink: (serverId: String, event: AgentActivitySubscribed) -> Unit) {
+        agentActivitySubscribedSink = sink
+    }
+
     // `notification_prefs:updated` with a server mode is emitted to the viewer's own user room. Process entry
     // only, like the appearance sink: it refreshes the viewer's last-known workspace notification preference
     // under the grant's account whether or not a Settings page is mounted.
@@ -3886,6 +3909,9 @@ internal class SharedRealtimeDomainEventOwner(
             }
             if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {
                 serverNotificationPreferencesSink?.invoke(grant.principalId, serverId, acceptedEvent)
+            }
+            if (acceptedEvent is AgentActivitySubscribed) {
+                agentActivitySubscribedSink?.invoke(serverId, acceptedEvent)
             }
         }
 
@@ -4506,7 +4532,9 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // suppress each other's presence updates in the app-shell fanout.
             // agent:seen is seq-less; lastSeenAt is the key so a new
             // observation is never deduped away.
-            serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
+            // agent:activity_state repeats its detailed frame's seq; its own key lets the presence
+            // registry (strictly-newer rule) decide instead of the dedupe.
+            serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it${if (coarseState) ":state" else ""}" }
                 ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}:${detailKind.orEmpty()}:${activityToolName.orEmpty()}:${lastSeenAt.orEmpty()}"
         // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
         // event carries no seq — a stable key made the accepted-key ledger

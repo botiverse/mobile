@@ -2,8 +2,10 @@ package build.raft.app.data
 
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 internal class RaftRealtimeEvents(
     private val eventBus: RaftEventBus
@@ -90,6 +92,24 @@ internal class RaftRealtimeEvents(
                 serverId?.takeIf { it.isNotBlank() }?.let { put(RaftRealtimeNotifyContract.KeyServerId, it) }
             },
             source = "realtime_rooms"
+        )
+    }
+
+    /** One `agent:activity:subscribe` / `:unsubscribe` emit on [serverId]'s socket (see [AgentActivitySubscriptions]). */
+    fun postAgentActivitySubscription(serverId: String, subscribe: Boolean, agentIds: List<String>) {
+        if (serverId.isBlank() || agentIds.isEmpty()) return
+        eventBus.post(
+            RaftRealtimeNotifyContract.RoomsEventName,
+            buildJsonObject {
+                put(
+                    RaftRealtimeNotifyContract.KeyAction,
+                    if (subscribe) RaftRealtimeNotifyContract.ActionAgentActivitySubscribe
+                    else RaftRealtimeNotifyContract.ActionAgentActivityUnsubscribe
+                )
+                put(RaftRealtimeNotifyContract.KeyServerId, serverId)
+                putJsonArray(RaftRealtimeNotifyContract.KeyAgentIds) { agentIds.forEach { add(JsonPrimitive(it)) } }
+            },
+            source = "agent_activity_subscriptions"
         )
     }
 

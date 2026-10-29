@@ -19,6 +19,7 @@ import build.raft.app.strictMessageTypeOrNull
 import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
+import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
@@ -279,6 +280,12 @@ class RealtimeEventMapper(
                 decodeOrNull(AgentSeenDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.AgentActivityState ->
+                decodeOrNull(AgentActivityStateDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.AgentActivitySubscribed ->
+                decodeOrNull(AgentActivitySubscribedDto.serializer(), element)?.let { dto ->
+                    AgentActivitySubscribed(dto.agentIds.map(String::trim).filter(String::isNotEmpty).distinct())
+                }
             // Agent typing line (slock packages/shared/src/agentTyping.ts AgentTypingEvent).
             RealtimeSocketEvents.AgentTyping ->
                 decodeOrNull(AgentTypingWire.serializer(), element)?.toAgentTypingUpdated()
@@ -687,6 +694,20 @@ private data class TaskDeletedDto(
 private data class AgentSeenDto(
     val agentId: String,
     val lastSeenAt: String,
+)
+
+/** Shared `AgentActivityStatePayload` (botiverse/slock 968d102d `agentActivitySubscriptions.ts`). */
+@Serializable
+private data class AgentActivityStateDto(
+    val agentId: String,
+    val state: String,
+    val activity: String? = null,
+    val serverSeq: Long,
+)
+
+@Serializable
+private data class AgentActivitySubscribedDto(
+    val agentIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -1248,6 +1269,31 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
             timestamp = timestamp,
             serverSeq = serverSeq
         ),
+    )
+}
+
+/**
+ * The coarse state as a presence fact: the detailed activity it came from when that is a status the app
+ * knows (working / thinking keep their own dot), else the coarse state itself (busy = working).
+ */
+private fun AgentActivityStateDto.toDomain(): MemberPresenceUpdated? {
+    val id = agentId.trim().takeIf(String::isNotEmpty) ?: return null
+    val coarse =
+        when (state) {
+            "offline" -> AgentStatus.Offline
+            "online" -> AgentStatus.Online
+            "busy" -> AgentStatus.Working
+            "error" -> AgentStatus.Error
+            else -> return null
+        }
+    val status = AgentStatus.fromAgentActivityWireValue(activity)?.takeIf { it.presence == coarse.presence } ?: coarse
+    return MemberPresenceUpdated(
+        memberId = MemberId(id),
+        presence = status.presence,
+        kind = MemberKind.Agent,
+        agentStatus = status,
+        serverSeq = serverSeq,
+        coarseState = true,
     )
 }
 

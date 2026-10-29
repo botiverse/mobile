@@ -26,6 +26,25 @@ class RaftAgentStatusLabelTest {
     }
 
     @Test
+    fun membersTabCoarseStateDropsTheDetailedActivityText() {
+        // The Members tab does not subscribe to detailed agent:activity, so a last label could be stale.
+        val detailed =
+            raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, statusLabel = "Running bash", external = false)
+                .copy(detailKind = "tool_start", activityToolName = "bash")
+        val coarse = detailed.withoutActivityDetail()
+        assertEquals("Working", coarse.label)
+        assertEquals(detailed.color, coarse.color)
+        assertEquals(detailed.pulsing, coarse.pulsing)
+        assertEquals(AgentStatus.Working, coarse.status)
+        assertEquals(null, coarse.detailKind)
+        assertEquals(null, coarse.activityToolName)
+        assertEquals(null, coarse.toolStuck)
+        // External agents keep their caption.
+        val external = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = true)
+        assertEquals(ExternalAgentStatusLabel, external.withoutActivityDetail().label)
+    }
+
+    @Test
     fun staleSummaryDetailCannotCaptionALiveDotWithADifferentState() {
         // Live store says Online (green, no pulse); stale summary still says
         // Working with free-text detail. The label must follow the live dot.

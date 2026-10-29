@@ -12,6 +12,10 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.optString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 interface RaftRealtimeAppScopeConnection {
     val state: RealtimeConnectionState
@@ -24,6 +28,12 @@ interface RaftRealtimeAppScopeConnection {
     ): DataResult<Unit>
     fun disconnect()
     fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false)
+
+    /**
+     * Emits `agent:activity:subscribe` / `agent:activity:unsubscribe` `{ agentIds }` on the current socket.
+     * Never queued for a later socket: shared re-sends its whole set on every (re)connect.
+     */
+    fun emitAgentActivitySubscription(eventName: String, agentIds: List<String>) = Unit
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
     /**
      * [transportEpoch] (task #168): the epoch of the socket that delivered the frame, bound on the socket
@@ -585,8 +595,17 @@ class RaftRealtimeAppScopeCoordinator(
             sink.log("room_command_skip reason=server_mismatch targetServerId=$targetServerId ownedServerId=${ownedServerId.orEmpty()}")
             return false
         }
+        val action = event.eventData.optString(RaftRealtimeNotifyContract.KeyAction)
+        val subscriptionEventName = agentActivitySubscriptionEventName(action)
+        if (subscriptionEventName != null) {
+            val agentIds = event.eventData.agentActivitySubscriptionIds()
+            if (agentIds.isEmpty()) return false
+            connection.emitAgentActivitySubscription(subscriptionEventName, agentIds)
+            sink.log("agent_activity_subscription_emit eventName=$subscriptionEventName count=${agentIds.size}")
+            return true
+        }
         return onRoomCommand(
-            action = event.eventData.optString(RaftRealtimeNotifyContract.KeyAction),
+            action = action,
             channelIdValue = event.eventData.optString(RaftRealtimeNotifyContract.KeyChannelId),
             reason = event.source
         )
@@ -742,3 +761,20 @@ enum class RaftRealtimeAppVisibility {
     Foreground,
     Background
 }
+
+/** The socket event of a rooms-topic agent activity subscription action; null for any other action. */
+internal fun agentActivitySubscriptionEventName(action: String): String? =
+    when (action) {
+        RaftRealtimeNotifyContract.ActionAgentActivitySubscribe -> RealtimeSocketEvents.AgentActivitySubscribe
+        RaftRealtimeNotifyContract.ActionAgentActivityUnsubscribe -> RealtimeSocketEvents.AgentActivityUnsubscribe
+        else -> null
+    }
+
+/** The non-blank, distinct ids of a subscription command's [RaftRealtimeNotifyContract.KeyAgentIds] (capped per emit). */
+internal fun JsonObject.agentActivitySubscriptionIds(): List<String> =
+    (this[RaftRealtimeNotifyContract.KeyAgentIds] as? JsonArray)
+        .orEmpty()
+        .mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.contentOrNull?.trim() }
+        .filter(String::isNotEmpty)
+        .distinct()
+        .take(RealtimeSocketEvents.AgentActivitySubscribeMaxIds)
