@@ -203,12 +203,57 @@ internal fun createSharedRealtimeAuthorityProvider(
         onAuthRevisionAdvanced = onAuthRevisionAdvanced,
     )
 
+/**
+ * The owner a realtime `channel:members-updated` acts for: the account of the grant it was admitted under
+ * ([admission]), and only while the current auth binding ([context]) is still that grant's account AND
+ * authority generation (the same check as the transport rebaseline). Otherwise null (a no-op): an account
+ * switch racing the delivery never acts on the next account's lists.
+ *
+ * A null [admission] is a no-op too. That is the canonical-final surface delivery, which carries no grant and
+ * so, like its presence and activity-unread writes, must not act; it only carries gateway-admitted message
+ * frames, and a `channel:members-updated` (no message fold input) always takes the grant-admitted path.
+ */
+internal fun channelMembersUpdatedOwnerOrNull(
+    context: ProcessPresenceAuthContext?,
+    admission: RealtimePresenceAdmission?,
+    serverId: String,
+): AuthenticatedRouteOwner? {
+    if (admission == null || context == null) return null
+    if (context.accountId != admission.principalId || context.authorityGeneration != admission.authGeneration) return null
+    val owner = context.ownerFor(serverId) ?: return null
+    return AuthenticatedRouteOwner(owner.environmentId, owner.accountId, owner.serverId).normalizedOrNull()
+}
+
+/**
+ * The provider's `channel:members-updated` apply: the owner is captured on the delivery path (see
+ * [channelMembersUpdatedOwnerOrNull]); the reloads run off it in [scope] (network requests; a burst coalesces
+ * per store), pinned to that owner, so an account switch before they run makes them a no-op.
+ */
+internal fun launchChannelMembersUpdated(
+    scope: CoroutineScope,
+    context: ProcessPresenceAuthContext?,
+    admission: RealtimePresenceAdmission?,
+    serverId: String,
+    channelId: String?,
+    stores: () -> List<SharedServerMembersStore>,
+) {
+    val owner = channelMembersUpdatedOwnerOrNull(context, admission, serverId) ?: return
+    scope.launch {
+        applyChannelMembersUpdated(
+            stores(),
+            ServerId(owner.serverId),
+            channelId?.let(::ChannelId),
+            expectedOwner = owner,
+        )
+    }
+}
+
 internal fun createSharedRealtimeDomainEventOwner(
     tasksDataStore: SharedTasksDataStore?,
     cursorStore: RealtimeAppliedSeqCursorStore?,
     authorityProvider: RealtimeAuthorityProvider,
     onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
-    onChannelMembersUpdated: (suspend (serverId: String, channelId: String?) -> Unit)? = null,
+    onChannelMembersUpdated: (suspend (serverId: String, channelId: String?, admission: RealtimePresenceAdmission?) -> Unit)? = null,
 ): SharedRealtimeDomainEventOwner =
     SharedRealtimeDomainEventOwner(
         tasksDataStore = tasksDataStore,
@@ -546,24 +591,22 @@ internal class RaftSharedStoreProvider private constructor(
 
     /**
      * Realtime `channel:members-updated`: every members store reloads its held list or drops a stored one
-     * ([channelId] null: every list of the server).
+     * ([channelId] null: every list of the server). [admission]: the grant the event was admitted under
+     * (see [channelMembersUpdatedOwnerOrNull]).
      */
-    internal suspend fun applyChannelMembersUpdated(serverId: String, channelId: String?) {
-        // The account the event arrived for, captured on the grant-checked delivery path: an account switch
-        // before the launched work runs makes it a no-op instead of acting on the new account's lists.
-        val owner =
-            replyCacheAuthContext.value?.ownerFor(serverId)?.let { owner ->
-                AuthenticatedRouteOwner(owner.environmentId, owner.accountId, owner.serverId).normalizedOrNull()
-            } ?: return
-        // Off the realtime delivery path: the reloads are network requests (a burst coalesces per store).
-        threadSendScope.launch {
-            build.raft.app.data.applyChannelMembersUpdated(
-                allServerMembersStores(),
-                ServerId(owner.serverId),
-                channelId?.let(::ChannelId),
-                expectedOwner = owner,
-            )
-        }
+    internal suspend fun applyChannelMembersUpdated(
+        serverId: String,
+        channelId: String?,
+        admission: RealtimePresenceAdmission?,
+    ) {
+        launchChannelMembersUpdated(
+            scope = threadSendScope,
+            context = replyCacheAuthContext.value,
+            admission = admission,
+            serverId = serverId,
+            channelId = channelId,
+            stores = ::allServerMembersStores,
+        )
     }
 
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
@@ -3369,7 +3412,9 @@ internal class RaftSharedStoreProvider private constructor(
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
                         onAgentDeleted = { serverId, agentId -> provider.evictAgentDetail(serverId, agentId) },
-                        onChannelMembersUpdated = { serverId, channelId -> provider.applyChannelMembersUpdated(serverId, channelId) },
+                        onChannelMembersUpdated = { serverId, channelId, admission ->
+                            provider.applyChannelMembersUpdated(serverId, channelId, admission)
+                        },
                     ).also { owner ->
                         // task #136: agent presence flows straight into the
                         // process registry's owner partition for the realtime
@@ -3639,8 +3684,11 @@ internal class SharedRealtimeDomainEventOwner(
      * its stored offline copy) goes, so a cold / offline open never shows a deleted agent.
      */
     private val onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
-    /** Realtime `channel:members-updated` on a server of the current grant (offline channel member lists). */
-    private val onChannelMembersUpdated: (suspend (serverId: String, channelId: String?) -> Unit)? = null,
+    /**
+     * Realtime `channel:members-updated` on a server of the current grant (offline channel member lists), with
+     * the admission identity frozen from that grant; null on the canonical-final surface delivery (no grant).
+     */
+    private val onChannelMembersUpdated: (suspend (serverId: String, channelId: String?, admission: RealtimePresenceAdmission?) -> Unit)? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
     private val runWithCurrentMessageGrant:
@@ -4187,7 +4235,9 @@ internal class SharedRealtimeDomainEventOwner(
         if (event is Heartbeat) return
         event.patchSharedTaskProjection(resolvedServerId)
         event.deletedAgentIdOrNull()?.let { agentId -> onAgentDeleted?.invoke(resolvedServerId, agentId) }
-        event.updatedChannelMembersOrNull()?.let { update -> onChannelMembersUpdated?.invoke(resolvedServerId, update.channelId) }
+        event.updatedChannelMembersOrNull()?.let { update ->
+            onChannelMembersUpdated?.invoke(resolvedServerId, update.channelId, admission)
+        }
         deliverGuardedAppShellProjectionFinal(resolvedServerId, event, source, activeSinks)
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             if (admission != null) {

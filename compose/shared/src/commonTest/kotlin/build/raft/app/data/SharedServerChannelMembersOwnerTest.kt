@@ -623,6 +623,127 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun aQueuedMembersUpdatedReloadIsNotSentOnceTheInFlightOneLostTheChannel() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        // Change #1: its reload is held at the network, and the viewer was removed from the channel (403).
+        repository.gate = CompletableDeferred()
+        repository.failure = DataResult.NoPermission(PermissionBlocker(code = "server_forbidden"))
+        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        // Change #2 queues a reload after it.
+        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        assertEquals(2, repository.getChannelMembersCalls)
+
+        repository.gate!!.complete(Unit)
+        runCurrent()
+
+        // The in-flight answer dropped the channel: the queued reload is not sent, no slice comes back.
+        assertEquals(2, repository.getChannelMembersCalls)
+        assertEquals(false, store.holdsLoadedChannel(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
+        assertEquals(emptyList(), store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
+        assertEquals(null, device.storedIds())
+
+        // A later event starts afresh (nothing held, nothing stored: no request).
+        applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(2, repository.getChannelMembersCalls)
+    }
+
+    @Test
+    fun anAccountSwitchAfterTheGrantAdmittedAMembersUpdatedEventLeavesTheNextAccountsListAlone() =
+        kotlinx.coroutines.test.runTest {
+            val device = Device(backgroundScope)
+            val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+            val authContext = MutableStateFlow<ProcessPresenceAuthContext?>(bindingFor("account-a", generation = 1L))
+            val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+            val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+            store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+            runCurrent()
+            assertEquals(1, repository.getChannelMembersCalls)
+
+            // Runs between the grant check and the provider's work, once.
+            var onAdmitted: (suspend () -> Unit)? = null
+            val realtime =
+                SharedRealtimeDomainEventOwner(
+                    // The provider's wiring: its handler, the current binding, the members stores.
+                    onChannelMembersUpdated = { serverId, channelId, admission ->
+                        launchChannelMembersUpdated(
+                            scope = backgroundScope,
+                            context = authContext.value,
+                            admission = admission,
+                            serverId = serverId,
+                            channelId = channelId,
+                            stores = { listOf(store) },
+                        )
+                    },
+                    runIfCurrentGrant = { _, block ->
+                        onAdmitted?.also { onAdmitted = null }?.invoke()
+                        block()
+                        true
+                    },
+                )
+            val event =
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.ChannelMembers,
+                    reason = "channel:members-updated",
+                    channelId = ChannelId(CHANNEL_ID),
+                )
+
+            // Admitted under account-a's grant; the account switches to account-b (which opens the channel)
+            // before the event's work runs.
+            onAdmitted = {
+                ownerState.value = owner("env-a", "account-b")
+                authContext.value = bindingFor("account-b", generation = 2L)
+                store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+            }
+            assertEquals(true, realtime.accept(grant("account-a", generation = 1L), event, source = "test"))
+            runCurrent()
+            // Knife: the owner taken from the binding (account-b) reloaded account-b's list for account-a's event.
+            assertEquals(2, repository.getChannelMembersCalls)
+            assertEquals(listOf("member-a"), device.storedIds(accountId = "account-b"))
+
+            // Same account, older generation (a retired session of account-b): no-op as well.
+            assertEquals(true, realtime.accept(grant("account-b", generation = 1L), event, source = "test"))
+            runCurrent()
+            assertEquals(2, repository.getChannelMembersCalls)
+
+            // No grant (canonical-final surface delivery): no-op.
+            realtime.deliverGuardedAppShellDomainFinal(sinks = RealtimeGuardedDomainEventSinks(), serverId = SERVER_ID, event = event)
+            runCurrent()
+            assertEquals(2, repository.getChannelMembersCalls)
+
+            // The event under account-b's current grant does act.
+            assertEquals(true, realtime.accept(grant("account-b", generation = 2L), event, source = "test"))
+            runCurrent()
+            assertEquals(3, repository.getChannelMembersCalls)
+        }
+
+    private fun bindingFor(accountId: String, generation: Long): ProcessPresenceAuthContext =
+        ProcessPresenceAuthContext(
+            environmentId = "env-a",
+            accountId = accountId,
+            authorityGeneration = generation,
+            writeGeneration = 1L,
+        )
+
+    private fun grant(accountId: String, generation: Long): RealtimeGrantRecord =
+        RealtimeGrantRecord(
+            slotKey = RealtimeSlotKey(scopeLeaseId = "shell:test", serverId = SERVER_ID),
+            principalId = accountId,
+            environmentId = "env-a",
+            authGeneration = generation,
+            connectionFamilyId = "family-1",
+            connectionEpochId = "epoch-1",
+        )
+
+    @Test
     fun aMembersUpdatedEventWithoutAChannelAppliesToEveryListOfTheServer() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))

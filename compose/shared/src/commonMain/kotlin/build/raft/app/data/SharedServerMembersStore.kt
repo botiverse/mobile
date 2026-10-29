@@ -765,7 +765,7 @@ class SharedServerMembersStore internal constructor(
             }
         if (!starts) return
         try {
-            do {
+            while (true) {
                 loadChannelMembers(owner, ChannelId(scope.channelId), DataRequestPriority.Background, force = true)
                 val again =
                     synchronized(channelReloadLock) {
@@ -773,7 +773,14 @@ class SharedServerMembersStore internal constructor(
                             if (again) channelReloads[scope] = false else channelReloads.remove(scope)
                         }
                     }
-            } while (again)
+                if (!again) break
+                // The queued reload only while the list is still held: a lost channel (403 / 404 dropped it), a
+                // failure, or an account switch meanwhile ends it (no second request, no re-created slice).
+                if (!holdsLoadedChannel(ServerId(scope.serverId), ChannelId(scope.channelId), owner)) {
+                    synchronized(channelReloadLock) { channelReloads.remove(scope) }
+                    break
+                }
+            }
         } catch (error: Throwable) {
             // Failed / cancelled: the next event starts afresh.
             synchronized(channelReloadLock) { channelReloads.remove(scope) }
