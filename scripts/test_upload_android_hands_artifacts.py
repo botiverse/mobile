@@ -11,7 +11,12 @@ CURL = r'''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
 a=sys.argv[1:]; state=Path(os.environ['MOCK_STATE'])
-if '--upload-file' in a: sys.exit(0)
+kind='put' if '--upload-file' in a else 'create' if '--data-binary' in a else 'complete' if '-X' in a else 'get'
+calls=Path(str(state)+'.'+kind); n=int(calls.read_text()) if calls.exists() else 0; calls.write_text(str(n+1))
+if kind==os.environ.get('FAIL_ON') and n<int(os.environ.get('FAIL_TIMES','1')):
+ print(os.environ.get('FAIL_BODY') or '<html>edge '+os.environ['FAIL_CODE']+' https://uploads.example/x?X-Amz-Signature=presigned-secret</html>')
+ sys.stderr.write('curl: (22) The requested URL returned error: '+os.environ['FAIL_CODE']+'\n'); sys.exit(22)
+if kind=='put': sys.exit(0)
 if '--data-binary' in a:
  d=json.loads(a[a.index('--data-binary')+1]); state.write_text(json.dumps(d))
  d.update(build_id='build-test',status='uploading')
@@ -37,7 +42,7 @@ class UploadContract(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def run_case(self, mode):
+    def run_case(self, mode, **extra):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)
             (root/'curl').write_text(CURL); (root/'curl').chmod(0o755)
@@ -46,10 +51,12 @@ class UploadContract(unittest.TestCase):
                      HANDS_API='https://hands.example', HANDS_BEARER_TOKEN='test', HANDS_ANDROID_APP_ID='app',
                      SOURCE_REPOSITORY='botiverse/mobile',SOURCE_COMMIT_SHA='a'*40,CI_RUN_ID='123',
                      PACKAGE_NAME='build.raft.app',VERSION_NAME='1.0.0',VERSION_CODE='123',
-                     UPLOAD_KEY_CERT_SHA256=self.fixture.pin,AAB_PATH=str(self.fixture.input if mode == 'unsigned' else self.fixture.signed),APK_PATH=f'{td}/app.apk')
+                     UPLOAD_KEY_CERT_SHA256=self.fixture.pin,AAB_PATH=str(self.fixture.input if mode == 'unsigned' else self.fixture.signed),APK_PATH=f'{td}/app.apk',
+                     HANDS_CURL_RETRY_DELAYS='0 0 0', **extra)
             result = subprocess.run(['bash',str(Path(__file__).with_name('upload_android_hands_artifacts.sh'))],env=env,capture_output=True,text=True)
             if mode == 'unsigned':
                 self.assertFalse((root/'request').exists(), 'unsigned AAB reached network upload')
+            result.calls={k:int((root/f'request.{k}').read_text()) for k in ('create','put','complete','get') if (root/f'request.{k}').exists()}
             return result
     def test_workflow_uploads_signed_apk(self):
         workflow=Path(__file__).resolve().parent.parent / ".github/workflows/android-release.yml"
@@ -63,5 +70,40 @@ class UploadContract(unittest.TestCase):
     def test_rejects_bad_receipt_and_foreign_completion(self):
         for mode in ('digest','source','foreign','unsigned'):
             with self.subTest(mode=mode): self.assertNotEqual(self.run_case(mode).returncode,0)
+    def test_retries_transient_5xx(self):
+        for fail_on,code,calls in (('create','503',2),('put','503',3),('complete','502',3),('get','504',2)):
+            with self.subTest(fail_on=fail_on):
+                result=self.run_case('ok',FAIL_ON=fail_on,FAIL_CODE=code)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(result.stdout.count('build_id=build-test'),1)
+                self.assertEqual(result.calls[fail_on],calls)
+                self.assertIn('attempt 1/3 failed (transient): HTTP '+code,result.stderr)
+    def test_create_fails_fast_on_non_gateway_errors(self):
+        for code in ('400','500'):
+            with self.subTest(code=code):
+                result=self.run_case('ok',FAIL_ON='create',FAIL_CODE=code)
+                self.assertNotEqual(result.returncode,0)
+                self.assertEqual(result.calls,{'create':1})
+                self.assertIn('HTTP '+code,result.stderr)
+    def test_final_failure_logs_redacted_body(self):
+        result=self.run_case('ok',FAIL_ON='put',FAIL_CODE='503',FAIL_TIMES='9')
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(result.calls['put'],3)
+        self.assertIn('Hands aab upload failed: HTTP 503',result.stderr)
+        self.assertIn('<html>edge 503',result.stderr)
+        self.assertNotIn('presigned-secret',result.stderr)
+    def test_asset_upload_unavailable_is_not_retried(self):
+        result=self.run_case('ok',FAIL_ON='create',FAIL_CODE='503',FAIL_TIMES='9',
+                             FAIL_BODY='{"code":"ASSET_UPLOAD_UNAVAILABLE","message":"presign not configured","retryable":false}')
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(result.calls,{'create':1})
+        self.assertIn('ASSET_UPLOAD_UNAVAILABLE is a Hands storage configuration error',result.stderr)
+        self.assertIn('HTTP 503 code=ASSET_UPLOAD_UNAVAILABLE',result.stderr)
+    def test_json_retryable_true_is_retried(self):
+        result=self.run_case('ok',FAIL_ON='create',FAIL_CODE='500',
+                             FAIL_BODY='{"code":"UPSTREAM_BUSY","retryable":true}')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(result.calls['create'],2)
+        self.assertIn('HTTP 500 code=UPSTREAM_BUSY',result.stderr)
 
 if __name__=='__main__': unittest.main()

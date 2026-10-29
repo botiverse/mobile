@@ -671,13 +671,13 @@ jobs:
           set -euo pipefail
           HANDS_API_BASE="${HANDS_API:-https://hands.build}"
           HANDS_TOKEN="${HANDS_BEARER_TOKEN}"
-          APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
+          APP_ID="$(curl -fsS --retry 3 --retry-delay 5 -H "Authorization: Bearer ${HANDS_TOKEN}" \
             "${HANDS_API_BASE}/api/apps" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='raft-ios'), ''))" \
             2>/dev/null || true)"
           PREV_COMMIT=""
           if [ -n "${APP_ID}" ]; then
-            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
+            PREV_COMMIT="$(curl -fsS --retry 3 --retry-delay 5 -H "Authorization: Bearer ${HANDS_TOKEN}" \
               "${HANDS_API_BASE}/api/apps/${APP_ID}/builds" \
               | python3 -c "import json,sys; d=json.load(sys.stdin); bs=d.get('builds') or []; p=(bs[0].get('provenance_json') if bs else None); p=json.loads(p) if isinstance(p,str) else (p or {}); print(p.get('source_commit') or '')" \
               2>/dev/null || true)"
