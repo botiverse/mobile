@@ -85,6 +85,65 @@ internal fun HomeSnapshot.withFollowedThreadServerUnread(
 internal fun HomeSnapshot.withFollowedThreadUnread(threads: Map<String, HomeFollowedThreadUnread>): HomeSnapshot =
     if (threads == followedThreadUnread) this else copy(followedThreadUnread = threads)
 
+/**
+ * Where a thread's Unfollow is (web #11687 `markThreadUnfollowed`: unfollowing a thread clears its
+ * unread at once; the server counts none for a thread the person doesn't follow).
+ */
+enum class HomeThreadUnfollowPhase {
+    /** Unfollow chosen (sent, or waiting for its undo toast): the thread's unread leaves Home now. */
+    Unfollowed,
+
+    /** The server accepted it: nothing to put back any more. */
+    Confirmed,
+
+    /** Undo, or the request failed: the unread it had comes back. */
+    Restored,
+}
+
+/** The optimistic half of an Unfollow: the thread's unread leaves its channel's mark. */
+internal fun HomeSnapshot.withThreadUnfollowed(threadChannelId: String): HomeSnapshot =
+    if (threadChannelId !in followedThreadUnread) this else copy(followedThreadUnread = followedThreadUnread - threadChannelId)
+
+/**
+ * Undo / failure of an Unfollow: puts back what [cleared] held, unless the thread has been listed
+ * again since (a newer count stands).
+ */
+internal fun HomeSnapshot.withThreadUnfollowRestored(threadChannelId: String, cleared: HomeFollowedThreadUnread?): HomeSnapshot =
+    if (cleared == null || threadChannelId in followedThreadUnread) {
+        this
+    } else {
+        copy(followedThreadUnread = followedThreadUnread + (threadChannelId to cleared))
+    }
+
+/**
+ * Sends an Unfollow through [unfollow] with its Home projection around it: [project] clears the
+ * thread's unread first, then confirms it when the server accepts or restores it when it doesn't
+ * (or the request is cancelled).
+ */
+internal suspend fun unfollowThreadProjectingHome(
+    threadChannelId: ChannelId,
+    project: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit,
+    unfollow: suspend (ChannelId) -> DataResult<ThreadActionResult>,
+): DataResult<ThreadActionResult> {
+    val threadId = threadChannelId.value
+    project(SharedHomeIntent.ProjectThreadUnfollow(threadId, HomeThreadUnfollowPhase.Unfollowed))
+    var settled = false
+    try {
+        val result = unfollow(threadChannelId)
+        val accepted = result is DataResult.Content || result is DataResult.Empty
+        project(
+            SharedHomeIntent.ProjectThreadUnfollow(
+                threadId,
+                if (accepted) HomeThreadUnfollowPhase.Confirmed else HomeThreadUnfollowPhase.Restored,
+            )
+        )
+        settled = true
+        return result
+    } finally {
+        if (!settled) project(SharedHomeIntent.ProjectThreadUnfollow(threadId, HomeThreadUnfollowPhase.Restored))
+    }
+}
+
 /** Web `FOLLOWED_THREADS_REFRESH_DELAY_MS`. */
 internal const val HOME_FOLLOWED_THREAD_REFRESH_DELAY_MS: Long = 1_500L
 

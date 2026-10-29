@@ -805,6 +805,8 @@ internal class SharedHomeStore(
                 markConversationUnread(intent.conversationId)
             is SharedHomeIntent.MarkConversationReadAll ->
                 markConversationReadAll(intent.conversationId)
+            is SharedHomeIntent.ProjectThreadUnfollow ->
+                projectThreadUnfollow(intent.threadChannelId, intent.phase)
             is SharedHomeIntent.CloseDirectMessage ->
                 closeDirectMessage(intent.conversationId)
             is SharedHomeIntent.OwnMessagesSent ->
@@ -1511,7 +1513,10 @@ internal class SharedHomeStore(
                 if (now.baseSnapshot.server.id != serverId || now.baseSnapshot.currentMember.id != accountId) {
                     return@synchronized false
                 }
-                applyHomeSnapshotLocally { it.withFollowedThreadUnread(summary.followedThreadUnread) }
+                val pendingUnfollows = pendingThreadUnfollows.keys
+                val threads =
+                    if (pendingUnfollows.isEmpty()) summary.followedThreadUnread else summary.followedThreadUnread - pendingUnfollows
+                applyHomeSnapshotLocally { it.withFollowedThreadUnread(threads) }
             }
         diagnosticsLogger(
             "home_followed_thread_refresh result=content threads=${summary.followedThreadUnread.size} changed=$changed"
@@ -3814,6 +3819,35 @@ internal class SharedHomeStore(
         }
     }
 
+    /**
+     * The unread each pending Unfollow cleared, by thread channel id, kept until it is confirmed or
+     * restored. While pending, a reloaded followed-thread summary (which may predate the request, or
+     * an Unfollow still waiting for its undo toast) does not bring the thread back.
+     */
+    private val pendingThreadUnfollows = mutableMapOf<String, HomeFollowedThreadUnread?>()
+
+    private fun projectThreadUnfollow(threadChannelId: String, phase: HomeThreadUnfollowPhase) {
+        val threadId = threadChannelId.trim().takeIf { it.isNotEmpty() } ?: return
+        synchronized(readProjectionOwnerLock) {
+            when (phase) {
+                HomeThreadUnfollowPhase.Unfollowed -> {
+                    val content = _state.value.content as? SharedHomeContentState.Content
+                    val cleared = content?.snapshot?.followedThreadUnread?.get(threadId)
+                    // A second Unfollow while one is pending keeps the first one's count to restore.
+                    if (threadId !in pendingThreadUnfollows || cleared != null) pendingThreadUnfollows[threadId] = cleared
+                    applyHomeSnapshotLocally { it.withThreadUnfollowed(threadId) }
+                }
+                HomeThreadUnfollowPhase.Confirmed -> pendingThreadUnfollows.remove(threadId)
+                HomeThreadUnfollowPhase.Restored -> {
+                    if (threadId !in pendingThreadUnfollows) return@synchronized
+                    val cleared = pendingThreadUnfollows.remove(threadId)
+                    applyHomeSnapshotLocally { it.withThreadUnfollowRestored(threadId, cleared) }
+                }
+            }
+        }
+        diagnosticsLogger("home_thread_unfollow phase=$phase thread=${threadId.take(8)}")
+    }
+
     private suspend fun markConversationUnread(conversationId: String) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
@@ -4720,6 +4754,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read-all:$conversationId"
+        is SharedHomeIntent.ProjectThreadUnfollow -> "${SharedHomeChannelFoldEvent.Patch.wireName}:thread-unfollow:$threadChannelId:$phase"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
         is SharedHomeIntent.OwnMessagesSent -> "${SharedHomeChannelFoldEvent.Patch.wireName}:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
@@ -5640,6 +5675,13 @@ sealed interface SharedHomeIntent {
      * channel and its followed threads in one `conversation-read-all` request.
      */
     data class MarkConversationReadAll(val conversationId: String) : SharedHomeIntent
+
+    /**
+     * Web #11687: unfollowing a thread (from the thread, its parent message's menu, or Activity)
+     * clears its unread on Home at once; [HomeThreadUnfollowPhase.Restored] (Undo, or a failed
+     * request) puts it back. The Unfollow request itself belongs to the surface that sends it.
+     */
+    data class ProjectThreadUnfollow(val threadChannelId: String, val phase: HomeThreadUnfollowPhase) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
     /**
      * Task #59: the current user sent a message successfully in these conversations (the DM, or
@@ -5704,6 +5746,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
+            is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
@@ -5754,6 +5797,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
+            is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
@@ -5804,6 +5848,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
+            is SharedHomeIntent.ProjectThreadUnfollow,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,

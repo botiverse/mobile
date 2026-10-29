@@ -157,6 +157,67 @@ class SharedHomeStoreConversationReadAllTest {
         assertEquals(setOf("thread-1", "thread-other"), store.snapshot().followedThreadUnread.keys)
     }
 
+    /**
+     * Web #11687: unfollowing a thread clears its unread on Home at once (its channel's thread mark
+     * drops), and Undo or a failed request puts back exactly what it cleared.
+     */
+    @Test
+    fun unfollowingAThreadClearsItsUnreadAtOnceAndUndoPutsItBack() = runTest {
+        val store = store(markConversationReadAll = { error("unused") })
+        store.accept(SharedHomeIntent.Start)
+        val before = store.snapshot()
+
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-1", HomeThreadUnfollowPhase.Unfollowed))
+        assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys)
+        assertNull(store.snapshot().parentThreadUnread(ChannelId("channel-1")))
+        // The channel's own unread is not the thread's.
+        assertEquals(3, store.snapshot().channels.first { it.channelId == ChannelId("channel-1") }.unreadCount)
+
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-1", HomeThreadUnfollowPhase.Restored))
+        assertEquals(before.followedThreadUnread, store.snapshot().followedThreadUnread)
+    }
+
+    @Test
+    fun aConfirmedUnfollowStaysClearedAndAStrayRestoreDoesNothing() = runTest {
+        val store = store(markConversationReadAll = { error("unused") })
+        store.accept(SharedHomeIntent.Start)
+
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-1", HomeThreadUnfollowPhase.Unfollowed))
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-1", HomeThreadUnfollowPhase.Confirmed))
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-1", HomeThreadUnfollowPhase.Restored))
+        // A restore for a thread never unfollowed here invents nothing either.
+        store.accept(SharedHomeIntent.ProjectThreadUnfollow("thread-other", HomeThreadUnfollowPhase.Restored))
+
+        assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys)
+    }
+
+    /** The thread page's Unfollow: cleared before the request, back when the server refuses it. */
+    @Test
+    fun anUnfollowRequestRestoresHomeWhenItFailsAndKeepsTheClearWhenAccepted() = runTest {
+        val store = store(markConversationReadAll = { error("unused") })
+        store.accept(SharedHomeIntent.Start)
+        val response = CompletableDeferred<DataResult<ThreadActionResult>>()
+
+        val failing =
+            launch {
+                unfollowThreadProjectingHome(ChannelId("thread-1"), project = store::dispatch, unfollow = { response.await() })
+            }
+        runCurrent()
+        assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys, "cleared while the request is out")
+        response.complete(DataResult.Error(ScreenError(code = "server_unavailable", retryable = true)))
+        failing.join()
+        runCurrent()
+        assertEquals(setOf("thread-1", "thread-other"), store.snapshot().followedThreadUnread.keys)
+
+        unfollowThreadProjectingHome(
+            ChannelId("thread-1"),
+            project = store::dispatch,
+            unfollow = { id -> DataResult.Content(ThreadActionResult(threadChannelId = id, changed = true)) },
+        )
+        runCurrent()
+        assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys)
+    }
+
     private fun TestScope.store(
         home: HomeSnapshot = sampleHome(),
         markConversationReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult>,

@@ -114,6 +114,53 @@ class SharedActivityStoreDeferredUnfollowTest {
         assertEquals(threadA, panel.listed.single())
     }
 
+    /**
+     * Web #11687: the Unfollow clears the thread's unread on Home when the person chooses it (before
+     * the toast ends); Undo puts it back; a sent Unfollow confirms it, or restores it when it fails.
+     */
+    @Test
+    fun homeLosesTheThreadUnreadAtOnceAndGetsItBackOnUndoOrFailure() = runTest {
+        val conversation = FakeConversationRepository()
+        val projected = mutableListOf<Pair<String, HomeThreadUnfollowPhase>>()
+        val store =
+            activityStore(
+                backgroundScope,
+                FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(threadA, threadB)))),
+                conversationRepository = conversation,
+                onThreadUnfollowProjection = { projected += it.threadChannelId to it.phase },
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val panel = Panel(store)
+        // SharedInboxPanel: the Unfollow and its Undo tell Home at once.
+        fun unfollow(item: InboxItem) {
+            store.dispatch(SharedActivityIntent.ProjectThreadUnfollow(item, HomeThreadUnfollowPhase.Unfollowed))
+            panel.unfollow(item)
+        }
+
+        unfollow(threadA)
+        runCurrent()
+        assertEquals(listOf("thread-a" to HomeThreadUnfollowPhase.Unfollowed), projected)
+        store.dispatch(SharedActivityIntent.ProjectThreadUnfollow(threadA, HomeThreadUnfollowPhase.Restored))
+        panel.undoToast()
+        runCurrent()
+        assertEquals("thread-a" to HomeThreadUnfollowPhase.Restored, projected.last())
+
+        unfollow(threadA)
+        panel.toastEnds()
+        runCurrent()
+        assertEquals("thread-a" to HomeThreadUnfollowPhase.Confirmed, projected.last())
+
+        conversation.unfollowResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        unfollow(threadB)
+        panel.toastEnds()
+        runCurrent()
+        assertEquals(
+            listOf("thread-b" to HomeThreadUnfollowPhase.Unfollowed, "thread-b" to HomeThreadUnfollowPhase.Restored),
+            projected.takeLast(2),
+        )
+    }
+
     @Test
     fun severalUnfollowsInARowEachSendOnce() = runTest {
         val conversation = FakeConversationRepository()

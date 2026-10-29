@@ -177,6 +177,7 @@ import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.unfollowThreadProjectingHome
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
@@ -7954,7 +7955,13 @@ private fun SharedThreadRouteContentContent(
                     conversationChannelId = conversationId,
                     loadRef = dataSource::loadTaskConversationRef,
                     follow = dataSource::followTaskConversation,
-                    unfollow = dataSource::unfollowThread,
+                    unfollow = { conversationId ->
+                        unfollowThreadProjectingHome(
+                            conversationId,
+                            project = { intent -> sharedHomeStore?.dispatch(intent) },
+                            unfollow = dataSource::unfollowThread,
+                        )
+                    },
                     log = { bridge.log(it) },
                     loadTask = { serverId, parentChannelId, taskNumber ->
                         tasksDataSource
@@ -12431,7 +12438,14 @@ private fun SharedThreadRouteContentContent(
                     pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + threadChannelId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.unfollowThread(ChannelId(threadChannelId))) {
+                            // Web #11687: the thread's unread leaves Home at once, back if this fails.
+                            val unfollowResult =
+                                unfollowThreadProjectingHome(
+                                    ChannelId(threadChannelId),
+                                    project = { intent -> sharedHomeStore?.dispatch(intent) },
+                                    unfollow = dataSource::unfollowThread,
+                                )
+                            when (val result = unfollowResult) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageThreadFollowed(

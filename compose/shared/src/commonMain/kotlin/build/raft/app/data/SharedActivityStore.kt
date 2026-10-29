@@ -156,6 +156,11 @@ class SharedActivityStore internal constructor(
     /** Workspace Artifacts: Done / Undo / Read / Unfollow on object rows. Null: those writes refresh instead. */
     private val activityObjectsRepository: ActivityObjectsRepository? = null,
     onUnreadCountsChanged: () -> Unit = {},
+    /**
+     * Web #11687: how a thread's Unfollow from Activity ends, for Home's followed-thread unread
+     * (the panel clears it when the person unfollows; this confirms or restores it).
+     */
+    onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = {},
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     private val scope: CoroutineScope,
@@ -200,6 +205,7 @@ class SharedActivityStore internal constructor(
     /** Between [SharedActivityIntent.SurfaceHidden] and the next load the surface asks for. */
     private var activitySurfaceHidden = false
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
+    private var onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = onThreadUnfollowProjection
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     // Local read / Done overlays: keep a confirmed mutation applied while the
@@ -303,6 +309,7 @@ class SharedActivityStore internal constructor(
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         onUnreadCountsChanged: (() -> Unit)? = null,
+        onThreadUnfollowProjection: ((SharedHomeIntent.ProjectThreadUnfollow) -> Unit)? = null,
         onSummaryFact: ((ActivityUnreadSummaryFact) -> Unit)? = null,
         onSummaryInvalidated: ((ActivityUnreadSummaryInvalidation) -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -333,6 +340,9 @@ class SharedActivityStore internal constructor(
         this.readStateV1Canary = readStateV1Canary
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
+        }
+        if (onThreadUnfollowProjection != null) {
+            this.onThreadUnfollowProjection = onThreadUnfollowProjection
         }
         if (onSummaryFact != null) {
             this.onSummaryFact = onSummaryFact
@@ -376,6 +386,10 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.MarkUnread -> if (intent.item.kind != InboxItemKind.Object) markUnread(intent.item)
             is SharedActivityIntent.UndoObjectDone -> undoObjectDone(intent.item)
             is SharedActivityIntent.UnfollowObject -> unfollowObject(intent.item)
+            is SharedActivityIntent.ProjectThreadUnfollow ->
+                intent.item.threadChannelId?.value?.let { threadId ->
+                    onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(threadId, intent.phase))
+                }
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.ApplyReadReceiptResult ->
@@ -3178,8 +3192,14 @@ class SharedActivityStore internal constructor(
                 intent.listOwnerServerId != null &&
                 intent.listOwnerUserId == state.ownerUserId &&
                 intent.listOwnerServerId == state.ownerServerId
-        val currentItem = heldItem ?: item.takeIf { sameListOwner } ?: return
-        if (currentItem.isUnfollowedActivityThread) return
+        val threadId = item.threadChannelId?.value
+        fun settleHome(phase: HomeThreadUnfollowPhase) {
+            threadId?.let { onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(it, phase)) }
+        }
+        // Nothing is written for a row of another list: Home gets back the unread it cleared.
+        val currentItem = heldItem ?: item.takeIf { sameListOwner } ?: return settleHome(HomeThreadUnfollowPhase.Restored)
+        // Already unfollowed (the server counts no unread for it): the clear stands.
+        if (currentItem.isUnfollowedActivityThread) return settleHome(HomeThreadUnfollowPhase.Confirmed)
         if (!beginThreadFollowMutation(item.key)) return
         val previous = _state.value
         if (heldItem != null) updateThreadFollowProjection(item.key, following = false)
@@ -3200,6 +3220,9 @@ class SharedActivityStore internal constructor(
                 // next explicit action until the store is reset.
                 finishThreadFollowMutation(item.key)
             }
+            settleHome(
+                if (result.isAcceptedThreadFollowMutation()) HomeThreadUnfollowPhase.Confirmed else HomeThreadUnfollowPhase.Restored
+            )
             if (result.isAcceptedThreadFollowMutation()) {
                 onUnreadCountsChanged()
                 // The mutation response is the server acknowledgement for
@@ -4332,6 +4355,13 @@ sealed interface SharedActivityIntent {
     data class UndoObjectDone(val item: InboxItem) : SharedActivityIntent
     /** Workspace Artifacts: stop following the row's object (sent after its Undo toast ends). */
     data class UnfollowObject(val item: InboxItem) : SharedActivityIntent
+
+    /**
+     * Web #11687: the person unfollowed [item]'s thread here (its request waits for the undo toast:
+     * [HomeThreadUnfollowPhase.Unfollowed]) or took it back with Undo
+     * ([HomeThreadUnfollowPhase.Restored]); Home's unread for the thread follows at once.
+     */
+    data class ProjectThreadUnfollow(val item: InboxItem, val phase: HomeThreadUnfollowPhase) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -4367,6 +4397,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ChannelAccessLost -> "channel_access_lost"
         is SharedActivityIntent.UndoObjectDone -> "undo_object_done"
         is SharedActivityIntent.UnfollowObject -> "unfollow_object"
+        is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -4385,6 +4416,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.UndoObjectDone,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
+        is SharedActivityIntent.ProjectThreadUnfollow,
         is SharedActivityIntent.ServerSelected,
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,
