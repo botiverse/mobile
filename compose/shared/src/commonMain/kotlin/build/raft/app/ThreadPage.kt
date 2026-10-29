@@ -31380,6 +31380,23 @@ private fun ThreadMessageQuickReactionBar(
     onReact: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
+    Modal(onWillDismiss = { onDismiss() }) {
+        ThreadMessageQuickReactionBarPopover(messageId, anchor, onDismiss, onReact, diagnosticsLogger)
+    }
+}
+
+/**
+ * [ThreadMessageQuickReactionBar] without its window: the popover over the page (screenshot
+ * tests draw it in the page, as a window can't be captured with the page under it).
+ */
+@Composable
+internal fun ThreadMessageQuickReactionBarPopover(
+    messageId: String,
+    anchor: RaftPopoverAnchor,
+    onDismiss: () -> Unit,
+    onReact: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
+) {
     val density = LocalDensity.current
     val barWidthDp = threadMessageMenuWidthDp(showReactionActions = true)
     val contentSize =
@@ -31390,7 +31407,7 @@ private fun ThreadMessageQuickReactionBar(
             )
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
-    RaftModalAnchoredPopover(
+    RaftAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
