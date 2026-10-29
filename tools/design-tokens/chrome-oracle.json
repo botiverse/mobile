@@ -6073,6 +6073,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -8764,6 +8803,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -9100,6 +9152,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -15240,6 +15305,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.9843 0.004 106.47 / 0.06)",
     "onWhite": [
@@ -17931,6 +18035,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -18267,6 +18384,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -24407,6 +24537,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0 0 0 / 0.06)",
     "onWhite": [
@@ -27098,6 +27267,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -27434,6 +27616,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -33574,6 +33769,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.07)",
     "onWhite": [
@@ -36265,6 +36499,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -36601,6 +36848,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -42741,6 +43001,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -45432,6 +45731,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -45768,6 +46080,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -51908,6 +52233,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -54599,6 +54963,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -54935,6 +55312,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -61075,6 +61465,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -63766,6 +64195,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -64102,6 +64544,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -70242,6 +70697,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -72933,6 +73427,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -73269,6 +73776,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -79409,6 +79929,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -82100,6 +82659,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -82436,6 +83008,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -88576,6 +89161,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -91267,6 +91891,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -91603,6 +92240,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -97743,6 +98393,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -100434,6 +101123,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -100770,6 +101472,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -106910,6 +107625,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -109601,6 +110355,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -109937,6 +110704,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -116077,6 +116857,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -118768,6 +119587,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -119104,6 +119936,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -125244,6 +126089,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -127935,6 +128819,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -128271,6 +129168,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -134411,6 +135321,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -137102,6 +138051,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -137438,6 +138400,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -143578,6 +144553,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -146269,6 +147283,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -146605,6 +147632,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -152745,6 +153785,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -155436,6 +156515,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -155772,6 +156864,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -161912,6 +163017,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -164603,6 +165747,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -164939,6 +166096,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -171079,6 +172249,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -173770,6 +174979,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -174106,6 +175328,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -180246,6 +181481,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -182937,6 +184211,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -183273,6 +184560,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {
@@ -189413,6 +190713,45 @@
      26
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.04)",
+    "onWhite": [
+     246,
+     246,
+     246
+    ],
+    "onBlack": [
+     1,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.1813 0.005 17.62 / 0.078)",
+    "onWhite": [
+     237,
+     236,
+     236
+    ],
+    "onBlack": [
+     2,
+     1,
+     1
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.9452 0.0326 226.3)",
+    "onWhite": [
+     215,
+     242,
+     254
+    ],
+    "onBlack": [
+     215,
+     242,
+     254
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -192104,6 +193443,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -192440,6 +193792,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.64 0.16 50)",
+    "onWhite": [
+     214,
+     105,
+     25
+    ],
+    "onBlack": [
+     214,
+     105,
+     25
     ]
    },
    "--warning-hover": {
@@ -198580,6 +199945,45 @@
      157
     ]
    },
+   "--fill-cell-hover": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.075)",
+    "onWhite": [
+     255,
+     255,
+     254
+    ],
+    "onBlack": [
+     19,
+     19,
+     18
+    ]
+   },
+   "--fill-cell-press": {
+    "css": "oklch(0.9843 0.004 106.47 / 0.12)",
+    "onWhite": [
+     254,
+     254,
+     254
+    ],
+    "onBlack": [
+     30,
+     30,
+     30
+    ]
+   },
+   "--fill-cell-selected": {
+    "css": "oklch(0.452 0.0862 225.67 / 0.38)",
+    "onWhite": [
+     158,
+     194,
+     204
+    ],
+    "onBlack": [
+     0,
+     36,
+     46
+    ]
+   },
    "--fill-frame-medium": {
     "css": "oklch(1 0 0 / 0.1)",
     "onWhite": [
@@ -201271,6 +202675,19 @@
      17
     ]
    },
+   "--sticker-ink-medium": {
+    "css": "oklch(1 0 0 / 0.06)",
+    "onWhite": [
+     255,
+     255,
+     255
+    ],
+    "onBlack": [
+     15,
+     15,
+     15
+    ]
+   },
    "--sticker-medium": {
     "css": "oklch(0.1813 0.005 17.62 / 0.1)",
     "onWhite": [
@@ -201607,6 +203024,19 @@
      20,
      17,
      17
+    ]
+   },
+   "--warning-graphic": {
+    "css": "oklch(0.77 0.135 50)",
+    "onWhite": [
+     248,
+     153,
+     97
+    ],
+    "onBlack": [
+     248,
+     153,
+     97
     ]
    },
    "--warning-hover": {

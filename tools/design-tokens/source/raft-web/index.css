@@ -4,6 +4,7 @@
 @import "@botiverse/raft-ui/styles.css";
 @import "@botiverse/raft-ui/themes.css";
 @import "./components/mermaid/mermaid.css";
+@import "./components/topbar/titleBar.css";
 
 
 /* Typography follows raft-ui/fonts.css contract */
@@ -502,6 +503,26 @@
     .onboarding-identity-card-enter,
     .onboarding-cindy-entrance,
     .onboarding-cindy-pop-mark {
+      animation: none;
+    }
+  }
+
+  /* The assistant's otter (assistant/AssistantOtter.tsx): once, when it
+     appears on a composer, it comes up out of the frame with one small
+     overshoot. A brand moment (Raft DS › Motion), never looped. Reduced
+     motion: it is simply there (and the component skips the running pose). */
+  @keyframes assistant-otter-pop {
+    0% { transform: translateY(105%); }
+    60% { transform: translateY(-8px); }
+    100% { transform: translateY(0); }
+  }
+
+  .assistant-otter-pop {
+    animation: assistant-otter-pop 620ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-otter-pop {
       animation: none;
     }
   }
@@ -1060,6 +1081,14 @@
   }
 }
 
+/* A double tap on a message opens its quick reactions (useMessageTouchTaps),
+   so the browser must not also zoom the page on it. Outside the hover: none
+   query: a finger on a touchscreen laptop or an iPad with a trackpad taps the
+   same as on a phone. Scrolling and pinch-zoom stay; a mouse is unaffected. */
+[data-touch-menu="true"] {
+  touch-action: manipulation;
+}
+
 /* RUI's tooltip positioner (the `isolate z-50` wrapper around the bubble) has
    no pointer-events guidance, so an open tooltip swallows hover/clicks aimed
    at whatever it covers — header action rows, sidebar rows, chips. Our
@@ -1095,4 +1124,58 @@
       border-left-width: 0;
     }
   }
+}
+
+/* An expanded workspace Artifact is the row's focus mode too (#proj-workspace:#100,
+   xxchan): the side area draws it over the whole row (ChannelSideArea), and
+   everything else in the row (the channel, the thread, Tasks and Files) keeps
+   its box and width, hidden as above, so collapsing brings it back as it was.
+   At every width: where the side area expands it at all (never on a phone, nor
+   under a thread covering the row) it covers the row. */
+.thread-layout-container[data-artifact-expanded="true"] > :not([data-testid="channel-side-slot"]),
+.thread-layout-container[data-artifact-expanded="true"] > [data-testid="channel-side-slot"] > :not([data-expanded="true"]) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Migration log chart: failure marks are non-text graphics, so they use the
+   chart warning (raft-ui `warning-graphic`, 3:1 on every surface in both modes);
+   text about failures stays `warning-strong` (raft-design Color › Warnings in charts). */
+.migration-chord-fail {
+  fill: var(--warning-graphic);
+}
+/* A ribbon draws no browser focus box; the chosen route
+   gets an ink edge instead (Artea, #wg-agent-migration:dfda7a20). */
+.migration-chord-ribbon {
+  outline: none;
+  /* An invisible edge makes a one-move ribbon (about a pixel wide) easy to hit. */
+  stroke: transparent;
+  stroke-width: 8px;
+  stroke-linejoin: round;
+}
+.migration-chord-ribbon[data-selected] {
+  stroke: var(--foreground);
+  stroke-width: 1.5px;
+}
+/* The chart is one tab stop; the item the arrow keys reached gets the ink edge
+   while the chart has keyboard focus (aria-activedescendant). */
+.migration-chord {
+  outline: none;
+  /* At 1x a finger scrolls the page past the chart (two fingers pinch, handled
+     by d3-zoom); zoomed in, a finger drag pans the chart. */
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+}
+.migration-chord[data-zoomed] {
+  touch-action: none;
+}
+.migration-chord:focus-visible .migration-chord-ribbon[data-active],
+.migration-chord:focus-visible .migration-chord-computer[data-active] > .migration-chord-hit {
+  stroke: var(--foreground);
+  stroke-width: 2.5px;
+}
+/* While the migration chart zooms or pans, blur filters are dropped so every
+   frame is a plain transform; they come back when the gesture ends. */
+.migration-chord[data-zooming] [filter] {
+  filter: none;
 }
