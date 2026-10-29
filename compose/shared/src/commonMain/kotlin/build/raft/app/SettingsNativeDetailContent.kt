@@ -683,9 +683,6 @@ internal fun SettingsNativeDetailPageContent(
                     onLongMessageCollapseChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
                     },
-                    onSingleTapOpensThreadChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(enabled))
-                    },
                     onNewMessageMenuChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
                     },

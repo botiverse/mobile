@@ -337,6 +337,8 @@
     <string name="thread_new_message_menu_more">その他</string>
     <string name="thread_action_reply_in_thread">スレッドで返信</string>
     <string name="thread_action_add_reaction">リアクションを追加</string>
+    <string name="thread_message_a11y_open_thread">スレッドを開く</string>
+    <string name="thread_message_a11y_add_reaction">リアクションを追加</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
     <string name="thread_action_save_message">メッセージを保存</string>
     <string name="thread_action_unfollow_thread">スレッドのフォローを解除</string>
@@ -2102,10 +2104,6 @@
     <string name="conversation_long_message_collapse_follows_global_off">モバイル設定に従う：オフ</string>
     <string name="conversation_long_message_collapse_override_on">この会話のみオン（モバイル設定はオフ）</string>
     <string name="conversation_long_message_collapse_override_off">この会話のみオフ（モバイル設定はオン）</string>
-    <string name="settings_mobile_single_tap_thread">シングルタップでスレッドを開く</string>
-    <string name="settings_mobile_single_tap_thread_detail">メッセージ本文を 1 回タップしてスレッドを開きます。オフの場合も、返信とメッセージメニューは引き続き利用できます。</string>
-    <string name="settings_mobile_single_tap_thread_enabled">メッセージ本文をタップしてスレッドを開く</string>
-    <string name="settings_mobile_single_tap_thread_disabled">返信またはメッセージメニューを使用</string>
     <string name="settings_mobile_activity_task_badges">アクティビティのタスクステータスバッジ</string>
     <string name="settings_mobile_activity_task_badges_detail">アクティビティ行の下部にタスクステータスバッジを表示します。アクティビティ一覧をすっきりさせたい場合はオフにしてください。</string>
     <string name="settings_mobile_activity_task_badges_enabled">アクティビティ行にタスクステータスチップを表示</string>

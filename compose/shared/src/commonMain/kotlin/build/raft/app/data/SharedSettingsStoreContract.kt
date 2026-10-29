@@ -136,7 +136,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetLinkOpenMode -> MviActionKey(MOBILE_ACTION_LINK_OPEN_MODE)
                 is SharedSettingsIntent.SetCompactConsecutiveMessages -> MviActionKey(MOBILE_ACTION_COMPACT_MESSAGES)
                 is SharedSettingsIntent.SetLongMessageCollapseEnabled -> MviActionKey(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
-                is SharedSettingsIntent.SetSingleTapOpensThreadEnabled -> MviActionKey(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
                 is SharedSettingsIntent.SetNewMessageMenuEnabled -> MviActionKey(MOBILE_ACTION_NEW_MESSAGE_MENU)
                 is SharedSettingsIntent.SetConversationForwardGestureEnabled -> MviActionKey(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE)
                 is SharedSettingsIntent.SetForegroundMessageBanners -> MviActionKey(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS)

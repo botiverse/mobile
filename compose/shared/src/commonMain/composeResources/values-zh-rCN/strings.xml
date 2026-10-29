@@ -335,6 +335,8 @@
     <string name="thread_new_message_menu_more">更多</string>
     <string name="thread_action_reply_in_thread">在消息列中回复</string>
     <string name="thread_action_add_reaction">添加回应</string>
+    <string name="thread_message_a11y_open_thread">打开消息列</string>
+    <string name="thread_message_a11y_add_reaction">添加回应</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
     <string name="thread_action_save_message">收藏消息</string>
     <string name="thread_action_unfollow_thread">取消关注消息列</string>
@@ -2102,10 +2104,6 @@
     <string name="conversation_long_message_collapse_follows_global_off">跟随移动端设置：关</string>
     <string name="conversation_long_message_collapse_override_on">仅此会话开启（移动端设置为关）</string>
     <string name="conversation_long_message_collapse_override_off">仅此会话关闭（移动端设置为开）</string>
-    <string name="settings_mobile_single_tap_thread">单击打开消息列</string>
-    <string name="settings_mobile_single_tap_thread_detail">单击消息正文即可打开消息列。关闭后仍可通过回复入口或消息菜单打开。</string>
-    <string name="settings_mobile_single_tap_thread_enabled">单击消息正文打开消息列</string>
-    <string name="settings_mobile_single_tap_thread_disabled">使用回复入口或消息菜单</string>
     <string name="settings_mobile_activity_task_badges">动态中的任务状态标记</string>
     <string name="settings_mobile_activity_task_badges_detail">在动态列表行底部显示任务状态标记。关闭后动态列表会更简洁。</string>
     <string name="settings_mobile_activity_task_badges_enabled">在动态列表中显示任务状态标签</string>

@@ -1,8 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.InMemoryRaftKeyValueStore
-import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.putBoolean
 import androidx.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,23 +46,14 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun ordinaryMessageBodyTapOpensItsThreadOnlyWhenEnabled() {
-        assertFalse(
-            threadMessageTapOpensThread(
-                showReplyAction = true,
-                replyCount = 1,
-                shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled = false
-            )
-        )
+    fun ordinaryMessageBodyTapOpensItsThreadWithOrWithoutReplies() {
+        // stdrc, 2026-10-29 (#proj-raft-ui:911ccc08): no setting, no reply-count requirement; a
+        // message without replies opens its empty thread to start one (web handleMobileTap).
         assertTrue(
             threadMessageTapOpensThread(
                 showReplyAction = true,
-                replyCount = 1,
                 shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled = true
+                hasLocalSendState = false
             )
         )
         assertTrue(
@@ -78,73 +66,65 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun enabledRowTapRequiresExistingRepliesAndThePreferenceDefaultsOff() {
-        val keyValueStore = InMemoryRaftKeyValueStore()
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(keyValueStore)
-
-        assertFalse(
-            threadMessageTapOpensThread(
-                showReplyAction = true,
-                replyCount = 1,
-                shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled =
-                    preferenceStore.readSingleTapOpensThreadEnabledSync()
-            )
-        )
-
-        keyValueStore.putBoolean("chatLayout:single_tap_opens_thread_enabled", true)
-
-        assertFalse(
-            threadMessageTapOpensThread(
-                showReplyAction = true,
-                replyCount = 0,
-                shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled =
-                    preferenceStore.readSingleTapOpensThreadEnabledSync()
-            )
-        )
-        assertTrue(
-            threadMessageTapOpensThread(
-                showReplyAction = true,
-                replyCount = 1,
-                shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled =
-                    preferenceStore.readSingleTapOpensThreadEnabledSync()
-            )
-        )
-    }
-
-    @Test
     fun bodyTapDoesNotReplaceReplyThreadSelectionOrPendingSendActions() {
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = false,
-                replyCount = 1,
                 shareSelectionActive = false,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled = true
-            )
+                hasLocalSendState = false
+            ),
+            "inside a reply thread a tap does nothing"
         )
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
-                replyCount = 1,
                 shareSelectionActive = true,
-                hasLocalSendState = false,
-                singleTapOpensThreadEnabled = true
-            )
+                hasLocalSendState = false
+            ),
+            "while sharing a tap toggles the selection"
         )
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
-                replyCount = 1,
                 shareSelectionActive = false,
-                hasLocalSendState = true,
-                singleTapOpensThreadEnabled = true
+                hasLocalSendState = true
+            ),
+            "a sending or failed message has no tap action"
+        )
+    }
+
+    @Test
+    fun doubleTapShowsReactionsOnlyWhereTheMessageCanBeReactedTo() {
+        assertTrue(
+            threadMessageDoubleTapShowsReactions(
+                quickReactions = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false
             )
+        )
+        assertFalse(
+            threadMessageDoubleTapShowsReactions(
+                quickReactions = false,
+                shareSelectionActive = false,
+                hasLocalSendState = false
+            ),
+            "no reaction row in the menu: no double tap"
+        )
+        assertFalse(
+            threadMessageDoubleTapShowsReactions(
+                quickReactions = true,
+                shareSelectionActive = true,
+                hasLocalSendState = false
+            ),
+            "no double tap while sharing"
+        )
+        assertFalse(
+            threadMessageDoubleTapShowsReactions(
+                quickReactions = true,
+                shareSelectionActive = false,
+                hasLocalSendState = true
+            ),
+            "no double tap on a local send"
         )
     }
 

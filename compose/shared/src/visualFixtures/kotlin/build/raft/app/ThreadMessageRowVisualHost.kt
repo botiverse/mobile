@@ -375,7 +375,6 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
-    val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
     val newMessageMenuComposerBoundaryVisible =
         params.optBoolean("newMessageMenuComposerBoundaryVisible", false)
     val newMessageMenuTargetReplyCount = params.optInt("newMessageMenuTargetReplyCount", 0)
@@ -611,7 +610,6 @@ internal fun ThreadMessageVisualScreenContent() {
             messageBodyTextStyle = messageBodyTextStyle,
             agentStatusResolver = agentStatusResolver,
             newMessageMenuEnabled = newMessageMenuEnabled,
-            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             composerBoundaryVisible = newMessageMenuComposerBoundaryVisible,
             longPressMenuVisibleToken = longPressMenuVisibleToken
         )
@@ -905,7 +903,6 @@ internal fun ThreadMessageVisualScreenContent() {
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
                     showReplyAction = payload.showReplyActions,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
                         value = message.taskAssigneeName,
                         id = message.taskAssigneeId
@@ -1036,7 +1033,6 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
     messageBodyTextStyle: TextStyle,
     agentStatusResolver: RaftAgentStatusResolver,
     newMessageMenuEnabled: Boolean,
-    singleTapOpensThreadEnabled: Boolean,
     composerBoundaryVisible: Boolean,
     longPressMenuVisibleToken: String = ""
 ) {
@@ -1088,7 +1084,6 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         compactConsecutiveMessages = true,
                         suppressRepeatedAuthor = index in 1..2 || index >= 4,
                         showReplyAction = true,
-                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                         taskOpenEnabled = false,
                         taskStatusActionsEnabled = false,
                         showSaveAction = false,
@@ -1259,8 +1254,8 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: RaftThreadMessageIt
 /**
  * Gives the new-message-menu fixture's compact target group [count] replies.
  *
- * Single-tap thread opening only applies to messages that already have replies,
- * so a capture case that exercises it has to say so. A count of zero returns the
+ * A tap opens any message's thread (stdrc, 2026-10-29); a capture case that wants
+ * its thread to open on existing replies says so. A count of zero returns the
  * payload untouched, keeping every case that omits the parameter unchanged.
  */
 internal fun RaftThreadScreenPayload.withNewMessageMenuTargetReplyCount(

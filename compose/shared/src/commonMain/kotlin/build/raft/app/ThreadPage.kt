@@ -12,6 +12,7 @@ import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.raftLocatedStrength
 import build.raft.designsystem.components.raftCopyable
@@ -271,6 +272,7 @@ import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.LocalRaftMarkdownCodeTapObserver
 import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
@@ -430,6 +432,8 @@ import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -7564,7 +7568,6 @@ private fun SharedThreadRouteContentContent(
             conversationId = payload.longMessageCollapseConversationId()
         )
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
-    val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
     val commentsUnavailableLabel = stringResource(Res.string.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(Res.string.thread_error_send_comment)
@@ -12032,7 +12035,6 @@ private fun SharedThreadRouteContentContent(
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
-            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             jumpInputs = jumpInputs,
             newMessageMenuEnabled = newMessageMenuEnabled,
             currentServerSlug = currentServerSlug,
@@ -15169,7 +15171,6 @@ private data class ThreadPageContentData(
     val composerSendKeyEnabled: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
-    val singleTapOpensThreadEnabled: Boolean,
     val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val currentServerSlug: String?,
@@ -15298,7 +15299,6 @@ fun ThreadPageContent(
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
-    singleTapOpensThreadEnabled: Boolean = false,
     jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     currentServerSlug: String? = null,
@@ -15386,7 +15386,6 @@ fun ThreadPageContent(
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 currentServerSlug = currentServerSlug,
@@ -15518,7 +15517,6 @@ private fun ThreadPageContentContent(
     val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
-    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
     val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val currentServerSlug = data.currentServerSlug
@@ -16284,7 +16282,6 @@ private fun ThreadPageContentContent(
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
-                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                         jumpInputs = jumpInputs,
                         newMessageMenuEnabled = newMessageMenuEnabled,
                         inlineSearchVisible = inlineSearchVisible,
@@ -18288,7 +18285,6 @@ private data class ThreadChatTabData(
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
-    val singleTapOpensThreadEnabled: Boolean,
     val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
@@ -18365,7 +18361,6 @@ fun ThreadChatTab(
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
-    singleTapOpensThreadEnabled: Boolean = false,
     jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
@@ -18432,7 +18427,6 @@ fun ThreadChatTab(
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
@@ -18512,7 +18506,6 @@ private fun ThreadChatTabContent(
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
-    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
     val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
@@ -18690,7 +18683,6 @@ private fun ThreadChatTabContent(
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     jumpInputs = jumpInputs,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
@@ -18781,7 +18773,6 @@ private fun ThreadChatTabContent(
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
-                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     jumpInputs = jumpInputs,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
@@ -18878,7 +18869,6 @@ private fun ThreadChatTabContent(
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
@@ -19177,7 +19167,6 @@ private data class ThreadMessagesListData(
     val currentServerSlug: String?,
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
-    val singleTapOpensThreadEnabled: Boolean,
     val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
@@ -19257,7 +19246,6 @@ fun ThreadMessagesList(
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
-    singleTapOpensThreadEnabled: Boolean = false,
     jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
@@ -19325,7 +19313,6 @@ fun ThreadMessagesList(
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
@@ -19406,7 +19393,6 @@ private fun ThreadMessagesListContent(
     val currentServerSlug = data.currentServerSlug
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
-    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
     val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
@@ -19960,6 +19946,8 @@ private fun ThreadMessagesListContent(
         }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
+    // A double tap's quick reaction bar (stdrc, 2026-10-29, #proj-raft-ui:911ccc08).
+    var quickReactionBar by remember(threadInstanceKey) { mutableStateOf<ThreadQuickReactionBarRequest?>(null) }
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
     // chosen items are `message_action_selected` with surface long_press.
@@ -22462,6 +22450,10 @@ private fun ThreadMessagesListContent(
                             actionMenuFromLongPress = false
                             diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
                         },
+                        writeActionsEnabled = writeActionsEnabled,
+                        onShowQuickReactions = { message, anchor ->
+                            quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                        },
                         onLongPressMenuOpened = { message ->
                             if (actionMessageId == message.id) {
                                 actionMenuFromLongPress = true
@@ -22735,7 +22727,7 @@ private fun ThreadMessagesListContent(
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                                 focused = activeFocusedMessageId == message.id,
                                 searchMatch = activeInlineSearchMessageId == message.id,
-                                popupOpen = actionMessageId == message.id,
+                                popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
@@ -22748,7 +22740,7 @@ private fun ThreadMessagesListContent(
                                 compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                                 showReplyAction = renderPayload.showReplyActions,
-                                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                                quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
                                 resolvedTaskAssigneeName = linkedTaskAssigneeName,
                                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                                 markdownTagContextSignature = markdownTagContextSignature,
@@ -22781,6 +22773,9 @@ private fun ThreadMessagesListContent(
                                 onOpenMember = onOpenMember,
                                 onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                onShowQuickReactions = { anchor ->
+                                    quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                                },
                                 onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                 onOpenTaskStatusMenu = { anchor ->
                                     taskStatusMenuMessageId = message.id
@@ -23488,6 +23483,29 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
+        }
+        quickReactionBar?.let { request ->
+            val closeQuickReactionBar: () -> Unit = { quickReactionBar = null }
+            val message =
+                request.anchor.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(request.messageId)) }
+                    ?.let { renderPayload.threadActionMessage(request.messageId, linkedTasksProjection) }
+                    ?.takeIf { threadMessageCanQuickReact(it, renderPayload, writeActionsEnabled) }
+            if (message == null) {
+                // The message went away or can no longer be reacted to: drop the stale bar.
+                SideEffect { closeQuickReactionBar() }
+                return@let
+            }
+            ThreadMessageQuickReactionBar(
+                messageId = message.id,
+                anchor = request.anchor,
+                onDismiss = closeQuickReactionBar,
+                onReact = { emoji ->
+                    closeQuickReactionBar()
+                    diagnosticsLogger("thread_message_double_tap_react messageId=${message.id} emoji=$emoji")
+                    onThreadEvent("toggleReaction", message.id, null, emoji)
+                },
+                diagnosticsLogger = diagnosticsLogger
+            )
         }
         reactionPickerMessageId?.let { messageId ->
             RaftEmojiPickerDialog(
@@ -25924,7 +25942,8 @@ private data class ThreadMessageCardData(
     val compactConsecutiveMessages: Boolean,
     val suppressRepeatedAuthor: Boolean,
     val showReplyAction: Boolean,
-    val singleTapOpensThreadEnabled: Boolean,
+    /** The message can be reacted to (the menu's quick reaction gate): its double tap shows the bar. */
+    val quickReactionsEnabled: Boolean = false,
     val resolvedTaskAssigneeName: String?,
     val markdownTagContextSignature: String,
     val taskOpenEnabled: Boolean,
@@ -25969,6 +25988,8 @@ private class ThreadMessageCardCallbacks(
     val onOpenMember: (MemberDetailIdentity) -> Unit,
     val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenThread: (String) -> Unit,
+    /** Double tap (or the "Add reaction" accessibility action): the quick reaction bar at the anchor. */
+    val onShowQuickReactions: (RaftPopoverAnchor) -> Unit = {},
     val onOpenTask: (String) -> Unit,
     val onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     val onToggleReaction: (String) -> Unit,
@@ -26016,7 +26037,7 @@ fun ThreadMessageCard(
     compactConsecutiveMessages: Boolean = false,
     suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
-    singleTapOpensThreadEnabled: Boolean = false,
+    quickReactionsEnabled: Boolean = false,
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     markdownTagContextSignature: String = "",
@@ -26034,6 +26055,7 @@ fun ThreadMessageCard(
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
+    onShowQuickReactions: (RaftPopoverAnchor) -> Unit = {},
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
@@ -26098,7 +26120,7 @@ fun ThreadMessageCard(
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                 showReplyAction = showReplyAction,
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                quickReactionsEnabled = quickReactionsEnabled && !retracted,
                 resolvedTaskAssigneeName = resolvedTaskAssigneeName,
                 markdownTagContextSignature = markdownTagContextSignature,
                 taskOpenEnabled = taskOpenEnabled,
@@ -26137,6 +26159,7 @@ fun ThreadMessageCard(
                 onOpenMember = onOpenMember,
                 onExternalAuthor = onExternalAuthor,
                 onOpenThread = onOpenThread,
+                onShowQuickReactions = if (retracted) ({ _ -> }) else onShowQuickReactions,
                 onOpenTask = onOpenTask,
                 onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                 onToggleReaction = onToggleReaction,
@@ -26188,7 +26211,7 @@ private fun ThreadMessageCardContent(
     val compactConsecutiveMessages = data.compactConsecutiveMessages
     val suppressRepeatedAuthor = data.suppressRepeatedAuthor
     val showReplyAction = data.showReplyAction
-    val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val quickReactionsEnabled = data.quickReactionsEnabled
     val resolvedTaskAssigneeName = data.resolvedTaskAssigneeName
     val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
     val markdownTagContextSignature = data.markdownTagContextSignature
@@ -26207,6 +26230,7 @@ private fun ThreadMessageCardContent(
     val onOpenMember = callbacks.onOpenMember
     val onExternalAuthor = callbacks.onExternalAuthor
     val onOpenThread = callbacks.onOpenThread
+    val onShowQuickReactions = callbacks.onShowQuickReactions
     val onOpenTask = callbacks.onOpenTask
     val onOpenTaskStatusMenu = callbacks.onOpenTaskStatusMenu
     val onToggleReaction = callbacks.onToggleReaction
@@ -26359,6 +26383,8 @@ private fun ThreadMessageCardContent(
             messageId = message.id
         )
     val tapMovementGate = longPressGestureOwner.tapMovementGate
+    val codeBlockTapObserver: () -> Unit =
+        remember(tapMovementGate) { { tapMovementGate.rejectChildAction("code_block") } }
     fun openAuthorProfile(source: String) {
         if (!message.canOpenThreadAuthorProfile(shareSelectionActive)) return
         tapMovementGate.rejectChildAction("author_profile")
@@ -26440,31 +26466,42 @@ private fun ThreadMessageCardContent(
                 !shareSelectionActive && !message.isRetracted &&
                     threadMessageUsesFullRowLongPressActions(shareSelectionActive)
         )
-    val baseRowTapAction =
+    // stdrc, 2026-10-29 (#proj-raft-ui:911ccc08): a single tap opens the message's thread, with
+    // or without replies; a double tap shows its quick reaction bar where it can be reacted to.
+    val rowTapAction: (() -> Unit)? =
         if (
             threadMessageTapOpensThread(
                 showReplyAction = showReplyAction,
-                replyCount = replyMetadata.replyCount,
                 shareSelectionActive = shareSelectionActive,
-                hasLocalSendState = message.hasLocalSendState(),
-                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
+                hasLocalSendState = message.hasLocalSendState()
             )
         ) {
             {
                 diagnosticsLogger(
-                    "thread_message_row_tap_open messageId=${message.id} " +
-                        "setting=single_tap_opens_thread replyCount=${replyMetadata.replyCount}"
+                    "thread_message_row_tap_open messageId=${message.id} replyCount=${replyMetadata.replyCount}"
                 )
                 onOpenThread(message.id)
             }
         } else {
             null
         }
+    val rowDoubleTapAction: ((RaftPopoverAnchor) -> Unit)? =
+        if (
+            threadMessageDoubleTapShowsReactions(
+                quickReactions = quickReactionsEnabled,
+                shareSelectionActive = shareSelectionActive,
+                hasLocalSendState = message.hasLocalSendState()
+            )
+        ) {
+            { anchor -> onShowQuickReactions(anchor) }
+        } else {
+            null
+        }
     // A tap whose gesture started while a selection was showing (here or on another row) only
     // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
-    val rowTapAction =
-        if (inPlaceSelection == null || baseRowTapAction == null) {
-            baseRowTapAction
+    val consumeSelectionDismissalTap: (() -> Boolean)? =
+        if (inPlaceSelection == null || (rowTapAction == null && rowDoubleTapAction == null)) {
+            null
         } else {
             {
                 val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
@@ -26473,8 +26510,41 @@ private fun ThreadMessageCardContent(
                     ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
                         diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
                         inPlaceSelection.clear()
+                        true
                     }
-                    ThreadInPlaceSelectionTapDecision.RunRowAction -> baseRowTapAction()
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> false
+                }
+            }
+        }
+    val openThreadAccessibilityLabel = stringResource(Res.string.thread_message_a11y_open_thread)
+    val addReactionAccessibilityLabel = stringResource(Res.string.thread_message_a11y_add_reaction)
+    // Screen readers: the row's tap and double tap as named actions (a retracted row has neither).
+    val rowAccessibilityActions: List<CustomAccessibilityAction> =
+        if (message.isRetracted) {
+            emptyList()
+        } else {
+            buildList<CustomAccessibilityAction> {
+                if (rowTapAction != null) {
+                    add(
+                        CustomAccessibilityAction(openThreadAccessibilityLabel) {
+                            diagnosticsLogger("thread_message_a11y_open_thread messageId=${message.id}")
+                            onOpenThread(message.id)
+                            true
+                        }
+                    )
+                }
+                if (rowDoubleTapAction != null) {
+                    add(
+                        CustomAccessibilityAction(addReactionAccessibilityLabel) {
+                            val anchor =
+                                longPressGestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.BottomStart)
+                            if (anchor != null) {
+                                diagnosticsLogger("thread_message_a11y_reactions messageId=${message.id}")
+                                onShowQuickReactions(anchor)
+                            }
+                            anchor != null
+                        }
+                    )
                 }
             }
         }
@@ -26492,6 +26562,13 @@ private fun ThreadMessageCardContent(
                     }
                 )
                 .then(
+                    if (rowAccessibilityActions.isNotEmpty()) {
+                        Modifier.semantics { customActions = rowAccessibilityActions }
+                    } else {
+                        Modifier
+                    }
+                )
+                .then(
                     // RFC 077 PR 2b: a retracted message has no long-press gesture at all.
                     if (!message.isRetracted && threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -26501,6 +26578,8 @@ private fun ThreadMessageCardContent(
                             isScrollInProgress = isMessageListScrolling,
                             diagnosticsLogger = diagnosticsLogger,
                             onTap = rowTapAction,
+                            onDoubleTap = rowDoubleTapAction,
+                            consumeSelectionDismissalTap = consumeSelectionDismissalTap,
                             onTapRejected = { decision ->
                                 diagnosticsLogger(
                                     "thread_message_row_tap_rejected messageId=${message.id} " +
@@ -26513,14 +26592,6 @@ private fun ThreadMessageCardContent(
                                 onShowActions(anchor)
                                 onLongPressMenuOpened()
                             },
-                            // Double tap opens the message's thread wherever a row may open it (not
-                            // inside a thread, not while sharing or sending): artin, #proj-raft-ui:911ccc08.
-                            onDoubleTap =
-                                if (threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, message.hasLocalSendState())) {
-                                    { onOpenThread(message.id) }
-                                } else {
-                                    null
-                                },
                             onInputReady = onLongPressInputReady,
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
@@ -26806,12 +26877,14 @@ private fun ThreadMessageCardContent(
                             // unless it is the generated placeholder itself.
                             val forwardNoteBody = threadForwardNoteBody(message.body, forwardBundle.displayCount())
                             if (forwardNoteBody != null) {
-                                RaftMarkdownBody(
-                                    body = forwardNoteBody,
-                                    textStyle = messageBodyTextStyle,
-                                    onOpenUrl = onOpenMarkdownUrl,
-                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
-                                )
+                                CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
+                                    RaftMarkdownBody(
+                                        body = forwardNoteBody,
+                                        textStyle = messageBodyTextStyle,
+                                        onOpenUrl = onOpenMarkdownUrl,
+                                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                                    )
+                                }
                             }
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
@@ -26913,6 +26986,8 @@ private fun ThreadMessageCardContent(
                                                               body = message.body,
                                                               enabled = message.pendingSendContext == null,
                                                           ) {
+                                                          // A tap on a code block is not the row's tap (web skips `pre, code`).
+                                                          CompositionLocalProvider(LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,
@@ -26933,6 +27008,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceKey = messagePerformanceKey,
                                                                 performanceLogger = diagnosticsLogger
                                                             )
+                                                          }
                                                           }
                                                           }
                                                         }
@@ -28675,16 +28751,19 @@ internal fun decideThreadMessageLongPressDispatch(
         scrollInProgress = isScrollInProgress
     )
 
+/**
+ * A single tap on a message row opens that message's thread, whatever its reply count: a message
+ * without replies opens its empty thread to start one, like the mobile web's `handleMobileTap`
+ * (stdrc, 2026-10-29, #proj-raft-ui:911ccc08; replaces the opt-in "Single tap opens Thread"
+ * setting). Not inside a reply thread (no reply action there), not while sharing, not on a local
+ * send that is still sending or failed.
+ */
 internal fun threadMessageTapOpensThread(
     showReplyAction: Boolean,
-    replyCount: Int,
     shareSelectionActive: Boolean,
-    hasLocalSendState: Boolean,
-    singleTapOpensThreadEnabled: Boolean
+    hasLocalSendState: Boolean
 ): Boolean =
-    singleTapOpensThreadEnabled &&
-        replyCount > 0 &&
-        threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, hasLocalSendState)
+    threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, hasLocalSendState)
 
 internal fun threadMessageBodyTapEligible(
     showReplyAction: Boolean,
@@ -28695,6 +28774,71 @@ internal fun threadMessageBodyTapEligible(
 
 internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
     surfaceKind == RaftThreadSurfaceKind.ReplyThread
+
+/**
+ * A double tap on a message row shows its quick reaction bar (stdrc, 2026-10-29,
+ * #proj-raft-ui:911ccc08): only where the long-press menu would show its quick reaction row
+ * ([ThreadMessageMenuCapabilities.quickReactions]), inside a reply thread too, never while sharing
+ * or on a local send. Where this is false the row has no double tap and a single tap runs at once.
+ */
+internal fun threadMessageDoubleTapShowsReactions(
+    quickReactions: Boolean,
+    shareSelectionActive: Boolean,
+    hasLocalSendState: Boolean
+): Boolean =
+    quickReactions && !shareSelectionActive && !hasLocalSendState
+
+/** Whether a message may be reacted to: the long-press menu's quick reaction row gate. */
+internal fun threadMessageCanQuickReact(
+    message: RaftThreadMessageItem,
+    slice: ThreadTimelineSlice,
+    writeActionsEnabled: Boolean
+): Boolean =
+    writeActionsEnabled && slice.showReactionActions && !message.hasLocalSendState() && !message.isSystemMessage()
+
+/** What one accepted tap on a message row does ([decideThreadMessageRowTap]). */
+internal enum class ThreadMessageRowTapOutcome {
+    /** Nothing: the row has no tap action, or the tap may still become a double tap. */
+    None,
+
+    /** The tap only dismissed an in-place text selection that was showing at its down. */
+    DismissSelectionOnly,
+
+    /** Run the single-tap action now: the row has no double tap. */
+    RunSingleTap,
+
+    /** Hold the single-tap action until the double-tap timeout passes without a second tap. */
+    DeferSingleTap,
+
+    /** The tap completed a double tap: show the quick reaction bar. */
+    ShowReactionBar
+}
+
+/**
+ * The row tap state machine (stdrc, 2026-10-29, #proj-raft-ui:911ccc08), kept pure so it is unit
+ * tested apart from pointer input:
+ *  - a tap the movement gate refused (a scroll, a child's own tap, a stale gesture) does nothing;
+ *  - a tap whose gesture began while an in-place selection showed only dismisses it;
+ *  - the second of two taps within [ThreadMessageDoubleTapTimeoutMillis] and
+ *    [ThreadMessageDoubleTapSlop] shows the reaction bar;
+ *  - otherwise, with a double tap available, the single-tap action waits out the timeout
+ *    (the pressed feedback stays immediate); without one it runs at once, as before.
+ */
+internal fun decideThreadMessageRowTap(
+    tapAccepted: Boolean,
+    selectionShowingAtDown: Boolean,
+    hasSingleTapAction: Boolean,
+    doubleTapAvailable: Boolean,
+    completesDoubleTap: Boolean
+): ThreadMessageRowTapOutcome =
+    when {
+        !tapAccepted -> ThreadMessageRowTapOutcome.None
+        selectionShowingAtDown -> ThreadMessageRowTapOutcome.DismissSelectionOnly
+        doubleTapAvailable && completesDoubleTap -> ThreadMessageRowTapOutcome.ShowReactionBar
+        doubleTapAvailable && hasSingleTapAction -> ThreadMessageRowTapOutcome.DeferSingleTap
+        hasSingleTapAction -> ThreadMessageRowTapOutcome.RunSingleTap
+        else -> ThreadMessageRowTapOutcome.None
+    }
 
 /**
  * The message row's pressed state (raft-ui States > Pressed on touch): the `fill-pressed` wash
@@ -28779,7 +28923,8 @@ internal fun Modifier.threadMessageLongPressActions(
     onInputReady: ((String) -> Unit)? = null,
     deferLongPressAt: ((Offset) -> Boolean)? = null,
     onPointerDown: ((Offset) -> Unit)? = null,
-    onDoubleTap: (() -> Unit)? = null
+    onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
+    consumeSelectionDismissalTap: (() -> Boolean)? = null
 ): Modifier {
     SideEffect {
         gestureOwner.updateCallbacks(
@@ -28792,7 +28937,8 @@ internal fun Modifier.threadMessageLongPressActions(
                 onInputReady = onInputReady,
                 deferLongPressAt = deferLongPressAt,
                 onPointerDown = onPointerDown,
-                onDoubleTap = onDoubleTap
+                onDoubleTap = onDoubleTap,
+                consumeSelectionDismissalTap = consumeSelectionDismissalTap
             )
         )
     }
@@ -28809,6 +28955,16 @@ internal fun Modifier.threadMessageLongPressActions(
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val compositionLease =
                     gestureOwner.captureActiveLease() ?: return@awaitEachGesture
+                // Any new down (a second tap, a long press, a drag) ends a held single tap, here
+                // or on another row: only a tap that stays alone opens the thread.
+                val cancelledHere = gestureOwner.cancelPendingSingleTap()
+                val cancelledElsewhere = gestureOwner.pendingTapSlot?.cancel() == true
+                if (cancelledHere || cancelledElsewhere) {
+                    gestureOwner.callbacksSnapshot(compositionLease)?.diagnosticsLogger?.invoke(
+                        "thread_message_deferred_tap_cancelled messageId=$messageId reason=down " +
+                            "sameRow=$cancelledHere"
+                    )
+                }
                 gestureOwner.callbacksSnapshot(compositionLease)?.onPointerDown?.invoke(down.position)
                 gestureOwner.lastDownFromTouch = down.type == PointerType.Touch
                 gestureOwner.lastDownUptimeMillis = down.uptimeMillis
@@ -28872,27 +29028,59 @@ internal fun Modifier.threadMessageLongPressActions(
                         val callbacks =
                             gestureOwner.callbacksSnapshot(compositionLease) ?: return@launch
                         val decision = gestureOwner.tapMovementGate.decision(gestureToken)
-                        if (decision.allowed) {
-                            val doubleTap =
-                                callbacks.onDoubleTap?.takeIf {
-                                    gestureOwner.lastDownFromTouch &&
-                                        callbacks.deferLongPressAt?.invoke(gestureOwner.lastDownPosition) != true &&
-                                        gestureOwner.doubleTapTracker.onTap(
-                                            gestureOwner.lastDownUptimeMillis,
-                                            gestureOwner.lastDownPosition,
-                                            gestureOwner.doubleTapSlopPx
-                                        )
-                                }
-                            if (doubleTap != null) {
-                                callbacks.diagnosticsLogger("thread_message_double_tap_open messageId=$messageId")
-                                doubleTap()
-                            } else {
-                                callbacks.onTap?.invoke()
-                            }
-                        } else {
-                            // A tap a child took (a link, a reaction) breaks a pending pair.
+                        if (!decision.allowed) {
+                            // A tap a child took (a link, a reaction, a code block) breaks a pending pair.
                             gestureOwner.doubleTapTracker.reset()
-                            if (callbacks.onTap != null) callbacks.onTapRejected(decision)
+                            if (callbacks.onTap != null || callbacks.onDoubleTap != null) {
+                                callbacks.onTapRejected(decision)
+                            }
+                            return@launch
+                        }
+                        val selectionShowingAtDown = callbacks.consumeSelectionDismissalTap?.invoke() == true
+                        val doubleTapAvailable =
+                            callbacks.onDoubleTap != null &&
+                                gestureOwner.lastDownFromTouch &&
+                                callbacks.deferLongPressAt?.invoke(gestureOwner.lastDownPosition) != true
+                        val completesDoubleTap =
+                            doubleTapAvailable && !selectionShowingAtDown &&
+                                gestureOwner.doubleTapTracker.onTap(
+                                    gestureOwner.lastDownUptimeMillis,
+                                    gestureOwner.lastDownPosition,
+                                    gestureOwner.doubleTapSlopPx
+                                )
+                        when (
+                            decideThreadMessageRowTap(
+                                tapAccepted = true,
+                                selectionShowingAtDown = selectionShowingAtDown,
+                                hasSingleTapAction = callbacks.onTap != null,
+                                doubleTapAvailable = doubleTapAvailable,
+                                completesDoubleTap = completesDoubleTap
+                            )
+                        ) {
+                            ThreadMessageRowTapOutcome.None -> Unit
+                            ThreadMessageRowTapOutcome.DismissSelectionOnly ->
+                                gestureOwner.doubleTapTracker.reset()
+                            ThreadMessageRowTapOutcome.RunSingleTap -> callbacks.onTap?.invoke()
+                            ThreadMessageRowTapOutcome.DeferSingleTap ->
+                                gestureOwner.deferSingleTap(compositionLease)
+                            ThreadMessageRowTapOutcome.ShowReactionBar -> {
+                                // The first tap's held action never runs once the pair completed.
+                                gestureOwner.cancelPendingSingleTap()
+                                val anchor =
+                                    gestureOwner.rootAnchor.resolve(
+                                        RaftPopoverLocalPoint.Exact(gestureOwner.lastDownPosition)
+                                    )
+                                if (anchor == null) {
+                                    callbacks.diagnosticsLogger(
+                                        "thread_message_double_tap_anchor_unavailable messageId=$messageId"
+                                    )
+                                } else {
+                                    callbacks.diagnosticsLogger(
+                                        "thread_message_double_tap_reactions messageId=$messageId"
+                                    )
+                                    callbacks.onDoubleTap?.invoke(anchor)
+                                }
+                            }
                         }
                     }
                 },
@@ -29003,18 +29191,23 @@ internal data class ThreadMessageLongPressCallbacks(
     // In-place text selection (New Message Menu toggle): body presses belong to the selection.
     val deferLongPressAt: ((Offset) -> Boolean)? = null,
     val onPointerDown: ((Offset) -> Unit)? = null,
-    // Two quick finger taps on the row: open its thread (null where a double tap does nothing).
-    val onDoubleTap: (() -> Unit)? = null
+    // Two quick finger taps on the row: show its quick reaction bar at the anchor (null where the
+    // message cannot be reacted to; then the row has no double tap and [onTap] runs at once).
+    val onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
+    // In-place selection: true when this tap's gesture began while a selection showed, so the tap
+    // only dismissed it (the callback does the dismissal). Read once per accepted tap.
+    val consumeSelectionDismissalTap: (() -> Boolean)? = null
 )
 
 /**
  * Two finger taps on one message row within [ThreadMessageDoubleTapTimeoutMillis] and
- * [ThreadMessageDoubleTapSlop] open its thread (artin; rules agreed with web, #proj-raft-ui:911ccc08).
- * Detected by hand rather than with the detector's double tap, which would hold every single tap
- * back by the timeout: the first tap runs as before, the second opens the thread instead of
- * running the tap again. Only taps the row accepted count (a link, a button, a reaction or an
- * image takes its own tap), only from a finger (a mouse double click selects a word), and the
- * pair resets after a double tap so a third tap starts over.
+ * [ThreadMessageDoubleTapSlop] show its quick reaction bar; a single tap opens its thread (stdrc,
+ * 2026-10-29, #proj-raft-ui:911ccc08, replacing artin's double tap to open the thread).
+ * Detected by hand rather than with the detector's double tap, so a row without a double tap (no
+ * reactions there) keeps its single tap immediate; where both exist the single tap waits out the
+ * timeout ([decideThreadMessageRowTap]). Only taps the row accepted count (a link, a button, a
+ * reaction, an image or a code block takes its own tap), only from a finger (a mouse double click
+ * selects a word), and the pair resets after a double tap so a third tap starts over.
  */
 internal class ThreadMessageDoubleTapTracker {
     private var lastUptimeMillis = -1L
@@ -29041,17 +29234,52 @@ internal class ThreadMessageDoubleTapTracker {
     }
 }
 
-internal const val ThreadMessageDoubleTapTimeoutMillis = 300L
+internal const val ThreadMessageDoubleTapTimeoutMillis = 250L
 internal val ThreadMessageDoubleTapSlop = 10.dp
 
 internal class ThreadMessageLongPressGestureOwner(
     val key: ThreadMessageLongPressGestureOwnerKey,
-    val tapDispatchScope: CoroutineScope
+    val tapDispatchScope: CoroutineScope,
+    /** The thread's shared held-tap slot ([ThreadMessageLongPressGestureOwnerStore.pendingTapSlot]). */
+    val pendingTapSlot: ThreadMessagePendingTapSlot? = null
 ) {
     val rootAnchor =
         RaftLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(key.messageId))
     val tapMovementGate = ThreadMessageTapMovementGate()
     val doubleTapTracker = ThreadMessageDoubleTapTracker()
+
+    /** The single tap held back while a double tap may still come (one per thread, see the slot). */
+    private var pendingSingleTap: Job? = null
+
+    /**
+     * Runs this row's single-tap action once the double-tap timeout passes, unless a down (here
+     * or on another row of the thread: a second tap, a long press, a drag) or leaving composition
+     * cancels it.
+     */
+    fun deferSingleTap(lease: ThreadMessageLongPressCompositionLease) {
+        cancelPendingSingleTap()
+        val slot = pendingTapSlot
+        slot?.cancel()
+        val job =
+            tapDispatchScope.launch {
+                delay(ThreadMessageDoubleTapTimeoutMillis)
+                // A row that left composition has no callbacks. A scroll is not re-checked here:
+                // the list also reports programmatic anchoring as scrolling, and a drag begins
+                // with a down, which already cancelled this.
+                callbacksSnapshot(lease)?.onTap?.invoke()
+            }
+        pendingSingleTap = job
+        slot?.hold(job)
+        job.invokeOnCompletion { if (pendingSingleTap === job) pendingSingleTap = null }
+    }
+
+    /** Cancels a held single tap; true when one was waiting. */
+    fun cancelPendingSingleTap(): Boolean {
+        val job = pendingSingleTap ?: return false
+        pendingSingleTap = null
+        job.cancel()
+        return true
+    }
 
     /** The current gesture's down: from a finger, when, where, and the slop in px (for the double tap). */
     var lastDownFromTouch = false
@@ -29078,6 +29306,8 @@ internal class ThreadMessageLongPressGestureOwner(
         if (!compositionActive) return
         compositionActive = false
         callbacks = ThreadMessageLongPressCallbacks()
+        cancelPendingSingleTap()
+        doubleTapTracker.reset()
         tapMovementGate.invalidateCompositionAuthority()
         rootAnchor.invalidate()
         pressed = false
@@ -29136,6 +29366,27 @@ internal fun nextThreadMessageCompositionGeneration(current: Long): Long =
 
 internal const val ThreadMessageLongPressGestureOwnerRetentionLimit = 256
 
+/**
+ * The one single tap a thread holds back for a possible double tap. A down on any row cancels it,
+ * so a quick tap on another message (or a drag starting there) never lets the first one fire late.
+ */
+internal class ThreadMessagePendingTapSlot {
+    private var job: Job? = null
+
+    fun hold(next: Job) {
+        job = next
+        next.invokeOnCompletion { if (job === next) job = null }
+    }
+
+    /** Cancels the held tap; true when one was waiting. */
+    fun cancel(): Boolean {
+        val held = job ?: return false
+        job = null
+        held.cancel()
+        return true
+    }
+}
+
 internal class ThreadMessageLongPressGestureOwnerStore(
     private val tapDispatchScope: CoroutineScope,
     private val maxRetainedOwners: Int = ThreadMessageLongPressGestureOwnerRetentionLimit
@@ -29143,6 +29394,9 @@ internal class ThreadMessageLongPressGestureOwnerStore(
     init {
         require(maxRetainedOwners > 0) { "maxRetainedOwners must be positive" }
     }
+
+    /** Shared by every row of this thread: see [ThreadMessagePendingTapSlot]. */
+    val pendingTapSlot = ThreadMessagePendingTapSlot()
 
     private data class Entry(
         val owner: ThreadMessageLongPressGestureOwner,
@@ -29162,7 +29416,7 @@ internal class ThreadMessageLongPressGestureOwnerStore(
             entry.lastAccessOrdinal = nextAccessOrdinal()
             return entry.owner
         }
-        return ThreadMessageLongPressGestureOwner(key, tapDispatchScope)
+        return ThreadMessageLongPressGestureOwner(key, tapDispatchScope, pendingTapSlot)
             .also { owner ->
                 owners[key] =
                     Entry(
@@ -30429,7 +30683,8 @@ internal fun threadMessageMenuCapabilities(
     val localSend = message.hasLocalSendState()
     val system = message.isSystemMessage()
     val external = message.externalAuthor != null
-    val canReact = writeActionsEnabled && slice.showReactionActions && !localSend && !system
+    // The same gate decides whether a row's double tap shows the quick reaction bar.
+    val canReact = threadMessageCanQuickReact(message, slice, writeActionsEnabled)
     // Web hides thread actions on rows inside the thread panel but still offers Follow on the
     // panel's parent (`showThreadFollowAction`); mobile's origin message is that parent.
     val threadFollowSurface =
@@ -30948,6 +31203,66 @@ private fun ThreadMessageActionMenu(
     }
 }
 
+/** A double tap's quick reaction bar: which message, anchored where the second tap landed. */
+internal data class ThreadQuickReactionBarRequest(
+    val messageId: String,
+    val anchor: RaftPopoverAnchor
+)
+
+internal fun threadMessageQuickReactionBarHeightDp(): Float =
+    ThreadMessageMenuReactionRowHeight.value + RaftMetrics.PopupPadding.value * 2
+
+/**
+ * The quick reaction bar a double tap shows (stdrc, 2026-10-29, #proj-raft-ui:911ccc08): the
+ * long-press menu's popup and quick reaction row ([ThreadMessageReactionRow], same emojis and
+ * glyphs) without its action rows, placed like that menu. The Classic menu has no "Add reaction"
+ * entry ([ThreadMessageMenuCapabilities.addReaction] is off), so neither has the bar. Picking an
+ * emoji toggles that reaction and closes the bar; a tap outside closes it.
+ */
+@Composable
+private fun ThreadMessageQuickReactionBar(
+    messageId: String,
+    anchor: RaftPopoverAnchor,
+    onDismiss: () -> Unit,
+    onReact: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
+) {
+    val density = LocalDensity.current
+    val barWidthDp = threadMessageMenuWidthDp(showReactionActions = true)
+    val contentSize =
+        with(density) {
+            Size(
+                width = barWidthDp.dp.toPx(),
+                height = threadMessageQuickReactionBarHeightDp().dp.toPx()
+            )
+        }
+    val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
+    RaftModalAnchoredPopover(
+        anchor = anchor,
+        contentSize = contentSize,
+        onDismiss = onDismiss,
+        viewportGap = viewportGapPx,
+        horizontalOffset = 0f,
+        verticalOffset = 0f,
+        verticalOffsetAbove = 0f,
+        verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+        horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+    ) {
+        LaunchedEffect(messageId, anchor) {
+            diagnosticsLogger("thread_message_quick_reaction_bar_positioned messageId=$messageId")
+        }
+        RaftMenuSurface(
+            modifier = Modifier.raftFloatingContentClickTarget(),
+            width = raftMenuWidth(barWidthDp.dp)
+        ) {
+            ThreadMessageReactionRow(
+                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                onReact = onReact
+            )
+        }
+    }
+}
+
 @Composable
 internal fun ThreadMessageMenuChrome(
     actions: List<ThreadMessageMenuAction>,
@@ -31211,6 +31526,8 @@ private fun ThreadOriginCard(
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onShowActions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
     onLongPressMenuOpened: (RaftThreadMessageItem) -> Unit = {},
+    writeActionsEnabled: Boolean = false,
+    onShowQuickReactions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit = { _, _ -> },
     onOpenTaskStatusMenu: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
     onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
@@ -31312,6 +31629,9 @@ private fun ThreadOriginCard(
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor -> onShowActions(origin, anchor) },
                                 onLongPressMenuOpened = { onLongPressMenuOpened(origin) },
+                                // The thread's parent takes a double tap too: its reaction bar.
+                                quickReactionsEnabled = threadMessageCanQuickReact(origin, timelineSlice, writeActionsEnabled),
+                                onShowQuickReactions = { anchor -> onShowQuickReactions(origin, anchor) },
                                 onOpenMember = onOpenMember,
                                 onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },

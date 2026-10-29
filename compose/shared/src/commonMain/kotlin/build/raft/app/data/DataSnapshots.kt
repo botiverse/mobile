@@ -1901,13 +1901,6 @@ data class SettingsMobileSnapshot(
             statusLabel = if (RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED) "Enabled" else "Off",
             detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
         ),
-    val singleTapOpensThread: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
-        ),
     val newMessageMenu: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
