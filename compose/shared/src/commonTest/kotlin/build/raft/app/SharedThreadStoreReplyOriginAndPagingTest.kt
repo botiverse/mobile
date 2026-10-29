@@ -999,12 +999,19 @@ class SharedThreadStoreReplyOriginAndPagingTest {
         // Task #168 step 3 / message storage Phase 2b: `start()` cannot name the thread scope of an unresolved reply
         // route, so its request takes no ticket (no realtime baseline); the page the request resolved is still written
         // through, under a ticket taken after it. A route with its stream known takes its ticket before the request.
-        data class Run(val begins: List<Triple<String, ThreadDurableReplyParent?, Boolean>>, val persisted: List<String>)
+        // The ticket taken after the request carries the stamp read before it (never one read at write time).
+        data class Run(
+            val begins: List<Triple<String, ThreadDurableReplyParent?, Boolean>>,
+            val persisted: List<String>,
+            val stamps: List<Long?> = emptyList()
+        )
         suspend fun runFor(route: RaftThreadScreenPayload): Run {
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(coroutineContext + scopeJob)
             val begins = mutableListOf<Triple<String, ThreadDurableReplyParent?, Boolean>>()
             val persisted = mutableListOf<String>()
+            val stamps = mutableListOf<Long?>()
+            var stampsRead = 0L
             val loader =
                 object : ThreadEnteredScopeSnapshotLoader {
                     override suspend fun beginEnter(
@@ -1015,8 +1022,13 @@ class SharedThreadStoreReplyOriginAndPagingTest {
                         stamp: ThreadDurableRequestStamp?
                     ): ThreadDurableEnterTicket {
                         begins += Triple(channelId, replyParent, registerBaseline)
+                        stamps += stamp?.revAtRequest
                         return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
                     }
+
+                    // Each read is numbered: the ticket must carry the first one (read before the request).
+                    override suspend fun requestStamp(partition: DurablePartitionKey): ThreadDurableRequestStamp =
+                        ThreadDurableRequestStamp(partition, 0L, revAtRequest = ++stampsRead, expectedHeadEpoch = 0L)
 
                     override suspend fun persistEnteredPage(
                         ticket: ThreadDurableEnterTicket,
@@ -1059,17 +1071,104 @@ class SharedThreadStoreReplyOriginAndPagingTest {
             withTimeout(5_000L) { while (persisted.isEmpty()) delay(10) }
             repeat(20) { yield() }
             scopeJob.cancelAndJoin()
-            return Run(begins.toList(), persisted.toList())
+            return Run(begins.toList(), persisted.toList(), stamps.toList())
         }
 
         val parent = ThreadDurableReplyParent(parentChannelId = "channel-1", rootMessageId = "m1")
         val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val unresolvedRoute = resolvedRoute.copy(sourceThreadId = null, streamChannelId = null)
         assertEquals(null, unresolvedRoute.resolveThreadRouteIdentity().timelineChannelId)
-        assertEquals(Run(listOf(Triple("thread-m1", parent, false)), listOf("thread-m1")), runFor(unresolvedRoute))
+        assertEquals(
+            Run(listOf(Triple("thread-m1", parent, false)), listOf("thread-m1"), stamps = listOf(1L)),
+            runFor(unresolvedRoute)
+        )
         // Twin: the identical route with its stream already known takes its ticket (with the baseline) before the
         // request, exactly once.
-        assertEquals(Run(listOf(Triple("thread-m1", parent, true)), listOf("thread-m1")), runFor(resolvedRoute))
+        assertEquals(
+            Run(listOf(Triple("thread-m1", parent, true)), listOf("thread-m1"), stamps = listOf(null)),
+            runFor(resolvedRoute)
+        )
+    }
+
+    @Test
+    fun aTicketlessPageWithoutTheStampReadBeforeItsRequestIsNeverWritten() = runTest {
+        // #3905 review: a reply page whose stream its request resolved takes its ticket after the request, from the
+        // stamp (generation, revision, head epoch) read before it. Without that stamp nothing is written: a stamp read
+        // at write time would postdate the request and miss a horizonReset during it (#3875). Twin: the identical
+        // page with the stamp is written under exactly that stamp.
+        val stamps = mutableListOf<ThreadDurableRequestStamp?>()
+        val persisted = mutableListOf<String>()
+        var stampReads = 0
+        val loader =
+            object : ThreadEnteredScopeSnapshotLoader {
+                override suspend fun beginEnter(
+                    partition: DurablePartitionKey,
+                    channelId: String,
+                    replyParent: ThreadDurableReplyParent?,
+                    registerBaseline: Boolean,
+                    stamp: ThreadDurableRequestStamp?
+                ): ThreadDurableEnterTicket {
+                    stamps += stamp
+                    return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
+                }
+
+                override suspend fun requestStamp(partition: DurablePartitionKey): ThreadDurableRequestStamp {
+                    stampReads += 1
+                    return ThreadDurableRequestStamp(partition, 0L, 0L, expectedHeadEpoch = stampReads.toLong())
+                }
+
+                override suspend fun persistEnteredPage(
+                    ticket: ThreadDurableEnterTicket,
+                    page: ThreadDurableEnteredPage,
+                    stillCurrent: () -> Boolean
+                ) {
+                    persisted += page.channelId
+                }
+            }
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                enteredScopeSnapshotLoader = loader
+            )
+        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
+        val parent = ThreadDurableReplyParent(parentChannelId = "channel-1", rootMessageId = "m1")
+        val page =
+            ThreadDurableEnteredPage(
+                channelId = "thread-m1",
+                rawMessages = Json.parseToJsonElement("""[{"id":"r1"}]""") as JsonArray,
+                requestedLimit = 30,
+                messageWindow = null,
+                historyLimited = false
+            )
+
+        dataSource.persistEnteredPageIfCurrent(
+            ticket = null,
+            stamp = null,
+            page = page,
+            routeIdentity = route,
+            context = context,
+            replyParent = parent
+        )
+        assertEquals(emptyList(), stamps, "no ticket is taken without the pre-request stamp")
+        assertEquals(emptyList(), persisted)
+        assertEquals(0, stampReads, "no stamp is read at write time")
+
+        val beforeRequest = assertNotNull(dataSource.durableRequestStampIfCurrent(context))
+        dataSource.persistEnteredPageIfCurrent(
+            ticket = null,
+            stamp = beforeRequest,
+            page = page,
+            routeIdentity = route,
+            context = context,
+            replyParent = parent
+        )
+        assertEquals(listOf<ThreadDurableRequestStamp?>(beforeRequest), stamps)
+        assertEquals(listOf("thread-m1"), persisted)
+        assertEquals(1, stampReads)
     }
     private fun durableRawPage(id: String, limit: Int): RawMessagePageWitness =
         RawMessagePageWitness(
