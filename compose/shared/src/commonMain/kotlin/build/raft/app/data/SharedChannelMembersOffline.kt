@@ -105,6 +105,10 @@ internal class SharedChannelMembersOffline(
         }
     }
 
+    /** The channels of [serverId] with a stored list of [accountId] under [environmentId]. */
+    suspend fun storedChannelIds(environmentId: String, accountId: String, serverId: String): List<String> =
+        resource.storedParamsIds(environmentId, accountId, serverId)
+
     suspend fun read(scope: SharedServerChannelMembersScope): StoredChannelMembers? {
         val key = key(scope, mintedAt = null) ?: return null
         return resource.read(key)

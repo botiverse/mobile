@@ -495,12 +495,7 @@ internal class RaftOfflineResource<P : Any, T : Any>(
      * does it (null removes). Returns how many were changed or removed.
      */
     suspend fun updateEach(accountId: String, serverId: String, transform: (T) -> T?): Int {
-        val (environment, account, server) = cache.mintKey(accountId, serverId) ?: return 0
-        val resourceName = "${spec.name}:v${spec.version}"
-        val ids =
-            cache.rowIds { parts ->
-                parts.resource == resourceName && parts.environmentId == environment && parts.accountId == account && parts.serverId == server
-            }
+        val ids = rowIdsOf(accountId, serverId)?.map { it.first } ?: return 0
         var changed = 0
         for (rowId in ids) {
             val done =
@@ -517,6 +512,27 @@ internal class RaftOfflineResource<P : Any, T : Any>(
             if (done) changed += 1
         }
         return changed
+    }
+
+    /**
+     * The params ids ([RaftOfflineResourceSpec.paramsId]) of every value stored for [accountId] on [serverId]
+     * under [environmentId] (empty when that is not the current environment).
+     */
+    suspend fun storedParamsIds(environmentId: String, accountId: String, serverId: String): List<String> {
+        val (environment, _, _) = cache.mintKey(accountId, serverId) ?: return emptyList()
+        if (environment != environmentId.trim().trimEnd('/')) return emptyList()
+        return rowIdsOf(accountId, serverId)?.map { it.second.paramsId }.orEmpty()
+    }
+
+    // This resource's rows of [accountId] on [serverId] under the current environment, with their id parts.
+    private suspend fun rowIdsOf(accountId: String, serverId: String): List<Pair<String, RaftOfflineRowId.Parts>>? {
+        val (environment, account, server) = cache.mintKey(accountId, serverId) ?: return null
+        val resourceName = "${spec.name}:v${spec.version}"
+        return cache
+            .rowIds { parts ->
+                parts.resource == resourceName && parts.environmentId == environment && parts.accountId == account && parts.serverId == server
+            }
+            .mapNotNull { id -> RaftOfflineRowId.parts(id)?.let { id to it } }
     }
 
     /** Drops the stored value (a confirmed removal: an in-flight fetch that started before cannot restore it). */

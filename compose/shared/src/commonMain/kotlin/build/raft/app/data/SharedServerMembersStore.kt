@@ -25,6 +25,7 @@ import build.raft.app.raftAvatarDiagnosticsHash
 import build.raft.app.raftAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
@@ -692,16 +694,45 @@ class SharedServerMembersStore internal constructor(
     }
 
     /**
-     * This store holds [channelId]'s list for its current owner: loaded, or loading (a reload, or a first
-     * load) — never a stored stand-in.
+     * This store holds [channelId]'s list for its current owner (and for [expectedOwner], when given): loaded
+     * (never a stored stand-in that is not loading), or loading — a reload, a first load, or a cold open that
+     * shows the stored stand-in while its request runs. A loading list counts as held so that a
+     * `channel:members-updated` arriving meanwhile schedules a reload after it (the answer in flight may
+     * predate the change) instead of dropping the stored copy with nobody reloading.
      */
-    internal fun holdsLoadedChannel(serverId: ServerId, channelId: ChannelId): Boolean {
-        val scope = currentChannelScope(serverId, channelId) ?: return false
+    internal fun holdsLoadedChannel(
+        serverId: ServerId,
+        channelId: ChannelId,
+        expectedOwner: AuthenticatedRouteOwner? = null,
+    ): Boolean {
+        val scope = currentChannelScope(serverId, channelId, expectedOwner) ?: return false
         val binding = currentChannelMembersOwner(ServerId(scope.serverId)) ?: return false
         val slice = _state.value.channelMemberSlices[scope]?.takeIf { it.ownerWriteGeneration == binding.writeGeneration }
-        return slice != null &&
-            !slice.storedStandIn &&
-            (slice.status == SharedServerMembersLoadStatus.Loaded || slice.status == SharedServerMembersLoadStatus.InFlight)
+        return slice != null && slice.isHeldForMembersUpdated()
+    }
+
+    /** The channels of [serverId] this store holds (see [holdsLoadedChannel]) for its current owner. */
+    internal fun heldChannelIds(serverId: ServerId, expectedOwner: AuthenticatedRouteOwner? = null): Set<String> {
+        val binding = currentChannelMembersOwner(serverId) ?: return emptySet()
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return emptySet()
+        return _state.value.channelMemberSlices
+            .asSequence()
+            .filter { (scope, slice) ->
+                scope.matches(binding) && slice.ownerWriteGeneration == binding.writeGeneration && slice.isHeldForMembersUpdated()
+            }
+            .map { (scope, _) -> scope.channelId }
+            .toSet()
+    }
+
+    /**
+     * The channels of [serverId] with a stored list for this store's current owner; null when this store has
+     * no owner for the server (or no offline mirror): another store must answer.
+     */
+    internal suspend fun storedChannelIds(serverId: ServerId, expectedOwner: AuthenticatedRouteOwner? = null): Set<String>? {
+        val offline = channelMembersOffline ?: return null
+        val binding = currentChannelMembersOwner(serverId) ?: return null
+        if (expectedOwner != null && !binding.matches(expectedOwner)) return null
+        return offline.storedChannelIds(binding.environmentId, binding.accountId, binding.serverId).toSet()
     }
 
     // Channel reloads asked by realtime `channel:members-updated`: scope -> "another one asked meanwhile".
@@ -711,10 +742,17 @@ class SharedServerMembersStore internal constructor(
     /**
      * Reloads [channelId]'s list (realtime `channel:members-updated`). A burst coalesces: an event that
      * arrives while a reload runs schedules exactly one more after it, so the last change is never missed.
+     * Every reload is pinned to the owner (account) the list was held for: after an account switch it is
+     * refused, never sent for the new account.
      */
-    internal suspend fun reloadLoadedChannel(serverId: ServerId, channelId: ChannelId) {
-        if (!holdsLoadedChannel(serverId, channelId)) return
-        val scope = currentChannelScope(serverId, channelId) ?: return
+    internal suspend fun reloadLoadedChannel(
+        serverId: ServerId,
+        channelId: ChannelId,
+        expectedOwner: AuthenticatedRouteOwner? = null,
+    ) {
+        if (!holdsLoadedChannel(serverId, channelId, expectedOwner)) return
+        val scope = currentChannelScope(serverId, channelId, expectedOwner) ?: return
+        val owner = AuthenticatedRouteOwner(environmentId = scope.environmentId, accountId = scope.accountId, serverId = scope.serverId)
         val starts =
             synchronized(channelReloadLock) {
                 if (scope in channelReloads) {
@@ -727,15 +765,22 @@ class SharedServerMembersStore internal constructor(
             }
         if (!starts) return
         try {
-            do {
-                loadChannelMembers(ServerId(scope.serverId), ChannelId(scope.channelId), DataRequestPriority.Background, force = true)
+            while (true) {
+                loadChannelMembers(owner, ChannelId(scope.channelId), DataRequestPriority.Background, force = true)
                 val again =
                     synchronized(channelReloadLock) {
                         (channelReloads[scope] == true).also { again ->
                             if (again) channelReloads[scope] = false else channelReloads.remove(scope)
                         }
                     }
-            } while (again)
+                if (!again) break
+                // The queued reload only while the list is still held: a lost channel (403 / 404 dropped it), a
+                // failure, or an account switch meanwhile ends it (no second request, no re-created slice).
+                if (!holdsLoadedChannel(ServerId(scope.serverId), ChannelId(scope.channelId), owner)) {
+                    synchronized(channelReloadLock) { channelReloads.remove(scope) }
+                    break
+                }
+            }
         } catch (error: Throwable) {
             // Failed / cancelled: the next event starts afresh.
             synchronized(channelReloadLock) { channelReloads.remove(scope) }
@@ -745,14 +790,30 @@ class SharedServerMembersStore internal constructor(
 
     /**
      * Drops [channelId]'s stored list (no store holds it; the viewer may no longer belong to it). False when
-     * this store has no owner for the server (another store must do it).
+     * this store has no owner for the server, or not [expectedOwner] (another store must do it).
      */
-    internal suspend fun forgetStoredChannel(serverId: ServerId, channelId: ChannelId): Boolean {
-        val scope = currentChannelScope(serverId, channelId) ?: return false
+    internal suspend fun forgetStoredChannel(
+        serverId: ServerId,
+        channelId: ChannelId,
+        expectedOwner: AuthenticatedRouteOwner? = null,
+    ): Boolean {
+        val scope = currentChannelScope(serverId, channelId, expectedOwner) ?: return false
         val offline = channelMembersOffline ?: return false
         offline.forget(scope)
         return true
     }
+
+    private fun currentChannelScope(
+        serverId: ServerId,
+        channelId: ChannelId,
+        expectedOwner: AuthenticatedRouteOwner?,
+    ): SharedServerChannelMembersScope? =
+        currentChannelScope(serverId, channelId)?.takeIf { scope ->
+            expectedOwner == null ||
+                (scope.environmentId == expectedOwner.environmentId &&
+                    scope.accountId == expectedOwner.accountId &&
+                    scope.serverId == expectedOwner.serverId)
+        }
 
     private fun currentChannelScope(serverId: ServerId, channelId: ChannelId): SharedServerChannelMembersScope? {
         val serverKey = serverId.value.normalizedServerMembersId() ?: return null
@@ -4381,23 +4442,59 @@ internal val SharedServerMembersPresenceRefillRetryDelay: Duration = 3.seconds
 
 /**
  * Realtime `channel:members-updated` for [channelId] across every members store of the process: each store
- * holding the list loaded reloads it (a viewer removed from the channel then gets the lost-access drop);
- * only when NO store holds it loaded is the stored copy dropped (the viewer may no longer belong to the
- * channel; its next open loads afresh). Decided over all stores so the order they are visited in never
+ * holding the list (loaded, or loading) reloads it (a viewer removed from the channel then gets the
+ * lost-access drop); only when NO store holds it is the stored copy dropped (the viewer may no longer belong
+ * to the channel; its next open loads afresh). Decided over all stores so the order they are visited in never
  * matters.
+ *
+ * [channelId] null (an event without a channel, as ThreadPage reads it: every channel): the same, for every
+ * list of the server any store holds or has stored. [expectedOwner]: the account + server the event arrived
+ * for (captured before it left the realtime delivery path); a store whose owner is no longer it does nothing.
  */
 internal suspend fun applyChannelMembersUpdated(
     stores: List<SharedServerMembersStore>,
     serverId: ServerId,
-    channelId: ChannelId,
+    channelId: ChannelId?,
+    expectedOwner: AuthenticatedRouteOwner? = null,
 ) {
-    val loaded = stores.filter { it.holdsLoadedChannel(serverId, channelId) }
-    if (loaded.isEmpty()) {
-        // Through the first store that has an owner for the server (and the offline mirror).
-        for (store in stores) {
-            if (store.forgetStoredChannel(serverId, channelId)) break
+    if (channelId != null) {
+        applyChannelMembersUpdatedTo(stores, serverId, channelId, expectedOwner)
+        return
+    }
+    val channels =
+        buildSet {
+            stores.forEach { addAll(it.heldChannelIds(serverId, expectedOwner)) }
+            for (store in stores) {
+                val stored = store.storedChannelIds(serverId, expectedOwner) ?: continue
+                addAll(stored)
+                break
+            }
         }
-    } else {
-        loaded.forEach { it.reloadLoadedChannel(serverId, channelId) }
+    coroutineScope {
+        channels.forEach { channel ->
+            launch { applyChannelMembersUpdatedTo(stores, serverId, ChannelId(channel), expectedOwner) }
+        }
     }
 }
+
+private suspend fun applyChannelMembersUpdatedTo(
+    stores: List<SharedServerMembersStore>,
+    serverId: ServerId,
+    channelId: ChannelId,
+    expectedOwner: AuthenticatedRouteOwner?,
+) {
+    val held = stores.filter { it.holdsLoadedChannel(serverId, channelId, expectedOwner) }
+    if (held.isEmpty()) {
+        // Through the first store that has an owner for the server (and the offline mirror).
+        for (store in stores) {
+            if (store.forgetStoredChannel(serverId, channelId, expectedOwner)) break
+        }
+    } else {
+        held.forEach { it.reloadLoadedChannel(serverId, channelId, expectedOwner) }
+    }
+}
+
+/** Loaded (not a stand-in), or loading (stand-in or not): a `channel:members-updated` reloads it. */
+private fun SharedServerChannelMembersSlice.isHeldForMembersUpdated(): Boolean =
+    status == SharedServerMembersLoadStatus.InFlight ||
+        (status == SharedServerMembersLoadStatus.Loaded && !storedStandIn)
