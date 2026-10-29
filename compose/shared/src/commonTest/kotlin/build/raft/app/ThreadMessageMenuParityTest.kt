@@ -24,7 +24,7 @@ class ThreadMessageMenuParityTest {
         val capabilities = capabilities(message())
 
         assertTrue(capabilities.quickReactions)
-        assertFalse(capabilities.addReaction, "web's message menu has no Add reaction row")
+        assertTrue(capabilities.addReaction, "the reaction row ends with Add Reaction (web reaction-add-any)")
         assertTrue(capabilities.forward)
         assertTrue(capabilities.selectMessage)
         assertTrue(capabilities.reply)
@@ -79,7 +79,7 @@ class ThreadMessageMenuParityTest {
         assertFalse(capabilities.forward)
         assertFalse(capabilities.selectMessage)
         assertTrue(capabilities.quickReactions, "guests keep reactions like web")
-        assertFalse(capabilities.addReaction)
+        assertTrue(capabilities.addReaction, "and the full picker with them")
     }
 
     @Test
@@ -149,21 +149,12 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun classicMenuOrdersReplyInThreadForwardThenSaveAfterAddReaction() {
+    fun classicMenuOrdersReplyInThreadForwardThenSave() {
         var forwarded = 0
-        var reactionPickerOpened = 0
-        val actions =
-            classicActions(
-                message(),
-                showForwardAction = true,
-                showAddReactionAction = true,
-                onForward = { forwarded += 1 },
-                onAddReaction = { reactionPickerOpened += 1 }
-            )
+        val actions = classicActions(message(), showForwardAction = true, onForward = { forwarded += 1 })
 
         assertEquals(
             listOf(
-                Res.string.thread_action_add_reaction.desc(),
                 Res.string.thread_action_copy_link.desc(),
                 Res.string.thread_action_copy_markdown.desc(),
                 Res.string.thread_action_select_text.desc(),
@@ -174,12 +165,54 @@ class ThreadMessageMenuParityTest {
             ),
             actions.map { it.label }
         )
-        assertEquals(RaftLucideIconName.SmilePlus, actions.first().icon)
+        assertFalse(
+            actions.any { it.icon == RaftLucideIconName.SmilePlus },
+            "Add Reaction ends the reaction row, it is not an action row"
+        )
         assertEquals(RaftLucideIconName.Send, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
         actions.single { it.label == Res.string.thread_action_forward.desc() }.onClick()
-        actions.first().onClick()
         assertEquals(1, forwarded)
-        assertEquals(1, reactionPickerOpened)
+    }
+
+    @Test
+    fun theReactionRowEndsWithAddReactionOnlyWhereReactionsAreAllowed() {
+        // Web MessageItem's quick-reaction row: the quick emojis, then a SmilePlus "Add Reaction"
+        // (`reaction-add-any`) that opens the full emoji picker; its only entry in the menu.
+        val ordinary = capabilities(message())
+        assertTrue(ordinary.addReaction)
+        val availability = ordinary.toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
+        assertTrue(availability.addReaction)
+        assertTrue(availability.showsReactionRow())
+        assertFalse(ThreadNewMessageMenuTool.AddReaction in availability.primaryTools(), "no separate tool")
+        assertFalse(ThreadNewMessageMenuTool.AddReaction in availability.secondaryTools(), "no separate tool")
+        assertFalse(ThreadNewMessageMenuTool.AddReaction in ThreadNewMessageMenuSecondaryToolOrder)
+
+        data class Case(val name: String, val capabilities: ThreadMessageMenuCapabilities)
+        listOf(
+            Case("system message", capabilities(message(messageType = "System"))),
+            Case("read-only (no write access)", capabilities(message(), writeActionsEnabled = false)),
+            Case("surface without reactions", capabilities(message(), slice = slice().copy(showReactionActions = false))),
+            Case(
+                "local send",
+                capabilities(message(deliveryState = ThreadMessageDeliveryFailed).copy(pendingSendContext = pendingSend()))
+            ),
+        ).forEach { case ->
+            assertFalse(case.capabilities.quickReactions, case.name)
+            assertFalse(case.capabilities.addReaction, case.name)
+            assertFalse(
+                case.capabilities.toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata()).addReaction,
+                case.name
+            )
+        }
+    }
+
+    @Test
+    fun theClassicMenuWidensForTheAddReactionSlot() {
+        val withoutAdd = threadMessageMenuWidthDp(showReactionActions = true)
+        val withAdd = threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true)
+        // One more 28dp button and its 4dp gap, so the quick emojis are not squeezed or clipped.
+        assertEquals(withoutAdd + 32f, withAdd)
+        assertEquals(threadMessageMenuWidthDp(showReactionActions = false), threadMessageMenuWidthDp(false, showAddReactionAction = true))
     }
 
     @Test
@@ -467,11 +500,9 @@ class ThreadMessageMenuParityTest {
     private fun classicActions(
         message: RaftThreadMessageItem,
         showForwardAction: Boolean = false,
-        showAddReactionAction: Boolean = false,
         showTranslateAction: Boolean = false,
         translatePending: Boolean = false,
         onForward: () -> Unit = {},
-        onAddReaction: () -> Unit = {},
         onCopySelection: (() -> Unit)? = null
     ): List<ThreadMessageMenuAction> =
         threadMessageMenuActions(
@@ -488,7 +519,6 @@ class ThreadMessageMenuParityTest {
             showTranslateAction = showTranslateAction,
             translatePending = translatePending,
             showForwardAction = showForwardAction,
-            showAddReactionAction = showAddReactionAction,
             onReply = {},
             onCopyLink = {},
             onCopy = {},
@@ -502,7 +532,6 @@ class ThreadMessageMenuParityTest {
             onCancel = {},
             onDelete = {},
             onForward = onForward,
-            onAddReaction = onAddReaction,
             onCopySelection = onCopySelection
         )
 

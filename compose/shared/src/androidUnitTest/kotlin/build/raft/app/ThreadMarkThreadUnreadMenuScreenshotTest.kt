@@ -86,6 +86,7 @@ private fun ReplyMenus() {
             availability =
                 ThreadNewMessageMenuActionAvailability(
                     reply = false,
+                    addReaction = true,
                     copyLink = true,
                     markThreadUnread = true,
                 ),
@@ -129,6 +130,7 @@ private fun ReplyMenus() {
             showReactionActions = true,
             reactionAtlasImage = null,
             onReact = {},
+            onAddReaction = {},
         )
     }
 }

@@ -671,7 +671,6 @@ internal fun ThreadMessageVisualScreenContent() {
                     showCancelAction = false,
                     showDeleteAction = false,
                     showForwardAction = true,
-                    showAddReactionAction = payload.showReactionActions,
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},
@@ -947,6 +946,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         availability =
                             ThreadNewMessageMenuActionAvailability(
                                 reactions = payload.showReactionActions,
+                                addReaction = payload.showReactionActions,
                                 reply = payload.showReplyActions,
                                 save = payload.showMessageSaveAction,
                                 translate = false
@@ -970,7 +970,10 @@ internal fun ThreadMessageVisualScreenContent() {
             // 390x844 viewport (8px inset), over the pressed row.
             menuRowBounds?.takeIf { menuActions.isNotEmpty() }?.let { rowBounds ->
                 val density = LocalDensity.current
-                val menuWidthPx = with(density) { threadMessageMenuWidthDp(payload.showReactionActions).dp.toPx() }
+                val menuWidthPx = with(density) { threadMessageMenuWidthDp(
+                            payload.showReactionActions,
+                            showAddReactionAction = payload.showReactionActions
+                        ).dp.toPx() }
                 val menuHeightPx =
                     with(density) {
                         threadMessageMenuContentHeightDp(
@@ -999,7 +1002,9 @@ internal fun ThreadMessageVisualScreenContent() {
                         showReactionActions = payload.showReactionActions,
                         reactionAtlasImage = LocalThreadReactionAtlasImage.current,
                         onReact = {},
-                        modifier = Modifier
+                        modifier = Modifier,
+                        // The reaction header ends with Add Reaction (web `reaction-add-any`).
+                        onAddReaction = if (payload.showReactionActions) ({}) else null
                     )
                 }
             }
@@ -1112,6 +1117,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                     availability =
                         ThreadNewMessageMenuActionAvailability(
                             reactions = true,
+                            addReaction = true,
                             reply = true,
                             save = false,
                             translate = false
