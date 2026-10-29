@@ -638,6 +638,7 @@ fun RaftTextFieldAction(
             .raftPressOverlay(active, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Chip)
             // 32dp drawn, 44dp to the touch (raft-design Spacing: draw small, hit 44).
             .raftTouchTarget(enabled, source, onClick)
+            .raftPointerHover(source)
             .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

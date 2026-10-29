@@ -210,9 +210,11 @@ private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScrol
  *
  * - Default variant: 32dp tall, 12dp padding, hugging its label. [selected] is the active
  *   sticker: `selected`, 1.5dp `sticker-ink` edge, bold `sticker-ink` label, the die-cut edge
- *   in dark. Pressed lays `fill-pressed` (`sticker-pressed` on the sticker) over it.
+ *   in dark. Pressed lays `fill-pressed` (`sticker-pressed` on the sticker) over it; a
+ *   mouse or trackpad hover lays `fill-medium` over an unselected tab (faded over 100ms).
  * - Underline variant: 44dp tall, no padding or fill. [selected] turns the label
- *   `foreground` and draws a 2dp `foreground` line along the tab's bottom.
+ *   `foreground` and draws a 2dp `foreground` line along the tab's bottom; hover and press
+ *   turn an unselected label `foreground`.
  * - Keyboard focus draws the focus ring outside it. Disabled: `foreground-disabled`.
  * - A default tab draws 32dp but takes touches 44dp tall ([raftTouchTarget]). Heights are
  *   minimums: a large font scale grows the tab instead of clipping its label.
@@ -316,15 +318,18 @@ private fun RaftUnderlineTab(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    // `hover:text-foreground active:text-foreground`: a text tab has no box to lay an overlay on.
     val ink =
         when {
             !enabled -> colors.foregroundDisabled
-            selected || isPressed -> colors.foreground
+            selected || isPressed || isHovered -> colors.foreground
             else -> colors.foregroundMuted
         }
     val line = colors.foreground
     Row(
         modifier
+            .raftPointerHover(source)
             .heightIn(min = 44.dp)
             .raftFocusRing(focused, 0.dp, colors)
             .drawWithContent {
@@ -365,8 +370,16 @@ internal fun RaftStickerItem(
 ) {
     val colors = RaftTheme.colors
     val look = raftStickerItemLook(active, enabled, colors)
-    val isPressed = raftIsPressed(source)
-    val pressed = enabled && isPressed
+    // Unselected: `hover:bg-fill-medium active:bg-fill-medium`, faded over 100ms. The active
+    // sticker doesn't hover, and presses with `overlay-sticker-medium`.
+    val overlay =
+        rememberRaftStateOverlay(
+            source,
+            RaftHoverTier.Medium,
+            surface = if (active && enabled) RaftPressSurface.Sticker else RaftPressSurface.Paper,
+            enabled = enabled,
+            selected = active,
+        )
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val typography = RaftTheme.typography
@@ -375,8 +388,9 @@ internal fun RaftStickerItem(
         // stays the accessible name, given by the caller's semantics.
         Box(
             modifier
+                .raftPointerHover(source)
                 .size(32.dp)
-                .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors),
+                .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay),
             contentAlignment = Alignment.Center,
         ) {
             CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
@@ -387,9 +401,10 @@ internal fun RaftStickerItem(
     }
     Row(
         modifier
+            .raftPointerHover(source)
             // A minimum: a large font scale grows the item instead of clipping its label.
             .heightIn(min = 32.dp)
-            .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
+            .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors, overlay = overlay)
             .padding(horizontal = 12.dp + RaftStroke.Control, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

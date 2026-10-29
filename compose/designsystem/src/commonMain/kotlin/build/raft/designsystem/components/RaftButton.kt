@@ -15,7 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -238,6 +244,26 @@ internal fun RaftButtonBox(
     val isPressed = raftIsPressed(source)
     val isHovered = raftIsHovered(source)
     val pressed = active && (isPressed || isHovered || open)
+    // Joined parts (a split button): the part under the pointer takes the medium tier and its
+    // neighbour the subtle tier (raft-ui states.md § Hover and press).
+    val group = LocalRaftJoinedButtons.current
+    val neighbourActive =
+        when {
+            group == null -> false
+            join == RaftButtonJoin.End -> group.endActive
+            join == RaftButtonJoin.Start -> group.startActive
+            else -> false
+        }
+    if (group != null && join != RaftButtonJoin.None) {
+        SideEffect { group.report(join, pressed) }
+        DisposableEffect(group, join) { onDispose { group.report(join, false) } }
+    }
+    val joinedFill =
+        when {
+            pressed -> look.pressOverlay
+            active && neighbourActive -> RaftTheme.colors.fillSubtle
+            else -> Color.Transparent
+        }
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
@@ -255,7 +281,7 @@ internal fun RaftButtonBox(
                     if (join == RaftButtonJoin.None) {
                         Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
                     } else {
-                        Modifier.background(if (pressed) look.pressOverlay else Color.Transparent, shape)
+                        Modifier.background(joinedFill, shape)
                     },
                 )
                 .then(
@@ -266,6 +292,7 @@ internal fun RaftButtonBox(
                     },
                 )
                 .semantics { if (loading) disabled() }
+                .raftPointerHover(source)
                 .then(
                     if (widenTouchTarget) {
                         Modifier.raftTouchTarget(
@@ -310,6 +337,33 @@ internal fun RaftButtonBox(
         }
     }
 }
+
+/**
+ * The two parts of a split button ([RaftButtonJoin.End] then [RaftButtonJoin.Start]),
+ * provided by their group through [LocalRaftJoinedButtons]: each part reports whether it is
+ * hovered, pressed or open, so the other lays `fill-subtle` meanwhile.
+ */
+@Stable
+internal class RaftJoinedButtons {
+    /** The [RaftButtonJoin.End] part (the main action, first). */
+    var startActive by mutableStateOf(false)
+        private set
+
+    /** The [RaftButtonJoin.Start] part (the one joined to its end). */
+    var endActive by mutableStateOf(false)
+        private set
+
+    fun report(join: RaftButtonJoin, active: Boolean) {
+        when (join) {
+            RaftButtonJoin.End -> if (startActive != active) startActive = active
+            RaftButtonJoin.Start -> if (endActive != active) endActive = active
+            RaftButtonJoin.None -> Unit
+        }
+    }
+}
+
+/** The split button the [RaftButtonBox]es under it belong to; null outside one. */
+internal val LocalRaftJoinedButtons = staticCompositionLocalOf<RaftJoinedButtons?> { null }
 
 /**
  * Which edge a button shares with a neighbour (raft-ui split buttons such as

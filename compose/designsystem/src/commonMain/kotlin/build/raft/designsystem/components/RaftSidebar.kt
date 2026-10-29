@@ -145,16 +145,18 @@ enum class RaftSidebarItemVariant(
  *
  * States (States: navigation selection): [selected] is "you are here", the yellow sticker:
  * `brand` fill, 1.5dp `sticker-ink` edge, die-cut edge in dark, `sticker-ink` for every
- * part, and `selected` in semantics. Press (and a mouse hover) lays the press overlay over
- * the fill; keyboard focus draws the focus ring outside the box. [onClick] = null is a
+ * part, and `selected` in semantics; it takes no hover or press overlay. An unselected row
+ * is a list cell (raft-ui lib/list-cell.ts): a mouse or trackpad hover lays
+ * `fill-cell-hover` on its rounded shape (faded over 150ms) and press `fill-cell-press`;
+ * keyboard focus draws the focus ring outside the box. [onClick] = null is a
  * display-only row (`interactive={false}`): no press, no focus, not a button.
  *
  * Touch (raft-design ContextMenu): [onLongClick] is the press and hold that opens the row's
  * menu, the same menu as its ⋯ button and a right-click, named [onLongClickLabel] for
  * screen readers ("Channel Options"); a long press does not also click. While that menu is
- * open pass [menuOpen] = true: the row takes `fill-row-open` (raft-ui
- * `not-data-active:data-popup-open:bg-fill-row-open`, so not on the selected row). Hover takes
- * `fill-row-hover`; press keeps `fill-pressed`. Both need [onClick].
+ * open pass [menuOpen] = true: the row keeps the hover fill, `fill-cell-hover` (raft-ui
+ * `not-data-active:data-popup-open:before:bg-fill-cell-hover`, so not on the selected row).
+ * Hover and press need [onClick].
  */
 @Composable
 fun RaftSidebarItem(
@@ -258,19 +260,17 @@ private fun RaftSidebarItemLayout(
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val isPressed = raftIsPressed(source)
-    val isHovered = raftIsHovered(source)
-    // raft-ui 0.13 row hover: press keeps `fill-pressed`; hover takes the lighter
-    // `fill-row-hover`, and an open menu `fill-row-open`, a step past it. The sticker
-    // (selected) row keeps its own look.
-    val pressed = interactive && isPressed
-    val rowFill =
-        when {
-            !interactive || selected || pressed -> Color.Transparent
-            menuOpen -> colors.fillRowOpen
-            isHovered -> colors.fillRowHover
-            else -> Color.Transparent
-        }
+    // A list cell (raft-ui lib/list-cell.ts): hover lays `fill-cell-hover` on the row's
+    // shape, faded over 150ms; press `fill-cell-press` at once; an open menu keeps the hover
+    // fill. A selected (sticker) row answers neither.
+    val overlay =
+        rememberRaftStateOverlay(
+            source,
+            RaftHoverTier.Cell,
+            enabled = interactive,
+            selected = selected,
+            highlighted = menuOpen,
+        )
     val isFocused = raftIsFocused(source)
     val focused = interactive && isFocused
     val titleInk =
@@ -299,8 +299,11 @@ private fun RaftSidebarItemLayout(
                 .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
-                .background(rowFill, RoundedCornerShape(RaftRadius.Control))
-                .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
+                .raftSticker(look, RaftRadius.Control, focused = focused, colors = colors)
+                // Over the sticker's fill (transparent unless selected, and a selected row
+                // lays nothing), under its edge.
+                .raftStateOverlay(overlay, RaftRadius.Control)
+                .then(if (interactive) Modifier.raftPointerHover(source) else Modifier)
                 .then(
                     when {
                         onClick == null -> Modifier

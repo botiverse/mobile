@@ -155,8 +155,8 @@ private fun ColumnScope.RaftAppRailDecor() {
  * raft-ui `AppRailItem`: one destination, a 40dp square on the control radius holding its 20dp
  * [icon] (drawn in the `ink` it is given). Selected, it is the sticker on the frame:
  * `layer-frame-active` (white in light mode, yellow in dark) with a 1.5dp `line-frame-active`
- * edge and the die-cut `sticker-edge` ring; a press lays `fill-frame-medium` over an unselected
- * one. [attention] puts the pink pixel (`Status sm`, 8dp) on the icon's top-right corner; the
+ * edge and the die-cut `sticker-edge` ring; a press or a mouse / trackpad hover (faded over
+ * 100ms) lays `fill-frame-medium` over an unselected one. [attention] puts the pink pixel (`Status sm`, 8dp) on the icon's top-right corner; the
  * selected item never shows it. Screen readers read [label], plus [attentionDescription] while
  * the pixel shows ("Activity, new"). A rail never shows a count (raft-ui Badge rules).
  *
@@ -175,7 +175,9 @@ fun RaftAppRailItem(
 ) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source) && enabled && !selected
+    // `hover:bg-fill-frame-medium`, and the same on press; the selected sticker takes neither.
+    val overlay =
+        rememberRaftStateOverlay(source, RaftHoverTier.Medium, RaftPressSurface.Frame, enabled = enabled && !selected)
     val shape = RoundedCornerShape(RaftRadius.Control)
     val edge = colors.stickerEdge
     val ink =
@@ -208,15 +210,10 @@ fun RaftAppRailItem(
                     Modifier
                 },
             )
-            .background(
-                when {
-                    selected -> colors.layerFrameActive
-                    pressed -> colors.fillFrameMedium
-                    else -> Color.Transparent
-                },
-                shape,
-            )
+            .background(if (selected) colors.layerFrameActive else Color.Transparent, shape)
+            .raftStateOverlay(overlay, shape)
             .border(RaftStroke.Control, if (selected) colors.lineFrameActive else Color.Transparent, shape)
+            .raftPointerHover(source)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics {
                 this.selected = selected

@@ -271,7 +271,8 @@ internal fun raftPickerTriggerLook(
  * semibold. At rest a 1dp `line-seam` inset ring and `foreground-muted`; with
  * [hasValue] (the filter is applied) an `info-soft` fill with `foreground` text and no
  * ring or border. A 14dp chevron in `foreground-hint` ends it unless [showIndicator] is
- * false; [leadingIcon] is 14dp. Pressed lays `fill-pressed` over the fill; keyboard focus
+ * false; [leadingIcon] is 14dp. Pressed or hovered by a mouse / trackpad, it lays
+ * `fill-pressed` over the fill; keyboard focus
  * rings it; [invalid] draws a `danger-strong` inset ring; disabled is `fill-muted`. It
  * draws 32dp but takes touches 44dp tall ([raftTouchTarget]); keep 6dp free above and below.
  * Given less width than its label needs, the label ends in an ellipsis (web `truncate`).
@@ -297,8 +298,9 @@ fun RaftPickerTriggerButton(
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftPickerTriggerLook(hasValue, invalid, enabled, colors)
-    val isPressed = raftIsPressed(source)
-    val pressed = enabled && isPressed
+    // `hover:bg-fill-medium` (`overlay-medium` over an applied filter's `info-soft`), and the
+    // same on press: a button, not a field.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = enabled)
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val radius = size.radius
@@ -310,8 +312,9 @@ fun RaftPickerTriggerButton(
             .raftTouchTarget(enabled, source, onClick)
             .raftFocusRing(focused, radius, colors)
             .background(look.fill, shape)
-            .raftPressOverlay(pressed, look.pressOverlay, radius)
+            .raftStateOverlay(overlay, shape)
             .border(RaftStroke.Hairline, look.ring, shape)
+            .raftPointerHover(source)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = size.horizontalPadding, vertical = size.verticalPadding),
         verticalAlignment = Alignment.CenterVertically,

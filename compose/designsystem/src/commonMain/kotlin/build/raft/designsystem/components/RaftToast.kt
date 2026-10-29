@@ -73,8 +73,9 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  * - [icon]: raft-ui `leading`, a 20dp slot for who did it (an avatar); replaces the
  *   [intent]'s icon.
  * - [description]: more detail in the muted ink.
- * - [actionLabel] / [onAction]: one underlined bold text action ("View", "Undo"),
- *   never a button; it takes touches 44dp round it.
+ * - [actionLabel] / [onAction]: one bold text action ("View", "Undo"), never a button;
+ *   underlined only under a mouse or trackpad and while pressed (raft-ui
+ *   `not-disabled:hover:underline`); it takes touches 44dp round it.
  * - Title only: at least 44 x 112dp, the text centred.
  *
  * Neutral by rule: no intent tint and never yellow. The host (one toast at a time, the
@@ -124,13 +125,23 @@ fun RaftToast(
             }
             if (hasAction) {
                 val source = remember { MutableInteractionSource() }
+                // `not-disabled:hover:underline`: clickable text, underlined under a mouse or
+                // trackpad, and while pressed (touch has no hover); none at rest.
+                val isPressed = raftIsPressed(source)
+                val isHovered = raftIsHovered(source)
+                val underlined = isPressed || isHovered
                 RaftText(
                     actionLabel!!,
                     // The word draws at its size; touches 44dp round it count ([raftTouchTarget]).
                     Modifier
                         .raftTouchTarget(enabled = true, interactionSource = source, onClick = onAction!!)
+                        .raftPointerHover(source)
                         .clickable(source, indication = null, role = Role.Button, onClick = onAction),
-                    style = typography.callout.copy(fontWeight = FontWeight.Bold, textDecoration = TextDecoration.Underline),
+                    style =
+                        typography.callout.copy(
+                            fontWeight = FontWeight.Bold,
+                            textDecoration = if (underlined) TextDecoration.Underline else null,
+                        ),
                     color = look.ink,
                     maxLines = 1,
                 )

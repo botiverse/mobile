@@ -73,7 +73,8 @@ internal data class RaftTextLinkLook(val ink: Color, val weight: FontWeight, val
  * text-link.tsx (raft-ui 0.9.4+): no underline at rest; on hover it underlines in its own
  * colour (`currentColor`) and never turns pink. Muted is `foreground-muted` 500 and turns
  * `foreground` on hover; strong is `foreground` 600. Disabled: `foreground-disabled`, no
- * underline. Touch has no hover, so [active] (pressed) takes the hover look.
+ * underline. [active] is a mouse or trackpad hover, or a press: touch has no hover, so a
+ * press takes the hover look.
  */
 internal fun raftTextLinkLook(variant: RaftTextLinkVariant, enabled: Boolean, active: Boolean, colors: RaftUiThemeColors): RaftTextLinkLook =
     when {
@@ -94,8 +95,9 @@ internal fun raftTextLinkLook(variant: RaftTextLinkVariant, enabled: Boolean, ac
  *
  * - No height, padding, border or box of its own: it takes the size and line height of
  *   the text around it, so pass that text's [style] (default `body`, as [RaftText]).
- * - No underline at rest. Pressed (the web's hover): a 1.5dp underline 3dp under the
- *   baseline in the text colour, never pink; muted also turns ink.
+ * - No underline at rest. Hovered by a mouse or trackpad, or pressed (touch has no hover):
+ *   a 1.5dp underline 3dp under the baseline in the text colour, never pink; muted also
+ *   turns ink.
  * - Focus (keyboard only): the focus ring on a 2dp radius, outside the text.
  * - Disabled: `foreground-disabled`, no underline, not focusable.
  * - Title Case, starting with a verb or naming the place. It is a button for
@@ -118,7 +120,8 @@ fun RaftTextLink(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val colors = RaftTheme.colors
     val isPressed = raftIsPressed(source)
-    val look = raftTextLinkLook(variant, enabled, active = enabled && isPressed, colors)
+    val isHovered = raftIsHovered(source)
+    val look = raftTextLinkLook(variant, enabled, active = enabled && (isPressed || isHovered), colors)
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -127,6 +130,7 @@ fun RaftTextLink(
         modifier =
             modifier
                 .raftFocusRing(focused, RaftTextLinkMetrics.FocusRadius, colors)
+                .raftPointerHover(source)
                 .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
                 .drawBehind {
                     val result = layout ?: return@drawBehind
@@ -222,7 +226,8 @@ internal fun RaftLinkedText(
     links.forEachIndexed { i, link ->
         key(i) {
             val isPressed = raftIsPressed(sources[i])
-            val active = link.enabled && isPressed
+            val isHovered = raftIsHovered(sources[i])
+            val active = link.enabled && (isPressed || isHovered)
             looks += raftTextLinkLook(link.variant, link.enabled, active, colors)
             val isFocused = raftIsFocused(sources[i])
             focused += link.enabled && isFocused
@@ -282,13 +287,14 @@ internal fun RaftLinkedText(
                     Box(
                         Modifier
                             .semantics { this.text = AnnotatedString(words) }
+                            .raftPointerHover(source)
                             .clickable(interactionSource = source, indication = null, enabled = link.enabled, role = Role.Button, onClick = onClick),
                     )
                 } else {
                     // Later lines take taps (and press the same link) without a node of their own.
                     key(target.index, target.line) {
                         val latest by rememberUpdatedState(onClick)
-                        Box(Modifier.raftTapTarget(link.enabled, source) { latest() })
+                        Box(Modifier.raftPointerHover(source).raftTapTarget(link.enabled, source) { latest() })
                     }
                 }
             }

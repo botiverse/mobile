@@ -17,6 +17,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
@@ -68,7 +69,7 @@ object RaftMessageImageGalleryDefaults {
     /** The gallery's own width from which rows take the taller heights (its full [MaxWidth]). */
     val WideFrom = 360.dp
 
-    /** `hover:bg-ink-8`: the image dims a step while pressed (the theme's `ink8`). */
+    /** `hover:bg-ink-8`: the image dims a step while hovered or pressed (the theme's `ink8`). */
 }
 
 /** An image's intrinsic pixel size, when the server knows it. */
@@ -162,7 +163,7 @@ fun raftMessageImageSingleSize(image: RaftMessageImageDimensions, availableWidth
  * One image cell (`message-image-gallery-item`): `fill-muted` behind the media (the
  * letterbox of a `contain` image), a `line-hairline` border, `rounded-control`, or
  * `rounded-container` for a lone image. Size it with [modifier]; [content] fills it.
- * Pressing dims the image a step (`ink-8`); keyboard focus draws the inset outline. [pending]
+ * Pressing or a mouse / trackpad hover (faded over 75ms) dims the image a step (`ink-8`); keyboard focus draws the inset outline. [pending]
  * (an image still sending) covers it with `layer-veil` under a spinner in its default colour.
  */
 @Composable
@@ -178,8 +179,8 @@ fun RaftMessageImageFrame(
     val radius = if (single) RaftRadius.Container else RaftRadius.Control
     val shape = RoundedCornerShape(radius)
     val source = remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(source)
-    val pressed = onClick != null && isPressed
+    // `transition-colors duration-75 hover:bg-ink-8`, and the same on press.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Media, enabled = onClick != null)
     val isFocused = raftIsFocused(source)
     val focused = onClick != null && isFocused
     Box(
@@ -188,7 +189,7 @@ fun RaftMessageImageFrame(
             .background(colors.fillMuted)
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(
+                    Modifier.raftPointerHover(source).clickable(
                         interactionSource = source,
                         indication = null,
                         onClickLabel = onClickLabel,
@@ -204,7 +205,7 @@ fun RaftMessageImageFrame(
         contentAlignment = Alignment.Center,
     ) {
         content()
-        if (pressed) Box(Modifier.matchParentSize().background(colors.ink8))
+        Box(Modifier.matchParentSize().raftStateOverlay(overlay, RectangleShape))
         // `MessageImageGalleryOverlay` (`bg-layer-veil`) + `Spinner md` (web GalleryImageItem):
         // an image still sending sits under the veil and a spinner.
         if (pending) {

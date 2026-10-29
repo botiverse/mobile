@@ -171,8 +171,9 @@ fun RaftListRowGroup(
  * ([raftCopyable]; a member's name, an `@handle`); the row's tap still opens. Null (default):
  * not copyable.
  *
- * States (States, ListRow): [onClick] = null is a display-only row (no press, no focus;
- * its controls are the targets). Press lays `fill-pressed` over the whole row; keyboard
+ * States (States, ListRow): [onClick] = null is a display-only row (no hover, press or
+ * focus; its controls are the targets). A mouse or trackpad hover lays `fill-subtle` over the
+ * whole row (faded over 100ms), press `fill-medium`; keyboard
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
  * [selected] is the item open beside the list: an `info-soft` wash, no border, no press
  * overlay, and `selected` in semantics; the wash (over the surface under it) becomes
@@ -211,8 +212,16 @@ fun RaftListRow(
     val inks = raftListRowInks(tone, enabled, colors)
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val isPressed = raftIsPressed(source)
-    val pressed = interactive && enabled && !selected && isPressed
+    // Hover lays the subtle tier, press the medium tier; a selected, disabled or display-only
+    // row takes neither. An open menu keeps the hover fill (`fill-row-open` = `fill-subtle`).
+    val overlay =
+        rememberRaftStateOverlay(
+            source,
+            RaftHoverTier.Subtle,
+            enabled = enabled && (interactive || menuOpen),
+            selected = selected,
+            highlighted = menuOpen,
+        )
     val isFocused = raftIsFocused(source)
     val focused = interactive && enabled && isFocused
     val ruleStart = variant.ruleStart
@@ -234,12 +243,11 @@ fun RaftListRow(
                 .fillMaxWidth()
                 .heightIn(min = variant.minHeight)
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
-                .then(if (menuOpen && !selected) Modifier.background(colors.fillRowOpen) else Modifier)
-                .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), 0.dp)
+                .raftStateOverlay(overlay, 0.dp)
                 .raftInsetFocusOutline(focused, colors.foreground)
                 .then(
                     if (onClick != null) {
-                        Modifier.clickable(
+                        Modifier.raftPointerHover(source).clickable(
                             interactionSource = source,
                             indication = null,
                             enabled = enabled,

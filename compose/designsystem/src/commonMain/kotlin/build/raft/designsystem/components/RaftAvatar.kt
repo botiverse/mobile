@@ -264,8 +264,8 @@ fun RaftAvatarAttentionLight(size: RaftAvatarSize, cutout: Color, contentDescrip
  * raft-ui empty identity (`rf-avatar--empty`): the place a new member would take, at an
  * avatar [size] — a `sticker-radius` square with a 1.5dp dashed `foreground-hint` edge and a
  * `plus` in `foreground-hint`, no fill. Web ChannelOverflowMenu ends its members strip with
- * it ("Add Member"). With [onClick] it is a button named [contentDescription]: press lays
- * `fill-medium` inside (web `hover:bg-fill-medium`); disabled ([enabled] = false) draws the
+ * it ("Add Member"). With [onClick] it is a button named [contentDescription]: press and a
+ * mouse / trackpad hover lay `fill-medium` inside (web `hover:bg-fill-medium`); disabled ([enabled] = false) draws the
  * edge in `line-hairline` and the plus in `foreground-disabled`.
  */
 @Composable
@@ -279,15 +279,15 @@ fun RaftAvatarEmpty(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(source)
-    val pressed = onClick != null && enabled && isPressed
+    // `hover:bg-fill-medium active:bg-fill-medium`, faded over the avatar's 150ms.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = onClick != null && enabled, fadeMillis = 150)
     val edge = if (enabled) colors.foregroundHint else colors.lineHairline
     val ink = if (enabled) colors.foregroundHint else colors.foregroundDisabled
     val radius = RaftRadius.Sticker
     val stroke = RaftStroke.Control
     val click =
         if (onClick != null) {
-            Modifier.clickable(
+            Modifier.raftPointerHover(source).clickable(
                 interactionSource = source,
                 indication = null,
                 enabled = enabled,
@@ -302,7 +302,7 @@ fun RaftAvatarEmpty(
             .size(size.edge)
             .then(click)
             .semantics { this.contentDescription = contentDescription }
-            .raftPressOverlay(pressed, colors.fillMedium, radius)
+            .raftStateOverlay(overlay, radius)
             .drawBehind {
                 val inset = stroke.toPx() / 2f
                 val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))

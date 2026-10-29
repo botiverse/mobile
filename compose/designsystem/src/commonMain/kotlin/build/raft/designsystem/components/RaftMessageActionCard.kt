@@ -241,14 +241,19 @@ private fun RaftMessageActionCardHeader(
 private fun RaftMessageActionCardCollapseTrigger(open: Boolean, onExpandedChange: (Boolean) -> Unit, label: String?) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source)
+    // `hover:bg-fill-medium hover:text-foreground active:bg-fill-medium`.
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val pressed = isPressed || isHovered
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium)
     val turn by animateFloatAsState(if (open) 180f else 0f, tween(RaftMessageActionCardDefaults.FoldMillis))
     Box(
         Modifier
             // `-mr-1`: the toggle's tile reaches 4dp into the header's padding.
             .offset(x = 4.dp)
             .size(RaftMessageActionCardDefaults.HeaderIconSize)
-            .background(if (pressed) colors.fillMedium else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
+            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button) { onExpandedChange(!open) }
             .semantics {
                 if (label != null) contentDescription = label

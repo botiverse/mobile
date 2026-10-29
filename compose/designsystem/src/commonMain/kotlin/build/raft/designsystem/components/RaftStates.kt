@@ -7,11 +7,11 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -147,14 +147,27 @@ internal fun raftIsPressed(interactionSource: InteractionSource): Boolean {
 }
 
 /**
- * Hovered from [interactionSource] (a mouse or trackpad pointer; `clickable` emits the
- * hover interactions itself), or forced by [LocalRaftHoveredPreview]. Touch never hovers.
+ * Hovered from [interactionSource] by a mouse, trackpad or pen, or forced by
+ * [LocalRaftHoveredPreview]. Reads only [RaftPointerHoverInteraction]s, which
+ * [raftPointerHover] emits: attach it on the same source. The `HoverInteraction` that
+ * `clickable` emits is ignored, so a platform that reports a finger as entering never shows
+ * hover. Touch never hovers.
  */
 @Composable
 internal fun raftIsHovered(interactionSource: InteractionSource): Boolean {
-    val hovered = interactionSource.collectIsHoveredAsState().value
+    val hovered = remember(interactionSource) { mutableStateOf(false) }
+    LaunchedEffect(interactionSource) {
+        val enters = mutableListOf<RaftPointerHoverInteraction.Enter>()
+        interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is RaftPointerHoverInteraction.Enter -> enters += interaction
+                is RaftPointerHoverInteraction.Exit -> enters -= interaction.enter
+            }
+            hovered.value = enters.isNotEmpty()
+        }
+    }
     val preview = LocalRaftHoveredPreview.current
-    return hovered || preview
+    return hovered.value || preview
 }
 
 /**
@@ -284,13 +297,15 @@ internal fun Modifier.raftPressOverlay(pressed: Boolean, overlay: Color, radius:
 
 /**
  * Which overlay a pressed surface takes (Color > Pressed overlays): `sticker-pressed`
- * (12% ink) on a block of colour, `fill-frame-pressed` on the yellow frame, else
- * `fill-pressed` (8% ink) on paper and frameless controls.
+ * (12% ink) on a block of colour, `fill-frame-pressed` on the yellow frame,
+ * `sticker-ink-medium` on an ink sticker (the server tile), else `fill-pressed` (8% ink) on
+ * paper and frameless controls. The hover tiers build on it: [RaftHoverTier].
  */
 enum class RaftPressSurface {
     Paper,
     Sticker,
     Frame,
+    InkSticker,
 }
 
 internal fun raftPressOverlayColor(surface: RaftPressSurface, colors: RaftUiThemeColors): Color =
@@ -298,6 +313,7 @@ internal fun raftPressOverlayColor(surface: RaftPressSurface, colors: RaftUiThem
         RaftPressSurface.Paper -> colors.fillPressed
         RaftPressSurface.Sticker -> RaftUiPalette.stickerPressed
         RaftPressSurface.Frame -> colors.fillFramePressed
+        RaftPressSurface.InkSticker -> RaftUiPalette.stickerInkMedium
     }
 
 /** Colours of a navigation item that can become the active sticker. */
@@ -348,7 +364,8 @@ internal fun raftActiveStickerLook(
  * Draws a [RaftStickerLook]: the die-cut edge outside, the fill, the press overlay while
  * [pressed], and the 1.5dp edge inside the box, which is always drawn (transparent at
  * rest). [focused] adds the focus ring outside the edge, under the die-cut edge. Pad the
- * content by [RaftStroke.Control] or more: the edge is drawn inside the box.
+ * content by [RaftStroke.Control] or more: the edge is drawn inside the box. [overlay]
+ * (from [rememberRaftStateOverlay]) draws hover and press in place of [pressed].
  */
 internal fun Modifier.raftSticker(
     look: RaftStickerLook,
@@ -356,13 +373,14 @@ internal fun Modifier.raftSticker(
     pressed: Boolean = false,
     focused: Boolean = false,
     colors: RaftUiThemeColors,
+    overlay: State<Color>? = null,
 ): Modifier {
     val shape = RoundedCornerShape(radius)
     return this
         .raftFocusRing(focused, radius, colors)
         .raftDieCutEdge(look.dieCut, radius)
         .background(look.fill, shape)
-        .raftPressOverlay(pressed, look.pressOverlay, radius)
+        .then(if (overlay != null) Modifier.raftStateOverlay(overlay, shape) else Modifier.raftPressOverlay(pressed, look.pressOverlay, radius))
         .border(RaftStroke.Control, look.edge, shape)
 }
 

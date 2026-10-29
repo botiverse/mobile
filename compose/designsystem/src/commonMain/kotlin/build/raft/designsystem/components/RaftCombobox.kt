@@ -662,6 +662,7 @@ internal fun RaftComboboxChipRemove(
             .then(if (widenTouchTarget) Modifier.raftTouchTarget(true, source, onClick) else Modifier)
             .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Sticker)
             .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
+            .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
@@ -689,6 +690,7 @@ private fun RaftComboboxClear(text: String, onClick: () -> Unit) {
             .raftTouchTarget(true, source, onClick)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
+            .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
@@ -726,9 +728,10 @@ internal fun RaftComboboxOptionRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(source)
     val isFocused = raftIsFocused(source)
-    val highlighted = enabled && (isPressed || isFocused)
+    val isHovered = raftIsHovered(source)
+    // `hover:bg-brand-soft data-highlighted:bg-brand-soft`: pointer, press and keyboard alike.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = isFocused)
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     // A field Select's options share the field type (select.tsx `chrome: field`), the chosen one too.
     val labelStyle =
@@ -749,6 +752,7 @@ internal fun RaftComboboxOptionRow(
             onDispose { nav.entries -= entry }
         }
     }
+    RaftMenuPointerCursor(nav, entry, enabled && isHovered)
     Row(
         modifier
             .fillMaxWidth()
@@ -763,7 +767,8 @@ internal fun RaftComboboxOptionRow(
                     Modifier
                 },
             )
-            .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
+            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftPointerHover(source)
             .selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
         horizontalArrangement = Arrangement.spacedBy(10.dp),

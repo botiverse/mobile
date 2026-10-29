@@ -228,7 +228,8 @@ fun RaftMessageListJumpPillGroup(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    CompositionLocalProvider(LocalRaftMessageListJumpPillGrouped provides true) {
+    val joined = remember { RaftJoinedButtons() }
+    CompositionLocalProvider(LocalRaftMessageListJumpPillGrouped provides true, LocalRaftJoinedButtons provides joined) {
         Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, content = content)
     }
 }
