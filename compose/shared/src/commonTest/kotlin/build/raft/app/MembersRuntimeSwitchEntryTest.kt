@@ -158,7 +158,7 @@ class MembersRuntimeSwitchEntryTest {
         val agents = FormAgentsApi(editCode = 200)
         assertEquals(
             MembersRuntimeFormV2EditLoad.Unavailable,
-            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("gemini" to false))
+            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("codex" to true, "gemini" to false))
         )
         // No row at all (not admitted for new agents on this computer), while other rows are marked: same.
         assertEquals(
