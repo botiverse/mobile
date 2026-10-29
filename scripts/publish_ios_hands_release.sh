@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.31}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.35}"
 APP_SLUG="${HANDS_APP_SLUG:-raft-ios}"
 CHANNEL="${HANDS_CHANNEL:-main}"
 IPA_PATH="${SLOCK_IOS_IPA_PATH:-}"
@@ -105,7 +105,7 @@ Environment overrides:
   HANDS_API=https://hands.build
   HANDS_BEARER_TOKEN=<CI bearer token>
   HANDS_CLI=hands
-  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.31
+  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.35
   SLOCK_IOS_IPA_PATH=dist/ios/iosApp.ipa
   SLOCK_IOS_DSYM_PATH=dist/ios/iosApp.dSYM.zip
   RAFT_IOS_VERSION_NAME=<versionName>

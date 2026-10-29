@@ -662,7 +662,7 @@ jobs:
       - name: Install Hands CLI (npm)
         shell: bash
         run: |
-          npm install -g @botiverse/hands-cli@0.5.31
+          npm install -g @botiverse/hands-cli@0.5.35
           hands --version
 
       - name: Generate changelog from git history
@@ -768,7 +768,7 @@ jobs:
       - name: Install Hands CLI (npm)
         shell: bash
         run: |
-          npm install -g @botiverse/hands-cli@0.5.31
+          npm install -g @botiverse/hands-cli@0.5.35
           hands --version
 
       - name: Resolve the Hands build this run published
