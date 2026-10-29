@@ -13,7 +13,10 @@ import kotlinx.serialization.json.Json
  * The in-app Artifact viewer: a native page whose header is painted from the opener's card at
  * once, over the web viewer's own page (`<web>/artifacts/<id>[/v/<n>]`, the canonical link's page
  * "phones open in a web view") in a signed-in WebView. The web page keeps every check it has (the
- * frame ticket from its viewer answer, Porthole's sandbox, the content-domain pin).
+ * frame ticket from its viewer answer, Porthole's sandbox, the content-domain pin). It is opened
+ * with the embed contract ([raftArtifactViewerEmbeddedUrl]), so the page draws no header under the
+ * native one, and an address that leaves the Artifact closes the viewer
+ * ([raftArtifactViewerNavigation]): its original message opens natively.
  *
  * Tenny's WebView rules, all enforced here and in the platform hosts:
  * 1. The session (`slock_access_token` in localStorage) is written only into a top-level document
@@ -132,6 +135,15 @@ internal class RaftArtifactViewerCache(
         if (keptDocument?.target?.id == id) dropKeptDocument()
     }
 
+    /**
+     * The viewer's document left its Artifact (its original message, the server after a Delete):
+     * what it shows now is no Artifact page, so it is not kept for the next open.
+     */
+    fun forgetKeptDocument(scope: RaftArtifactViewerScope?) {
+        if (scope == null || scope != this.scope) return
+        dropKeptDocument()
+    }
+
     /** Sign-out, an account/server/environment switch. */
     fun clear() {
         scope = null
@@ -203,12 +215,41 @@ internal fun raftArtifactViewerPagePath(target: ArtifactLinkTarget): String =
     "/artifacts/" + target.id + (target.version?.let { "/v/$it" } ?: "")
 
 /**
+ * The embed contract's query (`embed=raft-settings-v1&shell=host`, slock `packages/web/src/embed.ts`,
+ * honoured by the Artifact page since slock #11691): the App draws Back, the title and the version,
+ * so the page draws no header of its own, only its toolbar (where it lives, its original message,
+ * Comments, ⋯). The web reads it once, from the document's entry URL, and keeps it for the session.
+ */
+internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell"
+
+/**
+ * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced, every
+ * other parameter, the path (a pinned `/v/<n>` too) and the fragment stay as they are.
+ */
+internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
+    val fragment = url.indexOf('#').let { if (it < 0) "" else url.substring(it) }
+    val beforeFragment = url.removeSuffix(fragment)
+    val path = beforeFragment.substringBefore('?')
+    val kept =
+        beforeFragment.substringAfter('?', missingDelimiterValue = "")
+            .split('&')
+            .filter { it.isNotEmpty() && it.substringBefore('=') != "embed" && it.substringBefore('=') != "shell" }
+    return path + "?" + (kept + RaftArtifactViewerEmbedQuery).joinToString("&") + fragment
+}
+
+/** What the viewer's WebView loads: [raftArtifactViewerPageUrl] under the App's title bar. */
+internal fun raftArtifactViewerEmbeddedPageUrl(webBaseUrl: String, target: ArtifactLinkTarget): String =
+    raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target))
+
+/**
  * The page a prewarmed WebView boots: the canonical link's route with no Artifact (an address the
  * web reads as no Artifact, so it locates nothing, reads nothing and moves no read position), so
- * the web app, its session and the viewer's code are ready when an Artifact is opened.
+ * the web app, its session and the viewer's code are ready when an Artifact is opened. It carries
+ * the embed contract: the web latches it from this first address, so the Artifact this document
+ * later routes to is drawn without its own header too.
  */
 internal fun raftArtifactViewerWarmUrl(webBaseUrl: String): String =
-    webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT
+    raftArtifactViewerEmbeddedUrl(webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT)
 
 internal const val RAFT_ARTIFACT_VIEWER_WARM_SEGMENT = "raft-app-warm"
 
@@ -235,6 +276,8 @@ internal fun raftArtifactViewerGuardedScript(webOrigin: String, body: String): S
  */
 internal fun raftArtifactViewerNavigateScript(webOrigin: String, sessionWrites: String, target: ArtifactLinkTarget): String {
     val path = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target))
+    // The address keeps the embed contract (the web's keeper would put it back; this saves a write).
+    val address = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + RaftArtifactViewerEmbedQuery)
     return raftArtifactViewerGuardedScript(
         webOrigin,
         """
@@ -243,7 +286,7 @@ internal fun raftArtifactViewerNavigateScript(webOrigin: String, sessionWrites: 
         if (window.location.pathname !== path) {
           var previous = window.history.state || {};
           var index = typeof previous.idx === 'number' ? previous.idx + 1 : 0;
-          window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', path);
+          window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', $address);
           window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
         }
         """.trimIndent(),
@@ -260,4 +303,51 @@ internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: S
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
     if (origin == raftWebOriginOf(webOrigin)) return RaftArtifactViewerBlockedTarget.Ignore
     return RaftArtifactViewerBlockedTarget.SystemBrowser
+}
+
+/**
+ * Where a top-level address of the viewer's WebView takes the viewer. Under the embed contract the
+ * page is the Artifact alone: its address is `/artifacts/<id>` (or `/v/<n>`, a version picked in
+ * its ⋯); anything else the web app routes to (its original message, the server after a Delete)
+ * is not shown under the Artifact's title bar.
+ */
+internal sealed interface RaftArtifactViewerNavigation {
+    /** Still this Artifact; [version] is the one in the address (null: the latest). */
+    data class Stay(val version: Int?) : RaftArtifactViewerNavigation
+
+    /** A Raft message (the Artifact's original message): close the viewer, open it natively. */
+    data class OpenMessage(val url: String) : RaftArtifactViewerNavigation
+
+    /** Off the web origin: the system browser (never in the signed-in WebView). */
+    data class SystemBrowser(val url: String) : RaftArtifactViewerNavigation
+
+    /** Anywhere else in the web app: close the viewer. */
+    data object Close : RaftArtifactViewerNavigation
+
+    /** Not a page (blank, another scheme): nothing to do. */
+    data object Ignore : RaftArtifactViewerNavigation
+}
+
+/**
+ * [url] (a top-level address of the viewer's WebView showing [artifactId]) as a
+ * [RaftArtifactViewerNavigation]. A message link is one [parseRaftMessageLink] takes on [webOrigin].
+ */
+internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerNavigation {
+    val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerNavigation.Ignore
+    if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerNavigation.SystemBrowser(url)
+    val path = url.substringAfter("://").let { rest ->
+        val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
+        if (start < 0 || rest[start] != '/') "/" else rest.substring(start).substringBefore('#').substringBefore('?')
+    }
+    val segments = path.split('/').filter { it.isNotEmpty() }
+    // `/artifacts/<id>[/v/<n>]`, or the same under a server (`/s/<slug>/artifacts/…`).
+    val artifact = if (segments.size >= 2 && segments[0] == "s") segments.drop(2) else segments
+    if (artifact.firstOrNull() == "artifacts" && artifact.getOrNull(1) == artifactId) {
+        when (artifact.size) {
+            2 -> return RaftArtifactViewerNavigation.Stay(null)
+            4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.Stay(it) }
+        }
+    }
+    if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
+    return RaftArtifactViewerNavigation.Close
 }
