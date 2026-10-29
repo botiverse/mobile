@@ -202,6 +202,7 @@ private fun <T> ChoiceListRow(
                     .fillMaxWidth()
                     .then(if (hovered) Modifier.background(colors.brandSoft, chipShape) else Modifier)
                     .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Chip)
+                    .raftPointerHover(source)
                     .selectable(selected, source, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
                     .heightIn(min = RaftChoiceListDefaults.RowMinHeight)
                     .padding(

@@ -184,9 +184,10 @@ fun RaftMenuItem(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(source)
     val isFocused = raftIsFocused(source)
-    val highlighted = enabled && (isPressed || isFocused)
+    val isHovered = raftIsHovered(source)
+    // `hover:bg-brand-soft data-highlighted:bg-brand-soft`: pointer, press and keyboard alike.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = isFocused)
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     val iconInk = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     // raft-ui 0.20: an item embedded in the popup's frame wears radius-chip (6dp).
@@ -201,6 +202,7 @@ fun RaftMenuItem(
             onDispose { nav.entries -= entry }
         }
     }
+    RaftMenuPointerCursor(nav, entry, enabled && isHovered)
     // A field Select's options share the field type (select.tsx `chrome: field`:
     // `text-field font-field` on the item text, so the chosen one stays 400).
     val labelStyle =
@@ -223,9 +225,10 @@ fun RaftMenuItem(
                     Modifier
                 },
             )
-            .background(if (highlighted) colors.brandSoft else Color.Transparent, shape)
+            .raftStateOverlay(overlay, shape)
             // Drawn over the highlight, as a CSS border paints over the background.
             .then(if (divider) Modifier.topHairline(colors.lineHairline) else Modifier)
+            .raftPointerHover(source)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (checked) selected = true }
             .then(if (divider) Modifier.padding(top = RaftStroke.Hairline) else Modifier)
@@ -470,6 +473,18 @@ fun RaftDropdownMenu(
                 }
             }
         }
+    }
+}
+
+/**
+ * One cursor for pointer and keys (Base UI's highlight): a pointer over a row while the
+ * keyboard has another row of the same menu moves the focus onto it, so only one row is
+ * `brand-soft`. Leaves the focus alone while the search field has it, so typing goes on.
+ */
+@Composable
+internal fun RaftMenuPointerCursor(nav: RaftMenuNav?, entry: RaftMenuNav.Entry, hovered: Boolean) {
+    LaunchedEffect(nav, entry, hovered) {
+        if (hovered && nav != null && nav.entries.any { it.focused && it !== entry }) nav.focus(entry)
     }
 }
 

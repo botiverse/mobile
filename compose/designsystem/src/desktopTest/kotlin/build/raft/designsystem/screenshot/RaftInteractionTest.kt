@@ -1,5 +1,11 @@
 package build.raft.designsystem.screenshot
 
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.RaftPointerHoverInteraction
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -20,6 +26,8 @@ import androidx.compose.ui.use
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -104,6 +112,85 @@ class RaftInteractionTest {
             scene.sendPointerEvent(PointerEventType.Move, Offset(2f, 2f), type = PointerType.Mouse)
             assertTrue(pixelIs(scene.render(200_000_000L), 36, 22, canvas), "no fill after the pointer leaves")
         }
+    }
+
+    /**
+     * A mouse over a menu item lays `brand-soft` (`hover:bg-brand-soft`), faded in over 100ms;
+     * leaving fades it out.
+     */
+    @Test
+    fun aMouseOverAMenuItemLaysBrandSoft() {
+        val brandSoft = RaftUiThemeColors.RaftLight.brandSoft
+        ImageComposeScene(width = 260, height = 100, density = Density(1f)) {
+            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {
+                    RaftMenuItem("Copy Link", {}, Modifier.width(200.dp))
+                }
+            }
+        }.use { scene ->
+            // The row spans x 20..220, y 20..56; (24, 38) is inside it, before its label.
+            assertTrue(pixelIs(scene.render(), 24, 38, canvas), "no fill at rest")
+            scene.sendPointerEvent(PointerEventType.Move, Offset(120f, 38f), type = PointerType.Mouse)
+            assertTrue(pixelIs(settle(scene, fromMillis = 100), 24, 38, brandSoft), "brand-soft once the fade is done")
+            scene.sendPointerEvent(PointerEventType.Move, Offset(250f, 95f), type = PointerType.Mouse)
+            assertTrue(pixelIs(settle(scene, fromMillis = 1_000), 24, 38, canvas), "no fill after the pointer leaves")
+        }
+    }
+
+    /**
+     * A finger never hovers: [raftPointerHover] emits Raft's hover for a mouse and never for a
+     * touch, whatever enter events the platform sends with it. Checked on the interactions, not
+     * on pixels, so a component's own press or focus look can't mask it.
+     */
+    @Test
+    fun aTapLeavesNoHoverBehind() {
+        val source = MutableInteractionSource()
+        val seen = mutableListOf<Interaction>()
+        ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+            LaunchedEffect(source) { source.interactions.collect { seen += it } }
+            Box(Modifier.size(100.dp).raftPointerHover(source))
+        }.use { scene ->
+            scene.render()
+            val at = Offset(50f, 50f)
+            scene.sendPointerEvent(PointerEventType.Enter, at, type = PointerType.Touch)
+            scene.sendPointerEvent(PointerEventType.Press, at, type = PointerType.Touch)
+            scene.sendPointerEvent(PointerEventType.Release, at, type = PointerType.Touch)
+            scene.sendPointerEvent(PointerEventType.Exit, at, type = PointerType.Touch)
+            scene.render(100_000_000L)
+            assertTrue(seen.none { it is RaftPointerHoverInteraction }, "no hover from a finger: $seen")
+            scene.sendPointerEvent(PointerEventType.Move, at, type = PointerType.Mouse)
+            scene.render(200_000_000L)
+            assertTrue(seen.any { it is RaftPointerHoverInteraction.Enter }, "a mouse hovers: $seen")
+        }
+    }
+
+    /**
+     * A sidebar row is a list cell: a mouse lays `fill-cell-hover` on its shape, which in dark
+     * steps up past `fill-subtle` (7.5% paper).
+     */
+    @Test
+    fun aMouseOverASidebarRowLaysTheCellFillInDark() {
+        val dark = RaftUiThemeColors.RaftDark
+        val cellHover = dark.fillCellHover.compositeOver(dark.layerCanvas)
+        ImageComposeScene(width = 300, height = 100, density = Density(1f)) {
+            RaftTheme(appearance = RaftAppearance.Dark, systemDark = true) {
+                Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {
+                    RaftSidebarChannelItem("general", Modifier.width(240.dp), onClick = {})
+                }
+            }
+        }.use { scene ->
+            // The row spans x 20..260, y ~20.5..64.5; (24, 42) is inside it, before its icon.
+            assertTrue(pixelIs(scene.render(), 24, 42, dark.layerCanvas), "no fill at rest")
+            scene.sendPointerEvent(PointerEventType.Move, Offset(140f, 42f), type = PointerType.Mouse)
+            assertTrue(pixelIs(settle(scene, fromMillis = 100), 24, 42, cellHover), "fill-cell-hover once the 150ms fade is done")
+        }
+    }
+
+    /** Renders frames 50ms apart from [fromMillis] until every 75-150ms fade has finished; the last. */
+    private fun settle(scene: ImageComposeScene, fromMillis: Long): Image {
+        var image = scene.render(fromMillis * 1_000_000L)
+        for (step in 1..10) image = scene.render((fromMillis + step * 50L) * 1_000_000L)
+        return image
     }
 
     private fun tap(scene: ImageComposeScene, at: Offset) {

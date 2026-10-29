@@ -64,7 +64,7 @@ object RaftMessageQuotedPreviewDefaults {
 
 /**
  * The preview card: `layer-card`, a `line-hairline` edge, `rounded-container` (10), 12 x 10dp
- * padding, full width. A press lays `overlay-medium` over it ([onClick] opens the quoted
+ * padding, full width. A press or a mouse / trackpad hover lays `overlay-medium` over it ([onClick] opens the quoted
  * message, [onClickLabel] names it: "Open quoted message in #launch-week").
  */
 @Composable
@@ -78,8 +78,8 @@ private fun QuotedPreviewShell(
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Container)
     val source = remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(source)
-    val pressed = onClick != null && isPressed
+    // message-reference.recipe.ts: `hover:overlay-medium active:overlay-medium`.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, enabled = onClick != null)
     val isFocused = raftIsFocused(source)
     val focused = onClick != null && isFocused
     Box(
@@ -88,10 +88,12 @@ private fun QuotedPreviewShell(
             .raftFocusRing(focused, RaftRadius.Container, colors)
             .clip(shape)
             .background(if (muted) colors.fillMuted else colors.layerCard, shape)
-            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Container)
+            .raftStateOverlay(overlay, shape)
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(source, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
+                    Modifier
+                        .raftPointerHover(source)
+                        .clickable(source, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
                 } else {
                     Modifier
                 },

@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -115,6 +114,8 @@ fun RaftMessageReaction(
                 .height(RaftMessageReactionHeight)
                 .background(fill, shape)
                 .raftPressOverlay(pressed || hovered, colors.fillMedium, RaftRadius.Chip)
+                // With no onClick the host owns the gestures; the hover is still the chip's.
+                .raftPointerHover(source)
                 .then(
                     if (onClick != null) {
                         Modifier.toggleable(
@@ -125,7 +126,7 @@ fun RaftMessageReaction(
                             onValueChange = { onClick() },
                         )
                     } else {
-                        Modifier.hoverable(source)
+                        Modifier
                     },
                 )
                 .padding(horizontal = 7.dp),
@@ -192,11 +193,13 @@ fun RaftMessageReactionAdd(
                 .height(RaftMessageReactionHeight)
                 .background(colors.fillMuted, shape)
                 .raftPressOverlay(pressed || hovered, colors.fillMedium, RaftRadius.Chip)
+                // With no onClick the host owns the gestures; the hover is still the chip's.
+                .raftPointerHover(source)
                 .then(
                     if (onClick != null) {
                         Modifier.clickable(source, indication = null, role = Role.Button, onClick = onClick)
                     } else {
-                        Modifier.hoverable(source)
+                        Modifier
                     },
                 )
                 .semantics { contentDescription = label }
@@ -233,6 +236,7 @@ fun RaftMessageSavedIndicator(
                 .height(22.dp)
                 .background(colors.fillMuted, shape)
                 .raftPressOverlay(onClick != null && (pressed || hovered), colors.fillMedium, RaftRadius.Chip)
+                .raftPointerHover(source)
                 .then(
                     if (onClick != null) {
                         Modifier.clickable(source, indication = null, role = Role.Button, onClick = onClick)

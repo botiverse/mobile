@@ -320,6 +320,7 @@ fun BoxScope.RaftComposerAttachmentRemove(
                 .border(RaftStroke.Control, if (enabled) colors.lineStrong else colors.lineHairline, shape)
                 .semantics { this.contentDescription = contentDescription }
                 .raftTouchTarget(enabled, source, onClick)
+                .raftPointerHover(source)
                 .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

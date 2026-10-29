@@ -93,6 +93,7 @@ fun RaftMessageReplies(
                 .clip(shape)
                 .background(colors.fillMuted, shape)
                 .raftPressOverlay(pressed || hovered, if (pressed) colors.fillMedium else colors.fillSubtle, RaftRadius.Container)
+                .raftPointerHover(source)
                 .clickable(source, indication = null, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),

@@ -71,7 +71,8 @@ fun RaftTaskCompactList(
  *
  * The row is the button ([onClick]; [contentDescription], when given, is all a screen reader
  * hears of it, as web's `aria-label`): at least 44dp high with
- * 12dp ends and 6dp above and below; press lays `fill-pressed` over the whole row. [divider]
+ * 12dp ends and 6dp above and below; press lays `fill-pressed` over the whole row, a mouse
+ * or trackpad hover `fill-subtle`. [divider]
  * draws the hairline above it (every row but the first). Texts share the row's first baseline;
  * marks (the avatar) are centred.
  *
@@ -97,15 +98,17 @@ fun RaftTaskCompactRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source)
+    // A readable row (task-card.recipe.ts): `hover:overlay-subtle active:overlay-medium`.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle)
     val focused = raftIsFocused(source)
     Layout(
         modifier =
             modifier
                 .fillMaxWidth()
-                .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), 0.dp)
+                .raftStateOverlay(overlay, 0.dp)
                 .raftInsetFocusOutline(focused, colors.foreground)
                 .then(if (divider) Modifier.topHairline(colors.lineHairline) else Modifier)
+                .raftPointerHover(source)
                 .clickable(source, indication = null, role = Role.Button, onClick = onClick)
                 .then(
                     // The row's label replaces its texts (web `aria-label` on the button): a screen

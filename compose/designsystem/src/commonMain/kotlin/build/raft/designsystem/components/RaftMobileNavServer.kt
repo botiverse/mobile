@@ -572,7 +572,8 @@ fun RaftMobileNavServerPopoverSeparator() {
  * an optional [leading] (a 20dp avatar or a 16dp icon), the [label] (one line, cut), an
  * optional [description] under it (the server's `/slug`, small muted mono; artin / Kirby
  * 10-22; raft-ui `MobileNavServerPopoverRowDescription` — the second line adds its height), then [trailing] (a check, a count). [current] sets the label bold and marks the row selected.
- * `brand-soft` while pressed, or while a held long press from the tab is over it ([key]).
+ * `brand-soft` while pressed or hovered by a mouse / trackpad, or while a held long press from
+ * the tab is over it ([key]).
  */
 @Composable
 fun RaftMobileNavServerPopoverRow(
@@ -590,14 +591,16 @@ fun RaftMobileNavServerPopoverRow(
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val held = enabled && state != null && key != null && state.highlightedKey == key
-    val highlighted = raftIsPressed(source) || held
+    // `hover:bg-brand-soft`, and while pressed or held over.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = held)
     val style = RaftTheme.typography.callout.copy(fontWeight = if (current) FontWeight.Bold else FontWeight.Medium)
     Row(
         modifier
             .fillMaxWidth()
             .heightIn(min = RaftOptionHeight)
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
-            .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
+            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftPointerHover(source)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (current) this.selected = true }
             // raft-ui `py-option-inset`: a second line adds its own height and nothing else.
@@ -668,12 +671,14 @@ fun RowScope.RaftMobileNavServerPopoverDestination(
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val held = state != null && key != null && state.highlightedKey == key
-    val highlighted = raftIsPressed(source) || held
+    // `hover:bg-brand-soft`, and while pressed or held over.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, highlighted = held)
     Box(
         modifier
             .weight(1f)
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
-            .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
+            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftPointerHover(source)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = if (attention && attentionDescription != null) "$label, $attentionDescription" else label

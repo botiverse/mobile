@@ -198,10 +198,16 @@ private fun ForwardedSource(source: String, onOpenSource: (() -> Unit)?, onClick
         return
     }
     val interaction = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(interaction)
+    val isPressed = raftIsPressed(interaction)
+    val isHovered = raftIsHovered(interaction)
+    // `hover:text-foreground hover:underline`; touch takes the look on press.
+    val pressed = isPressed || isHovered
     RaftText(
         source,
-        modifier = Modifier.clickable(interaction, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onOpenSource),
+        modifier =
+            Modifier
+                .raftPointerHover(interaction)
+                .clickable(interaction, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onOpenSource),
         style =
             typography.caption.copy(
                 fontWeight = FontWeight.SemiBold,
@@ -218,12 +224,16 @@ private fun ForwardedFooterAction(label: String, onClick: (() -> Unit)?) {
     val colors = RaftTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val isPressed = raftIsPressed(interaction)
-    val pressed = onClick != null && isPressed
+    val isHovered = raftIsHovered(interaction)
+    // `hover:underline`; touch takes the look on press.
+    val pressed = onClick != null && (isPressed || isHovered)
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(
             Modifier.then(
                 if (onClick != null) {
-                    Modifier.clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+                    Modifier
+                        .raftPointerHover(interaction)
+                        .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
                 } else {
                     Modifier
                 },
@@ -396,7 +406,7 @@ fun RaftMessageForwardedBundleAttachments(modifier: Modifier = Modifier, content
  * raft-ui `MessageForwardedBundleAttachment`: a 22dp chip, `fill-muted`, `rounded-chip`, no edge,
  * 5.5dp before its 14dp `file` icon and 6.5dp after its text, 4dp apart: the [name] (`caption`
  * semibold, `foreground`, truncates) and [meta] (the type, Space Mono, `foreground-hint`). With
- * [onClick] a press lays `overlay-medium` over it.
+ * [onClick] a press or a mouse / trackpad hover lays `overlay-medium` over it.
  */
 @Composable
 fun RaftMessageForwardedBundleAttachment(
@@ -410,17 +420,17 @@ fun RaftMessageForwardedBundleAttachment(
     val typography = RaftTheme.typography
     val shape = RoundedCornerShape(RaftRadius.Chip)
     val interaction = remember { MutableInteractionSource() }
-    val isPressed = raftIsPressed(interaction)
-    val pressed = onClick != null && isPressed
+    // `interactive`: `hover:overlay-medium active:overlay-medium`.
+    val overlay = rememberRaftStateOverlay(interaction, RaftHoverTier.Medium, enabled = onClick != null)
     Row(
         modifier
             .height(22.dp)
             .clip(shape)
             .background(colors.fillMuted, shape)
-            .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Chip)
+            .raftStateOverlay(overlay, shape)
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(interaction, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
+                    Modifier.raftPointerHover(interaction).clickable(interaction, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
                 } else {
                     Modifier
                 },
