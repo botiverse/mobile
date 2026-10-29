@@ -20,6 +20,8 @@ DRY_RUN="${SLOCK_HANDS_DRY_RUN:-0}"
 XCODE_VERSION="${RAFT_IOS_XCODE_VERSION:-}"
 IOS_SDK_VERSION="${RAFT_IOS_SDK_VERSION:-}"
 XCODE_LANE="${RAFT_IOS_XCODE_LANE:-}"
+# shellcheck source=lib/hands_retry.sh
+. "${ROOT_DIR}/scripts/lib/hands_retry.sh"
 
 die() {
   echo "error: $*" >&2
@@ -348,4 +350,5 @@ if [ "${DRAFT}" = "1" ]; then
   HANDS_ARGS+=(--draft)
 fi
 
-run_hands "${HANDS_ARGS[@]}"
+# Retries only transient 5xx / network failures; see scripts/lib/hands_retry.sh.
+hands_retry run_hands "${HANDS_ARGS[@]}"

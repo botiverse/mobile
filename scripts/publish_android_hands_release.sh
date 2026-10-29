@@ -18,6 +18,8 @@ COLLECT_SYMBOLS="${SLOCK_COLLECT_ANDROID_SYMBOLS:-1}"
 REQUIRE_SYMBOLS="${SLOCK_REQUIRE_ANDROID_SYMBOLS:-0}"
 EXTERNAL_SYMBOL_ARCHIVE="${SLOCK_ANDROID_SYMBOL_ARCHIVE:-}"
 DRY_RUN="${SLOCK_HANDS_DRY_RUN:-0}"
+# shellcheck source=lib/hands_retry.sh
+. "${ROOT_DIR}/scripts/lib/hands_retry.sh"
 
 die() {
   echo "error: $*" >&2
@@ -346,4 +348,5 @@ if [ "${DELTA_VERSIONS}" != "0" ]; then
   HANDS_ARGS+=(--generate-deltas "${DELTA_VERSIONS}")
 fi
 
-run_hands "${HANDS_ARGS[@]}"
+# Retries only transient 5xx / network failures; see scripts/lib/hands_retry.sh.
+hands_retry run_hands "${HANDS_ARGS[@]}"

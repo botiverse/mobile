@@ -17,6 +17,9 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt"
       - "compose/shared/src/commonTest/kotlin/build/raft/app/data/HomeDataSourceTest.kt"
       - "scripts/*android*hands*"
+      - "scripts/publish_ios_hands_release.sh"
+      - "scripts/lib/hands_retry.sh"
+      - "scripts/tests/hands_retry_test.sh"
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
@@ -45,6 +48,9 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt"
       - "compose/shared/src/commonTest/kotlin/build/raft/app/data/HomeDataSourceTest.kt"
       - "scripts/*android*hands*"
+      - "scripts/publish_ios_hands_release.sh"
+      - "scripts/lib/hands_retry.sh"
+      - "scripts/tests/hands_retry_test.sh"
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
@@ -91,3 +97,6 @@ jobs:
 
       - name: Validate the release-channel guard
         run: scripts/tests/check_android_hands_release_channel_test.sh
+
+      - name: Validate Hands CLI retry helper
+        run: scripts/tests/hands_retry_test.sh

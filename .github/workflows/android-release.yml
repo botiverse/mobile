@@ -800,13 +800,13 @@ jobs:
           # builds API) .. HEAD. Falls back to the last 15 subjects when the
           # previous commit is unknown or unreachable.
           HANDS_API_BASE="${HANDS_API:-https://hands.build}"
-          APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
+          APP_ID="$(curl -fsS --retry 3 --retry-delay 5 -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
             "${HANDS_API_BASE}/api/apps" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='${HANDS_APP_SLUG}'), ''))" \
             2>/dev/null || true)"
           PREV_COMMIT=""
           if [ -n "${APP_ID}" ]; then
-            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
+            PREV_COMMIT="$(curl -fsS --retry 3 --retry-delay 5 -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
               "${HANDS_API_BASE}/api/apps/${APP_ID}/builds" \
               | python3 -c "import json,sys; d=json.load(sys.stdin); bs=d.get('builds') or []; p=(bs[0].get('provenance_json') if bs else None); p=json.loads(p) if isinstance(p,str) else (p or {}); print(p.get('source_commit') or '')" \
               2>/dev/null || true)"
@@ -891,7 +891,7 @@ jobs:
           set -euo pipefail
           RELEASE_ID="${{ steps.publish-hands-release.outputs.release_id }}"
           echo "release_id=$RELEASE_ID"
-          APP_ID="$(curl -fsS \
+          APP_ID="$(curl -fsS --retry 3 --retry-delay 5 \
             -H "Authorization: Bearer ${HANDS_BEARER_TOKEN}" \
             "${HANDS_API:-https://hands.build}/api/apps" \
             | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.HANDS_APP_SLUG }}'))")"
