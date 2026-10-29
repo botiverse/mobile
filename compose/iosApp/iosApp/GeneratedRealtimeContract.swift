@@ -64,6 +64,7 @@ enum GeneratedRealtimeContract {
         static let agentTyping = "agent:typing"
         static let agentSession = "agent:session"
         static let agentCreated = "agent:created"
+        static let agentUpdated = "agent:updated"
         static let agentDeleted = "agent:deleted"
         static let machineStatus = "machine:status"
         static let machineCapabilities = "machine:capabilities"

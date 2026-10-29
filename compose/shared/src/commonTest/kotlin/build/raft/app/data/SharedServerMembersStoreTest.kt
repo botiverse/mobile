@@ -255,6 +255,24 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun authoritativePixelAvatarReplacesCachedPixelAvatar() = runBlocking {
+        // Edgar (artin 10-29): changed on the web from the antenna to the Desk pencil; the app
+        // kept the antenna because a cached pixel value was guarded like a concrete URL.
+        val serverId = ServerId("server-1")
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seedProfiles(
+            serverId,
+            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("antenna"), avatarUrl = "pixel:antenna"))
+        )
+        store.seedProfiles(
+            serverId,
+            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("pencil"), avatarUrl = "pixel:pencil"))
+        )
+        assertEquals("pixel:pencil", store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue)
+        assertEquals("pixel:pencil", store.memberProfileFlow(serverId, "agent-1").first()?.avatarWireValueForRenderedAvatar())
+    }
+
+    @Test
     fun statusAndProfileReadsFailClosedWithoutServerScope() = runBlocking {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seed(
