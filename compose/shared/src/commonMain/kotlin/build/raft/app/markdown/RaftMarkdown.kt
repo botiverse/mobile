@@ -877,7 +877,6 @@ internal fun raftMarkdownAnnotator(
         },
         inlineContent = {
             rendererInput.activeActionSpinnerInlineContent() +
-                rendererInput.taskChipInlineContent() +
                 rendererInput.mentionReadInlineContent()
         },
         config = markdownAnnotatorConfig(eolAsNewLine = softLineBreaksAsNewLines)
@@ -920,11 +919,6 @@ private data class RaftRichTextRendererInput(
     /** Status-coloured task chip styles are in use (web parity) only when the surface has a task source. */
     fun taskStatusesOrNull(): Map<Int, TaskStatus>? =
         if (hasTaskRefs) taskStatuses() else null
-
-    fun taskChipInlineContent(): Map<String, InlineTextContent> {
-        if (taskStatusesOrNull() == null) return emptyMap()
-        return raftMarkdownTaskChipInlineContent(dark = RaftAppThemeState.isDark)
-    }
 
     private val hasMentionRefs: Boolean =
         document.actions.any { action -> action.refKind == RaftRichTextRefKind.UserMention }

@@ -7,6 +7,8 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import build.raft.app.RaftColor
 import build.raft.app.raftFontFamilyForWeight
 import build.raft.app.designtokens.RaftUiPalette
@@ -96,19 +98,31 @@ class RaftMarkdownTaskRefChipTest {
     }
 
     @Test
-    fun taskChipInlineContentIsBuiltOncePerTheme() {
-        val light = raftMarkdownTaskChipInlineContent(dark = false)
-        val dark = raftMarkdownTaskChipInlineContent(dark = true)
-        assertSame(light, raftMarkdownTaskChipInlineContent(dark = false))
-        assertSame(dark, raftMarkdownTaskChipInlineContent(dark = true))
-        assertNotSame(light, dark)
-        // Every status plus the unknown badge, a lead and a trail each.
-        assertEquals((TaskStatus.entries.size + 1) * 2, light.size)
-        assertEquals(light.keys, dark.keys)
+    fun taskChipPaddingIsGluedSpacersNotPlaceholders() {
+        // artin 10-29 (iOS): a placeholder lead ended a line while the label wrapped, leaving a sliver
+        // of the chip box. The lead and trail are word joiners widened by letter spacing instead.
+        val text = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(TaskStatus.Done), "#7") }
+        assertEquals("\u2060#7\u2060", text.text)
+        assertTrue(text.raftMarkdownInlineContentIds().isEmpty())
+        val spacing = text.spanStyles.filter { it.item.letterSpacing.isSpecified }.associate { it.start to it.item.letterSpacing }
+        assertEquals(mapOf(0 to 18.5.sp, 3 to 4.5.sp), spacing)
+        val unknown = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(null), "#7") }
+        assertEquals(
+            mapOf(0 to 6.sp, 3 to 6.sp),
+            unknown.spanStyles.filter { it.item.letterSpacing.isSpecified }.associate { it.start to it.item.letterSpacing }
+        )
+        // The status pixel is the painter's mark on the lead; the unknown badge has none.
+        val mark = text.raftInlineMarkRanges().single()
+        assertEquals(0 until 1, mark.start until mark.end)
+        assertEquals(raftMarkdownTaskChipStyle(TaskStatus.Done).pixel?.fill, mark.item.fill)
+        assertEquals(RaftUiPalette.stickerInk, mark.item.stroke)
+        assertEquals(4.5.dp, mark.item.inset)
+        assertEquals(10.dp, mark.item.size)
+        assertTrue(unknown.raftInlineMarkRanges().isEmpty())
     }
 
     @Test
-    fun paragraphTaskRefsRenderStatusChipsWithPixelPlaceholders() {
+    fun paragraphTaskRefsRenderStatusChipsWithPaintedPixels() {
         val body = "Ready: #92 and #209, unknown #7"
         val statuses = mapOf(92 to TaskStatus.InReview, 209 to TaskStatus.Done)
         val annotator = raftMarkdownAnnotator(content = body, taskStatuses = statuses)
@@ -125,21 +139,15 @@ class RaftMarkdownTaskRefChipTest {
             boxes.map { it.item }
         )
         boxes.zip(listOf("#92", "#209", "#7")).forEach { (box, label) ->
-            assertEquals("\uFFFC\u2060$label\u2060\uFFFC", annotated.text.substring(box.start, box.end))
+            assertEquals("\u2060$label\u2060", annotated.text.substring(box.start, box.end))
         }
-        val inlineIds = annotated.raftMarkdownInlineContentIds()
+        // Only the chips' outer margin gaps are placeholders; the pixels are painted marks.
+        assertEquals(setOf(raftInlineGapInlineId(2.dp)), annotated.raftMarkdownInlineContentIds())
+        assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         assertEquals(
-            setOf(
-                "raft-task-chip-lead:in_review", "raft-task-chip-trail:in_review",
-                "raft-task-chip-lead:done", "raft-task-chip-trail:done",
-                "raft-task-chip-lead:unknown", "raft-task-chip-trail:unknown",
-                raftInlineGapInlineId(2.dp),
-            ),
-            inlineIds
+            listOf(boxes[0].start, boxes[1].start),
+            annotated.raftInlineMarkRanges().map { it.start }
         )
-        val provided = annotator.inlineContent?.invoke().orEmpty()
-        // Gap placeholders resolve in RichText (raftInlineGapInlineContent), not in the annotator.
-        assertTrue(provided.keys.containsAll(inlineIds.filter { raftInlineGapWidth(it) == null }))
         // The chip text keeps the clickable link and its chip text style.
         val inReviewLink =
             annotated.getLinkAnnotations(0, annotated.length)
