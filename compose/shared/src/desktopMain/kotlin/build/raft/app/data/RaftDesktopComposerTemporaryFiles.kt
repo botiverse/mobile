@@ -11,7 +11,8 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
- * The desktop owner of composer temporary files: pasted images in the clipboard cache. The shared
+ * The desktop owner of composer temporary files: pasted images and compressed JPEGs in the
+ * clipboard cache. The shared
  * draft store retires them (after send, removal or a cleared draft) through
  * [ThreadComposerTemporaryFileRetirement]; this handler moves each one to a sibling tombstone
  * before returning and deletes the tombstones in the background (the Android handler's contract).
@@ -70,8 +71,7 @@ object RaftDesktopComposerTemporaryFiles {
             if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
             val stale =
                 file.name.startsWith(TOMBSTONE_PREFIX) ||
-                    (file.name.startsWith(RaftDesktopClipboardAttachments.PASTED_IMAGE_PREFIX) &&
-                        nowMillis - file.lastModified() > STALE_AFTER_MILLIS)
+                    (ownedName(file.name) && nowMillis - file.lastModified() > STALE_AFTER_MILLIS)
             if (stale) file.delete()
         }
     }
@@ -83,6 +83,10 @@ object RaftDesktopComposerTemporaryFiles {
         val path = file.toPath()
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
-        return canonical.takeIf { it.parentFile == root && it.name.startsWith(RaftDesktopClipboardAttachments.PASTED_IMAGE_PREFIX) }
+        return canonical.takeIf { it.parentFile == root && ownedName(it.name) }
     }
+
+    private fun ownedName(name: String): Boolean =
+        name.startsWith(RaftDesktopClipboardAttachments.PASTED_IMAGE_PREFIX) ||
+            name.startsWith(RaftDesktopImageCompression.OUTPUT_PREFIX)
 }
