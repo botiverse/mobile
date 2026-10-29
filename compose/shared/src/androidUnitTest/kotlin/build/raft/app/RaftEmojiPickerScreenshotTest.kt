@@ -26,13 +26,15 @@ import org.robolectric.shadows.ShadowDialog
  * The Add Reaction emoji picker (Web's emoji-picker-react set), light and dark: search and skin
  * tone, the category tabs, "Frequently Used" from stored picks, then Smileys & People; a search
  * for "heart"; the skin tone choices open with Medium chosen (the grid in that tone).
- * The whole set ([RaftEmojiCatalog.All]), not filtered by the test JVM's fonts, so the goldens
- * do not depend on them. Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * Filtered as on a device ([RaftEmojiCatalog.drawable] with the real `Paint.hasGlyph`): the
+ * emoji font Robolectric bundles for this SDK is fixed, so the goldens stay stable and show what
+ * an Android 14 phone shows, with no empty boxes. Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
 class RaftEmojiPickerScreenshotTest {
+    private val drawableCatalog by lazy { RaftEmojiCatalog.All.drawable() }
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
@@ -67,7 +69,7 @@ class RaftEmojiPickerScreenshotTest {
             RaftUnifiedDialog(title = "Add Reaction", onDismiss = {}, contentSpacing = 12.dp) {
                 RaftEmojiPickerPanel(
                     preferences = preferences,
-                    catalog = RaftEmojiCatalog.All,
+                    catalog = drawableCatalog,
                     onSelect = {},
                     initialQuery = query,
                     initialToneMenuOpen = toneMenuOpen,
