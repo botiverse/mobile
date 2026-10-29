@@ -119,6 +119,22 @@ class ActivityConversationRowsScreenshotTest {
             ActivityRowsSwipeVisualContent(RaftAppAppearance.Dark, ActivityRowsSwipePose.StartOpen)
         }
 
+    /**
+     * A mouse over the middle row (web ThreadsInbox `InboxItemActions reveal="hover"`): the cell hover fill
+     * and the outline Mark as Done button (Lucide Check) in place of its time and unread count.
+     */
+    @Test
+    fun activityRowsHoverDoneLight() =
+        capture("screens.activity.rows.hover-done", RaftAppAppearance.Light) {
+            ActivityRowsHoverVisualContent(RaftAppAppearance.Light)
+        }
+
+    @Test
+    fun activityRowsHoverDoneDark() =
+        capture("screens.activity.rows.hover-done.dark", RaftAppAppearance.Dark) {
+            ActivityRowsHoverVisualContent(RaftAppAppearance.Dark)
+        }
+
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
@@ -480,6 +496,66 @@ private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: 
                             else -> ActivitySwipeSide.End
                         },
                     swipePreviewRevealFraction = slide,
+                )
+            }
+        }
+    }
+}
+
+/** Latin rows (no CJK goldens on every host), the middle one hovered by a mouse. */
+@Composable
+private fun ActivityRowsHoverVisualContent(appearance: RaftAppAppearance) {
+    val timeContext =
+        RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = raftEpochDayForDate(2026, 10, 22),
+            nowEpochMillis = 1_792_635_000_000L,
+        )
+    val base =
+        InboxItem(
+            key = "channel:launch",
+            kind = InboxItemKind.Channel,
+            channelId = ChannelId("launch-week"),
+            channelName = "launch-week",
+            lastMessageSenderName = "Lagoon",
+            lastMessageSenderKind = MemberKind.Agent,
+            lastMessagePreview = "Preview build is up; release notes are in the thread.",
+            lastMessageAt = "2026-10-21T14:02:00Z",
+        )
+    val rows =
+        listOf(
+            base to false,
+            base.copy(
+                key = "channel:release",
+                channelId = ChannelId("release"),
+                channelName = "release",
+                unreadCount = 3,
+                lastMessageSenderName = "Volta",
+                lastMessagePreview = "Deployed, and checked again that it still works.",
+                lastMessageAt = "2026-10-21T16:17:00Z",
+            ) to true,
+            base.copy(key = "channel:launch-2") to false,
+        )
+    val context = ActivityConversationListContext(channelSymbolsByChannelId = mapOf("launch-week" to "#", "release" to "#"))
+    RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
+        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
+            rows.forEachIndexed { index, (item, hovered) ->
+                ActivityConversationListRow(
+                    item = item,
+                    model = item.activityConversationRowModel(context, InboxFilter.All),
+                    divider = index > 0,
+                    selected = false,
+                    timeContext = timeContext,
+                    agentStatusResolver = EmptyRaftAgentStatusResolver,
+                    canMarkDone = true,
+                    openGestureKey = item.key,
+                    captureMenuAnchor = false,
+                    onOpen = {},
+                    onOpenMenu = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    onSwipeDone = {},
+                    onHoverDone = {},
+                    hoverPreview = hovered,
                 )
             }
         }
