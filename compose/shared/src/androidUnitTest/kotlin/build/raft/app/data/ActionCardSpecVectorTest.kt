@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Runs every case of the vendored shared action-card.v1 vector (botiverse/slock 7313a45e, #11668 schemaVersion 6
+ * Runs every case of the vendored shared action-card.v1 vector (botiverse/slock 05e38737, #11937 schemaVersion 7
  * `packages/shared/src/actionCard.v1.vector.json`, pinned by scripts/check_action_card_v1_vector.sh)
  * through the Kotlin read parse, strip, Msg rendering and client form checks. Compared as JSON
  * values: key order is irrelevant, an absent key differs from a null one. Emit-mode verdicts are
@@ -29,11 +29,11 @@ class ActionCardSpecVectorTest {
     @Test
     fun vendoredVectorIsThePinnedSharedArtifact() {
         val digest = sha256(vectorBytes)
-        assertEquals("593b523c4cbbd781263876813bd1a6835d71a7bb38902c4215762b616764bbf4", digest)
+        assertEquals("df99645e2c3612d83aa4615bdbb345cc1d8f04f82da16affdf6e74389710a0e8", digest)
         assertEquals(digest, resource("/actioncard/actionCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
         assertEquals(ACTION_CARD_SPEC_CATALOG, vector.string("contract"))
-        assertEquals("6", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(225, 14, 10), listOf("cards", "formValues", "messages").map { vector.getValue(it).jsonArray.size })
+        assertEquals("7", vector.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals(listOf(228, 14, 10), listOf("cards", "formValues", "messages").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -72,7 +72,7 @@ class ActionCardSpecVectorTest {
             }
         }
         assertEquals(emptyList(), failures)
-        assertEquals(listOf(82, 143), listOf(accepted, rejected))
+        assertEquals(listOf(85, 143), listOf(accepted, rejected))
         assertEquals(vector.getValue("cards").jsonArray.sumOf { it.jsonObject["strip"]?.jsonObject?.size ?: 0 }, strips)
     }
 

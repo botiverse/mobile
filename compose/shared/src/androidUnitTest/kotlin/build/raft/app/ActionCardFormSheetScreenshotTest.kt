@@ -14,6 +14,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardFormIssue
 import build.raft.app.data.ActionCardFormValue
+import build.raft.app.data.ActionCardSpecForm
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -25,7 +26,8 @@ import org.robolectric.annotation.GraphicsMode
  * JVM screenshots of the action card form sheet (`action-card.form.*`, A3 #37): the phone
  * sheet's surface (no window) holding the vector's feedback form, all seven field types, empty,
  * filled, with server issues under every field and a form banner, and submitting; light and
- * dark. A tall viewport so every field is on screen. Verify / record as
+ * dark; and the vector's form_submit_labels decision form (schemaVersion 7) with Approve chosen,
+ * its submit button named by submitLabels ("Approve this call"). A tall viewport so every field is on screen. Verify / record as
  * [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -61,12 +63,23 @@ class ActionCardFormSheetScreenshotTest {
     @Test
     fun submittingDark() = capture("action-card.form.submitting.dark", RaftAppAppearance.Dark, fixtures.filled, submitting = true)
 
+    private val decisionForm by lazy { checkNotNull(ActionCardSpecFixtures.card("form_submit_labels").forms?.get("decision")) }
+
+    @Test
+    fun submitLabelsLight() =
+        capture("action-card.form.submit-labels", RaftAppAppearance.Light, mapOf("decision" to ActionCardFormValue.Text("approve")), form = decisionForm)
+
+    @Test
+    fun submitLabelsDark() =
+        capture("action-card.form.submit-labels.dark", RaftAppAppearance.Dark, mapOf("decision" to ActionCardFormValue.Text("approve")), form = decisionForm)
+
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
         values: Map<String, ActionCardFormValue>,
         issues: List<ActionCardFormIssue> = emptyList(),
         submitting: Boolean = false,
+        form: ActionCardSpecForm = fixtures.form,
     ) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -79,7 +92,7 @@ class ActionCardFormSheetScreenshotTest {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                         RaftActionCardFormSheetSurfaceForFixture(
-                            form = fixtures.form,
+                            form = form,
                             values = values,
                             fieldErrors = issues,
                             submitting = submitting,

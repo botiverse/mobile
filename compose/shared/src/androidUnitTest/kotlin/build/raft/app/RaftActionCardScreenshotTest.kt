@@ -51,6 +51,8 @@ import org.robolectric.annotation.GraphicsMode
  *   builder writes it (Fields, a `reason` Stack drawn as the quoted hint, an `actions` row bottom
  *   right), the vector's stack_roles, then stack_role_wrong_direction and stack_role_unknown,
  *   whose dropped roles leave plain Stacks (no quote).
+ * - approve-call (schemaVersion 7, slock #11937): the vector's form_submit_labels, an
+ *   `agent:approve_call`-shaped card (shield, a mono Field, Decide opening its decision form).
  * - limits: every string at its limit in English and Chinese (title wraps, labels truncate),
  *   and the install card in `zh-cn`.
  *
@@ -91,6 +93,10 @@ class RaftActionCardScreenshotTest {
     @Test fun stackRolesLight() = capture("thread.action-card.stack-roles", RaftAppAppearance.Light) { StackRoles() }
 
     @Test fun stackRolesDark() = capture("thread.action-card.stack-roles.dark", RaftAppAppearance.Dark) { StackRoles() }
+
+    @Test fun approveCallLight() = capture("thread.action-card.approve-call", RaftAppAppearance.Light) { Card("form_submit_labels") }
+
+    @Test fun approveCallDark() = capture("thread.action-card.approve-call.dark", RaftAppAppearance.Dark) { Card("form_submit_labels") }
 
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 
