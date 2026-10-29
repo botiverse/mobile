@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftDesktopClipboardAttachments
@@ -7,7 +8,11 @@ import java.text.BreakIterator
 import java.util.Locale
 
 // Desktop draws with Skia like iOS but has no system bars, haptics or native media hosts.
-internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle = RaftPullToRefreshStyle.Material
+// No pull gesture on desktop: wheel / trackpad overscroll must not drag a pull indicator in.
+internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle = RaftPullToRefreshStyle.None
+
+// An unfocused window stays STARTED and keeps showing its pages; minimized / hidden is CREATED.
+internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = Lifecycle.State.STARTED
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 

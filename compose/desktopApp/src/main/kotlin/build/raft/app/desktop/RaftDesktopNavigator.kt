@@ -8,6 +8,7 @@ import build.raft.app.toRaftJsonString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import java.util.TimeZone
 
 /** One open page: the Android Activity / iOS view controller counterpart. */
 class RaftDesktopPage internal constructor(
@@ -79,11 +80,32 @@ class RaftDesktopNavigator(private val onEmpty: () -> Unit) {
     }
 
     private fun page(pageName: String, pageData: JsonObject) =
-        RaftDesktopPage(nextId++, RaftCmpPageArgs(pageName, pageData))
+        RaftDesktopPage(nextId++, RaftCmpPageArgs(pageName, pageData.withRaftDesktopHostTimeContext()))
 
     private companion object {
         const val REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
     }
+}
+
+/**
+ * The host's local time facts in every page's data, as the Android (RaftCmpActivity) and iOS
+ * (RaftPageViewController) hosts add them: without `localOffsetMinutes` the shared pages have no
+ * time capabilities, no live time context, and every relative timestamp reads "unknown time".
+ * Values the opener already set (a forwarded thread bundle) win.
+ */
+internal fun JsonObject.withRaftDesktopHostTimeContext(
+    nowMillis: Long = System.currentTimeMillis(),
+    timeZone: TimeZone = TimeZone.getDefault(),
+): JsonObject {
+    val offsetMinutes = timeZone.getOffset(nowMillis) / 60_000
+    val defaults =
+        mapOf(
+            "localOffsetMinutes" to JsonPrimitive(offsetMinutes),
+            "todayEpochDay" to JsonPrimitive(Math.floorDiv(nowMillis + offsetMinutes * 60_000L, 86_400_000L)),
+            "nowEpochMillis" to JsonPrimitive(nowMillis),
+        )
+    if (defaults.keys.all { it in this }) return this
+    return JsonObject(defaults + this)
 }
 
 /** Page names of the shared page registry the host opens itself. */

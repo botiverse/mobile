@@ -9,11 +9,14 @@ import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
+import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Cupertino
+
+internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = Lifecycle.State.RESUMED
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 

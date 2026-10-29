@@ -1,10 +1,17 @@
 package build.raft.app
 
+import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
-/** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style. */
+/** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style, desktop = none. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
+
+/**
+ * The host lifecycle state from which a page counts as shown (`RaftPagerHost`). Phones: RESUMED.
+ * Desktop: STARTED, since an unfocused but visible window is STARTED there.
+ */
+internal expect fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State
 
 internal expect fun raftPlatformUsesNativeLucideIconRotation(): Boolean
 

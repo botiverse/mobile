@@ -3,11 +3,14 @@ package build.raft.app
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
+import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
 
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
     RaftPullToRefreshStyle.Material
+
+internal actual fun raftPlatformPageVisibleLifecycleState(): Lifecycle.State = Lifecycle.State.RESUMED
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = true
 

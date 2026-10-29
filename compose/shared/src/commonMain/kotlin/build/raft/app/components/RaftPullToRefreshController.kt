@@ -27,10 +27,14 @@ import kotlinx.coroutines.launch
  *   the top of the gap, threshold 80dp (Flutter `RefreshIndicator` + moving content).
  * - [Cupertino] (iOS): UIRefreshControl feel: UIScrollView rubber band, a bare spinner centred in
  *   the gap behind the content.
+ * - [None] (desktop): no pull gesture exists there (mouse / trackpad scroll only), so there is no
+ *   gesture and no indicator: a wheel or trackpad overscroll at the top left the Material indicator
+ *   half-pulled under the list header. Refresh state shows in the page header's spinner instead.
  */
 internal enum class RaftPullToRefreshStyle {
     Material,
     Cupertino,
+    None,
 }
 
 /**
