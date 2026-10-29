@@ -311,7 +311,8 @@ class ThreadMessageMenuParityTest {
                 onFollowThread = { routed += ThreadNewMessageMenuTool.FollowThread },
                 onTaskStatus = { routed += ThreadNewMessageMenuTool.TaskStatus },
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
-                onSelectText = { routed += ThreadNewMessageMenuTool.SelectText }
+                onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
+                onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }

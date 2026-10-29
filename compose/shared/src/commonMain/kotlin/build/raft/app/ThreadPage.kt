@@ -45,6 +45,7 @@ import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftMessageAction
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
@@ -603,6 +604,8 @@ internal enum class ThreadNewMessageMenuTool {
     ConvertToTask,
     /** Opens the Select Text sheet (third row, first slot; Kirby, web #11467). */
     SelectText,
+    /** botiverse/slock #11687: a followed reply thread's messages mark the whole thread unread. */
+    MarkThreadUnread,
     /** In-place text selection context only: select the whole message body. */
     SelectAll
 }
@@ -641,6 +644,7 @@ internal val ThreadNewMessageMenuSecondaryToolOrder =
         ThreadNewMessageMenuTool.SelectText,
         ThreadNewMessageMenuTool.AddReaction,
         ThreadNewMessageMenuTool.CopyLink,
+        ThreadNewMessageMenuTool.MarkThreadUnread,
         ThreadNewMessageMenuTool.FollowThread,
         ThreadNewMessageMenuTool.TaskStatus,
         ThreadNewMessageMenuTool.ConvertToTask
@@ -665,7 +669,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onTaskStatus: () -> Unit = {},
     val onConvertToTask: () -> Unit = {},
     val onSelectText: () -> Unit = {},
-    val onSelectAll: () -> Unit = {}
+    val onSelectAll: () -> Unit = {},
+    val onMarkThreadUnread: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -683,6 +688,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.ConvertToTask -> callbacks.onConvertToTask()
         ThreadNewMessageMenuTool.SelectText -> callbacks.onSelectText()
         ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
+        ThreadNewMessageMenuTool.MarkThreadUnread -> callbacks.onMarkThreadUnread()
     }
 }
 
@@ -703,6 +709,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val copyLink: Boolean = false,
     val followThread: Boolean = false,
     val threadFollowed: Boolean = false,
+    /** botiverse/slock #11687: "Mark Thread as Unread" (a followed reply thread's messages). */
+    val markThreadUnread: Boolean = false,
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
     val convertToTask: Boolean = false,
@@ -725,6 +733,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.AddReaction -> addReaction
             ThreadNewMessageMenuTool.CopyLink -> copyLink
             ThreadNewMessageMenuTool.FollowThread -> followThread
+            // A message's action on its thread, not on picked text.
+            ThreadNewMessageMenuTool.MarkThreadUnread -> markThreadUnread && !selectionContext
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
             // The sheet is for picking text; an in-place selection already does that.
@@ -767,6 +777,7 @@ internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailabil
         copyLink = copyLink,
         followThread = follow,
         threadFollowed = replyMetadata.isThreadFollowed,
+        markThreadUnread = markThreadUnreadChannelId != null,
         taskStatus = taskStatus,
         taskDone = message.isThreadTaskDone(),
         convertToTask = convertToTask,
@@ -8125,6 +8136,14 @@ private fun SharedThreadRouteContentContent(
                 )
             }
         }
+    val markUnreadNothingLabel by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
+    LaunchedEffect(threadViewModel) {
+        threadViewModel.readToggleNoticesFlow().collect { notice ->
+            when (notice) {
+                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingLabel)
+            }
+        }
+    }
     LaunchedEffect(threadViewModel, jumpUnresolvedUnreadThreadIds) {
         if (jumpUnresolvedUnreadThreadIds.isNotEmpty()) {
             threadViewModel.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(jumpUnresolvedUnreadThreadIds))
@@ -12437,6 +12456,10 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                action == MARK_THREAD_UNREAD_ACTION && !attachmentId.isNullOrBlank() -> {
+                    // botiverse/slock #11687: the reads of this page are held for it until it leaves.
+                    threadViewModel.dispatch(SharedThreadIntent.MarkThreadUnread(attachmentId))
+                }
                 action == "openParentMessage" -> {
                     val sideParentFocus =
                         adaptiveCloseRequest?.let { source ->
@@ -16422,7 +16445,21 @@ private fun ThreadPageContentContent(
                 }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
-                val panelFollowAction = threadPanelFollowAction(timelineSlice.originMessage)
+                // The slice keeps reply facts out of its rows: the origin's thread channel and follow
+                // state come from the page's reply metadata (without it there was never a row here).
+                val originReplyMetadata =
+                    timelineSlice.originMessage?.let { origin -> replyMetadataByParentId.threadReplyMetadataFor(origin) }
+                val panelFollowAction =
+                    threadPanelFollowAction(
+                        timelineSlice.originMessage?.let { origin ->
+                            originReplyMetadata?.let { origin.withThreadReplyFacts(it) } ?: origin
+                        }
+                    )
+                val markUnreadThreadChannelId =
+                    threadPanelMarkUnreadChannelId(
+                        replyThreadSurface = timelineSlice.replyThreadSurface && data.taskConversationChrome == null,
+                        originReplyMetadata = originReplyMetadata
+                    )
                 ThreadPageHeader(
                     agentFollowersHeader = data.agentFollowersHeader,
                     payload = payload,
@@ -16489,6 +16526,10 @@ private fun ThreadPageContentContent(
                                     null
                                 )
                             }
+                        },
+                    onMarkThreadUnread =
+                        markUnreadThreadChannelId?.let { threadChannelId ->
+                            { onThreadEvent(MARK_THREAD_UNREAD_ACTION, null, threadChannelId, null) }
                         },
                 )
             },
@@ -17107,6 +17148,8 @@ internal fun ThreadPageHeader(
     /** task #180: null when this thread has no message column to follow. */
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
+    /** botiverse/slock #11687: the More menu's Mark as Unread (null: not a followed reply thread). */
+    onMarkThreadUnread: (() -> Unit)? = null,
     /** Task v2: the task's title block and More menu rows (null: not a task, or not known yet). */
     taskConversationChrome: TaskConversationHeaderChrome? = null,
 ) {
@@ -17180,6 +17223,7 @@ internal fun ThreadPageHeader(
                         focusModeActive = focusModeActive,
                         threadFollowed = threadFollowed,
                         onToggleThreadFollow = onToggleThreadFollow,
+                        onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                     )
                 } else {
@@ -17308,13 +17352,15 @@ internal fun ThreadPageHeader(
                         ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                     val toggleFocus = onToggleFocusMode
-                    val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null || taskConversation
+                    val hasPanelMenu =
+                        toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
                             onSelect = { toggleFocus?.invoke() },
                             followed = threadFollowed,
                             onToggleFollow = onToggleThreadFollow,
+                            onMarkUnread = onMarkThreadUnread,
                             focusEnabled = focusModeActive || toggleFocus != null,
                             onSearchInTask = onOpenSearch.takeIf { taskConversation },
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
@@ -17348,8 +17394,10 @@ private fun threadHeaderSideColumnActions(
     focusModeActive: Boolean,
     threadFollowed: Boolean?,
     onToggleThreadFollow: (() -> Unit)?,
+    onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
 ): List<RaftSideAction> {
+    val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
     val settingsLabel = stringResource(Res.string.settings_title)
     val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
@@ -17386,6 +17434,17 @@ private fun threadHeaderSideColumnActions(
             if (onViewTaskInChannel != null) {
                 add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
             }
+        }
+        if (onMarkThreadUnread != null) {
+            add(
+                raftSideColumnLucideAction(
+                    MARK_THREAD_UNREAD_MENU_ITEM_ID,
+                    markUnreadLabel,
+                    RaftLucideIconName.MessageSquareDot,
+                    onMarkThreadUnread,
+                    priority = -1,
+                )
+            )
         }
         if (followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
             add(
@@ -17943,6 +18002,11 @@ private fun ThreadHeaderFocusModeMenu(
     onSelect: () -> Unit,
     followed: Boolean? = null,
     onToggleFollow: (() -> Unit)? = null,
+    /**
+     * botiverse/slock #11687 (web ThreadOverflowMenu): Mark as Unread, before Follow; null for a
+     * thread the person doesn't follow, as its Activity row has none.
+     */
+    onMarkUnread: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
     /** Task v2 (web ThreadOverflowMenu `subject="task"`): Search in Task, after Focus mode. */
     onSearchInTask: (() -> Unit)? = null,
@@ -17994,6 +18058,16 @@ private fun ThreadHeaderFocusModeMenu(
                         id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
                         label = stringResource(Res.string.task_conversation_view_in_channel),
                         icon = RaftLucideIconName.MapPin,
+                        enabled = true
+                    )
+                )
+            }
+            if (onMarkUnread != null) {
+                add(
+                    RaftBrutalDropdownMenuItem(
+                        id = MARK_THREAD_UNREAD_MENU_ITEM_ID,
+                        label = stringResource(Res.string.home_action_mark_as_unread),
+                        icon = RaftLucideIconName.MessageSquareDot,
                         enabled = true
                     )
                 )
@@ -18058,6 +18132,7 @@ private fun ThreadHeaderFocusModeMenu(
                 when (selectedId) {
                     FOCUS_MODE_MENU_ITEM_ID -> onSelect()
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     else -> Unit // dismissed
@@ -18137,6 +18212,7 @@ private fun ThreadHeaderFocusModeMenu(
                 localMenuAnchor = null
                 when (id) {
                     FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                    MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                 }
@@ -18154,6 +18230,7 @@ internal val LocalThreadHeaderMenuEventBus =
     androidx.compose.runtime.staticCompositionLocalOf<build.raft.app.data.RaftEventBus?> { null }
 
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
+internal const val MARK_THREAD_UNREAD_MENU_ITEM_ID = "thread-mark-unread"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
@@ -23257,6 +23334,15 @@ private fun ThreadMessagesListContent(
                             close()
                             trackTool(ThreadNewMessageMenuTool.SelectText)
                             onThreadEvent("openSelectMessageText", message.id, null, null)
+                        },
+                        onMarkThreadUnread = {
+                            close()
+                            threadPanelMarkUnreadChannelId(
+                                renderPayload.replyThreadSurface,
+                                renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
+                            )?.let { threadChannelId ->
+                                    onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
+                                }
                         }
                     )
             )
@@ -23277,7 +23363,8 @@ private fun ThreadMessagesListContent(
                         translationAvailable = translationStore != null
                     ),
                 taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                taskV2Enabled = linkedTasksProjection.taskV2Enabled
+                taskV2Enabled = linkedTasksProjection.taskV2Enabled,
+                originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
             ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
         // New Message Menu toggle: a text selection shows this same Compact menu in place
         // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
@@ -23333,7 +23420,8 @@ private fun ThreadMessagesListContent(
                                 translationAvailable = translationStore != null
                             ),
                         taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
+                        originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
                     )
                 val closeActionMenu: () -> Unit = {
                     actionMessageId = null
@@ -23400,7 +23488,8 @@ private fun ThreadMessagesListContent(
                         onFollowThread = actions.tools.onFollowThread,
                         onTaskStatus = actions.tools.onTaskStatus,
                         onConvertToTask = actions.tools.onConvertToTask,
-                        onSelectText = actions.tools.onSelectText
+                        onSelectText = actions.tools.onSelectText,
+                        onMarkThreadUnread = actions.tools.onMarkThreadUnread
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -23480,6 +23569,13 @@ private fun ThreadMessagesListContent(
                             onForwardMessage(message.id)
                         },
                         onAddReaction = onAddReaction,
+                        showMarkThreadUnreadAction = capabilities.markThreadUnreadChannelId != null,
+                        onMarkThreadUnread = {
+                            closeActionMenu()
+                            capabilities.markThreadUnreadChannelId?.let { threadChannelId ->
+                                onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
+                            }
+                        },
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
@@ -27173,7 +27269,8 @@ internal fun ThreadNewMessageMenu(
     onFollowThread: () -> Unit = {},
     onTaskStatus: () -> Unit = {},
     onConvertToTask: () -> Unit = {},
-    onSelectText: () -> Unit = {}
+    onSelectText: () -> Unit = {},
+    onMarkThreadUnread: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
@@ -27218,7 +27315,8 @@ internal fun ThreadNewMessageMenu(
             onFollowThread = onFollowThread,
             onTaskStatus = onTaskStatus,
             onConvertToTask = onConvertToTask,
-            onSelectText = onSelectText
+            onSelectText = onSelectText,
+            onMarkThreadUnread = onMarkThreadUnread
         )
     }
 }
@@ -27241,7 +27339,8 @@ internal fun ThreadNewMessageMenuChrome(
     onTaskStatus: () -> Unit = {},
     onConvertToTask: () -> Unit = {},
     onSelectText: () -> Unit = {},
-    onSelectAll: () -> Unit = {}
+    onSelectAll: () -> Unit = {},
+    onMarkThreadUnread: () -> Unit = {}
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -27257,7 +27356,8 @@ internal fun ThreadNewMessageMenuChrome(
             onTaskStatus = onTaskStatus,
             onConvertToTask = onConvertToTask,
             onSelectText = onSelectText,
-            onSelectAll = onSelectAll
+            onSelectAll = onSelectAll,
+            onMarkThreadUnread = onMarkThreadUnread
         )
     val secondaryTools = availability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
@@ -27363,6 +27463,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
             }
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
+        ThreadNewMessageMenuTool.MarkThreadUnread -> Res.string.thread_action_mark_thread_unread
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -27384,6 +27485,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
         ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.FileText
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
+        ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
     }
 
 @Composable
@@ -30373,6 +30475,33 @@ internal fun threadPanelFollowAction(message: RaftThreadMessageItem?): ThreadPan
     )
 }
 
+/**
+ * botiverse/slock #11687: the thread channel an open reply thread's Mark as Unread marks (its header
+ * ⋯ and its messages' menus), or null: not a reply thread, no thread channel yet, or a thread the
+ * person doesn't follow (its Activity row has no Mark as Unread either).
+ */
+internal fun threadPanelMarkUnreadChannelId(
+    replyThreadSurface: Boolean,
+    originReplyMetadata: ThreadReplyMetadata?,
+): String? {
+    if (!replyThreadSurface || originReplyMetadata?.isThreadFollowed != true) return null
+    return originReplyMetadata.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * The thread facts of [this] message from the page's reply metadata. The timeline slice keeps them
+ * out of its rows ([withoutThreadReplyMetadata]); the header's panel actions read them back here.
+ */
+internal fun RaftThreadMessageItem.withThreadReplyFacts(metadata: ThreadReplyMetadata): RaftThreadMessageItem =
+    copy(
+        threadChannelId = metadata.threadChannelId,
+        replyCount = metadata.replyCount,
+        unreadReplyCount = metadata.unreadReplyCount,
+        firstUnreadReplyMessageId = metadata.firstUnreadReplyMessageId,
+        isThreadFollowed = metadata.isThreadFollowed
+    )
+
+internal const val MARK_THREAD_UNREAD_ACTION = "markThreadUnread"
 internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
 internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
@@ -30405,7 +30534,12 @@ internal data class ThreadMessageMenuCapabilities(
     val cancelLocalSend: Boolean,
     val deleteLocalSend: Boolean,
     /** Task v2: [convertToTask] is "Create Task from Message" (web CreateTaskDialog), not the legacy convert. */
-    val createTaskFromMessage: Boolean = false
+    val createTaskFromMessage: Boolean = false,
+    /**
+     * botiverse/slock #11687: "Mark Thread as Unread" on every message of a followed reply thread
+     * (web MessageItem in a thread panel, right after Save); the thread channel it marks, else null.
+     */
+    val markThreadUnreadChannelId: String? = null
 )
 
 internal fun threadMessageMenuCapabilities(
@@ -30420,7 +30554,9 @@ internal fun threadMessageMenuCapabilities(
      * single linked task, so there is no Mark as Done / Reopen here, and "Create Task from Message"
      * replaces "Convert to Task" — offered on a message that already has tasks too.
      */
-    taskV2Enabled: Boolean = false
+    taskV2Enabled: Boolean = false,
+    /** The open reply thread's origin reply facts (its thread channel, followed), for Mark Thread as Unread. */
+    originReplyMetadata: ThreadReplyMetadata? = null
 ): ThreadMessageMenuCapabilities {
     val localSend = message.hasLocalSendState()
     val system = message.isSystemMessage()
@@ -30463,7 +30599,9 @@ internal fun threadMessageMenuCapabilities(
                 if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
         deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
-        createTaskFromMessage = taskV2Enabled
+        createTaskFromMessage = taskV2Enabled,
+        markThreadUnreadChannelId =
+            if (localSend) null else threadPanelMarkUnreadChannelId(slice.replyThreadSurface, originReplyMetadata)
     )
 }
 
@@ -30488,6 +30626,8 @@ internal fun threadMessageMenuActions(
     showAddReactionAction: Boolean = false,
     /** Task v2: the task item is "Create Task from Message". */
     createTaskFromMessage: Boolean = false,
+    /** botiverse/slock #11687: "Mark Thread as Unread", right after Save. */
+    showMarkThreadUnreadAction: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -30502,7 +30642,8 @@ internal fun threadMessageMenuActions(
     onDelete: () -> Unit,
     onTranslate: () -> Unit = {},
     onForward: () -> Unit = {},
-    onAddReaction: () -> Unit = {}
+    onAddReaction: () -> Unit = {},
+    onMarkThreadUnread: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
     buildList {
         if (showAddReactionAction) {
@@ -30572,6 +30713,16 @@ internal fun threadMessageMenuActions(
                     icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
+                )
+            )
+        }
+        if (showMarkThreadUnreadAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.thread_action_mark_thread_unread.desc(),
+                    icon = RaftLucideIconName.MessageSquareDot,
+                    group = "message",
+                    onClick = onMarkThreadUnread
                 )
             )
         }
@@ -30670,6 +30821,7 @@ private fun ThreadMessageActionMenu(
     translatePending: Boolean = false,
     showForwardAction: Boolean = false,
     showAddReactionAction: Boolean = false,
+    showMarkThreadUnreadAction: Boolean = false,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -30687,6 +30839,7 @@ private fun ThreadMessageActionMenu(
     onTranslate: () -> Unit = {},
     onForward: () -> Unit = {},
     onAddReaction: () -> Unit = {},
+    onMarkThreadUnread: () -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -30708,6 +30861,7 @@ private fun ThreadMessageActionMenu(
             translatePending,
             showForwardAction,
             showAddReactionAction,
+            showMarkThreadUnreadAction,
             onReply,
             onCopyLink,
             onCopy,
@@ -30722,7 +30876,8 @@ private fun ThreadMessageActionMenu(
             onDelete,
             onTranslate,
             onForward,
-            onAddReaction
+            onAddReaction,
+            onMarkThreadUnread
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -30741,6 +30896,7 @@ private fun ThreadMessageActionMenu(
                 translatePending = translatePending,
                 showForwardAction = showForwardAction,
                 showAddReactionAction = showAddReactionAction,
+                showMarkThreadUnreadAction = showMarkThreadUnreadAction,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,
@@ -30755,7 +30911,8 @@ private fun ThreadMessageActionMenu(
                 onDelete = onDelete,
                 onTranslate = onTranslate,
                 onForward = onForward,
-                onAddReaction = onAddReaction
+                onAddReaction = onAddReaction,
+                onMarkThreadUnread = onMarkThreadUnread
             )
         }
     val density = LocalDensity.current

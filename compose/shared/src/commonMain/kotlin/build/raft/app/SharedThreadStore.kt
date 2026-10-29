@@ -47,7 +47,10 @@ import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
+import build.raft.app.data.MarkUnreadOutcome
+import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.ReadReceiptResult
+import build.raft.app.data.markUnreadOutcome
 import build.raft.app.data.ReadReceiptCoordinator
 import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.RemoveChannelMemberRequest
@@ -189,7 +192,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -5851,6 +5857,28 @@ internal class SharedThreadDataSource(
         }
     }
 
+    /**
+     * botiverse/slock #11687: Mark as Unread on an open reply thread (its header ⋯ and its messages'
+     * menus): `POST /channels/:threadChannelId/unread`, the same write as the thread's Activity row,
+     * through the process read-receipt coordinator so it goes out after this channel's reads.
+     */
+    suspend fun markThreadChannelUnread(threadChannelId: String): DataResult<ReadReceiptResult> {
+        if (threadChannelId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        }
+        val coordinator = readReceiptCoordinator
+        val ownerFactory = readReceiptOwnerFactory
+        if (coordinator == null || ownerFactory == null) {
+            return DataResult.Error(ScreenError(code = "thread_mark_unread_unavailable", retryable = false))
+        }
+        val session = readSession() ?: return authSessionRequiredResult()
+        val serverId =
+            selectedServerStore?.selectedServerId?.value
+                ?: session.currentServerId
+                ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
+        return coordinator.markUnread(ownerFactory(serverId, session.user.id), ChannelId(threadChannelId))
+    }
+
     suspend fun openMessageContext(
         messageId: String,
         basePayload: RaftThreadScreenPayload
@@ -7211,6 +7239,13 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data class MarkVisibleRead(val visibleTailIndex: Int? = null) : SharedThreadIntent
+
+    /**
+     * botiverse/slock #11687: Mark as Unread from inside an open reply thread (its header ⋯ and its
+     * messages' menus). The whole thread, as the server's `/unread` marks it; it then stays unread
+     * while this page shows it (its visible reads are held for [threadChannelId]).
+     */
+    data class MarkThreadUnread(val threadChannelId: String) : SharedThreadIntent
     data object FirstContentReady : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -7357,6 +7392,14 @@ internal class SharedThreadStore(
     private var deferredReadJob: Job? = null
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
+    // botiverse/slock #11687: the thread this page marked unread. Its visible reads are held while
+    // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
+    // again at once; leaving the page (a new store) or showing another thread ends the hold.
+    private var markedUnreadHoldChannelId: String? = null
+    private val _readToggleNotices = MutableSharedFlow<RaftReadToggleNotice>(extraBufferCapacity = 4)
+
+    /** One-shot Mark as Unread notices (Nothing to mark), shown by the page as a toast. */
+    val readToggleNotices: SharedFlow<RaftReadToggleNotice> = _readToggleNotices.asSharedFlow()
     private var lastRoutePayload: RaftThreadScreenPayload? = null
     private var visiblePayloadOwnerScopeId: String? = null
     private var firstContentReadyRouteKey: String? = null
@@ -7499,6 +7542,9 @@ internal class SharedThreadStore(
             is SharedThreadIntent.MarkVisibleRead -> {
                 scope.launch { markVisibleRead(intent.visibleTailIndex) }
             }
+            is SharedThreadIntent.MarkThreadUnread -> {
+                scope.launch { markThreadUnread(intent.threadChannelId) }
+            }
             SharedThreadIntent.FirstContentReady -> {
                 scope.launch { markFirstContentReady() }
             }
@@ -7583,6 +7629,7 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             is SharedThreadIntent.MarkVisibleRead -> markVisibleRead(intent.visibleTailIndex)
+            is SharedThreadIntent.MarkThreadUnread -> markThreadUnread(intent.threadChannelId)
             SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -10140,6 +10187,14 @@ internal class SharedThreadStore(
         }
         if (!authorityStillCurrent()) return
         val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
+        if (marker.channelId == markedUnreadHoldChannelId) {
+            diagnosticsLogger?.invoke(
+                "thread_read_skip channelId=${marker.channelId} reason=marked_unread_hold latest=${marker.latestMessageId}"
+            )
+            return
+        }
+        // Reading another thread here means the person left the one they marked: its hold ends.
+        markedUnreadHoldChannelId = null
         if (marker.wasRecentlyMarkedRead()) {
             // Task #19 (Hands 2aa74345): the window only coalesces. A marker NEWER than the completed one
             // (a message that arrived, or a stand-in replaced by the network page, right after the last
@@ -10222,6 +10277,34 @@ internal class SharedThreadStore(
                     pendingReadMarker = null
                     null
                 }
+        }
+    }
+
+    /**
+     * botiverse/slock #11687 (web threadUnreadHold.markOpenThreadUnread): the hold starts before the
+     * write, so no visible read of this page goes out after it; a read still queued is dropped. The
+     * answer is read as the Activity row reads it ([markUnreadOutcome]): Counted / Marked keep the
+     * hold; Nothing to mark says so (the Activity toast) and, like a failed write, ends the hold, as
+     * nothing was marked.
+     */
+    private suspend fun markThreadUnread(threadChannelId: String) {
+        val channelId = threadChannelId.trim().takeIf { it.isNotBlank() } ?: return
+        markedUnreadHoldChannelId = channelId
+        deferredReadJob?.cancel()
+        deferredReadJob = null
+        if (pendingReadMarker?.channelId == channelId) pendingReadMarker = null
+        lastCompletedReadMarker = null
+        lastCompletedReadAt = null
+        val result = dataSource.markThreadChannelUnread(channelId)
+        val outcome = (result as? DataResult.Content)?.data?.markUnreadOutcome()
+        diagnosticsLogger?.invoke(
+            "thread_mark_unread channelId=$channelId result=${result.threadDiagnosticsResult()} " +
+                "outcome=${outcome?.name ?: "none"}"
+        )
+        if (outcome == MarkUnreadOutcome.Counted || outcome == MarkUnreadOutcome.Marked) return
+        if (markedUnreadHoldChannelId == channelId) markedUnreadHoldChannelId = null
+        if (outcome == MarkUnreadOutcome.NothingToMark) {
+            _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
         }
     }
 
@@ -12196,6 +12279,9 @@ internal class SharedThreadViewModel(
     fun renderSliceFlow(): Flow<SharedThreadRenderSlice> = store.renderSliceFlow()
 
     fun conversationAccessLostFlow(): Flow<Boolean> = store.conversationAccessLostFlow()
+
+    /** Mark as Unread notices from the thread's menus (Nothing to mark), shown as a toast. */
+    fun readToggleNoticesFlow(): Flow<RaftReadToggleNotice> = store.readToggleNotices
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> = store.timelineSliceFlow()
 
