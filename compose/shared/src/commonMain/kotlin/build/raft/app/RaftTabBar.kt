@@ -443,11 +443,30 @@ internal fun RaftAppBottomTabBarHost(
         return
     }
     if (raftAppTabBarRenderer() == RaftAppTabBarRenderer.NativeHost) return
-    // stdrc 2026-10-21: one edge bar for every Compose renderer (the iOS Liquid Glass and
-    // Android floating docks are gone). The band is the bar plus the bottom safe area, all on
-    // the card layer, so the bar meets the screen edge.
+    RaftSharedBottomTabBarBand(
+        items = items,
+        onSelect = onSelect,
+        modifier = hostModifier,
+        bottomSafeArea = bottomSafeArea,
+        serverTab = serverTab,
+    )
+}
+
+/**
+ * The Compose edge bar's band (stdrc 2026-10-21: one edge bar for every Compose renderer, the
+ * iOS Liquid Glass and Android floating docks are gone): the bar plus the bottom safe area, all
+ * on the card layer, so the bar meets the screen edge.
+ */
+@Composable
+internal fun RaftSharedBottomTabBarBand(
+    items: List<RaftBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = 0.dp,
+    serverTab: (@Composable (Modifier) -> Unit)? = null,
+) {
     Box(
-        modifier = hostModifier
+        modifier = modifier
             .fillMaxWidth()
             .height(raftSharedBottomTabBarHostHeight(bottomSafeArea))
             .background(RaftColor.Card)
