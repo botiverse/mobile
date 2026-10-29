@@ -354,3 +354,42 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
     if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
     return RaftArtifactViewerNavigation.Close
 }
+
+/**
+ * The version the native header shows: the one in the page's address once it has one (null there:
+ * the latest, as last read), else the opener's card or the cached header.
+ *
+ * Not seen here: View latest while the page already shows the latest (not pinned) reads the
+ * latest again in place, address unchanged (slock `ArtifactStandalonePage` `showLatest`), and the
+ * viewer has no bridge (rule 3), so the header keeps the version read on open until the web
+ * reports the version it shows (see the PR notes for the ask).
+ */
+internal fun raftArtifactViewerShownVersion(
+    addressed: RaftArtifactViewerNavigation.Stay?,
+    latestVersion: Int?,
+    headerVersion: Int?,
+): Int? = addressed?.let { it.version ?: latestVersion } ?: headerVersion
+
+/**
+ * Whether the page moving to [next] needs the latest version read again: from a pinned version to
+ * the latest (View latest on a pinned version, Back to Latest), where the latest may have been
+ * published after the viewer opened.
+ */
+internal fun raftArtifactViewerRereadsLatest(
+    previous: RaftArtifactViewerNavigation.Stay?,
+    next: RaftArtifactViewerNavigation.Stay,
+): Boolean = previous?.version != null && next.version == null
+
+/**
+ * The bottom padding of the viewer's WebView, in px. Where the WebView does not inset itself
+ * ([hostPadsWebView]: Android, whose window is edge-to-edge, so neither the keyboard nor the
+ * navigation bar resizes it and the page gets no `env(safe-area-inset-bottom)`), the web page
+ * ends above the keyboard while it is up, else above the navigation bar: the IME inset already
+ * covers the navigation bar, so the larger one. Elsewhere (iOS: WKWebView applies the safe area
+ * and the keyboard itself) nothing.
+ */
+internal fun raftArtifactViewerWebBottomInsetPx(
+    imeBottomPx: Int,
+    navigationBarBottomPx: Int,
+    hostPadsWebView: Boolean,
+): Int = if (hostPadsWebView) maxOf(imeBottomPx, navigationBarBottomPx).coerceAtLeast(0) else 0

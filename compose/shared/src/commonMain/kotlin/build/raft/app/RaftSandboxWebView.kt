@@ -93,3 +93,10 @@ internal expect fun RaftSandboxWebViewHost(
     controller: RaftWebViewController,
     modifier: Modifier,
 )
+
+/**
+ * Whether a host must pad the platform WebView by the keyboard and the bottom system bar itself.
+ * Android: the window is edge-to-edge, so neither resizes the WebView, and Android WebView gives
+ * the page no bottom safe-area inset. iOS: WKWebView handles both. Desktop: neither exists.
+ */
+internal expect val raftWebViewNeedsHostBottomInsets: Boolean

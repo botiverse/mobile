@@ -1038,3 +1038,5 @@ private fun String.raftRedactedUrlForLog(): String {
 
 private fun String.raftSanitizedLogValue(limit: Int = 160): String =
     replace('\n', ' ').replace('\r', ' ').take(limit)
+
+internal actual val raftWebViewNeedsHostBottomInsets: Boolean = true
