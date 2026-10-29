@@ -54,6 +54,8 @@ internal object RaftRobolectricScreenshot {
         // The view drawn: the activity's compose root by default; a dialog test passes the
         // dialog window's decor view (a RaftDialog renders in its own window).
         root: (ComponentActivity) -> View? = { it.window.decorView },
+        // Runs on the settled compose root before the capture (a pointer hovering it), then settles again.
+        interact: ((View) -> Unit)? = null,
         content: @Composable (ComponentActivity) -> Unit,
     ) {
         val previousAppearance = RaftAppThemeState.appearance
@@ -70,6 +72,10 @@ internal object RaftRobolectricScreenshot {
             settle()
             val composeView = root(activity)?.let(::findComposeRoot)
             assertNotNull(composeView, "no compose root")
+            if (interact != null) {
+                interact(composeView)
+                settle()
+            }
             val bitmap = Bitmap.createBitmap(composeView.width, composeView.height, Bitmap.Config.ARGB_8888)
             composeView.draw(android.graphics.Canvas(bitmap))
             verifyOrRecord(name, bitmap, File(reportDir))

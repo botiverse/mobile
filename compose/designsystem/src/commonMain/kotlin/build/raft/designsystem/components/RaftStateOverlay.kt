@@ -16,6 +16,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
@@ -307,5 +308,67 @@ private class RaftPointerHoverNode(
         val current = enter ?: return
         enter = null
         interactionSource.tryEmit(RaftPointerHoverInteraction.Exit(current))
+    }
+}
+
+/**
+ * Reports where a mouse, trackpad or pen hovers over the element: [onHover] gets the pointer's
+ * position (local px) as it enters and moves, then null when it leaves, is cancelled or the
+ * element goes. A finger never reports, whatever the platform sends ([raftPointerTypeHovers]).
+ * For parts of one element that hover one at a time, such as the links in a paragraph; a whole
+ * component hovers with [raftPointerHover]. Consumes nothing. Disabling it reports null.
+ */
+fun Modifier.raftPointerHoverPosition(enabled: Boolean = true, onHover: (Offset?) -> Unit): Modifier =
+    this then RaftPointerHoverPositionElement(enabled, onHover)
+
+private data class RaftPointerHoverPositionElement(
+    val enabled: Boolean,
+    val onHover: (Offset?) -> Unit,
+) : ModifierNodeElement<RaftPointerHoverPositionNode>() {
+    override fun create() = RaftPointerHoverPositionNode(enabled, onHover)
+
+    override fun update(node: RaftPointerHoverPositionNode) = node.update(enabled, onHover)
+}
+
+private class RaftPointerHoverPositionNode(
+    private var enabled: Boolean,
+    private var onHover: (Offset?) -> Unit,
+) : Modifier.Node(), PointerInputModifierNode {
+    private var hovering = false
+
+    fun update(enabled: Boolean, onHover: (Offset?) -> Unit) {
+        if (!enabled) leave()
+        this.enabled = enabled
+        this.onHover = onHover
+    }
+
+    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+        if (pass != PointerEventPass.Main) return
+        when (pointerEvent.type) {
+            PointerEventType.Enter, PointerEventType.Move -> {
+                val change = pointerEvent.changes.firstOrNull { raftPointerTypeHovers(it.type) } ?: return
+                if (!enabled) return
+                val inside =
+                    change.position.x >= 0f && change.position.y >= 0f &&
+                        change.position.x < bounds.width && change.position.y < bounds.height
+                if (inside) {
+                    hovering = true
+                    onHover(change.position)
+                } else {
+                    leave()
+                }
+            }
+            PointerEventType.Exit -> leave()
+        }
+    }
+
+    override fun onCancelPointerInput() = leave()
+
+    override fun onDetach() = leave()
+
+    private fun leave() {
+        if (!hovering) return
+        hovering = false
+        onHover(null)
     }
 }

@@ -6,6 +6,12 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.eventVerb
 import build.raft.app.markdown.lucideIcon
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.RectangleShape
 import build.raft.app.resources.*
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
@@ -796,6 +802,10 @@ internal fun ActivityConversationListRow(
             else -> conversationFallback
         }
     var pressed by remember(item.key) { mutableStateOf(false) }
+    // raft-ui InboxItem is a list cell: a mouse or trackpad lays `fill-cell-hover` (150ms ease-out),
+    // never a finger. A selected row, a row with its menu open and a pressed row keep their own fill.
+    val hoverSource = remember { MutableInteractionSource() }
+    val hover = rememberRaftStateOverlay(hoverSource, RaftHoverTier.Cell, selected = selected || menuOpen || pressed)
     val swipeButtons =
         activitySwipeButtons(
             doneEnabled = canMarkDone && onSwipeDone != null,
@@ -827,6 +837,8 @@ internal fun ActivityConversationListRow(
                             else -> Modifier
                         }
                     )
+                    .raftStateOverlay(hover, RectangleShape)
+                    .raftPointerHover(hoverSource)
                     .then(
                         if (divider) {
                             Modifier.drawBehind {

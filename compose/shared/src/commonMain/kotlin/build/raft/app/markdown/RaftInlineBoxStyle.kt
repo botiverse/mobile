@@ -485,6 +485,8 @@ internal fun AnnotatedString.raftInlineDecorations(baseFontSize: TextUnit): Raft
  */
 internal fun Modifier.raftInlineDecorations(
     decorations: RaftInlineDecorations,
+    /** An underline range under a mouse or trackpad and the colour it takes then (read at draw time). */
+    hovered: () -> Pair<IntRange, Color>? = { null },
     layout: () -> TextLayoutResult?
 ): Modifier {
     if (decorations.isEmpty) return this
@@ -503,13 +505,15 @@ internal fun Modifier.raftInlineDecorations(
         decorations.marks.forEach { range ->
             drawRaftInlineMark(result, decorations, range.item, range.start, textLength)
         }
+        val hover = hovered()
         decorations.underlines.forEach { range ->
+            val hoverColor = hover?.takeIf { (link, _) -> link.first == range.start && link.last + 1 == range.end }?.second
             drawRaftInlineRange(result, range.start, range.end, textLength) { segment ->
                 val style = range.item
                 val thickness = style.thickness.toPx().coerceAtLeast(1f)
                 val y = result.getLineBaseline(segment.line) + style.offset.toPx()
                 drawRect(
-                    color = style.color,
+                    color = hoverColor ?: style.color,
                     topLeft = Offset(segment.left, y),
                     size = Size(segment.right - segment.left, thickness),
                 )

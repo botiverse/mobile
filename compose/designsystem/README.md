@@ -345,6 +345,9 @@ Internal modifiers every component draws its states with; none takes layout room
   touch, whatever the platform reports (CSS `@media (hover: hover)`); `raftIsHovered`
   ignores the `HoverInteraction` that `clickable` emits. Every component that hovers
   attaches it on the same source as its `clickable`.
+- `Modifier.raftPointerHoverPosition { offset -> }`: where that same kind of pointer hovers
+  (local px; null when it leaves), never touch. For parts of one element that hover one at a
+  time, such as the links in a markdown paragraph (underlined in full colour under the pointer).
 - `raftFloatShadow` / `raftOverlaySurface`: `shadow-float` drawn as a stack of rounded
   rects that add up to the CSS Gaussian (no platform blur, so Android below API 31 matches),
   plus the `line-seam` ring and fill of every overlay (menus, dialogs, sheets, toasts). The
