@@ -3456,6 +3456,8 @@ private fun RaftAppShellReadyContent(
     val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
     val adaptiveListPaneWidths = rememberRaftListPaneWidths(listPanePreferenceStore)
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
+    // artin 2026-10-29: the section the wide Settings detail shows (null: the default, Account).
+    var settingsWidePicked by remember { mutableStateOf<String?>(null) }
     // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
     // (The handle also reports the end when it goes inactive or leaves composition.)
     val listPaneResizeDefersFold =
@@ -7883,7 +7885,94 @@ private fun RaftAppShellReadyContent(
                     // from the server panel, with Back (Members and Computers are on the panel now,
                     // so they no longer lead it); its rows keep their attention dots. The wide rail
                     // keeps its Settings page as before.
-                    val settingsTabContent: @Composable (active: Boolean) -> Unit = {
+                    val openSettingsRow: (String) -> Unit = { key ->
+                        prewarmAdmissionGate.invalidate("settings_open_page:$key")
+                        settingsHeaderTapCount = 0
+                        when (key) {
+                            SettingsMoreMembersRowKey -> {
+                                RaftProductEvents.navEntrySelected(
+                                    destination = RaftNavDestination.Members,
+                                    surface = RaftNavSurface.MobileMore,
+                                    wasActive = false,
+                                )
+                                bridge.log("app_shell_more_open row=$key from=$selectedTab")
+                                selectAppShellTab("members", directChildSwitch = true)
+                                retainedAppShellTabs = retainedAppShellTabs + "members"
+                            }
+                            SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
+                            SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
+                            SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
+                            SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
+                            SettingsDestinationComputers -> {
+                                if (!navRailActive) {
+                                    RaftProductEvents.navEntrySelected(
+                                        destination = RaftNavDestination.Computers,
+                                        surface = RaftNavSurface.MobileMore,
+                                        wasActive = false,
+                                    )
+                                }
+                                openComputersPage()
+                            }
+                            SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
+                            SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
+                            SettingsDestinationHandsFeedback ->
+                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                    pager.openSettingsFeedbackWebViewPage(storeScope)
+                                } else {
+                                    pager.openSettingsHandsFeedbackPage(storeScope)
+                                }
+                            else -> {
+                                val page = SettingsNativeDetailPage.fromKey(key)
+                                if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
+                                    bridge.logWarn("settings_native_detail_rejected page=$key")
+                                }
+                            }
+                        }
+                    }
+                    val settingsSession = (authGateState as? SharedAuthGateState.Ready)?.session
+                    val settingsTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        if (navRailActive) {
+                            // artin 2026-10-29: the wide Settings is list + detail like the web's; the
+                            // section opens beside the list (SettingsWideSplit.kt).
+                            SettingsWideListDetail(
+                                payload = appShellSettingsHomePayload(settingsSession),
+                                widths = adaptiveListPaneWidths,
+                                active = active,
+                                picked = settingsWidePicked,
+                                onPick = { key ->
+                                    when (val pick = settingsWidePick(key)) {
+                                        is SettingsWidePick.Detail -> {
+                                            if (pick.key == SettingsDestinationComputers) {
+                                                writeComputerAttentionSeen(
+                                                    build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+                                                )
+                                            }
+                                            bridge.log("settings_wide_pick row=$key")
+                                            settingsWidePicked = pick.key
+                                        }
+                                        SettingsWidePick.Push -> openSettingsRow(key)
+                                    }
+                                },
+                                onBackToDefault = {
+                                    bridge.log("settings_wide_back from=$settingsWidePicked")
+                                    settingsWidePicked = null
+                                },
+                                detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                                bottomContentPadding = appShellBottomContentInset,
+                                onResizingChange = { adaptiveListPaneResizing = it },
+                                detailPane = { key, modifier ->
+                                    val detailPage = remember(key, storeScope) { settingsWideDetailPage(key, storeScope) }
+                                    if (detailPage != null) {
+                                        RaftChildPage(
+                                            pageName = detailPage.first,
+                                            pageData = detailPage.second,
+                                            modifier = modifier,
+                                            active = active,
+                                        )
+                                    }
+                                },
+                            )
+                        } else {
                         SettingsAppShellHomeContent(
                             moreRoot =
                                 if (navRailActive) {
@@ -7897,7 +7986,7 @@ private fun RaftAppShellReadyContent(
                                     )
                                 },
                             onBack = moreChildBack,
-                            session = (authGateState as? SharedAuthGateState.Ready)?.session,
+                            session = settingsSession,
                             bottomContentPadding = appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
                             onSettingsHeaderClick = {
@@ -7910,51 +7999,9 @@ private fun RaftAppShellReadyContent(
                                     settingsHeaderTapCount = nextTapCount
                                 }
                             },
-                            onSelect = { key ->
-                                prewarmAdmissionGate.invalidate("settings_open_page:$key")
-                                settingsHeaderTapCount = 0
-                                when (key) {
-                                    SettingsMoreMembersRowKey -> {
-                                        RaftProductEvents.navEntrySelected(
-                                            destination = RaftNavDestination.Members,
-                                            surface = RaftNavSurface.MobileMore,
-                                            wasActive = false,
-                                        )
-                                        bridge.log("app_shell_more_open row=$key from=$selectedTab")
-                                        selectAppShellTab("members", directChildSwitch = true)
-                                        retainedAppShellTabs = retainedAppShellTabs + "members"
-                                    }
-                                    SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
-                                    SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
-                                    SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
-                                    SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
-                                    SettingsDestinationComputers -> {
-                                        if (!navRailActive) {
-                                            RaftProductEvents.navEntrySelected(
-                                                destination = RaftNavDestination.Computers,
-                                                surface = RaftNavSurface.MobileMore,
-                                                wasActive = false,
-                                            )
-                                        }
-                                        openComputersPage()
-                                    }
-                                    SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
-                                    SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
-                                    SettingsDestinationHandsFeedback ->
-                                        if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
-                                            pager.openSettingsFeedbackWebViewPage(storeScope)
-                                        } else {
-                                            pager.openSettingsHandsFeedbackPage(storeScope)
-                                        }
-                                    else -> {
-                                        val page = SettingsNativeDetailPage.fromKey(key)
-                                        if (page == null || !pager.openSettingsNativeDetailPage(page, storeScope)) {
-                                            bridge.logWarn("settings_native_detail_rejected page=$key")
-                                        }
-                                    }
-                                }
-                            }
+                            onSelect = openSettingsRow,
                         )
+                        }
                     }
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
                     val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
