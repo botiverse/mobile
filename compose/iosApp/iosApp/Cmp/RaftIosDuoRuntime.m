@@ -91,8 +91,11 @@ NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view, id _Nullable kin
     NSUInteger options = 0;
     [invocation setArgument:&options atIndex:3];
     [invocation invoke];
-    NSArray * _Nullable regions = nil;
-    [invocation getReturnValue:&regions];
+    // getReturnValue: copies the pointer without a retain; reading it into a __strong local made
+    // ARC release the array once too often (a crash in the next autorelease-pool pop).
+    void *raw = NULL;
+    [invocation getReturnValue:&raw];
+    NSArray * _Nullable regions = (__bridge NSArray *)raw;
     return regions ?: @[];
 }
 
