@@ -709,7 +709,7 @@ jobs:
             build_id="$(awk -F= '/^build_id=/{print $2}' hands-artifacts-upload.log | tail -n 1)"
             {
               echo "### Next: Google Play internal testing"
-              echo "Every Android release goes to the Play internal track by default. As a signed-in Hands publisher (deploy tokens cannot promote to Play), run:"
+              echo "Every Android release goes to the Play internal track by default. As a signed-in Hands publisher (Play writes use an accountable identity, not CI's deploy token), run:"
               echo '```'
               echo "scripts/play_internal_promote.sh ${build_id}"
               echo '```'
