@@ -18,6 +18,8 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -304,10 +306,38 @@ internal fun AnnotatedString.withRaftInlineChipGapLinks(): AnnotatedString {
 
 private fun LinkAnnotation.withoutRaftLinkStyles(): LinkAnnotation =
     when (this) {
-        is LinkAnnotation.Url -> LinkAnnotation.Url(url = url, linkInteractionListener = linkInteractionListener)
-        is LinkAnnotation.Clickable -> LinkAnnotation.Clickable(tag = tag, linkInteractionListener = linkInteractionListener)
+        is LinkAnnotation.Url ->
+            LinkAnnotation.Url(url = url, styles = RaftUnstyledLinkStyles, linkInteractionListener = linkInteractionListener)
+        is LinkAnnotation.Clickable ->
+            LinkAnnotation.Clickable(tag = tag, styles = RaftUnstyledLinkStyles, linkInteractionListener = linkInteractionListener)
         else -> this
     }
+
+/**
+ * Link styles that style nothing, for a link that must look like the text under it (a chip's
+ * padding gaps, the message body's tap target). Never pass `styles = null` to a link the markdown
+ * renders: Material3 `Text` gives every link whose styles are null its default
+ * `colorScheme.primary` + underline look, and with no MaterialTheme in the tree that is the M3
+ * baseline purple — a chip's padding showed an underline beside its label (artin 10-29, Compose
+ * desktop). An empty, non-null [TextLinkStyles] is left alone by Material3 and by the foundation.
+ */
+internal val RaftUnstyledLinkStyles: TextLinkStyles = TextLinkStyles()
+
+/**
+ * A chip's link styles (mention / channel / thread / task / permalink / App link chips): never
+ * underlined in any state — the chip box is the affordance. Hover and focus look as at rest (the
+ * foundation applies a null hovered / focused style as "no change", and an inherited underline
+ * would survive that); [pressed] keeps the chip's press wash.
+ */
+internal fun raftChipLinkStyles(style: SpanStyle, pressed: SpanStyle = style): TextLinkStyles {
+    val rest = style.copy(textDecoration = TextDecoration.None)
+    return TextLinkStyles(
+        style = rest,
+        focusedStyle = rest,
+        hoveredStyle = rest,
+        pressedStyle = pressed.copy(textDecoration = TextDecoration.None),
+    )
+}
 
 /**
  * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
@@ -365,6 +395,31 @@ internal fun AnnotatedString.raftInlineBoxRanges(): List<AnnotatedString.Range<R
     getStringAnnotations(RAFT_INLINE_BOX_ANNOTATION_TAG, 0, length).mapNotNull { range ->
         RaftInlineBoxStyle.decode(range.item)?.let { AnnotatedString.Range(it, range.start, range.end) }
     }
+
+/**
+ * Each chip box's full extent: the boxed label plus the padding reserved around it by
+ * [withRaftInlineChipGaps] (a gap placeholder glued by a word joiner) or [appendRaftInlineSpacer]
+ * (a letter-spaced word joiner), on either side. A link over the chip's padding as well as its
+ * label is still the chip.
+ */
+internal fun AnnotatedString.raftInlineChipExtents(): List<IntRange> {
+    val boxes = raftInlineBoxRanges()
+    if (boxes.isEmpty()) return emptyList()
+    val gaps =
+        getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
+            .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) && it.end > it.start }
+    val gapEndingAt = gaps.associateBy { it.end }
+    val gapStartingAt = gaps.associateBy { it.start }
+    return boxes.map { box ->
+        var start = box.start
+        while (start > 0 && text[start - 1] == '\u2060') start--
+        gapEndingAt[start]?.let { start = it.start }
+        var end = box.end
+        while (end < length && text[end] == '\u2060') end++
+        gapStartingAt[end]?.let { end = it.end }
+        start until end
+    }
+}
 
 internal fun AnnotatedString.raftInlineMarkRanges(): List<AnnotatedString.Range<RaftInlineMarkStyle>> =
     getStringAnnotations(RAFT_INLINE_MARK_ANNOTATION_TAG, 0, length).mapNotNull { range ->

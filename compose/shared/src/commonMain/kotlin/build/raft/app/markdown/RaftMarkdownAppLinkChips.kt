@@ -364,7 +364,7 @@ private fun raftAppLinkChipLinkStyles(): TextLinkStyles {
             background = Color.Unspecified,
         )
     // raft-ui `active:overlay-medium`, as a wash over the chip's words (see the permalink chip).
-    return TextLinkStyles(style = base, pressedStyle = base.copy(background = RaftAppThemeState.colors.fillPressed))
+    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillPressed))
 }
 
 private fun raftAppLinkIconInlineContent(result: AppLinkResult, anchor: Modifier): InlineTextContent {
