@@ -168,6 +168,9 @@ internal class RaftComputersNetworkApi(
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-options",
             // Opt in to the `runtimeFormV2` marker on each row (slock runtimeAdmissionService): only a
             // client that asks gets it, because released apps up to 1.13 decoded the rows strictly.
+            // The server marks a row when the runtime has a v2 form and is available for new use or
+            // current; a reply with no marked row at all is read as "unknown", not "no forms"
+            // (runtimeFormV2Availability), so a dropped header cannot disable create.
             headers = mapOf(RUNTIME_FORM_V2_MARKER_HEADER to "1"),
             serverIdOverride = serverId
         )

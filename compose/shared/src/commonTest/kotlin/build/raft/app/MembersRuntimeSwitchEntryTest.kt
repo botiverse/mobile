@@ -160,13 +160,62 @@ class MembersRuntimeSwitchEntryTest {
             MembersRuntimeFormV2EditLoad.Unavailable,
             loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("gemini" to false))
         )
-        // No row at all (not admitted for new agents on this computer): same.
+        // No row at all (not admitted for new agents on this computer), while other rows are marked: same.
         assertEquals(
             MembersRuntimeFormV2EditLoad.Unavailable,
-            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith())
+            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("codex" to true))
         )
         assertEquals(emptyList(), computers.formRequests, "no endless retry against a form that does not exist")
         assertEquals(emptyList(), agents.editRequests)
+    }
+
+    @Test
+    fun theAgentsOwnRuntimeWithoutTheV2MarkerIsUnavailableAndRequestsNoEditForm() = runBlocking {
+        val computers = FormComputersApi()
+        val agents = FormAgentsApi(editCode = 503)
+        assertEquals(
+            MembersRuntimeFormV2EditLoad.Unavailable,
+            loadMembersRuntimeFormV2Edit(
+                access(computers, agents),
+                "m-1",
+                AGENT,
+                "gemini",
+                "gemini",
+                catalogWith("codex" to true, "gemini" to false)
+            ),
+            "not a Retry banner that can never succeed"
+        )
+        assertEquals(emptyList(), agents.editRequests)
+        assertEquals(emptyList(), computers.formRequests)
+    }
+
+    @Test
+    fun theAgentsOwnRuntimeLoadsItsEditFormWhenTheCatalogProvesNothing() = runBlocking {
+        // Marked own runtime, failed catalog, or rows without any marker: the edit form load decides.
+        for (catalog in listOf(catalogWith("codex" to true), unknownCatalog, catalogWith("codex" to false, "gemini" to false))) {
+            val agents = FormAgentsApi(editCode = 503)
+            assertEquals(
+                MembersRuntimeFormV2EditLoad.Failed("runtime_form_v2_http_503"),
+                loadMembersRuntimeFormV2Edit(access(FormComputersApi(), agents), "m-1", AGENT, "codex", "codex", catalog)
+            )
+            assertEquals(listOf(AGENT), agents.editRequests)
+        }
+    }
+
+    @Test
+    fun aSwitchTargetInACatalogWithNoMarkedRowLoadsItsCreateForm() = runBlocking {
+        val computers = FormComputersApi()
+        val load =
+            loadMembersRuntimeFormV2Edit(
+                access(computers, FormAgentsApi(editCode = 200)),
+                "m-1",
+                AGENT,
+                "codex",
+                "builtin",
+                catalogWith("codex" to false, "builtin" to false)
+            )
+        assertIs<MembersRuntimeFormV2EditLoad.Ready>(load)
+        assertEquals(listOf("builtin"), computers.formRequests)
     }
 
     @Test

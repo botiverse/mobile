@@ -6,6 +6,7 @@ import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
 import build.raft.app.data.SharedCreateAgentRuntimeOption
+import build.raft.app.data.currentRuntimeFormV2Availability
 import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.BUILTIN_V2_FORM_JSON
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
@@ -58,6 +59,58 @@ class CreateAgentRuntimeFormV2FailureTest {
         assertEquals(RuntimeFormV2Availability.Unavailable, catalog.runtimeFormV2Availability("gemini"))
         assertEquals(RuntimeFormV2Availability.Unavailable, catalog.runtimeFormV2Availability("cursor"), "no row: not admitted")
         assertEquals(RuntimeFormV2Availability.Unknown, (null as SharedCreateAgentRuntimeCatalog?).runtimeFormV2Availability("codex"))
+    }
+
+    @Test
+    fun aCatalogWithNoMarkedRowAtAllIsUnknownNotUnavailable() {
+        // The server marks rows only for a client that sends X-Raft-Runtime-Form-V2: 1; rows that all lack
+        // the marker (older server, header dropped) prove nothing, so the form load decides, as when the
+        // catalog fails. Create and the runtime switch stay enabled.
+        val unmarked =
+            SharedCreateAgentRuntimeCatalog(
+                machineId = "m-1",
+                options = listOf(option("codex", marker = false), option("builtin", marker = false))
+            )
+        for (runtime in listOf("codex", "builtin", "cursor")) {
+            assertEquals(RuntimeFormV2Availability.Unknown, unmarked.runtimeFormV2Availability(runtime), runtime)
+            assertEquals(RuntimeFormV2Availability.Unknown, unmarked.currentRuntimeFormV2Availability(runtime), runtime)
+        }
+        assertEquals(
+            RuntimeFormV2Availability.Unknown,
+            SharedCreateAgentRuntimeCatalog(machineId = "m-1", options = emptyList()).runtimeFormV2Availability("codex")
+        )
+        // A failed form load under Unknown is the Retry banner, not "unavailable".
+        assertEquals(
+            CreateAgentRuntimeSection.Failed("runtime_form_v2_http_503"),
+            createAgentRuntimeSection(
+                unmarked.runtimeFormV2Availability("codex"),
+                RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_503")
+            )
+        )
+    }
+
+    @Test
+    fun theAgentsOwnRuntimeIsUnavailableOnlyWhenItsUnmarkedRowIsAvailableForNew() {
+        val catalog =
+            SharedCreateAgentRuntimeCatalog(
+                machineId = "m-1",
+                options =
+                    listOf(
+                        option("codex", marker = true),
+                        option("gemini", marker = false),
+                        // Deprecated: not available for new agents, so the server never marks it here.
+                        option("legacy", marker = false).copy(
+                            admissionReason = "deprecated",
+                            availableForNew = false,
+                            canSelectInThisContext = false
+                        )
+                    )
+            )
+        assertEquals(RuntimeFormV2Availability.Available, catalog.currentRuntimeFormV2Availability("codex"))
+        assertEquals(RuntimeFormV2Availability.Unavailable, catalog.currentRuntimeFormV2Availability("gemini"))
+        assertEquals(RuntimeFormV2Availability.Unknown, catalog.currentRuntimeFormV2Availability("legacy"))
+        assertEquals(RuntimeFormV2Availability.Unknown, catalog.currentRuntimeFormV2Availability("cursor"), "no row")
+        assertEquals(RuntimeFormV2Availability.Unknown, (null as SharedCreateAgentRuntimeCatalog?).currentRuntimeFormV2Availability("codex"))
     }
 
     @Test

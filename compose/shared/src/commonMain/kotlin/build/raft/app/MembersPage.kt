@@ -3994,9 +3994,6 @@ internal fun MemberDetailPageContent(
     var agentRuntimeModelLoadsInFlight by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Set<Pair<String, String>>>(emptySet())
     }
-    var agentRuntimeModelErrors by remember(memberIdentity, statusLookupServerId) {
-        mutableStateOf<Map<Pair<String, String>, String>>(emptyMap())
-    }
     var agentRuntimeOptionRequestGenerations by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Map<Pair<String, String>, Long>>(emptyMap())
     }
@@ -4344,30 +4341,6 @@ internal fun MemberDetailPageContent(
                                     .mapKeys { (key, _) -> key.second }
                             }
                             .orEmpty()
-                    val agentRuntimeModelLoadsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeModelLoadsInFlight
-                                    .filter { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapTo(linkedSetOf()) { (_, runtime) -> runtime }
-                            }
-                            .orEmpty()
-                    val agentRuntimeModelErrorsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeModelErrors
-                                    .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapKeys { (key, _) -> key.second }
-                            }
-                            .orEmpty()
-                    val agentRuntimeModelGenerationsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeOptionRequestGenerations
-                                    .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapKeys { (key, _) -> key.second }
-                            }
-                            .orEmpty()
                     val agentProfileEditAuthority =
                         agentDetailStoreState.detailOwner
                             ?.takeIf { owner ->
@@ -4404,7 +4377,6 @@ internal fun MemberDetailPageContent(
                                     generation = requestGeneration
                                 )
                             agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight + key
-                            agentRuntimeModelErrors = agentRuntimeModelErrors - key
                             routeScope.launch {
                                 val result =
                                     provider.createAgentCoordinator.loadRuntimeModels(
@@ -4430,28 +4402,21 @@ internal fun MemberDetailPageContent(
                                         )
                                     return@launch
                                 }
+                                // Only the loaded models are kept (read-only runtime rows); a failure
+                                // leaves the key unloaded, so the next request retries it.
                                 when (result) {
                                     is DataResult.Content ->
                                         if (result.data.models.isNotEmpty()) {
                                             agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
-                                        } else {
-                                            agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                                (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
                                         }
-                                    is DataResult.Empty ->
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
+                                    is DataResult.Empty -> Unit
                                     is DataResult.Error -> {
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to result.error.userFacingMessage(errorStrings))
                                         bridge.log(
                                             "member_detail_runtime_models_failed runtime=${key.second} " +
                                                 "code=${result.error.code}"
                                         )
                                     }
                                     is DataResult.NoPermission -> {
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to result.blocker.userFacingMessage(errorStrings))
                                         bridge.log(
                                             "member_detail_runtime_models_blocked runtime=${key.second} " +
                                                 "code=${result.blocker.code}"
@@ -4544,9 +4509,6 @@ internal fun MemberDetailPageContent(
                                     machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
                                 ),
                             agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
-                            agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                            agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
                             onAgentRuntimeModelsRequest = loadAgentRuntimeModels
                         ),
                         createAgentFormStore = provider.createAgentFormStore,
@@ -5996,9 +5958,6 @@ private fun MembersDetailContent(
 ) {
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
-    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
-    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
-    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
     val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
     val humanActorRole = humanRole.humanActorRole
     val humanOwnerCount = humanRole.humanOwnerCount
@@ -6705,9 +6664,6 @@ private fun MembersDetailContent(
                                             runtimeModels = MembersAgentRuntimeModelInputs(
                                                 agentMachineRuntimes = agentMachineRuntimes,
                                                 agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                                agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                                agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                                agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
                                                 onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
                                             ),
                                             createAgentFormStore = createAgentFormStore,
@@ -9185,9 +9141,6 @@ internal fun MembersAgentProfileHeader(
 private class MembersAgentRuntimeModelInputs(
     val agentMachineRuntimes: List<String> = emptyList(),
     val agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    val agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    val agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    val agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
     val onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> }
 )
 
@@ -10107,9 +10060,6 @@ private fun MembersAgentRuntimeConfigSection(
     val errorStrings = edit.errorStrings
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
-    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
-    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
-    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
     val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
     val canonicalRuntimeConfig =
@@ -10127,7 +10077,6 @@ private fun MembersAgentRuntimeConfigSection(
     val runtimeEditorReady = runtimeStatusResolved && canonicalRuntimeConfig != null
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val runtimeEditingUnavailable = stringResource(Res.string.member_error_runtime_edit_unavailable)
     val runtimeFormV2SavedRefresh = stringResource(Res.string.runtime_form_v2_saved_refresh)
     val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)

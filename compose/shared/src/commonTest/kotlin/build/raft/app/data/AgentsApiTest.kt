@@ -7,10 +7,48 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeProviderConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class AgentsApiTest {
+    // ── Create wire shape (task #186): absent optional fields are omitted, never explicit null ──
+
+    @Test
+    fun externalCreateBodyOmitsMachineRuntimeAndFormNulls() {
+        val body = buildCreateAgentBody(CreateAgentBody(name = "External Agent", external = true))
+
+        assertEquals("""{"name":"External Agent","external":true}""", body)
+        assertFalse("machineId" in body, body)
+        assertFalse("runtime" in body, body)
+        assertFalse("formDefinitionRef" in body, body)
+        assertFalse("formValues" in body, body)
+        assertFalse("null" in body, body)
+    }
+
+    @Test
+    fun createBodyOmitsAbsentOptionalFieldsLikeWeb() {
+        val body = buildCreateAgentBody(CreateAgentBody(name = "Noel", machineId = "machine-1"))
+
+        assertEquals("""{"name":"Noel","machineId":"machine-1"}""", body)
+        assertFalse("\"external\"" in body, body)
+        assertFalse("\"description\"" in body, body)
+        assertFalse("null" in body, body)
+    }
+
+    @Test
+    fun createBodyKeepsPresentOptionalFields() {
+        val body =
+            buildCreateAgentBody(
+                CreateAgentBody(name = "Noel", description = "helper", machineId = "machine-1", avatarUrl = "pixel:mug", external = false)
+            )
+
+        assertEquals(
+            """{"name":"Noel","description":"helper","machineId":"machine-1","avatarUrl":"pixel:mug","external":false}""",
+            body
+        )
+    }
+
     @Test
     fun createAgentPreservesRuntimeFormRejectionCodeForRecovery() = runPortableCoroutineTest {
         val client =

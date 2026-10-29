@@ -17,6 +17,7 @@ import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.currentRuntimeFormV2Availability
 import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.RUNTIME_FORM_V2_FORM_REVISION_STALE
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
@@ -64,7 +65,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     errorFieldKeys: Set<String>,
     onDismiss: () -> Unit,
     onRuntimeSelected: () -> Unit,
-    /** The computer's runtime-options rows (for the switch target's v2 marker), or null if unknown. */
+    /** The computer's runtime-options rows (for the selected runtime's v2 marker), or null if unknown. */
     runtimeCatalog: suspend (machineId: String) -> SharedCreateAgentRuntimeCatalog?,
     onSave: (submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) -> Unit
 ) {
@@ -286,8 +287,9 @@ internal fun membersRuntimeFormV2EditRuntimeSelection(currentRuntimeId: String, 
 /**
  * Loads the editor's form: the agent's own edit form while [selectedRuntimeId] is its saved
  * runtime, otherwise [selectedRuntimeId]'s create form (no agent id, as web after task #8).
- * An agent without a computer, or a switch target whose runtime-options row has no v2 marker,
- * is [MembersRuntimeFormV2EditLoad.Unavailable] (nothing is requested); every load failure is
+ * An agent without a computer, or a runtime (switch target or the agent's own) whose
+ * runtime-options row has no v2 marker, is [MembersRuntimeFormV2EditLoad.Unavailable]
+ * (nothing is requested); every load failure is
  * [MembersRuntimeFormV2EditLoad.Failed]. Nothing falls back to v1.
  */
 internal suspend fun loadMembersRuntimeFormV2Edit(
@@ -307,6 +309,11 @@ internal suspend fun loadMembersRuntimeFormV2Edit(
             }
             access.loader.loadCreate(access.serverId, computer, target)
         } else {
+            // The agent's own runtime: same catalog check, so a runtime known to have no v2 form
+            // shows "unavailable" rather than a Retry banner that can never succeed.
+            if (runtimeCatalog(computer).currentRuntimeFormV2Availability(agentRuntimeId) == RuntimeFormV2Availability.Unavailable) {
+                return MembersRuntimeFormV2EditLoad.Unavailable
+            }
             access.loader.loadEdit(access.serverId, computer, agentId)
         }
     return when (result) {
