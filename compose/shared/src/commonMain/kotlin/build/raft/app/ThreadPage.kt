@@ -17496,10 +17496,11 @@ private val ThreadHeaderMetaStyle = RaftType.Caption.copy(fontSize = 13.sp, line
  * name opens the parent message in its channel, the reply count after it stays plain text.
  */
 @Composable
-private fun ThreadHeaderChannelLinkSubtitle(
+internal fun ThreadHeaderChannelLinkSubtitle(
     channelLabel: String,
     replyCountLabel: String?,
     onOpenInChannel: () -> Unit,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         RaftTooltip(
@@ -17510,7 +17511,8 @@ private fun ThreadHeaderChannelLinkSubtitle(
                 text = channelLabel,
                 onClick = onOpenInChannel,
                 style = ThreadHeaderMetaStyle,
-                maxLines = 1
+                maxLines = 1,
+                interactionSource = interactionSource
             )
         }
         replyCountLabel?.takeIf { it.isNotBlank() }?.let { count ->
