@@ -2,9 +2,7 @@ name: GitHub Release
 
 # One GitHub Release per shipped version, built from what Hands shipped:
 # - Android: the signed APK from the published `main` release (SHA-256 checked against
-#   Hands) and, as a backup, the signed AAB the same android-release.yml run kept as an
-#   artifact (`*-aab`, 90 days; matched to the APK by run id, APK SHA-256 and version).
-#   Not the Google Play build. Missing or expired: APK only, with a warning.
+#   Hands). No AAB: artin decided (2026-10-29) that GitHub Releases never carry one.
 # - iOS: the TestFlight build number, no IPA; plus the iOS Simulator app (Debug, arm64,
 #   unsigned, Simulator only) built here from the tag's commit with Xcode 27.1 on GitHub's
 #   xcode-27 Mac (ios-simulator-app.yml), attached only if its metadata.json names the tag
@@ -16,7 +14,7 @@ name: GitHub Release
 #
 # The `v*` tag is pushed at release closeout, after the Hands release is published.
 # If it was pushed earlier, rerun with workflow_dispatch once the release is live; a
-# rerun also fills in a dmg, AAB or Simulator app that was missing the first time.
+# rerun also fills in a dmg or Simulator app that was missing the first time.
 
 on:
   push:
@@ -30,7 +28,7 @@ on:
 
 permissions:
   contents: write
-  # Read android-release.yml runs and download their signed AAB artifact.
+  # Download this run's dmg and Simulator app artifacts.
   actions: read
 
 concurrency:
@@ -108,13 +106,6 @@ jobs:
         with:
           sparse-checkout: scripts
 
-      # JDK for scripts/verify_android_aab.sh (strict AAB signature check).
-      - name: Set up JDK
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "17"
-
       - name: Download macOS dmg
         if: ${{ needs.dmg.result == 'success' }}
         continue-on-error: true
@@ -133,21 +124,20 @@ jobs:
           name: ios-simulator-app-${{ github.run_id }}
           path: ios-simulator/
 
-      - name: Prepare notes, APK, AAB, dmg and Simulator app
+      - name: Prepare notes, APK, dmg and Simulator app
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
           HANDS_ANDROID_APP_ID: ${{ secrets.HANDS_ANDROID_APP_ID }}
           HANDS_ANDROID_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
           HANDS_IOS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
           DMG_RESULT: ${{ needs.dmg.result }}
           SIMULATOR_RESULT: ${{ needs.simulator.result }}
           COMMIT: ${{ needs.tag.outputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
-          ARGS=(--tag "${TAG}" --out release-out --aab-repo "${REPOSITORY}")
+          ARGS=(--tag "${TAG}" --out release-out)
           mapfile -t DMGS < <(find dmg -maxdepth 1 -type f -name '*.dmg' 2>/dev/null | sort)
           if [ "${#DMGS[@]}" -eq 1 ]; then
             ARGS+=(--dmg "${DMGS[0]}")
@@ -176,6 +166,15 @@ jobs:
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release edit "${TAG}" --title "Raft ${VERSION}" --notes-file release-out/body.md
             gh release upload "${TAG}" "${ASSETS[@]}" --clobber
+            # Mirror this run's asset list: drop renamed or retired assets (an older dmg
+            # name, an AAB) so a rerun never leaves a stale file next to the new one.
+            mapfile -t KEEP < <(printf '%s\n' "${ASSETS[@]##*/}")
+            while IFS= read -r name; do
+              if ! printf '%s\n' "${KEEP[@]}" | grep -qxF -- "${name}"; then
+                echo "Removing stale asset ${name}"
+                gh release delete-asset "${TAG}" "${name}" --yes
+              fi
+            done < <(gh release view "${TAG}" --json assets --jq '.assets[].name')
           else
             gh release create "${TAG}" --verify-tag --title "Raft ${VERSION}" \
               --notes-file release-out/body.md "${ASSETS[@]}"

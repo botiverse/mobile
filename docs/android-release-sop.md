@@ -213,10 +213,10 @@ creates a release tag. A tag is a post-publication audit record, never a build
 trigger or a way to bypass the draft gate.
 
 Pushing the `vX.Y.Z` tag runs `github-release.yml`, which creates the GitHub
-Release from what Hands shipped: the published `main` APK, the signed AAB from
-the same CI run (a backup of the Hands build, not the Play build; skipped with a
-warning when the artifact is gone), iOS's TestFlight build number, and, built
-from the tag's commit, an unsigned, not notarized macOS dmg and a zipped iOS
+Release from what Hands shipped: the published `main` APK (no AAB: GitHub
+Releases never carry one, artin 2026-10-29), iOS's TestFlight build number, and,
+built from the tag's commit, an unsigned, not notarized Apple silicon macOS dmg
+(`raft-macos-arm64-unsigned-<version>.dmg`) and a zipped iOS
 Simulator `.app` (Xcode 27.1 on GitHub's `xcode-27` Mac, Debug, arm64; Simulator
 only, attached only when its `metadata.json` names the tag commit). A failed dmg
 or Simulator build releases the rest with a warning; rerun with

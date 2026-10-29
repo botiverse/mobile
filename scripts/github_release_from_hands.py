@@ -402,12 +402,13 @@ def android(version: str, out: Path, hands: Hands, app_id: str, aab_repo: str) -
 def macos(version: str, out: Path, dmg: Path) -> tuple[str, Path]:
     if not dmg.is_file():
         die(f"dmg not found: {dmg}")
-    asset = out / f"raft-macos-{version}.dmg"
+    # Blacksmith macOS runners are Apple silicon and jpackage bundles an arm64 JDK.
+    asset = out / f"raft-macos-arm64-unsigned-{version}.dmg"
     shutil.copyfile(dmg, asset)
     steps = notes_block(MACOS_FIRST_LAUNCH)
     section = (
         f"## macOS {version}\n\n"
-        f"**Unsigned, not notarized.** dmg SHA-256 `{sha256_of(asset)}`\n\n{steps}"
+        f"**Apple silicon (M-series) Macs only. Unsigned, not notarized.** dmg SHA-256 `{sha256_of(asset)}`\n\n{steps}"
     )
     return section, asset
 
