@@ -991,6 +991,7 @@
     <string name="thread_files_empty_detail">此消息列中分享的文件会显示在这里。</string>
     <string name="thread_files_error_load">文件加载失败</string>
     <string name="thread_files_load_more">加载更多</string>
+    <string name="thread_files_artifacts_show_more">显示更多 Artifact</string>
     <string name="thread_files_file_actions">%1$s 的操作</string>
     <string name="thread_files_jump_to_message">跳转到原消息</string>
     <string name="thread_files_download_file">下载文件</string>

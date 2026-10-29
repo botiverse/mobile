@@ -116,6 +116,11 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.NetworkRaftConversationArtifactsApi
+import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+import build.raft.app.data.artifactWebUrl
+import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftThreadApiClient
@@ -392,6 +397,7 @@ import androidx.compose.material3.Text
 import build.raft.app.compat.ui.imageResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -8474,7 +8480,12 @@ private fun SharedThreadRouteContentContent(
     val filesViewModel: SharedThreadFilesViewModel? =
         if (featureOwnerMountPlan.mountFilesOwner) {
             viewModel(key = "shared-thread-files-$threadInstanceKey") {
-                SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
+                SharedThreadFilesViewModel(
+                    dataSource,
+                    diagnosticsLogger = { bridge.log(it) },
+                    // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
+                    artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
+                )
             }
         } else {
             null
@@ -33461,19 +33472,32 @@ private fun ThreadFilesTab(
         return
     }
     val vm = filesViewModel
+    // Workspace Artifacts (web #11580): the conversation's own lead its files, behind the
+    // server's workspace_artifacts_v0, latched while the tab is composed.
+    val appLinkHost = LocalThreadAppLinkPreviewHost.current
+    val artifactsServerId = appLinkHost?.serverId?.takeIf { appLinkHost.artifacts != null }
+    val artifactsEnabled =
+        rememberServerFeatureLatched(
+            appLinkHost?.artifacts?.featureFlags,
+            artifactsServerId?.let(::ServerId),
+            WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
+        )
+    val artifactsScope = artifactsServerId?.takeIf { artifactsEnabled }?.let(::ThreadFilesArtifactsScope)
     LaunchedEffect(
         threadInstanceKey,
         filesStartKey,
         basePayload.sourceThreadId,
         basePayload.streamChannelId,
         basePayload.instanceId,
-        active
+        active,
+        artifactsScope
     ) {
         if (!active) return@LaunchedEffect
         if (filesStartKey == null) return@LaunchedEffect
         vm.dispatch(
             SharedThreadFilesIntent.Start(
-                basePayload = basePayload
+                basePayload = basePayload,
+                artifacts = artifactsScope
             )
         )
         if (vm.state.value.payload.shouldFetchInitialFiles()) {
@@ -33487,13 +33511,26 @@ private fun ThreadFilesTab(
             onAuthRequired(payload.errorCode)
         }
     }
+    val uriHandler = LocalUriHandler.current
+    val artifactWebBaseUrl = appLinkHost?.artifacts?.webBaseUrl.orEmpty()
+    // The in-app viewer; the browser only when no page can open from here.
+    val artifactOpener = rememberRaftArtifactOpener { uriHandler.openUri(artifactWebUrl(artifactWebBaseUrl, it)) }
+    RaftArtifactViewerPrewarm(enabled = active && filesState.artifacts.items.isNotEmpty())
     ThreadFilesContent(
         payload = payload,
         attachmentOpenStates = attachmentOpenStates,
         autoLoadRouteListKey = threadInstanceKey,
-        refreshing = filesState.refreshing
+        refreshing = filesState.refreshing,
+        artifacts = filesState.artifacts
     ) { action, attachmentId ->
         when (action) {
+            "openArtifact" -> {
+                val artifact = filesState.artifacts.items.firstOrNull { it.summary.id == attachmentId } ?: return@ThreadFilesContent
+                // The row opens the latest version, as the web's (`version: null`).
+                val target = ArtifactLinkTarget(artifact.summary.id)
+                artifactOpener.open(target, RaftArtifactViewerHeader.of(artifact.summary, target), "files_tab")
+            }
+            "loadMoreArtifacts" -> vm.dispatch(SharedThreadFilesIntent.LoadMoreArtifacts)
             "open" -> {
                 val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
                 val attachment = payload.findThreadAttachment(cleanAttachmentId) ?: return@ThreadFilesContent

@@ -32,11 +32,11 @@ data class ArtifactSummariesRequestWireDto(
     val refs: List<ArtifactObjectRefWireDto>,
 )
 
-/** `ArtifactActor`. */
+/** `ArtifactShownActor` (`ArtifactActor`, with no `id` for a reader outside the Artifact's server). */
 @Serializable
 data class ArtifactActorWireDto(
     val type: String,
-    val id: String,
+    val id: String? = null,
     val name: String,
     val displayName: String,
     val avatarUrl: String? = null,
@@ -181,8 +181,12 @@ fun parseArtifactSummariesAnswer(bodyText: String?): Map<String, ArtifactSummary
     return answers
 }
 
-private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? {
-    val card = runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), this) }.getOrNull() ?: return null
+private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? =
+    runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), this) }.getOrNull()?.toArtifactSummaryOrNull()
+
+/** The card as this client shows it; null for a home it can't read. */
+internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
+    val card = this
     val home =
         when (card.home.kind) {
             "conversation" -> card.home.conversation?.let { ArtifactHome.Conversation(it.name, dm = it.type == "dm") } ?: return null
