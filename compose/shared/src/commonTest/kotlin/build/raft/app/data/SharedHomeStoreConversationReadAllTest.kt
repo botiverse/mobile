@@ -218,9 +218,40 @@ class SharedHomeStoreConversationReadAllTest {
         assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys)
     }
 
+    /**
+     * Web #11494 `clearThreadUnread`: the unread-thread pill reads a thread wholly past the history
+     * window without opening it. Its unread leaves Home at once (the pill moves on) and comes back
+     * if the read fails; the channel's own unread is untouched.
+     */
+    @Test
+    fun readingAFollowedThreadClearsItAtOnceAndAFailedReadPutsItBack() = runTest {
+        val response = CompletableDeferred<DataResult<ReadReceiptResult>>()
+        val reads = mutableListOf<ChannelId>()
+        val store =
+            store(
+                markConversationReadAll = { error("unused") },
+                markChannelReadAll = { channelId ->
+                    reads += channelId
+                    response.await()
+                },
+            )
+        store.accept(SharedHomeIntent.Start)
+
+        val action = launch { store.accept(SharedHomeIntent.MarkFollowedThreadRead("thread-1")) }
+        runCurrent()
+        assertEquals(listOf(ChannelId("thread-1")), reads)
+        assertEquals(setOf("thread-other"), store.snapshot().followedThreadUnread.keys)
+        assertEquals(3, store.snapshot().channels.first { it.channelId == ChannelId("channel-1") }.unreadCount)
+
+        response.complete(DataResult.Error(ScreenError(code = "server_unavailable", retryable = true)))
+        action.join()
+        assertEquals(2, store.snapshot().followedThreadUnread["thread-1"]?.unreadCount)
+    }
+
     private fun TestScope.store(
         home: HomeSnapshot = sampleHome(),
         markConversationReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult>,
+        markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = { DataResult.Empty(EmptyReason.NoMessages) },
         onAck: (String, PerReceiverReadStateChanged) -> Unit = { _, _ -> },
         onFailure: (String) -> Unit = {}
     ): SharedHomeStore {
@@ -235,6 +266,7 @@ class SharedHomeStoreConversationReadAllTest {
                 ),
             scope = backgroundScope,
             markConversationReadAll = markConversationReadAll,
+            markChannelReadAll = markChannelReadAll,
             pinUpdateFailureCallback = onFailure,
             onConversationReadAllAcknowledged = onAck,
         )

@@ -12232,6 +12232,37 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
+                    action == ThreadOpenUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
+                        !eventThreadChannelId.isNullOrBlank() -> {
+                        // Web #11494: the parent is past the plan's history window (the channel shows
+                        // the paywall there) but replies are inside it: open the thread, which reads it.
+                        // Its parent is not loaded, so nothing seeds the reply page; it loads canonically.
+                        bridge.log(
+                            "thread_unread_thread_jump_open_past_history parent=${itemId.take(8)} " +
+                                "thread=${eventThreadChannelId.take(8)}"
+                        )
+                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
+                        onOpenThreadPayload(
+                            renderedThread.replyThreadLoadingPayload(
+                                parentMessageId = itemId,
+                                parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
+                                threadChannelId = eventThreadChannelId,
+                            )
+                        )
+                    }
+                    action == ThreadJumpToUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
+                        !eventThreadChannelId.isNullOrBlank() -> {
+                        // Web #11494: the parent and its replies are past the window; the jump lands on
+                        // the paywall, where the thread can't be opened, so read it now: the count drops
+                        // and the next tap moves on instead of staying on this thread.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                            )
+                        )
+                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
+                    }
                     action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
                         // The unread-thread pill: focus (scroll to and highlight) the parent
                         // message through the route focus session, as a search hit does; a parent
@@ -23179,7 +23210,11 @@ private fun ThreadMessagesListContent(
                                 "target=${jump.targetMessageId.take(8)}"
                         )
                         onThreadEvent(
-                            ThreadJumpToUnreadThreadParentAction,
+                            when (jump.historyAction) {
+                                ThreadUnreadJumpHistoryAction.FocusParent -> ThreadJumpToUnreadThreadParentAction
+                                ThreadUnreadJumpHistoryAction.OpenThread -> ThreadOpenUnreadThreadPastHistoryAction
+                                ThreadUnreadJumpHistoryAction.FocusParentAndRead -> ThreadJumpToUnreadThreadPastHistoryAction
+                            },
                             jump.targetMessageId,
                             threadChannelId = jump.targetThreadChannelId,
                         )
@@ -25591,6 +25626,12 @@ internal fun threadRenderedBottomScrollOffset(
 
 /** The action the unread-thread pill sends: focus that parent message. */
 internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
+
+/** The pill's thread has its parent past the history window and replies inside it: open the thread. */
+internal const val ThreadOpenUnreadThreadPastHistoryAction = "openUnreadThreadPastHistory"
+
+/** The pill's thread is wholly past the history window: land on the paywall and read the thread. */
+internal const val ThreadJumpToUnreadThreadPastHistoryAction = "focusUnreadThreadPastHistory"
 
 /** Above the list rows and the inline search bar's neighbours, as the old floating pills. */
 private const val ThreadJumpControlsZIndex = 5f

@@ -122,7 +122,34 @@ internal data class ThreadUnreadThreadJump(
      * (artin: opening the thread right after the jump renders at once).
      */
     val targetThreadChannelId: String,
+    /** What a tap does with a parent past the plan's history window ([threadUnreadJumpHistoryAction]). */
+    val historyAction: ThreadUnreadJumpHistoryAction = ThreadUnreadJumpHistoryAction.FocusParent,
 )
+
+/**
+ * Web ThreadUnreadJumpPill with the followed thread's `parentInHistory` / `repliesInHistory`
+ * (server #11517, web #11494 / #11549): a parent behind the plan's history window is only the
+ * history paywall in the channel, where the thread can't be opened to read it.
+ */
+internal enum class ThreadUnreadJumpHistoryAction {
+    /** The ordinary jump: focus the parent (an older server, or a parent inside the window). */
+    FocusParent,
+
+    /** The parent is past the window but replies are inside it: open the thread (which reads it). */
+    OpenThread,
+
+    /** The parent and its replies are past the window: land on the paywall and read the thread, so the next tap moves on. */
+    FocusParentAndRead,
+}
+
+/** Either field absent (older server) keeps the ordinary jump; the app compares no times or plans. */
+internal fun threadUnreadJumpHistoryAction(parent: ThreadUnreadThreadParent?): ThreadUnreadJumpHistoryAction =
+    when {
+        parent?.parentInHistory != false -> ThreadUnreadJumpHistoryAction.FocusParent
+        parent.repliesInHistory == true -> ThreadUnreadJumpHistoryAction.OpenThread
+        parent.repliesInHistory == false -> ThreadUnreadJumpHistoryAction.FocusParentAndRead
+        else -> ThreadUnreadJumpHistoryAction.FocusParent
+    }
 
 /**
  * An unread followed thread's parent message as the followed-threads list names it (web
@@ -136,6 +163,9 @@ internal data class ThreadUnreadThreadParent(
     val parentMessageId: String,
     /** When the parent was posted; null from an older server. */
     val parentCreatedAtEpochMillis: Long? = null,
+    /** Followed thread `parentInHistory` / `repliesInHistory` (server #11517); null from an older server. */
+    val parentInHistory: Boolean? = null,
+    val repliesInHistory: Boolean? = null,
 )
 
 /**
@@ -154,6 +184,8 @@ internal fun List<InboxItem>.toThreadUnreadThreadParents(parentChannelId: String
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
                 parentCreatedAtEpochMillis = item.parentMessageCreatedAt?.let(::parseRaftTimestampEpochMillisOrNull),
+                parentInHistory = item.parentInHistory,
+                repliesInHistory = item.repliesInHistory,
             )
     }
     return parents
@@ -290,11 +322,17 @@ internal fun projectThreadUnreadThreadJump(
     fun unloadedTarget(parent: ThreadUnreadThreadParent) = parent.parentMessageId to parent.threadChannelId
     val nextTarget = nearestBelowIndex?.let(::loadedTarget) ?: unloadedBelow?.let(::unloadedTarget)
     val earliestTarget = unloadedAbove?.let(::unloadedTarget) ?: earliestAboveIndex?.let(::loadedTarget)
+    fun jump(direction: ThreadUnreadThreadJumpDirection, target: Pair<String, String>) =
+        ThreadUnreadThreadJump(
+            direction = direction,
+            count = count,
+            targetMessageId = target.first,
+            targetThreadChannelId = target.second,
+            historyAction = threadUnreadJumpHistoryAction(unloadedParents[target.second]),
+        )
     return when {
-        nextTarget != null ->
-            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nextTarget.first, nextTarget.second)
-        earliestTarget != null ->
-            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestTarget.first, earliestTarget.second)
+        nextTarget != null -> jump(ThreadUnreadThreadJumpDirection.Next, nextTarget)
+        earliestTarget != null -> jump(ThreadUnreadThreadJumpDirection.Earliest, earliestTarget)
         else -> null
     }
 }
