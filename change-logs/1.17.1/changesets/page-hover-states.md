@@ -4,7 +4,7 @@ area: messages
 platforms:
   - ios
   - desktop
-pull_request: TBD
+pull_request: 3957
 rollout: full
 ---
 
