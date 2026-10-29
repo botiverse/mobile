@@ -108,7 +108,7 @@ private val visualAgentStatusResolver: RaftAgentStatusResolver = { memberId ->
 }
 
 @Composable
-private fun ChannelSettingsVisualContent() {
+internal fun ChannelSettingsVisualContent() {
     ChannelSettingsScaffold(refreshing = false, onBack = {}) {
         ChannelSettingsContent(
             model =

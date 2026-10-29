@@ -41,6 +41,13 @@ class RaftWidePanesTest {
     }
 
     @Test
+    fun channelSettingsAndItsSubViewsAreSupportingPanes() {
+        val supporting = RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Supporting }.toSet()
+        assertEquals(setOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE, JOINT_CHANNEL_CONNECTIONS_PAGE), supporting)
+        assertEquals(RaftPaneRole.Window, RaftPageRegistry.paneRole(MEMBER_DETAIL_PAGE))
+    }
+
+    @Test
     fun unlistedPagesOpenAsWindows() {
         assertEquals(RaftPaneRole.Window, RaftPageRegistry.paneRole("compose_not_a_page"))
         assertEquals(RaftPaneRole.Window, RaftPageRegistry.paneRole("compose_slock_app_shell"))

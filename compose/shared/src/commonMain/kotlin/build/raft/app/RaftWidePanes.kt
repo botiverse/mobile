@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
@@ -125,6 +126,12 @@ internal fun RaftPaneHost(
     CompositionLocalProvider(LocalRaftHost provides host, content = content)
 }
 
+/**
+ * True on the first page of the supporting pane, where the page's Back closes the pane: its head
+ * shows the leading Close (×, web drawer) instead of the Back arrow (RaftTopPageHeader).
+ */
+internal val LocalRaftPaneBackCloses = staticCompositionLocalOf { false }
+
 /** Web ChannelSettingsSheet: the drawer is at most 420 wide. */
 internal const val RAFT_SUPPORTING_PANE_MAX_DP = 420f
 internal const val RAFT_SUPPORTING_PANE_MIN_DP = 320f
@@ -211,12 +218,14 @@ internal fun RaftSupportingPaneStack(
                 close = { onStackChange(currentStack.close(entry.id)) },
             ) {
                 val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
-                RaftChildPage(
-                    pageName = entry.pageName,
-                    pageData = pageData,
-                    modifier = Modifier.fillMaxSize(),
-                    active = active && entry == top,
-                )
+                CompositionLocalProvider(LocalRaftPaneBackCloses provides (entry == stack.entries.first())) {
+                    RaftChildPage(
+                        pageName = entry.pageName,
+                        pageData = pageData,
+                        modifier = Modifier.fillMaxSize(),
+                        active = active && entry == top,
+                    )
+                }
             }
         }
     }
