@@ -277,23 +277,16 @@ internal fun raftServerMenuModel(
 
 /**
  * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
- * in the apps' desktop mode"). On a wide screen the rail already has Settings at its foot, so
- * the row leaves it out; a guest has neither Members nor Computers, so a guest's row on a wide
- * screen is empty and the popover draws no row at all. The phone keeps every page.
+ * in the apps' desktop mode"). The phone keeps every page: it has no rail. On a wide screen the
+ * rail already has Members and Settings, and Computers is a Settings section, so the row would
+ * only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
  */
 internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,
     wide: Boolean,
     guest: Boolean,
 ): List<RaftServerMenuEntry> =
-    if (!wide) {
-        entries
-    } else {
-        entries.filter { entry ->
-            entry != RaftServerMenuEntry.Settings &&
-                !(guest && (entry == RaftServerMenuEntry.Members || entry == RaftServerMenuEntry.Computers))
-        }
-    }
+    if (!wide) entries else emptyList()
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =
