@@ -2,9 +2,11 @@ package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
+import build.raft.app.network.sync.CanonicalMessageV2CommitResult
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
+import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
@@ -16,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -139,18 +142,80 @@ class CanonicalMessageV2EnteredPageWriteThroughTest {
         assertEquals("hello m20", contentAfter(passRevision = false))
     }
 
+    @Test
+    fun anEnterPageWhoseTicketPrecededAHorizonResetIsNoRealtimeBaseline() {
+        // #3905 review. Pair: the identical enter (ticket with its realtime baseline, then the page); a horizonReset
+        // lands between the ticket and the write, or not at all. The stale page stores its facts and range but neither
+        // claims the head nor becomes the baseline: the canary's baseline is abandoned (as after an external commit),
+        // never committed, and the scope gets no continuous realtime window.
+        data class Run(
+            val seqs: List<Long>,
+            val headClaimed: Boolean,
+            val baselineCommits: List<SyncScopeKey>,
+            val canary: List<String>,
+            val continuity: CanonicalMessageV2ScopeContinuity,
+        )
+        fun run(resetDuringRequest: Boolean) = withDatabase { database ->
+            val rig = Rig(database)
+            runBlocking {
+                val ticket = assertNotNull(rig.loader.beginEnter(partition, "channel-1", replyParent = null))
+                assertNotNull(ticket.baseline, "a top-level enter registers its realtime baseline before the request")
+                if (resetDuringRequest) {
+                    // The resume's horizonReset while the page's request is in flight.
+                    assertEquals(
+                        CanonicalMessageV2CommitResult.Committed,
+                        rig.engine.clearHeadVerification(partition, rig.engine.partitionGeneration(partition)),
+                    )
+                }
+                val body = """{"messages":${pageOf(node("m10", 10), node("m20", 20))},"historyLimited":false}"""
+                val page = assertNotNull(enteredPageFromBody("channel-1", body, channelType = "channel"))
+                rig.loader.persistEnteredPage(ticket, page) { true }
+                Run(
+                    seqs = rig.onDisk().map { it.fact.seq },
+                    headClaimed = rig.store.readSegments(scope).any { it.headAtVerify },
+                    baselineCommits = rig.baselineCommits.toList(),
+                    canary = rig.canaryLogs
+                        .filter { "enter=" in it }
+                        .map { it.substringAfter("canonical_v2_canary ").substringBefore(" ") },
+                    continuity = rig.canary.continuityOf(scope),
+                )
+            }
+        }
+        val stale = run(resetDuringRequest = true)
+        assertEquals(listOf(10L, 20L), stale.seqs, "the stale page's facts are stored")
+        assertFalse(stale.headClaimed, "no head claim")
+        assertEquals(emptyList(), stale.baselineCommits, "no baseline")
+        assertEquals(listOf("enter=registered", "enter=abandoned"), stale.canary, "the canary baseline is never committed")
+        assertEquals(CanonicalMessageV2ScopeContinuity.NoWindow, stale.continuity)
+
+        val fresh = run(resetDuringRequest = false)
+        assertEquals(stale.seqs, fresh.seqs)
+        assertTrue(fresh.headClaimed, "control: the same page without the reset claims the head")
+        assertEquals(listOf(scope), fresh.baselineCommits)
+        assertEquals(listOf("enter=registered", "enter=committed"), fresh.canary)
+        assertTrue(fresh.continuity != CanonicalMessageV2ScopeContinuity.NoWindow, "control: the canary has the window")
+    }
+
     private class Rig(database: RaftSqlDatabase) {
         val network = RecordingNetworkClient(
             canonicalV2TestPage(),
             threadSummariesBody = """{"m20":{"threadChannelId":"t-20","replyCount":3}}""",
         )
         val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        private val engine = CanonicalMessageV2GenerationEngine(
+
+        /** Scopes the engine committed as a realtime baseline (its snapshot observer), in order. */
+        val baselineCommits = mutableListOf<SyncScopeKey>()
+        val engine = CanonicalMessageV2GenerationEngine(
             coordinator = CanonicalMessageV2BaselineCoordinator(),
             store = store,
-            snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
+            snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver { baselineCommits += it },
         )
-        private val canary = CanonicalMessageV2ProductionCanary(isEnabledForServer = { true }, generationEngine = engine)
+        val canaryLogs = mutableListOf<String>()
+        val canary = CanonicalMessageV2ProductionCanary(
+            isEnabledForServer = { true },
+            generationEngine = engine,
+            logger = { canaryLogs += it },
+        )
         private val fetcher = CanonicalMessageV2RestSnapshotFetcher(network)
         val loader = CanonicalMessageV2EnteredScopeLoader(canary, engine, fetcher, isEnabledForServer = { true })
         val writer = CanonicalMessageV2AdjacentPageWriter(canary, engine, fetcher, isEnabledForServer = { true })

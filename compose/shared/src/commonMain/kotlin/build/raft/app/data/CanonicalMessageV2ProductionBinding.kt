@@ -585,7 +585,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      * 3. rows convert one by one; a left-out row splits the page's claim ([CanonicalMessageV2PageRows]);
      * 4. under the scope writer: `stillCurrent()` and flag rechecked; a thread header naming another parent is
      *    cleared; [CanonicalMessageV2GenerationEngine.applyCoverage] with the ticket's generation and revision. Only
-     *    a page whose (split) claim still reaches the head is the realtime baseline
+     *    a page whose (split) claim still reaches the head, and whose head claim no horizonReset voided since the
+     *    ticket ([CanonicalMessageV2GenerationEngine.applyCoverageReportingBaseline]), is the realtime baseline
      *    ([CanonicalMessageV2ProductionCanary.onEnterCommitted]); any other commit is an external commit.
      */
     override suspend fun persistEnteredPage(
@@ -662,7 +663,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 try {
                     clearHeaderOfAnotherParent(scope, cursorParent)?.let(::log)
                     // Phase 2a (P1): the page is added, never a rebaseline — older stored pages stay.
-                    val result = generationEngine.applyCoverage(
+                    val commit = generationEngine.applyCoverageReportingBaseline(
                         scope = scope,
                         envelopes = rows.envelopes,
                         coverage = coverage,
@@ -677,13 +678,17 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         // Phase 3b: read with the ticket, before the request.
                         expectedHeadEpoch = ticket.expectedHeadEpoch,
                     )
+                    val result = commit.result
+                    // A horizonReset since the ticket voided the page's head claim: facts and range only, no baseline.
+                    val headVoided = atHead && result == CanonicalMessageV2CommitResult.Committed && !commit.baselineAdmitted
                     log(
                         result.wireOutcome(rows.envelopes.size) + leftOut +
-                            if (!atHead) " coverage=${coverage?.let { "not_head" } ?: "none"}" else "",
+                            (if (!atHead) " coverage=${coverage?.let { "not_head" } ?: "none"}" else "") +
+                            (if (headVoided) " head_claim=stale_epoch" else ""),
                     )
                     if (result == CanonicalMessageV2CommitResult.Committed) {
                         val baseline = ticket.baseline
-                        if (baseline != null && atHead) {
+                        if (baseline != null && commit.baselineAdmitted) {
                             val committed = generationEngine.currentCursor(scope)
                             val frame = CanonicalMessageV2SnapshotFrame(
                                 scope = scope,
@@ -1300,7 +1305,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 val coverage = latestPageCoverage(partition, channelId, pageSeqs, requestedLimit, messageWindow, historyLimited)
                     ?.takeIf { rows.claimable }
                 val baseline = coverage?.excluding(rows.rejectedSeqs)?.lastOrNull()?.headAtVerify == true
-                val result = generationEngine.applyCoverage(
+                val commit = generationEngine.applyCoverageReportingBaseline(
                     scope = scope,
                     envelopes = envelopes,
                     coverage = coverage,
@@ -1314,6 +1319,7 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                     excludedSeqs = rows.rejectedSeqs,
                     expectedHeadEpoch = expectedHeadEpoch,
                 )
+                val result = commit.result
                 // What the window holds now, for the baseline replay: the page under the committed cursor.
                 val committedFrame = generationEngine.currentCursor(scope)?.let { cursor ->
                     CanonicalMessageV2SnapshotFrame(scope = scope, envelopes = envelopes, cursor = cursor)
@@ -1327,7 +1333,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 log(outcome)
                 if (result == CanonicalMessageV2CommitResult.Committed) {
                     val frame = committedFrame
-                    if (ownBaseline != null && frame != null && baseline) {
+                    // Only a page admitted as the baseline (its head claim not voided by a horizonReset since
+                    // [expectedHeadEpoch] was read) makes the window continuous.
+                    if (ownBaseline != null && frame != null && commit.baselineAdmitted) {
                         canary.onEnterCommitted(
                             ownBaseline,
                             frame,

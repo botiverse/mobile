@@ -208,6 +208,16 @@ sealed interface CanonicalMessageV2CommitResult {
     data class BaselineRequired(val requestRebaseline: Boolean) : CanonicalMessageV2CommitResult
 }
 
+/**
+ * Phase 2b: [CanonicalMessageV2GenerationEngine.applyCoverageReportingBaseline]'s answer. [baselineAdmitted] = the write
+ * committed AND was admitted as the scope's realtime baseline: it asked to be one and its head claim was not voided by
+ * a horizonReset since its head epoch was read. A page writer hands the canary its baseline only then.
+ */
+data class CanonicalMessageV2CoverageCommit(
+    val result: CanonicalMessageV2CommitResult,
+    val baselineAdmitted: Boolean,
+)
+
 /** Integrates the baseline gate with the disjoint V2 store while remaining unbound to production routing. */
 class CanonicalMessageV2GenerationEngine(
     private val coordinator: CanonicalMessageV2BaselineCoordinator,
@@ -379,7 +389,46 @@ class CanonicalMessageV2GenerationEngine(
         expectedHeadEpoch: Long? = null,
         /** Phase 2b: see [CanonicalMessageV2Store.applyCoverage]. */
         excludedSeqs: Set<Long> = emptySet(),
-    ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
+    ): CanonicalMessageV2CommitResult =
+        applyCoverageReportingBaseline(
+            scope = scope,
+            envelopes = envelopes,
+            coverage = coverage,
+            revAtRequest = revAtRequest,
+            userDriven = userDriven,
+            expectedPartitionGeneration = expectedPartitionGeneration,
+            threadParent = threadParent,
+            insertOnly = insertOnly,
+            unknownFieldsByFactId = unknownFieldsByFactId,
+            runPartitionRetention = runPartitionRetention,
+            countsAsScopeCommit = countsAsScopeCommit,
+            establishesBaseline = establishesBaseline,
+            expectedHeadEpoch = expectedHeadEpoch,
+            excludedSeqs = excludedSeqs,
+        ).result
+
+    /**
+     * Phase 2b: [applyCoverage] (same parameters), also telling whether the write was admitted as the scope's realtime baseline
+     * ([CanonicalMessageV2CoverageCommit.baselineAdmitted]). A page writer holding a canary baseline commits it only
+     * then: a head claim voided by a horizonReset ([expectedHeadEpoch] stale) stores the page's facts and range, but
+     * is no baseline.
+     */
+    suspend fun applyCoverageReportingBaseline(
+        scope: SyncScopeKey,
+        envelopes: List<CanonicalMessageEnvelopeV2>,
+        coverage: CanonicalMessageV2Coverage?,
+        revAtRequest: Long,
+        userDriven: Boolean,
+        expectedPartitionGeneration: Long,
+        threadParent: CanonicalMessageV2ThreadParent? = null,
+        insertOnly: Boolean = false,
+        unknownFieldsByFactId: Map<String, Set<MessageAggregateField>> = emptyMap(),
+        runPartitionRetention: Boolean = true,
+        countsAsScopeCommit: Boolean = true,
+        establishesBaseline: Boolean = false,
+        expectedHeadEpoch: Long? = null,
+        excludedSeqs: Set<Long> = emptySet(),
+    ): CanonicalMessageV2CoverageCommit = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
         val headStale = headClaimIsStale(scope.partition, expectedHeadEpoch)
         val admittedCoverage = if (headStale) coverage?.copy(headAtVerify = false) else coverage
@@ -391,7 +440,10 @@ class CanonicalMessageV2GenerationEngine(
             "a realtime baseline needs a head coverage"
         }
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
-            return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
+            return@withPartitionMutation CanonicalMessageV2CoverageCommit(
+                CanonicalMessageV2CommitResult.PartitionRevoked,
+                baselineAdmitted = false,
+            )
         }
         val write = store.applyCoverage(
             scope, envelopes, admittedCoverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
@@ -399,11 +451,16 @@ class CanonicalMessageV2GenerationEngine(
         )
         if (countsAsScopeCommit) bumpScopeCommitGeneration(scope)
         invalidateEvictedScopes(write.evictedScopes)
-        if (scope in write.evictedScopes) return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
+        if (scope in write.evictedScopes) {
+            return@withPartitionMutation CanonicalMessageV2CoverageCommit(
+                CanonicalMessageV2CommitResult.ScopeEvicted,
+                baselineAdmitted = false,
+            )
+        }
         if (admittedBaseline) coordinator.onSnapshotCommitted(scope)
         write.committedCursor?.let { committed -> synchronized(stateLock) { cursorByScope[scope] = committed } }
         if (admittedBaseline) snapshotCommitObserver.onSnapshotCommitted(scope)
-        CanonicalMessageV2CommitResult.Committed
+        CanonicalMessageV2CoverageCommit(CanonicalMessageV2CommitResult.Committed, baselineAdmitted = admittedBaseline)
     }
 
     /**

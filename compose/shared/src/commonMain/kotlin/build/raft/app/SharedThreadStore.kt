@@ -2612,11 +2612,6 @@ internal class SharedThreadDataSource(
         return loader.beginEnter(partition, channelId, (admission as? DurableScopeAdmission.ReplyThread)?.parent)
     }
 
-    /**
-     * Phase 2b: write the page the thread store fetched through to the durable partition. With [ticket] (taken
-     * before the request) the page is that request's; without one (a reply thread whose stream the request itself
-     * resolved) a ticket without a realtime baseline is taken now for [routeIdentity]'s resolved channel.
-     */
     /** Phase 2b: whether a durable page writer is wired (the write-through is attempted at all). */
     internal val hasEnteredPageWriter: Boolean get() = enteredScopeSnapshotLoader != null
 
@@ -2630,6 +2625,14 @@ internal class SharedThreadDataSource(
         return loader.requestStamp(partition)
     }
 
+    /**
+     * Phase 2b: write the page the thread store fetched through to the durable partition. With [ticket] (taken
+     * before the request) the page is that request's; without one (a reply thread whose stream the request itself
+     * resolved) a ticket without a realtime baseline is taken now for [routeIdentity]'s resolved channel, from
+     * [stamp] ([durableRequestStampIfCurrent], read before the request). Without a ticket and without a stamp of
+     * the same partition nothing is written: a stamp read now, after the request, would miss a horizonReset during
+     * it and let the page claim the head (#3875).
+     */
     internal suspend fun persistEnteredPageIfCurrent(
         ticket: ThreadDurableEnterTicket?,
         stamp: ThreadDurableRequestStamp?,
@@ -2642,18 +2645,21 @@ internal class SharedThreadDataSource(
         val stillCurrent = { isCurrentReplyCacheProvenance(context.provenance) }
         val effective =
             ticket ?: run {
+                // Never read at write time: the stamp must predate the request (see above).
+                if (stamp == null) return
                 if (!routeIdentity.canRenderTimelineCandidates) return
                 val admission = durableScopeAdmission(routeIdentity, replyParent) ?: return
                 val partition =
                     context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                         ?: return
+                if (stamp.partition != partition) return
                 if (!stillCurrent()) return
                 loader.beginEnter(
                     partition,
                     page.channelId,
                     (admission as? DurableScopeAdmission.ReplyThread)?.parent,
                     registerBaseline = false,
-                    stamp = stamp?.takeIf { it.partition == partition },
+                    stamp = stamp,
                 ) ?: return
             }
         loader.persistEnteredPage(effective, page, stillCurrent)
@@ -2691,7 +2697,7 @@ internal class SharedThreadDataSource(
     /**
      * Offline cache paging entry (task #168): hand a fetched older / newer page to the durable window
      * extender, which appends it only when it is exactly adjacent to the stored window. Same admission
-     * as [loadEnteredScopeSnapshotIfCurrent]; `stillCurrent` is re-read by the extender after its own
+     * as [beginEnteredPageIfCurrent]; `stillCurrent` is re-read by the extender after its own
      * network round trip. Returns whether the extender was asked at all (diagnostics only).
      */
     internal suspend fun extendDurableWindowIfCurrent(
@@ -2863,7 +2869,7 @@ internal class SharedThreadDataSource(
 
     /**
      * Task #14c: the late-ack catch-up requests for this reply-thread route's own thread scope (same admission and
-     * partition as [loadEnteredScopeSnapshotIfCurrent]); `null` for any other route or without a writer.
+     * partition as [beginEnteredPageIfCurrent]); `null` for any other route or without a writer.
      */
     internal fun threadJoinConfirmationsIfCurrent(
         routeIdentity: ThreadRouteIdentity,
@@ -4529,7 +4535,7 @@ internal class SharedThreadDataSource(
      * Task #14b ("every authoritative page is persisted"): hand the reply page an Activity prewarm just
      * fetched to the durable V2 writer as the thread scope's window, so opening the thread later renders
      * `thread_durable_last_known` even after the in-memory prewarm was invalidated or the process restarted.
-     * Same admission as [loadEnteredScopeSnapshotIfCurrent] for the prewarm's reply route (renderable reply
+     * Same admission as [persistEnteredPageIfCurrent] for the prewarm's reply route (renderable reply
      * route with its typed parent, an owning partition, current provenance); additionally the page must be
      * the one the server resolved for exactly this thread. The parent named here is only the route's claim —
      * the writer has the server confirm it. Every refusal on this side logs one `canonical_v2_prewarm_page`
