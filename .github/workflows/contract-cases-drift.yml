@@ -1,0 +1,83 @@
+name: Unread contract cases drift
+
+# The app runs a pinned copy of botiverse/slock's shared unread contract cases
+# (packages/shared/contract-cases/unread → compose/shared/src/commonTest/resources/
+# contract-cases/unread, SOURCE_SHA beside it; task #proj-mobile:#70). This job
+# fails when slock `staging` has cases the copy does not, so a rule web and the
+# app agreed on cannot change upstream without the app noticing (Tenny: daily
+# and on app PRs touching unread code; red, not a log line).
+#
+# Fix a red run: SLOCK_SOURCE_REPO=<slock checkout> python3
+# scripts/sync_slock_contract_cases.py --ref origin/staging, run
+# UnreadContractCasesTest, and open a PR with the new copy.
+
+on:
+  schedule:
+    # Daily, 01:00 UTC (09:00 Beijing).
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      slock_source_ref:
+        description: "botiverse/slock ref to compare against"
+        type: string
+        default: "staging"
+  pull_request:
+    paths:
+      - "compose/shared/src/commonTest/resources/contract-cases/**"
+      - "compose/shared/src/commonTest/kotlin/build/raft/app/contract/**"
+      - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/**"
+      # The app code the cases drive (Mark as Unread answer, Home row unread, thread hold).
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/MarkUnreadOutcome.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/UnreadParser.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ReadReceipt*.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedHomeStore.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
+      - "scripts/sync_slock_contract_cases.py"
+      - ".github/workflows/contract-cases-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-cases-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Unread contract cases match slock
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Checkout slock source
+        uses: actions/checkout@v7
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref || 'staging' }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-source
+          sparse-checkout: packages/shared
+
+      - name: Compare the vendored copy with slock
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: python3 scripts/sync_slock_contract_cases.py --check
+
+      # TODO(#proj-mobile:#70): ping @Lagoon in Raft on a red scheduled run. The
+      # repo has no chat notification hook yet (visual-patrol only writes a step
+      # summary since the repo went public), so the red run and this summary are
+      # the signal for now.
+      - name: Report drift
+        if: failure()
+        run: |
+          {
+            echo "## Unread contract cases drifted from botiverse/slock"
+            echo
+            echo "Vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/unread/SOURCE_SHA 2>/dev/null || echo none)\`"
+            echo "slock now: \`$(git -C slock-source rev-parse HEAD 2>/dev/null || echo unavailable)\`"
+            echo
+            echo "Re-vendor: \`SLOCK_SOURCE_REPO=<slock> python3 scripts/sync_slock_contract_cases.py --ref origin/staging\`, then run \`UnreadContractCasesTest\`. Owner: @Lagoon (#proj-mobile:#70)."
+          } >> "$GITHUB_STEP_SUMMARY"

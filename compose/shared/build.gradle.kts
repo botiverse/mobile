@@ -383,6 +383,9 @@ android {
         }
         named("test") {
             resources.srcDir("src/commonMain/sqldelight/databases")
+            // KMP does not put commonTest resources on the Android unit-test classpath; the vendored
+            // slock contract cases (contract-cases/unread, UnreadContractCasesTest) live there.
+            resources.srcDir("src/commonTest/resources")
         }
         named("androidTest") {
             assets.srcDir("src/commonMain/sqldelight/databases")
