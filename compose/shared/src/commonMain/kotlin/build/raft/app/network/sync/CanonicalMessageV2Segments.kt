@@ -66,6 +66,28 @@ data class CanonicalMessageV2Coverage(
     fun toSegment(verifiedAtMs: Long): CanonicalMessageV2Segment =
         CanonicalMessageV2Segment(lowSeq, highSeq, reachesOldest, headAtVerify, verifiedAtMs, source)
 
+    /**
+     * Phase 2b: this claim without [seqs] (rows the page carried but the writer could not store): the pieces
+     * between them. Only the piece starting at [lowSeq] keeps [reachesOldest], only the piece ending at
+     * [highSeq] keeps [headAtVerify]; an excluded edge drops that flag. Seqs outside the range are ignored.
+     */
+    fun excluding(seqs: Set<Long>): List<CanonicalMessageV2Coverage> {
+        val cuts = seqs.filter { it in lowSeq..highSeq }.sorted()
+        if (cuts.isEmpty()) return listOf(this)
+        val pieces = mutableListOf<CanonicalMessageV2Coverage>()
+        var start = lowSeq
+        for (cut in cuts) {
+            if (start <= cut - 1) {
+                pieces += CanonicalMessageV2Coverage(start, cut - 1, reachesOldest && start == lowSeq, headAtVerify = false, source)
+            }
+            start = cut + 1
+        }
+        if (start <= highSeq) {
+            pieces += CanonicalMessageV2Coverage(start, highSeq, reachesOldest && start == lowSeq, headAtVerify, source)
+        }
+        return pieces
+    }
+
     companion object {
         /**
          * The claim of a `GET messages/channel` page from its server `messageWindow` (server

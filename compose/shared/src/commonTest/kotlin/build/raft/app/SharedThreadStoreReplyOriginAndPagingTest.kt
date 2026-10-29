@@ -33,6 +33,9 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurableEnterTicket
+import build.raft.app.network.sync.ThreadDurableRequestStamp
+import build.raft.app.network.sync.ThreadDurableEnteredPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +44,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -920,49 +924,48 @@ class SharedThreadStoreReplyOriginAndPagingTest {
         assertEquals(1, extender.calls.size)
     }
     @Test
-    fun replyRouteOpenedBeforeItsStreamIsKnownRequestsTheThreadSnapshotOnceResolved() = runTest {
-        // Task #168 step 3: `start()` cannot name the thread scope of an unresolved reply route; the
-        // enter snapshot is requested once the first refresh resolved the stream.
-        suspend fun replyLoadsFor(route: RaftThreadScreenPayload): List<Pair<String, ThreadDurableReplyParent>> {
+    fun aChannelEntryWritesItsOwnPageThroughUnderTheTicketTakenBeforeTheRequest() = runTest {
+        // Message storage Phase 2b: the entry's own request is the durable write — ticket first, then the request, then
+        // the page it got. Twin: the same entry whose request fails releases the ticket and writes nothing.
+        suspend fun eventsFor(fail: Boolean): List<String> {
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(coroutineContext + scopeJob)
-            val loads = mutableListOf<Pair<String, ThreadDurableReplyParent>>()
+            val events = mutableListOf<String>()
             val loader =
                 object : ThreadEnteredScopeSnapshotLoader {
-                    override suspend fun loadOnEnter(
+                    override suspend fun beginEnter(
                         partition: DurablePartitionKey,
                         channelId: String,
-                        stillCurrent: () -> Boolean
-                    ) = Unit
+                        replyParent: ThreadDurableReplyParent?,
+                        registerBaseline: Boolean,
+                        stamp: ThreadDurableRequestStamp?
+                    ): ThreadDurableEnterTicket {
+                        events += "begin:$channelId:baseline=$registerBaseline"
+                        return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
+                    }
 
-                    override suspend fun loadReplyThreadOnEnter(
-                        partition: DurablePartitionKey,
-                        threadChannelId: String,
-                        replyParent: ThreadDurableReplyParent,
+                    override suspend fun persistEnteredPage(
+                        ticket: ThreadDurableEnterTicket,
+                        page: ThreadDurableEnteredPage,
                         stillCurrent: () -> Boolean
                     ) {
-                        loads += threadChannelId to replyParent
+                        events += "persist:${page.channelId}:limit=${page.requestedLimit}:rows=${page.rawMessages.size}:current=${stillCurrent()}"
+                    }
+
+                    override suspend fun abandonEnter(ticket: ThreadDurableEnterTicket) {
+                        events += "abandon:${ticket.channelId}"
                     }
                 }
             val repository =
                 FakeConversationRepository(
-                    threadResult =
-                        DataResult.Content(
-                            threadSnapshot(
-                                threadId = "thread-m1",
-                                conversation =
-                                    conversationSummary("thread-m1").copy(
-                                        kind = ConversationKind.Thread,
-                                        channelId = ChannelId("channel-1"),
-                                        thread =
-                                            ThreadConversation(
-                                                parentChannelId = ChannelId("channel-1"),
-                                                parentMessageId = MessageId("m1"),
-                                                streamChannelId = ChannelId("thread-m1")
-                                            )
-                                    )
-                            )
-                        )
+                    threadResultProvider = { _, _, limit ->
+                        events += "fetch"
+                        if (fail) {
+                            DataResult.Error(ScreenError(code = "thread_network", retryable = true))
+                        } else {
+                            DataResult.Content(threadSnapshot().copy(rawMessagePage = durableRawPage("m5", limit = limit)))
+                        }
+                    }
                 )
             val store =
                 SharedThreadStore(
@@ -977,21 +980,96 @@ class SharedThreadStoreReplyOriginAndPagingTest {
                         ),
                     scope = scope
                 )
-            store.accept(SharedThreadIntent.Start(route))
-            withTimeout(5_000L) { while (loads.isEmpty()) yield() }
+            store.accept(SharedThreadIntent.Start(basePayload()))
+            withTimeout(5_000L) { while (events.none { it.startsWith("persist") || it.startsWith("abandon") }) delay(10) }
             repeat(20) { yield() }
             scopeJob.cancelAndJoin()
-            return loads.toList()
+            return events.toList()
+        }
+
+        val written = eventsFor(fail = false)
+        assertEquals("begin:channel-1:baseline=true", written.first(), written.toString())
+        assertEquals("fetch", written[1], written.toString())
+        assertTrue(written.drop(2).single().matches(Regex("persist:channel-1:limit=\\d+:rows=1:current=true")), written.toString())
+        assertEquals(listOf("begin:channel-1:baseline=true", "fetch", "abandon:channel-1"), eventsFor(fail = true))
+    }
+
+    @Test
+    fun replyRouteOpenedBeforeItsStreamIsKnownWritesThePageItsRequestResolved() = runTest {
+        // Task #168 step 3 / message storage Phase 2b: `start()` cannot name the thread scope of an unresolved reply
+        // route, so its request takes no ticket (no realtime baseline); the page the request resolved is still written
+        // through, under a ticket taken after it. A route with its stream known takes its ticket before the request.
+        data class Run(val begins: List<Triple<String, ThreadDurableReplyParent?, Boolean>>, val persisted: List<String>)
+        suspend fun runFor(route: RaftThreadScreenPayload): Run {
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(coroutineContext + scopeJob)
+            val begins = mutableListOf<Triple<String, ThreadDurableReplyParent?, Boolean>>()
+            val persisted = mutableListOf<String>()
+            val loader =
+                object : ThreadEnteredScopeSnapshotLoader {
+                    override suspend fun beginEnter(
+                        partition: DurablePartitionKey,
+                        channelId: String,
+                        replyParent: ThreadDurableReplyParent?,
+                        registerBaseline: Boolean,
+                        stamp: ThreadDurableRequestStamp?
+                    ): ThreadDurableEnterTicket {
+                        begins += Triple(channelId, replyParent, registerBaseline)
+                        return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
+                    }
+
+                    override suspend fun persistEnteredPage(
+                        ticket: ThreadDurableEnterTicket,
+                        page: ThreadDurableEnteredPage,
+                        stillCurrent: () -> Boolean
+                    ) {
+                        persisted += page.channelId
+                    }
+                }
+            val snapshot =
+                threadSnapshot(
+                    threadId = "thread-m1",
+                    conversation =
+                        conversationSummary("thread-m1").copy(
+                            kind = ConversationKind.Thread,
+                            channelId = ChannelId("channel-1"),
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("m1"),
+                                    streamChannelId = ChannelId("thread-m1")
+                                )
+                        )
+                ).copy(rawMessagePage = durableRawPage("r1", limit = 30))
+            val repository = FakeConversationRepository(threadResult = DataResult.Content(snapshot))
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        testSharedThreadDataSource(
+                            storeScope = backgroundScope,
+                            networkApi = FakeThreadApi(),
+                            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                            conversationRepository = repository,
+                            enteredScopeSnapshotLoader = loader
+                        ),
+                    scope = scope
+                )
+            store.accept(SharedThreadIntent.Start(route))
+            withTimeout(5_000L) { while (persisted.isEmpty()) delay(10) }
+            repeat(20) { yield() }
+            scopeJob.cancelAndJoin()
+            return Run(begins.toList(), persisted.toList())
         }
 
         val parent = ThreadDurableReplyParent(parentChannelId = "channel-1", rootMessageId = "m1")
         val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
         val unresolvedRoute = resolvedRoute.copy(sourceThreadId = null, streamChannelId = null)
         assertEquals(null, unresolvedRoute.resolveThreadRouteIdentity().timelineChannelId)
-        assertEquals(listOf("thread-m1" to parent), replyLoadsFor(unresolvedRoute))
-        // Twin: the identical route with its stream already known is requested by start() alone,
-        // exactly once.
-        assertEquals(listOf("thread-m1" to parent), replyLoadsFor(resolvedRoute))
+        assertEquals(Run(listOf(Triple("thread-m1", parent, false)), listOf("thread-m1")), runFor(unresolvedRoute))
+        // Twin: the identical route with its stream already known takes its ticket (with the baseline) before the
+        // request, exactly once.
+        assertEquals(Run(listOf(Triple("thread-m1", parent, true)), listOf("thread-m1")), runFor(resolvedRoute))
     }
     private fun durableRawPage(id: String, limit: Int): RawMessagePageWitness =
         RawMessagePageWitness(

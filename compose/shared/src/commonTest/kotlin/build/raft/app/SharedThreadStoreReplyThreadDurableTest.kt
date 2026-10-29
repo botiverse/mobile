@@ -26,6 +26,8 @@ import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurableEnterTicket
+import build.raft.app.network.sync.ThreadDurableRequestStamp
 import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -98,8 +100,8 @@ class SharedThreadStoreReplyThreadDurableTest {
         assertTrue(payload.messages.isEmpty())
         assertTrue(payload.status != "content", payload.status)
         assertEquals(1, api.channelMessageCalls, "the ordinary network load ran")
-        // Task #18: nothing on disk -> read, bounded wait for the entry load, read again.
-        assertEquals(List(2) { ReplyRead(partition(ownerA), "thread-1", parent) }, reader.replyReads)
+        // Phase 2b: one read — there is no separate entry load to wait for (the entry's own request is the write).
+        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), reader.replyReads)
         scopeJob.cancelAndJoin()
     }
 
@@ -131,7 +133,6 @@ class SharedThreadStoreReplyThreadDurableTest {
         store.accept(SharedThreadIntent.Start(replyRoute()))
         withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
         assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loader.replyLoads)
-        assertEquals(listOf(true), loader.stillCurrentAtCall)
         assertTrue(loader.topLevelLoads.isEmpty(), "a reply route is never loaded as a top-level window")
         scopeJob.cancelAndJoin()
 
@@ -260,23 +261,20 @@ class SharedThreadStoreReplyThreadDurableTest {
         assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=done", joinCatchUpRun().logs.last())
     }
 
+    /** Phase 2b: the tickets the store takes before its own page request (top-level / reply thread). */
     private class FakeLoader : ThreadEnteredScopeSnapshotLoader {
         val topLevelLoads = mutableListOf<SyncScopeId>()
         val replyLoads = mutableListOf<ReplyRead>()
-        val stillCurrentAtCall = mutableListOf<Boolean>()
 
-        override suspend fun loadOnEnter(partition: DurablePartitionKey, channelId: SyncScopeId, stillCurrent: () -> Boolean) {
-            topLevelLoads += channelId
-        }
-
-        override suspend fun loadReplyThreadOnEnter(
+        override suspend fun beginEnter(
             partition: DurablePartitionKey,
-            threadChannelId: SyncScopeId,
-            replyParent: ThreadDurableReplyParent,
-            stillCurrent: () -> Boolean,
-        ) {
-            replyLoads += ReplyRead(partition, threadChannelId, replyParent)
-            stillCurrentAtCall += stillCurrent()
+            channelId: SyncScopeId,
+            replyParent: ThreadDurableReplyParent?,
+            registerBaseline: Boolean,
+            stamp: ThreadDurableRequestStamp?,
+        ): ThreadDurableEnterTicket {
+            if (replyParent == null) topLevelLoads += channelId else replyLoads += ReplyRead(partition, channelId, replyParent)
+            return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
         }
     }
 
@@ -549,55 +547,32 @@ class SharedThreadStoreReplyThreadDurableTest {
         scopeJob.cancelAndJoin()
     }
 
-    private suspend fun ownSendCatchUpRun(
-        diskHasTheSend: Boolean,
-        sendStoredLoose: Boolean = false,
-    ): Pair<List<ReplyRead>, List<String>> =
-        kotlinx.coroutines.coroutineScope {
-            val logs = mutableListOf<String>()
-            val scopeJob = SupervisorJob()
-            val scope = CoroutineScope(coroutineContext + scopeJob)
-            val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..15))
-            val reader = FakeReader(replyFrame(count = 15))
-            val loader = FakeLoader()
-            val dataSource = dataSource(api, scope, reader = reader, loader = loader, logs = logs)
-            val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
-            val store = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
-            store.accept(SharedThreadIntent.Start(sendableReplyRoute()))
-            withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
-            withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
-            loader.replyLoads.clear()
-            if (diskHasTheSend) reader.frame = replyFrame(count = 16)
-            // Message storage Phase 3a: the realtime echo is stored, but loose (above the stored window 1..15).
-            if (sendStoredLoose) reader.frame = replyFrame(count = 16).let { it.copy(cursor = it.cursor.copy(newestLoadedSeq = 15)) }
-            store.accept(
-                SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                    messageId = "local-16",
-                    page = ownSentPage(16),
-                    expectedProvenance = context.provenance,
-                    expectedRoute = store.state.value.payload.resolveThreadRouteIdentity(),
-                ),
-            )
-            delay(SharedThreadOwnSendDurableCheckDelayMillis + 500L)
-            repeat(20) { yield() }
-            scopeJob.cancelAndJoin()
-            loader.replyLoads.toList() to logs.filter { "thread_own_send_durable_catchup" in it }
-        }
-
     @Test
-    fun aConfirmedSendMissingFromTheDiskRefetchesTheThreadsEnterSnapshot() = runTest {
-        val (loads, logs) = ownSendCatchUpRun(diskHasTheSend = false)
-        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loads, logs.toString())
-        assertEquals(1, logs.size, logs.toString())
-        assertTrue("sent=1 stored=false requested=true" in logs.single(), logs.toString())
-        // Twin: identical send whose echo already reached the disk fetches nothing.
-        val (twinLoads, twinLogs) = ownSendCatchUpRun(diskHasTheSend = true)
-        assertEquals(emptyList(), twinLoads)
-        assertEquals(emptyList(), twinLogs)
-        // Phase 3a twin: the echo is on disk only as a loose fact (no covered range holds it): still refetched.
-        val (looseLoads, looseLogs) = ownSendCatchUpRun(diskHasTheSend = false, sendStoredLoose = true)
-        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), looseLoads, looseLogs.toString())
-        assertTrue("sent=1 stored=false requested=true" in looseLogs.single(), looseLogs.toString())
+    fun aConfirmedSendTakesNoExtraDurableLoad() = runTest {
+        // Phase 2b: the own-send durable catch-up is gone — Phase 3a stores the realtime echo itself. Positive control:
+        // the entry took exactly one ticket; the confirmed send adds none.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..15))
+        val loader = FakeLoader()
+        val dataSource = dataSource(api, scope, reader = FakeReader(replyFrame(count = 15)), loader = loader, logs = logs)
+        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
+        val store = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
+        assertEquals(1, loader.replyLoads.size, loader.replyLoads.toString())
+        store.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                messageId = "local-16",
+                page = ownSentPage(16),
+                expectedProvenance = context.provenance,
+                expectedRoute = store.state.value.payload.resolveThreadRouteIdentity(),
+            ),
+        )
+        delay(3_000L)
+        repeat(20) { yield() }
+        assertEquals(1, loader.replyLoads.size, loader.replyLoads.toString())
+        scopeJob.cancelAndJoin()
     }
-
 }

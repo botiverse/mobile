@@ -174,6 +174,17 @@ interface ConversationRepository {
         includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
+    /**
+     * Message storage Phase 2b: [captureRawMessagePage] asks the implementation to also carry the page's raw
+     * `messages` array, server window and embedded reply counts ([ThreadSnapshot.rawMessagePage]) so the thread store
+     * can write its own page through to the durable partition. Implementations that cannot capture it ignore the flag.
+     */
+    suspend fun getThread(
+        threadId: ThreadId,
+        includeFollowedSummaries: Boolean = false,
+        limit: Int = DEFAULT_PAGE_LIMIT,
+        captureRawMessagePage: Boolean
+    ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries, limit)
     suspend fun getThreadReplySummaries(
         threadId: ThreadId,
         parentMessageIds: List<MessageId>

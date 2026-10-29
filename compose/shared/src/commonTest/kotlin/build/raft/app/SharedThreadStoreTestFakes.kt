@@ -177,10 +177,14 @@ internal object SharedThreadStoreTestFakes {
             messageWindow: ChannelMessageWindow?,
             historyLimited: Boolean,
             requestHeadEpoch: Long?,
+            revAtRequest: Long?,
             stillCurrent: () -> Boolean,
         ) {
             baselineEvents += "apply:${baseline != null}"
-            applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, requestHeadEpoch, stillCurrent)
+            applyLatestPage(
+                partition, channelId, rawMessages, requestedLimit, replyParent, messageWindow, historyLimited, requestHeadEpoch, revAtRequest,
+                stillCurrent,
+            )
         }
 
         override suspend fun applyLatestPage(
@@ -192,6 +196,7 @@ internal object SharedThreadStoreTestFakes {
             messageWindow: ChannelMessageWindow?,
             historyLimited: Boolean,
             requestHeadEpoch: Long?,
+            revAtRequest: Long?,
             stillCurrent: () -> Boolean
         ) {
             replyParents += replyParent

@@ -12,6 +12,10 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.network.sync.ThreadDurableEnterTicket
+import build.raft.app.network.sync.ThreadDurableRequestStamp
+import build.raft.app.network.sync.ThreadDurableEnteredPage
+import build.raft.app.network.sync.ThreadDurableReplyParent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,8 +39,12 @@ class SharedThreadStoreEnteredScopeTest {
         val loader = FakeLoader()
         val store = SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = loader, identity = { ownerA }), scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
+        // Phase 2b: the ticket is taken before the entry's own request; this request (the plain API path) captured no
+        // page, so the ticket is released and nothing is written.
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        assertEquals(listOf(true), loader.stillCurrentAtCall)
+        assertEquals(listOf(true), loader.baselines)
+        assertEquals(listOf("channel-1"), loader.abandoned)
+        assertTrue(loader.persisted.isEmpty())
         scope.cancel()
     }
 
@@ -71,13 +79,14 @@ class SharedThreadStoreEnteredScopeTest {
 
     @Test
     fun replyRoutesAndRoutesWithoutAnOwnerNeverRequestTheLoad() = runTest {
-        // A reply route is never loaded as a top-level window (task #168 step 3: its own entry is
-        // `loadReplyThreadOnEnter`, covered in SharedThreadStoreReplyThreadDurableTest).
+        // A reply route is never loaded as a top-level window (task #168 step 3: its ticket names its parent,
+        // covered in SharedThreadStoreReplyThreadDurableTest).
         val replyScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val replyLoader = FakeLoader()
         SharedThreadStore(dataSource = dataSource(storeScope = backgroundScope, loader = replyLoader, identity = { ownerA }), scope = replyScope)
             .accept(SharedThreadIntent.Start(replyRoute()))
-        assertTrue(replyLoader.loads.isEmpty(), replyLoader.loads.toString())
+        assertTrue(replyLoader.loads.isNotEmpty(), "a reply route with its typed parent takes its own thread ticket")
+        assertTrue(replyLoader.replyParents.none { it == null }, replyLoader.loads.toString())
         replyScope.cancel()
 
         // Auth generation 0 is the registry's "no session" sentinel: no owner ⇒ no partition ⇒ no write.
@@ -91,16 +100,42 @@ class SharedThreadStoreEnteredScopeTest {
         noOwnerScope.cancel()
     }
 
-    internal class FakeLoader(
-        private val effect: suspend (partition: DurablePartitionKey, channelId: SyncScopeId) -> Unit = { _, _ -> },
-    ) : ThreadEnteredScopeSnapshotLoader {
+    /**
+     * Message storage Phase 2b: records the write-through calls. [loads] = tickets taken before the store's own page
+     * request (partition, channel); [persisted] / [abandoned] = what the request produced.
+     */
+    internal class FakeLoader : ThreadEnteredScopeSnapshotLoader {
         val loads = mutableListOf<Pair<DurablePartitionKey, SyncScopeId>>()
+        val replyParents = mutableListOf<ThreadDurableReplyParent?>()
+        val baselines = mutableListOf<Boolean>()
+        val persisted = mutableListOf<ThreadDurableEnteredPage>()
         val stillCurrentAtCall = mutableListOf<Boolean>()
+        val abandoned = mutableListOf<SyncScopeId>()
 
-        override suspend fun loadOnEnter(partition: DurablePartitionKey, channelId: SyncScopeId, stillCurrent: () -> Boolean) {
+        override suspend fun beginEnter(
+            partition: DurablePartitionKey,
+            channelId: SyncScopeId,
+            replyParent: ThreadDurableReplyParent?,
+            registerBaseline: Boolean,
+            stamp: ThreadDurableRequestStamp?,
+        ): ThreadDurableEnterTicket {
             loads += partition to channelId
+            replyParents += replyParent
+            baselines += registerBaseline
+            return ThreadDurableEnterTicket(partition, channelId, replyParent, 0L, 0L, baseline = null)
+        }
+
+        override suspend fun persistEnteredPage(
+            ticket: ThreadDurableEnterTicket,
+            page: ThreadDurableEnteredPage,
+            stillCurrent: () -> Boolean,
+        ) {
+            persisted += page
             stillCurrentAtCall += stillCurrent()
-            effect(partition, channelId)
+        }
+
+        override suspend fun abandonEnter(ticket: ThreadDurableEnterTicket) {
+            abandoned += ticket.channelId
         }
     }
 

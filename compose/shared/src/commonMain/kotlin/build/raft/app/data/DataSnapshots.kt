@@ -674,6 +674,8 @@ data class RawMessagePage(
     val requestedLimit: Int,
     val messageWindow: ChannelMessageWindow? = null,
     val historyLimited: Boolean = false,
+    /** Phase 2b: the page's embedded reply counts by parent message id; `null` = the page carried none. */
+    val replyCountsByParentId: Map<String, Int>? = null,
 )
 
 /**

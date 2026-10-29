@@ -99,10 +99,13 @@ internal class RecordingStore : CanonicalMessageV2Store {
         insertOnly: Boolean,
         unknownFieldsByFactId: Map<String, Set<build.raft.app.canonical.message.MessageAggregateField>>,
         runPartitionRetention: Boolean,
+        excludedSeqs: Set<Long>,
     ): CanonicalMessageV2StoreWriteResult {
         snapshotFailure?.let { throw it }
         coverages += coverage
-        val segments = listOfNotNull(coverage?.toSegment(0L))
+        val segments = coverage?.excluding(excludedSeqs).orEmpty().fold(emptyList<build.raft.app.network.sync.CanonicalMessageV2Segment>()) { acc, piece ->
+            build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union(acc, piece.toSegment(0L))
+        }
         val written = coverageHeader(null, segments, envelopes, threadParent, envelopes)
         snapshots += CanonicalMessageV2SnapshotFrame(scope, envelopes, written)
         return CanonicalMessageV2StoreWriteResult(committedCursor = written)

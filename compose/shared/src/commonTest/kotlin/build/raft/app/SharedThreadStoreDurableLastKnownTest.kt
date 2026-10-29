@@ -225,8 +225,8 @@ class SharedThreadStoreDurableLastKnownTest {
         try {
             store.dispatch(SharedThreadIntent.Start(basePayload()))
             val loadingPayload = loadingStateApplied.await()
-            // Task #18: nothing usable on disk -> read, bounded wait for the entry load, read again.
-            assertEquals(List(2) { partition(ownerB) to "channel-1" }, reader.reads)
+            // Phase 2b: one read — there is no separate entry load to wait for.
+            assertEquals(listOf(partition(ownerB) to "channel-1"), reader.reads)
             assertEquals("loading", loadingPayload.status)
             assertFalse(loadingPayload.durableLastKnown)
             assertTrue(loadingPayload.messages.isEmpty())
@@ -504,13 +504,12 @@ class SharedThreadStoreDurableLastKnownTest {
             )
         store.accept(SharedThreadIntent.Start(basePayload()))
         val payload = store.state.value.payload
-        // Task #18: nothing usable on disk -> read, bounded wait for the entry load, read again.
-        assertEquals(List(2) { partition(ownerA) to "channel-1" }, reader.reads)
+        // Phase 2b: one read — there is no separate entry load to wait for.
+        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
         assertTrue(payload.messages.isEmpty(), payload.messages.map { it.body }.toString())
         assertFalse(payload.durableLastKnown)
         assertTrue(payload.status != "content", payload.status)
-        // Task #18: refused before the wait and again after it (nothing usable on disk either time).
-        assertEquals(2, logs.count { "outcome=surface_mismatch" in it }, logs.toString())
+        assertEquals(1, logs.count { "outcome=surface_mismatch" in it }, logs.toString())
         val mismatch = assertNotNull(logs.firstOrNull { "outcome=surface_mismatch" in it }, logs.toString())
         assertTrue("scopeKind=dm" in mismatch, mismatch)
         assertTrue(logs.none { "outcome=frame" in it }, logs.toString())

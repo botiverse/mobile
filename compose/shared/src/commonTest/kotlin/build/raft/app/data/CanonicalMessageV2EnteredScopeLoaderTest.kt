@@ -20,6 +20,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -35,10 +36,11 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         assertEquals(emptyList(), off.network.paths)
         assertEquals(0, off.store.snapshots.size)
 
-        // Positive control: same inputs with the flag on write exactly one whole-page baseline.
+        // Positive control: same inputs with the flag on write exactly one page. Phase 2b: the page is the thread store's
+        // own request; the writer asks `channels/{id}` only because no row names the kind.
         val on = harness(flagOn = true)
         on.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(listOf("channels/channel-1", "messages/channel/channel-1"), on.network.paths)
+        assertEquals(listOf("messages/channel/channel-1", "channels/channel-1"), on.network.paths)
         val frame = on.store.snapshots.single()
         assertEquals(SyncScopeKey(partition, "channel-1", "channel"), frame.scope)
         assertEquals(listOf("message-1"), frame.envelopes.map { it.fact.id })
@@ -58,7 +60,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         )
         h.loader.loadOnEnter(partition, "channel-1") { true }
         assertEquals(
-            listOf("channels/channel-1", "messages/channel/channel-1", "channels/channel-1/threads"),
+            listOf("messages/channel/channel-1", "channels/channel-1", "channels/channel-1/threads"),
             h.network.paths,
         )
         assertEquals(4, h.store.snapshots.single().envelopes.single().fact.replyCount)
@@ -127,7 +129,11 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
 
         // Task #168 step 3: the enter snapshot is the canary's only baseline, for every channel (no single slot).
         h.loader.loadOnEnter(partition, "channel-1") { true }
-        h.loader.loadOnEnter(partition, "channel-2") { true }
+        // Phase 2b: channel-2's own page (the rig's network serves channel-1's rows for every channel).
+        h.loader.persistEnteredPage(
+            assertNotNull(h.loader.beginEnter(partition, "channel-2", replyParent = null)),
+            assertNotNull(enteredPageFromBody("channel-2", canonicalV2TestPage(channelId = "channel-2"))),
+        ) { true }
         assertEquals(listOf("channel-1", "channel-2"), h.store.snapshots.map { it.scope.scopeId })
         assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(first))
         assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, h.canary.continuityOf(second))
@@ -156,7 +162,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
         // The identity flips while the page request is in flight: a pre-fetch check alone would pass.
         h.network.onPageRequested = { current = false }
         h.loader.loadOnEnter(partition, "channel-1") { current }
-        assertEquals(listOf("channels/channel-1", "messages/channel/channel-1"), h.network.paths)
+        assertEquals(listOf("messages/channel/channel-1", "channels/channel-1"), h.network.paths)
         assertEquals(0, h.store.snapshots.size)
         assertTrue(h.logs.any { "outcome=identity_changed" in it }, h.logs.toString())
     }
@@ -192,7 +198,7 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     fun nonTopLevelChannelOrThinPageWritesNothing() = runBlocking {
         val thread = harness(flagOn = true, channelType = "thread")
         thread.loader.loadOnEnter(partition, "channel-1") { true }
-        assertEquals(listOf("channels/channel-1"), thread.network.paths, "no page request for a non-top-level scope")
+        assertEquals(listOf("messages/channel/channel-1", "channels/channel-1"), thread.network.paths)
         assertEquals(0, thread.store.snapshots.size)
         assertTrue(thread.logs.any { "outcome=canonical_v2_scope_not_top_level" in it }, thread.logs.toString())
 
@@ -203,21 +209,18 @@ class CanonicalMessageV2EnteredScopeLoaderTest {
     }
 
     @Test
-    fun concurrentEntriesOfTheSameChannelFetchAndWriteOnce() = runBlocking {
+    fun concurrentEntriesOfTheSameChannelEachWriteTheirOwnPage() = runBlocking {
+        // Phase 2b: the in-flight set is gone — each request of the thread store writes the page it fetched (the scope
+        // writer serializes them; the second only adds what the first did not).
         val h = harness(flagOn = true)
         val gate = CompletableDeferred<Unit>()
         h.network.pageGate = gate
         val first = launch { h.loader.loadOnEnter(partition, "channel-1") { true } }
         val second = launch { h.loader.loadOnEnter(partition, "channel-1") { true } }
         yield()
-        assertTrue(h.logs.any { "outcome=in_flight" in it }, h.logs.toString())
         gate.complete(Unit)
         joinAll(first, second)
-        assertEquals(listOf("channels/channel-1", "messages/channel/channel-1"), h.network.paths)
-        assertEquals(1, h.store.snapshots.size)
-
-        // Positive control: a later entry, after the first finished, fetches again (every entry refreshes).
-        h.loader.loadOnEnter(partition, "channel-1") { true }
+        assertTrue(h.logs.none { "outcome=in_flight" in it }, h.logs.toString())
         assertEquals(2, h.store.snapshots.size)
     }
 

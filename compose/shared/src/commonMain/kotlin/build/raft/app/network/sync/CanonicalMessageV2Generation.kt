@@ -155,6 +155,11 @@ interface CanonicalMessageV2Store {
          * writer runs it only every few writes, so one frame never scans the whole partition.
          */
         runPartitionRetention: Boolean = true,
+        /**
+         * Phase 2b: seqs inside [coverage] this write proves are NOT stored (page rows that could not be
+         * converted): the claim is split around them ([CanonicalMessageV2Coverage.excluding]).
+         */
+        excludedSeqs: Set<Long> = emptySet(),
     ): CanonicalMessageV2StoreWriteResult = throw UnsupportedOperationException("applyCoverage")
 
     /** The scope's stored segments, normalized, by lowSeq. */
@@ -372,20 +377,25 @@ class CanonicalMessageV2GenerationEngine(
          * horizonReset since then voids the page's head claim and with it its baseline: facts and range still land.
          */
         expectedHeadEpoch: Long? = null,
+        /** Phase 2b: see [CanonicalMessageV2Store.applyCoverage]. */
+        excludedSeqs: Set<Long> = emptySet(),
     ): CanonicalMessageV2CommitResult = withPartitionMutation(scope.partition) {
         requireV2Scope(scope)
         val headStale = headClaimIsStale(scope.partition, expectedHeadEpoch)
         val admittedCoverage = if (headStale) coverage?.copy(headAtVerify = false) else coverage
         val admittedBaseline = establishesBaseline && !headStale
         // Only a page proven to reach the scope's newest message can be the realtime baseline: anything else would
-        // let realtime appends extend a claim over messages between the page and the head.
-        require(!admittedBaseline || admittedCoverage?.headAtVerify == true) { "a realtime baseline needs a head coverage" }
+        // let realtime appends extend a claim over messages between the page and the head. A split claim
+        // (excluded rows) keeps the head only when its top piece still reaches it.
+        require(!admittedBaseline || admittedCoverage?.excluding(excludedSeqs)?.lastOrNull()?.headAtVerify == true) {
+            "a realtime baseline needs a head coverage"
+        }
         if (!isCurrentGeneration(scope.partition, expectedPartitionGeneration)) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
         val write = store.applyCoverage(
             scope, envelopes, admittedCoverage, revAtRequest, userDriven, threadParent, insertOnly, unknownFieldsByFactId,
-            runPartitionRetention,
+            runPartitionRetention, excludedSeqs,
         )
         if (countsAsScopeCommit) bumpScopeCommitGeneration(scope)
         invalidateEvictedScopes(write.evictedScopes)
@@ -586,6 +596,7 @@ internal class SqlDelightCanonicalMessageV2Store(
         insertOnly: Boolean,
         unknownFieldsByFactId: Map<String, Set<MessageAggregateField>>,
         runPartitionRetention: Boolean,
+        excludedSeqs: Set<Long>,
     ): CanonicalMessageV2StoreWriteResult {
         requireV2Scope(scope)
         require(revAtRequest >= 0L) { "revAtRequest must be a stored revision" }
@@ -643,7 +654,8 @@ internal class SqlDelightCanonicalMessageV2Store(
             // 2. Claims, 3. scope retention.
             val nowMs = now()
             val before = selectSegmentsInsideTransaction(scope)
-            val unioned = coverage?.let { CanonicalMessageV2SegmentAlgebra.union(before, it.toSegment(nowMs)) } ?: before
+            val unioned = coverage?.excluding(excludedSeqs).orEmpty()
+                .fold(before) { segments, piece -> CanonicalMessageV2SegmentAlgebra.union(segments, piece.toSegment(nowMs)) }
             val segments = pruneScopeBySegmentsInsideTransaction(scope, unioned)
             replaceSegmentsInsideTransaction(scope, before, segments)
             // 4. Header: the window columns mirror the head segment.

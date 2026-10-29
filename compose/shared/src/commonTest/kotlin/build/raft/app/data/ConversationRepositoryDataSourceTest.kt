@@ -1370,6 +1370,30 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun theEntryPageCarriesItsRawPageAndEmbeddedReplyCountsOnlyWhenAsked() = runBlocking {
+        // Message storage Phase 2b: the thread store's own entry page is written through, so getThread can carry the raw
+        // rows, the server window and the embedded reply counts. Twin: the same call without the flag carries nothing.
+        val body =
+            """{"messages":[${messageJson("m7", "channel-1", seq = 7)}],"historyLimited":false,""" +
+                """"threadSummariesByParentMessageId":{"m7":{"threadChannelId":"t-7","replyCount":4},"m8":{"replyCount":"x"}}}"""
+        val network = FakeConversationNetworkClient(responses = mapOf("GET messages/channel/channel-1" to body))
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val captured = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 40, captureRawMessagePage = true),
+        ).data
+        val page = assertNotNull(captured.rawMessagePage.page)
+        assertEquals(listOf("m7"), page.messages.map { it.jsonObject["id"]?.jsonPrimitive?.content })
+        assertEquals(40, page.requestedLimit)
+        assertEquals(mapOf("m7" to 4), page.replyCountsByParentId, "an unusable count is left out")
+
+        val plain = assertIs<DataResult.Content<ThreadSnapshot>>(
+            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 40),
+        ).data
+        assertNull(plain.rawMessagePage.page)
+    }
+
+    @Test
     fun aChannelPageCarriesItsServerMessageWindowAndAMalformedWindowNeverDropsThePage() = runBlocking {
         // Message storage Phase 1: the raw page carries the server's `messageWindow` (and `historyLimited`)
         // so the coverage writer can claim the range the page proves. No reader uses it yet.
