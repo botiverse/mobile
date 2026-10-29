@@ -132,3 +132,5 @@ fun Window.applyRaftSystemBarsAppearance(appearance: RaftSystemBarsAppearance) {
         isAppearanceLightNavigationBars = appearance.lightNavigationBars
     }
 }
+
+internal actual val RaftPopupClipsDrawing: Boolean = true

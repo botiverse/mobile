@@ -28,3 +28,5 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
 
 @Composable
 internal actual fun RaftPopupWindowPolicy() = Unit
+
+internal actual val RaftPopupClipsDrawing: Boolean = false
