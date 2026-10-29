@@ -31429,15 +31429,19 @@ internal data class ThreadQuickReactionBarRequest(
     val anchor: RaftPopoverAnchor
 )
 
+/** The quick reaction bar's distance from the finger that double tapped (web: 24px). */
+internal val ThreadMessageQuickReactionBarFingerGap = 24.dp
+
 internal fun threadMessageQuickReactionBarHeightDp(): Float =
     ThreadMessageMenuReactionRowHeight.value + RaftMetrics.PopupPadding.value * 2
 
 /**
  * The quick reaction bar a double tap shows (stdrc, 2026-10-29, #proj-raft-ui:911ccc08): the
  * long-press menu's popup and quick reaction row ([ThreadMessageReactionRow], same emojis and
- * glyphs) without its action rows, placed like that menu. The Classic menu has no "Add reaction"
- * entry ([ThreadMessageMenuCapabilities.addReaction] is off), so neither has the bar. Picking an
- * emoji toggles that reaction and closes the bar; a tap outside closes it.
+ * glyphs) without its action rows, above the second tap (below when there is no room). The
+ * Classic menu has no "Add reaction" entry ([ThreadMessageMenuCapabilities.addReaction] is off),
+ * so neither has the bar. Picking an emoji toggles that reaction and closes the bar; a tap
+ * outside closes it.
  */
 @Composable
 private fun ThreadMessageQuickReactionBar(
@@ -31474,16 +31478,20 @@ internal fun ThreadMessageQuickReactionBarPopover(
             )
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
+    val fingerGapPx = with(density) { ThreadMessageQuickReactionBarFingerGap.toPx() }
+    // Like the mobile web (slock #11851): above the second tap, 24dp clear of the finger, so it
+    // covers neither the line that was tapped nor the finger; below only when there is no room
+    // above. Centred on the finger and kept on screen.
     RaftAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
         viewportGap = viewportGapPx,
-        horizontalOffset = 0f,
-        verticalOffset = 0f,
-        verticalOffsetAbove = 0f,
-        verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
-        horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+        horizontalOffset = -contentSize.width / 2f,
+        verticalOffset = fingerGapPx,
+        verticalOffsetAbove = fingerGapPx,
+        verticalPlacement = RaftFloatingVerticalPlacement.AbovePreferred,
+        horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
     ) {
         LaunchedEffect(messageId, anchor) {
             diagnosticsLogger("thread_message_quick_reaction_bar_positioned messageId=$messageId")

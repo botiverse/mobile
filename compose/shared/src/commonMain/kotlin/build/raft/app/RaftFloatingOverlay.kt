@@ -36,6 +36,8 @@ internal enum class RaftFloatingVerticalPlacement {
     Below,
     Above,
     Auto,
+    /** Above the anchor when it fits, otherwise below (a bar that must not cover what was tapped). */
+    AbovePreferred,
     /** Web `placeFloatingOverlay` axis: see [raftContextMenuAxisPosition]. */
     ContextMenu
 }
@@ -450,6 +452,9 @@ internal fun raftVerticalPosition(
     }
     if (verticalPlacement == RaftFloatingVerticalPlacement.Above) {
         return aboveY.coerceIn(viewportGap, maxY)
+    }
+    if (verticalPlacement == RaftFloatingVerticalPlacement.AbovePreferred) {
+        return (if (aboveY >= viewportGap) aboveY else belowY).coerceIn(viewportGap, maxY)
     }
     val belowFits = belowY + contentHeight <= viewportHeight - viewportGap
     val aboveFits = aboveY >= viewportGap
