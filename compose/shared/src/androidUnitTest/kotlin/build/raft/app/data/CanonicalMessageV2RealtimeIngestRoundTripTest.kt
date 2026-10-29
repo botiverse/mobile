@@ -441,7 +441,11 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
                 assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
                 assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped, never reported
             }
-            rig.ingest.awaitIdle()
+            rig.ingest.awaitIdle() // a barrier retries but spends no attempt
+            assertEquals(emptyList(), rig.partitionHoles.toList(), "a barrier spent the retry budget")
+            // Frames of the skip's own channel spend attempts 2 and 3 (stored loose meanwhile); the 3rd escalates.
+            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
+            assertTrue(rig.deliver(rig.messageNew(channel, "m61", 61L), epoch = 1L))
             repeat(3) { i -> assertTrue(rig.deliver(rig.messageNew(second, "n${60 + i}", 60L + i), epoch = 1L)) }
             rig.ingest.awaitIdle()
             assertEquals(listOf("unrecorded_report_failed"), rig.partitionHoles.toList(), "escalated exactly once")
