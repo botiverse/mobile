@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.generated.MarkUnreadOutcomeDto
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.resources.StringDesc
@@ -1256,7 +1257,13 @@ data class ReadReceiptResult(
      * `POST /channels/:id/unread` (botiverse/slock #11795): true = saved as "marked unread" with no
      * count; false = nothing to mark (refused); null = a server older than the mark (or another write).
      */
-    val markedUnread: Boolean? = null
+    val markedUnread: Boolean? = null,
+    /**
+     * `POST /channels/:id/unread` (botiverse/slock #11854): what the write left, decided by the server in
+     * the read-state transaction. Null from a server older than the field (or another write);
+     * [MarkUnreadOutcomeDto.Unknown] from a newer one. Read it through [markUnreadOutcome].
+     */
+    val serverMarkUnreadOutcome: MarkUnreadOutcomeDto? = null
 )
 
 @Serializable

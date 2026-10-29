@@ -1,0 +1,12 @@
+{
+  "package": "build.raft.app.data.generated",
+  "output": "compose/shared/src/commonMain/kotlin/build/raft/app/data/generated/ReadStateDtos.kt",
+  "classSuffix": "Dto",
+  "operations": ["markConversationUnread"],
+  "schemas": ["MarkUnreadOutcome"],
+  "compatOptional": {
+    "MarkConversationUnreadResponse": {
+      "markedUnread": "servers older than botiverse/slock #11795 omit it"
+    }
+  }
+}

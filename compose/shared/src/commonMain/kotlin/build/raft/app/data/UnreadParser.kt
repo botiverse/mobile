@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.data.generated.MarkConversationUnreadResponseDto
+import build.raft.app.data.generated.ReadMutationPendingResponseDto
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerSummary
 import kotlinx.serialization.Serializable
@@ -12,7 +14,8 @@ import kotlinx.serialization.json.Json
  *  - GET  /api/channels/unread?summary=1       → [ChannelUnreadSummaryWireDto]
  *  - POST /api/channels/:id/read               → `{ ok }`
  *  - POST /api/channels/:id/read-all           → `{ ok, seq }`
- *  - POST /api/channels/:id/unread             → `{ ok, unreadCount, maxReadSeq, readStateVersion, markedUnread }`
+ *  - POST /api/channels/:id/unread             → generated [MarkConversationUnreadResponseDto]
+ *                                                 (`{ ok, unreadCount, maxReadSeq, readStateVersion, markedUnread, outcome? }`)
  *  - POST /api/channels/inbox/read-all         → `{ ok, markedCount }`
  *
  * Field names are exact camelCase. No snake_case fallbacks, no nested
@@ -34,12 +37,6 @@ private data class WireReadReceipt(
     val ok: Boolean = true,
     val markedCount: Int = 0,
     val scopes: List<WireReadStateAckScope> = emptyList(),
-    /**
-     * `POST /channels/:id/unread` only (botiverse/slock #11795, `routes/channels.ts`): true when the
-     * server found nothing countable and marked the conversation unread with no count; false when it
-     * refused (empty conversation, not a member). Absent from a server older than the mark.
-     */
-    val markedUnread: Boolean? = null,
 )
 
 @Serializable
@@ -246,9 +243,39 @@ fun parseReadReceiptResult(
                 },
             unreadCount = decoded.unreadCount,
             changed = decoded.changed,
-            markedUnread = decoded.markedUnread,
         )
     } else {
         null
     }
 }.getOrNull()
+
+/**
+ * Parse a `POST /api/channels/:id/unread` answer through the contract DTO generated from the slock
+ * OpenAPI artifact (`readState` module, [MarkConversationUnreadResponseDto]). Null on contract
+ * mismatch (including `ok: false`) so the caller collapses it to an error.
+ *
+ * A 202 [ReadMutationPendingResponseDto] (admitted, result not known yet) keeps today's reading: a
+ * result with no count, no mark and no outcome, i.e. inferred as nothing to mark.
+ */
+fun parseMarkConversationUnreadResult(bodyText: String, channelId: ChannelId): ReadReceiptResult? {
+    val answer = runCatching {
+        unreadJson.decodeFromString(MarkConversationUnreadResponseDto.serializer(), bodyText)
+    }.getOrNull()
+    if (answer != null) {
+        if (!answer.ok) return null
+        return ReadReceiptResult(
+            channelId = channelId,
+            readStateVersion = answer.readStateVersion,
+            maxReadSeq = answer.maxReadSeq,
+            // A seq distance, not a message count; clamped only so it fits the shared Int field.
+            unreadCount = answer.unreadCount.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
+            changed = true,
+            markedUnread = answer.markedUnread,
+            serverMarkUnreadOutcome = answer.outcome,
+        )
+    }
+    return runCatching {
+        unreadJson.decodeFromString(ReadMutationPendingResponseDto.serializer(), bodyText)
+        ReadReceiptResult(channelId = channelId, changed = true)
+    }.getOrNull()
+}

@@ -46,13 +46,57 @@ class MarkedUnreadContractTest {
                 )
             )
         cases.forEach { (name, body, expected) ->
-            val result = parseReadReceiptResult(body, fallbackChannelId = ChannelId("thread-1")) ?: error("dropped: $name")
+            val result = parseMarkConversationUnreadResult(body, ChannelId("thread-1")) ?: error("dropped: $name")
             assertEquals(expected.first, result.markUnreadOutcome(), name)
             assertEquals(expected.second, result.markedUnread, name)
         }
-        val marked = parseReadReceiptResult(cases.first().second, fallbackChannelId = ChannelId("thread-1"))!!
+        val marked = parseMarkConversationUnreadResult(cases.first().second, ChannelId("thread-1"))!!
         assertEquals(9L, marked.readStateVersion)
         assertEquals(12L, marked.maxReadSeq)
+    }
+
+    @Test
+    fun serverOutcomeWinsAndAnUnknownOneFallsBackToTheInference() {
+        // botiverse/slock #11854 (6893779e): `outcome` decided in the read-state transaction, as
+        // `channels.markedUnread.api.test.ts` asserts it. (case, body, expected outcome)
+        val cases =
+            listOf(
+                Triple(
+                    "marked",
+                    """{"ok":true,"unreadCount":0,"maxReadSeq":12,"readStateVersion":9,"markedUnread":true,"outcome":"marked"}""",
+                    MarkUnreadOutcome.Marked
+                ),
+                Triple(
+                    "counted",
+                    """{"ok":true,"unreadCount":2,"maxReadSeq":10,"readStateVersion":9,"markedUnread":false,"outcome":"counted"}""",
+                    MarkUnreadOutcome.Counted
+                ),
+                Triple(
+                    "nothing",
+                    """{"ok":true,"unreadCount":0,"maxReadSeq":0,"readStateVersion":0,"markedUnread":false,"outcome":"nothing"}""",
+                    MarkUnreadOutcome.NothingToMark
+                ),
+                // The server's decision is taken as given, not re-derived from the other fields.
+                Triple(
+                    "outcome disagrees with the inference",
+                    """{"ok":true,"unreadCount":3,"maxReadSeq":10,"readStateVersion":9,"markedUnread":false,"outcome":"nothing"}""",
+                    MarkUnreadOutcome.NothingToMark
+                ),
+                Triple(
+                    "unknown outcome: inferred from unreadCount",
+                    """{"ok":true,"unreadCount":2,"maxReadSeq":10,"readStateVersion":9,"markedUnread":false,"outcome":"snoozed"}""",
+                    MarkUnreadOutcome.Counted
+                ),
+                Triple(
+                    "unknown outcome: inferred from markedUnread",
+                    """{"ok":true,"unreadCount":0,"maxReadSeq":12,"readStateVersion":9,"markedUnread":true,"outcome":"snoozed"}""",
+                    MarkUnreadOutcome.Marked
+                )
+            )
+        cases.forEach { (name, body, expected) ->
+            val result = parseMarkConversationUnreadResult(body, ChannelId("thread-1")) ?: error("dropped: $name")
+            assertEquals(expected, result.markUnreadOutcome(), name)
+        }
     }
 
     @Test
