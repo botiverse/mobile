@@ -338,6 +338,7 @@
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
     <string name="thread_action_save_message">收藏消息</string>
     <string name="thread_action_unfollow_thread">取消关注消息列</string>
+    <string name="thread_action_mark_thread_unread">将消息列标为未读</string>
     <string name="thread_action_follow_thread">关注消息列</string>
     <string name="thread_action_reopen_task">重新打开任务</string>
     <string name="thread_action_mark_done">标记为完成</string>

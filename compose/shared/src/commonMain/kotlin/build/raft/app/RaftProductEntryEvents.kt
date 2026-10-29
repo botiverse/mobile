@@ -36,6 +36,8 @@ internal fun ThreadNewMessageMenuTool.productMessageAction(
         ThreadNewMessageMenuTool.ConvertToTask -> RaftMessageAction.ConvertToTask
         ThreadNewMessageMenuTool.SelectText -> RaftMessageAction.SelectText
         ThreadNewMessageMenuTool.SelectAll -> null
+        // Web sends nothing for its thread menus' Mark Thread as Unread (#11687) either.
+        ThreadNewMessageMenuTool.MarkThreadUnread -> null
     }
 
 /** The Classic menu's task item sends "reopenTask" or "markTaskDone". */

@@ -188,7 +188,9 @@ enum class RaftMessageActionSurface(val wire: String) {
 /**
  * `MESSAGE_ACTIONS` the app's long-press menu can send. The registry also has `copy_text`, `pin`,
  * `unpin`, `mark_unread`, `edit`, `delete`, `report` for the native menu; the app's message menu
- * has none of those items today, so they have no entry here.
+ * has none of those items today, so they have no entry here. A reply thread's "Mark Thread as
+ * Unread" (botiverse/slock #11687) marks the thread, not the message, and web sends no
+ * `message_action_selected` for it either, so it is not `mark_unread`.
  */
 @Serializable
 enum class RaftMessageAction(val wire: String) {

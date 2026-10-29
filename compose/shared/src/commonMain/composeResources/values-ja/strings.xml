@@ -340,6 +340,7 @@
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
     <string name="thread_action_save_message">メッセージを保存</string>
     <string name="thread_action_unfollow_thread">スレッドのフォローを解除</string>
+    <string name="thread_action_mark_thread_unread">スレッドを未読にする</string>
     <string name="thread_action_follow_thread">スレッドをフォロー</string>
     <string name="thread_action_reopen_task">タスクを再オープン</string>
     <string name="thread_action_mark_done">完了にする</string>
