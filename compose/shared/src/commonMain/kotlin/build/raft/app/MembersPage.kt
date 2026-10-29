@@ -939,6 +939,66 @@ internal fun membersAgentDetailTabsForAccess(
         membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)
     }
 
+/**
+ * Web AgentDetailPanel `isRemoteJointAgent` / `isBoundedPublicProjection`: the profile of an
+ * agent of another server (reached through a joint channel) shows identity only — no Info,
+ * runtime, skills, actions or Message — and loads nothing from this server.
+ */
+internal fun membersAgentProfileIsRemote(accessMode: MemberDetailAccessMode): Boolean =
+    accessMode == MemberDetailAccessMode.RemoteProfileOnly
+
+/** The "From" row's server name (web `agent.serverName || agent.serverSlug`); never a raw id. */
+internal fun membersRemoteAgentSourceServerName(member: MemberProfile): String? {
+    val serverId = member.serverId?.value?.trim()
+    return listOf(member.serverName, member.serverSlug)
+        .firstNotNullOfOrNull { value -> value?.trim()?.takeIf { it.isNotBlank() && it != serverId } }
+}
+
+/**
+ * The roster facts a joint channel already holds for an agent of another server, as the remote
+ * profile's detail: the open's own seed (thread roster / author row) first, then a roster
+ * profile, then the joint actor row. Null only when nothing knows the agent.
+ */
+internal fun membersRemoteAgentProfileSnapshot(
+    agentId: MemberId,
+    seed: AgentDetailSnapshot?,
+    rosterProfile: MemberProfile?,
+    jointActor: build.raft.app.data.ResolvedActor?
+): AgentDetailSnapshot? {
+    seed?.takeIf { it.agentId == agentId }?.let { return it }
+    val summary =
+        rosterProfile
+            ?.takeIf { it.id == agentId && it.kind == MemberKind.Agent }
+            ?.let { profile ->
+                val name = profile.handle.ifBlank { profile.displayName.ifBlank { agentId.value } }
+                AgentDetailSummary(
+                    id = agentId.value,
+                    name = name,
+                    displayName = profile.displayName.ifBlank { name },
+                    description = profile.description?.takeIf { it.isNotBlank() },
+                    avatarUrl = preferredAvatarWireValue(profile.avatar, profile.avatarUrl)
+                )
+            }
+            ?: jointActor
+                ?.takeIf { it.id == agentId.value && it.kind == MemberKind.Agent }
+                ?.let { actor ->
+                    AgentDetailSummary(
+                        id = agentId.value,
+                        name = actor.name,
+                        displayName = actor.displayName?.takeIf { it.isNotBlank() } ?: actor.name,
+                        avatarUrl = actor.avatarUrl?.takeIf { it.isNotBlank() }
+                    )
+                }
+            ?: return null
+    return AgentDetailSnapshot(
+        agentId = agentId,
+        summary = summary,
+        directMessages = emptyList(),
+        reminders = emptyList(),
+        activity = emptyList()
+    )
+}
+
 internal fun membersAgentDetailShowsProfileStateNotice(
     selectedTab: MembersAgentDetailTab,
     avatarManagementMode: Boolean
@@ -1659,7 +1719,9 @@ internal data class RaftMemberDetailPayload(
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
     val timeFormat: String = RaftTimeFormat24Hour,
-    val agentPanelTabOrder: List<String> = emptyList()
+    val agentPanelTabOrder: List<String> = emptyList(),
+    /** A remote member's server label from the opener's joint roster (never authority). */
+    val sourceServerName: String? = null
 )
 
 @Serializable
@@ -3139,7 +3201,11 @@ private class MemberDetailRouteProvider(
         agentOwner: SharedAgentDetailOwner? = null,
         agentProfileGeneration: Long = 0L,
         isCurrentRequest: () -> Boolean = { true },
-        hasCachedAgentDetail: Boolean = false
+        hasCachedAgentDetail: Boolean = false,
+        /** The roster seed the opener left for a remote agent, read before the route cleared it. */
+        remoteAgentSeed: AgentDetailSnapshot? = null,
+        /** The opener's label for the remote member's server (joint roster `serverName`). */
+        sourceServerName: String? = null
     ): MemberDetailRouteState {
         val session = authStore.readSession()
         val serverId = session?.currentServerId
@@ -3175,14 +3241,18 @@ private class MemberDetailRouteProvider(
                         loadAgentProfileOnly(
                             selectedId = selectedId,
                             profileServerId = sourceServerId,
+                            viewerServerId = ServerId(serverId),
                             profileServer =
                                 session.servers
                                     .firstOrNull { it.id == sourceServerId.value }
                                     ?.toServerSummary()
                                     ?: ServerSummary(
                                         id = sourceServerId,
-                                        name = sourceServerId.value
+                                        // Not a server of this account: the joint roster's label,
+                                        // else none (the "From" row never shows a raw id).
+                                        name = sourceServerName?.trim().orEmpty()
                             ),
+                            seed = remoteAgentSeed,
                             currentUserId = session.user.id,
                             owner = agentOwner,
                             profileGeneration = agentProfileGeneration,
@@ -3198,12 +3268,53 @@ private class MemberDetailRouteProvider(
     private suspend fun loadAgentProfileOnly(
         selectedId: MemberId,
         profileServerId: ServerId,
+        viewerServerId: ServerId,
         profileServer: ServerSummary,
+        seed: AgentDetailSnapshot?,
         currentUserId: String?,
         owner: SharedAgentDetailOwner?,
         profileGeneration: Long,
         isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
+        // Web ProfilePanel: a peer agent of a joint channel is a bounded projection the viewer's
+        // server cannot fill (its `/agents/:id` answers 404 for foreign ids), so the roster facts
+        // the joint channel already holds are the profile and nothing is requested.
+        val rosterProfile =
+            serverMembersStore.memberProfile(profileServerId, selectedId.value)
+                ?: serverMembersStore.memberProfile(viewerServerId, selectedId.value)
+        val known =
+            membersRemoteAgentProfileSnapshot(
+                agentId = selectedId,
+                seed = seed,
+                rosterProfile = rosterProfile,
+                jointActor = serverMembersStore.jointActors?.current(viewerServerId, selectedId.value, MemberKind.Agent)
+            )
+        if (known != null) {
+            if (!isCurrentRequest() || owner == null || currentAgentDetailOwner(profileServerId) != owner) {
+                return MemberDetailRouteState.Error("member_request_stale")
+            }
+            agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+            agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration))
+            agentDetailStore.dispatch(
+                SharedAgentDetailIntent.SetDetail(
+                    agentId = selectedId,
+                    detail = known,
+                    serverId = profileServerId,
+                    owner = owner,
+                    profileGeneration = profileGeneration
+                )
+            )
+            val serverName =
+                profileServer.name.takeIf { it.isNotBlank() && it != profileServerId.value }
+                    ?: rosterProfile?.serverName?.takeIf { it.isNotBlank() }
+                    ?: rosterProfile?.serverSlug?.takeIf { it.isNotBlank() }
+                    ?: ""
+            return MemberDetailRouteState.Agent(
+                server = profileServer.copy(id = profileServerId, name = serverName),
+                currentUserId = currentUserId,
+                accessMode = MemberDetailAccessMode.RemoteProfileOnly
+            )
+        }
         val client = agentsApiClient ?: return MemberDetailRouteState.Error("agent_profile_unavailable")
         return when (val detailResult = client.publicAgentDetail(selectedId)) {
             is DataResult.Content -> {
@@ -4158,6 +4269,17 @@ internal fun MemberDetailPageContent(
                 )
             }
         var hasCachedAgentDetail = false
+        // A remote agent's profile is the seed its opener left (thread roster / author row): read
+        // it before the canonical-request reset below clears the store.
+        val remoteAgentSeed =
+            if (
+                memberIdentity.kind == MemberKind.Agent &&
+                membersAgentProfileIsRemote(memberIdentity.memberDetailAccessMode(activeServerId))
+            ) {
+                provider.agentDetailStore.state.value.detail?.takeIf { it.agentId == memberIdentity.memberId }
+            } else {
+                null
+            }
         if (memberIdentity.kind == MemberKind.Agent) {
             if (requestOwner == null) {
                 routeState = MemberDetailRouteState.Error("member_request_stale")
@@ -4188,7 +4310,8 @@ internal fun MemberDetailPageContent(
         }
         val loaded = provider.loadMember(memberIdentity, requestOwner, generation, {
             requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) == true
-        }, hasCachedAgentDetail = hasCachedAgentDetail)
+        }, hasCachedAgentDetail = hasCachedAgentDetail, remoteAgentSeed = remoteAgentSeed,
+            sourceServerName = payload.sourceServerName)
         if (requestFence != null &&
             !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
         ) {
@@ -5088,6 +5211,52 @@ internal fun MembersAgentDetailVisualContent() {
 
 private fun readCurrentServerId(): String? = null
 
+/**
+ * Screenshot entry for the profile of an agent from another server of a joint channel
+ * (web AgentDetailPanel `isRemoteJointAgent`): the route's remote-profile access mode over the
+ * roster seed the joint channel carries. No private surface and no edit authority.
+ */
+@Composable
+internal fun MembersRemoteAgentProfileVisualContent(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot,
+    accessMode: MemberDetailAccessMode = MemberDetailAccessMode.RemoteProfileOnly
+) {
+    MembersDetailContent(
+        member = member,
+        currentUserId = "visual-viewer",
+        currentServerId = member.serverId?.value,
+        agentDetailState = MembersAgentDetailLoadState.Content(detail),
+        canViewPrivateAgentSurfaces = { _, _ -> false },
+        canManageAgent = { _, _ -> false },
+        machineStatusRow = membersVisualFixtureMachineStatusRow,
+        actions = MembersDetailActions(
+            onBack = {},
+            onOpenDirectMessage = {},
+            onCopyMemberId = {},
+            onOpenUrl = {},
+            onUnavailableAction = {}
+        ),
+        agentCallbacks = MembersAgentDetailCallbacks(
+            onUpdateAgentProfile = null,
+            onAgentLifecycleAction = null,
+            agentWorkspaceTreeLoader = null,
+            agentWorkspaceChildrenLoader = null,
+            onCopyAgentDiagnostics = {},
+            onReportAgentIssue = null,
+            onUploadAgentAvatar = null
+        ),
+        timeContext = RaftTimeContext(
+            localOffsetMinutes = 480,
+            todayEpochDay = 20623,
+            nowEpochMillis = 1781872200000,
+            timeFormat = RaftTimeFormat24Hour
+        ),
+        presentation = MembersAgentDetailPresentation(stableVisualCapture = true),
+        accessMode = accessMode
+    )
+}
+
 internal fun RaftLinkNavigator.openMembersReminderForceExternalFallback(
     rawUrl: String
 ): RaftLinkOpenDecision =
@@ -5319,7 +5488,8 @@ internal fun JSONObject.toRaftMemberDetailPayload(): RaftMemberDetailPayload {
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
-        agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder")
+        agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
+        sourceServerName = payload.optNullableString("sourceServerName")
     )
 }
 
@@ -6526,6 +6696,7 @@ private fun MembersDetailContent(
                     detail = detail,
                     deleted = deleted,
                     canManage = canManage,
+                    canMessage = !membersAgentProfileIsRemote(accessMode),
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
                     onCopyMemberId = onCopyMemberId,
@@ -6733,6 +6904,7 @@ private fun MembersDetailContent(
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,
                                             fixtureStatusFallbackEnabled = stableVisualCapture,
+                                            accessMode = accessMode,
                                             modifier = Modifier.padding(horizontal = MembersPageInset)
                                         )
                                     MembersAgentDetailTab.Chat ->
@@ -7230,6 +7402,8 @@ private fun MembersDetailHeader(
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
+    /** Web `canMessageAgent`: false for an agent of another server of a joint channel. */
+    canMessage: Boolean = true,
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onBack: () -> Unit,
@@ -7240,12 +7414,16 @@ private fun MembersDetailHeader(
 ) {
     val summary = detail?.summary
     val directMessageEligibility =
-        membersDirectMessageEligibility(
-            member = member,
-            currentUserId = currentUserId,
-            currentServerId = currentServerId,
-            deleted = deleted
-        )
+        if (!canMessage) {
+            MembersDirectMessageEligibility.Unavailable
+        } else {
+            membersDirectMessageEligibility(
+                member = member,
+                currentUserId = currentUserId,
+                currentServerId = currentServerId,
+                deleted = deleted
+            )
+        }
     val threeDotButtonAnchor =
         remember(member.id.value) { RaftLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
     val threeDotButtonAnchorResolver =
@@ -10468,8 +10646,12 @@ private fun MembersAgentProfileTab(
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     timeContext: RaftTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
+    accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
     modifier: Modifier = Modifier
 ) {
+    // Web AgentDetailPanel `isRemoteJointAgent`: an agent of another server of a joint channel is
+    // a bounded public projection; its operational sections belong to its own server.
+    val remoteProfile = membersAgentProfileIsRemote(accessMode)
     val lifecycleInFlight = lifecycle.lifecycleInFlight
     val diagnosticActionState = lifecycle.diagnosticActionState
     val onRunLifecycleAction = lifecycle.onRunLifecycleAction
@@ -10479,7 +10661,7 @@ private fun MembersAgentProfileTab(
     val onReportIssue = lifecycle.onReportIssue
     val onOpenComputer = lifecycle.onOpenComputer
     val errorStrings = localizedErrorPresentationStrings()
-    val summary = detail?.summary
+    val summary = detail?.summary?.let { if (remoteProfile) it.copy(runtime = null) else it }
     val deleted = summary?.deletedAt?.isNotBlank() == true
     // Roster metadata is never edit authority. Only a canonical loaded profile summary may enter
     // an editor or construct an update request.
@@ -10511,6 +10693,12 @@ private fun MembersAgentProfileTab(
             )
         }
 
+        if (remoteProfile) {
+            membersRemoteAgentSourceServerName(member)?.let { serverName ->
+                MembersRemoteAgentSourceServerSection(serverName)
+            }
+        }
+
         MembersAgentProfileHeader(
             member = member,
             summary = summary,
@@ -10530,67 +10718,69 @@ private fun MembersAgentProfileTab(
             sharedAgentDetailStore = sharedAgentDetailStore,
             storeState = storeState
         )
-        MembersAgentInfoSection(
-            member = member,
-            summary = summary,
-            deleted = deleted,
-            edit = edit,
-            machineStatusRow = machineStatusRow,
-            onOpenComputer = onOpenComputer,
-            timeContext = timeContext,
-            memberAvatarResolver = memberAvatarResolver
-        )
-        MembersAgentRuntimeConfigSection(
-            member = member,
-            summary = summary,
-            agentStatusIndicatorState = agentStatusIndicatorState,
-            edit = edit,
-            runtimeModels = runtimeModels,
-            createAgentFormStore = createAgentFormStore,
-            onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
-        )
-
-        if (
-            membersShowsExternalAgentSetup(
-                external = member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime),
-                canManage = canManage,
-                managedByAppInstallId = member.managedByAppInstallId,
+        if (!remoteProfile) {
+            MembersAgentInfoSection(
+                member = member,
+                summary = summary,
+                deleted = deleted,
+                edit = edit,
+                machineStatusRow = machineStatusRow,
+                onOpenComputer = onOpenComputer,
+                timeContext = timeContext,
+                memberAvatarResolver = memberAvatarResolver
             )
-        ) {
-            MembersExternalAgentSetupSection(
-                agentId = member.id,
-                profileName = member.displayName,
-                serverUrl = externalSetupServerUrl,
-                agentsApiClient = agentsApiClient,
+            MembersAgentRuntimeConfigSection(
+                member = member,
+                summary = summary,
+                agentStatusIndicatorState = agentStatusIndicatorState,
+                edit = edit,
+                runtimeModels = runtimeModels,
+                createAgentFormStore = createAgentFormStore,
+                onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
+            )
+
+            if (
+                membersShowsExternalAgentSetup(
+                    external = member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime),
+                    canManage = canManage,
+                    managedByAppInstallId = member.managedByAppInstallId,
+                )
+            ) {
+                MembersExternalAgentSetupSection(
+                    agentId = member.id,
+                    profileName = member.displayName,
+                    serverUrl = externalSetupServerUrl,
+                    agentsApiClient = agentsApiClient,
+                    canManage = canManage,
+                    onCopy = onCopyText
+                )
+            }
+
+            // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
+            // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
+            // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
+            // picker invocation that previously lived here were removed in this commit so the
+            // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
+            MembersAgentCreatedAgentsSection(
+                detail = detail,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+            )
+            MembersAgentSkillsSection(detail)
+            MembersAgentProfileActionsSection(
+                member = member,
+                detail = detail,
+                resolvedStatus = agentStatusIndicatorState,
                 canManage = canManage,
-                onCopy = onCopyText
+                lifecycleInFlight = lifecycleInFlight,
+                diagnosticActionState = diagnosticActionState,
+                onRunLifecycleAction = onRunLifecycleAction,
+                onOpenRestartReset = onOpenRestartReset,
+                onCopyDiagnostics = onCopyDiagnostics,
+                onReportIssue = onReportIssue
             )
         }
-
-        // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
-        // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
-        // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
-        // picker invocation that previously lived here were removed in this commit so the
-        // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
-        MembersAgentCreatedAgentsSection(
-            detail = detail,
-            agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver,
-            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
-        )
-        MembersAgentSkillsSection(detail)
-        MembersAgentProfileActionsSection(
-            member = member,
-            detail = detail,
-            resolvedStatus = agentStatusIndicatorState,
-            canManage = canManage,
-            lifecycleInFlight = lifecycleInFlight,
-            diagnosticActionState = diagnosticActionState,
-            onRunLifecycleAction = onRunLifecycleAction,
-            onOpenRestartReset = onOpenRestartReset,
-            onCopyDiagnostics = onCopyDiagnostics,
-            onReportIssue = onReportIssue
-        )
     }
 }
 
@@ -12989,6 +13179,23 @@ private fun MembersEditableSectionTitleRow(
             MembersProfilePencilButton(onClick = onEditClick)
         }
         Spacer(Modifier.weight(1f))
+    }
+}
+
+/** Web AgentDetailPanel remote joint agent: `agent.detail.from` eyebrow over the server name. */
+@Composable
+private fun MembersRemoteAgentSourceServerSection(serverName: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+    ) {
+        MembersDetailSectionTitle(stringResource(Res.string.member_section_from))
+        RaftText(
+            text = serverName,
+            style = RaftTheme.typography.subhead.withRaftFontWeight(FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground
+        )
+        MembersDetailSectionDivider(Modifier.padding(top = RaftAppSpacing.Sm))
     }
 }
 

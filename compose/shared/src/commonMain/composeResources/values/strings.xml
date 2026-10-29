@@ -1121,6 +1121,7 @@
     <string name="member_section_threads">Threads</string>
     <string name="member_section_tasks">Tasks</string>
     <string name="member_section_server">Server</string>
+    <string name="member_section_from">From</string>
     <string name="member_section_messages">Messages</string>
     <string name="member_section_inbox">Inbox</string>
     <string name="member_section_knowledge">Knowledge</string>
