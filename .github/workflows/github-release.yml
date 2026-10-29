@@ -61,8 +61,8 @@ jobs:
             exit 1
           fi
           VERSION="${BASH_REMATCH[1]}"
-          # commits/tags/<tag> peels annotated tags to the commit.
-          COMMIT="$(gh api "repos/${REPOSITORY}/commits/tags/${TAG}" --jq .sha)"
+          # commits/refs/tags/<tag> peels annotated tags to the commit (commits/tags/<tag> is a 422).
+          COMMIT="$(gh api "repos/${REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)"
           [[ "${COMMIT}" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::cannot resolve ${TAG}"; exit 1; }
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "commit=${COMMIT}" >> "$GITHUB_OUTPUT"
