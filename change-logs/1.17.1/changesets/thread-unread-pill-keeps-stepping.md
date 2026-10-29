@@ -4,7 +4,7 @@ area: thread
 platforms:
   - android
   - ios
-pull_request: TBD
+pull_request: 3917
 rollout: full
 ---
 
