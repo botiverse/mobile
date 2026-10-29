@@ -22,6 +22,7 @@ labels: release
 |---|---|---|---|
 | 安卓 preview | | | |
 | 安卓 main | | | |
+| Google Play 内部测试 | | | |
 | Google Play 正式 | | | |
 | iOS TestFlight 内部组 | | | |
 | iOS TestFlight 外部组 / App Store | | | |
@@ -33,7 +34,8 @@ labels: release
 ## 发布
 - [ ] 版本说明定稿（中英日；Play 每种语言 ≤500 字）
 - [ ] 安卓 preview / main（finalize）
-- [ ] Google Play 正式轨道
+- [ ] Google Play 内部测试（默认就传，不用另外问；`android_variant=play` 打包后跑 `scripts/play_internal_promote.sh <Hands build>`）
+- [ ] Google Play 封闭测试 / 公开测试 / 正式轨道（要 artin 同意）
 - [ ] iOS TestFlight 内部组 → 外部组 → App Store
 - [ ] tag `vX.Y.Z` + GitHub Release
 - [ ] 公告

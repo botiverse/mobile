@@ -682,8 +682,10 @@ jobs:
             > signed-aab/build-identity.json
           cat signed-aab/build-identity.json
 
+      # Play builds upload too: Hands holds the sealed AAB that
+      # scripts/play_internal_promote.sh puts on the Play internal track.
       - name: Upload immutable AAB + APK to Hands
-        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' && needs.resolve.outputs.android_variant != 'play' }}
+        if: ${{ needs.resolve.outputs.upload_android_artifacts == 'true' }}
         id: hands-artifacts
         env:
           HANDS_API: ${{ secrets.HANDS_API || 'https://hands.build' }}
@@ -703,6 +705,17 @@ jobs:
           set -euo pipefail
           scripts/upload_android_hands_artifacts.sh | tee hands-artifacts-upload.log
           awk -F= '/^build_id=/{print "build_id=" $2}' hands-artifacts-upload.log >> "$GITHUB_OUTPUT"
+          if [ "${{ needs.resolve.outputs.android_variant }}" = "play" ]; then
+            build_id="$(awk -F= '/^build_id=/{print $2}' hands-artifacts-upload.log | tail -n 1)"
+            {
+              echo "### Next: Google Play internal testing"
+              echo "Every Android release goes to the Play internal track by default. As a signed-in Hands publisher (deploy tokens cannot promote to Play), run:"
+              echo '```'
+              echo "scripts/play_internal_promote.sh ${build_id}"
+              echo '```'
+              echo "Closed, open and production tracks still need artin's approval. Never publish the Hands draft this creates."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload signed AAB and verification receipt
         if: ${{ needs.resolve.outputs.android_variant != 'debug' || needs.resolve.outputs.upload_android_artifacts == 'true' }}

@@ -224,12 +224,29 @@ or Simulator build releases the rest with a warning; rerun with
 
 ### 3.1 Upload the Play carrier through Hands' Google Play binding
 
-The Android Release workflow does not upload to Google Play automatically. For
-a Play candidate, dispatch it from the clean remote `release-X.Y.Z` checkout
-with `android_variant=play` and `upload_android_artifacts=true`. CI builds,
-signs, verifies, and retains the AAB (and the matching Play APK) as workflow
-artifacts; `create_hands_draft` remains `false` for this carrier. A workflow
-success or a GitHub artifact is not a Google Play receipt.
+Every Android release also goes to the Google Play **internal testing** track
+by default, the way iOS goes to the TestFlight internal group (release rule,
+2026-10-29). The internal upload needs no separate approval; closed, open and
+production tracks still need artin's explicit approval.
+
+For each release, dispatch the Android Release workflow from the clean remote
+`release-X.Y.Z` checkout with `android_variant=play`,
+`upload_android_artifacts=true` and its own versionCode. CI builds, signs and
+verifies the AAB (and the matching Play APK), keeps them as workflow artifacts
+and uploads both to Hands as a sealed build; `create_hands_draft` stays `false`
+for this carrier. The job summary prints the next command. As a signed-in Hands
+publisher, run:
+
+```bash
+scripts/play_internal_promote.sh <hands_build_id>
+```
+
+It checks the build is ready with one sealed AAB, creates the Hands draft that
+carries the promotion, writes the acceptance receipt for that AAB and promotes
+it to `internal`. Hands rejects deploy tokens for Play promotion, so CI cannot
+run this step. **Never publish that Hands draft**: it would ship the Play carrier
+on the Hands channel. Record the printed receipt in the release issue. A
+workflow success or a GitHub artifact is not a Google Play receipt.
 
 Hands can perform the store upload when the app has an enabled, verified Google
 Play binding and the caller has the app `publisher` role. The binding owns the
