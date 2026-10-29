@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Velocity
 import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
+import coil3.PlatformContext
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Precision
@@ -234,6 +236,30 @@ fun rememberAsyncImageBitmap(model: String?, maxDecodeEdgePx: Int): ImageBitmap?
         bitmap = (result as? SuccessResult)?.image?.toRaftImageBitmap()
     }
     return bitmap
+}
+
+/**
+ * One-shot decode of [model] outside composition, with its longer edge bounded by
+ * [maxDecodeEdgePx] (never upscaled). Skips writing Coil's memory cache: callers are exports that
+ * need a large bitmap once (the image editor's full-resolution save), not something to keep.
+ */
+internal suspend fun raftLoadImageBitmap(
+    context: PlatformContext,
+    model: String,
+    maxDecodeEdgePx: Int,
+): ImageBitmap? {
+    val source = model.trim().takeIf { it.isNotEmpty() } ?: return null
+    raftInstallImageLoader()
+    val request =
+        ImageRequest.Builder(context)
+            .data(source)
+            .size(raftImageDecodeSize(maxDecodeEdgePx))
+            .scale(Scale.FIT)
+            .precision(Precision.INEXACT)
+            .memoryCachePolicy(CachePolicy.DISABLED)
+            .build()
+    val result = SingletonImageLoader.get(context).execute(request)
+    return (result as? SuccessResult)?.image?.toRaftImageBitmap()
 }
 
 /** Pass as `maxDecodeEdgePx` to decode at the original size (bundled atlases only). */

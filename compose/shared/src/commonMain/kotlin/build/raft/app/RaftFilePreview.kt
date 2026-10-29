@@ -110,6 +110,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import build.raft.app.compat.ui.raftLoadImageBitmap
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -161,7 +162,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import coil3.compose.LocalPlatformContext
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -4593,6 +4598,12 @@ internal fun RaftFilePreviewComposerImageEditor(
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val keyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     val mosaicImage = rememberAsyncImageBitmap(payload.imageUrl)
+    val platformContext = LocalPlatformContext.current
+    val textMeasurer = rememberTextMeasurer()
+    val annotationTextStyle =
+        LocalTextStyle.current.merge(
+            RaftType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)) // raft-color: text annotation drawn on the photo
+        )
     val focusManager = LocalFocusManager.current
     val editorDensity = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -4600,6 +4611,36 @@ internal fun RaftFilePreviewComposerImageEditor(
     var transientCropRect by remember(payload.imageUrl) { mutableStateOf(state.history.content.cropRect) }
     var activeCropHandle by remember(payload.imageUrl) { mutableStateOf(RaftCropDragHandle.None) }
     var cropDragOriginContent by remember(payload.imageUrl) { mutableStateOf<RaftComposerImageEditorContent?>(null) }
+    // Save re-renders the edits over the photo decoded at its own resolution (capped, see
+    // RaftComposerImageEditorExport) instead of snapshotting the screen-sized canvas.
+    val renderFullResolution: suspend () -> ImageBitmap? = render@{
+        val imageUrl = payload.imageUrl ?: return@render null
+        val displayImage = mosaicImage ?: return@render null
+        val canvasSize = editorCanvasSize
+        val content = state.history.content
+        val exportText =
+            RaftComposerImageExportText(
+                measurer = textMeasurer,
+                style = annotationTextStyle,
+                borderColor = RaftColor.StickerInk,
+            )
+        val source =
+            raftLoadImageBitmap(
+                context = platformContext,
+                model = imageUrl,
+                maxDecodeEdgePx = raftComposerImageExportDecodeEdgePx(displayImage.width, displayImage.height),
+            ) ?: return@render null
+        withContext(Dispatchers.Default) {
+            renderRaftComposerImageExport(
+                source = source,
+                content = content,
+                canvasSize = canvasSize,
+                density = editorDensity,
+                text = exportText,
+                mosaicSource = displayImage,
+            )
+        }
+    }
         fun selectTool(nextTool: RaftComposerImageEditorTool) {
         if (tool == RaftComposerImageEditorTool.Text && nextTool != RaftComposerImageEditorTool.Text) {
             focusManager.clearFocus(force = true)
@@ -4780,7 +4821,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                             .height(captureSize.height.dp)
                             .clipToBounds()
                             .onGloballyPositioned { coordinates -> editorCanvasSize = coordinates.size }
-                            .raftCaptureRef(onCaptureRef)
+                            .raftCaptureRef(onRef = onCaptureRef, render = renderFullResolution)
                             .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == RaftComposerImageEditorTool.Crop) return@pointerInput
                         detectTapGestures { position ->
@@ -4985,26 +5026,12 @@ internal fun RaftFilePreviewComposerImageEditor(
                         cropRect = currentCrop,
                     )
                     if (tool != RaftComposerImageEditorTool.Crop) {
-                        committedContent.raftComposerImageResolvedDrawOperations().forEach { operation ->
-                            when (operation) {
-                                is RaftComposerImageDrawOperation.Mosaic ->
-                                    drawRaftComposerImageMosaic(
-                                        image = mosaicImage,
-                                        tiles = operation.tiles,
-                                        cropRect = currentCrop,
-                                    )
-                                is RaftComposerImageDrawOperation.Pencil ->
-                                    operation.stroke.points.windowed(2).forEach { segment ->
-                                        drawLine(
-                                            color = operation.stroke.color,
-                                            start = segment[0],
-                                            end = segment[1],
-                                            strokeWidth = 6f,
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-                            }
-                        }
+                        // Same drawing as the full-resolution export (RaftComposerImageEditorExport).
+                        drawRaftComposerImageDrawOperations(
+                            image = mosaicImage,
+                            content = committedContent,
+                            cropRect = currentCrop,
+                        )
                     }
                 }
             }
@@ -5027,7 +5054,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                 color = selectedPenColor,
                                 start = segment[0],
                                 end = segment[1],
-                                strokeWidth = 6f,
+                                strokeWidth = RaftComposerImagePencilStrokeWidthPx,
                                 cap = StrokeCap.Round,
                             )
                         }
@@ -5956,7 +5983,7 @@ internal fun DrawScope.drawRaftComposerBackgroundImage(
     )
 }
 
-private fun DrawScope.drawRaftComposerImageMosaic(
+internal fun DrawScope.drawRaftComposerImageMosaic(
     image: ImageBitmap?,
     tiles: Collection<RaftComposerImageMosaicTile>,
     cropRect: RaftComposerImageCropRect = RaftComposerImageCropRect.Uncropped,
