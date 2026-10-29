@@ -134,6 +134,21 @@ class ThreadInPlaceTextSelectionTest {
     }
 
     @Test
+    fun onlyAFingersSelectionWidensToTheWholeMessage() {
+        assertTrue(
+            threadInPlaceSelectionWidensToWholeMessage(startedByTouch = true, coversAll = false),
+            "a long press starts on a word; the default is the whole message"
+        )
+        assertFalse(threadInPlaceSelectionWidensToWholeMessage(startedByTouch = true, coversAll = true))
+        // artin, 2026-10-29: a mouse drag started mid-message was widened on its first move and
+        // then kept extending from the message start.
+        assertFalse(
+            threadInPlaceSelectionWidensToWholeMessage(startedByTouch = false, coversAll = false),
+            "a mouse drag or a double-clicked word stays what was picked"
+        )
+    }
+
+    @Test
     fun aTapThatDismissesTheSelectionDoesNotAlsoOpenTheThread() {
         val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         val selection = FakeSelection(messageId = "m1", hasSelection = true)

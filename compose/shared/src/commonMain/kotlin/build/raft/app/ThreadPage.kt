@@ -26627,6 +26627,8 @@ private fun ThreadMessageCardContent(
         )
     // stdrc, 2026-10-29 (#proj-raft-ui:911ccc08): a single tap opens the message's thread, with
     // or without replies; a double tap shows its quick reaction bar where it can be reacted to.
+    // Finger taps only: a mouse, trackpad or stylus click leaves the row alone and selects text
+    // ([threadMessageRowTapGesturesFor], checked per gesture in threadMessageLongPressActions).
     val rowTapAction: (() -> Unit)? =
         if (
             threadMessageTapOpensThread(
@@ -26758,7 +26760,8 @@ private fun ThreadMessageCardContent(
                                 },
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
-                                    { offset ->
+                                    { offset, pointerType ->
+                                        selection.lastPointerDownFromTouch = pointerType == PointerType.Touch
                                         selection.dismissalGestureInFlight =
                                             inPlaceSelectionHost?.onRowPointerDown(
                                                 messageId = message.id,
@@ -28961,6 +28964,16 @@ internal fun threadMessageCanQuickReact(
 ): Boolean =
     writeActionsEnabled && slice.showReactionActions && !message.hasLocalSendState() && !message.isSystemMessage()
 
+/**
+ * Whether a down of [type] gets the message row's tap gestures (tap opens the thread, double tap
+ * shows the quick reaction bar). Only a finger: with a mouse, a trackpad or a
+ * stylus (desktop, an iPad with a pointer) a click on a message does nothing at row level and a
+ * double click selects a word, like any text (stdrc + raft-design #878, "desktop unchanged").
+ * Links, buttons, reactions and images inside the row keep their own clicks; the press-and-hold
+ * menu off the body and the pressed wash (which also reveals a compact row's time) are not gated.
+ */
+internal fun threadMessageRowTapGesturesFor(type: PointerType): Boolean = type == PointerType.Touch
+
 /** What one accepted tap on a message row does ([decideThreadMessageRowTap]). */
 internal enum class ThreadMessageRowTapOutcome {
     /** Nothing: the row has no tap action, or the tap may still become a double tap. */
@@ -28984,6 +28997,7 @@ internal enum class ThreadMessageRowTapOutcome {
  * tested apart from pointer input:
  *  - a tap the movement gate refused (a scroll, a child's own tap, a stale gesture) does nothing;
  *  - a tap whose gesture began while an in-place selection showed only dismisses it;
+ *  - a click (mouse, trackpad, stylus) does nothing more at row level ([threadMessageRowTapGesturesFor]);
  *  - the second of two taps within [ThreadMessageDoubleTapTimeoutMillis] and
  *    [ThreadMessageDoubleTapSlop] shows the reaction bar;
  *  - otherwise, with a double tap available, the single-tap action waits out the timeout
@@ -28991,6 +29005,7 @@ internal enum class ThreadMessageRowTapOutcome {
  */
 internal fun decideThreadMessageRowTap(
     tapAccepted: Boolean,
+    fromTouch: Boolean,
     selectionShowingAtDown: Boolean,
     hasSingleTapAction: Boolean,
     doubleTapAvailable: Boolean,
@@ -28999,6 +29014,7 @@ internal fun decideThreadMessageRowTap(
     when {
         !tapAccepted -> ThreadMessageRowTapOutcome.None
         selectionShowingAtDown -> ThreadMessageRowTapOutcome.DismissSelectionOnly
+        !fromTouch -> ThreadMessageRowTapOutcome.None
         doubleTapAvailable && completesDoubleTap -> ThreadMessageRowTapOutcome.ShowReactionBar
         doubleTapAvailable && hasSingleTapAction -> ThreadMessageRowTapOutcome.DeferSingleTap
         hasSingleTapAction -> ThreadMessageRowTapOutcome.RunSingleTap
@@ -29087,7 +29103,7 @@ internal fun Modifier.threadMessageLongPressActions(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onInputReady: ((String) -> Unit)? = null,
     deferLongPressAt: ((Offset) -> Boolean)? = null,
-    onPointerDown: ((Offset) -> Unit)? = null,
+    onPointerDown: ((Offset, PointerType) -> Unit)? = null,
     onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
     consumeSelectionDismissalTap: (() -> Boolean)? = null
 ): Modifier {
@@ -29130,8 +29146,8 @@ internal fun Modifier.threadMessageLongPressActions(
                             "sameRow=$cancelledHere"
                     )
                 }
-                gestureOwner.callbacksSnapshot(compositionLease)?.onPointerDown?.invoke(down.position)
-                gestureOwner.lastDownFromTouch = down.type == PointerType.Touch
+                gestureOwner.callbacksSnapshot(compositionLease)?.onPointerDown?.invoke(down.position, down.type)
+                gestureOwner.lastDownFromTouch = threadMessageRowTapGesturesFor(down.type)
                 gestureOwner.lastDownUptimeMillis = down.uptimeMillis
                 gestureOwner.lastDownPosition = down.position
                 gestureOwner.doubleTapSlopPx = ThreadMessageDoubleTapSlop.toPx()
@@ -29216,6 +29232,7 @@ internal fun Modifier.threadMessageLongPressActions(
                         when (
                             decideThreadMessageRowTap(
                                 tapAccepted = true,
+                                fromTouch = gestureOwner.lastDownFromTouch,
                                 selectionShowingAtDown = selectionShowingAtDown,
                                 hasSingleTapAction = callbacks.onTap != null,
                                 doubleTapAvailable = doubleTapAvailable,
@@ -29355,7 +29372,9 @@ internal data class ThreadMessageLongPressCallbacks(
     val onInputReady: ((String) -> Unit)? = null,
     // In-place text selection (New Message Menu toggle): body presses belong to the selection.
     val deferLongPressAt: ((Offset) -> Boolean)? = null,
-    val onPointerDown: ((Offset) -> Unit)? = null,
+    // Every down on the row, with its pointer type (in-place selection: dismissal, and whether a
+    // new selection is a finger's long press or a mouse drag).
+    val onPointerDown: ((Offset, PointerType) -> Unit)? = null,
     // Two quick finger taps on the row: show its quick reaction bar at the anchor (null where the
     // message cannot be reacted to; then the row has no double tap and [onTap] runs at once).
     val onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
@@ -29446,7 +29465,10 @@ internal class ThreadMessageLongPressGestureOwner(
         return true
     }
 
-    /** The current gesture's down: from a finger, when, where, and the slop in px (for the double tap). */
+    /**
+     * The current gesture's down: from a finger ([threadMessageRowTapGesturesFor]: only then do the
+     * row's tap and double tap act), when, where, and the slop in px (for the double tap).
+     */
     var lastDownFromTouch = false
     var lastDownUptimeMillis = 0L
     var lastDownPosition = Offset.Zero

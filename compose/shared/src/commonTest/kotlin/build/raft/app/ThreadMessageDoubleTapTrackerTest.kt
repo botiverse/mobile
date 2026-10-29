@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerType
 import kotlinx.coroutines.Job
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -63,6 +64,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.None,
             decideThreadMessageRowTap(
                 tapAccepted = false,
+                fromTouch = true,
                 selectionShowingAtDown = true,
                 hasSingleTapAction = true,
                 doubleTapAvailable = true,
@@ -78,6 +80,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.DismissSelectionOnly,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = true,
                 hasSingleTapAction = true,
                 doubleTapAvailable = true,
@@ -92,12 +95,13 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.RunSingleTap,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = true,
                 doubleTapAvailable = false,
                 completesDoubleTap = false
             ),
-            "a message that cannot be reacted to (or a mouse click) opens its thread immediately"
+            "a message that cannot be reacted to opens its thread immediately"
         )
     }
 
@@ -107,6 +111,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.DeferSingleTap,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = true,
                 doubleTapAvailable = true,
@@ -117,6 +122,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.ShowReactionBar,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = true,
                 doubleTapAvailable = true,
@@ -131,6 +137,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.None,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = false,
                 doubleTapAvailable = true,
@@ -142,6 +149,7 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.ShowReactionBar,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = false,
                 doubleTapAvailable = true,
@@ -152,12 +160,55 @@ class ThreadMessageDoubleTapTrackerTest {
             ThreadMessageRowTapOutcome.None,
             decideThreadMessageRowTap(
                 tapAccepted = true,
+                fromTouch = true,
                 selectionShowingAtDown = false,
                 hasSingleTapAction = false,
                 doubleTapAvailable = false,
                 completesDoubleTap = false
             ),
             "no tap action and no reactions: nothing"
+        )
+    }
+
+    @Test
+    fun onlyAFingerGetsTheRowTapGestures() {
+        assertTrue(threadMessageRowTapGesturesFor(PointerType.Touch))
+        assertFalse(threadMessageRowTapGesturesFor(PointerType.Mouse), "desktop, an iPad with a mouse or trackpad")
+        assertFalse(threadMessageRowTapGesturesFor(PointerType.Stylus))
+        assertFalse(threadMessageRowTapGesturesFor(PointerType.Eraser))
+        assertFalse(threadMessageRowTapGesturesFor(PointerType.Unknown))
+    }
+
+    @Test
+    fun aMouseClickNeitherOpensTheThreadNorShowsReactions() {
+        // stdrc + raft-design #878: a click selects text; it never opens the thread.
+        for (doubleTapAvailable in listOf(false, true)) {
+            for (completesDoubleTap in listOf(false, true)) {
+                assertEquals(
+                    ThreadMessageRowTapOutcome.None,
+                    decideThreadMessageRowTap(
+                        tapAccepted = true,
+                        fromTouch = false,
+                        selectionShowingAtDown = false,
+                        hasSingleTapAction = true,
+                        doubleTapAvailable = doubleTapAvailable,
+                        completesDoubleTap = completesDoubleTap
+                    ),
+                    "doubleTapAvailable=$doubleTapAvailable completesDoubleTap=$completesDoubleTap"
+                )
+            }
+        }
+        assertEquals(
+            ThreadMessageRowTapOutcome.DismissSelectionOnly,
+            decideThreadMessageRowTap(
+                tapAccepted = true,
+                fromTouch = false,
+                selectionShowingAtDown = true,
+                hasSingleTapAction = true,
+                doubleTapAvailable = false,
+                completesDoubleTap = false
+            ),
+            "a click while a selection shows still only dismisses it"
         )
     }
 

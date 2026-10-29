@@ -138,6 +138,18 @@ internal fun threadInPlaceSelectionTapDecision(selectionShowingAtDown: Boolean):
         ThreadInPlaceSelectionTapDecision.RunRowAction
     }
 
+/**
+ * Whether a selection that just appeared widens to the whole message (the long-press default).
+ * Only one a finger started: a mouse or trackpad selection (desktop, an iPad with a pointer) is a
+ * press-and-drag or a double-clicked word and stays exactly what was picked. Compose's mouse drag
+ * extends the end of the current selection, so widening it mid-drag (it appears on the first move)
+ * pinned the start to the message's first character: "selection always starts at the beginning".
+ */
+internal fun threadInPlaceSelectionWidensToWholeMessage(
+    startedByTouch: Boolean,
+    coversAll: Boolean,
+): Boolean = startedByTouch && !coversAll
+
 internal enum class ThreadMessageLongPressRoute {
     MessageMenu,
     InPlaceSelection
@@ -302,6 +314,14 @@ internal class ThreadInPlaceSelectionController(
 
     /** Set at pointer DOWN: this gesture started while a selection was showing. */
     internal var dismissalGestureInFlight = false
+
+    /**
+     * Set at every pointer DOWN on the row: whether it came from a finger. A selection a finger
+     * starts (long press) widens to the whole message; one a mouse starts (press and drag, double
+     * click) is the user's own range and is kept ([threadInPlaceSelectionWidensToWholeMessage]).
+     * True until the first down so a selection made without one keeps the default.
+     */
+    internal var lastPointerDownFromTouch = true
 
     val menuRequested: Boolean
         get() = menuRectInBody != null || menuDataProvider != null
@@ -473,9 +493,18 @@ internal fun ThreadInPlaceSelectableBody(
     }
     // Long-press starts on a word; the default is the whole message, so widen it once when a
     // selection appears. Later handle drags are left alone (that is how a partial pick is made).
+    // Only for a finger: a mouse selection appears on the first drag move, and widening it there
+    // moved its anchor to the message start for the rest of the drag (artin, 2026-10-29).
     val hasSelection = controller.hasSelection
     LaunchedEffect(controller, hasSelection) {
-        if (hasSelection && !threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())) {
+        if (
+            hasSelection &&
+                threadInPlaceSelectionWidensToWholeMessage(
+                    startedByTouch = controller.lastPointerDownFromTouch,
+                    coversAll =
+                        threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
+                )
+        ) {
             diagnosticsLogger("thread_in_place_selection_default_select_all messageId=${controller.messageId}")
             controller.selectAll()
         }
