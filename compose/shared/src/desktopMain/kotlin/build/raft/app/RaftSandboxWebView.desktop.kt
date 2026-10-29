@@ -59,7 +59,7 @@ internal actual fun RaftSandboxWebViewHost(
     key(policy, config.ephemeral) {
         val host = remember { RaftDesktopWryWebView(policy, config.ephemeral, events) }
         host.events = events
-        SwingPanel(factory = { host.panel.apply { background = java.awt.Color.WHITE } }, modifier = modifier)
+        SwingPanel(factory = { host.view }, modifier = modifier)
         DisposableEffect(controller) {
             host.bind(controller)
             onDispose { host.unbind(controller) }
@@ -83,6 +83,22 @@ private const val RaftDesktopWebViewPollMs = 250L
 
 /** Poll interval while a declared-frame navigation ([RaftDesktopWebViewNavigation.AllowUnverifiedFrame]) is unverified. */
 private const val RaftDesktopWebViewVerifyMs = 50L
+
+/**
+ * Longest the WebView stays hidden after its first load finished while the page still looks busy
+ * ([RaftDesktopWebViewReadyScript]); then it shows anyway.
+ */
+private const val RaftDesktopWebViewRevealDeadlineMs = 2_500L
+
+/**
+ * Whether the page is past its loading frame: loaded, and no `aria-busy` region left (the web's
+ * boot shell and its pending server frame are `aria-busy`; ShellFrame `pending`). Until then the
+ * native view stays off screen and the host's own loading state shows, so the web's full-app
+ * skeleton never appears inside a Settings section.
+ */
+private const val RaftDesktopWebViewReadyScript =
+    "(function(){try{return document.readyState==='complete'&&!!document.body&&" +
+        "!document.querySelector('[aria-busy=\"true\"]')?'1':'0'}catch(e){return '0'}})()"
 
 /** Times the host takes a fenced-off top-level page back to the last trusted address before giving up. */
 private const val RaftDesktopWebViewMaxRestores = 2
@@ -111,6 +127,12 @@ internal class RaftDesktopWryWebView(
             autoplayWithoutUserInteraction = false,
         )
 
+    /** What Compose hosts: keeps the native view off screen until [revealWhenReady] and when the page leaves. */
+    val view = RaftDesktopWryNativeView(panel)
+    private var revealed = false
+    private var loadFinishedAt = 0L
+    private var readyCheckPending = false
+
     @Volatile private var disposed = false
     @Volatile private var verifySoon = false
     private val topLevelCheck = RaftDesktopWebViewTopLevelCheck()
@@ -135,9 +157,9 @@ internal class RaftDesktopWryWebView(
         notifyState(force = true)
     }
 
-    /** Quick polls while a declared-frame navigation is unverified, so its timeout is honoured. */
+    /** Quick polls while a declared-frame navigation is unverified (its timeout) or the page is about to show. */
     fun nextPollDelayMs(): Long =
-        if (verifySoon || topLevelCheck.armed) {
+        if (verifySoon || topLevelCheck.armed || (!revealed && loadFinishedAt != 0L)) {
             verifySoon = false
             RaftDesktopWebViewVerifyMs
         } else {
@@ -205,13 +227,38 @@ internal class RaftDesktopWryWebView(
         } else if (!nowLoading && loading) {
             loading = false
             progress = 100
+            if (loadFinishedAt == 0L) loadFinishedAt = System.currentTimeMillis()
             if (!commitSent) {
                 commitSent = true
                 events.onLoadCommit()
             }
             events.onLoadSuccess()
         }
+        revealWhenReady()
         notifyState(force = false)
+    }
+
+    /** Shows the native view once the page is past its loading frame, or at the deadline. */
+    private fun revealWhenReady() {
+        if (revealed || loadFinishedAt == 0L || readyCheckPending) return
+        if (System.currentTimeMillis() - loadFinishedAt >= RaftDesktopWebViewRevealDeadlineMs) {
+            reveal()
+            return
+        }
+        readyCheckPending = true
+        panel.evaluateJavaScript(RaftDesktopWebViewReadyScript) { result ->
+            val ready = RaftDesktopWebViewPolicy.decodeEvaluatedString(result) == "1"
+            SwingUtilities.invokeLater {
+                readyCheckPending = false
+                if (ready && !disposed) reveal()
+            }
+        }
+    }
+
+    private fun reveal() {
+        if (revealed) return
+        revealed = true
+        view.reveal()
     }
 
     private fun onTopLevelUrl(token: Long, idle: Boolean, href: String?) {
