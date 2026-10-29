@@ -137,17 +137,12 @@ internal class RaftMarkdownMentionPreviewCards(
 
     private val anchors = arrayOfNulls<Rect>(spans.size)
 
-    // Who each mention is, looked up the first time the pointer rests on it (most never are).
+    // Who each mention is, looked up the first time the pointer rests on it (most never are). A miss
+    // is not kept: the member list may still be loading, so the next hover looks again.
     private val identities = arrayOfNulls<MemberDetailIdentity>(spans.size)
-    private val resolved = BooleanArray(spans.size)
 
-    private fun identity(index: Int): MemberDetailIdentity? {
-        if (!resolved[index]) {
-            identities[index] = resolveMention(spans[index].label)
-            resolved[index] = true
-        }
-        return identities[index]
-    }
+    private fun identity(index: Int): MemberDetailIdentity? =
+        identities[index] ?: resolveMention(spans[index].label)?.also { identities[index] = it }
 
     fun hover(position: Offset?) {
         val layout = layout
