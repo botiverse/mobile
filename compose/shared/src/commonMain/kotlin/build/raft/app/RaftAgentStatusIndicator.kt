@@ -152,6 +152,19 @@ internal fun rememberRaftAgentStatusIndicatorState(
     }
 }
 
+/**
+ * The coarse part only (dot color, status name): for surfaces that do not subscribe to an agent's
+ * detailed `agent:activity` (Tenny, slock 968d102d), whose last detailed label could be stale.
+ */
+internal fun RaftAgentStatusIndicatorState.withoutActivityDetail(): RaftAgentStatusIndicatorState =
+    copy(
+        label = if (external || likelyOnline) label else status?.label ?: label,
+        detailKind = null,
+        activityToolName = null,
+        wakeCrashLoop = null,
+        toolStuck = null,
+    )
+
 internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAgentStatusIndicatorState =
     raftAgentStatusIndicatorState(
         status = status,

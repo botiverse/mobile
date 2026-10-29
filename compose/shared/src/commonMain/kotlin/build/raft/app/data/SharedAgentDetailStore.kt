@@ -599,11 +599,13 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     // the managed-activity sequence.
     val isSeenEvent = event.serverSeq == null && event.lastSeenAt != null
     if (!isSeenEvent && !event.shouldApplyAfter(agentActivitySeq[agentId])) return this
+    // agent:activity_state (coarse) moves the status only: only detailed frames write log entries.
+    val writesLog = !isSeenEvent && !event.coarseState
     val nextActivityLog =
-        if (isSeenEvent) agentActivityLogs[agentId].orEmpty()
+        if (!writesLog) agentActivityLogs[agentId].orEmpty()
         else agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextRealtimeActivityLog =
-        if (isSeenEvent) agentRealtimeActivityLogs[agentId].orEmpty()
+        if (!writesLog) agentRealtimeActivityLogs[agentId].orEmpty()
         else agentRealtimeActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextDetail =
         if (this.agentId == agentId) {
@@ -826,7 +828,8 @@ private fun AgentDetailSnapshot.withAgentActivity(
                 else event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail,
             lastSeenAt = event.lastSeenAt ?: currentSummary.lastSeenAt
         ),
-        activity = if (isSeenEvent) activity else activity.withRealtimeAgentActivity(event, observedAtMillis)
+        activity =
+            if (isSeenEvent || event.coarseState) activity else activity.withRealtimeAgentActivity(event, observedAtMillis)
     )
 }
 

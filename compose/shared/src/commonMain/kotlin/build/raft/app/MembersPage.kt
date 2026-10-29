@@ -13257,7 +13257,9 @@ private fun MembersListRowAvatar(
 ) {
     val showsStatus = member.kind == MemberKind.Agent && member.managedByAppInstallId.isNullOrBlank()
     val status =
+        // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
+            ?.withoutActivityDetail()
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,

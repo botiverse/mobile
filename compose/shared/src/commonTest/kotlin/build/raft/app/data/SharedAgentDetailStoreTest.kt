@@ -797,6 +797,34 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun coarseActivityStateMovesTheStatusButWritesNoLogEntry() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building", serverSeq = 10L),
+                observedAtMillis = 100L
+            )
+        )
+
+        // agent:activity_state (botiverse/slock 968d102d): status only, never a log entry.
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Offline, detail = null, serverSeq = 12L).copy(coarseState = true),
+                observedAtMillis = 200L
+            )
+        )
+
+        val state = s.state.value
+        assertEquals("Offline", state.detail?.summary?.status)
+        assertEquals(12L, state.agentActivitySeq[testMemberId])
+        assertEquals(listOf("realtime:agent-1:seq:10"), state.detail?.activity?.map { it.id })
+        assertEquals(listOf("realtime:agent-1:seq:10"), state.agentActivityLogs[testMemberId]?.map { it.id })
+        assertEquals(listOf("realtime:agent-1:seq:10"), state.agentRealtimeActivityLogs[testMemberId]?.map { it.id })
+    }
+
+    @Test
     fun sequencedAgentActivitySurvivesUnsequencedRestDetail() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
