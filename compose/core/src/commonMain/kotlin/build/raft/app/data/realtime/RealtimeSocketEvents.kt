@@ -46,6 +46,25 @@ object RealtimeSocketEvents {
     const val TaskUpdated = GeneratedRealtimeContract.SocketEvent.TaskUpdated
     const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted
     const val AgentActivity = GeneratedRealtimeContract.SocketEvent.AgentActivity
+
+    /**
+     * Agent activity subscriptions (botiverse/slock 968d102d `packages/shared/src/agentActivitySubscriptions.ts`).
+     * A socket whose handshake `auth.capabilities` lists [AgentActivitySubscriptionsCapability] gets the
+     * detailed [AgentActivity] only for the agents it subscribed to ([AgentActivitySubscribe]
+     * `{ agentIds }`, at most [AgentActivitySubscribeMaxIds] per emit, answered with
+     * [AgentActivitySubscribed] `{ agentIds }` = the ids actually joined), and [AgentActivityState]
+     * `{ agentId, state, activity, timestamp, serverSeq }` for every agent of the server, only when the
+     * coarse state (offline / online / busy / error) changes. Both pushes share one serverSeq counter.
+     */
+    const val AgentActivityState = GeneratedRealtimeContract.SocketEvent.AgentActivityState
+    const val AgentActivitySubscribe = GeneratedRealtimeContract.SocketEvent.AgentActivitySubscribe
+    const val AgentActivityUnsubscribe = GeneratedRealtimeContract.SocketEvent.AgentActivityUnsubscribe
+    const val AgentActivitySubscribed = GeneratedRealtimeContract.SocketEvent.AgentActivitySubscribed
+    const val AgentActivitySubscriptionsCapability = "agent_activity_subscriptions_v1"
+    const val AgentActivitySubscribeMaxIds = 200
+
+    /** The handshake `auth.capabilities` every socket of this app declares (a JSON array of strings). */
+    val HandshakeCapabilities: List<String> = listOf(AgentActivitySubscriptionsCapability)
     const val AgentSeen = GeneratedRealtimeContract.SocketEvent.AgentSeen
     /** Agent typing line (slock `packages/shared/src/agentTyping.ts`): an agent is about to post into `channel:<channelId>`. */
     const val AgentTyping = GeneratedRealtimeContract.SocketEvent.AgentTyping

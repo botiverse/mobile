@@ -2,6 +2,8 @@ package build.raft.app.data.realtime
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
+import build.raft.app.data.RaftEventBus
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RaftEnhancedNotifyEvent
 import build.raft.app.data.RaftEnhancedNotifyEventBus
@@ -25,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -267,6 +270,39 @@ class RaftRealtimeAppScopePolicyTest {
         )
 
         assertEquals(emptyList(), sink.fanOutEventNames)
+    }
+
+    @Test
+    fun coordinatorEmitsSharedAgentActivitySubscriptionsOnItsOwnServerOnly() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val enhancedNotifyBus = FakeEnhancedNotifyBus()
+        RaftRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), enhancedNotifyBus)
+            .connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = witness())
+        // What shared AgentActivitySubscriptions posts, through the real rooms-topic writer.
+        val events =
+            RaftRealtimeEvents(
+                object : RaftEventBus {
+                    override fun observe(eventName: String, crossProcess: Boolean, listener: (JsonObject?) -> Unit) =
+                        RealtimeSubscription { }
+
+                    override fun post(eventName: String, eventData: JsonObject, crossProcess: Boolean, source: String) =
+                        enhancedNotifyBus.emit(RaftEnhancedNotifyEvent(eventName, eventData, crossProcess, source))
+                }
+            )
+
+        events.postAgentActivitySubscription("server-1", subscribe = true, agentIds = listOf("a1", "a2"))
+        events.postAgentActivitySubscription("server-2", subscribe = true, agentIds = listOf("b1"))
+        events.postAgentActivitySubscription("server-1", subscribe = false, agentIds = listOf("a2"))
+        events.postAgentActivitySubscription("server-1", subscribe = true, agentIds = emptyList())
+
+        assertEquals(
+            listOf(
+                RealtimeSocketEvents.AgentActivitySubscribe to listOf("a1", "a2"),
+                RealtimeSocketEvents.AgentActivityUnsubscribe to listOf("a2"),
+            ),
+            connection.agentActivitySubscriptions
+        )
+        assertTrue(connection.roomCommands.isEmpty())
     }
 
     @Test
@@ -634,6 +670,12 @@ class RaftRealtimeAppScopePolicyTest {
 
         override fun emitRoomCommand(eventName: String, payload: String, force: Boolean) {
             roomCommands += eventName to payload
+        }
+
+        val agentActivitySubscriptions = mutableListOf<Pair<String, List<String>>>()
+
+        override fun emitAgentActivitySubscription(eventName: String, agentIds: List<String>) {
+            agentActivitySubscriptions += eventName to agentIds
         }
 
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =

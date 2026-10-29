@@ -300,6 +300,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -15905,6 +15906,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is TaskUpdated -> "task_updated"
         is TaskDeleted -> "task_deleted"
         is MemberPresenceUpdated -> "presence_updated"
+        is AgentActivitySubscribed -> "agent_activity_subscribed"
         is RealtimeRefreshRequired -> "refresh_${scope.name}"
         is ServerMembershipRemoved -> "server_membership_removed"
         is ServerDeleted -> "server_deleted"
@@ -15925,7 +15927,8 @@ private fun RealtimeEvent.performanceMarkerName(): String =
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
     when (this) {
-        is MemberPresenceUpdated -> "realtime_presence_apply"
+        is MemberPresenceUpdated,
+        is AgentActivitySubscribed -> "realtime_presence_apply"
         is MessageNew,
         is MessageUpdated,
         is ThreadFollowersUpdated,
@@ -15955,7 +15958,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =
-    this !is Heartbeat && this !is MemberPresenceUpdated
+    this !is Heartbeat && this !is MemberPresenceUpdated && this !is AgentActivitySubscribed
 
 internal fun decodeSharedShellRealtimeEvent(
     eventData: JsonObject,

@@ -1010,7 +1010,9 @@ internal fun MemberPresenceUpdated.shouldReplaceRegisteredPresenceFact(
 ): Boolean =
     when {
         previous == null -> true
-        requiresStrictlyNewerSequence && serverSeq != null && previous.serverSeq != null ->
+        // agent:activity_state shares agent:activity's counter and carries the seq of the detailed frame
+        // it was derived from: equal means that frame (with its label) is already here, so keep it.
+        (coarseState || requiresStrictlyNewerSequence) && serverSeq != null && previous.serverSeq != null ->
             serverSeq > previous.serverSeq
         serverSeq != null && previous.serverSeq != null -> serverSeq >= previous.serverSeq
         serverSeq != null && previous.serverSeq == null -> true

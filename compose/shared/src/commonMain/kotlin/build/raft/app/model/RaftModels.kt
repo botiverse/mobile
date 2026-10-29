@@ -959,7 +959,23 @@ data class MemberPresenceUpdated(
      * The agent is stuck on one tool call (the `toolStuck` carrier of `agent:activity`). The daemon
      * attaches it to every frame while that is true, so a frame without it means "not stuck".
      */
-    val toolStuck: AgentToolStuck? = null
+    val toolStuck: AgentToolStuck? = null,
+    /**
+     * From `agent:activity_state` (botiverse/slock 968d102d): the coarse state of the detailed frame with
+     * the same [serverSeq], without its label or entries. It never replaces that frame or a newer one
+     * (see `shouldReplaceRegisteredPresenceFact`).
+     */
+    val coarseState: Boolean = false
+) : RealtimeEvent
+
+/**
+ * `agent:activity:subscribed` (botiverse/slock 968d102d `socket/index.ts` `subscribeSocketToAgentActivity`): the
+ * answer to one `agent:activity:subscribe`, naming the ids this socket now gets detailed `agent:activity` for
+ * (ids it may not see are left out).
+ */
+@Serializable
+data class AgentActivitySubscribed(
+    val agentIds: List<String>
 ) : RealtimeEvent
 
 /**

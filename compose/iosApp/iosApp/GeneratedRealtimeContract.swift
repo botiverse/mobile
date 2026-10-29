@@ -9,6 +9,8 @@ enum GeneratedRealtimeContract {
         static let joinChannel = "joinChannel"
         static let leaveChannel = "leaveChannel"
         static let rejoinChannel = "rejoinChannel"
+        static let agentActivitySubscribe = "agentActivitySubscribe"
+        static let agentActivityUnsubscribe = "agentActivityUnsubscribe"
     }
 
     enum PayloadKey {
@@ -60,6 +62,10 @@ enum GeneratedRealtimeContract {
         static let taskUpdated = "task:updated"
         static let taskDeleted = "task:deleted"
         static let agentActivity = "agent:activity"
+        static let agentActivityState = "agent:activity_state"
+        static let agentActivitySubscribe = "agent:activity:subscribe"
+        static let agentActivityUnsubscribe = "agent:activity:unsubscribe"
+        static let agentActivitySubscribed = "agent:activity:subscribed"
         static let agentSeen = "agent:seen"
         static let agentTyping = "agent:typing"
         static let agentSession = "agent:session"

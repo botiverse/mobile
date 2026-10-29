@@ -6,7 +6,9 @@
   "roomActions": {
     "joinChannel": "joinChannel",
     "leaveChannel": "leaveChannel",
-    "rejoinChannel": "rejoinChannel"
+    "rejoinChannel": "rejoinChannel",
+    "agentActivitySubscribe": "agentActivitySubscribe",
+    "agentActivityUnsubscribe": "agentActivityUnsubscribe"
   },
   "payloadKeys": {
     "action": "action",
@@ -55,6 +57,10 @@
     "taskUpdated": "task:updated",
     "taskDeleted": "task:deleted",
     "agentActivity": "agent:activity",
+    "agentActivityState": "agent:activity_state",
+    "agentActivitySubscribe": "agent:activity:subscribe",
+    "agentActivityUnsubscribe": "agent:activity:unsubscribe",
+    "agentActivitySubscribed": "agent:activity:subscribed",
     "agentSeen": "agent:seen",
     "agentTyping": "agent:typing",
     "agentSession": "agent:session",
@@ -96,6 +102,8 @@
     "taskUpdated",
     "taskDeleted",
     "agentActivity",
+    "agentActivityState",
+    "agentActivitySubscribed",
     "agentSeen",
     "agentTyping",
     "agentSession",

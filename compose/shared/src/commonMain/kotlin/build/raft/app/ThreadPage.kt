@@ -4962,6 +4962,17 @@ private fun ThreadMembersPageScreen() {
                 row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
             } }
     }
+    // The roster's own-server agents get detailed activity while this page is open (at most 200).
+    RaftAgentActivitySubscriptionEffect(
+        subscriptions = sharedStores.agentActivitySubscriptions,
+        serverId = route.serverId.value,
+        agentIds =
+            remember(members, route.serverId) {
+                members
+                    .filter { it.kind.equals("agent", ignoreCase = true) && it.sourceServerId in setOf(null, route.serverId.value) }
+                    .map { it.id }
+            },
+    )
     val candidates = remember(serverMembersEntry.members, route.serverId, members) {
         threadAddMemberCandidatesExcludingJoined(
             candidates = serverMembersEntry.members.map { it.toRaftThreadMemberItem(route.serverId) },
@@ -8916,6 +8927,12 @@ private fun SharedThreadRouteContentContent(
         remember(serverMembersStore, headerProjectionServerId) {
             raftScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
+    // An agent's DM shows its live activity in the header: detailed activity while the DM is open.
+    RaftAgentActivitySubscriptionEffect(
+        subscriptions = sharedStores.agentActivitySubscriptions,
+        serverId = headerProjectionServerId?.value,
+        agentIds = listOfNotNull(headerDisplayModel.dmAgentActivityMemberId()),
+    )
     val messagePermalinkLabelResolver =
         remember(
             conversationIdentityProvider,

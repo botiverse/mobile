@@ -20,6 +20,7 @@ import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
@@ -250,6 +251,21 @@ class SocketIoRealtimeClient(
                 }
                 else -> emitRoomPayload(eventName, payload)
             }
+        }
+    }
+
+    /**
+     * `agent:activity:subscribe` / `:unsubscribe` `{ agentIds }` on the connected socket only: shared
+     * re-sends its whole set after every (re)connect, so nothing is buffered for a later socket.
+     */
+    fun emitAgentActivitySubscription(eventName: String, agentIds: List<String>) {
+        transport.linearize {
+            val connected =
+                connectionState == RealtimeConnectionState.Connected ||
+                    connectionState == RealtimeConnectionState.RoomsJoined
+            logger("agent_activity_subscription eventName=$eventName count=${agentIds.size} connected=$connected")
+            if (!connected) return@linearize
+            transport.emit(eventName, mapOf("agentIds" to agentIds))
         }
     }
 
@@ -889,6 +905,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is TaskUpdated -> "task_updated"
     is TaskDeleted -> "task_deleted"
     is MemberPresenceUpdated -> "member_presence_updated"
+    is AgentActivitySubscribed -> "agent_activity_subscribed"
     is RealtimeRefreshRequired -> "refresh_required"
     is ServerMembershipRemoved -> "server_membership_removed"
     is ServerDeleted -> "server_deleted"

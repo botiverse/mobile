@@ -72,6 +72,33 @@ class ProcessMemberPresenceRegistryTest {
     }
 
     @Test
+    fun coarseStateNeverReplacesTheDetailedFrameItCameFromButAStrictlyNewerOneDoes() {
+        // agent:activity_state shares agent:activity's serverSeq counter (botiverse/slock 968d102d).
+        val registry = ProcessMemberPresenceRegistry()
+        val detailed = fact(serverSeq = 10, status = AgentStatus.Thinking).copy(statusLabel = "Planning")
+        registry.apply(ownerServerA, detailed, GEN0)
+
+        // The coarse state of that very frame (same seq) and an older one keep the labelled fact.
+        registry.apply(ownerServerA, fact(serverSeq = 10, status = AgentStatus.Working).copy(coarseState = true), GEN0)
+        registry.apply(ownerServerA, fact(serverSeq = 9, status = AgentStatus.Offline, presence = Presence.Offline).copy(coarseState = true), GEN0)
+        assertEquals(detailed, registry.factFor(ownerServerA, "agent-1"))
+
+        // A strictly newer coarse state (the agent is no longer watched in detail) moves the dot.
+        registry.apply(ownerServerA, fact(serverSeq = 12, status = AgentStatus.Offline, presence = Presence.Offline).copy(coarseState = true), GEN0)
+        val coarse = registry.factFor(ownerServerA, "agent-1")
+        assertEquals(AgentStatus.Offline, coarse?.agentStatus)
+        assertNull(coarse?.statusLabel)
+        assertEquals(12L, coarse?.serverSeq)
+
+        // A detailed frame with the coarse fact's seq still replaces it (it carries more); an older one does not.
+        registry.apply(ownerServerA, fact(serverSeq = 11, status = AgentStatus.Working), GEN0)
+        assertEquals(12L, registry.factFor(ownerServerA, "agent-1")?.serverSeq)
+        val sameSeqDetail = fact(serverSeq = 12, status = AgentStatus.Offline, presence = Presence.Offline).copy(statusLabel = "Stopped")
+        registry.apply(ownerServerA, sameSeqDetail, GEN0)
+        assertEquals(sameSeqDetail, registry.factFor(ownerServerA, "agent-1"))
+    }
+
+    @Test
     fun projectionNeverDisplacesRealtimeFact() {
         val registry = ProcessMemberPresenceRegistry()
         registry.apply(ownerServerA, fact(serverSeq = 7, presence = Presence.Offline, status = AgentStatus.Offline), GEN0)

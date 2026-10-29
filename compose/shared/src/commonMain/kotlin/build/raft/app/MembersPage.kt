@@ -3975,6 +3975,12 @@ internal fun MemberDetailPageContent(
                 current.server.id.value.takeIf { current.accessMode.allowsPrivateAgentSurfaces }
             else -> null
         }
+    // The detail page shows the agent's live activity: detailed activity while it is open (own server).
+    RaftAgentActivitySubscriptionEffect(
+        subscriptions = remember(bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }.agentActivitySubscriptions,
+        serverId = statusLookupServerId,
+        agentIds = listOfNotNull(selectedMemberId?.value),
+    )
     // Human details can render created-agent rows, but they must not opt into the
     // agent-only computers/runtime surface. Bind only the status/avatar read edge
     // to the route's canonical server; remote profile-only agents remain unbound.

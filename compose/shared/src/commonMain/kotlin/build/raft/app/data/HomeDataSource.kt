@@ -323,6 +323,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is PerReceiverNotificationPrefsChanged,
         is PerReceiverPinnedChanged -> true
         is MemberPresenceUpdated -> false
+        // The server's answer to this app's own agent activity subscribe: no Home row changes.
+        is build.raft.app.model.AgentActivitySubscribed -> false
         // read_receipts_v0: other participants' read positions only decorate the open message list.
         is build.raft.app.model.ScopeReadUpdated -> false
         // Agent typing line: who is about to post only decorates the open conversation.

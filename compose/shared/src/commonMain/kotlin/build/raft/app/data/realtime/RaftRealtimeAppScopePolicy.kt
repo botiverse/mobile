@@ -28,6 +28,15 @@ object RaftRealtimeNotifyContract {
     const val ActionJoinChannel = GeneratedRealtimeContract.RoomAction.JoinChannel
     const val ActionLeaveChannel = GeneratedRealtimeContract.RoomAction.LeaveChannel
     const val ActionRejoinChannel = GeneratedRealtimeContract.RoomAction.RejoinChannel
+
+    /**
+     * Shared [build.raft.app.data.AgentActivitySubscriptions] asks the host to emit
+     * `agent:activity:subscribe` / `agent:activity:unsubscribe` `{ agentIds }` on [KeyServerId]'s socket.
+     * [KeyAgentIds] is a JSON array of at most `RealtimeSocketEvents.AgentActivitySubscribeMaxIds` ids.
+     */
+    const val ActionAgentActivitySubscribe = GeneratedRealtimeContract.RoomAction.AgentActivitySubscribe
+    const val ActionAgentActivityUnsubscribe = GeneratedRealtimeContract.RoomAction.AgentActivityUnsubscribe
+    const val KeyAgentIds = "agentIds"
     const val KeyAction = GeneratedRealtimeContract.PayloadKey.Action
     const val KeyChannelId = GeneratedRealtimeContract.PayloadKey.ChannelId
     const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId
