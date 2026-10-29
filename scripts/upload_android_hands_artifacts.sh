@@ -49,7 +49,7 @@ redact() {
 # body (redacted) so a Cloudflare edge page can be told apart from Hands' JSON error.
 hands_curl() {
   local policy=$1 label=$2; shift 2
-  local max="${HANDS_RETRY_ATTEMPTS:-3}" attempt=1 status code retry delay body err
+  local max="${HANDS_RETRY_ATTEMPTS:-3}" attempt=1 status code hands_code retry delay body err
   local -a delays
   read -r -a delays <<<"${HANDS_CURL_RETRY_DELAYS:-5 15 45}"
   body="$(mktemp)"; err="$(mktemp)"
@@ -64,8 +64,18 @@ hands_curl() {
       idempotent:408:*|idempotent:429:*|idempotent:5??:*) retry=1 ;;
       idempotent:none:6|idempotent:none:7|idempotent:none:18|idempotent:none:28|idempotent:none:35|idempotent:none:52|idempotent:none:55|idempotent:none:56) retry=1 ;;
     esac
+    # Hands JSON errors carry {code, retryable}; trust them over the HTTP status.
+    # 503 ASSET_UPLOAD_UNAVAILABLE means presigned uploads are not configured, so a
+    # retry cannot help; Cloudflare/HTML 5xx bodies keep the status-based policy.
+    hands_code="$(jq -r 'objects | .code // .error.code // empty' "$body" 2>/dev/null | head -n 1 || true)"
+    if [[ "$hands_code" == ASSET_UPLOAD_UNAVAILABLE ]]; then
+      echo "Hands $label: ASSET_UPLOAD_UNAVAILABLE is a Hands storage configuration error, not transient; not retrying" >&2
+      retry=0
+    elif [[ "$(jq -r 'objects | .retryable // .error.retryable // empty' "$body" 2>/dev/null || true)" == true ]]; then
+      retry=1
+    fi
     if (( retry == 0 || attempt >= max )); then
-      echo "Hands $label failed: HTTP ${code:-none}, curl exit $status, attempt $attempt/$max" >&2
+      echo "Hands $label failed: HTTP ${code:-none}${hands_code:+ code=$hands_code}, curl exit $status, attempt $attempt/$max" >&2
       redact <"$err" >&2
       if [[ -s "$body" ]]; then
         echo "Hands $label response body (first 2000 bytes):" >&2
@@ -76,7 +86,7 @@ hands_curl() {
       return "$status"
     fi
     delay="${delays[$((attempt - 1))]:-${delays[${#delays[@]}-1]}}"
-    echo "Hands $label attempt $attempt/$max failed (transient): HTTP ${code:-none}, curl exit $status; retrying in ${delay}s" >&2
+    echo "Hands $label attempt $attempt/$max failed (transient): HTTP ${code:-none}${hands_code:+ code=$hands_code}, curl exit $status; retrying in ${delay}s" >&2
     redact <"$err" >&2
     sleep "$delay"
     attempt=$((attempt + 1))

@@ -14,7 +14,7 @@ a=sys.argv[1:]; state=Path(os.environ['MOCK_STATE'])
 kind='put' if '--upload-file' in a else 'create' if '--data-binary' in a else 'complete' if '-X' in a else 'get'
 calls=Path(str(state)+'.'+kind); n=int(calls.read_text()) if calls.exists() else 0; calls.write_text(str(n+1))
 if kind==os.environ.get('FAIL_ON') and n<int(os.environ.get('FAIL_TIMES','1')):
- print('<html>edge '+os.environ['FAIL_CODE']+' https://uploads.example/x?X-Amz-Signature=presigned-secret</html>')
+ print(os.environ.get('FAIL_BODY') or '<html>edge '+os.environ['FAIL_CODE']+' https://uploads.example/x?X-Amz-Signature=presigned-secret</html>')
  sys.stderr.write('curl: (22) The requested URL returned error: '+os.environ['FAIL_CODE']+'\n'); sys.exit(22)
 if kind=='put': sys.exit(0)
 if '--data-binary' in a:
@@ -92,5 +92,18 @@ class UploadContract(unittest.TestCase):
         self.assertIn('Hands aab upload failed: HTTP 503',result.stderr)
         self.assertIn('<html>edge 503',result.stderr)
         self.assertNotIn('presigned-secret',result.stderr)
+    def test_asset_upload_unavailable_is_not_retried(self):
+        result=self.run_case('ok',FAIL_ON='create',FAIL_CODE='503',FAIL_TIMES='9',
+                             FAIL_BODY='{"code":"ASSET_UPLOAD_UNAVAILABLE","message":"presign not configured","retryable":false}')
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(result.calls,{'create':1})
+        self.assertIn('ASSET_UPLOAD_UNAVAILABLE is a Hands storage configuration error',result.stderr)
+        self.assertIn('HTTP 503 code=ASSET_UPLOAD_UNAVAILABLE',result.stderr)
+    def test_json_retryable_true_is_retried(self):
+        result=self.run_case('ok',FAIL_ON='create',FAIL_CODE='500',
+                             FAIL_BODY='{"code":"UPSTREAM_BUSY","retryable":true}')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(result.calls['create'],2)
+        self.assertIn('HTTP 500 code=UPSTREAM_BUSY',result.stderr)
 
 if __name__=='__main__': unittest.main()

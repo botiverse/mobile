@@ -44,7 +44,9 @@ hands_retry() {
       rm -f "${out}" "${err}"
       return 0
     fi
-    if [ "${attempt}" -ge "${max}" ] || ! grep -Eq "${HANDS_RETRY_TRANSIENT_PATTERN}" "${out}" "${err}"; then
+    # ASSET_UPLOAD_UNAVAILABLE is a 503 that means "not configured", not "try again".
+    if [ "${attempt}" -ge "${max}" ] || ! grep -Eq "${HANDS_RETRY_TRANSIENT_PATTERN}" "${out}" "${err}" \
+      || grep -q 'ASSET_UPLOAD_UNAVAILABLE' "${out}" "${err}"; then
       cat "${out}" >&2
       if [ "${attempt}" -gt 1 ]; then
         echo "hands: attempt ${attempt}/${max} failed (exit ${status}); giving up" >&2
