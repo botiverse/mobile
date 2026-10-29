@@ -26,6 +26,9 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.cmp.lifecycle.viewmodel.compose)
     implementation(libs.cmp.lifecycle.runtime.compose)
+    // The page back stack (NavDisplay + a scene strategy). Desktop only: Android and iOS keep their
+    // Activity / view-controller hosts until they move to the same back stack.
+    implementation(libs.cmp.navigation3.ui)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
@@ -33,6 +36,8 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.okhttp.transport)
     testImplementation(kotlin("test"))
+    // NavDisplay host tests (runComposeUiTest).
+    testImplementation(libs.cmp.ui.test)
 }
 
 // Tests run on the packaged app's JDK 21 runtime: :shared's desktop classes can be JDK 21
