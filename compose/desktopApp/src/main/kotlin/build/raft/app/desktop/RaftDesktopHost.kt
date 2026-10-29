@@ -78,7 +78,10 @@ internal fun RaftDesktopNavDisplay(
             // Initial pass: no control below uses the side buttons, and a list that consumes the
             // press for its own scrolling must not swallow them.
             .onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
-                raftDesktopHistoryMouseButton(event.button)?.let(navigator::history)
+                val direction = raftDesktopHistoryMouseButton(event.button)
+                // Input diagnostics (with the raw AWT press RaftDesktopInputDiagnostics logs).
+                log("pointer press button=${event.button?.index} history=${direction?.wireName}")
+                direction?.let(navigator::history)
             }
     ) {
         NavDisplay(

@@ -53,6 +53,9 @@ compose.desktop {
     application {
         mainClass = "build.raft.app.desktop.MainKt"
         jvmArgs += listOf("-Dapple.awt.application.name=Raft")
+        // macOS swipe events (RaftDesktopInputDiagnostics.installSwipes): the JDK's gesture API
+        // lives in a package java.desktop does not export.
+        jvmArgs += listOf("--add-exports=java.desktop/com.apple.eawt.event=ALL-UNNAMED")
         nativeDistributions {
             // macOS dmg only for now (Linux packages would need their own data-dir and URL handler story).
             targetFormats(TargetFormat.Dmg)

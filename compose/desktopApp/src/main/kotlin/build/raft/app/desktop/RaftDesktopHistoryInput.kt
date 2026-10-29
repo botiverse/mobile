@@ -11,9 +11,13 @@ import kotlinx.serialization.json.JsonPrimitive
  * ([EVENT_NAME], the shared `RAFT_WIDE_HISTORY_NAVIGATE_EVENT`), which owns the history and shows
  * the entry. A page pushed over the shell takes the mouse's back button as Back instead.
  *
+ * macOS swipe events (`-[NSResponder swipeWithEvent:]`: a three-finger trackpad swipe set to
+ * "Swipe between pages", and what mouse utilities such as Logi Options+ can send for a mouse's
+ * back / forward buttons) reach the JVM through `com.apple.eawt.event.GestureUtilities`
+ * ([RaftDesktopInputDiagnostics.installSwipes], [raftDesktopHistorySwipe]).
+ *
  * Not mapped: a trackpad's two-finger horizontal swipe. Compose Desktop (and AWT) deliver it only
- * as horizontal scroll deltas, the same events every horizontally scrollable list consumes; macOS's
- * own navigation swipe (NSEvent swipe / `GestureUtilities`) is not reachable from the JVM.
+ * as horizontal scroll deltas, the same events every horizontally scrollable list consumes.
  */
 internal enum class RaftDesktopHistoryDirection(val wireName: String) {
     Back("back"),
@@ -75,10 +79,31 @@ internal fun raftDesktopHistoryRoute(
         else -> RaftDesktopHistoryRoute.None
     }
 
-/** A mouse's side buttons: back (button 4) and forward (button 5). */
+/**
+ * A mouse's side buttons. Compose maps AWT button n (above 3) to `PointerButton(n - 1)`:
+ * - AWT 4 / 5 ([PointerButton.Back] / [PointerButton.Forward]): macOS (AppKit buttonNumber 3 / 4;
+ *   the JDK's macOS toolkit reports at most 5 buttons and drops higher ones) and Windows (XBUTTON1 / 2).
+ * - AWT 6 / 7 (`PointerButton(5)` / `(6)`): Linux X11, where X buttons 4-7 are the scroll wheel and
+ *   the side buttons 8 / 9 arrive as AWT 6 / 7.
+ */
 internal fun raftDesktopHistoryMouseButton(button: PointerButton?): RaftDesktopHistoryDirection? =
-    when (button) {
-        PointerButton.Back -> RaftDesktopHistoryDirection.Back
-        PointerButton.Forward -> RaftDesktopHistoryDirection.Forward
+    when (button?.index) {
+        PointerButton.Back.index, AWT_BUTTON_6_INDEX -> RaftDesktopHistoryDirection.Back
+        PointerButton.Forward.index, AWT_BUTTON_7_INDEX -> RaftDesktopHistoryDirection.Forward
+        else -> null
+    }
+
+private const val AWT_BUTTON_6_INDEX = 5
+private const val AWT_BUTTON_7_INDEX = 6
+
+/**
+ * A macOS swipe, by the `com.apple.eawt.event.SwipeListener` method the JDK called. The JDK passes
+ * NSEvent's `deltaX` through and calls `swipedRight` for deltaX > 0, which browsers (Chromium,
+ * Safari) treat as Back, and `swipedLeft` for deltaX < 0 (Forward). Up / down: null.
+ */
+internal fun raftDesktopHistorySwipe(listenerMethod: String): RaftDesktopHistoryDirection? =
+    when (listenerMethod) {
+        "swipedRight" -> RaftDesktopHistoryDirection.Back
+        "swipedLeft" -> RaftDesktopHistoryDirection.Forward
         else -> null
     }

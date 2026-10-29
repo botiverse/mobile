@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
+import build.raft.app.data.RaftDesktopLogFile
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.SharedAuthDataSource
 import java.io.File
@@ -42,6 +43,7 @@ internal actual fun raftPlatformLog(
     if (level == RaftLogLevel.Debug && System.getProperty("raft.desktop.debugLogs") != "true") return
     val stream = if (level == RaftLogLevel.Error || level == RaftLogLevel.Warn) System.err else System.out
     stream.println("${level.wireValue.uppercase()} $tag: $message")
+    RaftDesktopLogFile.append(level.wireValue.first().uppercase(), tag, message)
 }
 
 internal actual suspend fun flushRaftPlatformDiagnosticsDownstream(): Boolean = true

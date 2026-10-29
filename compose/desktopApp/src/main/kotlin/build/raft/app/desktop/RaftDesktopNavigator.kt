@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.cmp.host.RaftHostEvents
+import build.raft.app.data.RaftDesktopLogFile
 import build.raft.app.toRaftJsonString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -133,4 +134,7 @@ object RaftDesktopPages {
     const val APP_SHELL = "compose_slock_app_shell"
 }
 
-internal fun log(message: String) = println("RaftDesktop: $message")
+internal fun log(message: String) {
+    println("RaftDesktop: $message")
+    RaftDesktopLogFile.append("I", "RaftDesktop", message)
+}

@@ -55,6 +55,21 @@ class RaftDesktopHistoryInputTest {
         assertNull(raftDesktopHistoryMouseButton(null))
     }
 
+    @Test fun `AWT buttons 6 and 7 (Linux X11 side buttons) are back and forward too`() {
+        // Compose: AWT button n > 3 is PointerButton(n - 1).
+        assertEquals(RaftDesktopHistoryDirection.Back, raftDesktopHistoryMouseButton(PointerButton(5)))
+        assertEquals(RaftDesktopHistoryDirection.Forward, raftDesktopHistoryMouseButton(PointerButton(6)))
+        assertNull(raftDesktopHistoryMouseButton(PointerButton.Tertiary))
+        assertNull(raftDesktopHistoryMouseButton(PointerButton(7)))
+    }
+
+    @Test fun `a macOS swipe right is back and left is forward`() {
+        assertEquals(RaftDesktopHistoryDirection.Back, raftDesktopHistorySwipe("swipedRight"))
+        assertEquals(RaftDesktopHistoryDirection.Forward, raftDesktopHistorySwipe("swipedLeft"))
+        assertNull(raftDesktopHistorySwipe("swipedUp"))
+        assertNull(raftDesktopHistorySwipe("swipedDown"))
+    }
+
     @Test fun `the shell alone takes every step and a page over it takes Back as closing`() {
         assertEquals(RaftDesktopHistoryRoute.Shell, raftDesktopHistoryRoute(1, topIsShell = true, RaftDesktopHistoryDirection.Back))
         assertEquals(RaftDesktopHistoryRoute.Shell, raftDesktopHistoryRoute(1, topIsShell = true, RaftDesktopHistoryDirection.Forward))

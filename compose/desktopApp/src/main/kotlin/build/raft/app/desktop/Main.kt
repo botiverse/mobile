@@ -10,6 +10,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -17,13 +18,21 @@ import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftDesktopComposerTemporaryFiles
+import build.raft.app.data.RaftDesktopLogFile
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.raft.app.network.installDesktopRaftAppIdentity
 import java.awt.Dimension
 
 /** Desktop entry point: process setup as in RaftApplication (Android), then one window. */
 fun main(args: Array<String>) {
-    // First: a second launch only forwards its sign-in callback to the running app.
+    // Log file first (<dataDir>/logs/raft-desktop.log), so every later line lands in it.
+    RaftDesktopLogFile.install()
+    RaftDesktopLog.i(
+        "RaftDesktop",
+        "start version=${System.getProperty("raft.desktop.version")} os=${System.getProperty("os.name")} " +
+            "${System.getProperty("os.version")} java=${System.getProperty("java.runtime.version")}",
+    )
+    // Then: a second launch only forwards its sign-in callback to the running app.
     RaftDesktopLoginCallbacks.install(args)
     val debugBuild = System.getProperty("raft.desktop.debug") == "true"
     RaftCmpRouter.configure(debugBuild = debugBuild)
@@ -40,6 +49,7 @@ fun main(args: Array<String>) {
     RaftDesktopAppVisibility.install()
     // Pasted images: retired by the composer after send / removal; stale ones swept here.
     RaftDesktopComposerTemporaryFiles.install()
+    RaftDesktopInputDiagnostics.installAwtListener()
 
     application {
         val navigator = RaftDesktopNavigator()
@@ -64,7 +74,15 @@ fun main(args: Array<String>) {
                 )?.let(navigator::history) ?: false
             },
         ) {
-            LaunchedEffect(Unit) { window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT) }
+            LaunchedEffect(Unit) {
+                window.minimumSize = Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+                RaftDesktopInputDiagnostics.installSwipes(window.rootPane) { navigator.history(it) }
+            }
+            if (RaftDesktopHistoryInput.isMac) {
+                MenuBar {
+                    Menu("Help") { Item("Show Logs in Finder", onClick = RaftDesktopLog::showLogFolder) }
+                }
+            }
             RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
         }
     }

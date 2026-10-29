@@ -427,7 +427,8 @@ internal suspend fun flushRaftPlatformLogs() {
 
 internal suspend fun flushRaftPlatformLogsForTest() = flushRaftPlatformLogs()
 
-private fun String.sanitizeRaftLogMessage(): String =
+/** Masks credential-like substrings (agent / machine keys, bearer tokens, token and key query values). */
+internal fun String.sanitizeRaftLogMessage(): String =
     RaftCredentialLikePatterns.fold(this) { current, pattern ->
         pattern.replace(current) { match ->
             when {
