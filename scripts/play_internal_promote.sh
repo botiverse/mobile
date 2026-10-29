@@ -8,8 +8,9 @@
 # only ever uses --track internal.
 #
 # Run it as a signed-in Hands human or agent with the publisher role
-# (`hands login`): Hands rejects deploy tokens for Play promotion, so CI cannot
-# run this step itself.
+# (`hands login`). By policy, Google Play writes run under an accountable identity,
+# never CI's deploy token, so CI does not run this step. (Hands does not enforce
+# that for promote yet: it treats a deploy token as an agent. Do not rely on it.)
 #
 # The Hands draft this creates exists only to carry the Play promotion. Never
 # publish it on Hands: it would ship the Play variant to the Hands channel.

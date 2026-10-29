@@ -243,8 +243,10 @@ scripts/play_internal_promote.sh <hands_build_id>
 
 It checks the build is ready with one sealed AAB, creates the Hands draft that
 carries the promotion, writes the acceptance receipt for that AAB and promotes
-it to `internal`. Hands rejects deploy tokens for Play promotion, so CI cannot
-run this step. **Never publish that Hands draft**: it would ship the Play carrier
+it to `internal`. By policy, Google Play writes run under an accountable human
+or agent identity (`hands login`), never CI's deploy token, so CI does not run
+this step. Hands does not enforce this for promote yet (it treats a deploy token
+as an agent); do not rely on that. **Never publish that Hands draft**: it would ship the Play carrier
 on the Hands channel. Record the printed receipt in the release issue. A
 workflow success or a GitHub artifact is not a Google Play receipt.
 
