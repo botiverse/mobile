@@ -35,6 +35,7 @@ import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.app.base.Utils
+import build.raft.designsystem.tokens.RaftOpacity
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.compositionLocalOf
@@ -72,6 +73,7 @@ import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.AnnotatedString
@@ -1160,7 +1162,10 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             return
         }
     }
-    val boxStyle = raftMarkdownRichTextTagInlineBoxStyle(token.chrome)
+    // artin 10-29: a chip whose open is in flight is busy — the spinner leads its label inside the
+    // box and the chip is dimmed (raft-ui `--opacity-dimmed`, busy controls), until it settles.
+    val busy = token.active && token.trailingIndicator.isEmpty()
+    val boxStyle = raftMarkdownRichTextTagInlineBoxStyle(token.chrome)?.let { if (busy) it.raftBusyDimmed() else it }
     withRaftInlineChipGaps(boxStyle) {
         pushStringAnnotation(
             tag = RaftMarkdownTagAnnotationTag,
@@ -1169,18 +1174,22 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
         withLink(
             LinkAnnotation.Clickable(
                 tag = action.id,
-                styles = raftMarkdownRichTextTagLinkStyles(token.chrome),
+                styles = raftMarkdownRichTextTagLinkStyles(token.chrome, busy = busy),
                 linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
             )
         ) {
             // The chip box is an annotation painted by raftInlineDecorations.
             withRaftInlineBox(boxStyle) {
                 val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
-                if (fontSizeStyle == null) append(label) else withStyle(fontSizeStyle) { append(label) }
-            }
-            if (token.active && token.trailingIndicator.isEmpty()) {
-                append(" ")
-                appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+                val appendChipText: AnnotatedString.Builder.() -> Unit = {
+                    if (busy) {
+                        appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+                        // A word joiner keeps the spinner and the label on one line.
+                        append(RaftMarkdownTaskChipWordJoiner)
+                    }
+                    append(label)
+                }
+                if (fontSizeStyle == null) appendChipText() else withStyle(fontSizeStyle) { appendChipText() }
             }
         }
         pop()
@@ -3274,14 +3283,28 @@ internal fun raftMarkdownTagLinkStyles(
     raftMarkdownRichTextTagLinkStyles(raftRichTextChromeKind(kind, highlighted = highlighted, active = active))
 
 internal fun raftMarkdownRichTextTagLinkStyles(
-    chromeKind: RaftRichTextChromeKind?
+    chromeKind: RaftRichTextChromeKind?,
+    busy: Boolean = false
 ): TextLinkStyles {
     val token = (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention).styleToken
+    if (busy) {
+        // A busy chip ignores taps, so it has no pressed look either.
+        val dimmed = token.toTagSpanStyle().let { it.copy(color = it.color.copy(alpha = it.color.alpha * RaftOpacity.Dimmed)) }
+        return TextLinkStyles(style = dimmed, pressedStyle = dimmed)
+    }
     return TextLinkStyles(
         style = token.toTagSpanStyle(),
         pressedStyle = token.toPressedTagSpanStyle()
     )
 }
+
+/** A busy chip's box at raft-ui `--opacity-dimmed`, as its text. */
+internal fun RaftInlineBoxStyle.raftBusyDimmed(): RaftInlineBoxStyle =
+    copy(
+        backgroundColor = backgroundColor.takeIf { it.isSpecified }?.let { it.copy(alpha = it.alpha * RaftOpacity.Dimmed) }
+            ?: backgroundColor,
+        borderColor = borderColor.copy(alpha = borderColor.alpha * RaftOpacity.Dimmed),
+    )
 
 /** The chip's 0.875em text size, or null when the tag keeps the sentence's size. */
 internal fun raftMarkdownRichTextTagFontSizeStyle(chromeKind: RaftRichTextChromeKind?): SpanStyle? =

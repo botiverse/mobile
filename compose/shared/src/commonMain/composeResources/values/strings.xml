@@ -427,6 +427,7 @@
     <string name="thread_error_open_parent_message">Unable to open parent message</string>
     <string name="thread_error_open_task">Unable to open task</string>
     <string name="thread_error_open_target">Unable to open %1$s</string>
+    <string name="thread_error_open_thread_ref">Unable to open thread. It may be unavailable or deleted.</string>
     <string name="thread_error_open_task_number">Unable to open #%1$s</string>
     <string name="thread_error_attachment_picker">Attachment picker unavailable</string>
     <string name="thread_error_file_source">File source unavailable</string>

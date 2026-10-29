@@ -429,6 +429,7 @@
     <string name="thread_error_open_parent_message">親メッセージを開けませんでした</string>
     <string name="thread_error_open_task">タスクを開けませんでした</string>
     <string name="thread_error_open_target">%1$s を開けませんでした</string>
+    <string name="thread_error_open_thread_ref">スレッドを開けません。利用できないか、削除された可能性があります。</string>
     <string name="thread_error_open_task_number">#%1$s を開けませんでした</string>
     <string name="thread_error_attachment_picker">添付ファイルの選択画面を利用できません</string>
     <string name="thread_error_file_source">ファイルソースを利用できません</string>
