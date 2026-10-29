@@ -536,7 +536,7 @@ private fun ComputerRuntimeUsageSnapshot(read: RuntimeAccountUsageRead.Available
 }
 
 @Composable
-private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount, timeContext: RaftTimeContext?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -591,8 +591,9 @@ private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount
     }
 }
 
+/** One usage window: "X% left · resets …" or "Used up", as the web `RuntimeAccountUsageChip`. */
 @Composable
-private fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, timeContext: RaftTimeContext?) {
     val ratio = window.usedRatio
     if (window.status == RuntimeAccountUsageWindowStatus.Unavailable || ratio == null) {
         // Never a bar: a window we cannot read is not "0% used".

@@ -2815,17 +2815,6 @@
     <string name="member_runtime_usage_missing">暂无用量数据</string>
     <string name="member_runtime_usage_missing_detail">这台 Computer 尚未上报该运行时的账号用量。这不代表用量为零。</string>
     <string name="member_runtime_usage_stale">数据已过期，以下数值可能不再准确。</string>
-    <string name="member_runtime_usage_account_fallback">账号</string>
-    <string name="member_runtime_usage_unsupported">该账号不提供用量数据。</string>
-    <string name="member_runtime_usage_window_unavailable">不可用</string>
-    <string name="member_runtime_usage_limit_reached">已达上限</string>
-    <string name="member_runtime_usage_resets_at">%1$s 重置</string>
-    <string name="member_runtime_usage_health_ok">正常</string>
-    <string name="member_runtime_usage_health_rate_limited">已限流</string>
-    <string name="member_runtime_usage_health_reauth_required">需重新登录</string>
-    <string name="member_runtime_usage_health_unsupported">不支持</string>
-    <string name="member_runtime_usage_health_error">出错</string>
-    <string name="member_runtime_usage_health_unknown">不可用</string>
     <string name="runtime_quota_window_five_hour">5 小时</string>
     <string name="runtime_quota_window_week">本周</string>
     <string name="runtime_quota_left">%1$s 剩 %2$s</string>

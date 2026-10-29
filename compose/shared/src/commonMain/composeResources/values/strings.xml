@@ -2815,17 +2815,6 @@
     <string name="member_runtime_usage_missing">No usage reported yet</string>
     <string name="member_runtime_usage_missing_detail">This Computer has not reported account usage for this runtime. This is not zero usage.</string>
     <string name="member_runtime_usage_stale">Data is out of date. Values below may no longer be accurate.</string>
-    <string name="member_runtime_usage_account_fallback">Account</string>
-    <string name="member_runtime_usage_unsupported">This account does not report usage.</string>
-    <string name="member_runtime_usage_window_unavailable">Unavailable</string>
-    <string name="member_runtime_usage_limit_reached">Limit reached</string>
-    <string name="member_runtime_usage_resets_at">Resets %1$s</string>
-    <string name="member_runtime_usage_health_ok">OK</string>
-    <string name="member_runtime_usage_health_rate_limited">Rate limited</string>
-    <string name="member_runtime_usage_health_reauth_required">Sign-in required</string>
-    <string name="member_runtime_usage_health_unsupported">Not supported</string>
-    <string name="member_runtime_usage_health_error">Error</string>
-    <string name="member_runtime_usage_health_unknown">Unavailable</string>
     <string name="runtime_quota_window_five_hour">5h</string>
     <string name="runtime_quota_window_week">Week</string>
     <string name="runtime_quota_left">%1$s %2$s left</string>
