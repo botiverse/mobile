@@ -166,6 +166,15 @@ jobs:
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release edit "${TAG}" --title "Raft ${VERSION}" --notes-file release-out/body.md
             gh release upload "${TAG}" "${ASSETS[@]}" --clobber
+            # Mirror this run's asset list: drop renamed or retired assets (an older dmg
+            # name, an AAB) so a rerun never leaves a stale file next to the new one.
+            mapfile -t KEEP < <(printf '%s\n' "${ASSETS[@]##*/}")
+            while IFS= read -r name; do
+              if ! printf '%s\n' "${KEEP[@]}" | grep -qxF -- "${name}"; then
+                echo "Removing stale asset ${name}"
+                gh release delete-asset "${TAG}" "${name}" --yes
+              fi
+            done < <(gh release view "${TAG}" --json assets --jq '.assets[].name')
           else
             gh release create "${TAG}" --verify-tag --title "Raft ${VERSION}" \
               --notes-file release-out/body.md "${ASSETS[@]}"
