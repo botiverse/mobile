@@ -4,7 +4,7 @@ area: activity
 platforms:
   - ios
   - desktop
-pull_request: TBD
+pull_request: 3974
 rollout: full
 ---
 
