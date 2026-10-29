@@ -271,6 +271,29 @@ Retirement rules:
   under a minute); flaky tests are fixed or quarantined visibly, never
   silently retried.
 
+### Compose UI tests (:shared)
+
+When a behaviour depends on composition (what enters/leaves it, effects,
+`onDispose`), test it on a real composition, not only through the pure helper.
+
+- Put the test in `compose/shared/src/androidUnitTest` (Robolectric; runs in
+  `:shared:testDebugUnitTest`, which CI runs). Annotate the class
+  `@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [34])`,
+  `@OptIn(ExperimentalTestApi::class)`, and add
+  `@get:Rule val activities = RobolectricComposeActivityRule()`.
+- Wrap the body in `runRobolectricComposeUiTest { ... }` (multiplatform
+  `org.jetbrains.compose.ui:ui-test`, catalog `cmp-ui-test`): `setContent`,
+  then drive state in `runOnIdle { ... }` and assert with `onNodeWithTag(...)`
+  / `assertExists()` plus plain asserts on the state. The test clock is
+  virtual (`mainClock`), so no real sleeps.
+- Don't add androidx `ui-test-manifest` to `:shared`: its ComponentActivity
+  theme changes every Robolectric screenshot's size. The helper registers the
+  activity per test instead.
+- If the production composable is too big to compose in a test, extract the
+  smallest piece that owns the behaviour, use it from production unchanged,
+  and compose it in the test the way production does. Example:
+  `RaftSupportingPaneBackUiTest` (`RaftSupportingPaneShownReport`).
+
 ## Kuikly Text Decoration Rule
 
 - In shared Kuikly Compose, do not put visual container modifiers such as
