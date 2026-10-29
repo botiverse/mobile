@@ -84,3 +84,6 @@ internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
+
+/** Desktop keeps its instant tab switch; see expect. */
+internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false

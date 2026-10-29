@@ -131,3 +131,6 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 /** Cupertino rubber band can stick at an offset when its spring is cancelled; see expect. */
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false
+
+/** The system tab bar switches at once; see expect. */
+internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false

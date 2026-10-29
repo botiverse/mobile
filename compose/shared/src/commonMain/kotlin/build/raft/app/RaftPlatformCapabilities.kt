@@ -206,3 +206,10 @@ internal expect fun raftPlatformTabPagerStartEdgeInsetDp(): Float
  * the whole Chat tab was left shifted sideways with its messages running off the screen edge.
  */
 internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
+
+/**
+ * Whether switching the phone bottom tabs plays Material's fade through
+ * ([build.raft.designsystem.motion.RaftMotion.fadeThrough]). Android only (artin 2026-10-29):
+ * iOS switches at once like its system tab bar, and desktop keeps its instant switch.
+ */
+internal expect fun raftPlatformAppShellTabFadeThrough(): Boolean
