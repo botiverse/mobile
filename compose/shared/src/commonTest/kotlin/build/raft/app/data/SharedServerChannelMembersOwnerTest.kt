@@ -4,6 +4,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -17,6 +19,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 class SharedServerChannelMembersOwnerTest {
     @Test
@@ -283,8 +286,8 @@ class SharedServerChannelMembersOwnerTest {
         val offline = RaftOfflineResourceCache(rows, environmentId = { "env-a" }, scope = scope)
         val members = SharedChannelMembersOffline(offline.resource(ChannelMembersResourceSpec), scope = scope, mirrorPeriodMillis = 0L)
 
-        suspend fun storedIds(): List<String>? =
-            members.read(SharedServerChannelMembersScope("env-a", "account-a", SERVER_ID, CHANNEL_ID))?.members?.map { it.id.value }
+        suspend fun storedIds(channelId: String = CHANNEL_ID, accountId: String = "account-a"): List<String>? =
+            members.read(SharedServerChannelMembersScope("env-a", accountId, SERVER_ID, channelId))?.members?.map { it.id.value }
     }
 
     @Test
@@ -526,15 +529,21 @@ class SharedServerChannelMembersOwnerTest {
         loaded.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
         runCurrent()
 
-        // Change #1 arrives; its reload is held at the network.
-        repository.channelMembers = listOf(member("member-a"), member("member-b"))
+        // Change #1 arrives; its reload is held at the network. The server's answer differs per request: the
+        // reload of change #1 sees [a, b], only a reload after change #2 sees [a, b, c].
+        repository.channelMembersLoader = { _ ->
+            if (repository.getChannelMembersCalls == 2) {
+                listOf(member("member-a"), member("member-b"))
+            } else {
+                listOf(member("member-a"), member("member-b"), member("member-c"))
+            }
+        }
         repository.gate = CompletableDeferred()
         launch { applyChannelMembersUpdated(listOf(other, loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
         runCurrent()
         // Change #2 arrives while that reload runs.
         launch { applyChannelMembersUpdated(listOf(other, loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
         runCurrent()
-        repository.channelMembers = listOf(member("member-a"), member("member-b"), member("member-c"))
         repository.gate!!.complete(Unit)
         runCurrent()
 
@@ -544,6 +553,118 @@ class SharedServerChannelMembersOwnerTest {
             loaded.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
         )
         assertEquals(listOf("member-a", "member-b", "member-c"), device.storedIds())
+    }
+
+    @Test
+    fun aMembersUpdatedEventDuringAColdOpenReloadsAfterItInsteadOfDroppingTheStoredCopy() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        loadOnce(device, ownerState, listOf(member("member-a")))
+
+        // Cold open: the stored stand-in shows while the request runs; that request was sent before the change.
+        val repository = OwnerTestMemberRepository().apply {
+            gate = CompletableDeferred()
+            channelMembersLoader = { _ ->
+                if (getChannelMembersCalls == 1) listOf(member("member-a")) else listOf(member("member-a"), member("member-b"))
+            }
+        }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        val load = async { store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        assertEquals(true, store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).storedStandIn)
+
+        // A member joins while the stand-in loads.
+        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
+        runCurrent()
+        // Knife: a loading stand-in did not count as held, so the copy was dropped and nobody reloaded.
+        assertEquals(listOf("member-a"), device.storedIds())
+
+        repository.gate!!.complete(Unit)
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(load.await())
+        runCurrent()
+
+        assertEquals(2, repository.getChannelMembersCalls)
+        assertEquals(
+            listOf("member-a", "member-b"),
+            store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
+        )
+        assertEquals(listOf("member-a", "member-b"), device.storedIds())
+    }
+
+    @Test
+    fun aMembersUpdatedEventOfAPreviousAccountLeavesTheNextAccountsListsAlone() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        // The event arrived for account-a; the account switched to account-b before it was applied.
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-b"))
+        val previousAccount = AuthenticatedRouteOwner(environmentId = "env-a", accountId = "account-a", serverId = SERVER_ID)
+        val currentAccount = AuthenticatedRouteOwner(environmentId = "env-a", accountId = "account-b", serverId = SERVER_ID)
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-b")) }
+        val loaded = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        loaded.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+        assertEquals(listOf("member-b"), device.storedIds(accountId = "account-b"))
+
+        // Held loaded: no reload for account-b.
+        applyChannelMembersUpdated(listOf(loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID), expectedOwner = previousAccount)
+        runCurrent()
+        assertEquals(1, repository.getChannelMembersCalls)
+
+        // Stored only: account-b's copy is not dropped (with or without a channel id).
+        val cold = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
+        applyChannelMembersUpdated(listOf(cold), ServerId(SERVER_ID), ChannelId(CHANNEL_ID), expectedOwner = previousAccount)
+        applyChannelMembersUpdated(listOf(cold), ServerId(SERVER_ID), null, expectedOwner = previousAccount)
+        runCurrent()
+        assertEquals(listOf("member-b"), device.storedIds(accountId = "account-b"))
+
+        // The same event for the current account does act.
+        applyChannelMembersUpdated(listOf(loaded), ServerId(SERVER_ID), ChannelId(CHANNEL_ID), expectedOwner = currentAccount)
+        runCurrent()
+        assertEquals(2, repository.getChannelMembersCalls)
+    }
+
+    @Test
+    fun aMembersUpdatedEventWithoutAChannelAppliesToEveryListOfTheServer() = kotlinx.coroutines.test.runTest {
+        val device = Device(backgroundScope)
+        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+        // An earlier process stored two lists of the server.
+        val earlier = store(
+            OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) },
+            ownerState,
+            channelMembersOffline = device.members,
+        ) { 1L }
+        earlier.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        earlier.loadChannelMembers(ServerId(SERVER_ID), ChannelId(OTHER_CHANNEL_ID))
+        runCurrent()
+        earlier.dispose()
+        assertEquals(listOf("member-a"), device.storedIds(OTHER_CHANNEL_ID))
+
+        // This process holds one of them loaded.
+        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
+        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+        runCurrent()
+
+        // The event names no channel: every list of the server is concerned.
+        repository.channelMembers = listOf(member("member-a"), member("member-b"))
+        val event = RealtimeRefreshRequired(scope = RealtimeRefreshScope.ChannelMembers, reason = "channel:members-updated")
+        val update = assertNotNull(event.updatedChannelMembersOrNull())
+        applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), update.channelId?.let(::ChannelId))
+        runCurrent()
+
+        // The held list reloads; the list held only on disk is dropped.
+        assertEquals(2, repository.getChannelMembersCalls)
+        assertEquals(listOf("member-a", "member-b"), device.storedIds())
+        assertEquals(null, device.storedIds(OTHER_CHANNEL_ID))
+    }
+
+    @Test
+    fun membersUpdatedEventsAreReadWithAndWithoutAChannel() {
+        fun event(channelId: String?, scope: RealtimeRefreshScope = RealtimeRefreshScope.ChannelMembers) =
+            RealtimeRefreshRequired(scope = scope, reason = "channel:members-updated", channelId = channelId?.let(::ChannelId))
+        assertEquals(RealtimeChannelMembersUpdate("channel-1"), event(" channel-1 ").updatedChannelMembersOrNull())
+        assertEquals(RealtimeChannelMembersUpdate(null), event(null).updatedChannelMembersOrNull())
+        assertEquals(RealtimeChannelMembersUpdate(null), event(" ").updatedChannelMembersOrNull())
+        assertEquals(null, event("channel-1", RealtimeRefreshScope.ServerMembers).updatedChannelMembersOrNull())
     }
 
     @Test
@@ -672,6 +793,7 @@ class SharedServerChannelMembersOwnerTest {
     private companion object {
         const val SERVER_ID = "server-shared"
         const val CHANNEL_ID = "channel-shared"
+        const val OTHER_CHANNEL_ID = "channel-other"
 
         fun owner(environmentId: String, accountId: String): ProcessServerMembersOwner =
             ProcessServerMembersOwner(

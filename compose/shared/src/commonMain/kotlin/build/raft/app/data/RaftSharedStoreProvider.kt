@@ -208,7 +208,7 @@ internal fun createSharedRealtimeDomainEventOwner(
     cursorStore: RealtimeAppliedSeqCursorStore?,
     authorityProvider: RealtimeAuthorityProvider,
     onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
-    onChannelMembersUpdated: (suspend (serverId: String, channelId: String) -> Unit)? = null,
+    onChannelMembersUpdated: (suspend (serverId: String, channelId: String?) -> Unit)? = null,
 ): SharedRealtimeDomainEventOwner =
     SharedRealtimeDomainEventOwner(
         tasksDataStore = tasksDataStore,
@@ -544,11 +544,25 @@ internal class RaftSharedStoreProvider private constructor(
     internal val agentDetailCache: RaftAgentDetailCache =
         raftAgentDetailCache(offlineResourceCache.resource(AgentDetailResourceSpec))
 
-    /** Realtime `channel:members-updated`: every members store reloads its loaded list or drops a stored one. */
-    internal suspend fun applyChannelMembersUpdated(serverId: String, channelId: String) {
+    /**
+     * Realtime `channel:members-updated`: every members store reloads its held list or drops a stored one
+     * ([channelId] null: every list of the server).
+     */
+    internal suspend fun applyChannelMembersUpdated(serverId: String, channelId: String?) {
+        // The account the event arrived for, captured on the grant-checked delivery path: an account switch
+        // before the launched work runs makes it a no-op instead of acting on the new account's lists.
+        val owner =
+            replyCacheAuthContext.value?.ownerFor(serverId)?.let { owner ->
+                AuthenticatedRouteOwner(owner.environmentId, owner.accountId, owner.serverId).normalizedOrNull()
+            } ?: return
         // Off the realtime delivery path: the reloads are network requests (a burst coalesces per store).
         threadSendScope.launch {
-            build.raft.app.data.applyChannelMembersUpdated(allServerMembersStores(), ServerId(serverId), ChannelId(channelId))
+            build.raft.app.data.applyChannelMembersUpdated(
+                allServerMembersStores(),
+                ServerId(owner.serverId),
+                channelId?.let(::ChannelId),
+                expectedOwner = owner,
+            )
         }
     }
 
@@ -3626,7 +3640,7 @@ internal class SharedRealtimeDomainEventOwner(
      */
     private val onAgentDeleted: (suspend (serverId: String, agentId: String) -> Unit)? = null,
     /** Realtime `channel:members-updated` on a server of the current grant (offline channel member lists). */
-    private val onChannelMembersUpdated: (suspend (serverId: String, channelId: String) -> Unit)? = null,
+    private val onChannelMembersUpdated: (suspend (serverId: String, channelId: String?) -> Unit)? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
     private val runWithCurrentMessageGrant:
@@ -4173,7 +4187,7 @@ internal class SharedRealtimeDomainEventOwner(
         if (event is Heartbeat) return
         event.patchSharedTaskProjection(resolvedServerId)
         event.deletedAgentIdOrNull()?.let { agentId -> onAgentDeleted?.invoke(resolvedServerId, agentId) }
-        event.updatedChannelMembersChannelIdOrNull()?.let { channelId -> onChannelMembersUpdated?.invoke(resolvedServerId, channelId) }
+        event.updatedChannelMembersOrNull()?.let { update -> onChannelMembersUpdated?.invoke(resolvedServerId, update.channelId) }
         deliverGuardedAppShellProjectionFinal(resolvedServerId, event, source, activeSinks)
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
             if (admission != null) {
@@ -4372,11 +4386,17 @@ internal class SharedRealtimeDomainEventOwner(
     }
 }
 
-/** The channel of a realtime `channel:members-updated`, else null. */
-internal fun RealtimeEvent.updatedChannelMembersChannelIdOrNull(): String? =
+/** A realtime `channel:members-updated`: [channelId] null when the event names no channel (every channel). */
+internal data class RealtimeChannelMembersUpdate(val channelId: String?)
+
+/**
+ * A realtime `channel:members-updated`, else null. One without a channel id applies to every channel of the
+ * server (as ThreadPage reads it), never dropped.
+ */
+internal fun RealtimeEvent.updatedChannelMembersOrNull(): RealtimeChannelMembersUpdate? =
     (this as? RealtimeRefreshRequired)
         ?.takeIf { it.scope == RealtimeRefreshScope.ChannelMembers }
-        ?.channelId?.value?.trim()?.takeIf(String::isNotEmpty)
+        ?.let { event -> RealtimeChannelMembersUpdate(event.channelId?.value?.trim()?.takeIf(String::isNotEmpty)) }
 
 /** The agent of a realtime `agent:deleted`, else null. */
 internal fun RealtimeEvent.deletedAgentIdOrNull(): String? =
