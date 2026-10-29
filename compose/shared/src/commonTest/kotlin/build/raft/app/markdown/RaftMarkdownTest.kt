@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.raftMarkdownMentionSpans
 import build.raft.app.RaftColor
 import build.raft.app.RaftType
 import build.raft.app.raftFontFamilyForWeight
@@ -2215,6 +2216,24 @@ class RaftMarkdownTest {
         assertEquals("https://raft.build", link.url)
         link.linkInteractionListener?.onClick(link)
         assertEquals("https://raft.build", openedUrl)
+    }
+
+    @Test
+    fun mentionsCarryTheirLabelForTheProfilePreviewCard() {
+        // Only the @mention's words carry the label the preview card resolves; a channel ref doesn't.
+        val content = "Ask @ada in #general"
+        val annotated = buildRaftMarkdownParagraphAnnotatedString(content, raftMarkdownAnnotator(content, isTagValid = { true }))
+        val spans = annotated.raftMarkdownMentionSpans()
+
+        assertEquals(listOf("@ada"), spans.map { it.label })
+        val span = spans.single()
+        assertEquals("@ada", annotated.text.substring(span.start, span.end))
+        // The mention's own click (the card's View Profile) covers the same words.
+        assertTrue(
+            annotated.getLinkAnnotations(span.start, span.end).any { link ->
+                link.item is LinkAnnotation.Clickable && link.start <= span.start && span.end <= link.end
+            }
+        )
     }
 
     @Test

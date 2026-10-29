@@ -10,6 +10,9 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.RaftPreviewCardState
+import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
@@ -11813,8 +11816,33 @@ private fun SharedThreadRouteContentContent(
                 accountId = knownEntityAccountId,
                 knownEntitiesRevision = sharedHomeState.content,
             )
+        // The profile card an @mention in a message, or an author's avatar, opens under a mouse or
+        // trackpad pointer (web MentionLink): a mention is the member its click opens.
+        val currentMentionThread by rememberUpdatedState(renderedThread)
+        val memberPreviewCardSource =
+            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId) {
+                RaftMemberPreviewCardSource(
+                    serverMembersStore = serverMembersStore,
+                    serverId = headerProjectionServerId?.value,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    resolveMention = { label ->
+                        val serverMembers =
+                            if (serverMembersStore == null || threadMembersServerId == null) {
+                                emptyList()
+                            } else {
+                                serverMembersStore.currentServerMembers(threadMembersServerId) +
+                                    threadMembersChannelId
+                                        ?.let { serverMembersStore.currentChannelMembers(threadMembersServerId, it) }
+                                        .orEmpty()
+                            }
+                        currentMentionThread.resolveMarkdownMentionOpenTarget(label, serverMembers)?.identity
+                    },
+                )
+            }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
@@ -26777,6 +26805,23 @@ private fun ThreadMessageCardContent(
         }
         authorProfileIdentity?.let(onOpenMember)
     }
+    // The author's profile card under a mouse or trackpad pointer on the avatar (web MessageItem's
+    // avatar hover card); View Profile is the avatar's own click.
+    val memberPreviewCardSource = LocalRaftMemberPreviewCardSource.current
+    val authorPreviewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? =
+        if (memberPreviewCardSource != null && authorProfileIdentity != null && !shareSelectionActive) {
+            { state ->
+                RaftMemberPreviewCardContent(
+                    source = memberPreviewCardSource,
+                    identity = authorProfileIdentity,
+                    state = state,
+                    fallbackHandle = null,
+                    onViewProfile = { openAuthorProfile("preview_card") },
+                )
+            }
+        } else {
+            null
+        }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
     // raft-ui located (0.22.1 #719): info-soft at once, held 1.2s, faded out by 2s.
     val locatedStrength = raftLocatedStrength(active = focused)
@@ -27105,7 +27150,8 @@ private fun ThreadMessageCardContent(
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
                         onClick = { openAuthorProfile("avatar") },
-                        onLongPress = { onMentionAuthor(message) }
+                        onLongPress = { onMentionAuthor(message) },
+                        previewCard = authorPreviewCard
                     )
                 }
                 val contentModifier =
@@ -32471,7 +32517,9 @@ private fun ThreadMessageAvatarSlot(
     delegatedBy: MessageDelegatedBy? = null,
     delegatedSurface: Color = RaftColor.Canvas,
     onClick: () -> Unit,
-    onLongPress: () -> Unit = {}
+    onLongPress: () -> Unit = {},
+    /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
+    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
@@ -32483,22 +32531,30 @@ private fun ThreadMessageAvatarSlot(
                 // React parity: MessageSenderAvatar carries mt-0.5 (2px) so the
                 // avatar top optically aligns with the name glyphs.
                 Box(modifier = Modifier.padding(top = 2.dp)) {
-                    ThreadMessageAvatar(
-                        interactionIdentity = interactionIdentity,
-                        avatarLabel = avatarLabel,
-                        avatarFill = avatarFill,
-                        avatarWireValue = avatarWireValue,
-                        avatarDiagnostics = avatarDiagnostics,
-                        cacheSubject = cacheSubject,
-                        status = status,
-                        statusPulsing = statusPulsing,
-                        muted = muted,
-                        external = external,
-                        delegatedBy = delegatedBy,
-                        delegatedSurface = delegatedSurface,
-                        onClick = onClick,
-                        onLongPress = onLongPress
-                    )
+                    val avatar: @Composable () -> Unit = {
+                        ThreadMessageAvatar(
+                            interactionIdentity = interactionIdentity,
+                            avatarLabel = avatarLabel,
+                            avatarFill = avatarFill,
+                            avatarWireValue = avatarWireValue,
+                            avatarDiagnostics = avatarDiagnostics,
+                            cacheSubject = cacheSubject,
+                            status = status,
+                            statusPulsing = statusPulsing,
+                            muted = muted,
+                            external = external,
+                            delegatedBy = delegatedBy,
+                            delegatedSurface = delegatedSurface,
+                            onClick = onClick,
+                            onLongPress = onLongPress
+                        )
+                    }
+                    if (previewCard == null) {
+                        avatar()
+                    } else {
+                        val previewCardState = rememberRaftPreviewCardState()
+                        RaftPreviewCard(card = { previewCard(previewCardState) }, state = previewCardState, trigger = avatar)
+                    }
                 }
             slotLayout.timestampVisible ->
                 Text(
