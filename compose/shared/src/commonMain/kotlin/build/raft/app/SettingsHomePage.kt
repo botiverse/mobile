@@ -376,6 +376,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.layout.onSizeChanged
+import build.raft.app.cmp.host.LocalRaftHost
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -6053,6 +6054,19 @@ private fun RaftAppShellReadyContent(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
+    // Wide pane roles (RaftWidePanes.kt): the pages the conversation opened in the supporting pane
+    // beside it. They belong to that conversation: picking another one closes them. When the window
+    // leaves the wide layout they reopen as pages on the platform stack, as they would have opened there.
+    var supportingPanes by remember { mutableStateOf(RaftPaneStack()) }
+    // Whether the pane is drawn right now (set where it is drawn); Back goes by this, not the stack alone.
+    var supportingPaneShown by remember { mutableStateOf(false) }
+    val shellHostNavigator = LocalRaftHost.current.navigator
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity?.key) { supportingPanes = supportingPanes.cleared() }
+    LaunchedEffect(navRailActive) {
+        if (navRailActive || !supportingPanes.isOpen) return@LaunchedEffect
+        supportingPanes.entries.forEach { shellHostNavigator.openPage(it.pageName, it.pageData) }
+        supportingPanes = supportingPanes.cleared()
+    }
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
@@ -6150,6 +6164,14 @@ private fun RaftAppShellReadyContent(
     fun navigateWideHistory(direction: RaftWideNavDirection, source: String) {
         val serverId = readyServerId ?: return
         if (!navRailActive) return
+        // An open supporting pane is the topmost thing: Back closes it before stepping the history.
+        // The task overlay sits above it, so while the overlay is open Back is the overlay's (Tenny, #3953).
+        val supportingPaneOnTop = supportingPaneShown && !tasksDetailOverlayOpen
+        if (direction == RaftWideNavDirection.Back && raftWideBackStep(supportingPanes, supportingPaneOnTop) == RaftWideBackStep.PopSupportingPane) {
+            bridge.log("wide_history_back source=$source pops=supporting_pane")
+            supportingPanes = supportingPanes.pop()
+            return
+        }
         val before = wideNavHistories.of(serverId)
         val after = before.go(direction)
         val target = after.current?.takeIf { after != before } ?: return
@@ -7229,7 +7251,21 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         }
-                        Row(
+                        // Wide pane roles (RaftWidePanes.kt): a page the conversation opens with a
+                        // Supporting role shows in the pane on the right; the conversation stays.
+                        // The task overlay has no room for one: its pages open as before.
+                        val supportingPaneHost = navRailActive && allowSideColumn
+                        val supportingOpen = supportingPaneHost && detailAccepted && supportingPanes.isOpen
+                        // Only the main detail pane hosts the supporting pane, so only it reports whether
+                        // the pane is shown; the task overlay's copy (allowSideColumn = false) must not
+                        // reset it when the overlay closes (Tenny, #3953).
+                        if (supportingPaneHost) {
+                            DisposableEffect(supportingOpen) {
+                                supportingPaneShown = supportingOpen
+                                onDispose { supportingPaneShown = false }
+                            }
+                        }
+                        RaftSupportingPaneLayout(
                             modifier =
                                 paneModifier
                                     .fillMaxSize()
@@ -7239,8 +7275,19 @@ private fun RaftAppShellReadyContent(
                                         adaptiveWorkspaceStore.update {
                                             if (it.detailPaneWidthDp == widthDp) it else it.copy(detailPaneWidthDp = widthDp)
                                         }
-                                    }
+                                    },
+                            supporting =
+                                if (supportingOpen) {
+                                    { RaftSupportingPaneStack(supportingPanes, active, onStackChange = { supportingPanes = it }) }
+                                } else {
+                                    null
+                                },
+                        ) { detailModifier ->
+                        RaftPaneHost(
+                            wide = supportingPaneHost,
+                            openInPane = { _, pageName, pageData -> supportingPanes = supportingPanes.replace(pageName, pageData) },
                         ) {
+                        Row(modifier = detailModifier) {
                         // task #180: in Focus mode the thread owns the row and the parent channel/DM
                         // gets no space. It is collapsed by WIDTH, never by weight -- `weight(0f)` is
                         // illegal in Compose and threw IllegalArgumentException "invalid weight 0.0"
@@ -7314,7 +7361,9 @@ private fun RaftAppShellReadyContent(
                                     },
                                 )
                             }
-                        if (showSideColumn && sideThread != null && workspace != null) {
+                        // One right-hand column at a time: the side thread steps aside while the
+                        // supporting pane is open and comes back when it closes.
+                        if (showSideColumn && sideThread != null && workspace != null && !supportingOpen) {
                             // task #180: the page data key is deliberately independent of Focus mode.
                             // Toggling re-lays-out the same child page instead of recreating it, which is
                             // what keeps the reader's scroll position across Focus <-> Standard.
@@ -7346,6 +7395,8 @@ private fun RaftAppShellReadyContent(
                                     },
                                 active = childActive,
                             )
+                        }
+                        }
                         }
                         }
                     }

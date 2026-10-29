@@ -48,6 +48,7 @@ import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftGlyph
 
 // raft-ui `sidebarSectionDisclosure`: a 14px chevron (`size-3.5`), `gap-1.5`, all in ink-3.
 private val SectionChevronSize = 14.dp
@@ -143,6 +144,10 @@ internal fun RaftTopPageHeader(
             contentSpacing = if (backInColumn) RaftTopPageHeaderContentSpacing else contentSpacing,
         ) {
             when {
+                // The first page of the wide supporting pane: Back closes the pane, so it is the
+                // design system's leading Close (web drawer ×); pages pushed in the pane keep Back.
+                onBack != null && !backInColumn && LocalRaftPaneBackCloses.current ->
+                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
                 onBack != null && !backInColumn ->
                     RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
                 leadingContent != null ->

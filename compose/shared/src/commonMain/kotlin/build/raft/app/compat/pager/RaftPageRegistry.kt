@@ -65,6 +65,9 @@ object RaftPageRegistry {
 
     fun hasPage(pageName: String): Boolean = factories.containsKey(pageName)
 
+    /** Where [pageName] opens on the wide layout ([raftPagePaneRoles]; [RaftPaneRole.Window] if unlisted). */
+    fun paneRole(pageName: String): RaftPaneRole = raftPagePaneRoles[pageName] ?: RaftPaneRole.Window
+
     /** Creates a fresh page instance for [pageName] (null if unknown). */
     fun factory(pageName: String): (() -> Pager)? = factories[pageName]
 
