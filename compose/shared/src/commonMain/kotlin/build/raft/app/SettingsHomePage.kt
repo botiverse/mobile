@@ -2166,6 +2166,9 @@ private fun RaftAppShellReadyContent(
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // The inline Search's field focuses as it opens; opening it again while it is open (top bar
+    // search field, the Duo rail's Search) focuses the field again, like web's search shortcut.
+    var railInlineSearchFocusRequest by remember { mutableStateOf(0) }
     // page_viewed for the wide rail's inline list panes (Search, Saved): they are not pages of their own.
     val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
     val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
@@ -6932,6 +6935,7 @@ private fun RaftAppShellReadyContent(
                                         surface = RaftNavSurface.Rail,
                                         wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
                                     )
+                                    if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
                                     railInlineSecondaryDestination = AppShellRailSearchKey
                                     bridge.log("app_shell_rail_secondary_open destination=search from=rail")
                                     return@RaftNavigationRailTabBar
@@ -7033,6 +7037,7 @@ private fun RaftAppShellReadyContent(
                                     surface = RaftNavSurface.TopBar,
                                     wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
                                 )
+                                if (railInlineSecondaryDestination == AppShellRailSearchKey) railInlineSearchFocusRequest += 1
                                 railInlineSecondaryDestination = AppShellRailSearchKey
                                 bridge.log("app_shell_rail_secondary_open destination=search from=top_bar")
                             },
@@ -8077,7 +8082,9 @@ private fun RaftAppShellReadyContent(
                             HomeSecondaryRouterContent(
                                 destination = railInlineDestination,
                                 routeVisibleTick = pageVisibleTick,
+                                // The field focuses as the inline Search opens (homeSearchPageChrome).
                                 initialSearchFocusInput = false,
+                                searchFocusInputRequest = railInlineSearchFocusRequest,
                                 adaptivePane = shellScope.adaptivePane,
                                 searchQueryRequest = searchTabQueryRequest.takeIf { railInlineDestination == HomeDestinationSearch },
                                 onSearchQueryApplied = { searchTabQueryRequest = null },
@@ -11395,6 +11402,9 @@ internal fun SharedHomeSearchPanel(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
+    // False for the wide layout's inline Search: [onClose] still reaches a system side column, but
+    // the head draws no Back button (Esc / system Back close it through the shell).
+    showCloseButton: Boolean = true,
     interactiveSearchField: Boolean = true,
     includeTopSafeArea: Boolean = true,
     showSenderFilter: Boolean = true,
@@ -11619,6 +11629,7 @@ internal fun SharedHomeSearchPanel(
                     onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                     onClose = onClose,
+                    showCloseButton = showCloseButton,
                     interactive = interactiveSearchField,
                     tabHead = tabHead,
                     topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
@@ -12303,6 +12314,7 @@ private fun SharedHomeSearchToolbar(
     onSubmit: () -> Unit,
     onClear: () -> Unit,
     onClose: (() -> Unit)?,
+    showCloseButton: Boolean = true,
     interactive: Boolean = true,
     autoFocus: Boolean = false,
     tabHead: Boolean = false,
@@ -12338,7 +12350,7 @@ private fun SharedHomeSearchToolbar(
     // iPhone Duo (raft-design #859): beside the system's side column Back is the column's.
     val backInColumn = onClose != null && raftSideColumnControls(back = raftSideColumnBackAction(onClose))
     @Suppress("NAME_SHADOWING")
-    val onClose = onClose.takeUnless { backInColumn }
+    val onClose = onClose.takeUnless { backInColumn || !showCloseButton }
     SharedHomeSearchControlsRow(
         topSafeAreaPadding = topSafeAreaPadding,
         // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.

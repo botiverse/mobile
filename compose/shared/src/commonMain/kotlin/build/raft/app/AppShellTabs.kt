@@ -96,13 +96,28 @@ internal fun appShellSettingsRootTab(selectedTab: String, navRailActive: Boolean
 
 /**
  * The Search page's chrome under the navigation rule (stdrc 2026-10-21): as the phone Search tab
- * root it has no Back and sits above the bottom bar; pushed (wide rail, channel search) it has
- * Back and covers the bar. A result always opens a pushed page with Back over either.
+ * root it has no Back and sits above the bottom bar; pushed (channel search) it has Back and
+ * covers the bar. A result always opens a pushed page with Back over either.
+ *
+ * The wide layout's inline Search ([railInline]: the top bar's search field, the Duo rail's
+ * Search) is a list-column mode, not a page: like web's desktop search it draws no Back button
+ * (Esc / system Back, another tab or the top search field leave it; [showsBack] still hands
+ * close to a system side column) and its field takes focus as it opens (artin 2026-10-29).
  */
-internal data class HomeSearchPageChrome(val showsBack: Boolean, val aboveBottomBar: Boolean)
+internal data class HomeSearchPageChrome(
+    val showsBack: Boolean,
+    val aboveBottomBar: Boolean,
+    val showsBackButton: Boolean = showsBack,
+    val focusesInputOnOpen: Boolean = false,
+)
 
-internal fun homeSearchPageChrome(tabRoot: Boolean): HomeSearchPageChrome =
-    HomeSearchPageChrome(showsBack = !tabRoot, aboveBottomBar = tabRoot)
+internal fun homeSearchPageChrome(tabRoot: Boolean, railInline: Boolean = false): HomeSearchPageChrome =
+    HomeSearchPageChrome(
+        showsBack = !tabRoot,
+        aboveBottomBar = tabRoot,
+        showsBackButton = !tabRoot && !railInline,
+        focusesInputOnOpen = railInline,
+    )
 
 /** The wide rail lists Search as its inline entry, not a tab: a selected Search tab moves there. */
 internal fun appShellSearchTabMovesToRailSearch(selectedTab: String, navRailActive: Boolean): Boolean =
