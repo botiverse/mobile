@@ -860,8 +860,8 @@
     <string name="thread_agent_typing_agent_fallback">Agent</string>
     <string name="thread_jump_new_messages_one">1 条新消息</string>
     <string name="thread_jump_new_messages_many">%1$d 条新消息</string>
-    <string name="thread_jump_next_unread_thread">下一个未读 thread（%1$d）</string>
-    <string name="thread_jump_earliest_unread_thread">最早的未读 thread（%1$d）</string>
+    <string name="thread_jump_next_unread_thread">下一个未读消息列（%1$d）</string>
+    <string name="thread_jump_earliest_unread_thread">最早的未读消息列（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">关闭</string>
     <string name="thread_jump_unread_thread_loading">正在加载消息列…</string>
     <string name="thread_label_saved">已收藏</string>
@@ -995,7 +995,7 @@
     <string name="thread_state_note">备注</string>
     <string name="thread_open_task_number">打开任务 #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">搜索当前对话…</string>
+    <string name="thread_placeholder_search">搜索此消息列…</string>
     <string name="composer_placeholder_message_design">消息设计</string>
     <string name="composer_state_no_matching_members">无匹配成员</string>
     <string name="composer_state_no_matching_channels">无匹配频道</string>
@@ -1622,7 +1622,7 @@
     <string name="task_legacy_created_by">创建者</string>
     <string name="task_legacy_assignee">负责人</string>
     <string name="task_legacy_read_only">只读面板</string>
-    <string name="task_legacy_read_only_hint">旧版任务不对应消息讨论串。此面板仅显示任务信息，无法发言。</string>
+    <string name="task_legacy_read_only_hint">旧版任务不会映射到消息列。此面板仅显示任务元数据，且无法发帖。</string>
     <string name="task_legacy_no_description">没有描述</string>
     <string name="task_legacy_unknown">未知</string>
     <string name="task_legacy_unknown_channel">未知</string>
@@ -2702,7 +2702,7 @@
     <string name="push_preview_sender_only_mention">%1$s 提到了你</string>
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_mobile_new_design_settings">新版设置设计</string>
-    <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有 Thread 设置弹窗。</string>
+    <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有的消息列设置弹窗。</string>
     <string name="home_adaptive_select_conversation">选择一个会话</string>
     <string name="composer_add_image">添加图片</string>
     <string name="composer_take_photo">拍照</string>
@@ -2809,7 +2809,7 @@
     <string name="thread_audio_playback_position">播放位置</string>
     <string name="thread_focus_mode_focus">专注模式</string>
     <string name="thread_focus_mode_standard">标准模式</string>
-    <string name="thread_focus_mode_menu_more">回复串面板菜单</string>
+    <string name="thread_focus_mode_menu_more">消息列面板菜单</string>
     <string name="member_runtime_usage_title">账号用量</string>
     <string name="member_runtime_usage_attention">用量需留意</string>
     <string name="member_runtime_usage_reading">读取中…</string>
