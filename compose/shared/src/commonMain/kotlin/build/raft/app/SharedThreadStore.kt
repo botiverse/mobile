@@ -48,6 +48,7 @@ import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.MarkUnreadOutcome
+import build.raft.app.data.leftMarkedUnread
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.ReadReceiptResult
 import build.raft.app.data.markUnreadOutcome
@@ -7472,6 +7473,9 @@ internal class SharedThreadStore(
     // the page shows it (web threadUnreadHold / autoReadHold), so the open page does not read it
     // again at once; leaving the page (a new store) or showing another thread ends the hold.
     private var markedUnreadHoldChannelId: String? = null
+    // #proj-mobile:#70: the thread whose Mark as Unread was answered 202 (admitted, result unknown). The
+    // `read_state:updated` for it decides; it says so (the nothing toast) only while the hold is still on.
+    private var pendingMarkUnreadChannelId: String? = null
     private val _readToggleNotices = MutableSharedFlow<RaftReadToggleNotice>(extraBufferCapacity = 4)
 
     /** One-shot Mark as Unread notices (Nothing to mark), shown by the page as a toast. */
@@ -9743,6 +9747,7 @@ internal class SharedThreadStore(
         val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()
         val currentSession = dataSource.readSession()
         val currentUserId = currentSession?.user?.id
+        if (event is PerReceiverReadStateChanged) resolvePendingMarkUnread(event, currentSession?.currentServerId)
         val readStateOwner = if (event is PerReceiverReadStateChanged) {
             dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
         } else null
@@ -10170,6 +10175,7 @@ internal class SharedThreadStore(
         }
         // Reading another thread here means the person left the one they marked: its hold ends.
         markedUnreadHoldChannelId = null
+        pendingMarkUnreadChannelId = null
         if (marker.wasRecentlyMarkedRead()) {
             // Task #19 (Hands 2aa74345): the window only coalesces. A marker NEWER than the completed one
             // (a message that arrived, or a stand-in replaced by the network page, right after the last
@@ -10260,11 +10266,13 @@ internal class SharedThreadStore(
      * write, so no visible read of this page goes out after it; a read still queued is dropped. The
      * answer is read as the Activity row reads it ([markUnreadOutcome]): Counted / Marked keep the
      * hold; Nothing to mark says so (the Activity toast) and, like a failed write, ends the hold, as
-     * nothing was marked.
+     * nothing was marked. A 202 (Pending, #proj-mobile:#70) keeps the hold with no toast until the
+     * `read_state:updated` for the thread answers ([resolvePendingMarkUnread]).
      */
     private suspend fun markThreadUnread(threadChannelId: String) {
         val channelId = threadChannelId.trim().takeIf { it.isNotBlank() } ?: return
         markedUnreadHoldChannelId = channelId
+        pendingMarkUnreadChannelId = null
         deferredReadJob?.cancel()
         deferredReadJob = null
         if (pendingReadMarker?.channelId == channelId) pendingReadMarker = null
@@ -10277,10 +10285,35 @@ internal class SharedThreadStore(
                 "outcome=${outcome?.name ?: "none"}"
         )
         if (outcome == MarkUnreadOutcome.Counted || outcome == MarkUnreadOutcome.Marked) return
+        if (outcome == MarkUnreadOutcome.Pending) {
+            if (markedUnreadHoldChannelId == channelId) pendingMarkUnreadChannelId = channelId
+            return
+        }
         if (markedUnreadHoldChannelId == channelId) markedUnreadHoldChannelId = null
         if (outcome == MarkUnreadOutcome.NothingToMark) {
             _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
         }
+    }
+
+    /**
+     * #proj-mobile:#70 (Tenny): the `read_state:updated` that answers a 202 Mark as Unread. Marked (a
+     * count or the mark) keeps the hold; not marked reads as a 200 nothing to mark (the toast, the
+     * hold ends), but only while the person is still on the thread (the hold is on). Once they left,
+     * the event only updates the state, with no toast.
+     */
+    private fun resolvePendingMarkUnread(event: PerReceiverReadStateChanged, sessionServerId: String?) {
+        val channelId = pendingMarkUnreadChannelId ?: return
+        if (event.serverId != null && !sessionServerId.isNullOrBlank() && event.serverId.value != sessionServerId) return
+        val scope = event.scopes.lastOrNull { it.scopeId.value == channelId } ?: return
+        pendingMarkUnreadChannelId = null
+        val marked = scope.leftMarkedUnread()
+        val stillThere = markedUnreadHoldChannelId == channelId
+        diagnosticsLogger?.invoke(
+            "thread_mark_unread_pending_resolved channelId=$channelId marked=$marked stillThere=$stillThere"
+        )
+        if (marked || !stillThere) return
+        markedUnreadHoldChannelId = null
+        _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
     }
 
     /** Time left in the coalesce window of the last completed read (at least 1 ms). */

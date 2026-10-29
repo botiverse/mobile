@@ -1265,7 +1265,12 @@ data class ReadReceiptResult(
      * the read-state transaction. Null from a server older than the field (or another write);
      * [MarkUnreadOutcomeDto.Unknown] from a newer one. Read it through [markUnreadOutcome].
      */
-    val serverMarkUnreadOutcome: MarkUnreadOutcomeDto? = null
+    val serverMarkUnreadOutcome: MarkUnreadOutcomeDto? = null,
+    /**
+     * `POST /channels/:id/unread` answered 202 ([build.raft.app.data.generated.ReadMutationPendingResponseDto]):
+     * the write was admitted, its result is not known yet; the `read_state:updated` that follows carries it.
+     */
+    val markUnreadPending: Boolean = false,
 )
 
 @Serializable

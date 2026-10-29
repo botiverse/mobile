@@ -150,9 +150,9 @@ class ReadStateDtosQualificationTest {
         assertFailsWith<Exception>("a 202 body is not a 200 answer: `outcome: unknown` must not pass as one") {
             json.decodeFromString(MarkConversationUnreadResponseDto.serializer(), pendingBody)
         }
-        // Today's reading of a 202: no count, no mark, no outcome.
+        // A 202 is pending (#proj-mobile:#70): no count, no mark, no outcome; the read-state event decides.
         val admitted = parseMarkConversationUnreadResult(pendingBody, ChannelId("c")) ?: error("202 dropped")
-        assertEquals(ReadReceiptResult(channelId = ChannelId("c"), changed = true), admitted)
-        assertEquals(MarkUnreadOutcome.NothingToMark, admitted.markUnreadOutcome())
+        assertEquals(ReadReceiptResult(channelId = ChannelId("c"), changed = true, markUnreadPending = true), admitted)
+        assertEquals(MarkUnreadOutcome.Pending, admitted.markUnreadOutcome())
     }
 }

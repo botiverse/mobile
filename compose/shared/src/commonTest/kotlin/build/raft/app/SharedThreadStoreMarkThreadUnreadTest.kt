@@ -7,6 +7,7 @@ import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.SharedThreadStoreTestFakes.FakeConversationRepository
 import build.raft.app.SharedThreadStoreTestFixtures.cachePayloadForTest
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
+import build.raft.app.SharedThreadStoreTestFixtures.contentPayloadForRoute
 import build.raft.app.data.ChannelUnreadSnapshot
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
@@ -17,6 +18,8 @@ import build.raft.app.data.ReadReceiptRepository
 import build.raft.app.data.ReadReceiptResult
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -80,6 +83,81 @@ class SharedThreadStoreMarkThreadUnreadTest {
         harness.close()
     }
 
+    // #proj-mobile:#70 (contract cases R1-202-*): a 202 is pending; the read-state event decides.
+    @Test
+    fun pendingAnswerSaysNothingAndKeepsTheHold() = runTest {
+        val harness = harness(unreadAnswer = pendingAnswer)
+
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("channel-1"))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceTimeBy(60_000)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:channel-1"), harness.repository.calls, "the hold stays: no read goes out")
+        assertTrue(harness.notices.isEmpty(), "no toast for a pending answer")
+        harness.close()
+    }
+
+    @Test
+    fun pendingThenMarkedKeepsTheHoldWithNoToast() = runTest {
+        val harness = harness(unreadAnswer = pendingAnswer)
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("channel-1"))
+        testScheduler.advanceUntilIdle()
+
+        harness.store.accept(SharedThreadIntent.ApplyRealtimeEvent(readState("channel-1", marked = true)))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("unread:channel-1"), harness.repository.calls)
+        assertTrue(harness.notices.isEmpty())
+        harness.close()
+    }
+
+    @Test
+    fun pendingThenNotMarkedWhileStillThereSaysNothingToMark() = runTest {
+        val harness = harness(unreadAnswer = pendingAnswer)
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("channel-1"))
+        testScheduler.advanceUntilIdle()
+        assertTrue(harness.notices.isEmpty())
+
+        harness.store.accept(SharedThreadIntent.ApplyRealtimeEvent(readState("other-thread", marked = false)))
+        testScheduler.advanceUntilIdle()
+        assertTrue(harness.notices.isEmpty(), "another scope's event does not answer this mark")
+
+        harness.store.accept(SharedThreadIntent.ApplyRealtimeEvent(readState("channel-1", marked = false)))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(RaftReadToggleNotice.MarkUnreadNothing), harness.notices)
+        assertEquals(listOf("unread:channel-1", "read:channel-1"), harness.repository.calls, "the hold ended, as on a 200 nothing")
+
+        harness.store.accept(SharedThreadIntent.ApplyRealtimeEvent(readState("channel-1", marked = false)))
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, harness.notices.size, "answered once")
+        harness.close()
+    }
+
+    @Test
+    fun pendingThenNotMarkedAfterLeavingSaysNothing() = runTest {
+        val harness = harness(unreadAnswer = pendingAnswer)
+        harness.store.accept(SharedThreadIntent.MarkThreadUnread("channel-1"))
+        testScheduler.advanceUntilIdle()
+
+        // The person opens another thread: its visible read goes out and ends channel-1's hold.
+        val other = basePayload().copy(instanceId = "shared-shell-thread-channel-2", sourceThreadId = "channel-2")
+        harness.dataSource.cachePayloadForTest(contentPayloadForRoute(other, "other body"))
+        harness.store.accept(SharedThreadIntent.Start(other))
+        harness.store.accept(SharedThreadIntent.MarkVisibleRead())
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("unread:channel-1", "read:channel-2"), harness.repository.calls)
+
+        harness.store.accept(SharedThreadIntent.ApplyRealtimeEvent(readState("channel-1", marked = false)))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(harness.notices.isEmpty(), "nobody to tell once the hold is over")
+        harness.close()
+    }
+
     @Test
     fun failedMarkEndsTheHold() = runTest {
         val harness = harness(unreadAnswer = DataResult.Error(ScreenError(code = "network", retryable = true)))
@@ -111,8 +189,18 @@ class SharedThreadStoreMarkThreadUnreadTest {
         assertEquals(listOf("read:thread-ch-1@10", "unread:thread-ch-1", "read:thread-ch-1@10"), repository.calls)
     }
 
+    private val pendingAnswer =
+        DataResult.Content(ReadReceiptResult(channelId = ChannelId("channel-1"), markUnreadPending = true))
+
+    private fun readState(scopeId: String, marked: Boolean) =
+        PerReceiverReadStateChanged(
+            serverId = ServerId("server-1"),
+            scopes = listOf(PerReceiverReadStateScope(ChannelId(scopeId), maxReadSeq = 40, readStateVersion = 8, markedUnread = marked)),
+        )
+
     private class Harness(
         val store: SharedThreadStore,
+        val dataSource: SharedThreadDataSource,
         val repository: RecordingReadReceiptRepository,
         val notices: List<RaftReadToggleNotice>,
         private val scope: CoroutineScope,
@@ -141,7 +229,7 @@ class SharedThreadStoreMarkThreadUnreadTest {
         val notices = mutableListOf<RaftReadToggleNotice>()
         scope.launch { store.readToggleNotices.collect { notices += it } }
         store.accept(SharedThreadIntent.Start(basePayload()))
-        return Harness(store, repository, notices, scope)
+        return Harness(store, dataSource, repository, notices, scope)
     }
 
     private class RecordingReadReceiptRepository(

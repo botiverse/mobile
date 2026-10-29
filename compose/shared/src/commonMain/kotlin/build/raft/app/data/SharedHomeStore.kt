@@ -4159,7 +4159,7 @@ internal class SharedHomeStore(
      * summary brings the exact one). A mark takes back the optimistic count and shows the dot; the
      * answer goes through the same version-ordered read state as its `read_state:updated`, so an
      * answer later than a newer read never brings the mark back. Nothing to mark takes the row back
-     * as it was and says why.
+     * as it was and says why. A 202 (pending) keeps the optimistic count, with no toast.
      */
     private fun applyMarkUnreadOutcome(
         conversationId: String,
@@ -4170,7 +4170,8 @@ internal class SharedHomeStore(
     ) {
         val outcome = result.markUnreadOutcome()
         diagnosticsLogger("home_mark_unread_outcome conversationId=$conversationId outcome=${outcome.name}")
-        if (outcome == MarkUnreadOutcome.Counted) return
+        // Pending (202): the optimistic count stays and the `read_state:updated` that follows corrects it.
+        if (outcome == MarkUnreadOutcome.Counted || outcome == MarkUnreadOutcome.Pending) return
         val now = _state.value.content as? SharedHomeContentState.Content ?: return
         if (now.snapshot.server.id != serverId || now.snapshot.currentMember.id != accountId) return
         val optimisticUnread = previousUnread.takeIf { it > 0 } ?: 1
@@ -4202,7 +4203,8 @@ internal class SharedHomeStore(
                 }
             }
             MarkUnreadOutcome.NothingToMark -> _readToggleNotices.tryEmit(RaftReadToggleNotice.MarkUnreadNothing)
-            MarkUnreadOutcome.Counted -> Unit
+            MarkUnreadOutcome.Counted,
+            MarkUnreadOutcome.Pending -> Unit
         }
     }
 

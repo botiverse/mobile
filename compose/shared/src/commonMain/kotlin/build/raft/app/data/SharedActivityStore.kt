@@ -3624,7 +3624,8 @@ class SharedActivityStore internal constructor(
     ) {
         val outcome = result.markUnreadOutcome()
         diagnosticsLogger("activity_mark_unread_outcome key=${item.key} outcome=${outcome.name}")
-        if (outcome == MarkUnreadOutcome.Counted) return
+        // Pending (202): the optimistic count stays and the `read_state:updated` that follows corrects it.
+        if (outcome == MarkUnreadOutcome.Counted || outcome == MarkUnreadOutcome.Pending) return
         val reconcileJob =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
