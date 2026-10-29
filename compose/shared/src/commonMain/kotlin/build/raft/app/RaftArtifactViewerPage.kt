@@ -179,7 +179,7 @@ internal fun rememberRaftArtifactOpener(fallback: (ArtifactLinkTarget) -> Unit):
                             target,
                         )
                     if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
-                        RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, raftArtifactViewerPageUrl(host.webBaseUrl, target))
+                        RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target))
                         RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
                     }
                 }
@@ -237,7 +237,16 @@ private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
 private sealed interface RaftArtifactViewerBodyState {
     data object Viewing : RaftArtifactViewerBodyState
     data object Unavailable : RaftArtifactViewerBodyState
+
+    /** The page navigated off this Artifact ([RaftArtifactViewerNavigation]): the viewer closes. */
+    data class Left(val navigation: RaftArtifactViewerNavigation) : RaftArtifactViewerBodyState
 }
+
+private fun RaftArtifactViewerNavigation.logToken(): String =
+    when (this) {
+        is RaftArtifactViewerNavigation.OpenMessage -> "open_message"
+        else -> "close"
+    }
 
 @Composable
 private fun RaftArtifactViewerScreen() {
@@ -257,12 +266,18 @@ private fun RaftArtifactViewerScreen() {
     }
     val scope = remember(params.toString()) { host.scope() }
     val webBaseUrl = remember(params.toString()) { host.webBaseUrl }
+    // Open in browser: the page as the web shows it. The WebView: the same page under this title bar.
     val pageUrl = remember(webBaseUrl, target) { raftArtifactViewerPageUrl(webBaseUrl, target) }
+    val embeddedPageUrl = remember(webBaseUrl, target) { raftArtifactViewerEmbeddedPageUrl(webBaseUrl, target) }
     // Paint the header at once: the opener's card (put in the cache on tap), else the last one seen,
     // in this scope only.
     var header by remember(params.toString()) { mutableStateOf(RaftArtifactViewerMemory.cache.header(scope, target.id)) }
     LaunchedEffect(Unit) { if (header != null) RaftArtifactOpenTrace.mark("header_painted", "from=card_or_cache") }
     var bodyState by remember(params.toString()) { mutableStateOf<RaftArtifactViewerBodyState>(RaftArtifactViewerBodyState.Viewing) }
+    // The version the page shows, from its address (a version picked in the page's ⋯, Back to
+    // Latest): the page draws no version of its own under the embed contract, this header does.
+    var addressed by remember(params.toString()) { mutableStateOf<RaftArtifactViewerNavigation.Stay?>(null) }
+    var latestVersion by remember(params.toString()) { mutableStateOf<Int?>(null) }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
@@ -275,6 +290,7 @@ private fun RaftArtifactViewerScreen() {
             is ArtifactSummaryAnswer.Ok -> {
                 val fresh = RaftArtifactViewerHeader.of(answer.summary, target)
                 header = fresh
+                latestVersion = answer.summary.latestVersion.takeIf { it > 0 }
                 RaftArtifactViewerMemory.cache.remember(scope, fresh)
             }
             ArtifactSummaryAnswer.Unavailable -> bodyState = RaftArtifactViewerBodyState.Unavailable
@@ -288,10 +304,22 @@ private fun RaftArtifactViewerScreen() {
             raftWebViewKeepAliveClear()
             host.bridge.log("artifact_viewer_unavailable action=replace_and_evict")
         }
+        // The page went somewhere that is not this Artifact: the viewer closes (after the WebView
+        // left the screen, so the document, which no longer shows an Artifact, is not kept), and its
+        // original message opens natively, as a message link from outside the app does.
+        val leaving = bodyState as? RaftArtifactViewerBodyState.Left ?: return@LaunchedEffect
+        RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+        host.bridge.log("artifact_viewer_left action=${leaving.navigation.logToken()}")
+        closePage()
+        when (val navigation = leaving.navigation) {
+            is RaftArtifactViewerNavigation.OpenMessage -> RaftMessageLinkIngress.accept(navigation.url, "artifact_viewer", webBaseUrl)
+            else -> Unit
+        }
     }
 
     val untitled = stringResource(Res.string.artifacts_activity_untitled)
-    val versionLabel = header?.version?.let { stringResource(Res.string.artifacts_card_version, it) }
+    val shownVersion = addressed?.let { it.version ?: latestVersion } ?: header?.version
+    val versionLabel = shownVersion?.let { stringResource(Res.string.artifacts_card_version, it) }
     RaftArtifactViewerFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         subtitle = versionLabel,
@@ -301,6 +329,7 @@ private fun RaftArtifactViewerScreen() {
     ) {
         when (bodyState) {
             RaftArtifactViewerBodyState.Unavailable -> RaftArtifactViewerUnavailable(onClose = ::closePage)
+            is RaftArtifactViewerBodyState.Left -> Unit
             RaftArtifactViewerBodyState.Viewing ->
                 if (scope == null) {
                     // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
@@ -309,7 +338,14 @@ private fun RaftArtifactViewerScreen() {
                         closePage()
                     }
                 } else {
-                    RaftArtifactViewerWebBody(host = host, scope = scope, target = target, pageUrl = pageUrl)
+                    RaftArtifactViewerWebBody(
+                        host = host,
+                        scope = scope,
+                        target = target,
+                        pageUrl = embeddedPageUrl,
+                        onStay = { addressed = it },
+                        onLeave = { bodyState = RaftArtifactViewerBodyState.Left(it) },
+                    )
                 }
         }
     }
@@ -321,6 +357,8 @@ private fun RaftArtifactViewerWebBody(
     scope: RaftArtifactViewerScope,
     target: ArtifactLinkTarget,
     pageUrl: String,
+    onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
+    onLeave: (RaftArtifactViewerNavigation) -> Unit,
 ) {
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
     val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
@@ -341,6 +379,29 @@ private fun RaftArtifactViewerWebBody(
     var visible by remember { mutableStateOf(showsTarget) }
     var documentReady by remember { mutableStateOf(false) }
     var navigated by remember { mutableStateOf(kept == null || showsTarget) }
+    // Every top-level address (a load, or the web app's own history change). Only once the page has
+    // shown this Artifact: before that a kept document is still on the warm route or the last one.
+    var armed by remember { mutableStateOf(false) }
+    var left by remember { mutableStateOf(false) }
+    val currentOnStay by rememberUpdatedState(onStay)
+    val currentOnLeave by rememberUpdatedState(onLeave)
+    fun onAddress(url: String) {
+        if (left) return
+        when (val navigation = raftArtifactViewerNavigation(url, scope.webOrigin, target.id)) {
+            is RaftArtifactViewerNavigation.Stay -> {
+                armed = true
+                currentOnStay(navigation)
+            }
+            // Off the web origin never loads here: the origin lock blocks it (onNavigationBlocked).
+            RaftArtifactViewerNavigation.Ignore, is RaftArtifactViewerNavigation.SystemBrowser -> Unit
+            else ->
+                if (armed) {
+                    left = true
+                    currentOnLeave(navigation)
+                }
+        }
+    }
+    LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
     LaunchedEffect(Unit) {
         RaftArtifactOpenTrace.mark("webview_attach", "kept=${kept != null} showsTarget=$showsTarget")
         if (kept == null) RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl)
@@ -383,8 +444,11 @@ private fun RaftArtifactViewerWebBody(
                 documentReady = true
                 RaftArtifactOpenTrace.mark("webview_page_finished")
             },
+            onUrlChange = ::onAddress,
             onNavigationStateChange = { state ->
                 if (state.isLoading && state.progress == 0) RaftArtifactOpenTrace.mark("webview_page_started")
+                // iOS sees the web app's own history changes only here (its URL poll).
+                if (state.url.isNotBlank()) onAddress(state.url)
             },
             onNavigationBlocked = { blocked ->
                 // Rule 2: off the web origin never loads here; an http(s) page opens in the browser.
