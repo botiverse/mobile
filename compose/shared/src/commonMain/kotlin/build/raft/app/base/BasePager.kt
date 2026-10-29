@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
 import build.raft.app.RaftSearchTabHandoff
@@ -21,8 +22,10 @@ import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftStoreThreading
+import build.raft.app.data.RaftSharedStoreRegistry
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import build.raft.app.compat.pager.ComposeContainer
@@ -65,17 +68,48 @@ internal abstract class BasePager : ComposeContainer() {
     override fun setContent(content: @Composable () -> Unit) {
         val embedded = pageData.params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false)
         super.setContent {
-            RaftEnvironmentIndicatorHost(
-                enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
-            ) {
-                if (embedded) {
-                    content()
-                } else {
-                    RaftSideColumnScaffold(posture = raftSideColumnPosture, content = content)
+            val layers =
+                remember {
+                    raftPageLayers(
+                        ownsDatabaseLaunch = raftOwnsDatabaseLaunch,
+                        embedded = embedded,
+                        sharedStoreBuilt = RaftSharedStoreRegistry.currentOrNull() != null,
+                    )
                 }
-            }
+            RaftPageLayersContent(layers = layers, content = content)
         }
     }
+
+    @Composable
+    private fun RaftPageLayersContent(
+        layers: List<RaftPageLayer>,
+        content: @Composable () -> Unit,
+    ) {
+        val layer = layers.firstOrNull()
+        if (layer == null) {
+            content()
+            return
+        }
+        val inner: @Composable () -> Unit = { RaftPageLayersContent(layers = layers.drop(1), content = content) }
+        when (layer) {
+            RaftPageLayer.DatabaseLaunchGate -> RaftDatabaseLaunchGate(content = inner)
+            RaftPageLayer.EnvironmentIndicator ->
+                RaftEnvironmentIndicatorHost(
+                    enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
+                    content = inner,
+                )
+            RaftPageLayer.SideColumnScaffold ->
+                RaftSideColumnScaffold(posture = raftSideColumnPosture, content = inner)
+        }
+    }
+
+    /**
+     * Whether this page is the launch owner that always gates the first shared-store creation
+     * behind [RaftDatabaseLaunchGate] (the app shell). Other pages are gated only when they are the
+     * first to need the store ([raftPageLayers]).
+     */
+    protected open val raftOwnsDatabaseLaunch: Boolean
+        get() = false
 
     private fun registerRaftExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {

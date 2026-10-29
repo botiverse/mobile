@@ -12,7 +12,7 @@ internal class RaftSqlDatabase(
     private val driver: SqlDriver
 ) {
     init {
-        // Version compatibility is checked by the platform read-only preflight before this class
+        // Version compatibility is checked by openRaftSqlDatabase (read-only preflight) before this class
         // is constructed. NativeSqliteDriver still creates its pools lazily, so force one query
         // while the AppShell provider is being created. SQLDelight then owns new-database creation
         // and forward migration synchronously instead of surfacing failures from a Store coroutine.

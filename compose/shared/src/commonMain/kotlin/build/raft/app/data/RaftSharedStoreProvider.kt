@@ -2671,11 +2671,8 @@ internal class RaftSharedStoreProvider private constructor(
                     "namespace=${RaftLocalPreferenceStore.KuiklyNamespace} " +
                     "scope=${sharedPreferenceStoreBinding.scope}"
             )
-            val apiEnvironmentKeyValueStoreBinding =
-                RaftSharedKeyValueStoreProvider.create(
-                    namespace = SharedApiEnvironmentStore.Namespace,
-                    storageName = "API environment"
-                )
+            // Shared with the environment indicator, which reads it without building this provider.
+            val apiEnvironmentKeyValueStoreBinding = RaftAppScopeApiEnvironment.binding()
             val apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStoreBinding.store
             logSharedAuthDiagnostic(
                 "shared_key_value",
@@ -2683,10 +2680,7 @@ internal class RaftSharedStoreProvider private constructor(
                     "namespace=${SharedApiEnvironmentStore.Namespace} " +
                     "scope=${apiEnvironmentKeyValueStoreBinding.scope}"
             )
-            val apiEnvironmentStore =
-                SharedApiEnvironmentStore(
-                    apiEnvironmentKeyValueStore
-                )
+            val apiEnvironmentStore = RaftAppScopeApiEnvironment.store()
             // Content-addressed avatar keys are host-free only for the active environment's hosts.
             apiEnvironmentStore.current().let { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
             CoroutineScope(SupervisorJob()).launch {
