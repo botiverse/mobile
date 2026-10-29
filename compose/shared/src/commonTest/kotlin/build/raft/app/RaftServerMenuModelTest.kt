@@ -12,15 +12,15 @@ import kotlin.test.assertTrue
 /** Design D1a: the current-server tab, its menu, the switch that keeps the tab, the dot mapping. */
 class RaftServerMenuModelTest {
     @Test
-    fun wideScreenRowLeavesSettingsToTheRailAndAGuestGetsNoRow() {
+    fun wideScreenPopoverHasNoPagesRowThePhoneKeepsIt() {
         // raft-design #741 (navigation.md, "The server in the apps' desktop mode").
         val all = RaftServerMenuEntry.entries
         assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
         assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = true), "the phone's row is unchanged")
         assertEquals(
-            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers),
+            emptyList(),
             raftServerMenuEntriesFor(all, wide = true, guest = false),
-            "Settings sits at the rail's foot",
+            "the rail has Members and Settings; Computers is a Settings section",
         )
         assertEquals(emptyList(), raftServerMenuEntriesFor(all, wide = true, guest = true), "a guest's wide popover has no row")
     }

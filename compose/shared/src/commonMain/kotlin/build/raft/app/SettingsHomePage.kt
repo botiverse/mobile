@@ -6929,13 +6929,21 @@ private fun RaftAppShellReadyContent(
                     // neither (web LeftRail with the top bar).
                     {
                         val railBottomItems =
-                            remember(settingsTabLabel, selectedTab) {
+                            remember(settingsTabLabel, selectedTab, moreAttention) {
                                 listOf(
                                     RaftBottomTabItemPayload(
                                         key = "settings",
                                         label = settingsTabLabel,
                                         iconName = RaftLucideIconName.Settings,
                                         selected = retainedAppShellSelectedTab(selectedTab) == "settings",
+                                        // The wide server popover has no Members / Computers row (#3975), so a
+                                        // computer needing action or an app update lights Settings here, as
+                                        // More's tab does on the phone (raft-design #894).
+                                        attentionDot =
+                                            appShellMoreTabShowsDot(
+                                                moreAttention,
+                                                retainedAppShellSelectedTab(selectedTab) == "settings",
+                                            ),
                                     )
                                 )
                             }
