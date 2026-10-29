@@ -66,6 +66,11 @@ grep -q 'attempt 3/3 failed (exit 7); giving up' "${WORK}/exhausted.err" || fail
 run_case asset-unavailable 1 1 5 'Error: 503 Service Unavailable {"code":"ASSET_UPLOAD_UNAVAILABLE"}' 1
 grep -q 'transient' "${WORK}/asset-unavailable.err" && fail "asset-unavailable: config error was treated as transient"
 
+probe_verbose() { echo "verbose=${HANDS_VERBOSE:-unset}"; }
+[ "$(hands_retry probe_verbose 2>/dev/null)" = "verbose=1" ] || fail "HANDS_VERBOSE is not on by default"
+[ "$(HANDS_VERBOSE=0 hands_retry probe_verbose 2>/dev/null)" = "verbose=0" ] || fail "an explicit HANDS_VERBOSE is overridden"
+[ "${HANDS_VERBOSE:-unset}" = "unset" ] || fail "HANDS_VERBOSE leaked out of hands_retry"
+
 if [ "${failures}" -ne 0 ]; then
   echo "hands_retry: ${failures} failure(s)" >&2
   exit 1

@@ -20,6 +20,10 @@
 # Tuning (tests set these to keep the run fast):
 #   HANDS_RETRY_ATTEMPTS  total attempts, default 3
 #   HANDS_RETRY_DELAYS    seconds to wait before attempts 2, 3, ...; default "10 30 90"
+#
+# HANDS_VERBOSE defaults to 1 here so the CLI logs each request (`> POST <url>`) and its
+# status (`< 503`) to stderr. Its error line alone ("503 Service Unavailable") does not
+# say which call failed: the worker-proxied /upload, an asset register, or a direct PUT.
 
 HANDS_RETRY_TRANSIENT_PATTERN='(^|[^0-9])5[0-9][0-9] (Internal Server Error|Not Implemented|Bad Gateway|Service Unavailable|Gateway Time-?out)|(HTTP|[Ss]tatus( code)?|Error:?)[ :=]*5[0-9][0-9]([^0-9]|$)|fetch failed|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|socket hang up|UND_ERR_(SOCKET|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT)'
 
@@ -28,6 +32,8 @@ hands_retry() {
   local -a delays
   read -r -a delays <<<"${HANDS_RETRY_DELAYS:-10 30 90}"
   local attempt=1 status delay out err errexit=0
+  local HANDS_VERBOSE="${HANDS_VERBOSE:-1}"
+  export HANDS_VERBOSE
   case "$-" in *e*) errexit=1 ;; esac
   out="$(mktemp)"
   err="$(mktemp)"
