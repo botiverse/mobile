@@ -2240,11 +2240,12 @@ void RaftIosInstallHandsReporting(void) {
     dispatch_once(&onceToken, ^{
         // App-owned Hands reporting config (client key is DSN-class: it
         // identifies the app; rotate from the Hands console if leaked).
-        // Debug builds and anything running in the Simulator report to the `debug`
-        // channel so local development crashes stay out of the users' feedback list
-        // (they are still reported). Decided at compile time, not from the version:
-        // a hand-archived Release build also shows 1.0 (1) and must stay on `main`.
-#if DEBUG || TARGET_OS_SIMULATOR
+        // Debug builds report to the `debug` channel so local development crashes
+        // stay out of the users' feedback list (they are still reported). Decided by
+        // the Debug configuration at compile time, not from the version: a
+        // hand-archived Release build also shows 1.0 (1) and must stay on `main`, and
+        // a Release build run in the Simulator stays on `main` too.
+#if DEBUG
         NSString *handsChannel = @"debug";
 #else
         NSString *handsChannel = @"main";
