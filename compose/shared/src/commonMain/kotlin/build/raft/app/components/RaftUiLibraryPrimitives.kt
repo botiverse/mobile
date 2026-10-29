@@ -18,7 +18,6 @@ import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -312,41 +310,6 @@ private fun RaftLookBanner(
             }
         }
     }
-}
-
-@Composable
-internal fun RaftUiSuccessBanner(
-    description: String,
-    actionLabel: String,
-    onAction: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: RaftUiBannerSize = RaftUiBannerSize.Small
-) {
-    RaftUiBanner(
-        status = RaftUiBannerStatus.Success,
-        description = description,
-        modifier = modifier,
-        size = size,
-        action = {
-            Row(
-                modifier = Modifier.clickable(role = Role.Button, onClick = onAction),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = actionLabel,
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1
-                )
-                RaftLucideIcon(
-                    RaftLucideIconName.ChevronRight,
-                    modifier = Modifier.size(16.dp),
-                    color = RaftColor.TextBlackArgb
-                )
-            }
-        }
-    )
 }
 
 @Composable

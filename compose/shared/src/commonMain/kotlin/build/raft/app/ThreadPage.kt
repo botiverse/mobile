@@ -31,6 +31,7 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftSideAction
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -81,7 +82,6 @@ import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
-import build.raft.app.components.RaftUiSuccessBanner
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftSwitchButton
@@ -17111,7 +17111,7 @@ private fun ThreadPageContentContent(
                 )
         }
         forwardSuccessBanner?.let { banner ->
-            ThreadForwardSuccessBannerView(
+            ThreadForwardSuccessToastView(
                 banner = banner,
                 onViewInChat = {
                     forwardSuccessBanner = null
@@ -36363,15 +36363,19 @@ private fun ThreadStateMessage(title: String, detail: String?) {
     }
 }
 
+/**
+ * The receipt after a single forward: the web's forward toast (slock `ForwardComposerDialog` +
+ * `ForwardToastProvider`): raft-ui Toast on the opaque HUD surface, title only (no intent icon),
+ * one "View in chat" text action, top centre. It floats over the channel header, so it must be
+ * the HUD toast, not the translucent soft-fill Banner (cindyz 10-29: unreadable in dark mode).
+ */
 @Composable
-private fun ThreadForwardSuccessBannerView(
+internal fun ThreadForwardSuccessToastView(
     banner: ThreadForwardSuccessBanner,
     onViewInChat: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val targetLabel = banner.target.forwardSuccessDisplayTitle()
-    val successLabel = stringResource(Res.string.thread_forward_success_banner, targetLabel)
-    val viewInChatLabel = stringResource(Res.string.thread_forward_view_in_chat)
     LaunchedEffect(banner) {
         delay(5_000)
         onDismiss()
@@ -36381,14 +36385,14 @@ private fun ThreadForwardSuccessBannerView(
             Modifier
                 .fillMaxSize()
                 .zIndex(RaftFloatingOverlayHostZIndex + 20f)
-                .padding(start = 12.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 12.dp),
+                // Web viewport: top-center, at most calc(100vw - 1rem) wide.
+                .padding(start = 8.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 8.dp),
         contentAlignment = Alignment.TopCenter
     ) {
-        RaftUiSuccessBanner(
-            description = successLabel,
-            actionLabel = viewInChatLabel,
+        RaftToast(
+            title = stringResource(Res.string.thread_forward_success_banner, targetLabel),
+            actionLabel = stringResource(Res.string.thread_forward_view_in_chat),
             onAction = onViewInChat,
-            modifier = Modifier.widthIn(max = 760.dp)
         )
     }
 }
