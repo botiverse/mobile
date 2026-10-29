@@ -1,15 +1,11 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -17,12 +13,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import build.raft.app.designtokens.RaftUiPalette
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftPressSurface
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -47,9 +47,10 @@ internal fun raftAppRailWithoutTopBar(navRailActive: Boolean): Boolean =
  * server button): the current server's 40dp avatar tile, ink with its initial in yellow when it
  * has no image. It is the one server entry and opens the server panel ([onClick]). The attention
  * light shows when another server has unread items, the server tab's rule
- * ([appShellServerTabShowsAttention]). The tile is an ink sticker: while the panel is [open], and
- * under a press, it lays `sticker-ink-medium` (6% paper) over its whole face, image avatars too
- * (raft-design #875, States "Medium on an ink sticker"; Kirby 10-28).
+ * ([appShellServerTabShowsAttention]). The tile is an ink sticker: while the panel is [open], under
+ * a press, and under a mouse or trackpad (never a finger), it lays `sticker-ink-medium` (6% paper)
+ * over its whole face, image avatars too (raft-design #875, States "Medium on an ink sticker";
+ * Kirby 10-28).
  */
 @Composable
 internal fun RaftAppRailServerTile(
@@ -58,7 +59,8 @@ internal fun RaftAppRailServerTile(
     onClick: () -> Unit,
 ) {
     val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
+    // `sticker-ink-medium` under a mouse or trackpad (never a finger), a press, or while open.
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Medium, surface = RaftPressSurface.InkSticker, highlighted = open)
     val server = model.currentServer
     val attention = appShellServerTabShowsAttention(model)
     val label = stringResource(Res.string.server_tab_a11y_label, server.name)
@@ -69,6 +71,7 @@ internal fun RaftAppRailServerTile(
         modifier =
             Modifier
                 .size(RaftAppRailDefaults.ItemSize)
+                .raftPointerHover(source)
                 .clickable(
                     interactionSource = source,
                     indication = null,
@@ -87,13 +90,7 @@ internal fun RaftAppRailServerTile(
         },
     ) {
         ServerSwitcherAvatarTile(server, size = RaftAppRailDefaults.ItemSize)
-        if (open || pressed) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(RaftUiPalette.stickerInkMedium, RoundedCornerShape(RaftRadius.Sticker))
-            )
-        }
+        Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
     }
 }
 

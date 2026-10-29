@@ -400,6 +400,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.RectangleShape
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftPointerHover
+import build.raft.designsystem.components.raftStateOverlay
+import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.PointerType
@@ -26745,11 +26750,19 @@ private fun ThreadMessageCardContent(
             }
         }
     val inPlaceSelectionHost = LocalThreadInPlaceTextSelectionHost.current
+    // raft-ui MessageItem `not-data-located:hover:[--mi-row-fill:var(--fill-subtle)]`: a mouse or
+    // trackpad over the row lays the subtle tier; a finger never does. A row that already has a
+    // fill (checked, its menu open, the current search match, located) keeps it.
+    val rowHoverSource = remember { MutableInteractionSource() }
+    val rowHoverEnabled =
+        !(shareSelectionActive && selectedForShare) && !popupOpen && !searchMatch && locatedStrength <= 0f
+    val rowHover = rememberRaftStateOverlay(rowHoverSource, RaftHoverTier.Subtle, enabled = rowHoverEnabled)
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
+                .raftPointerHover(rowHoverSource)
                 .then(
                     if (inPlaceSelection != null) {
                         Modifier.onGloballyPositioned { inPlaceSelection.rowCoordinates = it }
@@ -26827,7 +26840,14 @@ private fun ThreadMessageCardContent(
             } else {
                 threadMessageLocatedFill(locatedStrength)
             }
-        val rowSurface = rowFill.compositeOver(RaftColor.Canvas)
+        // The delegated face's ring paints the row's surface, hover included (read only then, so
+        // other rows don't recompose as the hover fades).
+        val rowSurface =
+            if (message.delegatedBy != null) {
+                rowHover.value.compositeOver(rowFill.compositeOver(RaftColor.Canvas))
+            } else {
+                rowFill.compositeOver(RaftColor.Canvas)
+            }
         Column(
             modifier =
                 Modifier
@@ -26835,6 +26855,7 @@ private fun ThreadMessageCardContent(
                     // raft-ui `MessageItem` root: the row wash spans the whole
                     // row and the content sits at px-2 py-2 inside it.
                     .background(rowFill)
+                    .raftStateOverlay(rowHover, RectangleShape)
                     // The wash runs edge to edge; the message stays out of the safe area.
                     .raftSafeAreaHorizontalPadding()
                     .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),

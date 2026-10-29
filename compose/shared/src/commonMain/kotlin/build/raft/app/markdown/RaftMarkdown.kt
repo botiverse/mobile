@@ -75,7 +75,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import build.raft.app.compat.pager.Pager
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.lerp
+import build.raft.designsystem.components.raftPointerHoverPosition
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.layout.boundsInRoot
@@ -1459,9 +1462,28 @@ private object RaftMarkdownTextProvider : TextProvider {
                 )
             }
         var decorationLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+        // raft-ui markdown link hover (a mouse or trackpad, never a finger): the text deepens toward
+        // the ink and its underline takes the text's full colour. Chips are never underlined
+        // links, so they never change here.
+        var hoveredLink by remember(resolvedText) { mutableStateOf<IntRange?>(null) }
+        val hoverInk = raftMarkdownLinkHoverInk()
+        val displayText =
+            remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+        val hoverModifier =
+            if (inlineDecorations.underlines.isEmpty()) {
+                Modifier
+            } else {
+                Modifier.raftPointerHoverPosition { position ->
+                    val next = position?.let { at -> decorationLayout?.let { raftMarkdownUnderlinedLinkAt(it, inlineDecorations, at) } }
+                    if (next != hoveredLink) hoveredLink = next
+                }
+            }
         KuiklyText(
-            text = resolvedText,
-            modifier = modifier.raftInlineDecorations(inlineDecorations) { decorationLayout },
+            text = displayText,
+            modifier =
+                modifier
+                    .then(hoverModifier)
+                    .raftInlineDecorations(inlineDecorations, hovered = { hoveredLink?.let { it to hoverInk } }) { decorationLayout },
             color = color,
             fontSize = fontSize,
             fontStyle = fontStyle,
@@ -3040,6 +3062,41 @@ internal fun raftMarkdownLinkUnderlineStyle(): RaftInlineUnderlineStyle =
  * underline; a link around inline code keeps its underline. Tags are [LinkAnnotation.Clickable]
  * and are left alone.
  */
+/**
+ * raft-ui markdown link hover ink: `color-mix(in oklab, foreground-link 80%, foreground)`. Its
+ * underline takes the same colour (`hover:decoration-current`).
+ */
+internal fun raftMarkdownLinkHoverInk(): Color = lerp(RaftMarkdownLinkBlue, RaftColor.TextBlack, 0.2f)
+
+/** [hovered] (an underlined link's range) in [ink]; the text as is when null. */
+internal fun AnnotatedString.withRaftMarkdownLinkHover(hovered: IntRange?, ink: Color): AnnotatedString {
+    if (hovered == null || hovered.isEmpty() || hovered.last >= length) return this
+    return AnnotatedString.Builder(this)
+        .apply { addStyle(SpanStyle(color = ink), hovered.first, hovered.last + 1) }
+        .toAnnotatedString()
+}
+
+/**
+ * The underlined web link (a [withRaftMarkdownLinkUnderlines] range) whose words are under
+ * [position] (local px of the text), or null. Only the glyphs count, not the rest of their line.
+ */
+internal fun raftMarkdownUnderlinedLinkAt(
+    layout: TextLayoutResult,
+    decorations: RaftInlineDecorations,
+    position: Offset,
+): IntRange? {
+    val textLength = layout.layoutInput.text.length
+    if (textLength == 0) return null
+    val caret = layout.getOffsetForPosition(position)
+    // The caret is the nearest gap: the character under the pointer is the one after or before it.
+    for (offset in intArrayOf(caret, caret - 1)) {
+        if (offset !in 0 until textLength) continue
+        val link = decorations.underlines.firstOrNull { offset >= it.start && offset < it.end } ?: continue
+        if (layout.getBoundingBox(offset).contains(position)) return link.start until link.end
+    }
+    return null
+}
+
 internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
     val links = getLinkAnnotations(0, length).filter { it.item is LinkAnnotation.Url && it.end > it.start }
     if (links.isEmpty()) return this
