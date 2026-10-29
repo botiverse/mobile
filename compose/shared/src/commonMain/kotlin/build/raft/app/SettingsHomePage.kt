@@ -179,6 +179,7 @@ import build.raft.app.data.RaftAuthApi
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.AgentProfileRefreshCoalescer
 import build.raft.app.data.isAgentProfileUpdate
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
@@ -5563,6 +5564,14 @@ private fun RaftAppShellReadyContent(
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
+    val agentProfileRefreshCoalescer = remember(appShellCoroutineScope, appShellServerMembersStore) {
+        AgentProfileRefreshCoalescer(appShellCoroutineScope) { serverId ->
+            appShellServerMembersStore.refreshAgents(
+                serverId = build.raft.app.model.ServerId(serverId),
+                reason = "realtime_${build.raft.app.data.realtime.RealtimeSocketEvents.AgentUpdated}"
+            )
+        }
+    }
     DisposableEffect(
         appShellRealtimeDomainEventOwner,
         homeShellStore,
@@ -5594,12 +5603,7 @@ private fun RaftAppShellReadyContent(
                     // except agent:updated (a profile edit, e.g. a new avatar), which re-reads
                     // only the agents, as web re-reads /api/agents.
                     if (event.isAgentProfileUpdate()) {
-                        appShellCoroutineScope.launch {
-                            appShellServerMembersStore.refreshAgents(
-                                serverId = build.raft.app.model.ServerId(serverId),
-                                reason = "realtime_${event.reason}"
-                            )
-                        }
+                        agentProfileRefreshCoalescer.request(serverId)
                     }
                     if (
                         event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&
