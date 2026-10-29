@@ -3,7 +3,7 @@ type: changed
 area: navigation
 platforms:
   - android
-pull_request: TBD
+pull_request: 3940
 rollout: full
 ---
 
