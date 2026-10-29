@@ -415,7 +415,10 @@ import build.raft.designsystem.components.raftStateOverlay
 import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -626,7 +629,12 @@ internal enum class ThreadNewMessageMenuTool {
     /** botiverse/slock #11687: a followed reply thread's messages mark the whole thread unread. */
     MarkThreadUnread,
     /** In-place text selection context only: select the whole message body. */
-    SelectAll
+    SelectAll,
+    /**
+     * A right-click menu opened while part of the message was selected: copy that text ("Copy",
+     * leading the second row). Never in the long-press menu or the selection menu.
+     */
+    CopySelection
 }
 
 internal val ThreadNewMessageMenuToolOrder =
@@ -655,11 +663,13 @@ internal val ThreadNewMessageMenuSelectionToolOrder =
 
 /**
  * The Compact menu's second row of tools (its third row under the reactions): Select Text, always
- * first and always shown (Kirby, web #11467), then the remaining Classic actions, each shown only
- * when it applies (the primary row keeps its six slots and greys unavailable ones out instead).
+ * shown (Kirby, web #11467) and first unless a right-click menu leads with Copy for the selected
+ * text, then the remaining Classic actions, each shown only when it applies (the primary row keeps
+ * its six slots and greys unavailable ones out instead).
  */
 internal val ThreadNewMessageMenuSecondaryToolOrder =
     listOf(
+        ThreadNewMessageMenuTool.CopySelection,
         ThreadNewMessageMenuTool.SelectText,
         ThreadNewMessageMenuTool.AddReaction,
         ThreadNewMessageMenuTool.CopyLink,
@@ -689,7 +699,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onConvertToTask: () -> Unit = {},
     val onSelectText: () -> Unit = {},
     val onSelectAll: () -> Unit = {},
-    val onMarkThreadUnread: () -> Unit = {}
+    val onMarkThreadUnread: () -> Unit = {},
+    val onCopySelection: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -708,6 +719,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.SelectText -> callbacks.onSelectText()
         ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
         ThreadNewMessageMenuTool.MarkThreadUnread -> callbacks.onMarkThreadUnread()
+        ThreadNewMessageMenuTool.CopySelection -> callbacks.onCopySelection()
     }
 }
 
@@ -738,7 +750,9 @@ internal data class ThreadNewMessageMenuActionAvailability(
     /** Shown for an in-place text selection: Copy copies the selection. */
     val selectionContext: Boolean = false,
     /** The in-place selection covers only part of the message: Copy reads "Copy selection" and Select All appears. */
-    val partialSelection: Boolean = false
+    val partialSelection: Boolean = false,
+    /** A right-click menu opened over selected text in the message: "Copy" copies that text. */
+    val copySelection: Boolean = false
 ) {
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
@@ -759,6 +773,7 @@ internal data class ThreadNewMessageMenuActionAvailability(
             // The sheet is for picking text; an in-place selection already does that.
             ThreadNewMessageMenuTool.SelectText -> !selectionContext
             ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
+            ThreadNewMessageMenuTool.CopySelection -> copySelection && !selectionContext
         }
 
     fun primaryTools(): List<ThreadNewMessageMenuTool> =
@@ -23549,7 +23564,26 @@ private fun ThreadMessagesListContent(
                 val closeActionMenu: () -> Unit = {
                     actionMessageId = null
                     classicMenuOverrideMessageId = null
+                    inPlaceSelectionMenuHost?.contextMenuSelectionCopy = null
                 }
+                // A right-click over selected text in this message: "Copy" copies that text, first
+                // in the menu's tools (the selection itself is kept). Not tracked: only the long-press
+                // menu has a `message_action_selected` surface.
+                val contextMenuCopyHost = inPlaceSelectionMenuHost
+                val contextMenuCopyText = contextMenuCopyHost?.contextMenuCopyFor(message.id, resolvedActionAnchor)
+                val onCopySelection: (() -> Unit)? =
+                    if (contextMenuCopyHost != null && contextMenuCopyText != null) {
+                        {
+                            closeActionMenu()
+                            diagnosticsLogger(
+                                "thread_message_context_menu_copy_selection messageId=${message.id} " +
+                                    "chars=${contextMenuCopyText.length}"
+                            )
+                            contextMenuCopyHost.copyText(contextMenuCopyText)
+                        }
+                    } else {
+                        null
+                    }
                 val onAddReaction: () -> Unit = {
                     closeActionMenu()
                     trackLongPressMenuAction(message, RaftMessageAction.OpenReactionPicker)
@@ -23595,7 +23629,9 @@ private fun ThreadMessagesListContent(
                         compactMenuMessageActions(message, replyMetadata, close = closeActionMenu, anchor = resolvedActionAnchor)
                     ThreadNewMessageMenu(
                         anchor = resolvedActionAnchor,
-                        availability = capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata),
+                        availability =
+                            capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata)
+                                .copy(copySelection = onCopySelection != null),
                         onDismiss = closeActionMenu,
                         onReact = actions.onReact,
                         onCopy = actions.tools.onCopy,
@@ -23614,7 +23650,8 @@ private fun ThreadMessagesListContent(
                         onTaskStatus = actions.tools.onTaskStatus,
                         onConvertToTask = actions.tools.onConvertToTask,
                         onSelectText = actions.tools.onSelectText,
-                        onMarkThreadUnread = actions.tools.onMarkThreadUnread
+                        onMarkThreadUnread = actions.tools.onMarkThreadUnread,
+                        onCopySelection = onCopySelection ?: {}
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -23701,6 +23738,7 @@ private fun ThreadMessagesListContent(
                                 onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                             }
                         },
+                        onCopySelection = onCopySelection,
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
@@ -26862,6 +26900,33 @@ private fun ThreadMessageCardContent(
                                 onShowActions(anchor)
                                 onLongPressMenuOpened()
                             },
+                            // A right-click opens the same menu at the pointer: no haptic, and not
+                            // the long-press menu for analytics (there is no context-menu surface).
+                            // Text selected in this message is offered as the menu's first "Copy".
+                            onContextClick = { anchor ->
+                                val selectionCopyText =
+                                    inPlaceSelection?.let { selection ->
+                                        threadContextMenuSelectionCopyText(
+                                            selectedTexts = selection.selectedTexts(),
+                                            selectableTexts = selection.selectableTexts(),
+                                            fullMessageText =
+                                                if (bodyForRender == message.body) {
+                                                    threadMessageSelectionSourceText(message)
+                                                } else {
+                                                    null
+                                                }
+                                        )
+                                    }
+                                inPlaceSelectionHost?.contextMenuSelectionCopy =
+                                    selectionCopyText?.let { text ->
+                                        ThreadContextMenuSelectionCopy(messageId = message.id, anchor = anchor, text = text)
+                                    }
+                                diagnosticsLogger(
+                                    "thread_message_context_menu messageId=${message.id} " +
+                                        "selectionCopy=${selectionCopyText != null}"
+                                )
+                                onShowActions(anchor)
+                            },
                             onInputReady = onLongPressInputReady,
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
@@ -27533,7 +27598,8 @@ internal fun ThreadNewMessageMenu(
     onTaskStatus: () -> Unit = {},
     onConvertToTask: () -> Unit = {},
     onSelectText: () -> Unit = {},
-    onMarkThreadUnread: () -> Unit = {}
+    onMarkThreadUnread: () -> Unit = {},
+    onCopySelection: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
@@ -27579,7 +27645,8 @@ internal fun ThreadNewMessageMenu(
             onTaskStatus = onTaskStatus,
             onConvertToTask = onConvertToTask,
             onSelectText = onSelectText,
-            onMarkThreadUnread = onMarkThreadUnread
+            onMarkThreadUnread = onMarkThreadUnread,
+            onCopySelection = onCopySelection
         )
     }
 }
@@ -27603,7 +27670,8 @@ internal fun ThreadNewMessageMenuChrome(
     onConvertToTask: () -> Unit = {},
     onSelectText: () -> Unit = {},
     onSelectAll: () -> Unit = {},
-    onMarkThreadUnread: () -> Unit = {}
+    onMarkThreadUnread: () -> Unit = {},
+    onCopySelection: () -> Unit = {}
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -27620,7 +27688,8 @@ internal fun ThreadNewMessageMenuChrome(
             onConvertToTask = onConvertToTask,
             onSelectText = onSelectText,
             onSelectAll = onSelectAll,
-            onMarkThreadUnread = onMarkThreadUnread
+            onMarkThreadUnread = onMarkThreadUnread,
+            onCopySelection = onCopySelection
         )
     val secondaryTools = availability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
@@ -27727,6 +27796,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
         ThreadNewMessageMenuTool.SelectText -> Res.string.thread_action_select_text
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
         ThreadNewMessageMenuTool.MarkThreadUnread -> Res.string.thread_action_mark_thread_unread
+        ThreadNewMessageMenuTool.CopySelection -> Res.string.common_copy
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -27749,6 +27819,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.FileText
         ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
+        ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Copy
     }
 
 @Composable
@@ -29091,6 +29162,19 @@ internal fun threadMessageCanQuickReact(
  */
 internal fun threadMessageRowTapGesturesFor(type: PointerType): Boolean = type == PointerType.Touch
 
+/**
+ * Whether a pointer event on a message row is a right-click that opens the message menu at the
+ * pointer (web: `contextmenu` on a message): the secondary button just went down, from anything
+ * but a finger (a mouse, a trackpad's two-finger click, a stylus button; desktop or an iPad with a
+ * pointer). A finger has no secondary button; its long press keeps opening the menu. Pure, so it
+ * is tested apart from pointer input.
+ */
+internal fun threadMessageIsContextClick(
+    pointerType: PointerType,
+    secondaryButtonPressed: Boolean,
+    pressStarted: Boolean,
+): Boolean = pointerType != PointerType.Touch && secondaryButtonPressed && pressStarted
+
 /** What one accepted tap on a message row does ([decideThreadMessageRowTap]). */
 internal enum class ThreadMessageRowTapOutcome {
     /** Nothing: the row has no tap action, or the tap may still become a double tap. */
@@ -29222,7 +29306,8 @@ internal fun Modifier.threadMessageLongPressActions(
     deferLongPressAt: ((Offset) -> Boolean)? = null,
     onPointerDown: ((Offset, PointerType) -> Unit)? = null,
     onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
-    consumeSelectionDismissalTap: (() -> Boolean)? = null
+    consumeSelectionDismissalTap: (() -> Boolean)? = null,
+    onContextClick: ((RaftPopoverAnchor) -> Unit)? = null
 ): Modifier {
     SideEffect {
         gestureOwner.updateCallbacks(
@@ -29236,13 +29321,61 @@ internal fun Modifier.threadMessageLongPressActions(
                 deferLongPressAt = deferLongPressAt,
                 onPointerDown = onPointerDown,
                 onDoubleTap = onDoubleTap,
-                consumeSelectionDismissalTap = consumeSelectionDismissalTap
+                consumeSelectionDismissalTap = consumeSelectionDismissalTap,
+                onContextClick = onContextClick
             )
         )
     }
     gestureOwner.tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
         .raftCaptureLiveRootAnchor(gestureOwner.rootAnchor)
+        .threadMessagePointerInput(
+            role = "context_click",
+            messageId = messageId,
+            pointerSessionKey = pointerSessionKey,
+            gestureOwner = gestureOwner
+        ) {
+            // A right-click (secondary button) opens the message menu at the pointer, like web's
+            // `contextmenu` on a message (artin, 2026-10-29). Initial pass: ahead of the body's
+            // SelectionContainer, whose own right-click selects a word and shows a text menu with
+            // only Copy; the press is consumed there and for the rest of the gesture, so that menu,
+            // the row's tap and press wash, and the selection never see it. The selection the
+            // message already has is left as is (the menu offers Copy for it).
+            awaitEachGesture {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val press = event.changes.firstOrNull() ?: return@awaitEachGesture
+                if (
+                    !threadMessageIsContextClick(
+                        pointerType = press.type,
+                        secondaryButtonPressed = event.buttons.isSecondaryPressed,
+                        pressStarted = event.changes.all { it.changedToDownIgnoreConsumed() }
+                    )
+                ) {
+                    return@awaitEachGesture
+                }
+                val compositionLease =
+                    gestureOwner.captureActiveLease() ?: return@awaitEachGesture
+                val callbacks =
+                    gestureOwner.callbacksSnapshot(compositionLease) ?: return@awaitEachGesture
+                val onContextClickCallback = callbacks.onContextClick ?: return@awaitEachGesture
+                event.changes.forEach { it.consume() }
+                val anchor = gestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(press.position))
+                if (anchor == null) {
+                    callbacks.diagnosticsLogger("thread_message_context_click_anchor_unavailable messageId=$messageId")
+                } else {
+                    callbacks.diagnosticsLogger("thread_message_context_click_menu messageId=$messageId")
+                    onContextClickCallback(anchor)
+                }
+                // The rest of this press (its moves and release). If the opened menu took the
+                // release, stop at the next press instead of swallowing it.
+                while (true) {
+                    val next = awaitPointerEvent(PointerEventPass.Initial)
+                    if (next.changes.any { it.changedToDownIgnoreConsumed() }) break
+                    next.changes.forEach { it.consume() }
+                    if (next.changes.none { it.pressed }) break
+                }
+            }
+        }
         .threadMessagePointerInput(
             role = "tap_movement",
             messageId = messageId,
@@ -29251,6 +29384,17 @@ internal fun Modifier.threadMessageLongPressActions(
         ) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
+                // A right-click is the "context_click" detector's: not a tap, and it leaves every
+                // selection (here or on another row) alone.
+                if (
+                    threadMessageIsContextClick(
+                        pointerType = down.type,
+                        secondaryButtonPressed = currentEvent.buttons.isSecondaryPressed,
+                        pressStarted = true
+                    )
+                ) {
+                    return@awaitEachGesture
+                }
                 val compositionLease =
                     gestureOwner.captureActiveLease() ?: return@awaitEachGesture
                 // Any new down (a second tap, a long press, a drag) ends a held single tap, here
@@ -29497,7 +29641,10 @@ internal data class ThreadMessageLongPressCallbacks(
     val onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
     // In-place selection: true when this tap's gesture began while a selection showed, so the tap
     // only dismissed it (the callback does the dismissal). Read once per accepted tap.
-    val consumeSelectionDismissalTap: (() -> Boolean)? = null
+    val consumeSelectionDismissalTap: (() -> Boolean)? = null,
+    // A right-click on the row: open the message menu at the anchor (the pointer). Null: the
+    // right-click is left to the row's children (the text's own menu).
+    val onContextClick: ((RaftPopoverAnchor) -> Unit)? = null
 )
 
 /**
@@ -31089,6 +31236,11 @@ internal fun threadMessageMenuActions(
     createTaskFromMessage: Boolean = false,
     /** botiverse/slock #11687: "Mark Thread as Unread", right after Save. */
     showMarkThreadUnreadAction: Boolean = false,
+    /**
+     * A right-click menu opened over selected text in the message: "Copy" copies it, first in the
+     * copy group (web: the browser's own Copy). Null otherwise (long press, nothing selected).
+     */
+    onCopySelection: (() -> Unit)? = null,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -31116,6 +31268,9 @@ internal fun threadMessageMenuActions(
                     onClick = onAddReaction
                 )
             )
+        }
+        if (onCopySelection != null) {
+            add(ThreadMessageMenuAction(Res.string.common_copy.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopySelection))
         }
         if (showCopyLinkAction) {
             add(
@@ -31301,6 +31456,7 @@ private fun ThreadMessageActionMenu(
     onForward: () -> Unit = {},
     onAddReaction: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
+    onCopySelection: (() -> Unit)? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -31338,7 +31494,8 @@ private fun ThreadMessageActionMenu(
             onTranslate,
             onForward,
             onAddReaction,
-            onMarkThreadUnread
+            onMarkThreadUnread,
+            onCopySelection
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -31358,6 +31515,7 @@ private fun ThreadMessageActionMenu(
                 showForwardAction = showForwardAction,
                 showAddReactionAction = showAddReactionAction,
                 showMarkThreadUnreadAction = showMarkThreadUnreadAction,
+                onCopySelection = onCopySelection,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,

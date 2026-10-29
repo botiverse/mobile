@@ -241,7 +241,7 @@ class RaftLiveRootAnchorLifecycleTest {
             layoutNode = layoutHarness.attach(assertNotNull(mountedModifier))
             layoutHarness.flushEndApplyChanges()
             val retainedPointers = layoutHarness.pointerNodes(assertNotNull(layoutNode))
-            assertEquals(2, retainedPointers.size)
+            assertEquals(3, retainedPointers.size) // context_click, tap_movement, actions
 
             layoutHarness.dispatchDown(retainedPointers, uptimeMillis = 0L)
             runCurrent()
@@ -422,7 +422,7 @@ class RaftLiveRootAnchorLifecycleTest {
             assertNotSame(oldOwner, newOwner)
             assertFalse(oldOwner.isLeaseActive(oldLease))
             assertNull(oldOwner.captureActiveLease())
-            assertEquals(2, newPointers.size)
+            assertEquals(3, newPointers.size) // context_click, tap_movement, actions
 
             compositionHarness.sendFrame()
             runCurrent()

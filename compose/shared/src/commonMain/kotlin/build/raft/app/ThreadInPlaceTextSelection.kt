@@ -101,6 +101,16 @@ internal class ThreadInPlaceTextSelectionHost(
         if (bounds != viewportInWindow) viewportInWindow = bounds
     }
 
+    /**
+     * The text selected in a message when it was right-clicked, for its message menu's "Copy". Read
+     * when the menu opens, not live: the menu takes focus, which can drop the visible selection.
+     */
+    var contextMenuSelectionCopy by mutableStateOf<ThreadContextMenuSelectionCopy?>(null)
+
+    /** "Copy" text for the message menu of [messageId] opened at [anchor], when a right-click opened it over a selection. */
+    internal fun contextMenuCopyFor(messageId: String, anchor: RaftPopoverAnchor): String? =
+        contextMenuSelectionCopy?.takeIf { it.messageId == messageId && it.anchor === anchor }?.text
+
     internal fun activate(target: ThreadInPlaceSelectionTarget) {
         val previous = active
         if (previous != null && previous !== target) previous.clear()
@@ -124,6 +134,34 @@ internal class ThreadInPlaceTextSelectionHost(
         return true
     }
 }
+
+/**
+ * What a right-click on a message had selected in it: the menu it opened at [anchor] (identity:
+ * a long press or the reaction chip opens with its own anchor, so it never picks this up) offers
+ * "Copy" for [text].
+ */
+internal class ThreadContextMenuSelectionCopy(
+    val messageId: String,
+    val anchor: RaftPopoverAnchor,
+    val text: String,
+)
+
+/**
+ * The text a right-click menu's "Copy" copies: the message's current selection, as the selection
+ * menu copies it ([threadInPlaceSelectionCopyText]), or null (no "Copy" item) when nothing in the
+ * message is selected. Unlike the selection menu there is no whole-message fallback: the message
+ * menu already has Copy Markdown for that.
+ */
+internal fun threadContextMenuSelectionCopyText(
+    selectedTexts: List<String>,
+    selectableTexts: List<String>,
+    fullMessageText: String?,
+): String? =
+    threadInPlaceSelectionCopyText(
+        selectedTexts = selectedTexts,
+        selectableTexts = selectableTexts,
+        fullMessageText = fullMessageText,
+    ).takeIf { it.isNotEmpty() }
 
 internal enum class ThreadInPlaceSelectionTapDecision {
     RunRowAction,

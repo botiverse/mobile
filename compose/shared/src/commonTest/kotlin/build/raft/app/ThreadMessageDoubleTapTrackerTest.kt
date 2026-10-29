@@ -180,6 +180,29 @@ class ThreadMessageDoubleTapTrackerTest {
     }
 
     @Test
+    fun aRightClickOpensTheMessageMenuAndAFingerNeverDoes() {
+        // artin, 2026-10-29 (Mac): a right-click on a message opens its menu at the pointer (web
+        // `contextmenu`), not the text's own Copy menu.
+        assertTrue(threadMessageIsContextClick(PointerType.Mouse, secondaryButtonPressed = true, pressStarted = true))
+        assertTrue(
+            threadMessageIsContextClick(PointerType.Stylus, secondaryButtonPressed = true, pressStarted = true),
+            "a stylus's barrel button"
+        )
+        assertFalse(
+            threadMessageIsContextClick(PointerType.Touch, secondaryButtonPressed = true, pressStarted = true),
+            "a finger keeps the long press"
+        )
+        assertFalse(
+            threadMessageIsContextClick(PointerType.Mouse, secondaryButtonPressed = false, pressStarted = true),
+            "a left click selects text (#3941)"
+        )
+        assertFalse(
+            threadMessageIsContextClick(PointerType.Mouse, secondaryButtonPressed = true, pressStarted = false),
+            "a move or release while the button is held is not a new right-click"
+        )
+    }
+
+    @Test
     fun aMouseClickNeitherOpensTheThreadNorShowsReactions() {
         // stdrc + raft-design #878: a click selects text; it never opens the thread.
         for (doubleTapAvailable in listOf(false, true)) {
