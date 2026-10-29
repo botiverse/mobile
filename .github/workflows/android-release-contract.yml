@@ -20,6 +20,8 @@ on:
       - "scripts/publish_ios_hands_release.sh"
       - "scripts/lib/hands_retry.sh"
       - "scripts/tests/hands_retry_test.sh"
+      - "scripts/play_internal_promote.sh"
+      - "scripts/tests/play_internal_promote_test.sh"
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
@@ -51,6 +53,8 @@ on:
       - "scripts/publish_ios_hands_release.sh"
       - "scripts/lib/hands_retry.sh"
       - "scripts/tests/hands_retry_test.sh"
+      - "scripts/play_internal_promote.sh"
+      - "scripts/tests/play_internal_promote_test.sh"
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
@@ -100,3 +104,6 @@ jobs:
 
       - name: Validate Hands CLI retry helper
         run: scripts/tests/hands_retry_test.sh
+
+      - name: Validate Play internal-track promotion
+        run: scripts/tests/play_internal_promote_test.sh

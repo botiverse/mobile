@@ -114,7 +114,10 @@ ruby -e '
   end
   upload_env = release_steps.fetch(upload_index).fetch("env")
   hands_upload_if = release_steps.fetch(upload_index).fetch("if").to_s
-  raise "Hands upload step is not excluded for Play" unless hands_upload_if.include?("upload_android_artifacts") && hands_upload_if.include?("android_variant") && hands_upload_if.include?("play")
+  # Play builds upload too (Hands holds the AAB for Play promotion); only the
+  # Hands draft job stays Play-free, checked above.
+  raise "Hands upload step is not controlled by the resolved upload policy" unless hands_upload_if.include?("upload_android_artifacts")
+  raise "Hands upload step skips Play builds" if hands_upload_if.include?("play")
   artifact_step = release_steps.find { |step| step["name"] == "Upload signed AAB and verification receipt" }
   raise "signed AAB artifact is not controlled by the resolved upload policy" unless artifact_step.fetch("if").to_s.include?("needs.resolve.outputs.upload_android_artifacts")
   # Every non-debug build keeps its signed AAB (Hands release builds: the backup bundle
