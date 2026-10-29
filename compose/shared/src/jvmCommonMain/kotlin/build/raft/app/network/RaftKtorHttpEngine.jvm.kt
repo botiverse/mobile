@@ -36,6 +36,7 @@ import okio.buffer
  *   (30 s ordinary, 3 min multipart, 30 min presigned PUT).
  * - retryOnConnectionFailure only on the idempotent clients (GET/HEAD/OPTIONS): a request that hit a
  *   stale pooled connection is re-run once on a fresh one. POST/PUT/PATCH/DELETE never are.
+ * - Uploads (presigned PUT and API multipart) run on HTTP/1.1, off the API's shared HTTP/2 connection.
  * - One connection pool for the process; idle connections close after
  *   [RAFT_OKHTTP_POOL_KEEP_ALIVE_SECONDS], so a backgrounded app does not keep pinging.
  * - System DNS (Android caches per network and honours TTLs); OkHttp offers no resolver cache of its
@@ -88,7 +89,7 @@ internal fun buildRaftLaneOkHttpClient(
             when (kind) {
                 RaftKtorCallKind.Idempotent -> retryOnConnectionFailure(true)
                 RaftKtorCallKind.NonIdempotent -> retryOnConnectionFailure(false)
-                RaftKtorCallKind.PresignedUpload -> {
+                RaftKtorCallKind.PresignedUpload, RaftKtorCallKind.MultipartUpload -> {
                     retryOnConnectionFailure(false)
                     // Same HTTP/1.1 pin curl had for presigned PUTs; also keeps a long upload off the
                     // API's shared HTTP/2 connection.
