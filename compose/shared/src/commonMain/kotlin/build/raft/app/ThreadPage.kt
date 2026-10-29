@@ -178,6 +178,7 @@ import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.unfollowThreadProjectingHome
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
@@ -7957,7 +7958,13 @@ private fun SharedThreadRouteContentContent(
                     conversationChannelId = conversationId,
                     loadRef = dataSource::loadTaskConversationRef,
                     follow = dataSource::followTaskConversation,
-                    unfollow = dataSource::unfollowThread,
+                    unfollow = { conversationId ->
+                        unfollowThreadProjectingHome(
+                            conversationId,
+                            project = { intent -> sharedHomeStore?.dispatch(intent) },
+                            unfollow = dataSource::unfollowThread,
+                        )
+                    },
                     log = { bridge.log(it) },
                     loadTask = { serverId, parentChannelId, taskNumber ->
                         tasksDataSource
@@ -8098,6 +8105,9 @@ private fun SharedThreadRouteContentContent(
     val jumpFocusNonce by remember(threadViewModel) {
         threadViewModel.unreadThreadJumpFocusNonceFlow()
     }.collectAsState(threadViewModel.state.value.unreadThreadJumpFocusNonce)
+    val jumpLoading by remember(threadViewModel) {
+        threadViewModel.unreadThreadJumpLoadingFlow()
+    }.collectAsState(threadViewModel.state.value.unreadThreadJumpLoading)
     val jumpInputs =
         remember(
             jumpChannelId,
@@ -8107,6 +8117,7 @@ private fun SharedThreadRouteContentContent(
             jumpConversationUnreadCount,
             jumpUnreadThreadParents,
             jumpFocusNonce,
+            jumpLoading,
         ) {
             ThreadJumpInputs(
                 channelId = jumpChannelId,
@@ -8117,6 +8128,7 @@ private fun SharedThreadRouteContentContent(
                 conversationUnreadCount = jumpConversationUnreadCount,
                 unreadThreadParents = jumpUnreadThreadParents.filterValues { parent -> parent.parentChannelId == jumpChannelId },
                 jumpFocusNonce = jumpFocusNonce,
+                jumpLoading = jumpLoading,
             )
         }
     // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
@@ -12222,6 +12234,37 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
+                    action == ThreadOpenUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
+                        !eventThreadChannelId.isNullOrBlank() -> {
+                        // Web #11494: the parent is past the plan's history window (the channel shows
+                        // the paywall there) but replies are inside it: open the thread, which reads it.
+                        // Its parent is not loaded, so nothing seeds the reply page; it loads canonically.
+                        bridge.log(
+                            "thread_unread_thread_jump_open_past_history parent=${itemId.take(8)} " +
+                                "thread=${eventThreadChannelId.take(8)}"
+                        )
+                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
+                        onOpenThreadPayload(
+                            renderedThread.replyThreadLoadingPayload(
+                                parentMessageId = itemId,
+                                parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
+                                threadChannelId = eventThreadChannelId,
+                            )
+                        )
+                    }
+                    action == ThreadJumpToUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
+                        !eventThreadChannelId.isNullOrBlank() -> {
+                        // Web #11494: the parent and its replies are past the window; the jump lands on
+                        // the paywall, where the thread can't be opened, so read it now: the count drops
+                        // and the next tap moves on instead of staying on this thread.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.JumpToMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                            )
+                        )
+                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
+                    }
                     action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
                         // The unread-thread pill: focus (scroll to and highlight) the parent
                         // message through the route focus session, as a search hit does; a parent
@@ -12433,7 +12476,14 @@ private fun SharedThreadRouteContentContent(
                     pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + threadChannelId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.unfollowThread(ChannelId(threadChannelId))) {
+                            // Web #11687: the thread's unread leaves Home at once, back if this fails.
+                            val unfollowResult =
+                                unfollowThreadProjectingHome(
+                                    ChannelId(threadChannelId),
+                                    project = { intent -> sharedHomeStore?.dispatch(intent) },
+                                    unfollow = dataSource::unfollowThread,
+                                )
+                            when (val result = unfollowResult) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageThreadFollowed(
@@ -23146,16 +23196,24 @@ private fun ThreadMessagesListContent(
         val unreadThreadPill: @Composable (ThreadUnreadThreadJump) -> Unit = { jump ->
             ThreadUnreadThreadJumpPill(
                 jump = jump,
+                busy = jumpInputs.jumpLoading,
                 onJump = {
-                    diagnosticsLogger(
-                        "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
-                            "target=${jump.targetMessageId.take(8)}"
-                    )
-                    onThreadEvent(
-                        ThreadJumpToUnreadThreadParentAction,
-                        jump.targetMessageId,
-                        threadChannelId = jump.targetThreadChannelId,
-                    )
+                    // Web: busy from the tap until the parent lands; a second tap does nothing.
+                    if (!jumpInputs.jumpLoading) {
+                        diagnosticsLogger(
+                            "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
+                                "target=${jump.targetMessageId.take(8)}"
+                        )
+                        onThreadEvent(
+                            when (jump.historyAction) {
+                                ThreadUnreadJumpHistoryAction.FocusParent -> ThreadJumpToUnreadThreadParentAction
+                                ThreadUnreadJumpHistoryAction.OpenThread -> ThreadOpenUnreadThreadPastHistoryAction
+                                ThreadUnreadJumpHistoryAction.FocusParentAndRead -> ThreadJumpToUnreadThreadPastHistoryAction
+                            },
+                            jump.targetMessageId,
+                            threadChannelId = jump.targetThreadChannelId,
+                        )
+                    }
                 },
                 onDismiss = { unreadThreadJumpDismissedAtCount = jump.count },
             )
@@ -25587,27 +25645,36 @@ internal fun threadRenderedBottomScrollOffset(
 /** The action the unread-thread pill sends: focus that parent message. */
 internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
 
+/** The pill's thread has its parent past the history window and replies inside it: open the thread. */
+internal const val ThreadOpenUnreadThreadPastHistoryAction = "openUnreadThreadPastHistory"
+
+/** The pill's thread is wholly past the history window: land on the paywall and read the thread. */
+internal const val ThreadJumpToUnreadThreadPastHistoryAction = "focusUnreadThreadPastHistory"
+
 /** Above the list rows and the inline search bar's neighbours, as the old floating pills. */
 private const val ThreadJumpControlsZIndex = 5f
 
 /** raft-ui MessageListJumpPillGroup: the unread-thread pill with its dismiss. */
 @Composable
-private fun ThreadUnreadThreadJumpPill(
+internal fun ThreadUnreadThreadJumpPill(
     jump: ThreadUnreadThreadJump,
     onJump: () -> Unit,
     onDismiss: () -> Unit,
+    /** Web ThreadUnreadJumpPill busy (#11358): "Loading Thread…" with the spinner, taps ignored. */
+    busy: Boolean = false,
 ) {
     RaftMessageListJumpPillGroup {
         RaftMessageListJumpPill(
             text =
-                when (jump.direction) {
-                    ThreadUnreadThreadJumpDirection.Next ->
+                when {
+                    busy -> stringResource(Res.string.thread_jump_unread_thread_loading)
+                    jump.direction == ThreadUnreadThreadJumpDirection.Next ->
                         stringResource(Res.string.thread_jump_next_unread_thread, jump.count)
-                    ThreadUnreadThreadJumpDirection.Earliest ->
-                        stringResource(Res.string.thread_jump_earliest_unread_thread, jump.count)
+                    else -> stringResource(Res.string.thread_jump_earliest_unread_thread, jump.count)
                 },
             onClick = onJump,
             icon = if (jump.direction == ThreadUnreadThreadJumpDirection.Earliest) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
+            busy = busy,
         )
         RaftMessageListJumpPillDismiss(
             label = stringResource(Res.string.thread_jump_unread_thread_dismiss),

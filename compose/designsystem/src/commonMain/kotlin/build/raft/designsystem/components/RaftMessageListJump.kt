@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -160,6 +161,10 @@ private val LocalRaftMessageListJumpPillGrouped = staticCompositionLocalOf { fal
  * Pressed (or hovered by a mouse) it lays `fill-pressed` over the card; its touch target
  * is widened to 44dp. Label in Title Case with its count: "3 New Messages",
  * "Next Unread Thread (3)".
+ *
+ * [busy] (raft-ui States › Busy, web ThreadUnreadJumpPill while its target loads): the `sm`
+ * pixel spinner takes the icon's 16dp place and [text] should say what is happening ("Loading
+ * Thread…"); taps do nothing and semantics say disabled, but the pill keeps its place and focus.
  */
 @Composable
 fun RaftMessageListJumpPill(
@@ -168,6 +173,7 @@ fun RaftMessageListJumpPill(
     modifier: Modifier = Modifier,
     icon: RaftGlyph? = RaftGlyph.ArrowDown,
     interactionSource: MutableInteractionSource? = null,
+    busy: Boolean = false,
 ) {
     val variant = RaftButtonVariant.Default
     val look = raftButtonLook(variant, enabled = true, frameless = false, colors = RaftTheme.colors)
@@ -177,8 +183,8 @@ fun RaftMessageListJumpPill(
     val padding = metrics.paddingX + RaftStroke.Control
     RaftButtonBox(
         look = look,
-        onClick = onClick,
-        modifier = modifier.height(metrics.height),
+        onClick = { if (!busy) onClick() },
+        modifier = modifier.height(metrics.height).semantics { if (busy) disabled() },
         enabled = true,
         loading = false,
         loadingLabel = "",
@@ -191,7 +197,14 @@ fun RaftMessageListJumpPill(
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (icon != null) RaftGlyphIcon(icon, size = metrics.iconSize, color = look.ink)
+            if (busy) {
+                // DS Spinner › Size: in place of a 16px icon, `sm`; the label says it already.
+                Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) {
+                    RaftSpinner(size = RaftSpinnerSize.Sm, color = look.ink, contentDescription = "")
+                }
+            } else if (icon != null) {
+                RaftGlyphIcon(icon, size = metrics.iconSize, color = look.ink)
+            }
             RaftText(
                 text = text,
                 style = textStyle,

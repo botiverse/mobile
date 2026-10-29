@@ -2218,6 +2218,7 @@ internal class RaftSharedStoreProvider private constructor(
                     replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                     onUnreadCountsChanged = onUnreadCountsChanged,
+                    onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                     onSummaryFact = activityUnreadSummaryStore::submitFact,
                     onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                     diagnosticsLogger = diagnosticsLogger
@@ -2245,6 +2246,7 @@ internal class RaftSharedStoreProvider private constructor(
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                 foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
+                onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),

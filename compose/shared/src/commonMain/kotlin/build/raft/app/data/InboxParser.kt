@@ -73,6 +73,11 @@ private data class WireInboxItem(
     val parentMessageSenderId: String? = null,
     // Followed-thread rows (channelService.ts FollowedThread): when the parent message was posted.
     val parentMessageCreatedAt: String? = null,
+    // Followed-thread rows (botiverse/slock #11517, routes/channels.ts GET /threads/followed):
+    // whether the parent message / a reply is inside the plan's history window, by the paywall's
+    // own cutoff. Absent from older servers.
+    val parentInHistory: Boolean? = null,
+    val repliesInHistory: Boolean? = null,
     val latestActivityPreview: String? = null,
     val latestActivitySenderType: String? = null,
     val latestActivitySenderId: String? = null,
@@ -425,6 +430,8 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         parentMessagePreview = parentMessagePreview,
         parentMessageSenderId = parentMessageSenderId,
         parentMessageCreatedAt = parentMessageCreatedAt?.takeIf { it.isNotBlank() },
+        parentInHistory = parentInHistory,
+        repliesInHistory = repliesInHistory,
         parentMessageSenderKind =
             parentMessageSenderType.toSenderKind(
                 source = "inbox_parent_message_sender",

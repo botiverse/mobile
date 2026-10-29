@@ -405,6 +405,8 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.MarkRead -> "patch:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "patch:read-all:$conversationId"
+        is SharedHomeIntent.ProjectThreadUnfollow -> "patch:thread-unfollow:$threadChannelId:$phase"
+        is SharedHomeIntent.MarkFollowedThreadRead -> "patch:thread-read:$threadChannelId"
         is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"
         is SharedHomeIntent.OwnMessagesSent -> "patch:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "remove:archive:$conversationId"

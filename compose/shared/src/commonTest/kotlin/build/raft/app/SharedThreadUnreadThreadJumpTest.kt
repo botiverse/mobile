@@ -30,6 +30,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -40,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -135,6 +137,115 @@ class SharedThreadUnreadThreadJumpTest {
         }
     }
 
+    /** A lookup asked for while another is in flight runs right after it instead of being dropped. */
+    @Test
+    fun idsAskedForWhileALookupIsInFlightAreLookedUpAfterIt() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val release = CompletableDeferred<Unit>()
+        repository.releaseUnreadFollowed = release
+        repository.unreadFollowedResult =
+            followedList(followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+
+        try {
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            advanceUntilIdle()
+            // The page's id set changed while the first lookup waits (a jump replaced the window).
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old", "t-new")))
+            advanceUntilIdle()
+            assertEquals(1, repository.unreadFollowedRequests.size)
+
+            // The first answer predates t-new; the queued lookup asks again and finds it.
+            val second = CompletableDeferred<Unit>()
+            release.complete(Unit)
+            repository.releaseUnreadFollowed = second
+            advanceUntilIdle()
+            assertEquals(2, repository.unreadFollowedRequests.size, "the queued id is looked up once the first lookup ends")
+            assertEquals(setOf("t-old"), store.state.value.unreadThreadParents.keys)
+
+            repository.unreadFollowedResult =
+                followedList(
+                    followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3),
+                    followedRow("t-new", parentChannel = ChannelIdValue, parentMessage = "p-new", unread = 1),
+                )
+            second.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(setOf("t-old", "t-new"), store.state.value.unreadThreadParents.keys)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /**
+     * artin (phone): the unread-thread pill worked once. A thread whose parent was loaded was never
+     * looked up; the jump to another parent replaced the window, so that thread still counted but had
+     * no target and the pill went away. The jump now keeps the loaded parents, and three taps in a
+     * row walk both unread threads and wrap, the pill never missing between them.
+     */
+    @Test
+    fun repeatedPillJumpsKeepEveryUnreadThreadReachable() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        // Only the thread whose parent was not loaded was looked up.
+        repository.unreadFollowedResult =
+            followedList(followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 2))
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(repository),
+                scope = scope,
+                initialPayload = channelWindow(threads = mapOf("m2" to "t-a")),
+            )
+        val unread = setOf("t-old", "t-a")
+        fun pillWith(inView: String): ThreadUnreadThreadJump? {
+            val state = store.state.value
+            val messages = state.payload.messages
+            val index = messages.indexOfFirst { it.id == inView }
+            check(index >= 0) { "$inView is not loaded: ${messages.map { it.id }}" }
+            return projectThreadUnreadThreadJump(
+                unreadThreadIds = unread,
+                messages = threadJumpParentCandidates(messages, emptyMap()),
+                visibleMessageIndexes = index..index,
+                dismissedAtCount = null,
+                unloadedParents = state.unreadThreadParents,
+                loadedRange = ThreadJumpLoadedRange(messages.lastOrNull()?.createdAtEpochMillis, state.payload.canLoadMoreAfter),
+            )
+        }
+        fun tap(pill: ThreadUnreadThreadJump?, context: List<String>, threads: Map<String, String>) {
+            assertNotNull(pill, "the pill shows before this tap")
+            repository.parentResult = DataResult.Content(channelContext(*context.toTypedArray(), threads = threads))
+            store.dispatch(SharedThreadIntent.JumpToMessage(pill.targetMessageId, switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(pill.targetMessageId, store.state.value.payload.focusedMessageId)
+        }
+
+        try {
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            advanceUntilIdle()
+
+            // Reader at the bottom (m3): the older parent goes first.
+            val first = pillWith(inView = "m3")
+            assertEquals("t-old", first?.targetThreadChannelId)
+            tap(first, context = listOf("p-old", "p-old-next"), threads = mapOf("p-old" to "t-old"))
+
+            // On p-old: t-a (its parent m2 no longer loaded) is still a target.
+            val second = pillWith(inView = "p-old")
+            assertEquals("t-a" to "m2", second?.targetThreadChannelId to second?.targetMessageId)
+            assertEquals(2, second?.count)
+            tap(second, context = listOf("m1", "m2", "m3"), threads = mapOf("m2" to "t-a"))
+
+            // On m2: back to t-old, and on to t-a again.
+            val third = pillWith(inView = "m2")
+            assertEquals("t-old" to "p-old", third?.targetThreadChannelId to third?.targetMessageId)
+            tap(third, context = listOf("p-old", "p-old-next"), threads = mapOf("p-old" to "t-old"))
+            assertEquals("t-a", pillWith(inView = "p-old")?.targetThreadChannelId)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
     private fun followedList(vararg rows: InboxItem, staleReason: RaftStaleReason? = null): DataResult<ThreadListSnapshot> =
         DataResult.Content(
             ThreadListSnapshot(
@@ -189,6 +300,66 @@ class SharedThreadUnreadThreadJumpTest {
             assertEquals("chat", payload.selectedTab)
             assertEquals(payload.focusedMessageRequestNonce, store.state.value.unreadThreadJumpFocusNonce)
         } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /**
+     * Web #11358: the pill is busy from the tap until the parent's messages land, and a second tap
+     * meanwhile starts no second jump; once they land (or the load fails) it can be pressed again.
+     */
+    @Test
+    fun aJumpThatLoadsItsParentIsBusyUntilItLandsAndIgnoresAnotherTap() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val release = CompletableDeferred<Unit>()
+        repository.releaseParent = release
+        repository.parentResult = DataResult.Content(channelContext("p-old", "p-old-next"))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+
+        try {
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(true, store.state.value.unreadThreadJumpLoading, "busy while the parent loads")
+
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-other", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(listOf(MessageId("p-old")), repository.parentRequests.map { it.first }, "the second tap starts nothing")
+
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            assertEquals("p-old", store.state.value.payload.focusedMessageId)
+
+            // A failed load ends the busy state too.
+            repository.parentResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-far", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            assertEquals(2, repository.parentRequests.size)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /** A parent already loaded is focused at once: the pill never turns busy. */
+    @Test
+    fun aJumpToALoadedParentIsNeverBusy() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val store = SharedThreadStore(dataSource = dataSource(repository()), scope = scope, initialPayload = channelWindow())
+        val busy = mutableListOf<Boolean>()
+        val collector = scope.launch { store.unreadThreadJumpLoadingFlow().collect { busy += it } }
+
+        try {
+            advanceUntilIdle()
+            store.dispatch(SharedThreadIntent.JumpToMessage("m2", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(listOf(false), busy)
+        } finally {
+            collector.cancel()
             scopeJob.cancelAndJoin()
         }
     }
@@ -347,7 +518,7 @@ class SharedThreadUnreadThreadJumpTest {
         )
     }
 
-    private fun channelWindow(): RaftThreadScreenPayload =
+    private fun channelWindow(threads: Map<String, String> = emptyMap()): RaftThreadScreenPayload =
         RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-$ChannelIdValue",
             sourceThreadId = ChannelIdValue,
@@ -355,7 +526,14 @@ class SharedThreadUnreadThreadJumpTest {
             status = "content",
             messages =
                 listOf("m1", "m2", "m3").mapIndexed { index, id ->
-                    RaftThreadMessageItem(id = id, authorId = "u1", authorName = "Artin", seq = 100L + index, body = id)
+                    RaftThreadMessageItem(
+                        id = id,
+                        authorId = "u1",
+                        authorName = "Artin",
+                        seq = 100L + index,
+                        body = id,
+                        threadChannelId = threads[id],
+                    )
                 },
             canLoadMoreBefore = true,
             canSend = true,
@@ -373,7 +551,7 @@ class SharedThreadUnreadThreadJumpTest {
             parentMessageId = MessageId(parentMessage),
         )
 
-    private fun channelContext(vararg ids: String): ThreadSnapshot {
+    private fun channelContext(vararg ids: String, threads: Map<String, String> = emptyMap()): ThreadSnapshot {
         val channelId = ChannelId(ChannelIdValue)
         return ThreadSnapshot(
             conversation =
@@ -391,6 +569,7 @@ class SharedThreadUnreadThreadJumpTest {
                         id = MessageId(id),
                         threadId = ThreadId(ChannelIdValue),
                         channelId = channelId,
+                        threadChannelId = threads[id]?.let(::ChannelId),
                         author =
                             MemberProfile(
                                 id = MemberId("u1"),

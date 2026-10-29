@@ -150,6 +150,62 @@ class ThreadJumpPillsTest {
         assertEquals(1_792_574_520_000L, parents.getValue("t1").parentCreatedAtEpochMillis)
     }
 
+    /**
+     * Server #11517 / web #11494: a parent past the plan's history window opens the thread when its
+     * replies are inside the window, else the jump lands on the paywall and reads the thread; an
+     * older server (either flag absent) keeps the ordinary jump.
+     */
+    @Test
+    fun theHistoryFlagsDecideWhatAPillTapDoes() {
+        val cases =
+            listOf(
+                Triple(null, null, ThreadUnreadJumpHistoryAction.FocusParent),
+                Triple(true, true, ThreadUnreadJumpHistoryAction.FocusParent),
+                Triple(true, false, ThreadUnreadJumpHistoryAction.FocusParent),
+                Triple(false, true, ThreadUnreadJumpHistoryAction.OpenThread),
+                Triple(false, false, ThreadUnreadJumpHistoryAction.FocusParentAndRead),
+                Triple(false, null, ThreadUnreadJumpHistoryAction.FocusParent),
+            )
+        for ((parentInHistory, repliesInHistory, expected) in cases) {
+            val parent = resolved("t-old", "p-old", createdAt = 1_000L).second.copy(
+                parentInHistory = parentInHistory,
+                repliesInHistory = repliesInHistory,
+            )
+            val jump =
+                projectThreadUnreadThreadJump(
+                    unreadThreadIds = setOf("t-old"),
+                    messages = messages,
+                    visibleMessageIndexes = 8..9,
+                    dismissedAtCount = null,
+                    unloadedParents = mapOf("t-old" to parent),
+                    loadedRange = ThreadJumpLoadedRange(newestCreatedAtEpochMillis = 10_000L, hasNewer = false),
+                )
+            assertEquals(expected, jump?.historyAction, "parentInHistory=$parentInHistory repliesInHistory=$repliesInHistory")
+            assertEquals("p-old", jump?.targetMessageId)
+        }
+        // A thread whose parent is not resolved (no flags) keeps the ordinary jump.
+        assertEquals(ThreadUnreadJumpHistoryAction.FocusParent, threadUnreadJumpHistoryAction(null))
+    }
+
+    @Test
+    fun followedRowsCarryTheirHistoryFlagsIntoPillParents() {
+        val row =
+            InboxItem(
+                key = "thread:t1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("t1"),
+                channelName = "general",
+                unreadCount = 1,
+                threadChannelId = ChannelId("t1"),
+                parentChannelId = ChannelId("c1"),
+                parentMessageId = MessageId("p1"),
+                parentInHistory = false,
+                repliesInHistory = true,
+            )
+        val parent = listOf(row).toThreadUnreadThreadParents("c1").getValue("t1")
+        assertEquals(false to true, parent.parentInHistory to parent.repliesInHistory)
+    }
+
     @Test
     fun dismissHidesThePillUntilTheCountChanges() {
         assertNull(projectThreadUnreadThreadJump(unread, messages, visibleMessageIndexes = 2..3, dismissedAtCount = 3))

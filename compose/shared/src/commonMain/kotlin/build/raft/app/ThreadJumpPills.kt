@@ -122,7 +122,34 @@ internal data class ThreadUnreadThreadJump(
      * (artin: opening the thread right after the jump renders at once).
      */
     val targetThreadChannelId: String,
+    /** What a tap does with a parent past the plan's history window ([threadUnreadJumpHistoryAction]). */
+    val historyAction: ThreadUnreadJumpHistoryAction = ThreadUnreadJumpHistoryAction.FocusParent,
 )
+
+/**
+ * Web ThreadUnreadJumpPill with the followed thread's `parentInHistory` / `repliesInHistory`
+ * (server #11517, web #11494 / #11549): a parent behind the plan's history window is only the
+ * history paywall in the channel, where the thread can't be opened to read it.
+ */
+internal enum class ThreadUnreadJumpHistoryAction {
+    /** The ordinary jump: focus the parent (an older server, or a parent inside the window). */
+    FocusParent,
+
+    /** The parent is past the window but replies are inside it: open the thread (which reads it). */
+    OpenThread,
+
+    /** The parent and its replies are past the window: land on the paywall and read the thread, so the next tap moves on. */
+    FocusParentAndRead,
+}
+
+/** Either field absent (older server) keeps the ordinary jump; the app compares no times or plans. */
+internal fun threadUnreadJumpHistoryAction(parent: ThreadUnreadThreadParent?): ThreadUnreadJumpHistoryAction =
+    when {
+        parent?.parentInHistory != false -> ThreadUnreadJumpHistoryAction.FocusParent
+        parent.repliesInHistory == true -> ThreadUnreadJumpHistoryAction.OpenThread
+        parent.repliesInHistory == false -> ThreadUnreadJumpHistoryAction.FocusParentAndRead
+        else -> ThreadUnreadJumpHistoryAction.FocusParent
+    }
 
 /**
  * An unread followed thread's parent message as the followed-threads list names it (web
@@ -136,6 +163,9 @@ internal data class ThreadUnreadThreadParent(
     val parentMessageId: String,
     /** When the parent was posted; null from an older server. */
     val parentCreatedAtEpochMillis: Long? = null,
+    /** Followed thread `parentInHistory` / `repliesInHistory` (server #11517); null from an older server. */
+    val parentInHistory: Boolean? = null,
+    val repliesInHistory: Boolean? = null,
 )
 
 /**
@@ -154,7 +184,34 @@ internal fun List<InboxItem>.toThreadUnreadThreadParents(parentChannelId: String
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
                 parentCreatedAtEpochMillis = item.parentMessageCreatedAt?.let(::parseRaftTimestampEpochMillisOrNull),
+                parentInHistory = item.parentInHistory,
+                repliesInHistory = item.repliesInHistory,
             )
+    }
+    return parents
+}
+
+/**
+ * The thread parents among the loaded messages of [parentChannelId], by thread id, as pill parents.
+ *
+ * Kept before a jump replaces the loaded window (artin: the pill worked once on the phone). A thread
+ * whose parent was loaded was never looked up ([threadUnreadThreadIdsNeedingParents] skips loaded
+ * ones), so once the jump loaded only the messages around another parent it still counted in N but
+ * had no target, and the pill disappeared. Remembered here, it is placed like any resolved parent.
+ */
+internal fun List<RaftThreadMessageItem>.toLoadedThreadParents(parentChannelId: String): Map<String, ThreadUnreadThreadParent> {
+    val parents = LinkedHashMap<String, ThreadUnreadThreadParent>()
+    for (message in this) {
+        val threadId = message.threadChannelId?.takeIf { it.isNotBlank() } ?: continue
+        if (message.id.isBlank()) continue
+        parents.getOrPut(threadId) {
+            ThreadUnreadThreadParent(
+                threadChannelId = threadId,
+                parentChannelId = parentChannelId,
+                parentMessageId = message.id,
+                parentCreatedAtEpochMillis = message.createdAtEpochMillis,
+            )
+        }
     }
     return parents
 }
@@ -265,11 +322,17 @@ internal fun projectThreadUnreadThreadJump(
     fun unloadedTarget(parent: ThreadUnreadThreadParent) = parent.parentMessageId to parent.threadChannelId
     val nextTarget = nearestBelowIndex?.let(::loadedTarget) ?: unloadedBelow?.let(::unloadedTarget)
     val earliestTarget = unloadedAbove?.let(::unloadedTarget) ?: earliestAboveIndex?.let(::loadedTarget)
+    fun jump(direction: ThreadUnreadThreadJumpDirection, target: Pair<String, String>) =
+        ThreadUnreadThreadJump(
+            direction = direction,
+            count = count,
+            targetMessageId = target.first,
+            targetThreadChannelId = target.second,
+            historyAction = threadUnreadJumpHistoryAction(unloadedParents[target.second]),
+        )
     return when {
-        nextTarget != null ->
-            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nextTarget.first, nextTarget.second)
-        earliestTarget != null ->
-            ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestTarget.first, earliestTarget.second)
+        nextTarget != null -> jump(ThreadUnreadThreadJumpDirection.Next, nextTarget)
+        earliestTarget != null -> jump(ThreadUnreadThreadJumpDirection.Earliest, earliestTarget)
         else -> null
     }
 }
@@ -352,6 +415,8 @@ internal data class ThreadJumpInputs(
     val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
     /** The focus request nonce of the last pill jump ([SharedThreadState.unreadThreadJumpFocusNonce]). */
     val jumpFocusNonce: Int = 0,
+    /** A pill jump is loading its parent ([SharedThreadState.unreadThreadJumpLoading]): the pill is busy. */
+    val jumpLoading: Boolean = false,
 )
 
 /** The loaded messages as thread-parent candidates, with the list's live reply state where it has one. */

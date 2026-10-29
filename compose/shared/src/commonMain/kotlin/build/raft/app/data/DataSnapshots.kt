@@ -42,6 +42,12 @@ data class InboxItem(
     val parentMessageSenderKind: MemberKind? = null,
     /** Followed-thread rows: when the parent message was posted (its place in the parent channel). */
     val parentMessageCreatedAt: String? = null,
+    /**
+     * Followed-thread rows (server #11517): the parent message / a reply is inside the plan's
+     * history window. Null from an older server (or a row that isn't a followed thread).
+     */
+    val parentInHistory: Boolean? = null,
+    val repliesInHistory: Boolean? = null,
     val latestActivityMessageId: MessageId? = null,
     val latestActivityPreview: String? = null,
     val latestActivityAt: String? = null,

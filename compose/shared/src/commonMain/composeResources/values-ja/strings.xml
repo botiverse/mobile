@@ -867,6 +867,7 @@
     <string name="thread_jump_next_unread_thread">次の未読スレッド（%1$d）</string>
     <string name="thread_jump_earliest_unread_thread">最も古い未読スレッド（%1$d）</string>
     <string name="thread_jump_unread_thread_dismiss">閉じる</string>
+    <string name="thread_jump_unread_thread_loading">スレッドを読み込み中…</string>
     <string name="thread_label_saved">保存済み</string>
     <string name="thread_state_refreshing_original">元のメッセージを更新中…</string>
     <string name="thread_error_refresh_original">更新に失敗しました: %1$s</string>
@@ -998,7 +999,7 @@
     <string name="thread_state_note">メモ</string>
     <string name="thread_open_task_number">タスク #%1$d を開く</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">このスレッドを検索…</string>
+    <string name="thread_placeholder_search">このスレッド内を検索…</string>
     <string name="thread_long_message_show_more">全文を表示</string>
     <string name="thread_long_message_show_less">折りたたむ</string>
     <string name="composer_placeholder_message_design">デザインについてメッセージを送信</string>
@@ -2699,7 +2700,7 @@
     <string name="push_preview_sender_only_message">%1$s さんからメッセージが届きました</string>
     <string name="push_preview_sender_only_mention">%1$s さんがあなたをメンションしました</string>
     <string name="settings_mobile_new_design_settings">新しい設定デザイン</string>
-    <string name="settings_mobile_new_design_settings_detail">新しい独立したチャンネル設定ページを開きます。オフの場合は、現在の Thread 設定ダイアログを使用します。</string>
+    <string name="settings_mobile_new_design_settings_detail">新しい独立したチャンネル設定ページを開きます。オフの場合は、現在のスレッド設定ダイアログを使用します。</string>
     <string name="home_adaptive_select_conversation">会話を選択</string>
     <string name="composer_add_image">画像を追加</string>
     <string name="composer_take_photo">写真を撮る</string>

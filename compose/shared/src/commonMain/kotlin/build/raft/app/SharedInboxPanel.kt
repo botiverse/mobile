@@ -23,6 +23,7 @@ import build.raft.app.data.showsUnread
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.HomeThreadUnfollowPhase
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeContentState
 import androidx.compose.runtime.Immutable
@@ -1935,6 +1936,8 @@ private fun SharedActivityList(
     // raft-design #790: a thread's Unfollow (swipe button or menu) takes the row out at once and is only
     // sent when its toast ends; Undo sends nothing and shows the row again as it was.
     fun deferThreadUnfollow(item: InboxItem) {
+        // Web #11687: the thread's unread leaves Home now, while the request waits for the toast.
+        latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(item, HomeThreadUnfollowPhase.Unfollowed))
         swipeEndUndo = swipeEndUndo.dismiss()
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         applySwipeDone(
@@ -2210,7 +2213,12 @@ private fun SharedActivityList(
                             stringResource(Res.string.activity_swipe_unfollowed_thread, pending.item.activitySwipeConversationLabel())
                     },
                 actionLabel = stringResource(Res.string.common_undo),
-                onAction = { swipeDoneUndo = swipeDoneUndo.undo(pending.token) },
+                onAction = {
+                    if (pending.action == ActivitySwipeDeferredAction.Unfollow) {
+                        latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(pending.item, HomeThreadUnfollowPhase.Restored))
+                    }
+                    swipeDoneUndo = swipeDoneUndo.undo(pending.token)
+                },
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
