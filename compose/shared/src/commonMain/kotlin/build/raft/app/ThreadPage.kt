@@ -3405,6 +3405,8 @@ private data class ThreadAttachmentOpenResult(
 internal fun raftThreadAttachmentOpenStatus(nativeStatus: String): String =
     when (nativeStatus) {
         "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed" -> nativeStatus
+        // APK install handed to the settings switch or the file manager: that screen is the feedback.
+        "install_permission_required", "install_via_files" -> "opened"
         else -> "failed"
     }
 

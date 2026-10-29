@@ -2592,7 +2592,9 @@ private fun RaftFilePreviewStandalonePageContent() {
         publicDownloadState = raftFilePreviewPublicDownloadStateAfterOpen(visiblePublicDownloadState, result)
         observedPublicDownloadQuery = publicDownloadQuery
         return when (result?.optString("status").orEmpty()) {
-            "opened", "" -> {
+            // APK install handed to the system settings switch or the file manager: that screen is
+            // the feedback, no toast.
+            "opened", "", "install_permission_required", "install_via_files" -> {
                 if (result?.optBoolean("cached", false) == true) {
                     publicDownloadQuery?.let { refreshPublicDownloadState(it) }
                 }
@@ -9711,7 +9713,7 @@ internal fun raftAttachmentOpenResultMessage(
     // Native messages are diagnostic-only: shared semantic status owns user-visible copy.
     when (status) {
         "opened", "" -> null
-        "save_cancelled" -> null
+        "save_cancelled", "install_permission_required", "install_via_files" -> null
         "cancelled" -> terms.downloadStopped
         "missing" -> terms.unableToDownloadAttachment
         "no_app" -> terms.noAppCanOpenFile
@@ -9723,7 +9725,8 @@ internal fun raftAttachmentOpenResultMessage(
 internal fun raftAttachmentOpenDiagnosticStatus(status: String?): String {
     val normalized = status?.trim()?.lowercase().orEmpty()
     return when (normalized) {
-        "opened", "cancelled", "missing", "no_app", "storage_failed", "download_failed", "failed" -> normalized
+        "opened", "cancelled", "missing", "no_app", "storage_failed", "download_failed", "failed",
+        "install_permission_required", "install_via_files", "install_unsupported" -> normalized
         "" -> "none"
         else -> "other"
     }
