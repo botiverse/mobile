@@ -91,6 +91,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.rotate
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import build.raft.app.compat.pager.LocalActivity
@@ -1326,7 +1329,8 @@ private fun SharedTasksBoardColumn(
             status = status,
             count = totalCount,
             collapsed = collapsed,
-            onClick = onToggleCollapsed
+            onClick = onToggleCollapsed,
+            chevronLeading = false,
         )
         if (!collapsed) {
             if (tasks.isEmpty()) {
@@ -1376,18 +1380,21 @@ private fun localizedTasksEmptyStatus(status: TaskStatus): String =
     )
 
 /**
- * raft-ui TaskSectionTrigger (web TasksPanel `TaskSection`): a 32dp row, `px-2 gap-2`, the
- * status pixel, the label in footnote bold hint ink and the count in mono-meta hint ink. The
- * whole row toggles the section; web's chevron is not drawn on the phone.
+ * raft-ui TaskSectionTrigger / TaskBoardColumnTrigger (web TasksPanel `TaskSection` /
+ * `TaskBoardColumn`): a 32dp row, `px-2 gap-2`, the status pixel, the label in footnote bold
+ * hint ink and the count in mono-meta hint ink. The whole row toggles the section, and the
+ * raft-ui chevron (14dp `chevron-down`, hint ink, turned -90° while collapsed) shows that it
+ * does: leading in the list (`-order-1`), trailing in a board column (`justify-between`).
+ * Without it a collapsed Done read as "Done 1" over nothing to tap.
  */
-@Suppress("UNUSED_PARAMETER")
 @Composable
-private fun BoardSectionHeader(
+internal fun BoardSectionHeader(
     status: TaskStatus,
     count: Int,
     collapsed: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    chevronLeading: Boolean = true,
 ) {
     val colors = RaftAppThemeState.colors
     Row(
@@ -1400,6 +1407,7 @@ private fun BoardSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (chevronLeading) TaskSectionChevron(collapsed)
         RaftTaskStatusPixel(
             style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk)
         )
@@ -1416,7 +1424,24 @@ private fun BoardSectionHeader(
             color = RaftColor.ForegroundHint,
             maxLines = 1
         )
+        if (!chevronLeading) {
+            Spacer(Modifier.weight(1f))
+            TaskSectionChevron(collapsed)
+        }
     }
+}
+
+/** raft-ui `chevron` slot rotation: `-rotate-90` while collapsed, `rotate-0` open. */
+internal fun taskSectionChevronRotation(collapsed: Boolean): Float = if (collapsed) -90f else 0f
+
+@Composable
+private fun TaskSectionChevron(collapsed: Boolean) {
+    RaftGlyphIcon(
+        RaftGlyph.ChevronDown,
+        Modifier.rotate(taskSectionChevronRotation(collapsed)),
+        size = 14.dp,
+        color = RaftTheme.colors.foregroundHint,
+    )
 }
 
 /**

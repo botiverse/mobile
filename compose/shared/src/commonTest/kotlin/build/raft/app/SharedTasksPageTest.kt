@@ -229,4 +229,16 @@ class SharedTasksPageTest {
         assertNull(raftFilterSearchSessionSeed(open, "assignee", "a"))
     }
 
+
+    @Test
+    fun collapsedSectionChevronTurnsRightAndOpenSectionPointsDown() {
+        // Done and Closed start collapsed (web parity); their header chevron is what says
+        // the "Done 1" header expands (raft-ui `-rotate-90` collapsed, `rotate-0` open).
+        assertEquals(
+            setOf(TaskStatus.Done, TaskStatus.Closed),
+            build.raft.app.data.TasksPresentationState.Default.collapsedStatuses
+        )
+        assertEquals(-90f, taskSectionChevronRotation(collapsed = true))
+        assertEquals(0f, taskSectionChevronRotation(collapsed = false))
+    }
 }
