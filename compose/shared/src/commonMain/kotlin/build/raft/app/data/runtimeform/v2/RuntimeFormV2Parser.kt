@@ -35,7 +35,8 @@ internal const val RUNTIME_FORM_V2_CONNECTION_OWNED_KEY = "x-connectionOwned"
 /**
  * Form capabilities this client implements. A form that lists anything else in
  * `requiredClientCapabilities` needs behaviour this client lacks (for example
- * typing a custom model), so it is treated as having no v2 form and v1 is used.
+ * typing a custom model), so the form is refused (`runtime_form_v2_contract_mismatch`) and
+ * cannot be created or saved; there is no v1 form to use instead.
  */
 internal val RUNTIME_FORM_V2_CLIENT_CAPABILITIES: Set<String> = setOf(
     // FieldCopy.choices: display label/description per option value.
@@ -238,7 +239,7 @@ private fun keepRequiresUnchanged(value: JsonElement?, fields: List<RuntimeFormV
 
 /**
  * A safety gate, so it fails closed: absent means nothing is required; present but
- * not an array of strings counts as an unknown requirement (fall back to v1).
+ * not an array of strings counts as an unknown requirement (the form cannot be used).
  */
 private fun clientMeetsRequiredCapabilities(value: JsonElement?): Boolean {
     if (value == null || value is kotlinx.serialization.json.JsonNull) return true

@@ -4,21 +4,51 @@ import build.raft.app.runPortableCoroutineTest
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
-import build.raft.app.model.RuntimeConfig
-import build.raft.app.model.RuntimeHostUserState
-import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
-import build.raft.app.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 class AgentsApiTest {
+    // ── Create wire shape (task #186): absent optional fields are omitted, never explicit null ──
+
+    @Test
+    fun externalCreateBodyOmitsMachineRuntimeAndFormNulls() {
+        val body = buildCreateAgentBody(CreateAgentBody(name = "External Agent", external = true))
+
+        assertEquals("""{"name":"External Agent","external":true}""", body)
+        assertFalse("machineId" in body, body)
+        assertFalse("runtime" in body, body)
+        assertFalse("formDefinitionRef" in body, body)
+        assertFalse("formValues" in body, body)
+        assertFalse("null" in body, body)
+    }
+
+    @Test
+    fun createBodyOmitsAbsentOptionalFieldsLikeWeb() {
+        val body = buildCreateAgentBody(CreateAgentBody(name = "Noel", machineId = "machine-1"))
+
+        assertEquals("""{"name":"Noel","machineId":"machine-1"}""", body)
+        assertFalse("\"external\"" in body, body)
+        assertFalse("\"description\"" in body, body)
+        assertFalse("null" in body, body)
+    }
+
+    @Test
+    fun createBodyKeepsPresentOptionalFields() {
+        val body =
+            buildCreateAgentBody(
+                CreateAgentBody(name = "Noel", description = "helper", machineId = "machine-1", avatarUrl = "pixel:mug", external = false)
+            )
+
+        assertEquals(
+            """{"name":"Noel","description":"helper","machineId":"machine-1","avatarUrl":"pixel:mug","external":false}""",
+            body
+        )
+    }
+
     @Test
     fun createAgentPreservesRuntimeFormRejectionCodeForRecovery() = runPortableCoroutineTest {
         val client =
@@ -285,113 +315,6 @@ class AgentsApiTest {
         assertEquals(emptyList(), detail.reminders)
         assertEquals(emptyList(), detail.activity)
         assertEquals(listOf("GET agents/agent-1"), transport.calls)
-    }
-
-    @Test
-    fun createAgentBodySerializesAvatarAndRuntimeSelectionFields() {
-        val body =
-            buildCreateAgentBody(
-                CreateAgentBody(
-                    name = "Noel",
-                    description = "Runs builds",
-                    model = "gpt-5.3-codex",
-                    runtime = "codex",
-                    reasoningEffort = "high",
-                    machineId = "machine-1",
-                    avatarUrl = "pixel:robot",
-                    runtimeConfig =
-                        buildRuntimeConfig(
-                            runtime = "codex",
-                            model = "gpt-5.3-codex",
-                            customModelMode = false,
-                            fastMode = true,
-                            reasoningEffort = "high"
-                        )
-                )
-            )
-        val json = Json.parseToJsonElement(body).jsonObject
-
-        assertEquals("Noel", json.getValue("name").jsonPrimitive.content)
-        assertEquals("pixel:robot", json.getValue("avatarUrl").jsonPrimitive.content)
-        assertEquals("codex", json.getValue("runtime").jsonPrimitive.content)
-        assertEquals("gpt-5.3-codex", json.getValue("model").jsonPrimitive.content)
-        assertEquals("high", json.getValue("reasoningEffort").jsonPrimitive.content)
-        assertEquals("machine-1", json.getValue("machineId").jsonPrimitive.content)
-        val runtimeConfig = json.getValue("runtimeConfig").jsonObject
-        assertEquals("codex", runtimeConfig.getValue("runtime").jsonPrimitive.content)
-        assertEquals(
-            "preset",
-            runtimeConfig.getValue("model").jsonObject.getValue("kind").jsonPrimitive.content
-        )
-        assertEquals(
-            "gpt-5.3-codex",
-            runtimeConfig.getValue("model").jsonObject.getValue("id").jsonPrimitive.content
-        )
-        assertEquals(
-            "fast",
-            runtimeConfig.getValue("mode").jsonObject.getValue("kind").jsonPrimitive.content
-        )
-    }
-
-    @Test
-    fun createAgentBodySerializesBuiltInPresetAndExactFormRef() {
-        val body = buildCreateAgentBody(
-            CreateAgentBody(
-                name = "Pi Preset",
-                machineId = "machine-1",
-                runtimeConfig = RuntimeConfig(
-                    runtime = "builtin",
-                    provider = RuntimeProviderConfig.Preset("deepseek", "secret-preset"),
-                    model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
-                    hostUserState = RuntimeHostUserState.Forbidden
-                ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
-            )
-        )
-        val json = Json.parseToJsonElement(body).jsonObject
-        val runtimeConfig = json.getValue("runtimeConfig").jsonObject
-        assertEquals("builtin", runtimeConfig.getValue("runtime").jsonPrimitive.content)
-        assertEquals("forbidden", runtimeConfig.getValue("hostUserState").jsonPrimitive.content)
-        assertEquals("preset", runtimeConfig.getValue("provider").jsonObject.getValue("kind").jsonPrimitive.content)
-        assertEquals("deepseek", runtimeConfig.getValue("provider").jsonObject.getValue("providerId").jsonPrimitive.content)
-        assertEquals("secret-preset", runtimeConfig.getValue("provider").jsonObject.getValue("apiKey").jsonPrimitive.content)
-        assertEquals("preset", runtimeConfig.getValue("model").jsonObject.getValue("kind").jsonPrimitive.content)
-        val ref = json.getValue("formDefinitionRef").jsonObject
-        assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
-        assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
-        assertEquals("builtin-pi.create.v3", ref.getValue("schemaVersion").jsonPrimitive.content)
-    }
-
-    @Test
-    fun createAgentBodySerializesBuiltInGatewayCustomModel() {
-        val body = buildCreateAgentBody(
-            CreateAgentBody(
-                name = "Pi Gateway",
-                machineId = "machine-1",
-                runtimeConfig = RuntimeConfig(
-                    runtime = "builtin",
-                    provider = RuntimeProviderConfig.Gateway(
-                        providerId = "openai-compatible",
-                        baseUrl = "https://gateway.example.com/v1",
-                        apiKey = "secret-gateway",
-                        supportsImageInput = true
-                    ),
-                    model = RuntimeModelConfig.Custom("vendor/model-v2"),
-                    hostUserState = RuntimeHostUserState.Forbidden
-                ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
-            )
-        )
-        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
-        val provider = runtimeConfig.getValue("provider").jsonObject
-        assertEquals("gateway", provider.getValue("kind").jsonPrimitive.content)
-        assertEquals("openai-compatible", provider.getValue("providerId").jsonPrimitive.content)
-        assertEquals("https://gateway.example.com/v1", provider.getValue("baseUrl").jsonPrimitive.content)
-        assertEquals("secret-gateway", provider.getValue("apiKey").jsonPrimitive.content)
-        assertEquals(true, provider.getValue("supportsImageInput").jsonPrimitive.boolean)
-        val model = runtimeConfig.getValue("model").jsonObject
-        assertEquals("custom", model.getValue("kind").jsonPrimitive.content)
-        assertEquals("vendor/model-v2", model.getValue("name").jsonPrimitive.content)
     }
 
     @Test

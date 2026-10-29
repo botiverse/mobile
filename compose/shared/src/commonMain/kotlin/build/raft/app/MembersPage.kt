@@ -1,13 +1,25 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import build.raft.app.compat.ui.raftColorFromArgbHex
+import build.raft.app.components.RaftAnchorPlacement
+import build.raft.app.components.RaftAppSectionEyebrow
+import build.raft.app.model.RUNTIMES
+import build.raft.app.model.getDefaultModel
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import build.raft.app.compat.module.RouterModule
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftBackButton
-import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.raftSoftWash
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftIconSpinner
-import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftCardSurface
 import build.raft.designsystem.components.RaftBanner
@@ -24,14 +36,12 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerShape
 import build.raft.app.components.RaftCheckMarkerTone
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
@@ -141,16 +151,11 @@ import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
-import build.raft.app.data.CREATE_AGENT_KIMI_SDK_RUNTIME_ID
-import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
-import build.raft.app.data.buildBuiltInRuntimeConfig
-import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.createAgentFallbackErrorText
-import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_REQUIRED
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
@@ -165,16 +170,11 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
-import build.raft.app.model.RUNTIME_PROVIDER_MODE_DEFAULT
 import build.raft.app.model.RUNTIME_MODELS
-import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
-import build.raft.app.model.getModelLabel
-import build.raft.app.model.getDefaultModel
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.MemberId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
@@ -182,7 +182,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
-import build.raft.app.model.buildRuntimeConfig
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
@@ -260,9 +259,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -277,19 +274,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.compat.ui.NestedScrollMode
@@ -299,10 +293,6 @@ import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.raftCopyable
@@ -312,21 +302,15 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
-import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.module.CodecModule
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
@@ -2484,9 +2468,6 @@ internal fun MembersPageContent(
                 val result =
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentFormOrRetry(createAgentFormStore, serverId, submit) { retrySubmit ->
-                            createAgentCoordinator.createAgent(retrySubmit.toCreateAgentRequest())
-                        }
                 if (result is DataResult.Content) {
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
@@ -2540,36 +2521,6 @@ internal fun MembersPageContent(
             }
         }
     }
-    var createAgentRuntimeModels by remember(serverId) {
-        mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
-    }
-    var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
-        mutableStateOf<Set<Pair<String, String>>>(emptySet())
-    }
-    val loadRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
-        val key = machineId.trim() to runtime.trim()
-        if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
-            // no-op: the dialog keeps using the static runtime catalog fallback
-        } else if (!force && (key in createAgentRuntimeModels || key in createAgentRuntimeModelLoadsInFlight)) {
-            // no-op: cached or already loading
-        } else {
-            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight + key
-            scope.launch {
-                when (val result = createAgentCoordinator.loadRuntimeModels(serverId, key.first, key.second)) {
-                    is DataResult.Content -> {
-                        createAgentRuntimeModels = createAgentRuntimeModels + (key to result.data)
-                    }
-                    is DataResult.Empty -> Unit
-                    is DataResult.Error ->
-                        bridge.log("create_agent_runtime_models_failed source=members_page code=${result.error.code}")
-                    is DataResult.NoPermission ->
-                        bridge.log("create_agent_runtime_models_blocked source=members_page code=${result.blocker.code}")
-                }
-                createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight - key
-            }
-        }
-    }
-
     // Humans "+" invite: web `InviteHumanDialog.tsx` (email / link tabs, link limits,
     // update / revoke), rendered by the shared dialog host.
     val inviteGuestFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
@@ -2605,7 +2556,6 @@ internal fun MembersPageContent(
         } else {
             payload.agentPanelTabOrder
         }
-
 
     val membersPayload =
         payload.copy(
@@ -2697,9 +2647,6 @@ internal fun MembersPageContent(
             createAgentMaxAgents = maxAgents,
             createAgentLoadMachines = loadMachines,
             createAgentRetryMachines = retryMachines,
-            createAgentRuntimeModelsByMachineAndRuntime = createAgentRuntimeModels,
-            createAgentRuntimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-            createAgentLoadRuntimeModels = loadRuntimeModels,
             createAgentFormStore = createAgentFormStore,
             createAgentServerId = serverId,
             createAgentTakenAgentNames = localMembers.takenAgentNames()
@@ -4047,9 +3994,6 @@ internal fun MemberDetailPageContent(
     var agentRuntimeModelLoadsInFlight by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Set<Pair<String, String>>>(emptySet())
     }
-    var agentRuntimeModelErrors by remember(memberIdentity, statusLookupServerId) {
-        mutableStateOf<Map<Pair<String, String>, String>>(emptyMap())
-    }
     var agentRuntimeOptionRequestGenerations by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Map<Pair<String, String>, Long>>(emptyMap())
     }
@@ -4397,30 +4341,6 @@ internal fun MemberDetailPageContent(
                                     .mapKeys { (key, _) -> key.second }
                             }
                             .orEmpty()
-                    val agentRuntimeModelLoadsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeModelLoadsInFlight
-                                    .filter { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapTo(linkedSetOf()) { (_, runtime) -> runtime }
-                            }
-                            .orEmpty()
-                    val agentRuntimeModelErrorsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeModelErrors
-                                    .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapKeys { (key, _) -> key.second }
-                            }
-                            .orEmpty()
-                    val agentRuntimeModelGenerationsByRuntime =
-                        agentMachineId
-                            ?.let { machineId ->
-                                agentRuntimeOptionRequestGenerations
-                                    .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
-                                    .mapKeys { (key, _) -> key.second }
-                            }
-                            .orEmpty()
                     val agentProfileEditAuthority =
                         agentDetailStoreState.detailOwner
                             ?.takeIf { owner ->
@@ -4457,7 +4377,6 @@ internal fun MemberDetailPageContent(
                                     generation = requestGeneration
                                 )
                             agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight + key
-                            agentRuntimeModelErrors = agentRuntimeModelErrors - key
                             routeScope.launch {
                                 val result =
                                     provider.createAgentCoordinator.loadRuntimeModels(
@@ -4483,28 +4402,21 @@ internal fun MemberDetailPageContent(
                                         )
                                     return@launch
                                 }
+                                // Only the loaded models are kept (read-only runtime rows); a failure
+                                // leaves the key unloaded, so the next request retries it.
                                 when (result) {
                                     is DataResult.Content ->
                                         if (result.data.models.isNotEmpty()) {
                                             agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
-                                        } else {
-                                            agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                                (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
                                         }
-                                    is DataResult.Empty ->
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings))
+                                    is DataResult.Empty -> Unit
                                     is DataResult.Error -> {
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to result.error.userFacingMessage(errorStrings))
                                         bridge.log(
                                             "member_detail_runtime_models_failed runtime=${key.second} " +
                                                 "code=${result.error.code}"
                                         )
                                     }
                                     is DataResult.NoPermission -> {
-                                        agentRuntimeModelErrors = agentRuntimeModelErrors +
-                                            (key to result.blocker.userFacingMessage(errorStrings))
                                         bridge.log(
                                             "member_detail_runtime_models_blocked runtime=${key.second} " +
                                                 "code=${result.blocker.code}"
@@ -4597,9 +4509,6 @@ internal fun MemberDetailPageContent(
                                     machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
                                 ),
                             agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
-                            agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                            agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
                             onAgentRuntimeModelsRequest = loadAgentRuntimeModels
                         ),
                         createAgentFormStore = provider.createAgentFormStore,
@@ -5441,9 +5350,6 @@ internal class MembersCreateAgentInputs(
     val createAgentMaxAgents: Int = -1,
     val createAgentLoadMachines: () -> Unit = {},
     val createAgentRetryMachines: () -> Unit = {},
-    val createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    val createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
-    val createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
     val createAgentServerId: String? = null,
     /** Agent @names already used on this server, so a suggested name avoids them. */
@@ -5555,9 +5461,6 @@ internal fun MembersListContent(
     val createAgentMaxAgents = createAgent.createAgentMaxAgents
     val createAgentLoadMachines = createAgent.createAgentLoadMachines
     val createAgentRetryMachines = createAgent.createAgentRetryMachines
-    val createAgentRuntimeModelsByMachineAndRuntime = createAgent.createAgentRuntimeModelsByMachineAndRuntime
-    val createAgentRuntimeModelLoadsInFlight = createAgent.createAgentRuntimeModelLoadsInFlight
-    val createAgentLoadRuntimeModels = createAgent.createAgentLoadRuntimeModels
     val createAgentFormStore = createAgent.createAgentFormStore
     val createAgentServerId = createAgent.createAgentServerId
     val createAgentTakenAgentNames = createAgent.createAgentTakenAgentNames
@@ -5616,9 +5519,7 @@ internal fun MembersListContent(
     val emptyResponseMessage = stringResource(Res.string.member_error_empty_response)
     val createAgentFailed = stringResource(Res.string.member_error_create_agent)
     val createAgentForbidden = stringResource(Res.string.member_error_create_agent_forbidden)
-    val createAgentFormRefreshed = stringResource(Res.string.agent_create_error_form_refreshed)
     val createAgentNameTaken = stringResource(Res.string.agent_create_error_name_taken)
-    val createAgentFormRefreshFailed = stringResource(Res.string.agent_create_error_form_refresh_failed)
     val canInviteHumans = payload.canInviteHumans && inviteHumanDialog != null
     LaunchedEffect(canInviteHumans) {
         if (!canInviteHumans) {
@@ -5833,9 +5734,6 @@ internal fun MembersListContent(
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,
             onMachinesRetry = createAgentRetryMachines,
-            runtimeModelsByMachineAndRuntime = createAgentRuntimeModelsByMachineAndRuntime,
-            runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
-            onRuntimeModelsRequest = createAgentLoadRuntimeModels,
             createAgentFormStore = createAgentFormStore,
             createAgentServerId = createAgentServerId,
             takenAgentNames = createAgentTakenAgentNames,
@@ -5868,10 +5766,6 @@ internal fun MembersListContent(
                                 when (result.error.code) {
                                     AGENT_CREATE_NAME_TAKEN ->
                                         createAgentNameTaken
-                                    AGENT_CREATE_FORM_REFRESH_REQUIRED ->
-                                        createAgentFormRefreshed
-                                    AGENT_CREATE_FORM_REFRESH_FAILED ->
-                                        createAgentFormRefreshFailed
                                     else -> createAgentFallbackErrorText(result.error, createAgentFailed)
                                 }
                         }
@@ -6064,9 +5958,6 @@ private fun MembersDetailContent(
 ) {
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
-    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
-    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
-    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
     val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
     val humanActorRole = humanRole.humanActorRole
     val humanOwnerCount = humanRole.humanOwnerCount
@@ -6773,9 +6664,6 @@ private fun MembersDetailContent(
                                             runtimeModels = MembersAgentRuntimeModelInputs(
                                                 agentMachineRuntimes = agentMachineRuntimes,
                                                 agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
-                                                agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-                                                agentRuntimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-                                                agentRuntimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
                                                 onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest
                                             ),
                                             createAgentFormStore = createAgentFormStore,
@@ -9253,9 +9141,6 @@ internal fun MembersAgentProfileHeader(
 private class MembersAgentRuntimeModelInputs(
     val agentMachineRuntimes: List<String> = emptyList(),
     val agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    val agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
-    val agentRuntimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    val agentRuntimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
     val onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> }
 )
 
@@ -10175,9 +10060,6 @@ private fun MembersAgentRuntimeConfigSection(
     val errorStrings = edit.errorStrings
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
-    val agentRuntimeModelLoadsInFlight = runtimeModels.agentRuntimeModelLoadsInFlight
-    val agentRuntimeModelErrorsByRuntime = runtimeModels.agentRuntimeModelErrorsByRuntime
-    val agentRuntimeModelGenerationsByRuntime = runtimeModels.agentRuntimeModelGenerationsByRuntime
     val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
     val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
     val canonicalRuntimeConfig =
@@ -10190,19 +10072,11 @@ private fun MembersAgentRuntimeConfigSection(
     val canonicalRuntimeStatus = agentStatusIndicatorState?.status
     val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
     val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
-    val runtimeEditorReady =
-        runtimeStatusResolved &&
-            canonicalRuntimeConfig != null &&
-            membersAgentRuntimeConfigSaveAttemptEnabled(
-                runtime = canonicalRuntimeConfig.runtime,
-                model = canonicalRuntimeConfig.toMembersRuntimeModelValue(),
-                customModelMode = canonicalRuntimeModel is RuntimeModelConfig.Custom,
-                customModelName = (canonicalRuntimeModel as? RuntimeModelConfig.Custom)?.name.orEmpty(),
-                machineRuntimeIds = agentMachineRuntimes
-            )
+    // The v2 editor reads and validates the agent's config on the server, so opening it only needs a
+    // known status (for the restart decision) and a readable config.
+    val runtimeEditorReady = runtimeStatusResolved && canonicalRuntimeConfig != null
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
     val runtimeEditingUnavailable = stringResource(Res.string.member_error_runtime_edit_unavailable)
     val runtimeFormV2SavedRefresh = stringResource(Res.string.runtime_form_v2_saved_refresh)
     val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
@@ -10220,9 +10094,8 @@ private fun MembersAgentRuntimeConfigSection(
     }
     var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
-    // Runtime form v2 edit (flag `runtime_form_v2_web`). A v2-opened session stays on v2: a load
-    // failure shows Retry and a runtime switch loads the new runtime's v2 form (task #8). The v1
-    // dialog below only serves sessions opened without v2 (flag off, or no computer).
+    // Runtime form v2 edit, the only runtime editor (task #8): a load failure shows Retry, a runtime
+    // switch loads the new runtime's v2 form, and a runtime without a v2 form shows "unavailable".
     val runtimeFormV2Access =
         agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
     var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
@@ -10236,123 +10109,6 @@ private fun MembersAgentRuntimeConfigSection(
         editingRuntimeConfig = false
         runtimeEditorAuthority = null
         runtimeEditorSession = null
-    }
-
-
-    fun saveRuntimeConfig(
-        nextConfig: RuntimeConfig,
-        openedCatalogGeneration: Long,
-        retainBuiltInProviderSecret: Boolean,
-        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef? = null
-    ) {
-        val callback = onUpdateAgentProfile
-        if (
-            !canEdit ||
-                !runtimeStatusResolved ||
-                (agentDetailActions == null && callback == null) ||
-                savingRuntimeConfig
-        ) {
-            onUnavailableAction(runtimeEditingUnavailable)
-            return
-        }
-        val currentConfig = canonicalRuntimeConfig
-        if (currentConfig == null) {
-            runtimeConfigError = "agent_runtime_config_unavailable"
-            onUnavailableAction(runtimeEditingUnavailable)
-            return
-        }
-        if (!membersAgentProfileEditAuthorityMatches(
-                opened = runtimeEditorAuthority,
-                current = agentProfileEditAuthority,
-                openedCatalogGeneration = openedCatalogGeneration,
-                currentCatalogGeneration = agentRuntimeModelGenerationsByRuntime[nextConfig.runtime] ?: 0L
-            )
-        ) {
-            runtimeConfigError = "agent_runtime_editor_stale"
-            onUnavailableAction(runtimeEditingUnavailable)
-            return
-        }
-        val restartMode = membersRuntimeConfigResetMode(currentConfig, nextConfig, activeAgent)
-        scope.launch {
-            savingRuntimeConfig = true
-            runtimeConfigError = null
-            if (!membersAgentProfileEditAuthorityMatches(
-                    opened = runtimeEditorAuthority,
-                    current = currentProfileEditAuthority,
-                    openedCatalogGeneration = openedCatalogGeneration,
-                    currentCatalogGeneration = currentRuntimeModelGenerations[nextConfig.runtime] ?: 0L
-                )
-            ) {
-                savingRuntimeConfig = false
-                runtimeConfigError = "agent_runtime_editor_stale"
-                onUnavailableAction(runtimeEditingUnavailable)
-                return@launch
-            }
-            val result =
-                try {
-                    val request = AgentProfileUpdateRequest(
-                        agentId = member.id,
-                        displayName = member.displayName,
-                        description = member.description?.takeIf { it.isNotBlank() },
-                        runtimeConfig = nextConfig,
-                        includeRuntimeConfig = true,
-                        retainOmittedBuiltInProviderSecret = retainBuiltInProviderSecret,
-                        runtimeResetMode = restartMode,
-                        formDefinitionRef = kimiSdkFormDefinitionRef
-                    )
-                    if (agentDetailActions != null) {
-                        agentDetailActions.updateAgentProfile(request)
-                    } else {
-                        requireNotNull(callback).invoke(request)
-                    }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
-                }
-            if (!membersAgentProfileEditAuthorityMatches(
-                    opened = runtimeEditorAuthority,
-                    current = currentProfileEditAuthority,
-                    openedCatalogGeneration = openedCatalogGeneration,
-                    currentCatalogGeneration = currentRuntimeModelGenerations[nextConfig.runtime] ?: 0L
-                )
-            ) {
-                return@launch
-            }
-            when (result) {
-                is DataResult.Content -> {
-                    onApplyAgentProfileResult(result.data)
-                    val authority = runtimeEditorAuthority
-                    if (
-                        authority != null &&
-                        onApplyAgentRuntimeConfigProjection(authority, nextConfig)
-                    ) {
-                        closeRuntimeEditor()
-                    } else {
-                        runtimeConfigError = "agent_runtime_editor_stale"
-                        onUnavailableAction(runtimeEditingUnavailable)
-                    }
-                }
-                is DataResult.Empty -> {
-                    val authority = runtimeEditorAuthority
-                    if (
-                        authority != null &&
-                        onApplyAgentRuntimeConfigProjection(authority, nextConfig)
-                    ) {
-                        closeRuntimeEditor()
-                    } else {
-                        runtimeConfigError = "agent_runtime_editor_stale"
-                        onUnavailableAction(runtimeEditingUnavailable)
-                    }
-                }
-                is DataResult.NoPermission ->
-                    runtimeConfigError =
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
-                is DataResult.Error ->
-                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
-            }
-            savingRuntimeConfig = false
-        }
     }
 
     fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean) {
@@ -10388,53 +10144,55 @@ private fun MembersAgentRuntimeConfigSection(
         // must hit the guard above instead of sending a second PATCH.
         savingRuntimeConfig = true
         scope.launch {
-            runtimeConfigError = null
-            runtimeFormV2ErrorFields = emptySet()
-            val result =
-                try {
-                    val request =
-                        membersRuntimeFormV2UpdateRequest(
-                            agentId = member.id,
-                            displayName = member.displayName,
-                            description = member.description,
-                            submit = submit,
-                            runtimeSwitched = runtimeSwitched,
-                            activeAgent = activeAgent
-                        )
-                    if (agentDetailActions != null) {
-                        agentDetailActions.updateAgentProfile(request)
-                    } else {
-                        requireNotNull(callback).invoke(request)
+            // Every exit (a stale authority after the request included) ends the saving state.
+            membersRuntimeEditorSaving(setSaving = { savingRuntimeConfig = it }) {
+                runtimeConfigError = null
+                runtimeFormV2ErrorFields = emptySet()
+                val result =
+                    try {
+                        val request =
+                            membersRuntimeFormV2UpdateRequest(
+                                agentId = member.id,
+                                displayName = member.displayName,
+                                description = member.description,
+                                submit = submit,
+                                runtimeSwitched = runtimeSwitched,
+                                activeAgent = activeAgent
+                            )
+                        if (agentDetailActions != null) {
+                            agentDetailActions.updateAgentProfile(request)
+                        } else {
+                            requireNotNull(callback).invoke(request)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
                     }
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
-                }
-            if (!authorityCurrent()) return@launch
-            when (result) {
-                is DataResult.Content, is DataResult.Empty -> {
-                    (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data) }
-                    // The server assembled the config; show what it stored rather than guessing locally.
-                    val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
-                    val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
-                        as? MembersAgentRuntimeConfigResolution.Content)?.config
-                    val authority = runtimeEditorAuthority
-                    val projected =
-                        config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
-                    closeRuntimeEditor()
-                    // The save landed; only the read-back failed, so the rows may lag until a refresh.
-                    if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
-                }
-                is DataResult.NoPermission ->
-                    runtimeConfigError =
-                        membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
-                is DataResult.Error -> {
-                    runtimeFormV2ErrorFields = result.error.formFieldKeys.toSet()
-                    runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                if (!authorityCurrent()) return@membersRuntimeEditorSaving
+                when (result) {
+                    is DataResult.Content, is DataResult.Empty -> {
+                        (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data) }
+                        // The server assembled the config; show what it stored rather than guessing locally.
+                        val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
+                        val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
+                            as? MembersAgentRuntimeConfigResolution.Content)?.config
+                        val authority = runtimeEditorAuthority
+                        val projected =
+                            config != null && authority != null && onApplyAgentRuntimeConfigProjection(authority, config)
+                        closeRuntimeEditor()
+                        // The save landed; only the read-back failed, so the rows may lag until a refresh.
+                        if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
+                    }
+                    is DataResult.NoPermission ->
+                        runtimeConfigError =
+                            membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                    is DataResult.Error -> {
+                        runtimeFormV2ErrorFields = result.error.formFieldKeys.toSet()
+                        runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                    }
                 }
             }
-            savingRuntimeConfig = false
         }
     }
 
@@ -10456,7 +10214,7 @@ private fun MembersAgentRuntimeConfigSection(
         ) {
             MembersEditableSectionTitleRow(
                 title = stringResource(Res.string.member_section_runtime_config),
-                showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
+                showEdit = canEdit && runtimeEditorReady && runtimeFormV2Access != null && !editingRuntimeConfig,
                 onEditClick = {
                     val authority = agentProfileEditAuthority
                     val config = canonicalRuntimeConfig
@@ -10489,7 +10247,7 @@ private fun MembersAgentRuntimeConfigSection(
         membersRuntimeEditorDialog(
             editing = editingRuntimeConfig,
             opened = session?.authority,
-            openedFormV2 = session?.formV2Access != null && session.machineId != null,
+            openedFormV2 = session?.formV2Access != null,
             live = MembersRuntimeEditorLiveFacts(
                 authority = agentProfileEditAuthority,
                 canManage = edit.canManage,
@@ -10510,7 +10268,7 @@ private fun MembersAgentRuntimeConfigSection(
         MembersAgentRuntimeFormV2Dialog(
             access = checkNotNull(session.formV2Access),
             agentId = member.id,
-            machineId = checkNotNull(session.machineId),
+            machineId = session.machineId,
             runtimeId = session.config.runtime,
             machineRuntimeIds = agentMachineRuntimes,
             activeAgent = activeAgent,
@@ -10527,40 +10285,11 @@ private fun MembersAgentRuntimeConfigSection(
                 runtimeConfigError = null
                 runtimeFormV2ErrorFields = emptySet()
             },
-            onSave = ::saveRuntimeConfigV2
-        )
-    } else if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.Legacy) {
-        MembersAgentRuntimeConfigDialog(
-            initialConfig = session.config,
-            memberId = member.id,
-            activeAgent = activeAgent,
-            machineRuntimeIds = agentMachineRuntimes,
-            runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
-            runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
-            runtimeModelErrorsByRuntime = agentRuntimeModelErrorsByRuntime,
-            runtimeModelGenerationsByRuntime = agentRuntimeModelGenerationsByRuntime,
-            createAgentFormStore = createAgentFormStore,
-            currentServerId = session.authority.serverId.value,
-            machineId = session.machineId,
-            openedProfileAuthority = runtimeEditorAuthority,
-            currentProfileAuthority = agentProfileEditAuthority,
-            onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
-            saving = savingRuntimeConfig,
-            error = runtimeConfigError,
-            onDismiss = {
-                if (!savingRuntimeConfig) {
-                    closeRuntimeEditor()
-                    runtimeConfigError = null
-                }
+            runtimeCatalog = { machineId ->
+                val store = createAgentFormStore
+                (store?.loadRuntimeCatalog(session.authority.serverId.value, machineId) as? DataResult.Content)?.data
             },
-            onSave = { nextConfig, catalogGeneration, retainBuiltInProviderSecret, kimiSdkFormDefinitionRef ->
-                saveRuntimeConfig(
-                    nextConfig,
-                    catalogGeneration,
-                    retainBuiltInProviderSecret,
-                    kimiSdkFormDefinitionRef
-                )
-            }
+            onSave = ::saveRuntimeConfigV2
         )
     }
 }
@@ -11011,15 +10740,14 @@ internal fun MembersAgentRuntimeConfigRows(
             }
         }
         // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
-        // catalog capability (never the static runtime set); submit-time
-        // authority additionally requires the resolved kimi-sdk form ref.
+        // catalog capability (never the static runtime set).
         if (
             supportsRuntimeReasoningEffort(runtimeId) ||
-            kimiSdkLiveReasoningCapability(
+            membersKimiSdkModelDeclaresReasoning(
                 runtime = runtimeId,
                 model = runtimeConfig.toMembersRuntimeModelValue(),
-                runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
-            ) != null
+                liveModels = runtimeModelsCatalog?.models.orEmpty()
+            )
         ) {
             MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_reasoning)) {
                 // Web `<span>`: the plain callout value.
@@ -11190,819 +10918,6 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
 private fun membersMaskedEnvValue(value: String?): String =
     "•".repeat(value?.length?.coerceIn(1, 8) ?: 3)
 
-@Composable
-private fun MembersAgentRuntimeConfigDialog(
-    initialConfig: RuntimeConfig,
-    memberId: MemberId,
-    activeAgent: Boolean,
-    createAgentFormStore: SharedCreateAgentFormStore?,
-    currentServerId: String?,
-    machineId: String?,
-    machineRuntimeIds: List<String> = emptyList(),
-    runtimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
-    runtimeModelLoadsInFlight: Set<String> = emptySet(),
-    runtimeModelErrorsByRuntime: Map<String, String> = emptyMap(),
-    runtimeModelGenerationsByRuntime: Map<String, Long> = emptyMap(),
-    openedProfileAuthority: MembersAgentProfileEditAuthority?,
-    currentProfileAuthority: MembersAgentProfileEditAuthority?,
-    onRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
-    saving: Boolean,
-    error: String?,
-    onDismiss: () -> Unit,
-    onSave: (
-        RuntimeConfig,
-        catalogGeneration: Long,
-        retainBuiltInProviderSecret: Boolean,
-        kimiSdkFormDefinitionRef: SharedRuntimeFormDefinitionRef?
-    ) -> Unit
-) {
-    val errorStrings = localizedErrorPresentationStrings()
-    val stableInitialConfig = remember(memberId.value, initialConfig) { initialConfig }
-    var runtime by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.runtime) }
-    val initialModelSelection = remember(stableInitialConfig) {
-        when (val initialModel = stableInitialConfig.model) {
-            is RuntimeModelConfig.Preset -> false to initialModel.id
-            is RuntimeModelConfig.Custom -> true to initialModel.name
-        }
-    }
-    var model by remember(stableInitialConfig) { mutableStateOf(initialModelSelection.second) }
-    var customModelMode by remember(stableInitialConfig) { mutableStateOf(initialModelSelection.first) }
-    var customModelName by remember(stableInitialConfig) {
-        mutableStateOf(if (initialModelSelection.first) initialModelSelection.second else "")
-    }
-    val initialProvider = stableInitialConfig.provider as? RuntimeProviderConfig.Custom
-    var providerMode by remember(stableInitialConfig) {
-        mutableStateOf(
-            if (initialProvider != null) RUNTIME_PROVIDER_MODE_CUSTOM else RUNTIME_PROVIDER_MODE_DEFAULT
-        )
-    }
-    var providerApiUrl by remember(stableInitialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
-    var providerApiKey by remember(stableInitialConfig) {
-        val initialText = initialProvider?.apiKey.orEmpty()
-        mutableStateOf(TextFieldValue(initialText, selection = TextRange(initialText.length)))
-    }
-    val initialPiProvider = stableInitialConfig.provider as? RuntimeProviderConfig.PiBuiltin
-    var piProviderId by remember(stableInitialConfig) {
-        mutableStateOf(initialPiProvider?.providerId ?: "configured")
-    }
-    var piProviderApiKey by remember(stableInitialConfig) {
-        val initialText = initialPiProvider?.apiKey.orEmpty()
-        mutableStateOf(TextFieldValue(initialText, selection = TextRange(initialText.length)))
-    }
-    val initialBuiltInProvider = stableInitialConfig.provider
-        .takeIf { stableInitialConfig.runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID }
-    var builtInProviderId by remember(stableInitialConfig) {
-        mutableStateOf(initialBuiltInProvider.membersBuiltInProviderId())
-    }
-    // Built-in provider keys are write-only. Agent reads deliberately project
-    // an empty string; a non-empty draft always means the user supplied a replacement.
-    var builtInApiKey by remember(stableInitialConfig) { mutableStateOf(TextFieldValue("")) }
-    var builtInBaseUrl by remember(stableInitialConfig) {
-        mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.baseUrl.orEmpty())
-    }
-    var builtInSupportsImageInput by remember(stableInitialConfig) {
-        mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.supportsImageInput == true)
-    }
-    var builtInLoadLocalPlugins by remember(stableInitialConfig) {
-        mutableStateOf(stableInitialConfig.loadLocalPlugins == true)
-    }
-    var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
-    var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
-    // kimi-sdk (task #275): only an explicit selector pick counts as "changed";
-    // reconciles from model switches or capability arrivals never set this.
-    var reasoningEffortTouched by remember(stableInitialConfig) { mutableStateOf(false) }
-    // Tracks whether the kimi capability was ever live in this editing session,
-    // so "never had it" (still loading) is not treated as "lost mid-edit".
-    var kimiSdkCapabilitySeen by remember(stableInitialConfig) { mutableStateOf(false) }
-    var command by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.command.orEmpty()) }
-    var envVarEntries by remember(stableInitialConfig) {
-        mutableStateOf(stableInitialConfig.envVars.orEmpty().entries.map { it.key to it.value })
-    }
-    var pendingRuntimeSwitchConfig by remember(stableInitialConfig) { mutableStateOf<RuntimeConfig?>(null) }
-    var pendingRetainBuiltInProviderSecret by remember(stableInitialConfig) { mutableStateOf(false) }
-    var pendingKimiSdkFormDefinitionRef by remember(stableInitialConfig) {
-        mutableStateOf<SharedRuntimeFormDefinitionRef?>(null)
-    }
-    var awaitingServerModelForRuntime by remember(stableInitialConfig) { mutableStateOf(false) }
-    var acceptedCatalogGeneration by remember(stableInitialConfig) {
-        mutableStateOf(runtimeModelGenerationsByRuntime[stableInitialConfig.runtime] ?: 0L)
-    }
-    var pendingCatalogValidatedSave by remember(stableInitialConfig) {
-        mutableStateOf<MembersPendingRuntimeConfigSave?>(null)
-    }
-    var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
-    var advancedOpen by remember(stableInitialConfig) {
-        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty() || builtInLoadLocalPlugins)
-    }
-    fun applyRuntimeSwitch(switch: MembersRuntimeConfigRuntimeSwitch) {
-        runtime = switch.runtime
-        model = switch.model
-        reasoningEffort = switch.reasoningEffort
-        switch.awaitingServerModelForRuntime?.let { awaitingServerModelForRuntime = it }
-        if (switch.clearCustomModel) {
-            customModelMode = false
-            customModelName = ""
-        }
-        if (switch.resetRuntimeSpecificFields) {
-            providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
-            providerApiUrl = ""
-            providerApiKey = TextFieldValue("")
-            piProviderId = "configured"
-            piProviderApiKey = TextFieldValue("")
-            fastMode = false
-            command = ""
-        }
-    }
-    fun switchRuntime(nextRuntime: String) {
-        applyRuntimeSwitch(
-            membersRuntimeConfigRuntimeSwitch(
-                initialConfig = stableInitialConfig,
-                currentRuntime = runtime,
-                nextRuntime = nextRuntime,
-                currentReasoningEffort = reasoningEffort,
-                nextRuntimeModels = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
-            )
-        )
-    }
-    val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
-    val cleanServerId = currentServerId?.trim().orEmpty()
-    val cleanMachineId = machineId?.trim().orEmpty()
-    val builtInForm = formStoreState?.resolvedForms?.entries
-        ?.singleOrNull { (key, _) ->
-            key.serverId == cleanServerId &&
-                key.machineId == cleanMachineId &&
-                key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
-        }
-        ?.value
-    val builtInFormLoading = formStoreState?.loadingForms?.any { key ->
-        key.serverId == cleanServerId &&
-            key.machineId == cleanMachineId &&
-            key.ref.runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID
-    } == true
-    // kimi-sdk (task #275): resolved exact form for the current agent's
-    // computer. The store's owner/generation fencing keeps a stale or
-    // out-of-order form from replacing a newer resolution.
-    val kimiSdkForm = formStoreState?.resolvedForms?.entries
-        ?.singleOrNull { (key, _) ->
-            key.serverId == cleanServerId &&
-                key.machineId == cleanMachineId &&
-                key.ref.runtimeId == CREATE_AGENT_KIMI_SDK_RUNTIME_ID
-        }
-        ?.value
-        ?.takeIf { it.definition.ref.isSupportedKimiSdk }
-    val kimiSdkFormRef = kimiSdkReasoningFormRef(kimiSdkForm)
-    var builtInFormError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
-    var builtInFormReloadGeneration by remember(stableInitialConfig) { mutableStateOf(0) }
-    val customModelMissing = customModelMode && customModelName.trim().isBlank()
-    val providerUrlInvalid =
-        runtime == "claude" &&
-            providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
-            !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
-    val providerKeyInvalid =
-        runtime == "claude" &&
-            providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
-            providerApiKey.text.isBlank()
-    val piProviderKeyInvalid =
-        runtime == "pi" && piProviderId != "configured" && piProviderApiKey.text.isBlank()
-    val runtimeModelsCatalog = runtimeModelsByRuntime[runtime]
-    val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
-    val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
-    val runtimeModelsError = runtimeModelErrorsByRuntime[runtime]
-    // kimi-sdk (task #275): selector/save capability = selected model's LIVE
-    // catalog entry + the resolved exact form ref. No static fallback.
-    val kimiSdkCatalogCapability = kimiSdkLiveReasoningCapability(runtime, model, runtimeModelsOverride)
-    val kimiSdkEditCapability = kimiSdkCatalogCapability.takeIf { kimiSdkFormRef != null }
-    val catalogValidationInFlight = pendingCatalogValidatedSave != null
-    val retainBuiltInProviderSecret =
-        membersCanRetainBuiltInProviderSecret(
-            initialConfig = stableInitialConfig,
-            runtime = runtime,
-            providerId = builtInProviderId,
-            baseUrl = builtInBaseUrl,
-            replacementApiKey = builtInApiKey.text
-        )
-    val builtInConfigForSave =
-        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-            builtInForm?.buildBuiltInRuntimeConfig(
-                providerId = builtInProviderId,
-                apiKey = builtInApiKey.text.ifBlank {
-                    if (retainBuiltInProviderSecret) MembersRetainedBuiltInSecretPlaceholder else ""
-                },
-                baseUrl = builtInBaseUrl,
-                model = model,
-                envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                supportsImageInput = builtInSupportsImageInput,
-                loadLocalPlugins = builtInLoadLocalPlugins
-            )?.membersProjectRetainedBuiltInSecret(retainBuiltInProviderSecret)
-        } else {
-            null
-        }
-    val runtimeConfigSaveEnabled =
-        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-            builtInConfigForSave != null && !builtInFormLoading && builtInFormError == null
-        } else membersAgentRuntimeConfigSaveAttemptEnabled(
-            runtime = runtime,
-            model = model,
-            customModelMode = customModelMode,
-            customModelName = customModelName,
-            machineRuntimeIds = machineRuntimeIds
-        )
-
-    LaunchedEffect(runtime) {
-        if (runtime.isNotBlank() && runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-            onRuntimeModelsRequest(runtime, false)
-        }
-    }
-    LaunchedEffect(
-        runtime,
-        createAgentFormStore,
-        cleanServerId,
-        cleanMachineId,
-        builtInFormReloadGeneration
-    ) {
-        if (
-            runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID &&
-            createAgentFormStore != null &&
-            cleanServerId.isNotBlank() &&
-            cleanMachineId.isNotBlank()
-        ) {
-            builtInFormError = null
-            when (
-                val result = createAgentFormStore.loadSupportedBuiltInFormForEdit(
-                    serverId = cleanServerId,
-                    machineId = cleanMachineId,
-                    force = builtInFormReloadGeneration > 0
-                )
-            ) {
-                is DataResult.Content -> Unit
-                is DataResult.Empty ->
-                    builtInFormError = "runtime_form_unavailable".userFacingErrorCodeMessage(errorStrings)
-                is DataResult.Error -> builtInFormError = result.error.userFacingMessage(errorStrings)
-                is DataResult.NoPermission -> builtInFormError = result.blocker.userFacingMessage(errorStrings)
-            }
-        }
-    }
-    // kimi-sdk (task #275): parallel form load with the same store-level
-    // generation fencing. Fail-closed: a missing/failed form just keeps the
-    // reasoning selector hidden (it is optional, unlike Built-in's apiKey).
-    LaunchedEffect(runtime, createAgentFormStore, cleanServerId, cleanMachineId) {
-        if (
-            runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID &&
-            createAgentFormStore != null &&
-            cleanServerId.isNotBlank() &&
-            cleanMachineId.isNotBlank()
-        ) {
-            createAgentFormStore.loadSupportedKimiSdkFormForEdit(cleanServerId, cleanMachineId)
-        }
-    }
-    // kimi-sdk: reconcile the draft effort against the live capability once it
-    // arrives; if it is lost mid-edit (catalog refreshed empty, form dropped),
-    // fail closed back to Default with no explicit selection left to submit.
-    LaunchedEffect(runtime, kimiSdkEditCapability) {
-        if (runtime != CREATE_AGENT_KIMI_SDK_RUNTIME_ID) return@LaunchedEffect
-        val capability = kimiSdkEditCapability
-        if (capability != null) {
-            kimiSdkCapabilitySeen = true
-            val reconciled = reconcileKimiSdkReasoningEffort(capability, reasoningEffort)
-            if (reconciled != reasoningEffort) {
-                reasoningEffort = reconciled
-            }
-        } else if (kimiSdkCapabilitySeen) {
-            reasoningEffort = null
-            reasoningEffortTouched = false
-        }
-    }
-    LaunchedEffect(runtime, builtInForm) {
-        if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID && builtInForm != null) {
-            val providerSource =
-                builtInForm.optionSources["provider"] as?
-                    build.raft.app.data.SharedAgentCreateFormOptionSource.Select
-            val selectedProvider = providerSource?.options?.singleOrNull { it.value == builtInProviderId }
-            if (selectedProvider == null) {
-                val nextProvider = providerSource?.defaultValue.orEmpty()
-                builtInProviderId = nextProvider
-                builtInBaseUrl = ""
-                builtInApiKey = TextFieldValue("")
-                builtInSupportsImageInput = false
-                builtInLoadLocalPlugins = false
-                val modelSource =
-                    builtInForm.optionSources["model"] as?
-                        build.raft.app.data.SharedAgentCreateFormOptionSource.DependentSelect
-                model = modelSource?.defaultValueByValue?.get(nextProvider).orEmpty()
-                customModelMode = modelSource?.customValueAllowedByValue?.get(nextProvider) == true
-                customModelName = if (customModelMode) model else ""
-            }
-        }
-    }
-    LaunchedEffect(runtime, runtimeModelsCatalog, awaitingServerModelForRuntime) {
-        if (awaitingServerModelForRuntime && runtimeModelsCatalog != null) {
-            val nextModel =
-                runtimeModelsCatalog.defaultModel
-                    ?.takeIf { default -> runtimeModelsCatalog.models.any { it.id == default } }
-                    ?: runtimeModelsCatalog.models.firstOrNull()?.id.orEmpty()
-            val selection =
-                createAgentRuntimeModelReasoningSelection(
-                    runtime = runtime,
-                    model = nextModel,
-                    currentReasoningEffort = reasoningEffort,
-                    runtimeModelsOverride = runtimeModelsCatalog.models
-                )
-            model = selection.model
-            reasoningEffort = selection.reasoningEffort
-            acceptedCatalogGeneration = runtimeModelGenerationsByRuntime[runtime] ?: 0L
-            awaitingServerModelForRuntime = false
-        }
-    }
-    LaunchedEffect(
-        runtime,
-        model,
-        customModelMode,
-        customModelName,
-        providerMode,
-        providerApiUrl,
-        providerApiKey.text,
-        piProviderId,
-        piProviderApiKey.text,
-        fastMode,
-        reasoningEffort,
-        command,
-        envVarEntries
-    ) {
-        saveValidationError = null
-    }
-    LaunchedEffect(
-        pendingCatalogValidatedSave,
-        runtimeModelsLoading,
-        runtimeModelsError,
-        runtimeModelsCatalog,
-        runtimeModelGenerationsByRuntime
-    ) {
-        val pending = pendingCatalogValidatedSave ?: return@LaunchedEffect
-        val currentGeneration = runtimeModelGenerationsByRuntime[pending.runtime] ?: 0L
-        if (currentGeneration < pending.requestGeneration || runtimeModelsLoading) {
-            return@LaunchedEffect
-        }
-        val catalog = runtimeModelsByRuntime[pending.runtime]
-        val validationError = runtimeModelErrorsByRuntime[pending.runtime]
-        if (validationError != null || catalog == null) {
-            saveValidationError =
-                validationError
-                    ?: "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings)
-            pendingCatalogValidatedSave = null
-            return@LaunchedEffect
-        }
-        if (!membersAgentRuntimeConfigSaveEnabled(
-                runtime = pending.runtime,
-                model = pending.model,
-                customModelMode = pending.customModelMode,
-                customModelName = pending.customModelName,
-                machineRuntimeIds = machineRuntimeIds,
-                runtimeModelsCatalog = catalog,
-                runtimeModelsLoading = false,
-                runtimeModelsError = null
-            )
-        ) {
-            saveValidationError = "runtime_models_unavailable".userFacingErrorCodeMessage(errorStrings)
-            pendingCatalogValidatedSave = null
-            return@LaunchedEffect
-        }
-        acceptedCatalogGeneration = currentGeneration
-        pendingCatalogValidatedSave = null
-        // kimi-sdk: recompute the effort/ref decision against the catalog that
-        // was just validated, so the save never targets a stale capability.
-        val completedKimiSdkDecision =
-            if (pending.runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && runtime == pending.runtime) {
-                membersKimiSdkReasoningSaveDecision(
-                    capability =
-                        kimiSdkLiveReasoningCapability(pending.runtime, pending.model, catalog.models)
-                            .takeIf { kimiSdkFormRef != null },
-                    formRef = kimiSdkFormRef,
-                    effortTouched = reasoningEffortTouched,
-                    modelChanged = pending.model != stableInitialConfig.toMembersRuntimeModelValue(),
-                    currentEffort = reasoningEffort
-                )
-            } else {
-                null
-            }
-        val completedConfig =
-            if (completedKimiSdkDecision != null) {
-                pending.config.copy(reasoningEffort = completedKimiSdkDecision.reasoningEffort)
-            } else {
-                pending.config
-            }
-        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, completedConfig, activeAgent) != null) {
-            pendingRuntimeSwitchConfig = completedConfig
-            pendingRetainBuiltInProviderSecret = pending.retainBuiltInProviderSecret
-            pendingKimiSdkFormDefinitionRef = completedKimiSdkDecision?.formDefinitionRef
-        } else {
-            onSave(
-                completedConfig,
-                currentGeneration,
-                pending.retainBuiltInProviderSecret,
-                completedKimiSdkDecision?.formDefinitionRef
-            )
-        }
-    }
-    val runtimeEditorProfileAuthorityCurrent =
-        membersAgentProfileEditAuthorityMatches(
-            opened = openedProfileAuthority,
-            current = currentProfileAuthority,
-            // Catalog freshness is checked by the Save attempt. A background refresh must
-            // never disable the editor before the user asks to validate the draft.
-            openedCatalogGeneration = 0L,
-            currentCatalogGeneration = 0L
-        )
-
-    val runtimeConfigListState = rememberLazyListState()
-    val runtimeConfigScrollScope = rememberCoroutineScope()
-    var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
-    val runtimeConfigScrollCoordinator = remember {
-        RaftFocusedEditorScrollRequestCoordinator()
-    }
-    DisposableEffect(runtimeConfigScrollCoordinator) {
-        onDispose { runtimeConfigScrollCoordinator.invalidate() }
-    }
-
-    // Read here: dialog content is hosted at the page root, outside the route's usage access.
-    val runtimeQuotaMachine = machineId?.takeIf { it.isNotBlank() }?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.member_dialog_edit_runtime_config).raftDisplayUppercase(),
-        dismissEnabled = !saving,
-        keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
-    ) {
-        val focusedRuntimeEditorBounds = rememberRaftFocusedInputBoundsResolver()
-        val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
-
-        fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
-            dialogKeyboardHeightChange(params)
-            val requestGeneration = runtimeConfigScrollCoordinator.begin()
-            if (params.height <= 0f) return
-            val job = runtimeConfigScrollScope.launch {
-                raftUnifiedDialogKeepFocusedEditorVisible(
-                    keyboardHeight = params.height,
-                    awaitRelayoutFrame = { withFrameNanos { } },
-                    focusedBounds = focusedRuntimeEditorBounds,
-                    viewportBounds = { runtimeConfigViewport },
-                    currentScrollPosition = {
-                        RaftUnifiedDialogListScrollPosition(
-                            index = runtimeConfigListState.firstVisibleItemIndex,
-                            scrollOffset = runtimeConfigListState.firstVisibleItemScrollOffset
-                        )
-                    },
-                    scrollToItem = { index, scrollOffset ->
-                        runtimeConfigListState.scrollToItem(index, scrollOffset)
-                    },
-                    isScrollInProgress = { runtimeConfigListState.isScrollInProgress },
-                    isRequestCurrent = {
-                        runtimeConfigScrollCoordinator.isCurrent(requestGeneration)
-                    }
-                )
-            }
-            runtimeConfigScrollCoordinator.attach(job)
-        }
-
-        CompositionLocalProvider(
-            LocalRaftDialogKeyboardHeightChange provides ::keepFocusedRuntimeEditorVisible
-        ) {
-        // Kuikly's row/column measure policy hands the remaining height to unweighted
-        // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
-        // viewport and leave the trailing Save/Cancel row at zero height.
-        // We use LazyColumn(weight(1f, fill = false)) so the dialog shrink-wraps when
-        // small and scrolls while preserving bottom actions when content or keyboard grows.
-        LazyColumn(
-            state = runtimeConfigListState,
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
-                .onGloballyPositioned { runtimeConfigViewport = it.boundsInRoot() },
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-                item {
-                    if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                        BuiltInRuntimeSection(
-                            runtime = runtime,
-                            quotaMachine = runtimeQuotaMachine,
-                            onRuntimeChange = ::switchRuntime,
-                            machineRuntimeIds = machineRuntimeIds,
-                            runtimeAvailabilityError = null,
-                            form = builtInForm,
-                            loading = builtInFormLoading,
-                            providerId = builtInProviderId,
-                            onProviderIdChange = { nextProvider ->
-                                if (nextProvider != builtInProviderId) {
-                                    builtInApiKey = TextFieldValue("")
-                                    builtInBaseUrl = ""
-                                    builtInSupportsImageInput = false
-                                    builtInLoadLocalPlugins = false
-                                }
-                                builtInProviderId = nextProvider
-                            },
-                            apiKey = builtInApiKey,
-                            onApiKeyChange = { builtInApiKey = it },
-                            baseUrl = builtInBaseUrl,
-                            onBaseUrlChange = { builtInBaseUrl = it },
-                            supportsImageInput = builtInSupportsImageInput,
-                            onSupportsImageInputChange = { builtInSupportsImageInput = it },
-                            loadLocalPlugins = builtInLoadLocalPlugins,
-                            onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
-                            model = model,
-                            onModelChange = { model = it },
-                            envVarEntries = envVarEntries,
-                            onEnvVarEntriesChange = { envVarEntries = it },
-                            advancedOpen = advancedOpen,
-                            onAdvancedOpenChange = { advancedOpen = it },
-                            enabled = !saving && !catalogValidationInFlight
-                        )
-                        builtInFormError?.let { formError ->
-                            Text(
-                                text = formError,
-                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
-                                    .copy(color = RaftColor.AccentRed),
-                                color = RaftColor.AccentRed
-                            )
-                            RaftButton(
-                                text = stringResource(Res.string.common_retry),
-                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
-                                enabled = !builtInFormLoading && !saving,
-                                variant = RaftButtonVariant.Default,
-                                size = RaftButtonSize.Md,
-                                onClick = { builtInFormReloadGeneration += 1 }
-                            )
-                        }
-                    } else AdvancedRuntimeSection(
-                        runtime = runtime,
-                        quotaMachine = runtimeQuotaMachine,
-                        existingRuntimeId = stableInitialConfig.runtime,
-                        onRuntimeChange = ::switchRuntime,
-                        model = model,
-                        onModelSelectionChange = { selection ->
-                            model = selection.model
-                            // kimi-sdk: reconcile against the NEW model's live
-                            // catalog entry; never leak the old model's effort.
-                            reasoningEffort =
-                                if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
-                                    reconcileKimiSdkReasoningEffort(
-                                        kimiSdkLiveReasoningCapability(runtime, selection.model, runtimeModelsOverride),
-                                        reasoningEffort
-                                    )
-                                } else {
-                                    selection.reasoningEffort
-                                }
-                            customModelName = selection.model
-                        },
-                        customModelMode = customModelMode,
-                        onCustomModelModeChange = { enabled ->
-                            customModelMode = enabled
-                            if (enabled && customModelName.isBlank()) {
-                                customModelName = model
-                            }
-                            if (enabled) {
-                                reasoningEffort =
-                                    reconcileCreateAgentReasoningEffort(
-                                        runtime = runtime,
-                                        model = customModelName.trim(),
-                                        current = reasoningEffort,
-                                        runtimeModelsOverride = emptyList()
-                                    )
-                            }
-                        },
-                        customModelName = customModelName,
-                        onCustomModelNameChange = {
-                            customModelName = it
-                            model = it
-                        },
-                        runtimeModelsOverride = runtimeModelsOverride,
-                        runtimeModelsLoading = runtimeModelsLoading,
-                        // Catalog prefetch is advisory while editing. Only a Save attempt may
-                        // surface its failure; the persisted draft must remain visible/editable.
-                        runtimeAvailabilityError = null,
-                        onRuntimeModelsRefresh = {
-                            onRuntimeModelsRequest(runtime, true)
-                        },
-                        retainUnavailableSelectedPreset = true,
-                        machineRuntimeIds = machineRuntimeIds,
-                        enabled = !saving && !catalogValidationInFlight,
-                        providerMode = providerMode,
-                        onProviderModeChange = { providerMode = it },
-                        providerApiUrl = providerApiUrl,
-                        onProviderApiUrlChange = { providerApiUrl = it },
-                        providerApiKey = providerApiKey,
-                        onProviderApiKeyChange = { providerApiKey = it },
-                        piProviderId = piProviderId,
-                        onPiProviderIdChange = {
-                            piProviderId = it
-                            if (it == "configured") piProviderApiKey = TextFieldValue("")
-                        },
-                        piProviderApiKey = piProviderApiKey,
-                        onPiProviderApiKeyChange = { piProviderApiKey = it },
-                        fastMode = fastMode,
-                        onFastModeChange = { fastMode = it },
-                        reasoningEffort = reasoningEffort,
-                        onReasoningEffortChange = { nextEffort ->
-                            reasoningEffort = nextEffort
-                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
-                                reasoningEffortTouched = true
-                            }
-                        },
-                        kimiSdkReasoningCapability = kimiSdkEditCapability,
-                        envVarEntries = envVarEntries,
-                        onEnvVarEntriesChange = { envVarEntries = it },
-                        command = command,
-                        onCommandChange = { command = it },
-                        advancedOpen = advancedOpen,
-                        onAdvancedOpenChange = { advancedOpen = it }
-                    )
-                }
-                item {
-                    Text(
-                        text = stringResource(Res.string.member_hint_runtime_restart),
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextMutedGray
-                    )
-                }
-                error?.takeIf { it.isNotBlank() }?.let { message ->
-                    item {
-                        Text(
-                            text = message,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
-                                .copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-                saveValidationError?.takeIf { it.isNotBlank() }?.let { message ->
-                    item {
-                        Text(
-                            text = message,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
-                                .copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-            }
-            RaftDialogFooter {
-                RaftButton(
-                    text = stringResource(Res.string.common_cancel),
-                    enabled = !saving,
-                    onClick = onDismiss,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Lg
-                )
-                // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
-                RaftButton(
-                    text = if (saving) stringResource(Res.string.member_action_saving) else stringResource(Res.string.member_action_save_runtime_config),
-                    enabled =
-                        !saving &&
-                            !catalogValidationInFlight &&
-                            runtimeConfigSaveEnabled &&
-                            runtimeEditorProfileAuthorityCurrent &&
-                            !customModelMissing &&
-                            !providerUrlInvalid &&
-                            !providerKeyInvalid &&
-                            !piProviderKeyInvalid,
-                    variant = RaftButtonVariant.Primary,
-                    size = RaftButtonSize.Lg,
-                    onClick = {
-                        val effectiveModel = if (customModelMode) customModelName.trim() else model
-                        val reasoningMetadata =
-                            createAgentReasoningModelMetadata(
-                                runtime = runtime,
-                                model = effectiveModel,
-                                runtimeModelsOverride = runtimeModelsOverride
-                            )
-                        val nextConfig =
-                            if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                builtInConfigForSave ?: return@RaftButton
-                            } else buildRuntimeConfig(
-                                runtime = runtime,
-                                model = if (customModelMode) customModelName else model,
-                                customModelMode = customModelMode,
-                                customModelName = customModelName.takeIf { customModelMode },
-                                providerMode = providerMode,
-                                providerApiUrl = providerApiUrl,
-                                providerApiKey = providerApiKey.text,
-                                piProviderId = piProviderId,
-                                piProviderApiKey = piProviderApiKey.text,
-                                fastMode = fastMode,
-                                reasoningEffort = reasoningEffort,
-                                reasoningSupportedEfforts = reasoningMetadata.supportedReasoningEfforts,
-                                reasoningDefaultEffort = reasoningMetadata.defaultReasoningEffort,
-                                envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                                command = command
-                            )
-                        // kimi-sdk (task #275): buildRuntimeConfig keeps kimi
-                        // efforts null (static gate); the live-capability save
-                        // decision is the only channel for an explicit effort
-                        // and for the exact form ref.
-                        val kimiSdkSaveDecision =
-                            if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID) {
-                                membersKimiSdkReasoningSaveDecision(
-                                    capability = kimiSdkEditCapability,
-                                    formRef = kimiSdkFormRef,
-                                    effortTouched = reasoningEffortTouched,
-                                    modelChanged =
-                                        effectiveModel != stableInitialConfig.toMembersRuntimeModelValue(),
-                                    currentEffort = reasoningEffort
-                                )
-                            } else {
-                                null
-                            }
-                        val saveConfig =
-                            if (kimiSdkSaveDecision != null) {
-                                nextConfig.copy(reasoningEffort = kimiSdkSaveDecision.reasoningEffort)
-                            } else {
-                                nextConfig
-                            }
-                        val saveFormDefinitionRef = kimiSdkSaveDecision?.formDefinitionRef
-                        if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID &&
-                            !membersAgentRuntimeConfigSaveEnabled(
-                                runtime = runtime,
-                                model = model,
-                                customModelMode = customModelMode,
-                                customModelName = customModelName,
-                                machineRuntimeIds = machineRuntimeIds,
-                                runtimeModelsCatalog = runtimeModelsCatalog,
-                                runtimeModelsLoading = runtimeModelsLoading,
-                                runtimeModelsError = runtimeModelsError
-                            )
-                        ) {
-                            saveValidationError = null
-                            val requestGeneration =
-                                (runtimeModelGenerationsByRuntime[runtime] ?: 0L) + 1L
-                            pendingCatalogValidatedSave =
-                                MembersPendingRuntimeConfigSave(
-                                    config = saveConfig,
-                                    runtime = runtime,
-                                    model = model,
-                                    customModelMode = customModelMode,
-                                    customModelName = customModelName,
-                                    retainBuiltInProviderSecret = retainBuiltInProviderSecret,
-                                    requestGeneration = requestGeneration
-                                )
-                            onRuntimeModelsRequest(runtime, true)
-                            return@RaftButton
-                        }
-                        val validatedCatalogGeneration =
-                            runtimeModelGenerationsByRuntime[runtime] ?: 0L
-                        acceptedCatalogGeneration = validatedCatalogGeneration
-                        if (membersRuntimeConfigSwitchConfirmation(stableInitialConfig, saveConfig, activeAgent) != null) {
-                            pendingRuntimeSwitchConfig = saveConfig
-                            pendingRetainBuiltInProviderSecret = retainBuiltInProviderSecret
-                            pendingKimiSdkFormDefinitionRef = saveFormDefinitionRef
-                        } else {
-                            onSave(saveConfig, validatedCatalogGeneration, retainBuiltInProviderSecret, saveFormDefinitionRef)
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    pendingRuntimeSwitchConfig?.let { pendingConfig ->
-        membersRuntimeConfigSwitchConfirmation(stableInitialConfig, pendingConfig, activeAgent)?.let { confirmation ->
-            MembersRuntimeConfigSwitchConfirmationDialog(
-                confirmation = confirmation,
-                onConfirm = {
-                    pendingRuntimeSwitchConfig = null
-                    onSave(
-                        pendingConfig,
-                        acceptedCatalogGeneration,
-                        pendingRetainBuiltInProviderSecret,
-                        pendingKimiSdkFormDefinitionRef
-                    )
-                    pendingRetainBuiltInProviderSecret = false
-                    pendingKimiSdkFormDefinitionRef = null
-                },
-                onCancel = {
-                    if (!saving) {
-                        pendingRuntimeSwitchConfig = null
-                        pendingRetainBuiltInProviderSecret = false
-                        pendingKimiSdkFormDefinitionRef = null
-                    }
-                }
-            )
-        } ?: run {
-            pendingRuntimeSwitchConfig = null
-        }
-    }
-}
-
-private data class MembersPendingRuntimeConfigSave(
-    val config: RuntimeConfig,
-    val runtime: String,
-    val model: String,
-    val customModelMode: Boolean,
-    val customModelName: String,
-    val retainBuiltInProviderSecret: Boolean,
-    val requestGeneration: Long
-)
-
-internal data class MembersRuntimeConfigSwitchConfirmation(
-    val title: StringDesc,
-    val message: String,
-    val confirmLabel: StringDesc
-)
-
 internal fun membersAgentRuntimeActive(status: AgentStatus?): Boolean =
     status != null && status.presence != Presence.Offline
 
@@ -12030,7 +10945,7 @@ internal data class MembersRuntimeEditorLiveFacts(
     val formV2Available: Boolean
 )
 
-internal enum class MembersRuntimeEditorDialog { None, FormV2, Legacy }
+internal enum class MembersRuntimeEditorDialog { None, FormV2 }
 
 /** The agent-detail route's manage right: private surfaces plus server admin or agent creator. */
 internal fun membersRouteCanManageAgent(
@@ -12083,15 +10998,27 @@ internal fun membersRuntimeEditorDialog(
     ) {
         return MembersRuntimeEditorDialog.None
     }
-    // A v2-opened session never hands over to v1 (task #8): load failures and runtime switches
-    // stay in the v2 dialog.
-    return if (openedFormV2) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.Legacy
+    // Runtime form v2 is the only editor (task #8): load failures, runtime switches and an agent
+    // without a computer all stay in it. Without v2 access (no loader or server) nothing opens.
+    return if (openedFormV2) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.None
+}
+
+/**
+ * Runs a v2 save [block] and always ends the saving state, whatever way it exits (a stale
+ * authority after the request returns early; before this every such exit left Save spinning).
+ */
+internal suspend fun membersRuntimeEditorSaving(setSaving: (Boolean) -> Unit, block: suspend () -> Unit) {
+    try {
+        block()
+    } finally {
+        setSaving(false)
+    }
 }
 
 /**
  * The PATCH for a v2 edit save: only the form ref and values travel. A runtime switch starts a
  * new session (`restartMode: "session"`, as web after task #8; the server forces it too);
- * otherwise an active agent restarts to pick the change up, as the v1 editor decides.
+ * otherwise an active agent restarts to pick the change up.
  */
 internal fun membersRuntimeFormV2UpdateRequest(
     agentId: MemberId,
@@ -12114,111 +11041,7 @@ internal fun membersRuntimeFormV2UpdateRequest(
         runtimeFormV2 = submit
     )
 
-internal fun membersRuntimeConfigResetMode(
-    currentConfig: RuntimeConfig,
-    nextConfig: RuntimeConfig,
-    activeAgent: Boolean
-): AgentResetMode? =
-    when {
-        nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
-        activeAgent -> AgentResetMode.Restart
-        else -> null
-    }
-
-internal data class MembersKimiSdkReasoningSaveDecision(
-    val reasoningEffort: String?,
-    val formDefinitionRef: SharedRuntimeFormDefinitionRef?
-)
-
-/**
- * kimi-sdk edit-save wire split (task #275), driven ONLY by live capability:
- * - effort untouched AND model unchanged → null effort and NO formDefinitionRef:
- *   the server's legacy same-model retention preserves any stored effort.
- * - effort explicitly picked, or model switched → explicit effort (reconciled
- *   against the selected model's live catalog entry, so an old model's value
- *   can never leak) plus the current exact kimi-sdk form ref.
- * - any capability gap (no resolved form ref, empty live efforts, invalid
- *   default) fails closed: null effort, no ref.
- */
-internal fun membersKimiSdkReasoningSaveDecision(
-    capability: KimiSdkLiveReasoningCapability?,
-    formRef: SharedRuntimeFormDefinitionRef?,
-    effortTouched: Boolean,
-    modelChanged: Boolean,
-    currentEffort: String?
-): MembersKimiSdkReasoningSaveDecision {
-    val ref = formRef?.takeIf { it.isSupportedKimiSdk }
-    if (!effortTouched && !modelChanged) {
-        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
-    }
-    if (capability == null || ref == null) {
-        return MembersKimiSdkReasoningSaveDecision(reasoningEffort = null, formDefinitionRef = null)
-    }
-    return MembersKimiSdkReasoningSaveDecision(
-        reasoningEffort = currentEffort?.takeIf { it in capability.supportedReasoningEfforts },
-        formDefinitionRef = ref
-    )
-}
-
-internal fun membersRuntimeConfigSwitchConfirmation(
-    currentConfig: RuntimeConfig,
-    nextConfig: RuntimeConfig,
-    activeAgent: Boolean
-): MembersRuntimeConfigSwitchConfirmation? {
-    if (nextConfig.runtime == currentConfig.runtime) return null
-
-    val fromRuntimeLabel = getRuntimeDisplayName(currentConfig.runtime)
-    val nextRuntimeLabel = getRuntimeDisplayName(nextConfig.runtime)
-    val nextModelLabel = getModelLabel(nextConfig.runtime, nextConfig.toMembersRuntimeModelValue())
-    val reasoningCopy =
-        if (supportsRuntimeReasoningEffort(nextConfig.runtime)) {
-            val label = nextConfig.reasoningEffort?.toMembersDisplayLabel() ?: "Default"
-            if (activeAgent) " with $label reasoning" else " and $label reasoning"
-        } else {
-            ""
-        }
-    val modeCopy =
-        if (supportsRuntimeFastMode(nextConfig.runtime) && nextConfig.mode is RuntimeModeConfig.Fast) {
-            " in fast mode"
-        } else {
-            ""
-        }
-    val message =
-        if (activeAgent) {
-            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will reset the current runtime session. " +
-                "The next launch will use model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
-        } else {
-            "Changing runtime configuration from $fromRuntimeLabel to $nextRuntimeLabel will apply on the next start with a fresh runtime session. " +
-                "The agent will launch with model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
-        }
-    return MembersRuntimeConfigSwitchConfirmation(
-        title = Res.string.member_action_switch_runtime_config.desc(),
-        message = message,
-        confirmLabel =
-            if (activeAgent) {
-                Res.string.member_action_reset_runtime_session.desc()
-            } else {
-                Res.string.member_action_save_runtime_change.desc()
-            }
-    )
-}
-
-@Composable
-private fun MembersRuntimeConfigSwitchConfirmationDialog(
-    confirmation: MembersRuntimeConfigSwitchConfirmation,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit
-) {
-    MembersRuntimeSwitchConfirmationDialog(
-        title = confirmation.title.localized(),
-        message = confirmation.message,
-        confirmLabel = confirmation.confirmLabel.localized(),
-        onConfirm = onConfirm,
-        onCancel = onCancel
-    )
-}
-
-/** The runtime-switch confirmation shared by the v1 and v2 runtime editors. */
+/** The runtime-switch confirmation used by the runtime editor. */
 @Composable
 internal fun MembersRuntimeSwitchConfirmationDialog(
     title: String,
@@ -12282,83 +11105,12 @@ internal sealed interface MembersAgentRuntimeConfigResolution {
     data class Unavailable(val code: String) : MembersAgentRuntimeConfigResolution
 }
 
-private const val MembersRetainedBuiltInSecretPlaceholder = "retained-by-server"
-
 private fun RuntimeProviderConfig?.membersBuiltInProviderId(): String =
     when (this) {
         is RuntimeProviderConfig.Preset -> providerId
         is RuntimeProviderConfig.Gateway -> providerId
         else -> ""
     }
-
-internal fun membersCanRetainBuiltInProviderSecret(
-    initialConfig: RuntimeConfig,
-    runtime: String,
-    providerId: String,
-    baseUrl: String,
-    replacementApiKey: String
-): Boolean {
-    if (runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID || replacementApiKey.isNotBlank()) return false
-    if (initialConfig.runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) return false
-    val cleanProviderId = providerId.trim()
-    return when (val provider = initialConfig.provider) {
-        is RuntimeProviderConfig.Preset -> provider.providerId == cleanProviderId
-        is RuntimeProviderConfig.Gateway ->
-            provider.providerId == cleanProviderId && provider.baseUrl.trim() == baseUrl.trim()
-        else -> false
-    }
-}
-
-private fun RuntimeConfig.membersProjectRetainedBuiltInSecret(retain: Boolean): RuntimeConfig {
-    if (!retain || runtime != CREATE_AGENT_BUILTIN_RUNTIME_ID) return this
-    val projectedProvider =
-        when (val current = provider) {
-            is RuntimeProviderConfig.Preset -> current.copy(apiKey = "")
-            is RuntimeProviderConfig.Gateway -> current.copy(apiKey = "")
-            else -> current
-        }
-    return copy(provider = projectedProvider)
-}
-
-internal fun membersAgentRuntimeConfigSaveEnabled(
-    runtime: String,
-    model: String,
-    customModelMode: Boolean,
-    customModelName: String,
-    machineRuntimeIds: List<String>,
-    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
-    runtimeModelsLoading: Boolean,
-    runtimeModelsError: String?
-): Boolean {
-    if (
-        runtime !in machineRuntimeIds ||
-        runtimeModelsCatalog == null ||
-        runtimeModelsLoading ||
-        runtimeModelsError != null
-    ) {
-        return false
-    }
-    return if (customModelMode) {
-        customModelName.trim().isNotBlank()
-    } else {
-        runtimeModelsCatalog.models.any { it.id == model }
-    }
-}
-
-internal fun membersAgentRuntimeConfigSaveAttemptEnabled(
-    runtime: String,
-    model: String,
-    customModelMode: Boolean,
-    customModelName: String,
-    machineRuntimeIds: List<String>
-): Boolean {
-    if (runtime !in machineRuntimeIds) return false
-    return if (customModelMode) {
-        customModelName.trim().isNotBlank()
-    } else {
-        model.trim().isNotBlank()
-    }
-}
 
 internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgentRuntimeConfigResolution {
     val summary = this ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_profile_missing")
@@ -12380,6 +11132,21 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
     ))
 }
 
+/**
+ * kimi-sdk shows a reasoning row only when the computer's live catalog entry for [model] declares
+ * efforts with a valid default (task #275); there is no static fallback for kimi-sdk.
+ */
+private fun membersKimiSdkModelDeclaresReasoning(
+    runtime: String,
+    model: String,
+    liveModels: List<SharedCreateAgentRuntimeModelOption>
+): Boolean {
+    if (runtime != "kimi-sdk") return false
+    val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
+    val default = live.defaultReasoningEffort
+    return live.supportedReasoningEfforts.isNotEmpty() && !default.isNullOrBlank() && default in live.supportedReasoningEfforts
+}
+
 internal fun membersRuntimeModelConfig(
     runtime: String,
     model: String,
@@ -12389,7 +11156,9 @@ internal fun membersRuntimeModelConfig(
         "custom" -> RuntimeModelConfig.Custom(model)
         "preset" -> RuntimeModelConfig.Preset(model)
         else -> {
-            val customModelMode = createAgentModelSelectionForValue(runtime, model).first
+            // No stored kind: a value outside the runtime's bundled presets is a custom model name.
+            val trimmed = model.trim()
+            val customModelMode = trimmed.isNotBlank() && RUNTIME_MODELS[runtime].orEmpty().none { it.id == trimmed }
             if (customModelMode) RuntimeModelConfig.Custom(model) else RuntimeModelConfig.Preset(model)
         }
     }
@@ -12398,57 +11167,6 @@ private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
     when (val modelConfig = model) {
         is RuntimeModelConfig.Preset -> modelConfig.id
         is RuntimeModelConfig.Custom -> modelConfig.name
-}
-
-/**
- * Draft reset the v1 runtime config editor applies when its runtime select picks [runtime].
- * [awaitingServerModelForRuntime] null leaves that flag unchanged.
- */
-internal data class MembersRuntimeConfigRuntimeSwitch(
-    val runtime: String,
-    val model: String,
-    val reasoningEffort: String?,
-    val awaitingServerModelForRuntime: Boolean?,
-    val clearCustomModel: Boolean,
-    val resetRuntimeSpecificFields: Boolean
-)
-
-/**
- * The v1 editor's runtime-select reset. From Built-in (its BuiltInRuntimeSection) only the
- * model draft is reset; from any other runtime (AdvancedRuntimeSection) the provider, pi
- * provider, fast mode and command drafts are cleared too. Leaving for a non-Built-in runtime
- * waits for that machine's canonical model catalog: enum/static defaults are not server truth
- * and cannot seed a save.
- */
-internal fun membersRuntimeConfigRuntimeSwitch(
-    initialConfig: RuntimeConfig,
-    currentRuntime: String,
-    nextRuntime: String,
-    currentReasoningEffort: String?,
-    nextRuntimeModels: List<SharedCreateAgentRuntimeModelOption>
-): MembersRuntimeConfigRuntimeSwitch {
-    val toBuiltIn = nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID
-    val fromBuiltIn = currentRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID
-    val selection =
-        createAgentRuntimeModelReasoningSelection(
-            runtime = nextRuntime,
-            model = if (toBuiltIn) initialConfig.toMembersRuntimeModelValue() else "",
-            currentReasoningEffort = currentReasoningEffort,
-            runtimeModelsOverride = nextRuntimeModels
-        )
-    return MembersRuntimeConfigRuntimeSwitch(
-        runtime = selection.runtime,
-        model = selection.model,
-        reasoningEffort = selection.reasoningEffort,
-        awaitingServerModelForRuntime =
-            when {
-                !toBuiltIn -> true
-                fromBuiltIn -> null
-                else -> false
-            },
-        clearCustomModel = !toBuiltIn,
-        resetRuntimeSpecificFields = !fromBuiltIn
-    )
 }
 
 internal fun membersAgentMachineRuntimeIds(

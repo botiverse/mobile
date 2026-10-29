@@ -5,8 +5,6 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.SharedCreateAgentRuntimeModelCatalog
 import build.raft.app.SharedCreateAgentRuntimeModelOption
 import build.raft.app.model.RUNTIME_MODELS
-import build.raft.app.model.RuntimeConfig
-import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.canonicalizeRuntimeModelPresentation
 
@@ -37,11 +35,9 @@ internal data class CreateAgentRequest(
     val name: String,
     val description: String?,
     val machineId: String?,
-    val runtimeConfig: RuntimeConfig?,
-    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
     val external: Boolean,
     val avatarUrl: String? = null,
-    /** Runtime form v2 create: replaces runtimeConfig/formDefinitionRef on the wire. */
+    /** Runtime form v2 create (the server assembles the runtimeConfig); null only for an external agent. */
     val runtimeFormV2: RuntimeFormV2SubmitBody? = null
 )
 
@@ -66,18 +62,13 @@ internal class SharedCreateAgentCoordinator(
                     v2
                 )
             } else {
+                // External agent: no Computer and no runtime form.
                 buildCreateAgentBody(
                     CreateAgentBody(
                         name = request.name,
                         description = request.description,
-                        model = request.runtimeConfig?.model?.toModelIdOrNull(),
-                        runtime = request.runtimeConfig?.runtime,
-                        reasoningEffort = request.runtimeConfig?.reasoningEffort,
                         machineId = request.machineId,
-                        envVars = request.runtimeConfig?.envVars,
                         avatarUrl = request.avatarUrl,
-                        runtimeConfig = request.runtimeConfig,
-                        formDefinitionRef = request.formDefinitionRef,
                         external = request.external.takeIf { it }
                     )
                 )
@@ -199,9 +190,6 @@ internal const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
  */
 internal fun createAgentFallbackErrorText(error: ScreenError, genericPrefix: String): String =
     error.serverMessage?.takeIf { it.isNotBlank() } ?: genericPrefix
-internal const val AGENT_CREATE_FORM_REFRESH_REQUIRED = "agent_create_form_refresh_required"
-internal const val AGENT_CREATE_FORM_REFRESH_FAILED = "agent_create_form_refresh_failed"
-
 internal val CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES =
     setOf(
         "form_definition_ref_required",
@@ -211,29 +199,3 @@ internal val CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES =
         "unknown_form_ref_field"
     )
 
-internal suspend fun <T> DataResult<T>.recoverRejectedCreateAgentForm(
-    formStore: SharedCreateAgentFormStore?,
-    serverId: String?,
-    machineId: String?
-): DataResult<T> {
-    val error = (this as? DataResult.Error)?.error ?: return this
-    if (error.code !in CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES) return this
-    val cleanServerId = serverId?.trim().orEmpty()
-    val cleanMachineId = machineId?.trim().orEmpty()
-    if (formStore == null || cleanServerId.isBlank() || cleanMachineId.isBlank()) {
-        return DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_FAILED, retryable = true))
-    }
-    // Refresh the contract, but never replay a create mutation or retain its write-only API key.
-    return when (formStore.loadSupportedBuiltInForm(cleanServerId, cleanMachineId, force = true)) {
-        is DataResult.Content ->
-            DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_REQUIRED, retryable = true))
-        else ->
-            DataResult.Error(ScreenError(AGENT_CREATE_FORM_REFRESH_FAILED, retryable = true))
-    }
-}
-
-private fun RuntimeModelConfig.toModelIdOrNull(): String? =
-    when (this) {
-        is RuntimeModelConfig.Preset -> id
-        is RuntimeModelConfig.Custom -> name
-    }

@@ -68,9 +68,6 @@ internal fun ChannelMembersCreateAgentDialog(
                         RaftComputersApiClient(RaftComputersNetworkApi(client)),
                     )
                     val result = coordinator.createAgent(request.toCreateAgentRequest())
-                        .recoverRejectedCreateAgentFormOrRetry(formStore, owner.serverId, request) { retry ->
-                            coordinator.createAgent(retry.toCreateAgentRequest())
-                        }
                     if (!authority.isCurrent(receipt)) return@launch
                     if (result !is DataResult.Content) { error = failedLabel; return@launch }
                     agentId = result.data.id

@@ -60,7 +60,7 @@ class MembersRuntimeEditorSessionTest {
                 formV2Available = false
             )
         assertEquals(MembersRuntimeEditorDialog.FormV2, dialog(reconnecting))
-        assertEquals(MembersRuntimeEditorDialog.Legacy, dialog(reconnecting, openedFormV2 = false))
+        assertEquals(MembersRuntimeEditorDialog.None, dialog(reconnecting, openedFormV2 = false))
         // Detail refreshed: a new, value-equal config instance and a bumped profile generation.
         val refreshed =
             steady().copy(

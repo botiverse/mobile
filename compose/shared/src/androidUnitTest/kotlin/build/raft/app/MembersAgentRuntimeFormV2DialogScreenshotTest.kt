@@ -78,6 +78,7 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
                         errorFieldKeys = emptySet(),
                         onDismiss = {},
                         onRuntimeSelected = {},
+                        runtimeCatalog = { null },
                         onSave = { _, _ -> },
                     )
                 }

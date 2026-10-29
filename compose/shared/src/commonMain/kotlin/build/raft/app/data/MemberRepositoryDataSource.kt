@@ -36,17 +36,6 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
-// task #152: the PATCH `runtimeConfig` object must match the web/create wire shape —
-// absent optional fields are OMITTED, never serialized as explicit `null`. The server
-// validates any non-undefined value (e.g. `loadLocalPlugins !== undefined` must be a
-// boolean on builtin and is rejected on every other runtime), so `"loadLocalPlugins":null`
-// 400'd every non-Built-in runtime save. Mirrors AgentsApi's create-body encoder.
-private val agentRuntimeConfigUpdateJson = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-    explicitNulls = false
-}
-
 private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
@@ -1257,68 +1246,13 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     put("serverRole", role)
                 }
             }
-            if (request.includeRuntimeConfig) {
-                val runtimeConfig = request.runtimeConfig
-                if (runtimeConfig == null) {
-                    put("runtimeConfig", JsonNull)
-                    put("envVars", JsonNull)
-                } else {
-                    put(
-                        "runtimeConfig",
-                        runtimeConfig.toAgentUpdateJson(request.retainOmittedBuiltInProviderSecret)
-                    )
-                    put("runtime", runtimeConfig.runtime)
-                    put("model", runtimeConfig.model.toAgentModelWireValue())
-                    if (runtimeConfig.reasoningEffort == null) {
-                        put("reasoningEffort", JsonNull)
-                    } else {
-                        put("reasoningEffort", runtimeConfig.reasoningEffort)
-                    }
-                    val envVars = runtimeConfig.envVars?.takeIf { it.isNotEmpty() }
-                    if (envVars == null) {
-                        put("envVars", JsonNull)
-                    } else {
-                        put("envVars", memberRepositoryJson.encodeToJsonElement(envVars))
-                    }
-                    // kimi-sdk (task #275): top-level exact form ref, mirroring
-                    // the create wire. Never emitted without a runtimeConfig.
-                    request.formDefinitionRef?.let { ref ->
-                        put("formDefinitionRef", memberRepositoryJson.encodeToJsonElement(ref))
-                    }
-                }
-                request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
-            } else if (request.runtimeFormV2 != null) {
+            if (request.runtimeFormV2 != null) {
                 request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
             }
         }
     // Runtime form v2 edit: the server assembles the runtimeConfig from field
     // values, so only the ref and formValues travel (never runtimeConfig).
     return request.runtimeFormV2?.let { body.withRuntimeFormV2(it) }?.toString() ?: body.toString()
-}
-
-private fun RuntimeModelConfig.toAgentModelWireValue(): String =
-    when (this) {
-        is RuntimeModelConfig.Preset -> id
-        is RuntimeModelConfig.Custom -> name
-    }
-
-private fun build.raft.app.model.RuntimeConfig.toAgentUpdateJson(
-    retainOmittedBuiltInProviderSecret: Boolean
-): JsonElement {
-    val encoded = agentRuntimeConfigUpdateJson.encodeToJsonElement(this).jsonObject
-    if (!retainOmittedBuiltInProviderSecret || runtime != "builtin") return encoded
-    val provider = encoded["provider"] as? JsonObject ?: return encoded
-    val providerWithoutSecret =
-        buildJsonObject {
-            provider.forEach { (key, value) ->
-                if (key != "apiKey") put(key, value)
-            }
-        }
-    return buildJsonObject {
-        encoded.forEach { (key, value) ->
-            put(key, if (key == "provider") providerWithoutSecret else value)
-        }
-    }
 }
 
 @Serializable

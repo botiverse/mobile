@@ -1162,22 +1162,9 @@ private data class AgentBootstrapTokenResponseDto(
 internal data class CreateAgentBody(
     val name: String,
     val description: String? = null,
-    val model: String? = null,
     val runtime: String? = null,
-    val reasoningEffort: String? = null,
     val machineId: String? = null,
-    val envVars: Map<String, String>? = null,
     val avatarUrl: String? = null,
-    val onboarding: Boolean? = null,
-    /**
-     * Full RuntimeConfig object (mirrors `slock-ai/shared` `RuntimeConfig`).
-     * When provided, the server picks up `model` / `runtime` / `mode` / `provider` /
-     * `command` from this nested object instead of the legacy top-level fields above.
-     * The legacy fields are kept so the Thread action card path
-     * (which doesn't collect runtimeConfig yet) keeps working unchanged.
-     */
-    val runtimeConfig: build.raft.app.model.RuntimeConfig? = null,
-    val formDefinitionRef: SharedRuntimeFormDefinitionRef? = null,
     /**
      * Indicates this create call comes from the external-agent flow (no Computer).
      * Mirrors React `CreateAgentDialog` `external` flag.
@@ -1225,7 +1212,7 @@ internal fun buildCreateAgentBody(body: CreateAgentBody): String = agentsApiCrea
 
 /** Runtime form v2 create: the create body plus `formDefinitionRef {protocolVersion:2}` and `formValues`. */
 internal fun buildCreateAgentV2Body(body: CreateAgentBody, submit: RuntimeFormV2SubmitBody): String =
-    agentsApiCreateBodyJson.encodeToJsonElement(CreateAgentBody.serializer(), body.copy(runtimeConfig = null, formDefinitionRef = null))
+    agentsApiCreateBodyJson.encodeToJsonElement(CreateAgentBody.serializer(), body)
         .jsonObject
         .withRuntimeFormV2(submit)
         .toString()

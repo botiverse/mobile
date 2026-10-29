@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import build.raft.app.base.BasePager
 import build.raft.app.compat.pager.Page
-import build.raft.app.model.RUNTIME_MODELS
-import build.raft.app.model.getDefaultModel
 
 /**
  * Create Agent dialog states paired with the React CREATE_AGENT_CASES in
@@ -63,16 +61,6 @@ private fun createAgentStateVisualSpec(variant: String): CreateAgentStateVisualS
 private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
     val primary = VisualFixtureData.Machines.Primary
     val studio = VisualFixtureData.Machines.Studio
-    val runtimeModels =
-        RUNTIME_MODELS[spec.runtime].orEmpty().map { model ->
-            SharedCreateAgentRuntimeModelOption(
-                id = model.id,
-                label = model.label,
-                verified = model.verified,
-                supportedReasoningEfforts = model.supportedReasoningEfforts,
-                defaultReasoningEffort = model.defaultReasoningEffort
-            )
-        }
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedCreateAgentDialog(
             submitting = false,
@@ -80,7 +68,6 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             initialName = spec.name,
             initialDescription = spec.description,
             initialRuntime = spec.runtime,
-            initialModel = getDefaultModel(spec.runtime),
             machines =
                 if (spec.noMachines) {
                     emptyList()
@@ -100,19 +87,6 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
                         )
                     )
                 },
-            runtimeModelsByMachineAndRuntime =
-                if (spec.noMachines) {
-                    emptyMap()
-                } else {
-                    mapOf(
-                        (primary.ID to spec.runtime) to
-                            SharedCreateAgentRuntimeModelCatalog(
-                                models = runtimeModels,
-                                defaultModel = getDefaultModel(spec.runtime)
-                            )
-                    )
-                },
-            builtInFormOverride = if (spec.runtime == "builtin") createAgentBuiltInVisualForm() else null,
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",

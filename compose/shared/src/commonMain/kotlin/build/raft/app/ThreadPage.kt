@@ -14118,9 +14118,7 @@ private fun SharedThreadRouteContentContent(
                                     dataSource.commitAgentCreateActionCardFromDialog(
                                         messageId = dialogState.messageId,
                                         card = submitCard,
-                                        submit = request,
-                                        formStore = createAgentFormStore,
-                                        serverId = createAgentComputerServerId
+                                        submit = request
                                     )
                             ) {
                                 is DataResult.Content -> {

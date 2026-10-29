@@ -5,9 +5,6 @@ import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
-import build.raft.app.model.RuntimeConfig
-import build.raft.app.model.RuntimeModelConfig
-import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,10 +16,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 
 class MemberRepositoryDataSourceTest {
     @Test
@@ -468,91 +461,6 @@ class MemberRepositoryDataSourceTest {
                 )
             )
         )
-    }
-
-    @Test
-    fun builtInRuntimeUpdateOmitsOnlyExplicitlyRetainedWriteOnlyKey() {
-        val config =
-            RuntimeConfig(
-                runtime = "builtin",
-                provider = RuntimeProviderConfig.Preset("deepseek", "replacement-secret"),
-                model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro")
-            )
-
-        val retainedBody =
-            buildSharedAgentProfileUpdateBody(
-                AgentProfileUpdateRequest(
-                    agentId = MemberId("agent-1"),
-                    displayName = "Agent One",
-                    description = null,
-                    runtimeConfig = config.copy(
-                        provider = RuntimeProviderConfig.Preset("deepseek", "")
-                    ),
-                    includeRuntimeConfig = true,
-                    retainOmittedBuiltInProviderSecret = true
-                )
-            )
-        assertTrue("\"providerId\":\"deepseek\"" in retainedBody)
-        assertFalse("\"apiKey\"" in retainedBody)
-
-        val replacedBody =
-            buildSharedAgentProfileUpdateBody(
-                AgentProfileUpdateRequest(
-                    agentId = MemberId("agent-1"),
-                    displayName = "Agent One",
-                    description = null,
-                    runtimeConfig = config,
-                    includeRuntimeConfig = true
-                )
-            )
-        assertTrue("\"apiKey\":\"replacement-secret\"" in replacedBody)
-    }
-
-    @Test
-    fun nonBuiltInRuntimeUpdateOmitsNullOptionalRuntimeConfigFields() {
-        // task #152: `"loadLocalPlugins":null` (and other explicit nulls) inside runtimeConfig
-        // were rejected by the server's `!== undefined` validation, 400ing every save.
-        val body =
-            buildSharedAgentProfileUpdateBody(
-                AgentProfileUpdateRequest(
-                    agentId = MemberId("agent-1"),
-                    displayName = "Agent One",
-                    description = null,
-                    runtimeConfig = RuntimeConfig(
-                        runtime = "claude",
-                        model = RuntimeModelConfig.Preset("opus")
-                    ),
-                    includeRuntimeConfig = true
-                )
-            )
-        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
-        assertFalse("loadLocalPlugins" in runtimeConfig, body)
-        assertFalse("hostUserState" in runtimeConfig, body)
-        assertFalse("provider" in runtimeConfig, body)
-        assertFalse("command" in runtimeConfig, body)
-        assertFalse(runtimeConfig.values.any { it is JsonNull }, body)
-        assertTrue("\"runtime\":\"claude\"" in body)
-    }
-
-    @Test
-    fun builtInRuntimeUpdateKeepsBooleanLoadLocalPlugins() {
-        val body =
-            buildSharedAgentProfileUpdateBody(
-                AgentProfileUpdateRequest(
-                    agentId = MemberId("agent-1"),
-                    displayName = "Agent One",
-                    description = null,
-                    runtimeConfig = RuntimeConfig(
-                        runtime = "builtin",
-                        provider = RuntimeProviderConfig.Preset("deepseek", "secret"),
-                        model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
-                        loadLocalPlugins = false
-                    ),
-                    includeRuntimeConfig = true
-                )
-            )
-        val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject
-        assertEquals(JsonPrimitive(false), runtimeConfig["loadLocalPlugins"], body)
     }
 
     private data class RecordedRequest(

@@ -134,17 +134,6 @@ fun getRuntimeDisplayName(id: String): String =
 
 // ── Reasoning effort ──
 
-val REASONING_EFFORTS: List<Pair<String, String>> = listOf(
-    "low" to "Low",
-    "medium" to "Medium",
-    "high" to "High",
-    "xhigh" to "Extra High",
-    "max" to "Max",
-    "ultra" to "Ultra"
-)
-
-val BASE_REASONING_EFFORT_IDS: Set<String> = setOf("low", "medium", "high", "xhigh")
-
 val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "copilot", "pi")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 
@@ -280,141 +269,11 @@ fun canonicalizeRuntimeModelPresentation(
     return RuntimeModelPresentation(models = ordered, defaultModel = defaultModel)
 }
 
-// ── Provider mode ──
-
-typealias RuntimeProviderMode = String // "default" | "custom"
-
-const val RUNTIME_PROVIDER_MODE_DEFAULT: String = "default"
-const val RUNTIME_PROVIDER_MODE_CUSTOM: String = "custom"
-
 // ── Capability predicates ──
-
-fun supportsRuntimeApiUrl(runtime: String): Boolean = runtime == "claude"
-
-/** Mirrors the Web/server allow-list for runtimes that accept a custom model. */
-fun supportsRuntimeCustomModelName(runtime: String): Boolean =
-    runtime in setOf("builtin", "claude", "codex", "cursor", "copilot", "pi")
 
 fun supportsRuntimeFastMode(runtime: String): Boolean = RUNTIME_FAST_MODE_RUNTIMES.contains(runtime)
 
-fun supportsRuntimeCommand(runtime: String): Boolean = runtime == "claude"
-
 fun supportsRuntimeReasoningEffort(runtime: String): Boolean = REASONING_EFFORT_RUNTIMES.contains(runtime)
-
-fun reconcileRuntimeReasoningEffort(
-    runtime: String,
-    model: String,
-    current: String?,
-    supportedReasoningEfforts: List<String>? = null,
-    defaultReasoningEffort: String? = null
-): String? {
-    if (!supportsRuntimeReasoningEffort(runtime)) return null
-    val staticModel = RUNTIME_MODELS[runtime].orEmpty().firstOrNull { it.id == model }
-    val declaredSupported = supportedReasoningEfforts ?: staticModel?.supportedReasoningEfforts.orEmpty()
-    val supported = declaredSupported.takeIf { it.isNotEmpty() } ?: BASE_REASONING_EFFORT_IDS.toList()
-    if (current != null && current in supported) return current
-    val declaredDefault =
-        if (supportedReasoningEfforts != null) defaultReasoningEffort else staticModel?.defaultReasoningEffort
-    return declaredDefault?.takeIf { it in supported }
-}
-
-fun validateRuntimeReasoningEffort(
-    runtime: String,
-    model: String,
-    current: String?,
-    supportedReasoningEfforts: List<String>? = null,
-    defaultReasoningEffort: String? = null
-): String? {
-    if (current == null || !supportsRuntimeReasoningEffort(runtime)) return null
-    return reconcileRuntimeReasoningEffort(
-        runtime = runtime,
-        model = model,
-        current = current,
-        supportedReasoningEfforts = supportedReasoningEfforts,
-        defaultReasoningEffort = defaultReasoningEffort
-    )
-}
-
-// ── Builder ──
-
-/**
- * Mirrors `buildRuntimeConfig` from `packages/web/src/utils/runtimeConfigForm.ts`.
- * Translates the flat form fields (runtime/model/customModelMode/providerMode/apiUrl/apiKey/fastMode/
- * reasoningEffort/envVars/command) into the canonical nested RuntimeConfig object.
- */
-fun buildRuntimeConfig(
-    runtime: String,
-    model: String,
-    customModelMode: Boolean,
-    customModelName: String? = null,
-    providerMode: RuntimeProviderMode? = null,
-    providerApiUrl: String? = null,
-    providerApiKey: String? = null,
-    piProviderId: String? = null,
-    piProviderApiKey: String? = null,
-    fastMode: Boolean = false,
-    reasoningEffort: String? = null,
-    reasoningSupportedEfforts: List<String>? = null,
-    reasoningDefaultEffort: String? = null,
-    envVars: Map<String, String>? = null,
-    command: String? = null
-): RuntimeConfig {
-    val effectiveRuntime = runtime.ifBlank { "claude" }
-    val effectiveCustomModelName = customModelName?.trim()?.ifBlank { null } ?: model.trim()
-    val effectiveProviderMode: RuntimeProviderMode = providerMode
-        ?: if (providerApiUrl?.trim().isNullOrBlank().not()) RUNTIME_PROVIDER_MODE_CUSTOM else RUNTIME_PROVIDER_MODE_DEFAULT
-    val effectiveMode: RuntimeModeConfig =
-        if (fastMode && supportsRuntimeFastMode(effectiveRuntime)) RuntimeModeConfig.Fast
-        else RuntimeModeConfig.Default
-    val effectiveProvider: RuntimeProviderConfig? =
-        if (effectiveRuntime == "pi") {
-            piProviderId?.trim()?.takeIf { it.isNotBlank() && it != "configured" }?.let { providerId ->
-                RuntimeProviderConfig.PiBuiltin(providerId, piProviderApiKey?.trim().orEmpty())
-            } ?: RuntimeProviderConfig.Default
-        } else if (supportsRuntimeApiUrl(effectiveRuntime)) {
-            if (effectiveProviderMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
-                RuntimeProviderConfig.Custom(
-                    apiUrl = providerApiUrl?.trim().orEmpty(),
-                    apiKey = providerApiKey?.trim().orEmpty()
-                )
-            } else {
-                RuntimeProviderConfig.Default
-            }
-        } else {
-            null
-        }
-    val effectiveModel: RuntimeModelConfig =
-        if (customModelMode) {
-            RuntimeModelConfig.Custom(name = effectiveCustomModelName.ifBlank { getDefaultModel(effectiveRuntime) })
-        } else {
-            RuntimeModelConfig.Preset(id = model.ifBlank { getDefaultModel(effectiveRuntime) })
-        }
-    val effectiveModelId =
-        when (effectiveModel) {
-            is RuntimeModelConfig.Preset -> effectiveModel.id
-            is RuntimeModelConfig.Custom -> effectiveModel.name
-        }
-    val effectiveCommand: String? =
-        if (supportsRuntimeCommand(effectiveRuntime) && !command.isNullOrBlank()) command.trim() else null
-    val effectiveReasoningEffort: String? =
-        validateRuntimeReasoningEffort(
-            runtime = effectiveRuntime,
-            model = effectiveModelId,
-            current = reasoningEffort,
-            supportedReasoningEfforts = reasoningSupportedEfforts,
-            defaultReasoningEffort = reasoningDefaultEffort
-        )
-    return RuntimeConfig(
-        version = RUNTIME_CONFIG_VERSION,
-        runtime = effectiveRuntime,
-        provider = effectiveProvider,
-        model = effectiveModel,
-        mode = effectiveMode,
-        reasoningEffort = effectiveReasoningEffort,
-        envVars = envVars,
-        command = effectiveCommand
-    )
-}
 
 // ── Name validation ──
 

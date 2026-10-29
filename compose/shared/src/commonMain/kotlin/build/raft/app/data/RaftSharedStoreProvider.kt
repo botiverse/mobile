@@ -1954,10 +1954,7 @@ internal class RaftSharedStoreProvider private constructor(
                     computers = RaftComputersNetworkApi(networkClient(scope)),
                     agents = RaftAgentsNetworkApi(networkClient(scope)),
                     logger = formLogger
-                ),
-                runtimeFormV2Enabled = { serverId ->
-                    serverFeatureFlags.isEnabled(serverId, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)
-                }
+                )
             ).also { store ->
                 (shellAuthStore as? RaftAuthSessionEventSource)?.let { events ->
                     shellCreateAgentFormOwnerJobs.getOrPut(scope) {

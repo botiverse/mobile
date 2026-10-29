@@ -68,6 +68,23 @@ class RuntimeFormRequestLanguageTest {
     }
 
     @Test
+    fun runtimeOptionsAskForTheRuntimeFormV2MarkerOnTheWire() = runBlocking {
+        // slock runtimeAdmissionService sends the `runtimeFormV2` row marker only to a client that asks
+        // (`X-Raft-Runtime-Form-V2: 1`); without it every runtime would read as having no v2 form.
+        val executor = RecordingExecutor()
+        val client = SharedRaftNetworkClient(
+            sessionStore = authenticatedSessionStore(),
+            baseUrlProvider = { SharedApiEnvironmentStore.Production.apiBaseUrl },
+            executor = executor,
+        )
+        RaftComputersNetworkApi(client) { null }.runtimeOptions(ServerId("server-1"), "machine-1")
+        val (url, headers) = executor.calls.single()
+        assertTrue(url.endsWith("/machines/machine-1/runtime-options"), url)
+        assertEquals("1", headers["X-Raft-Runtime-Form-V2"])
+        assertEquals("Bearer access-token", headers["Authorization"])
+    }
+
+    @Test
     fun unknownLanguageSendsNoHeaderAndExtraHeadersNeverReplaceAuth() = runBlocking {
         val executor = RecordingExecutor()
         val client = SharedRaftNetworkClient(

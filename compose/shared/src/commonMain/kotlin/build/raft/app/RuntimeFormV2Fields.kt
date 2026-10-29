@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -547,12 +548,29 @@ internal fun RuntimeFormV2RuntimeSection(
             runtimeOptions = runtimeOptions,
             quotaMachine = quotaMachine,
             enabled = enabled && runtimeAvailabilityError == null,
-            emptyLabel = null,
+            emptyLabel =
+                if (runtimeAvailabilityError != null) {
+                    stringResource(Res.string.agent_create_state_no_runtimes)
+                } else {
+                    null
+                },
             onSelect = { id ->
                 focusManager.clearFocus(force = true)
                 onRuntimeChange(id)
             }
         )
-        content()
+        runtimeAvailabilityError?.let { error ->
+            Text(
+                text =
+                    if (error == CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR) {
+                        stringResource(Res.string.agent_create_error_no_machine_runtimes)
+                    } else {
+                        error
+                    },
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed
+            )
+        }
+        if (runtimeAvailabilityError == null) content()
     }
 }

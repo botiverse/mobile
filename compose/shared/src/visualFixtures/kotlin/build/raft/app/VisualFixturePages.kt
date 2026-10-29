@@ -1,27 +1,15 @@
 package build.raft.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.SharedAgentCreateDataSchema
-import build.raft.app.data.SharedAgentCreateFieldCopy
-import build.raft.app.data.SharedAgentCreateFieldSchema
-import build.raft.app.data.SharedAgentCreateFormCapabilities
-import build.raft.app.data.SharedAgentCreateFormDefinition
-import build.raft.app.data.SharedAgentCreateFormOption
-import build.raft.app.data.SharedAgentCreateFormOptionSource
-import build.raft.app.data.SharedAgentCreateFormOptionSourceRef
-import build.raft.app.data.SharedAgentCreateUiSchema
-import build.raft.app.data.SharedAgentCreateVisibilityRule
-import build.raft.app.data.SharedResolvedAgentCreateForm
-import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
@@ -674,117 +662,6 @@ internal class ComposeCreateAgentDialogVisualPage : BasePager() {
         super.willInit()
         setContent { CreateAgentDialogVisualContent() }
     }
-}
-
-@Page("compose_create_agent_builtin_dialog_visual", supportInLocal = true)
-internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent {
-            SharedCreateAgentDialog(
-                submitting = false,
-                errorMessage = null,
-                initialName = "Product-QA-Bot",
-                initialDescription = "Checks release screenshots before merge.",
-                initialRuntime = "builtin",
-                machines = listOf(
-                    SharedCreateAgentMachineOption(
-                        id = "computer-mbp",
-                        name = "Jiachengs-MacBook-Pro",
-                        status = "online",
-                        runtimes = listOf("codex")
-                    )
-                ),
-                builtInFormOverride = createAgentBuiltInVisualForm(),
-                onDismiss = {},
-                onSubmit = {}
-            )
-        }
-    }
-}
-
-internal fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
-    val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
-    val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
-    val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
-    return SharedResolvedAgentCreateForm(
-        definition = SharedAgentCreateFormDefinition(
-            ref = ref,
-            dataSchema = SharedAgentCreateDataSchema(
-                required = setOf("providerId", "apiKey", "model"),
-                properties = mapOf(
-                    "providerId" to SharedAgentCreateFieldSchema.StringField("Provider", 1, null, false),
-                    "apiKey" to SharedAgentCreateFieldSchema.StringField("API Key", 1, null, true),
-                    "baseUrl" to SharedAgentCreateFieldSchema.StringField("Base URL", 1, "uri", false),
-                    "supportsImageInput" to SharedAgentCreateFieldSchema.BooleanField("Image input"),
-                    "model" to SharedAgentCreateFieldSchema.StringField("Model", 1, null, false),
-                    "loadLocalPlugins" to SharedAgentCreateFieldSchema.BooleanField("Load local Pi plugins"),
-                    "envVars" to SharedAgentCreateFieldSchema.StringMapField("Environment Variables")
-                )
-            ),
-            uiSchema = SharedAgentCreateUiSchema(
-                order = listOf("providerId", "apiKey", "baseUrl", "supportsImageInput", "model", "loadLocalPlugins", "envVars"),
-                advancedPointers = setOf("/loadLocalPlugins", "/envVars"),
-                visibility = listOf(
-                    SharedAgentCreateVisibilityRule("/baseUrl", "/providerId", setOf("openai-compatible", "anthropic-compatible")),
-                    SharedAgentCreateVisibilityRule("/supportsImageInput", "/providerId", setOf("openai-compatible", "anthropic-compatible"))
-                ),
-                localization = mapOf(
-                    "providerId" to SharedAgentCreateFieldCopy("Provider", "Built-in Pi uses the provider key entered here.", null),
-                    "apiKey" to SharedAgentCreateFieldCopy("API Key", null, "sk-..."),
-                    "baseUrl" to SharedAgentCreateFieldCopy("Base URL", null, "https://gateway.example.com/v1"),
-                    "supportsImageInput" to SharedAgentCreateFieldCopy(
-                        "Supports image input",
-                        "Enable only when this gateway endpoint and model accept images.",
-                        null
-                    ),
-                    "model" to SharedAgentCreateFieldCopy("Model", null, "Model ID"),
-                    "loadLocalPlugins" to SharedAgentCreateFieldCopy(
-                        "Load local Pi plugins",
-                        "Load enabled Pi extensions installed on the computer running this agent. Applying changes restarts a running agent.",
-                        null
-                    ),
-                    "envVars" to SharedAgentCreateFieldCopy("Environment Variables", "Injected into the runtime environment.", null)
-                )
-            ),
-            capabilities = SharedAgentCreateFormCapabilities(
-                providerKinds = setOf("preset", "gateway"),
-                writeOnlyPointers = setOf("/apiKey"),
-                forbiddenPointers = setOf("/hostUserState")
-            ),
-            optionSources = mapOf("provider" to providerRef, "model" to modelRef)
-        ),
-        optionSources = mapOf(
-            "provider" to SharedAgentCreateFormOptionSource.Select(
-                ref = ref,
-                sourceId = "provider",
-                pointer = "/providerId",
-                options = listOf(
-                    SharedAgentCreateFormOption("deepseek", "DeepSeek", "preset"),
-                    SharedAgentCreateFormOption("openai-compatible", "OpenAI Compatible", "gateway"),
-                    SharedAgentCreateFormOption("anthropic-compatible", "Anthropic Compatible", "gateway")
-                ),
-                defaultValue = "openai-compatible"
-            ),
-            "model" to SharedAgentCreateFormOptionSource.DependentSelect(
-                ref = ref,
-                sourceId = "model",
-                pointer = "/model",
-                dependsOn = "/providerId",
-                optionsByValue = mapOf(
-                    "deepseek" to listOf(SharedAgentCreateFormOption("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", null)),
-                    "openai-compatible" to emptyList(),
-                    "anthropic-compatible" to emptyList()
-                ),
-                defaultValueByValue = mapOf("deepseek" to "deepseek/deepseek-v4-pro"),
-                customValueAllowedByValue = mapOf(
-                    "deepseek" to false,
-                    "openai-compatible" to true,
-                    "anthropic-compatible" to true
-                )
-            )
-        )
-    )
 }
 
 @Page("compose_tokens_palette_visual", supportInLocal = true)
