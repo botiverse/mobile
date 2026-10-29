@@ -312,7 +312,8 @@ class ThreadMessageMenuParityTest {
                 onTaskStatus = { routed += ThreadNewMessageMenuTool.TaskStatus },
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
                 onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
-                onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread }
+                onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread },
+                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }
@@ -338,6 +339,41 @@ class ThreadMessageMenuParityTest {
         assertFalse(session.threadViewerIsGuest(null))
         assertTrue(session.threadViewerIsGuest("server-2"))
         assertFalse((null as StoredAuthSession?).threadViewerIsGuest("server-2"))
+    }
+
+    @Test
+    fun aRightClickOverSelectedTextLeadsTheMenuWithCopy() {
+        // artin, 2026-10-29 (Mac): right-click opens the message menu; text selected in the
+        // message adds "Copy" for it, first in the tools.
+        var copied = 0
+        val classic = classicActions(message(), onCopySelection = { copied += 1 })
+        val first = classic.first()
+        assertEquals(Res.string.common_copy.desc(), first.label)
+        assertEquals(RaftLucideIconName.Copy, first.icon)
+        assertEquals("copy", first.group)
+        first.onClick()
+        assertEquals(1, copied)
+        assertEquals(
+            classic.drop(1).map { it.label },
+            classicActions(message()).map { it.label },
+            "nothing selected: the menu is unchanged"
+        )
+
+        val plain = capabilities(message()).toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
+        assertFalse(ThreadNewMessageMenuTool.CopySelection in plain.secondaryTools(), "not in the long-press menu")
+        val overSelection = plain.copy(copySelection = true)
+        assertEquals(
+            listOf(ThreadNewMessageMenuTool.CopySelection, ThreadNewMessageMenuTool.SelectText),
+            overSelection.secondaryTools().take(2)
+        )
+        assertEquals(plain.primaryTools(), overSelection.primaryTools(), "the full message menu stays")
+        assertTrue(overSelection.showsReactionRow())
+        assertEquals(Res.string.common_copy, ThreadNewMessageMenuTool.CopySelection.compactLabelResource(overSelection))
+        assertEquals(RaftLucideIconName.Copy, ThreadNewMessageMenuTool.CopySelection.compactIcon(overSelection))
+        assertFalse(
+            ThreadNewMessageMenuTool.CopySelection in threadInPlaceSelectionMenuAvailability(overSelection, coversAll = false).secondaryTools(),
+            "the selection menu has its own Copy"
+        )
     }
 
     @Test
@@ -435,7 +471,8 @@ class ThreadMessageMenuParityTest {
         showTranslateAction: Boolean = false,
         translatePending: Boolean = false,
         onForward: () -> Unit = {},
-        onAddReaction: () -> Unit = {}
+        onAddReaction: () -> Unit = {},
+        onCopySelection: (() -> Unit)? = null
     ): List<ThreadMessageMenuAction> =
         threadMessageMenuActions(
             message = message,
@@ -465,7 +502,8 @@ class ThreadMessageMenuParityTest {
             onCancel = {},
             onDelete = {},
             onForward = onForward,
-            onAddReaction = onAddReaction
+            onAddReaction = onAddReaction,
+            onCopySelection = onCopySelection
         )
 
     private fun translationSettings(): SharedMessageTranslationSettings =

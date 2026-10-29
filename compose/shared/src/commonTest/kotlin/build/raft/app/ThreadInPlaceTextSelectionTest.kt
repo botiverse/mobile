@@ -1,12 +1,14 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ThreadInPlaceTextSelectionTest {
@@ -146,6 +148,41 @@ class ThreadInPlaceTextSelectionTest {
             threadInPlaceSelectionWidensToWholeMessage(startedByTouch = false, coversAll = false),
             "a mouse drag or a double-clicked word stays what was picked"
         )
+    }
+
+    @Test
+    fun aRightClickMenusCopyTakesTheMessagesSelection() {
+        // artin, 2026-10-29 (Mac): right-click opens the message menu; selected text adds "Copy".
+        assertNull(
+            threadContextMenuSelectionCopyText(emptyList(), listOf("Hello"), fullMessageText = "Hello"),
+            "nothing selected: no Copy item (Copy Markdown is already in the menu)"
+        )
+        assertNull(threadContextMenuSelectionCopyText(listOf("", ""), listOf("a", "b"), fullMessageText = "a\n\nb"))
+        assertEquals(
+            "second para",
+            threadContextMenuSelectionCopyText(listOf("", "second para"), listOf("first", "second paragraph"), fullMessageText = null)
+        )
+        assertEquals(
+            "**first**\n\nsecond",
+            threadContextMenuSelectionCopyText(listOf("first", "second"), listOf("first", "second"), fullMessageText = "**first**\n\nsecond"),
+            "the whole message selected copies it as the selection menu does"
+        )
+    }
+
+    @Test
+    fun onlyTheMenuTheRightClickOpenedOffersItsCopy() {
+        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
+        val rightClick = RaftPopoverAnchor.forRootOffset(Offset(40f, 60f))
+        host.contextMenuSelectionCopy = ThreadContextMenuSelectionCopy(messageId = "m1", anchor = rightClick, text = "picked")
+
+        assertEquals("picked", host.contextMenuCopyFor("m1", rightClick))
+        assertNull(host.contextMenuCopyFor("m2", rightClick), "another message's menu")
+        assertNull(
+            host.contextMenuCopyFor("m1", RaftPopoverAnchor.forRootOffset(Offset(40f, 60f))),
+            "a later long press or reaction chip opens with its own anchor"
+        )
+        host.contextMenuSelectionCopy = null
+        assertNull(host.contextMenuCopyFor("m1", rightClick), "cleared when the menu closes")
     }
 
     @Test
