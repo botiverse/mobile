@@ -993,6 +993,7 @@
     <string name="thread_files_empty_detail">このスレッドで共有されたファイルがここに表示されます。</string>
     <string name="thread_files_error_load">ファイルを読み込めませんでした</string>
     <string name="thread_files_load_more">さらに読み込む</string>
+    <string name="thread_files_artifacts_show_more">Artifact をさらに表示</string>
     <string name="thread_files_file_actions">%1$s の操作</string>
     <string name="thread_files_jump_to_message">元のメッセージに移動</string>
     <string name="thread_files_download_file">ファイルをダウンロード</string>

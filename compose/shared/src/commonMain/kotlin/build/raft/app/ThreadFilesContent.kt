@@ -4,7 +4,14 @@ import build.raft.app.resources.*
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.format.RaftFormat
+import build.raft.app.data.ConversationArtifact
 import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.markdown.lucideIcon
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -187,6 +194,12 @@ internal fun ThreadFilesContent(
     autoLoadRouteListKey: String = payload.instanceId,
     /** The store's pull-to-refresh is reloading the list (see `SharedThreadFilesIntent.PullRefresh`). */
     refreshing: Boolean = false,
+    /** The conversation's Artifacts, leading the list (none when the flag is off or they failed). */
+    artifacts: ThreadFilesArtifactsState = ThreadFilesArtifactsState(),
+    /**
+     * `open` / `download` / `source` (an attachment id), `loadMore`, `retry`, `pullRefresh`;
+     * `openArtifact` (an Artifact id) and `loadMoreArtifacts`.
+     */
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
@@ -208,8 +221,14 @@ internal fun ThreadFilesContent(
                         payload.errorCode ?: "missing capability"
                     )
                 }
-            "empty" -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
-            else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, refreshing, onEvent)
+            // No files: the Artifacts alone, if any (web: the list waits for them so it doesn't flash empty).
+            "empty" ->
+                when {
+                    artifacts.items.isNotEmpty() -> ThreadFilesList(payload, artifacts, attachmentOpenStates, autoLoadRouteListKey, refreshing, onEvent)
+                    artifacts.loading -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_loading), null)
+                    else -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
+                }
+            else -> ThreadFilesList(payload, artifacts, attachmentOpenStates, autoLoadRouteListKey, refreshing, onEvent)
         }
     }
 }
@@ -217,20 +236,28 @@ internal fun ThreadFilesContent(
 @Composable
 private fun ThreadFilesList(
     payload: RaftThreadFilesPayload,
+    artifacts: ThreadFilesArtifactsState,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     autoLoadRouteListKey: String,
     refreshing: Boolean,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
-    if (payload.items.isEmpty()) {
-        ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
+    if (payload.items.isEmpty() && artifacts.items.isEmpty()) {
+        if (artifacts.loading) {
+            ThreadFilesStateMessage(stringResource(Res.string.thread_files_loading), null)
+        } else {
+            ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
+        }
         return
     }
+    // The Artifacts are one item ahead of the files: the files' auto-load counts past it.
+    val leadingItems = if (artifacts.items.isNotEmpty()) 1 else 0
     val listState = rememberLazyListState()
     var autoLoadFence by remember { mutableStateOf(ThreadFilesAutoLoadFence()) }
     LaunchedEffect(
         listState,
         autoLoadRouteListKey,
+        leadingItems,
         payload.items.size,
         payload.hasMore,
         payload.loadingMore,
@@ -247,7 +274,7 @@ private fun ThreadFilesList(
                         fence = autoLoadFence,
                         routeListKey = autoLoadRouteListKey,
                         itemCount = payload.items.size,
-                        lastVisibleItemIndex = lastVisibleItemIndex,
+                        lastVisibleItemIndex = lastVisibleItemIndex - leadingItems,
                         hasMore = payload.hasMore,
                         loadingMore = payload.loadingMore,
                         nextCursor = payload.nextCursor,
@@ -271,6 +298,15 @@ private fun ThreadFilesList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (leadingItems > 0) {
+            item(key = "conversation-artifacts") {
+                ThreadFilesArtifacts(
+                    artifacts = artifacts,
+                    onOpen = { onEvent("openArtifact", it.summary.id) },
+                    onShowMore = { onEvent("loadMoreArtifacts", null) }
+                )
+            }
+        }
         items(payload.items.size, key = { payload.items[it].attachmentId }) { index ->
             ThreadFileRow(
                 item = payload.items[index],
@@ -432,6 +468,52 @@ private fun ThreadFileRow(
             modifier = Modifier.align(Alignment.CenterVertically)
         )
     }
+}
+
+// Web `ConversationArtifactsSection` (#11580): the Artifacts whose home is this conversation, at
+// the head of its files, then Show More while there are more pages. raft-ui ListRowGroup of
+// ListRows: the kind's IconTile, the title, the version, and when it was last updated.
+@Composable
+private fun ThreadFilesArtifacts(
+    artifacts: ThreadFilesArtifactsState,
+    onOpen: (ConversationArtifact) -> Unit,
+    onShowMore: () -> Unit
+) {
+    Column {
+        RaftDesignSystemTheme {
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                artifacts.items.forEachIndexed { index, artifact ->
+                    ThreadFilesArtifactRow(artifact = artifact, divider = index > 0, onClick = { onOpen(artifact) })
+                }
+            }
+        }
+        if (artifacts.nextCursor != null) {
+            ThreadFilesLoadMore(
+                loading = artifacts.loadingMore,
+                onClick = onShowMore,
+                label = stringResource(Res.string.thread_files_artifacts_show_more)
+            )
+        }
+    }
+}
+
+// Web `ConversationArtifactRow`: the whole row opens the latest version in the viewer.
+@Composable
+private fun ThreadFilesArtifactRow(artifact: ConversationArtifact, divider: Boolean, onClick: () -> Unit) {
+    val summary = artifact.summary
+    val colors = RaftTheme.colors
+    RaftListRow(
+        title = summary.title,
+        onClick = onClick,
+        divider = divider,
+        subtitle = stringResource(Res.string.artifacts_card_version, summary.latestVersion),
+        meta = raftRelativeTimestampLabel(artifact.updatedAt).takeIf { it.isNotBlank() },
+        leading = {
+            RaftIconTile(size = RaftIconTileSize.Md) {
+                RaftLucideIcon(summary.kind.lucideIcon(), Modifier.size(RaftIconTileSize.Md.icon), color = raftArgbHex(colors.foregroundMuted))
+            }
+        }
+    )
 }
 
 // `font-mono text-mono-meta text-foreground-hint` (Space Mono 12/16).
