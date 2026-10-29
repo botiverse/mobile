@@ -17500,7 +17500,6 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     channelLabel: String,
     replyCountLabel: String?,
     onOpenInChannel: () -> Unit,
-    interactionSource: MutableInteractionSource? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         RaftTooltip(
@@ -17511,8 +17510,7 @@ internal fun ThreadHeaderChannelLinkSubtitle(
                 text = channelLabel,
                 onClick = onOpenInChannel,
                 style = ThreadHeaderMetaStyle,
-                maxLines = 1,
-                interactionSource = interactionSource
+                maxLines = 1
             )
         }
         replyCountLabel?.takeIf { it.isNotBlank() }?.let { count ->
