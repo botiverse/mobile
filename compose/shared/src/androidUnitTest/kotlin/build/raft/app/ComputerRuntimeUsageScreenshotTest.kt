@@ -3,6 +3,8 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -18,6 +20,7 @@ import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
@@ -63,6 +66,10 @@ class ComputerRuntimeUsageScreenshotTest {
 
     @Test
     fun sheetDark() = capture("settings.computer.runtime_usage.sheet.dark", RaftAppAppearance.Dark) { RuntimeUsageSheetContent(it) }
+
+    // The agent profile's usage card says what is left, like the sheet above (artin 10-29).
+    @Test
+    fun memberCardLight() = capture("members.runtime_usage.card", RaftAppAppearance.Light) { RuntimeUsageMemberCardContent() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable (RaftAppAppearance) -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -190,5 +197,13 @@ private fun RuntimeUsageSheetContent(@Suppress("UNUSED_PARAMETER") appearance: R
                 ),
             timeContext = usageTimeContext,
         )
+    }
+}
+
+@Composable
+private fun RuntimeUsageMemberCardContent() {
+    val read = remember { Json.parseToJsonElement(CLAUDE_USAGE).toRuntimeAccountUsageRead() as RuntimeAccountUsageRead.Available }
+    Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+        MembersRuntimeUsageAccountCard(account = read.snapshot.accounts.single(), stale = false, timeContext = usageTimeContext)
     }
 }

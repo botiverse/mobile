@@ -2817,9 +2817,6 @@
     <string name="member_runtime_usage_stale">Data is out of date. Values below may no longer be accurate.</string>
     <string name="member_runtime_usage_account_fallback">Account</string>
     <string name="member_runtime_usage_unsupported">This account does not report usage.</string>
-    <string name="member_runtime_usage_window_unavailable">Unavailable</string>
-    <string name="member_runtime_usage_limit_reached">Limit reached</string>
-    <string name="member_runtime_usage_resets_at">Resets %1$s</string>
     <string name="member_runtime_usage_health_ok">OK</string>
     <string name="member_runtime_usage_health_rate_limited">Rate limited</string>
     <string name="member_runtime_usage_health_reauth_required">Sign-in required</string>

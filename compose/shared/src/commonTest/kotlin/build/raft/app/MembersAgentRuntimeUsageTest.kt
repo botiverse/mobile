@@ -114,16 +114,6 @@ class MembersAgentRuntimeUsageTest {
     }
 
     @Test
-    fun unavailableWindowsNeverRenderAsAZeroPercentBar() {
-        assertNull(window(RuntimeAccountUsageWindowStatus.Unavailable, null).displayPercentOrNull())
-        assertNull(window(RuntimeAccountUsageWindowStatus.Unavailable, 0.5).displayPercentOrNull())
-        assertNull(window(RuntimeAccountUsageWindowStatus.Ok, null).displayPercentOrNull())
-        assertEquals(0, window(RuntimeAccountUsageWindowStatus.Ok, 0.0).displayPercentOrNull())
-        assertEquals(42, window(RuntimeAccountUsageWindowStatus.Ok, 0.42).displayPercentOrNull())
-        assertEquals(100, window(RuntimeAccountUsageWindowStatus.LimitReached, 1.0).displayPercentOrNull())
-    }
-
-    @Test
     fun finishedReadThenAccountSwitchNeverLetsTheOldCardOpen() = runPortableCoroutineTest<Unit> {
         // Account A reads usage and the page stays composed; then the user switches to B.
         val accountB = owner.copy(accountId = "user-2", sessionGeneration = "gen-b")

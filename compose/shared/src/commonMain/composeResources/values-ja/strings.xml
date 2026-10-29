@@ -2817,9 +2817,6 @@
     <string name="member_runtime_usage_stale">データが古くなっています。以下の値は正確でない可能性があります。</string>
     <string name="member_runtime_usage_account_fallback">アカウント</string>
     <string name="member_runtime_usage_unsupported">このアカウントは使用量を報告しません。</string>
-    <string name="member_runtime_usage_window_unavailable">利用不可</string>
-    <string name="member_runtime_usage_limit_reached">上限に到達</string>
-    <string name="member_runtime_usage_resets_at">%1$s にリセット</string>
     <string name="member_runtime_usage_health_ok">正常</string>
     <string name="member_runtime_usage_health_rate_limited">レート制限中</string>
     <string name="member_runtime_usage_health_reauth_required">再ログインが必要</string>

@@ -16,8 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftProgressBar
-import build.raft.app.components.RaftProgressBarTone
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -25,7 +23,6 @@ import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
-import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageViewer
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
@@ -316,7 +313,7 @@ private fun MembersRuntimeAccountUsageDialog(
 }
 
 @Composable
-private fun MembersRuntimeUsageAccountCard(
+internal fun MembersRuntimeUsageAccountCard(
     account: RuntimeAccountUsageAccount,
     stale: Boolean,
     timeContext: RaftTimeContext?
@@ -362,63 +359,9 @@ private fun MembersRuntimeUsageAccountCard(
         if (account.health == RuntimeAccountUsageHealth.Unsupported) {
             MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_unsupported))
         }
-        account.windows.forEach { window -> MembersRuntimeUsageWindowRow(window, timeContext) }
+        // The same "X% left · resets …" line as the Computers page and the web (never "X% used").
+        account.windows.forEach { window -> ComputerRuntimeUsageWindowRow(window, timeContext) }
     }
-}
-
-@Composable
-private fun MembersRuntimeUsageWindowRow(
-    window: RuntimeAccountUsageWindow,
-    timeContext: RaftTimeContext?
-) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        val percent = window.displayPercentOrNull()
-        if (percent == null) {
-            // Never drawn as a bar: an unusable window is not "0% used".
-            Text(
-                text = window.label + " · " + stringResource(Res.string.member_runtime_usage_window_unavailable),
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        } else {
-            RaftProgressBar(
-                value = percent,
-                tone =
-                    if (window.status == RuntimeAccountUsageWindowStatus.LimitReached) {
-                        RaftProgressBarTone.Orange
-                    } else {
-                        RaftProgressBarTone.Cyan
-                    },
-                label = window.label,
-                showPercent = true
-            )
-            if (window.status == RuntimeAccountUsageWindowStatus.LimitReached) {
-                Text(
-                    text = stringResource(Res.string.member_runtime_usage_limit_reached),
-                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack
-                )
-            }
-            window.resetsAt?.let { resetsAt ->
-                val resetLabel = raftRelativeTimestampLabel(resetsAt, timeContext)
-                Text(
-                    text = stringResource(Res.string.member_runtime_usage_resets_at, resetLabel),
-                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
-
-/** Whole-percent bar value, or null when the window must be shown as unavailable (never 0%). */
-internal fun RuntimeAccountUsageWindow.displayPercentOrNull(): Int? {
-    val ratio = usedRatio ?: return null
-    if (status == RuntimeAccountUsageWindowStatus.Unavailable) return null
-    return (ratio * 100).toInt().coerceIn(0, 100)
 }
 
 @Composable
