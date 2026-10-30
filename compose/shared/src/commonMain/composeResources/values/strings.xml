@@ -3473,4 +3473,11 @@
     <string name="assistant_otter_state_confirm">Needs your OK</string>
     <string name="assistant_otter_state_working">Working</string>
     <string name="assistant_otter_state_away">Away</string>
+    <string name="assistant_otter_collapse">Collapse to otter</string>
+    <string name="assistant_otter_meta_working">Working on it…</string>
+    <string name="assistant_otter_meta_confirm">Waiting for you to confirm</string>
+    <string name="assistant_header_meta">Can read what you can see, except your DMs</string>
+    <string name="assistant_header_meta_with_dms">Can read what you can see, including your DMs</string>
+    <string name="assistant_paused_chip">Paused</string>
+    <string name="assistant_conversation_missing">Couldn't open your conversation with %1$s. Try again later.</string>
 </resources>

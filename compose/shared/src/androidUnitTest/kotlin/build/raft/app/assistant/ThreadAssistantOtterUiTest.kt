@@ -19,6 +19,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftThreadComposerPayload
@@ -34,10 +35,16 @@ import build.raft.app.data.RaftAssistantOtterHosts
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
+import androidx.activity.ComponentDialog
+import build.raft.designsystem.text.RaftText
 
 /**
  * The otter on a real composer (ThreadComposerContent's `frameEdge`, as ThreadComposerRoute wires
@@ -155,8 +162,78 @@ class ThreadAssistantOtterUiTest {
             runOnIdle { assertEquals(1, opened) }
         }
 
+    /** The otter as rememberThreadAssistantOtter makes it: a press opens its panel, held in [open]. */
+    private fun panelOtter(hosts: RaftAssistantOtterHosts, open: Boolean, onOpenChange: (Boolean) -> Unit) =
+        ThreadAssistantOtter(
+            hostId = CHANNEL,
+            hosts = hosts,
+            mood = RaftOtterMood.Idle,
+            scale = RaftAssistantOtterDefaults.PhoneScale,
+            endInset = RaftAssistantOtterDefaults.PhoneEndInset,
+            onOpen = { onOpenChange(true) },
+            assistantName = "Ada",
+            agentId = "agent-ada",
+            serverId = "server-1",
+            dmChannelId = "dm-ada",
+            panelOpen = open,
+            onPanelOpenChange = onOpenChange,
+        )
+
+    /** A channel with the otter on its composer, and its panel as ThreadPage draws it over the page. */
+    private fun ComposeUiTest.showWithPanel(hosts: RaftAssistantOtterHosts, isOpen: () -> Boolean, setOpen: (Boolean) -> Unit) =
+        show {
+            val otter = panelOtter(hosts, isOpen(), setOpen)
+            Conversation(CHANNEL, otter)
+            ThreadAssistantPanelSheet(otter) {
+                RaftText("Morning brief", Modifier.testTag(PANEL_DM))
+            }
+        }
+
+    private fun ComposeUiTest.pressOtter() =
+        onNode(hasClickAction() and hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag))).performClick()
+
+    @Test
+    fun aPressOpensThePanelOverThePageAndBackClosesIt() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var open by mutableStateOf(false)
+            showWithPanel(hosts, { open }, { open = it })
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+
+            pressOtter()
+            // The sheet: the panel's head with the assistant's name, and its DM under it.
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertExists()
+            onNode(hasText("Ada") and hasAnyAncestor(hasTestTag(ThreadAssistantPanelHeaderTestTag))).assertExists()
+            onNode(hasTestTag(PANEL_DM)).assertExists()
+            // The otter stays on the composer (tucked in), under the sheet.
+            otterIn(CHANNEL).assertExists()
+            runOnIdle { assertTrue(open) }
+
+            // System Back goes to the sheet's window and closes it.
+            runOnIdle {
+                val sheetWindow = assertNotNull(ShadowDialog.getLatestDialog() as? ComponentDialog, "the sheet's window")
+                sheetWindow.onBackPressedDispatcher.onBackPressed()
+            }
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+            runOnIdle { assertFalse(open) }
+            otterIn(CHANNEL).assertExists()
+        }
+
+    @Test
+    fun collapseClosesThePanel() =
+        runRobolectricComposeUiTest {
+            val hosts = RaftAssistantOtterHosts()
+            var open by mutableStateOf(false)
+            showWithPanel(hosts, { open }, { open = it })
+            pressOtter()
+            onNode(hasTestTag(ThreadAssistantPanelCollapseTestTag)).performClick()
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+            runOnIdle { assertFalse(open) }
+        }
+
     private companion object {
         const val CHANNEL = "channel"
         const val THREAD = "thread"
+        const val PANEL_DM = "panel-dm"
     }
 }

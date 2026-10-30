@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.assistant.LocalThreadAssistantOtter
+import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
+import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
+import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
+import build.raft.app.assistant.ThreadAssistantPanelSheet
 import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
 import build.raft.app.assistant.ThreadAssistantOtterListEnd
 import build.raft.app.assistant.assistantOtterDmOpenRequest
@@ -11951,7 +11955,6 @@ private fun SharedThreadRouteContentContent(
         val assistantOtterHostId = remember { newAssistantOtterHostId() }
         val assistantOtterInSplitPane = threadInSplitDetailPane()
         val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-        val assistantOtterOpenFailedLabel = stringResource(Res.string.thread_error_open_thread)
         val assistantOtter =
             rememberThreadAssistantOtter(
                 store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
@@ -11966,27 +11969,46 @@ private fun SharedThreadRouteContentContent(
                 hostId = assistantOtterHostId,
                 wide = assistantOtterInSplitPane,
                 replyThread = assistantOtterReplyThread,
-                onOpenDm = { serverId, dmChannelId ->
-                    // Step 1 opens the DM; the bottom-sheet panel (RaftOtterTuck.PanelOpen) comes next.
-                    val request = assistantOtterDmOpenRequest(serverId, dmChannelId, conversationIdentityProvider)
-                    val dmPayload =
-                        request?.let {
-                            buildAppShellThreadPayload(
-                                conversation = it.conversationIdentity,
-                                timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
-                                alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
-                                compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                                onWarn = bridge::logWarn
-                            )
-                        }
-                    if (dmPayload == null) {
-                        bridge.logWarn("assistant_otter_open_skip reason=unresolved dm=$dmChannelId")
-                        bridge.toast(assistantOtterOpenFailedLabel)
-                    } else {
-                        onOpenThreadPayload(dmPayload)
-                    }
-                },
+                pageActive = active,
             )
+        // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
+        // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
+        assistantOtter?.let { otter ->
+            ThreadAssistantPanelSheet(otter) {
+                val dmPageData =
+                    remember(otter.serverId, otter.dmChannelId) {
+                        val request = assistantOtterDmOpenRequest(otter.serverId, otter.dmChannelId, conversationIdentityProvider)
+                        val launch =
+                            request
+                                ?.let {
+                                    buildAppShellThreadPayload(
+                                        conversation = it.conversationIdentity,
+                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                        onWarn = bridge::logWarn
+                                    )
+                                }
+                                ?.toWireThreadLaunchPayloadOrNull()
+                        launch?.let {
+                            threadLaunchPageData(it)
+                                .withRaftShellStoreScope(RaftShellStoreScope.create(storeScope.shellInstanceId, otter.serverId))
+                        }
+                    }
+                LaunchedEffect(dmPageData == null) {
+                    if (dmPageData == null) bridge.logWarn("assistant_panel_dm_unresolved dm=${otter.dmChannelId}")
+                }
+                if (dmPageData == null) {
+                    ThreadAssistantPanelConversationMissing(otter.assistantName)
+                } else {
+                    RaftChildPage(
+                        pageName = THREAD_PAGE,
+                        pageData = dmPageData,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                }
+            }
+        }
         // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
         val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
         val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
@@ -15451,7 +15473,8 @@ private fun ThreadRouteScaffold(
             Column(
                 modifier = Modifier.fillMaxSize().background(surfaceColor)
             ) {
-                slots.header()
+                // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
+                if (LocalThreadAssistantPanelEmbed.current == null) slots.header()
                 slots.body(this)
             }
             slots.overlays(this)
@@ -15870,6 +15893,8 @@ private fun ThreadPageContentContent(
     val payload = data.payload
     val messageBodyTextStyle = data.messageBodyTextStyle
     val timelineSlice = data.timelineSlice
+    // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
+    ThreadAssistantPanelMessagesReport(timelineSlice.messages)
     val accessResolution = data.accessResolution
     val canonicalAccessResolved = data.canonicalAccessResolved
     val replyParentAuthority = data.replyParentAuthority
@@ -16950,7 +16975,8 @@ private fun ThreadPageContentContent(
             }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
-            if (payload.showModeTabs) {
+            // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
+            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null) {
                 RaftTabbedScaffold(
                     tabs = availableTabs.map { it.toRaftTabSpec() },
                     selectedKey = selectedTab,
@@ -32444,6 +32470,13 @@ internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
     // task #421: the atlas DrawableResource is null on iOS (asset not bundled),
     // so only load it where available; otherwise provide a null atlas and let
     // reaction rendering fall back to emoji glyphs.
+    // An atlas an ancestor already holds ready (a host that decoded it, or an outer provider) is
+    // reused as is: no second async load that may or may not have finished.
+    val inheritedAtlas = LocalThreadReactionAtlasImage.current
+    if (inheritedAtlas != null) {
+        content()
+        return
+    }
     val atlasDrawable = ThreadReactionSpriteAtlasDrawableResource
     val threadReactionAtlasImage = if (atlasDrawable != null) imageResource(atlasDrawable) else null
     val readyThreadReactionAtlas =

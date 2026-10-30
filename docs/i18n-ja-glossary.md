@@ -50,6 +50,8 @@ new product concept gets a Japanese rendering.
 | Connected accounts | 連携アカウント | |
 | Assistant (personal) | アシスタント | Web `assistant.*` catalog term |
 | Sent by (assistant, on the owner's behalf) | 〜が代理送信 | "sent by Friday" = 「Friday が代理送信」; deleted = 「削除済みのアシスタントが代理送信」 (RFC 077) |
+| Otter (the assistant's entry on the composer) | カワウソ | Web `assistant.otter.*`: "Collapse to otter" = 「カワウソにしまう」 |
+| Paused (an assistant an admin paused) | 一時停止中 | Web `assistant.paused.chip` |
 | Retracted (message, by its owner) | 取り消し | "This message was retracted." = 「このメッセージは取り消されました。」; copied from the web ja catalog `message.delegated.retracted` (RFC 077) |
 | Connected Apps | 連携アプリ | OAuth surface |
 | Marketplace | マーケットプレイス | |
