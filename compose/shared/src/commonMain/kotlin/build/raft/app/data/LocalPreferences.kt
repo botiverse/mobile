@@ -824,6 +824,44 @@ class KeyValueTasksViewPreferenceRepository(
     }
 }
 
+/**
+ * How the Computers page lays out its computers on this device (web
+ * `computersRackViewPreference`): [Cards] (the default) or [List]. Like the web, the choice is
+ * kept per device, not per account or server.
+ */
+enum class ComputersRackView(val storageKey: String) {
+    List("list"),
+    Cards("cards");
+
+    companion object {
+        val Default: ComputersRackView = Cards
+
+        /** Web `parse`: only "list" is the list; anything else (none, unknown) is the cards. */
+        fun fromStorageKey(value: String?): ComputersRackView = if (value == List.storageKey) List else Default
+    }
+}
+
+interface ComputersRackViewPreferenceRepository {
+    fun getComputersRackViewSync(): ComputersRackView
+    fun selectComputersRackViewSync(view: ComputersRackView): ComputersRackView
+}
+
+class KeyValueComputersRackViewPreferenceRepository(
+    private val store: SharedPreferenceStore
+) : ComputersRackViewPreferenceRepository {
+    override fun getComputersRackViewSync(): ComputersRackView =
+        ComputersRackView.fromStorageKey(store.getString(KEY_COMPUTERS_RACK_VIEW))
+
+    override fun selectComputersRackViewSync(view: ComputersRackView): ComputersRackView {
+        store.putString(KEY_COMPUTERS_RACK_VIEW, view.storageKey)
+        return view
+    }
+
+    private companion object {
+        const val KEY_COMPUTERS_RACK_VIEW = "computers:rackView"
+    }
+}
+
 class KeyValueRouterPreferenceRepository(
     private val store: SharedPreferenceStore
 ) {

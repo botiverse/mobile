@@ -518,7 +518,7 @@ private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComp
 
 /** A restart in flight (spinner) or just finished (restarted / why it failed). */
 @Composable
-private fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProgress) {
+internal fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProgress) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (!restart.done) {
             RaftSpinner(size = RaftSpinnerSize.Sm)

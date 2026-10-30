@@ -2323,6 +2323,9 @@
     <string name="settings_computers_rack_usage_unavailable">%1$s: 使用量を取得できません</string>
     <string name="settings_computers_rack_usage_meter">%1$s アカウント: %2$s</string>
     <string name="settings_computers_rack_usage_meter_stale">%1$s アカウント: %2$s · 最後に取得した値</string>
+    <string name="settings_computers_rack_view_label">コンピューターの表示</string>
+    <string name="settings_computers_rack_view_list">リスト</string>
+    <string name="settings_computers_rack_view_cards">カード</string>
     <string name="settings_computers_disk_low">ディスク不足</string>
     <string name="settings_computers_needs_upgrade">アップグレードが必要</string>
     <string name="settings_computers_needs_reinstall">再インストールが必要</string>

@@ -2323,6 +2323,9 @@
     <string name="settings_computers_rack_usage_unavailable">%1$s：无法获取用量</string>
     <string name="settings_computers_rack_usage_meter">%1$s 账户：%2$s</string>
     <string name="settings_computers_rack_usage_meter_stale">%1$s 账户：%2$s · 最后已知值</string>
+    <string name="settings_computers_rack_view_label">计算机视图</string>
+    <string name="settings_computers_rack_view_list">列表</string>
+    <string name="settings_computers_rack_view_cards">卡片</string>
     <string name="settings_computers_disk_low">磁盘不足</string>
     <string name="settings_computers_needs_upgrade">需要升级</string>
     <string name="settings_computers_needs_reinstall">需要重装</string>

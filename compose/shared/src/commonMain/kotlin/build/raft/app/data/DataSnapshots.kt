@@ -1516,7 +1516,9 @@ data class SettingsComputersSnapshot(
     val canAddComputer: Boolean = false,
     val addComputerUnavailableReason: String? = null,
     val latestDaemonVersion: String? = null,
-    val latestComputerVersion: String? = null
+    val latestComputerVersion: String? = null,
+    /** For the offline cards' restart command; null while the session has no server slug. */
+    val commandContext: SettingsComputerCommandContext? = null
 )
 
 data class SettingsComputerSnapshot(
@@ -1573,7 +1575,12 @@ data class SettingsComputerSnapshot(
      * ([settingsComputerPermissions] `canEdit`: owner/admin, the creator, or the attaching person).
      * Set by the settings data source from the session; false until it has been.
      */
-    val canViewRuntimeUsage: Boolean = false
+    val canViewRuntimeUsage: Boolean = false,
+    /**
+     * The viewer may restart / upgrade this machine: the detail page's `canManageMachines`
+     * ([settingsComputerPermissions] edit or remove). Set with [canViewRuntimeUsage]; false until then.
+     */
+    val canManage: Boolean = false
 )
 
 /**

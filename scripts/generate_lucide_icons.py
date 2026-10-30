@@ -195,6 +195,7 @@ LUCIDE_ICONS = [
     "key",
     "key-round",
     "languages",
+    "layout-grid",
     "layout-list",
     "link",
     "link-2",

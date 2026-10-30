@@ -5,9 +5,11 @@ import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
+import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsSectionErrorSnapshot
@@ -155,6 +157,10 @@ internal sealed interface RaftComputersListModel {
         val rows: List<RaftComputerRowModel>,
         val onlineCount: Int,
         val canAddComputer: Boolean,
+        /** The rows' machines, for each card's next step ([raftComputerRackAction]). */
+        val computers: List<SettingsComputerSnapshot> = emptyList(),
+        /** For an offline card's restart command; null while the session has no server slug. */
+        val commandContext: SettingsComputerCommandContext? = null,
     ) : RaftComputersListModel
 }
 
@@ -185,6 +191,8 @@ internal fun raftComputersListModel(state: ScreenLoadState<SettingsComputersSnap
                     rows = rows,
                     onlineCount = rows.count { it.online },
                     canAddComputer = snapshot.canAddComputer,
+                    computers = snapshot.computers,
+                    commandContext = snapshot.commandContext,
                 )
             }
         }
@@ -407,6 +415,50 @@ internal fun RaftComputerRowModel.cardFacts(): RaftComputerCardFacts =
     } else {
         RaftComputerCardFacts.Offline(lastSeenAt)
     }
+
+/**
+ * A card's one next step (web `RackRowAction`), from the detail page's own upgrade and restart
+ * state ([raftComputerUpgradeModel], the settings store's `computerControl`). Null: nothing.
+ */
+internal sealed interface RaftComputerRackAction {
+    /** Online, a one-click upgrade waits: "Upgrade to v{version}". */
+    data class Upgrade(val version: String) : RaftComputerRackAction
+
+    /** The upgrade was asked for and is running: "Upgrading…". */
+    data object Upgrading : RaftComputerRackAction
+
+    /** A restart from this page, running or just finished (restarted / why it failed). */
+    data class Restarting(val progress: SettingsComputerRestartProgress) : RaftComputerRackAction
+
+    /** Offline: the command that brings it back, with its copy button. */
+    data class OfflineRestart(val command: String) : RaftComputerRackAction
+}
+
+/**
+ * Web `RackRowAction`: only for whoever may manage a managed Computer. Offline, the restart
+ * command (none while it restarts for an upgrade); online, a restart in progress first, then the
+ * one-click upgrade or the upgrade in flight. A Computer the app cannot upgrade in one tap (manual
+ * install, commands, up to date) shows nothing here; its page has the rest.
+ */
+internal fun raftComputerRackAction(
+    computer: SettingsComputerSnapshot,
+    upgrade: RaftComputerUpgradeModel,
+    restart: SettingsComputerRestartProgress?,
+    commandContext: SettingsComputerCommandContext?,
+): RaftComputerRackAction? {
+    if (!computer.canManage || !computer.isComputer) return null
+    if (!computer.online) {
+        if (upgrade.reconnect.reconnecting) return null
+        val command = raftComputerCommands(commandContext, raftComputerCommandPlatform(computer.platform))?.restart ?: return null
+        return RaftComputerRackAction.OfflineRestart(command)
+    }
+    restart?.takeIf { it.machineId == computer.id }?.let { return RaftComputerRackAction.Restarting(it) }
+    return when (val card = upgrade.card) {
+        is RaftComputerCardState.OneClick -> RaftComputerRackAction.Upgrade(card.version)
+        is RaftComputerCardState.Upgrading -> RaftComputerRackAction.Upgrading
+        else -> null
+    }
+}
 
 /** One agent on a computer card: its avatar opens its profile. */
 internal data class RaftComputerCardAgent(
