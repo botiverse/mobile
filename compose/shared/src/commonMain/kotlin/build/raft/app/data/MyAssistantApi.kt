@@ -22,8 +22,9 @@ import kotlinx.serialization.json.Json
  * the `personal_assistant` flag is on, never for a guest; any failure of the first read fails
  * closed (not enabled); a refetch keeps what it had on a transient failure (not 403 / 404).
  *
- * Only the fields the app uses are modelled; the owner's switches (`readsDms`, `sendAsOwner`,
- * `ownerNotes`) are ignored until a screen needs them. Field names are exact camelCase.
+ * Only the fields the app uses are modelled: of the owner's switches, `readsDms` (the otter panel's
+ * meta line, web AssistantOtterPanel `metaId`); `sendAsOwner` and `ownerNotes` are ignored until a
+ * screen needs them. Field names are exact camelCase.
  */
 private val myAssistantJson = Json {
     ignoreUnknownKeys = true
@@ -35,6 +36,8 @@ private data class WireMyAssistantRecord(
     val name: String,
     val agentId: String,
     val dmChannelId: String? = null,
+    /** Absent from a server that predates RFC 077: null, as web's `readsDms: boolean | null`. */
+    val readsDms: Boolean? = null,
 )
 
 @Serializable
@@ -52,6 +55,11 @@ data class MyAssistantRecord(
     val agentId: String,
     /** The owner's DM with that agent; null while it is still being set up. */
     val dmChannelId: String?,
+    /**
+     * Whether it reads the owner's DMs (RFC 077 `assistant.readsDms`); null when the server does
+     * not say (web `AssistantOwnerSettings.readsDms`).
+     */
+    val readsDms: Boolean? = null,
 )
 
 /** One answer of `GET servers/:id/assistant` (web `MyAssistantResponse`, without the settings). */
@@ -89,6 +97,7 @@ fun parseSharedMyAssistantResponse(body: String): MyAssistantAnswer? {
                     name = it.name,
                     agentId = it.agentId,
                     dmChannelId = it.dmChannelId?.takeIf(String::isNotBlank),
+                    readsDms = it.readsDms,
                 )
             },
     )

@@ -51,6 +51,7 @@ class MyAssistantApiTest {
                         name = "Ada",
                         agentId = "6f1c2a4e-0d7b-4c55-9a51-1f2e3d4c5b6a",
                         dmChannelId = "0b9e8d7c-6f5a-4b3c-8d2e-1a0f9e8d7c6b",
+                        readsDms = true,
                     ),
             ),
             answer,
@@ -65,6 +66,15 @@ class MyAssistantApiTest {
             )
         assertNull(answer?.assistant?.dmChannelId)
         assertEquals("a1", answer?.assistant?.agentId)
+    }
+
+    @Test
+    fun readsDmsIsNullFromAServerThatDoesNotSendIt() {
+        // RFC 077's switches ride on the record; a server before them leaves readsDms out.
+        val older = parseSharedMyAssistantResponse("""{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"d1"}}""")
+        assertNull(older?.assistant?.readsDms)
+        val off = parseSharedMyAssistantResponse("""{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"d1","readsDms":false}}""")
+        assertEquals(false, off?.assistant?.readsDms)
     }
 
     @Test

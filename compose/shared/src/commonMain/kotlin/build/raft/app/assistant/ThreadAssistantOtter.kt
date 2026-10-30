@@ -10,7 +10,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -45,11 +46,16 @@ import kotlinx.coroutines.flow.map
 
 // The page side of the personal assistant's otter (web assistant/AssistantOtter.tsx
 // `AssistantOtterAnchor` / `AssistantOtterListEnd` and assistantOtterState.ts): which composer it
-// lies on, its mood's inputs, and what a press does. The view is RaftAssistantOtter.kt.
+// lies on, its mood's inputs, and what a press does: it opens the assistant's panel
+// (ThreadAssistantPanel.kt). The view is RaftAssistantOtter.kt.
 
 /**
  * One conversation's otter, when that conversation may carry it: its composer shows the otter
  * while [hostId] is the host it lies on ([hosts]), and its message list keeps the band free.
+ *
+ * A press ([onOpen]) opens the assistant's panel over the page ([panelOpen]; web AssistantOtter
+ * `open`), which shows [assistantName] with its meta line ([readsDms], [mood]) and [paused], and
+ * the DM [dmChannelId] in [serverId]. [panelEmbed] goes to the conversation in the panel.
  */
 @Stable
 internal class ThreadAssistantOtter(
@@ -59,6 +65,15 @@ internal class ThreadAssistantOtter(
     val scale: Float,
     val endInset: Dp,
     val onOpen: () -> Unit,
+    val assistantName: String = "",
+    val agentId: String = "",
+    val serverId: String = "",
+    val dmChannelId: String = "",
+    val readsDms: Boolean = false,
+    val paused: Boolean = false,
+    val panelOpen: Boolean = false,
+    val onPanelOpenChange: (Boolean) -> Unit = {},
+    val panelEmbed: ThreadAssistantPanelEmbed? = null,
 )
 
 /** The current conversation's otter, or null where it has none. */
@@ -82,9 +97,10 @@ internal fun assistantOtterDmChannelId(state: MyAssistantState, conversationChan
  * - [dmUnreadCount]: unread in the owner's DM with it (`new`).
  * - [paused]: a server owner or admin paused it (the agent's `assistantPausedAt`, web
  *   `useAssistantPause`): `away`, above everything else.
- * - [confirm] has no source in the app yet (see the PR): the app keeps no observable list of the
- *   DM's messages to find a waiting action card in. Web shows a waiting card as `new` through the
- *   unread count until the DM's messages are loaded, which is what the app shows too.
+ * - [confirm]: an action card from it in the DM waits for its owner (`prepared` /
+ *   `reconfirm_required`, web `hasWaitingActionCard`). The app reads the DM's messages only while
+ *   the panel shows them (ThreadAssistantPanelEmbed); otherwise a waiting card shows as `new`
+ *   through the unread count, as on web before the DM's messages are loaded.
  */
 internal fun assistantOtterMood(
     agentStatus: AgentStatus?,
@@ -112,7 +128,7 @@ internal fun SharedHomeState.directMessageUnreadCount(serverId: String, channelI
     return snapshot.directMessages.firstOrNull { it.channelId.value == channelId }?.unreadCount ?: 0
 }
 
-/** Opening the assistant's DM from the otter: a typed DM identity, checked against the directory. */
+/** The assistant's DM from the otter: a typed DM identity, checked against the directory (the panel's conversation). */
 internal fun assistantOtterDmOpenRequest(
     serverId: String,
     dmChannelId: String,
@@ -143,6 +159,8 @@ internal fun assistantOtterDmOpenRequest(
  * - [wide]: a conversation in a wide window's detail pane (web desktop): a channel or DM composer
  *   takes the full-size otter; a reply thread keeps 80% (web ThreadPanel `scale={0.8}`), both
  *   over the send button's side.
+ * - [pageActive]: false once another page covers this one (a page the panel's conversation
+ *   opened): the panel closes, so it never sits over a page it was not opened on.
  */
 @Composable
 internal fun rememberThreadAssistantOtter(
@@ -157,7 +175,7 @@ internal fun rememberThreadAssistantOtter(
     hostId: String,
     wide: Boolean,
     replyThread: Boolean,
-    onOpenDm: (serverId: String, dmChannelId: String) -> Unit,
+    pageActive: Boolean = true,
 ): ThreadAssistantOtter? {
     val server = serverId?.takeIf(String::isNotBlank)
     val user = userId?.takeIf(String::isNotBlank)
@@ -207,24 +225,48 @@ internal fun rememberThreadAssistantOtter(
                 serverMembersStore?.currentServerMembersEntry(ServerId(server))?.assistantPaused(agentId) == true
         }
     val paused by pausedFlow.collectAsState(initialPaused)
-    val currentOnOpenDm by rememberUpdatedState(onOpenDm)
-    if (server == null || dmChannelId == null) return null
+    // The panel (web AssistantOtter `open`), and a card waiting in the DM it shows (`confirm`).
+    var panelOpen by remember(server, dmChannelId) { mutableStateOf(false) }
+    var waitingActionCard by remember(server, dmChannelId) { mutableStateOf(false) }
+    LaunchedEffect(pageActive) {
+        if (!pageActive) panelOpen = false
+    }
+    LaunchedEffect(panelOpen) {
+        // The DM's messages go with the panel: no card is known to wait once it closes.
+        if (!panelOpen) waitingActionCard = false
+    }
+    if (server == null || dmChannelId == null || agentId == null) return null
+    val assistant = (state as? MyAssistantState.Ready)?.assistant ?: return null
     val mood =
         assistantOtterMood(
             agentStatus = status?.status,
             dmUnreadCount = homeState.directMessageUnreadCount(server, dmChannelId),
             paused = paused,
+            confirm = panelOpen && waitingActionCard,
         )
     val scale = if (wide && !replyThread) RaftAssistantOtterDefaults.WideScale else RaftAssistantOtterDefaults.PhoneScale
     val endInset = if (wide) RaftAssistantOtterDefaults.WideEndInset else RaftAssistantOtterDefaults.PhoneEndInset
-    return remember(hostId, store, mood, scale, endInset, server, dmChannelId) {
+    val panelEmbed =
+        remember(agentId, server, dmChannelId) {
+            ThreadAssistantPanelEmbed(agentId = agentId, onWaitingActionCard = { waitingActionCard = it })
+        }
+    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed) {
         ThreadAssistantOtter(
             hostId = hostId,
             hosts = store.otterHosts,
             mood = mood,
             scale = scale,
             endInset = endInset,
-            onOpen = { currentOnOpenDm(server, dmChannelId) },
+            onOpen = { panelOpen = true },
+            assistantName = assistant.name,
+            agentId = agentId,
+            serverId = server,
+            dmChannelId = dmChannelId,
+            readsDms = assistant.readsDms == true,
+            paused = paused,
+            panelOpen = panelOpen,
+            onPanelOpenChange = { panelOpen = it },
+            panelEmbed = panelEmbed,
         )
     }
 }
@@ -253,8 +295,8 @@ internal fun ThreadAssistantOtterFrameEdge(
     if (order.activeAssistantOtterHost() != otter.hostId) return
     RaftAssistantOtter(
         mood = otter.mood,
-        // The panel (PanelOpen) is the next step; a press opens the DM for now.
-        tuck = if (composing) RaftOtterTuck.Composing else RaftOtterTuck.None,
+        // Into the composer while the person types, and further while its panel is open.
+        tuck = threadAssistantOtterTuck(composing = composing, panelOpen = otter.panelOpen),
         onClick = otter.onOpen,
         modifier = Modifier.fillMaxWidth().testTag(ThreadAssistantOtterTestTag),
         scale = otter.scale,
@@ -262,6 +304,14 @@ internal fun ThreadAssistantOtterFrameEdge(
         animateEntrance = animateEntrance,
     )
 }
+
+/** Web `data-[open]` over `data-composing`: the panel's tuck wins. */
+internal fun threadAssistantOtterTuck(composing: Boolean, panelOpen: Boolean): RaftOtterTuck =
+    when {
+        panelOpen -> RaftOtterTuck.PanelOpen
+        composing -> RaftOtterTuck.Composing
+        else -> RaftOtterTuck.None
+    }
 
 /** A composer host's id for [RaftAssistantOtterHosts], unique for the page's lifetime (web `useId`). */
 @OptIn(ExperimentalUuidApi::class)

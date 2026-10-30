@@ -3470,4 +3470,11 @@
     <string name="assistant_otter_state_confirm">需要你确认</string>
     <string name="assistant_otter_state_working">工作中</string>
     <string name="assistant_otter_state_away">不在</string>
+    <string name="assistant_otter_collapse">收起为水獭</string>
+    <string name="assistant_otter_meta_working">正在处理…</string>
+    <string name="assistant_otter_meta_confirm">等你确认一件事</string>
+    <string name="assistant_header_meta">能读你看得到的内容，私信除外</string>
+    <string name="assistant_header_meta_with_dms">能读你看得到的内容，包括私信</string>
+    <string name="assistant_paused_chip">已暂停</string>
+    <string name="assistant_conversation_missing">没能打开你和 %1$s 的对话，请稍后重试。</string>
 </resources>
