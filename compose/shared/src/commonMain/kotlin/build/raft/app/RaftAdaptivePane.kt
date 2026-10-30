@@ -239,12 +239,13 @@ private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =
     }
 
 /**
- * The window width (dp) from which the app lays out wide: two panes, the navigation rail. The
- * web's `md` breakpoint (packages/web MainLayout `(min-width: 768px)`, LeftRail `hidden md:flex`),
- * so iPad portrait (768-834pt) gets the rail as the web does (Direction A, #proj-mobile 10-30;
- * it was 840, Android's expanded width class). Every wide/compact decision reads this constant.
+ * The window width (dp) from which the app lays out wide: two panes, the navigation rail. 744,
+ * the iPad mini's portrait width, so every iPad held upright gets the rail (artin 10-30). That is
+ * 24 below the web's `md` breakpoint (packages/web MainLayout `(min-width: 768px)`): a browser
+ * window that narrow is rare, an iPad mini is not. It was 840, Android's expanded width class.
+ * Every wide/compact decision reads this constant.
  */
-internal const val DualPaneMinimumWidthDp = 768f
+internal const val DualPaneMinimumWidthDp = 744f
 
 internal fun RaftAdaptivePanePosture.toRaftAdaptivePanePostureWireName(): String =
     when (this) {

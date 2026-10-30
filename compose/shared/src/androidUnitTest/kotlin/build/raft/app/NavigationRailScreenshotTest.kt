@@ -33,7 +33,7 @@ import org.robolectric.annotation.GraphicsMode
  * Apps; Help and Settings (dotted for an app update) in the footer; beside it the Home list pane,
  * with no head of its own (web Sidebar `hideTitle`).
  *
- * Captured at the windows the rail now starts at (768dp, the web's `md`): iPad portrait 768 and
+ * Captured where the rail now starts (744dp, the iPad mini's portrait width; 768 is the web's `md`): iPad portrait 768 and
  * 834, iPad 11" landscape 1194, and a 1280 desktop window (the Compose 版's default). The Help menu
  * open beside the rail is the desktop window's `.help` case. Fixed fixture data; verify / record
  * as [RaftRobolectricScreenshot].
