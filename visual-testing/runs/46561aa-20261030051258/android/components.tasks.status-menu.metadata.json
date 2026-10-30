@@ -1,0 +1,52 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.tasks.status-menu",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_tasks_status_menu_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.tasks.status-menu.png",
+              "viewport": { "width": 1026, "height": 780, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "component-bounds",
+                "rect": { "x": 0, "y": 0, "width": 342, "height": 260 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-manual-crop-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 414,
+                  "dominantRatio": 0.817244
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4527,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "2387271aec48297517e6c5e5a2164494",
+                "bootId": "4ae0aaf4-9160-4521-a3b4-278702c01eb8",
+                "capturedAtEpochMs": 1793337005997,
+                "capturedAtMonotonicNs": 97003123124
+              },
+              "clampedToShortWindow": false,
+              "capturedAt": "1793337005997"
+            }

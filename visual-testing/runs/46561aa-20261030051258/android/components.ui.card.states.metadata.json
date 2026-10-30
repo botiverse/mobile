@@ -1,0 +1,52 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.ui.card.states",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_ui_card_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.card.states.png",
+              "viewport": { "width": 1026, "height": 570, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "component-bounds",
+                "rect": { "x": 0, "y": 0, "width": 342, "height": 190 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-manual-crop-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 661,
+                  "dominantRatio": 0.8208577
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4797,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "85c2a74878a8d3ec164b3cb3cff5e9c9",
+                "bootId": "4e5ca2bd-eeb9-4100-913e-76e08ef841ae",
+                "capturedAtEpochMs": 1793336951689,
+                "capturedAtMonotonicNs": 41816404950
+              },
+              "clampedToShortWindow": false,
+              "capturedAt": "1793336951689"
+            }

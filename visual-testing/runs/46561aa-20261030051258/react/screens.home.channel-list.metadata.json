@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.home.channel-list",
+  "image": "visual-testing-results/react/screens.home.channel-list.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='screens.home.channel-list']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-30T05:07:20.372Z"
+}
