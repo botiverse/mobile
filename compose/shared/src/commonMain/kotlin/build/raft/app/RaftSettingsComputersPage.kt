@@ -432,7 +432,7 @@ internal fun RaftSettingsComputersContent(
                                 modifier = Modifier.weight(1f),
                                 style = RaftTheme.typography.monoMeta,
                                 color = RaftTheme.colors.foregroundHint,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             if (model.canAddComputer) {
@@ -468,7 +468,11 @@ internal fun RaftSettingsComputersContent(
     }
 }
 
-/** The page header's counts line: "4 computers · 3 online · 12 agents" (web `ComputersRackCounts`). */
+/**
+ * The page header's counts line: "4 computers · 3 online · 12 agents" (web `ComputersRackCounts`).
+ * Beside Add Computer it may take two lines: each count stays whole (no-break spaces inside it and
+ * before its "·"), so a line only breaks after a "·", and no count is cut off.
+ */
 @Composable
 private fun raftComputersCountsLine(counts: RaftComputersCounts): String =
     listOf(
@@ -483,7 +487,7 @@ private fun raftComputersCountsLine(counts: RaftComputersCounts): String =
         } else {
             stringResource(Res.string.settings_computers_rack_agent_count_other, counts.agents)
         },
-    ).joinToString(" · ")
+    ).joinToString("\u00A0· ") { it.replace(' ', '\u00A0') }
 
 /**
  * One computer as a web ComputersRack card (`view === "cards"`): the device icon with its light,
