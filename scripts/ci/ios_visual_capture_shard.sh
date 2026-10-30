@@ -98,8 +98,10 @@ while IFS=$'\t' read -r case_id page_name page_data; do
       | tee "$out_dir/$case_id.scroll-safety.log"
   fi
   sleep 4
-  xcrun simctl io "$udid" screenshot "$out_dir/$case_id.png"
   cp "$launch_log" "$diag_dir/$case_id.launch.log" || true
+  xcrun simctl io "$udid" screenshot --display=1 "$diag_dir/$case_id.display1.png" || true
+  xcrun simctl io "$udid" screenshot --display=3 "$diag_dir/$case_id.display3.png" || true
+  xcrun simctl io "$udid" screenshot "$out_dir/$case_id.png" 2>/dev/null || cp "$diag_dir/$case_id.display1.png" "$out_dir/$case_id.png" || true
   # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
   # after the first frame so the metadata step can merge per-case caps.
   grep "SLOCK_RICHTEXT_CAPS " "$launch_log" > "$out_dir/$case_id.caps.log" 2>/dev/null || true
