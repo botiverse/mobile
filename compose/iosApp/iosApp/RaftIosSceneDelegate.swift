@@ -66,7 +66,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             RaftIosProductEventsHost.shared.noteOtherLaunch()
         }
         for context in connectionOptions.urlContexts {
-            _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
+            RaftIosOpenURL.accept(
                 context.url,
                 shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_connect"
@@ -97,7 +97,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
+            RaftIosOpenURL.accept(
                 context.url,
                 shellInstanceId: shellInstanceId(for: scene),
                 source: "scene_open_url"
@@ -219,6 +219,27 @@ extension UIColor {
             green: CGFloat((value >> 8) & 0xFF) / 255.0,
             blue: CGFloat(value & 0xFF) / 255.0,
             alpha: CGFloat((value >> 24) & 0xFF) / 255.0
+        )
+    }
+}
+
+/// A URL opened into the app (`raft://…`): a sign-in callback, else a Raft Desktop message link
+/// (`raft:///s/{slug}/channel/{cid}?msg={mid}`), which the shared ingress turns into the Developer
+/// environment's web link and queues like a Universal Link. Anything else is ignored, as before.
+enum RaftIosOpenURL {
+    static func accept(_ url: URL, shellInstanceId: String? = nil, source: String) {
+        if RaftIosMobileOAuthHost.shared.acceptCallbackURL(url, shellInstanceId: shellInstanceId, source: source) {
+            return
+        }
+        let accepted = RaftMessageLinkIngress.shared.accept(
+            url: url.absoluteString,
+            source: "ios_\(source)",
+            configuredWebUrl: nil
+        )
+        RaftIosDiagnosticsRecord(
+            "info",
+            "RaftMessageLink",
+            "app_scheme_link_\(accepted ? "accepted" : "not_claimed") source=\(source)"
         )
     }
 }
