@@ -142,6 +142,14 @@ const val TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY: String = "task_v2_conversation
  */
 const val MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY: String = "mobile_sync_changes_v0"
 
+/**
+ * Personal assistant (botiverse/slock `PERSONAL_ASSISTANT_FEATURE_FLAG_KEY` in
+ * `packages/server/src/services/featureFlagService.ts`, web `PERSONAL_ASSISTANT_FLAG_KEY`): per
+ * server, default off. A pre-check before asking `GET servers/:id/assistant`, whose `enabled` then
+ * decides; off (or unresolved), nothing is asked and the composer has no otter.
+ */
+const val PERSONAL_ASSISTANT_FEATURE_FLAG_KEY: String = "personal_assistant"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -162,6 +170,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY,
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
+    PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
 )

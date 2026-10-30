@@ -440,6 +440,11 @@ data class MemberProfile(
      */
     val lastSeenAt: String? = null,
     /**
+     * A personal assistant paused by a server owner or admin: `assistantPausedAt` (ISO-8601) from
+     * `GET /agents` / `GET /agents/:id`; null while it runs. `agent:updated` refreshes the roster.
+     */
+    val assistantPausedAt: String? = null,
+    /**
      * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
      * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides
      * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).

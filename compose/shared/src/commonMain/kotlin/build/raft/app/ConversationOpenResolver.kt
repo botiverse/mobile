@@ -23,7 +23,9 @@ internal enum class ConversationOpenSource {
     AppShortcut,
     // An external Raft message link (Android App Link / iOS Universal Link), resolved and
     // access-checked by RaftMessageLinkResolver before it reaches the window coordinator.
-    MessageLink
+    MessageLink,
+    // The personal assistant's otter on a composer: opens the owner's DM with the assistant.
+    AssistantOtter
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -381,7 +383,8 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
         ConversationOpenSource.ParentConversation,
         ConversationOpenSource.AuthResume,
         ConversationOpenSource.MessageLink -> messageId
-        ConversationOpenSource.AppShortcut -> null
+        ConversationOpenSource.AppShortcut,
+        ConversationOpenSource.AssistantOtter -> null
     }?.takeIf { it.isNotBlank() }
 
 private fun InboxItem.toActivityOpenThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
