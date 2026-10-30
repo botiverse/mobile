@@ -98,15 +98,15 @@ class RaftMarkdownTaskRefChipTest {
     }
 
     @Test
-    fun taskChipPaddingIsGluedSpacersNotPlaceholders() {
+    fun skiaTaskChipPaddingIsLetterSpacedJoinersNotPlaceholders() {
         // artin 10-29 (iOS): a placeholder lead ended a line while the label wrapped, leaving a sliver
-        // of the chip box. The lead and trail are word joiners widened by letter spacing instead.
-        val text = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(TaskStatus.Done), "#7") }
+        // of the chip box. On Skia the lead and trail are word joiners widened by letter spacing.
+        val text = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(TaskStatus.Done), "#7", spacerAsPlaceholder = false) }
         assertEquals("\u2060#7\u2060", text.text)
         assertTrue(text.raftMarkdownInlineContentIds().isEmpty())
         val spacing = text.spanStyles.filter { it.item.letterSpacing.isSpecified }.associate { it.start to it.item.letterSpacing }
         assertEquals(mapOf(0 to 18.5.sp, 3 to 4.5.sp), spacing)
-        val unknown = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(null), "#7") }
+        val unknown = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(null), "#7", spacerAsPlaceholder = false) }
         assertEquals(
             mapOf(0 to 6.sp, 3 to 6.sp),
             unknown.spanStyles.filter { it.item.letterSpacing.isSpecified }.associate { it.start to it.item.letterSpacing }
@@ -118,6 +118,25 @@ class RaftMarkdownTaskRefChipTest {
         assertEquals(RaftUiPalette.stickerInk, mark.item.stroke)
         assertEquals(4.5.dp, mark.item.inset)
         assertEquals(10.dp, mark.item.size)
+        assertTrue(unknown.raftInlineMarkRanges().isEmpty())
+    }
+
+    @Test
+    fun androidTaskChipPaddingIsGluedPlaceholdersWithNoLetterSpacing() {
+        // artin 10-30 (Android 15+): Minikin gives a one-character letter-spaced run no advance, so
+        // the letter-spaced joiners collapsed and "#3954" lost its padding. On Android the lead and
+        // trail are gap placeholders glued to the label by word joiners.
+        val text = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(TaskStatus.Done), "#7", spacerAsPlaceholder = true) }
+        assertEquals("\uFFFC\u2060#7\u2060\uFFFC", text.text)
+        assertTrue(text.spanStyles.none { it.item.letterSpacing.isSpecified && it.item.letterSpacing.value != 0f })
+        assertEquals(listOf(raftInlineGapInlineId(18.5.dp), raftInlineGapInlineId(4.5.dp)), text.raftMarkdownInlineContentIds().toList())
+        val unknown = buildAnnotatedString { appendRaftMarkdownTaskChip(raftMarkdownTaskChipStyle(null), "#3954", spacerAsPlaceholder = true) }
+        assertEquals("\uFFFC\u2060#3954\u2060\uFFFC", unknown.text)
+        assertEquals(setOf(raftInlineGapInlineId(6.dp)), unknown.raftMarkdownInlineContentIds().toSet())
+        // The whole chip, padding included, sits inside the box; the pixel mark is on the lead placeholder.
+        assertEquals(0 until unknown.length, unknown.raftInlineBoxRanges().single().let { it.start until it.end })
+        val mark = text.raftInlineMarkRanges().single()
+        assertEquals(0 until 1, mark.start until mark.end)
         assertTrue(unknown.raftInlineMarkRanges().isEmpty())
     }
 
@@ -138,11 +157,15 @@ class RaftMarkdownTaskRefChipTest {
             ),
             boxes.map { it.item }
         )
+        // In-box padding is a glued placeholder on Android, a letter-spaced joiner on Skia.
+        val placeholderPadding = raftPlatformInlineSpacerIsPlaceholder()
         boxes.zip(listOf("#92", "#209", "#7")).forEach { (box, label) ->
-            assertEquals("\u2060$label\u2060", annotated.text.substring(box.start, box.end))
+            val expected = if (placeholderPadding) "\uFFFC\u2060$label\u2060\uFFFC" else "\u2060$label\u2060"
+            assertEquals(expected, annotated.text.substring(box.start, box.end))
         }
-        // Only the chips' outer margin gaps are placeholders; the pixels are painted marks.
-        assertEquals(setOf(raftInlineGapInlineId(2.dp)), annotated.raftMarkdownInlineContentIds())
+        // Besides the chips' outer margin gaps, only Android's padding spacers are placeholders; the pixels are painted marks.
+        val paddingGaps = if (placeholderPadding) listOf(18.5.dp, 4.5.dp, 6.dp) else emptyList()
+        assertEquals((listOf(2.dp) + paddingGaps).map(::raftInlineGapInlineId).toSet(), annotated.raftMarkdownInlineContentIds())
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         assertEquals(
             listOf(boxes[0].start, boxes[1].start),

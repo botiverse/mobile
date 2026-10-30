@@ -15,3 +15,6 @@ internal actual fun raftRichTextPlatformCaps(): RaftRichTextPlatformCaps =
         reactionAtlas = true,
         declaredDivergences = emptyList()
     )
+
+/** Skia: breaks around placeholders, letter-spaces a lone word joiner. */
+internal actual fun raftPlatformInlineSpacerIsPlaceholder(): Boolean = false

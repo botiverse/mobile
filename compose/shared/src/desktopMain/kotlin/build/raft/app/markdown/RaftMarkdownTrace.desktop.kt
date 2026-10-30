@@ -21,3 +21,6 @@ internal actual fun raftRichTextPlatformCaps(): RaftRichTextPlatformCaps =
         raftRefChrome = true,
         reactionAtlas = true,
     )
+
+/** Skia: breaks around placeholders, letter-spaces a lone word joiner. */
+internal actual fun raftPlatformInlineSpacerIsPlaceholder(): Boolean = false
