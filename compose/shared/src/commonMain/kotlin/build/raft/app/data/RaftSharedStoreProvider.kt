@@ -5,6 +5,9 @@ import build.raft.app.toJointConnectionsDurableRecord
 import build.raft.app.toJointConnectionsSnapshot
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.host.HostCapabilities
+import build.raft.app.SharedThreadComposerDraftAccount
+import build.raft.app.SharedThreadComposerDraftAccountStore
+import build.raft.app.SharedThreadComposerDraftAccounts
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
@@ -3282,6 +3285,53 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             val storedConversationDetails =
                 StoredConversationDetails(offlineResourceCache.resource(ConversationDetailResourceSpec))
+            // V-102: composer drafts are stored per signed-in account (environment + user) and
+            // deleted when that account's session ends; see SharedThreadComposerDraftAccounts.
+            val composerDraftLogger = sharedInfoLogger("SlockComposerDraft")
+            val composerDraftAccountStore =
+                SharedThreadComposerDraftAccountStore(
+                    base = sharedPreferenceStore,
+                    liveAccount = { presenceAuthContext.value?.toComposerDraftAccount() },
+                    diagnosticsLogger = composerDraftLogger
+                )
+            val composerDraftAccounts =
+                SharedThreadComposerDraftAccounts(
+                    base = sharedPreferenceStore,
+                    store = composerDraftAccountStore,
+                    persistenceFor = { view ->
+                        SharedThreadComposerDraftPersistence(view, diagnosticsLogger = composerDraftLogger)
+                    },
+                    diagnosticsLogger = composerDraftLogger
+                )
+            val composerDraftPersistSlice =
+                SharedThreadComposerDraftPersistSlice(
+                    SharedThreadComposerDraftPersistence(
+                        composerDraftAccountStore,
+                        diagnosticsLogger = composerDraftLogger
+                    ),
+                    diagnosticsLogger = composerDraftLogger,
+                    scheduler =
+                        CoroutineThreadComposerDraftPersistenceScheduler(
+                            CoroutineScope(SupervisorJob())
+                        )
+                )
+            CoroutineScope(SupervisorJob()).launch {
+                if (runCatching { authStore.readSession() }.getOrNull() == null) {
+                    composerDraftAccounts.onNoStoredSessionAtStart()
+                }
+                presenceAuthContext
+                    .map { context -> context?.toComposerDraftAccount() }
+                    .distinctUntilChanged()
+                    .collect { account ->
+                        runCatching { composerDraftAccounts.onAccountBinding(account, composerDraftPersistSlice) }
+                            .onFailure { error ->
+                                composerDraftLogger(
+                                    "thread_composer_draft_account_binding_failed " +
+                                        "error=${error::class.simpleName.orEmpty()}"
+                                )
+                            }
+                    }
+            }
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -3324,18 +3374,7 @@ internal class RaftSharedStoreProvider private constructor(
                 presenceWriteResolver = resolvePresenceWrite,
                 replyCacheAuthContext = presenceAuthContext,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
-                composerDraftPersistSlice =
-                    SharedThreadComposerDraftPersistSlice(
-                        SharedThreadComposerDraftPersistence(
-                            sharedPreferenceStore,
-                            diagnosticsLogger = sharedInfoLogger("SlockComposerDraft")
-                        ),
-                        diagnosticsLogger = sharedInfoLogger("SlockComposerDraft"),
-                        scheduler =
-                            CoroutineThreadComposerDraftPersistenceScheduler(
-                                CoroutineScope(SupervisorJob())
-                            )
-                    ),
+                composerDraftPersistSlice = composerDraftPersistSlice,
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
                         storage = SharedActivityPersistStorage(sharedPreferenceStore),
@@ -4584,3 +4623,7 @@ private fun jointActorResolve(
 ): suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome = { serverId, refs ->
     networkClient.resolveActors(DataRequestPriority.Background, serverId, refs)
 }
+
+/** The composer-draft owner of this auth binding (environment + account); null when unbound. */
+private fun ProcessPresenceAuthContext.toComposerDraftAccount(): SharedThreadComposerDraftAccount? =
+    SharedThreadComposerDraftAccount.of(environmentId = environmentId, accountId = accountId)

@@ -61,7 +61,13 @@ internal data class SharedThreadComposerDraftState(
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: Set<String> = emptySet(),
     val executingMentionActionIds: Set<String> = emptySet(),
-    val executingMentionActionStates: Map<String, String> = emptyMap()
+    val executingMentionActionStates: Map<String, String> = emptyMap(),
+    /**
+     * Session-only: the persist slice's account epoch this composer was started under.  A
+     * composer started for one signed-in account never writes its text after that account
+     * signed out or another one signed in (see [SharedThreadComposerDraftPersistSlice]).
+     */
+    val accountEpoch: Long = 0L
 )
 
 /**
@@ -1248,10 +1254,10 @@ internal class SharedThreadComposerDraftPersistence(
             draftKey = key
         )
 
-    private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
-    private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
-    private fun attachmentsKey(key: String): String = "threadComposerDraft:v1:$key:attachments"
-    private fun sourcesKey(key: String): String = "threadComposerDraft:v1:$key:externalShareSources"
+    private fun textKey(key: String): String = "$DraftStoragePrefix$key$TextSuffix"
+    private fun asTaskKey(key: String): String = "$DraftStoragePrefix$key$AsTaskSuffix"
+    private fun attachmentsKey(key: String): String = "$DraftStoragePrefix$key$AttachmentsSuffix"
+    private fun sourcesKey(key: String): String = "$DraftStoragePrefix$key$SourcesSuffix"
 
     private fun readExternalShareSources(key: String): List<SharedThreadComposerExternalShareSource> =
         store.getString(sourcesKey(key))
@@ -1337,11 +1343,24 @@ internal class SharedThreadComposerDraftPersistence(
             .replace("%7C", "|")
             .replace("%25", "%")
 
-    private companion object {
+    /**
+     * The persistence facade's own key layout.  In production the facade wraps an
+     * account-scoped view ([SharedThreadComposerDraftAccountStore]) which maps these keys onto
+     * one account's rows; the layout itself never names an account.
+     */
+    internal companion object {
         const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"
         const val DraftStoragePrefix = "threadComposerDraft:v1:"
+        const val TextSuffix = ":text"
+        const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
-        val ComposerDraftJson = Json { ignoreUnknownKeys = true }
+        const val SourcesSuffix = ":externalShareSources"
+        private val ComposerDraftJson = Json { ignoreUnknownKeys = true }
+
+        /** Every row one draft key owns (the active index aside). */
+        fun draftRowKeys(key: String): List<String> =
+            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix)
+                .map { suffix -> "$DraftStoragePrefix$key$suffix" }
     }
 }
 
@@ -1407,6 +1426,8 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val persistenceWriteLock = reentrantLock()
     private val pendingWritesByDraftKey = mutableMapOf<String, PendingThreadComposerDraftWrite>()
     private val writeGenerationByDraftKey = mutableMapOf<String, Long>()
+    /** Advanced each time the signed-in account changes; guarded by [stateLock]. */
+    private var accountEpoch = 0L
 
     /**
      * Slice-local undo record.  Keeping this type inside the slice is intentional: rollback must
@@ -1632,7 +1653,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     } else {
                         withStagedAttachments
                     }
-                if (withStagedAttachments.requiresComposerEditorReplace(reduced)) {
+                (if (withStagedAttachments.requiresComposerEditorReplace(reduced)) {
                     synchronized.withThreadComposerEditorCommand(
                         kind = ThreadComposerEditorCommandKind.Replace,
                         text = withStagedAttachments.seedText,
@@ -1642,7 +1663,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     )
                 } else {
                     synchronized
-                }
+                }).copy(accountEpoch = accountEpoch)
             }
             else -> reduced
         }
@@ -1661,7 +1682,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     val fallbackSourceKey = stateLock.withLock {
                         fallbackDraftSourceKeyByCurrentKey.remove(key)
                     }
-                    if (fallbackSourceKey != null && fallbackSourceKey != key) {
+                    if (fallbackSourceKey != null && fallbackSourceKey != key && isCurrentAccount(next)) {
                         persistenceWriteLock.withLock {
                             persistence.save(
                                 key = key,
@@ -1676,7 +1697,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     }
                 }
             is SharedThreadComposerDraftIntent.Change ->
-                next.draftKey?.let { key ->
+                next.draftKey?.takeIf { isCurrentAccount(next) }?.let { key ->
                     schedulePendingWrite(key, next)
                 }
             is SharedThreadComposerDraftIntent.InsertMention,
@@ -1697,7 +1718,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     persistState(key, previous, "BeginSend")
                 }
             is SharedThreadComposerDraftIntent.CompleteSend ->
-                if (previous.sending) {
+                if (previous.sending && isCurrentAccount(next)) {
                     next.draftKey?.let { key ->
                         cancelPendingWrite(key)
                         persistenceWriteLock.withLock {
@@ -1893,6 +1914,12 @@ internal class SharedThreadComposerDraftPersistSlice(
         state: SharedThreadComposerDraftState,
         reason: String
     ) {
+        if (!isCurrentAccount(state)) {
+            // Text typed for an account that has since signed out (or been replaced) is dropped,
+            // never written into whoever is signed in now.
+            safeDiagnostics("thread_composer_draft_persist_skipped key=$key reason=account_retired")
+            return
+        }
         persistence.save(
             key = key,
             text = state.seedText,
@@ -1979,6 +2006,32 @@ internal class SharedThreadComposerDraftPersistSlice(
             }
         }
         return result
+    }
+
+    private fun isCurrentAccount(state: SharedThreadComposerDraftState): Boolean =
+        stateLock.withLock { state.accountEpoch == accountEpoch }
+
+    /**
+     * The signed-in account changed (sign-out, session expiry, account or environment switch).
+     * Every in-memory draft of the previous account is dropped, never flushed: pending debounced
+     * writes, staged attachments, reply fallbacks.  Composers started before this call can no
+     * longer write.  [rebind] switches the durable view to the successor while the slice is
+     * frozen, and the shared active-draft projection is then re-read for the successor.
+     */
+    fun retireAccountSession(rebind: () -> Unit) {
+        val cancelled = stateLock.withLock {
+            accountEpoch += 1L
+            val pending = pendingWritesByDraftKey.toMap()
+            pending.keys.forEach(::advanceWriteGenerationLocked)
+            pendingWritesByDraftKey.clear()
+            stagedUploadedAttachmentsByDraftKey.clear()
+            fallbackDraftSourceKeyByCurrentKey.clear()
+            persistenceWriteLock.withLock { rebind() }
+            pending.values
+        }
+        cancelled.forEach { pending -> pending.cancellation?.cancel() }
+        refreshActiveDraftRecords(reason = "account_changed")
+        safeDiagnostics("thread_composer_draft_account_retired droppedPending=${cancelled.size}")
     }
 
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
