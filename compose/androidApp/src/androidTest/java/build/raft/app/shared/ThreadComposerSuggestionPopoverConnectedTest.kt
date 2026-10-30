@@ -743,7 +743,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                 "logcat.txt",
                 "failure.txt"
             )
-        private val PanelRegionDp = DpRegion(left = 34f, top = 8f, right = 352f, bottom = 216f)
+        // Inside the oracle underlay: ThreadComposerVisualInputWidth (302dp since #4012) centred on
+        // the ~411dp CI screen spans x 55..357dp, and the suggestion panel takes the same width.
+        private val PanelRegionDp = DpRegion(left = 56f, top = 8f, right = 352f, bottom = 216f)
         private val ComposerInputRegionDp = DpRegion(left = 42f, top = 228f, right = 330f, bottom = 278f)
         private val StatusRegionDp = DpRegion(left = 0f, top = 720f, right = 412f, bottom = 915f)
         private val UnderlayCyan = Color.rgb(34, 211, 238)
