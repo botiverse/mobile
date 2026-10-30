@@ -3487,6 +3487,7 @@
     <string name="notification_level_default">默认（%1$s）</string>
     <string name="notification_level_thread_all">所有回复（关注）</string>
     <string name="notification_level_muted_note">已静音：最多仅提及。</string>
+    <string name="notification_level_muted_dm_note">已静音：此 DM 里只有 @我 的消息会通知。</string>
     <string name="notification_level_dm_note">DM 里的每条消息都是发给你的，所以“所有新消息”和“仅 DM、@我 和关注的线程”效果相同。</string>
     <string name="notification_level_thread_note">关注线程等同于“所有回复”。</string>
     <string name="notification_level_menu_label">通知：%1$s</string>

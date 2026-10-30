@@ -23,6 +23,7 @@ import build.raft.app.data.inheritedNotificationLevel
 import build.raft.app.data.resolveEffectiveNotificationLevel
 import build.raft.app.resources.*
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * What a level picker is about (slock docs/contracts/notifications.md §1.1): a channel or DM
@@ -149,14 +150,23 @@ internal fun RaftNotificationLevelDialog(
                     }
                 )
             }
-            val notes =
-                buildList {
-                    if (target.muted) add(Res.string.notification_level_muted_note)
-                    if (target.isDirectMessage) add(Res.string.notification_level_dm_note)
-                    if (target.scope == RaftNotificationLevelScope.Thread) add(Res.string.notification_level_thread_note)
-                }
-            notes.forEach { note -> SettingsFormDetailText(stringResource(note)) }
+            raftNotificationLevelNotes(target).forEach { note -> SettingsFormDetailText(stringResource(note)) }
             if (failed) SettingsFormErrorText(stringResource(Res.string.notification_level_save_failed))
         }
     }
 }
+
+/**
+ * The notes under the choices: a mute caps the level at mentions, and inside a muted DM only an
+ * actual @mention notifies (contract §1.1); in a DM All and Mentions behave the same; a thread's All
+ * is following it.
+ */
+internal fun raftNotificationLevelNotes(target: RaftNotificationLevelTarget): List<StringResource> =
+    buildList {
+        when {
+            target.muted && target.isDirectMessage -> add(Res.string.notification_level_muted_dm_note)
+            target.muted -> add(Res.string.notification_level_muted_note)
+            target.isDirectMessage -> add(Res.string.notification_level_dm_note)
+        }
+        if (target.scope == RaftNotificationLevelScope.Thread) add(Res.string.notification_level_thread_note)
+    }

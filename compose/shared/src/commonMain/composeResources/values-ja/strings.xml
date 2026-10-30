@@ -3487,6 +3487,7 @@
     <string name="notification_level_default">デフォルト（%1$s）</string>
     <string name="notification_level_thread_all">すべての返信（フォロー）</string>
     <string name="notification_level_muted_note">ミュート中：通知はメンションまでです。</string>
+    <string name="notification_level_muted_dm_note">ミュート中：この DM では @メンションだけが通知されます。</string>
     <string name="notification_level_dm_note">DM のメッセージはすべてあなた宛てなので、「すべての新着メッセージ」と「DM・メンション・フォロー中のスレッド」は同じ動作になります。</string>
     <string name="notification_level_thread_note">スレッドのフォローは「すべての返信」と同じです。</string>
     <string name="notification_level_menu_label">通知：%1$s</string>

@@ -3487,6 +3487,7 @@
     <string name="notification_level_default">Default (%1$s)</string>
     <string name="notification_level_thread_all">All replies (follow)</string>
     <string name="notification_level_muted_note">Muted: at most mentions.</string>
+    <string name="notification_level_muted_dm_note">Muted: only an @mention in this direct message notifies.</string>
     <string name="notification_level_dm_note">Every message in a direct message is for you, so All and Mentions behave the same.</string>
     <string name="notification_level_thread_note">Following a thread is the same as All replies.</string>
     <string name="notification_level_menu_label">Notifications: %1$s</string>
