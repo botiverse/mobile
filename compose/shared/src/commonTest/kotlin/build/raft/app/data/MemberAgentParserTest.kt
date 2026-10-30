@@ -605,4 +605,43 @@ class MemberAgentParserTest {
         assertTrue(external.isExternal)
         assertFalse(managed.isExternal)
     }
+
+    /**
+     * botiverse/slock staging ee41b3f3 `services/assistantLifecycleService.ts` `projectAssistantPause`:
+     * `GET /agents` (a bare array) and `GET /agents/:id` carry `assistantPausedAt` (a serialized
+     * Date, or null once started again) to everyone who sees the agent; only the owner and server
+     * owners/admins also get `assistantPausedBy`. `assistantPausedByUserId` never leaves the server.
+     * Shapes as `routes/assistantOwnerOnly.api.test.ts` asserts them.
+     */
+    @Test
+    fun agentsCarryTheAssistantPause() {
+        val agents =
+            parseSharedSettingsAgentsAsMembers(
+                """
+                [
+                  {"id":"asst-paused","name":"ada-assistant","displayName":"Ada","status":"active","runtime":"antiproton",
+                   "assistantOwnerUserId":"user-owner","assistantPausedAt":"2026-10-30T09:12:44.512Z",
+                   "assistantPausedBy":{"id":"user-admin","name":"Admin"}},
+                  {"id":"asst-running","name":"bea-assistant","status":"active","runtime":"antiproton",
+                   "assistantOwnerUserId":"user-bea","assistantPausedAt":null},
+                  {"id":"agent-plain","name":"builder","status":"active","runtime":"codex"}
+                ]
+                """.trimIndent()
+            )
+        assertNotNull(agents)
+        val byId = agents.associateBy { it.id.value }
+        assertEquals("2026-10-30T09:12:44.512Z", byId.getValue("asst-paused").assistantPausedAt)
+        assertNull(byId.getValue("asst-running").assistantPausedAt)
+        assertNull(byId.getValue("agent-plain").assistantPausedAt)
+
+        // A member's view of GET /agents/:id: the pause without who paused it.
+        val memberView =
+            parseSharedAgentProfile(
+                """{"id":"asst-paused","name":"ada-assistant","status":"active","assistantOwnerUserId":"user-owner","assistantPausedAt":"2026-10-30T09:12:44.512Z"}"""
+            )
+        assertEquals("2026-10-30T09:12:44.512Z", memberView?.assistantPausedAt)
+        // No guessed spellings.
+        val snake = parseSharedAgentProfile("""{"id":"a1","name":"x","assistant_paused_at":"2026-10-30T09:12:44.512Z","pausedAt":"2026-10-30T09:12:44.512Z"}""")
+        assertNull(snake?.assistantPausedAt)
+    }
 }

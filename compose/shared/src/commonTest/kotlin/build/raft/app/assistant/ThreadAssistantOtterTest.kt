@@ -6,6 +6,7 @@ import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ChannelId
@@ -96,5 +97,21 @@ class ThreadAssistantOtterTest {
         assertEquals(0, home.directMessageUnreadCount(serverId = "s1", channelId = "dm2"))
         // Home holds another server: nothing is read across servers.
         assertEquals(0, home.directMessageUnreadCount(serverId = "s2", channelId = "dm1"))
+    }
+
+    @Test
+    fun pausedComesFromTheRostersAgentAndOutranksEverything() {
+        fun agent(id: String, pausedAt: String?) =
+            MemberProfile(id = MemberId(id), displayName = id, handle = id, kind = MemberKind.Agent, assistantPausedAt = pausedAt)
+        val roster =
+            SharedServerMembersEntry(
+                serverId = "s1",
+                members = listOf(agent("a1", "2026-10-30T09:12:44.512Z"), agent("a2", null)),
+            )
+        assertTrue(roster.assistantPaused("a1"))
+        assertFalse(roster.assistantPaused("a2"))
+        assertFalse(roster.assistantPaused("unknown"), "not in the roster yet: not paused")
+        // Web otterMood: a pause is away, over unread and working.
+        assertEquals(RaftOtterMood.Away, assistantOtterMood(AgentStatus.Working, dmUnreadCount = 2, paused = true))
     }
 }

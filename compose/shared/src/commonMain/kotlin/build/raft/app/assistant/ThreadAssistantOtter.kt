@@ -27,6 +27,7 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMyAssistantStore
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.activeAssistantOtterHost
 import build.raft.app.data.myAssistantState
@@ -38,7 +39,9 @@ import build.raft.app.model.ServerId
 import build.raft.app.resolveOpenRequest
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 // The page side of the personal assistant's otter (web assistant/AssistantOtter.tsx
 // `AssistantOtterAnchor` / `AssistantOtterListEnd` and assistantOtterState.ts): which composer it
@@ -77,9 +80,10 @@ internal fun assistantOtterDmChannelId(state: MyAssistantState, conversationChan
  * The otter's mood from what the app knows (web `useAssistantOtterMood`):
  * - [agentStatus]: the assistant agent's status; thinking / working is `working`, offline `away`.
  * - [dmUnreadCount]: unread in the owner's DM with it (`new`).
- * - [paused] and [confirm] have no source in the app yet (see the PR): the agent payload the app
- *   reads carries no `assistantPausedAt`, and the app keeps no observable list of the DM's
- *   messages to find a waiting action card in. Web shows a waiting card as `new` through the
+ * - [paused]: a server owner or admin paused it (the agent's `assistantPausedAt`, web
+ *   `useAssistantPause`): `away`, above everything else.
+ * - [confirm] has no source in the app yet (see the PR): the app keeps no observable list of the
+ *   DM's messages to find a waiting action card in. Web shows a waiting card as `new` through the
  *   unread count until the DM's messages are loaded, which is what the app shows too.
  */
 internal fun assistantOtterMood(
@@ -95,6 +99,10 @@ internal fun assistantOtterMood(
         working = agentStatus == AgentStatus.Thinking || agentStatus == AgentStatus.Working,
         offline = agentStatus == AgentStatus.Offline,
     )
+
+/** Whether the roster's [agentId] is a paused assistant (web `useAssistantPause(agentId) !== null`). */
+internal fun SharedServerMembersEntry.assistantPaused(agentId: String): Boolean =
+    membersById[agentId.trim()]?.assistantPausedAt?.isNotBlank() == true
 
 /** Unread in [serverId]'s DM [channelId] as Home last read it; 0 when Home holds another server. */
 internal fun SharedHomeState.directMessageUnreadCount(serverId: String, channelId: String): Int {
@@ -182,12 +190,30 @@ internal fun rememberThreadAssistantOtter(
             if (server == null || agentId == null) null else serverMembersStore?.currentMemberStatus(ServerId(server), agentId)
         }
     val status by statusFlow.collectAsState(initialStatus)
+    // The pause rides on the agent payload; agent:updated refreshes the roster that carries it.
+    val pausedFlow =
+        remember(serverMembersStore, server, agentId) {
+            if (serverMembersStore == null || server == null || agentId == null) {
+                flowOf(false)
+            } else {
+                serverMembersStore.serverMembersEntryFlow(ServerId(server))
+                    .map { it.assistantPaused(agentId) }
+                    .distinctUntilChanged()
+            }
+        }
+    val initialPaused =
+        remember(serverMembersStore, server, agentId) {
+            server != null && agentId != null &&
+                serverMembersStore?.currentServerMembersEntry(ServerId(server))?.assistantPaused(agentId) == true
+        }
+    val paused by pausedFlow.collectAsState(initialPaused)
     val currentOnOpenDm by rememberUpdatedState(onOpenDm)
     if (server == null || dmChannelId == null) return null
     val mood =
         assistantOtterMood(
             agentStatus = status?.status,
             dmUnreadCount = homeState.directMessageUnreadCount(server, dmChannelId),
+            paused = paused,
         )
     val scale = if (wide && !replyThread) RaftAssistantOtterDefaults.WideScale else RaftAssistantOtterDefaults.PhoneScale
     val endInset = if (wide) RaftAssistantOtterDefaults.WideEndInset else RaftAssistantOtterDefaults.PhoneEndInset

@@ -151,6 +151,13 @@ private data class WireAgent(
     val inMemberLists: Boolean? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
+    /**
+     * Personal assistants only (botiverse/slock #10654): when a server owner or admin paused it, as
+     * an ISO-8601 string; `null` while not paused, absent for other agents. `GET /agents` and
+     * `GET /agents/:id` send it to everyone who sees the agent (`services/assistantLifecycleService.ts`
+     * `projectAssistantPause`); who paused it (`assistantPausedBy`) is not read here.
+     */
+    val assistantPausedAt: String? = null,
 )
 
 /** slock `routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`. */
@@ -875,6 +882,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        assistantPausedAt = assistantPausedAt?.takeIf { it.isNotBlank() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,
