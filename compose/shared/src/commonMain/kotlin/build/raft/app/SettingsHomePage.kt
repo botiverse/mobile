@@ -930,7 +930,7 @@ internal data class SettingsVisualFixtureValues(
     val serverSlug: String = "visual",
     val serverPlan: String = "free",
     val ownerId: String = "visual-user",
-    val ownerMemberId: String = "visual-human-1",
+    val ownerMemberId: String = "visual-user",
     val ownerName: String = "artin",
     val ownerDisplayName: String = "artin",
     val ownerHandle: String = "@artin",

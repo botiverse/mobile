@@ -467,7 +467,7 @@ private fun installSettingsVisualFixtureData() {
             serverSlug = VisualFixtureData.Server.SLUG,
             serverPlan = VisualFixtureData.Server.PLAN,
             ownerId = VisualFixtureData.Humans.Owner.ID,
-            ownerMemberId = VisualFixtureData.Humans.Owner.MEMBER_ID,
+            ownerMemberId = VisualFixtureData.Humans.Owner.ID,
             ownerName = VisualFixtureData.Humans.Owner.NAME,
             ownerDisplayName = VisualFixtureData.Humans.Owner.DISPLAY_NAME,
             ownerHandle = VisualFixtureData.Humans.Owner.HANDLE,
