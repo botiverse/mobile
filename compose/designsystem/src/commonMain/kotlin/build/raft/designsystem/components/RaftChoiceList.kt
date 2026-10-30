@@ -193,8 +193,8 @@ fun <T> RaftChoiceList(
  *   screen), and its text is the caller's ([query], [onQueryChange]) so a [footer] or
  *   [noMatchLabel] can quote it. Rows match their `searchText` (else `label`) case-insensitively,
  *   or, when the caller runs its own search, [matchedValues] in its order.
- * - The rows chosen when the search text last changed stay first, in their own group, above the
- *   matches; searching never changes the choice.
+ * - The rows chosen when the search text last changed stay first within their own group (Agents,
+ *   Humans), ahead of that group's other matches; searching never changes the choice.
  * - [groups]: each item names its group; rows come under their group's heading (`text-caption`
  *   bold `foreground-hint`, 10dp in, 8dp above and 4dp under) in the groups' order, items of no
  *   known group last with no heading; an empty group draws no heading.
