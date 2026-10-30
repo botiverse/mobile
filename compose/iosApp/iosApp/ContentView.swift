@@ -476,9 +476,18 @@ enum RaftNativeNavProtoDemo {
         func step(_ index: Int) {
             if index > steps {
                 if finish {
-                    pan.scriptedState = .ended
-                    pan.scriptedVelocityX = 900
-                    target.perform(handler, with: pan)
+                    // Run 41084382910: an `.ended` scripted pan made UIKit cancel the pop (it bounced
+                    // back in both modes). The handler's target is the navigation controller's
+                    // percent-driven interactive transition: finish it the way a release past the
+                    // threshold does.
+                    if let interaction = target as? UIPercentDrivenInteractiveTransition {
+                        interaction.finish()
+                    } else {
+                        pan.scriptedState = .ended
+                        pan.scriptedVelocityX = 900
+                        target.perform(handler, with: pan)
+                    }
+                    marker("RAFT_PROTO_SWIPE_END finished_via=\(target is UIPercentDrivenInteractiveTransition ? "interaction" : "gesture") class=\(type(of: target))")
                     after(0.8) {
                         nav.view.removeGestureRecognizer(pan)
                         completion()
