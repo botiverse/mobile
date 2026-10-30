@@ -160,7 +160,13 @@ class ThreadAssistantPanelScreenshotTest {
                 }
             val host =
                 remember {
-                    val transport = HostBridgeTransport { _, _, _ -> }
+                    val transport =
+                        HostBridgeTransport { method, params, _ ->
+                            // TEMP diagnostics: the page's bridge logs (thread_* lines).
+                            if (method.contains("log", ignoreCase = true) && (params.contains("thread") || params.contains("repl"))) {
+                                println("assistant_dm_bridge $method ${params.take(400)}")
+                            }
+                        }
                     val navigator =
                         object : RaftCmpNavigator {
                             override fun openPage(pageName: String, pageData: JsonObject) = Unit
