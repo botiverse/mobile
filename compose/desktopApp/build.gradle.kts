@@ -54,12 +54,16 @@ tasks.withType<Test>().configureEach {
 // tested or packaged. Bump each together with its libs.versions.toml version.
 // - io.github.kdroidfilter:wrywebview (via :shared desktopMain): the embedded WebView's native
 //   engine bridge, a frozen upstream release maintained by Lagoon (fork it if it needs a fix).
-// - io.github.vinceglb:filekit-*: the system open / save panels (macOS through JNA).
+// - io.github.vinceglb:filekit-*: the system open / save panels (macOS through JNA). filekit-core
+//   resolves to FileKit's 0.17.0 (ComposeMediaPlayer asks for 0.14.2; Gradle takes the higher).
+// - io.github.kdroidfilter:composemediaplayer-jvm (via :shared desktopMain): video playback; its jar
+//   carries the JNI bridge to AVFoundation (libNativeVideoPlayer.dylib, macOS arm64 / x86_64).
 val pinnedDesktopJarSha256 =
     mapOf(
         "io.github.kdroidfilter:wrywebview" to "513d30357154de4c5494abe4b133729fc1c111331cc18100ec3a9bf338b7947f",
         "io.github.vinceglb:filekit-dialogs-jvm" to "1c2afa8001a9cc5f136c25a53856573c65334cdd7d2352a6c8da8bd91a983557",
         "io.github.vinceglb:filekit-core-jvm" to "d35a1c44b47b6566712e8f6e7340778c3bb6f49b61496152d9bc64125387e992",
+        "io.github.kdroidfilter:composemediaplayer-jvm" to "ef8f7ab9a6fcb8a56052453f217432b978477ae15db03cccdc271354deaf5c24",
     )
 val verifyPinnedDesktopJars by tasks.registering {
     val artifacts = configurations.named("runtimeClasspath").flatMap { it.incoming.artifacts.resolvedArtifacts }

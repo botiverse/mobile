@@ -52,10 +52,19 @@ internal actual fun raftPlatformWebLoginEndsOnResume(): Boolean = true
 
 internal actual fun raftPlatformDefaultAppTabBarRenderer(): String? = null
 
-// TODO(desktop): no video host yet (RaftVideoPlayer is a placeholder).
-internal actual fun raftPlatformUsesNativeVideoController(): Boolean = false
+// The desktop video host (RaftVideoPlayer.desktop.kt) draws its own full controller (play / pause,
+// seek, time, volume, full screen, Space), so the shared minimal controls stay out of its way, as
+// with Android's Media3 PlayerView and iOS's AVPlayerViewController.
+internal actual fun raftPlatformUsesNativeVideoController(): Boolean = RaftDesktopVideoSupport.available
 
-internal actual fun raftPlatformSupportsVideoAttachmentContainer(container: RaftPreviewableVideoContainer): Boolean = false
+// ComposeMediaPlayer's macOS backend rejects media without a video track: audio attachments keep
+// the "not available" notice and the shared audio card (RaftDesktopVideoSupport.route).
+internal actual fun raftPlatformPlaysAudioOnlyMedia(): Boolean = false
+
+// Video attachments preview only where the player runs (macOS 14+ with its native bridge loaded);
+// elsewhere they stay download cards. AVFoundation demuxes the same containers as iOS's AVPlayer.
+internal actual fun raftPlatformSupportsVideoAttachmentContainer(container: RaftPreviewableVideoContainer): Boolean =
+    RaftDesktopVideoSupport.supportsContainer(container, RaftDesktopVideoSupport.available)
 
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 

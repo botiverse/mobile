@@ -47,6 +47,11 @@ wrywebview = "1.0.0-beta-02"
 # JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
 # Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
 filekit = "0.17.0"
+# kdroidFilter ComposeMediaPlayer (MIT): desktop video playback (RaftVideoPlayer.desktop.kt). On macOS a
+# small JNI bridge (shipped in the jar, macOS 14+) drives AVFoundation; no bundled media runtime.
+# :shared desktopMain only, never on the Android / iOS graphs. Built against Kotlin 2.4.10 / CMP 1.11.1.
+# Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
+composeMediaPlayer = "0.11.4"
 coil = "3.6.3"
 # net.engawapg.lib:zoomable (usuiat/Zoomable): the desktop / wide image lightbox's zoom and pan
 # (mouse wheel without a modifier key, drag, double click; inside a HorizontalPager). Apache-2.0;

@@ -852,6 +852,12 @@
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_video_download_to_view">Download to View</string>
     <string name="thread_video_open_in_preview">Open %1$s in preview</string>
+    <string name="video_player_mute">Mute</string>
+    <string name="video_player_unmute">Unmute</string>
+    <string name="video_player_volume">Volume</string>
+    <string name="video_player_position">Playback position</string>
+    <string name="video_player_fullscreen">Full screen</string>
+    <string name="video_player_exit_fullscreen">Exit full screen</string>
     <string name="thread_audio_preview_unavailable">Audio preview unavailable</string>
     <string name="thread_audio_preview_loading">Loading audio preview</string>
     <string name="thread_audio_playback_failed">Audio playback failed</string>
