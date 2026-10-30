@@ -28,6 +28,7 @@ struct ContentView: View {
                 // indicator has no SwiftUI control before iOS 16 (deployment target
                 // is 14.1); left visible for now (fixed bottom bar, low diff impact).
                 .onAppear {
+                    RaftProbeViewDump.prepare(fix: (fixture.data["probeFix"] as? Bool) ?? false)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { RaftProbeViewDump.run() }
                     // Settle signal for the capture job: it reads this line via
                     // `simctl launch --console` (+ a small buffer) before taking
@@ -200,31 +201,59 @@ private struct ShellContextResolver: UIViewRepresentable {
 }
 
 
-// PROBE (not for merge): prints every view or layer that could be a hairline near the top inset.
+// PROBE (not for merge): emulate a phone status-bar inset and dump what UIKit draws near it.
 enum RaftProbeViewDump {
-    static func run() {
-        for scene in UIApplication.shared.connectedScenes {
-            guard let ws = scene as? UIWindowScene else { continue }
-            for window in ws.windows {
-                let top = window.safeAreaInsets.top
-                print("RAFT_VIEW_DUMP window=\(type(of: window)) bounds=\(window.bounds) safeTop=\(top) scale=\(window.screen.scale) statusBarHidden=\(ws.statusBarManager?.isStatusBarHidden ?? false)")
-                walk(window, window: window, top: top, depth: 0)
+    static func windows() -> [UIWindow] {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
+    }
+
+    static func prepare(fix: Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            for window in windows() {
+                guard let root = window.rootViewController else { continue }
+                // An iPhone 17 Pro-like top inset on every page.
+                root.additionalSafeAreaInsets.top = 62
+                if fix { applyFix(window) }
             }
         }
     }
 
-    private static func walk(_ view: UIView, window: UIWindow, top: CGFloat, depth: Int) {
+    static func applyFix(_ view: UIView) {
+        if NSStringFromClass(type(of: view)).contains("FloatingBarContainer") {
+            print("RAFT_VIEW_DUMP fix hides \(type(of: view))")
+            view.isHidden = true
+        }
+        for sub in view.subviews { applyFix(sub) }
+    }
+
+    static func run() {
+        for window in windows() {
+            let top = window.rootViewController?.view.safeAreaInsets.top ?? window.safeAreaInsets.top
+            print("RAFT_VIEW_DUMP window=\(type(of: window)) bounds=\(window.bounds) safeTop=\(top)")
+            walk(window, window: window, top: top, depth: 0, inBar: false)
+        }
+    }
+
+    private static func walk(_ view: UIView, window: UIWindow, top: CGFloat, depth: Int, inBar: Bool) {
+        let name = NSStringFromClass(type(of: view))
+        let bar = inBar || name.contains("FloatingBar") || name.contains("NavigationBar") || name.contains("Pocket") || name.contains("EdgeEffect")
         let f = view.convert(view.bounds, to: window)
-        let near = abs(f.minY - top) < 3 || abs(f.maxY - top) < 3
-        if depth < 12 || f.height <= 3 || near {
-            print("RAFT_VIEW_DUMP v d=\(depth) \(type(of: view)) frame=\(f) hidden=\(view.isHidden) alpha=\(view.alpha) bg=\(String(describing: view.backgroundColor)) clips=\(view.clipsToBounds)")
+        if depth < 12 || bar || f.height <= 3 || abs(f.minY - top) < 3 || abs(f.maxY - top) < 3 {
+            print("RAFT_VIEW_DUMP v d=\(depth) \(name) frame=\(f) hidden=\(view.isHidden) alpha=\(view.alpha) bg=\(String(describing: view.backgroundColor)) safeTop=\(view.safeAreaInsets.top)")
         }
-        for layer in view.layer.sublayers ?? [] where layer.delegate == nil {
-            let lf = view.layer.convert(layer.frame, to: window.layer)
-            if lf.height <= 3 || abs(lf.minY - top) < 3 || abs(lf.maxY - top) < 3 {
-                print("RAFT_VIEW_DUMP l d=\(depth) owner=\(type(of: view)) \(type(of: layer)) frame=\(lf) hidden=\(layer.isHidden) opacity=\(layer.opacity) bg=\(String(describing: layer.backgroundColor))")
+        dumpLayers(view.layer, window: window, top: top, depth: 0, all: bar)
+        for sub in view.subviews { walk(sub, window: window, top: top, depth: depth + 1, inBar: bar) }
+    }
+
+    private static func dumpLayers(_ layer: CALayer, window: UIWindow, top: CGFloat, depth: Int, all: Bool) {
+        guard depth < 8 else { return }
+        for sub in layer.sublayers ?? [] {
+            if sub.delegate is UIView { continue }
+            let lf = layer.convert(sub.frame, to: window.layer)
+            if all || lf.height <= 3 || abs(lf.minY - top) < 3 || abs(lf.maxY - top) < 3 {
+                print("RAFT_VIEW_DUMP l \(String(repeating: " ", count: depth))\(type(of: sub)) name=\(sub.name ?? "-") frame=\(lf) hidden=\(sub.isHidden) opacity=\(sub.opacity) bg=\(String(describing: sub.backgroundColor)) border=\(sub.borderWidth) filters=\(String(describing: sub.filters))")
             }
+            dumpLayers(sub, window: window, top: top, depth: depth + 1, all: all)
         }
-        for sub in view.subviews { walk(sub, window: window, top: top, depth: depth + 1) }
     }
 }
