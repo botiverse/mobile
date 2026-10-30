@@ -206,7 +206,7 @@ internal fun ThreadTimelineSlice.threadInlineSearchMatches(query: String): List<
 
 private fun RaftThreadMessageItem.matchesThreadInlineSearch(normalizedQuery: String): Boolean =
     body.contains(normalizedQuery, ignoreCase = true) ||
-        authorName.contains(normalizedQuery, ignoreCase = true) ||
+        shownAuthorName().contains(normalizedQuery, ignoreCase = true) ||
         authorHandle.contains(normalizedQuery, ignoreCase = true) ||
         taskId.orEmpty().contains(normalizedQuery, ignoreCase = true) ||
         taskNumber?.toString().orEmpty().contains(normalizedQuery, ignoreCase = true)

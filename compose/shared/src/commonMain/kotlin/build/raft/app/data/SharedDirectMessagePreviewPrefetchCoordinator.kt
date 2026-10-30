@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.shownAuthorName
 import build.raft.app.markdown.RaftMarkdownPreviewMaxSourceLength
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Message
@@ -102,7 +103,7 @@ class SharedDirectMessagePreviewPrefetchCoordinator(
                             is DataResult.Content -> {
                                 val message = result.data
                                 val preview = normalizeMessagePreview(message.body)
-                                val senderName = message.author.displayName.trim().takeIf { it.isNotBlank() }
+                                val senderName = message.shownAuthorName().trim().takeIf { it.isNotBlank() }
                                     ?: message.author.handle.trim().takeIf { it.isNotBlank() }
                                 dispatchHome(
                                     SharedHomeIntent.HydrateDirectMessagePreview(

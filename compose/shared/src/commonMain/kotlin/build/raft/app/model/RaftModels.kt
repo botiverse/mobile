@@ -255,8 +255,8 @@ data class ExternalMessageAuthor(
     val actorProjectionRevision: Long? = null,
     /**
      * The wire carried no display name (no `externalAuthor.displayName`, no `senderName`):
-     * [displayName] is an English stand-in and the message header shows the localized
-     * "External user" label instead.
+     * [displayName] is an English stand-in, and every surface that shows the sender name shows
+     * the localized "External user" instead (`shownAuthorName()` / `localizedAuthorName()`).
      */
     val displayNameIsFallback: Boolean = false,
 )

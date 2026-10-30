@@ -43,8 +43,8 @@ internal object LenientWireExternalAuthorSerializer :
 /**
  * English stand-in for an external author with no display name on the wire (server
  * `getSenderSnapshot` uses the same words). Rows carrying it set
- * [ExternalMessageAuthor.displayNameIsFallback]; the message header shows the localized
- * `message_author_external_fallback` instead.
+ * [ExternalMessageAuthor.displayNameIsFallback]; surfaces show the localized
+ * `message_author_external_fallback` instead (see `ExternalAuthorShownName.kt`).
  */
 internal const val EXTERNAL_AUTHOR_FALLBACK_DISPLAY_NAME = "External user"
 

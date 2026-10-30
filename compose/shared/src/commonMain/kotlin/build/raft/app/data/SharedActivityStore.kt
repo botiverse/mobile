@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.shownAuthorName
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
@@ -1203,7 +1204,7 @@ class SharedActivityStore internal constructor(
                 latestActivityMessageId = message.id,
                 latestActivityPreview = message.body,
                 latestActivityAt = message.timestampLabel,
-                latestActivitySenderName = message.author.displayName,
+                latestActivitySenderName = message.shownAuthorName(),
                 latestActivitySenderId = message.author.id.value,
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
@@ -1254,7 +1255,7 @@ class SharedActivityStore internal constructor(
                 lastMessageId = message.id,
                 lastMessagePreview = message.body,
                 lastMessageAt = message.timestampLabel,
-                lastMessageSenderName = message.author.displayName,
+                lastMessageSenderName = message.shownAuthorName(),
                 lastMessageSenderId = message.author.id.value,
                 lastMessageSenderKind = message.author.kind,
                 lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,

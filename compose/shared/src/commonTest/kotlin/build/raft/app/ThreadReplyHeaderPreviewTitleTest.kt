@@ -67,6 +67,42 @@ class ThreadReplyHeaderPreviewTitleTest {
     }
 
     @Test
+    fun unnamedExternalAuthorReadsTheLocalizedFallbackAndRealNamesStay() {
+        val fallback =
+            ExternalMessageAuthor(displayName = "External user", provider = "", actorKind = "unknown", displayNameIsFallback = true)
+        assertEquals(
+            "@外部用户: hi",
+            replyThreadHeaderPreviewTitle(
+                origin(body = "hi", authorName = "External user", externalAuthor = fallback),
+                imageLabel = "[图片]",
+                fileLabel = "[文件]",
+                externalFallbackName = "外部用户"
+            )
+        )
+        // A name the server sent is shown as is, even one that reads like a placeholder.
+        val serverNamed = ExternalMessageAuthor(displayName = "Unknown", provider = "slack", actorKind = "human")
+        assertEquals(
+            "@Unknown: hi",
+            replyThreadHeaderPreviewTitle(
+                origin(body = "hi", authorName = "Unknown", externalAuthor = serverNamed),
+                imageLabel = "[图片]",
+                fileLabel = "[文件]",
+                externalFallbackName = "外部用户"
+            )
+        )
+    }
+
+    @Test
+    fun externalAuthorShownNameFollowsTheFlagNotTheText() {
+        val fallback =
+            ExternalMessageAuthor(displayName = "External user", provider = "", actorKind = "unknown", displayNameIsFallback = true)
+        val named = ExternalMessageAuthor(displayName = "External user", provider = "slack", actorKind = "human")
+        assertEquals("外部ユーザー", externalAuthorShownName(fallback, fallback.displayName, "外部ユーザー"))
+        assertEquals("External user", externalAuthorShownName(named, named.displayName, "外部ユーザー"))
+        assertEquals("Ada", externalAuthorShownName(null, "Ada", "外部ユーザー"))
+    }
+
+    @Test
     fun idShapedOrMissingAuthorKeepsGenericTitle() {
         assertNull(title(origin(body = "hi", authorName = "user-1", authorHandle = "")))
         assertNull(title(origin(body = "hi", authorName = "", authorHandle = "")))

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.shownAuthorName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
@@ -277,7 +278,8 @@ internal fun parseTaskSourceMessage(bodyText: String, channelId: ChannelId, mess
     val message = page.messages.firstOrNull { it.id == messageId } ?: return null
     return TaskSourceMessagePreview(
         messageId = message.id,
-        author = message.author,
+        // The task head shows this name; an unnamed External sender reads as the localized "External user".
+        author = message.author.copy(displayName = message.shownAuthorName()),
         firstLine = taskSourcePreviewLine(message.body),
         createdAt = message.timestampLabel.takeIf { it.isNotBlank() },
     )

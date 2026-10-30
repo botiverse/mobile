@@ -13440,7 +13440,7 @@ private fun SharedThreadRouteContentContent(
                         TaskCreateSourceMessage(
                             channelId = taskChannelId,
                             messageId = MessageId(message.id),
-                            senderName = message.threadAvatarName().ifBlank { message.authorName },
+                            senderName = message.threadAvatarName().ifBlank { message.shownAuthorName() },
                             text = message.body,
                         )
                     )
@@ -14151,7 +14151,7 @@ private fun SharedThreadRouteContentContent(
             key(message.id, message.body) {
                 ThreadMessageSelectTextSheet(
                     markdown = message.body,
-                    senderName = message.authorName,
+                    senderName = message.localizedAuthorName(),
                     timeLabel = formatThreadCompactTimestampLabel(message.timestampLabel, timeContext),
                     textStyle = resolvedMessageBodyTextStyle,
                     onDismiss = { textSelectionMessage = null },
@@ -17397,7 +17397,8 @@ internal fun ThreadPageHeader(
             replyThreadHeaderPreviewTitle(
                 origin = originMessage,
                 imageLabel = stringResource(Res.string.thread_reply_title_preview_image),
-                fileLabel = stringResource(Res.string.thread_reply_title_preview_file)
+                fileLabel = stringResource(Res.string.thread_reply_title_preview_file),
+                externalFallbackName = rememberExternalAuthorFallbackName()
             )
         } else {
             null
@@ -24285,7 +24286,7 @@ private fun ThreadTimelineSlice.threadSelectedShareMarkdown(selectedIds: Set<Str
 
 private fun List<RaftThreadMessageItem>.threadShareMarkdown(): String =
     joinToString("\n\n") { message ->
-        "**${message.authorName.ifBlank { "Unknown" }}**: ${message.body.trim()}"
+        "**${message.shownAuthorName().ifBlank { "Unknown" }}**: ${message.body.trim()}"
     }
 
 internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec =
@@ -26339,7 +26340,7 @@ internal fun ThreadQuotedPermalinkCard(
                     ?: item.avatarWireValue
             val liveTimeContext = LocalRaftTimeContextProvider.current?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
-                authorName = item.authorName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
+                authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
                     ?: stringResource(Res.string.thread_quoted_permalink_no_content),
                 modifier = modifier,
@@ -26357,7 +26358,7 @@ internal fun ThreadQuotedPermalinkCard(
                 avatar = {
                     RaftAppAvatar(
                         avatarWireValue = avatarWireValue,
-                        label = item.authorName,
+                        label = item.localizedAuthorName(),
                         avatarSize = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.AvatarSize.edge,
                         cacheSubject = raftMemberAvatarCacheSubject(senderKind, item.authorId),
                         fallbackFill = raftAvatarFallbackFill(senderKind)
@@ -26769,8 +26770,7 @@ private fun ThreadMessageCardContent(
             // neutral "Unknown", never a raw id, until the canonical load names it.
             message.authorName.isBlank() -> stringResource(Res.string.thread_comments_unknown_author)
             // An External sender the wire did not name shows the localized "External user".
-            message.externalAuthor?.displayNameIsFallback == true ->
-                stringResource(Res.string.message_author_external_fallback)
+            message.externalAuthor.isFallbackName -> rememberExternalAuthorFallbackName()
             else -> message.authorName
         }
     // task #392 (port of Web PR #7545): agent model label, resolved live from
@@ -30426,7 +30426,7 @@ private fun RaftThreadMessageItem.isThreadAgentAuthor(): Boolean =
 
 /** The author's name for the avatar's initials; never the author id (no name shows the icon). */
 private fun RaftThreadMessageItem.threadAvatarName(): String =
-    authorName.trim().takeUnless { it.isEmpty() || it == authorId } ?: avatarLabel
+    shownAuthorName().trim().takeUnless { it.isEmpty() || it == authorId } ?: avatarLabel
 
 /** raft-ui Avatar `type`: an agent author without a face sits on `inactive`. */
 private fun RaftThreadMessageItem.threadAvatarFill(): Color =
