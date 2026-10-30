@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
@@ -37,9 +38,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Add Member (web ChannelMembers add view): ticking candidates only selects them and counts them
  * in "Add Selected (N)", which is disabled at 0 and sends the selection as one batch; the
- * Create Agent and Create External Agent rows ask to create that kind of agent, which joins
- * this channel (named after a search that found no one), and are disabled together with the
- * reason without permission; members already in the channel are not listed.
+ * one Create Agent row opens a menu (Create Agent / Create External Agent) that asks to create
+ * that kind of agent, which joins this channel (named after a search that found no one); the
+ * row is disabled with the reason without permission; members already in the channel are not
+ * listed.
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -150,46 +152,47 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun createAgentRowOpensManagedCreateForThisChannel() =
+    fun theCreateRowOpensAMenuWithManagedAndExternal() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls)
-            // Both rows say the new agent joins this channel.
-            onAllNodesWithText("Joins #design automatically after creation").assertCountEquals(2)
-            onNodeWithText("Create Agent").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.Managed), calls.creates)
+            // One row, saying once that the new agent joins this channel.
+            onAllNodesWithText("Joins #design automatically after creation").assertCountEquals(1)
+            onNodeWithText("Create External Agent").assertDoesNotExist()
 
-            // A search that finds no one names the new agent after it.
+            // The row only opens the menu; the menu's entries pick the kind.
+            onNodeWithText("Create Agent").performClick()
+            assertTrue(calls.creates.isEmpty())
+            onAllNodesWithText("Create Agent").onLast().performClick()
+            assertEquals(listOf("" to MembersCreateAgentMode.Managed), calls.creates)
+            onNodeWithText("Create External Agent").assertDoesNotExist()
+
+            onNodeWithText("Create Agent").performClick()
+            onNodeWithText("Create External Agent").performClick()
+            assertEquals(listOf("" to MembersCreateAgentMode.Managed, "" to MembersCreateAgentMode.External), calls.creates)
+        }
+
+    @Test
+    fun aSearchThatFoundNoOneNamesTheNewAgentEitherWay() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            show(calls)
             onNode(hasSetTextAction()).performTextInput("@mia")
             onNodeWithText("No members match \"@mia\"").assertExists()
             onNodeWithText("Create Agent “mia”").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.Managed, "mia" to MembersCreateAgentMode.Managed), calls.creates)
-        }
-
-    @Test
-    fun createExternalAgentRowOpensExternalCreateForThisChannel() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            show(calls)
             onNodeWithText("Create External Agent").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.External), calls.creates)
-
-            onNode(hasSetTextAction()).performTextInput("mia")
-            onNodeWithText("Create External Agent “mia”").performClick()
-            assertEquals(listOf("" to MembersCreateAgentMode.External, "mia" to MembersCreateAgentMode.External), calls.creates)
+            assertEquals(listOf("mia" to MembersCreateAgentMode.External), calls.creates)
         }
 
     @Test
-    fun withoutCreatePermissionBothRowsStayDisabledWithTheReason() =
+    fun withoutCreatePermissionTheRowIsDisabledWithTheReason() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls, canCreateAgents = false)
             onNodeWithText("Create Agent").performClick()
-            onNodeWithText("Create External Agent").performClick()
+            onNodeWithText("Create External Agent").assertDoesNotExist()
             assertTrue(calls.creates.isEmpty())
             onNodeWithText("Create Agent").assertIsNotEnabled()
-            onNodeWithText("Create External Agent").assertIsNotEnabled()
-            // The reason shows once, under both rows.
             onAllNodesWithText("creating Agents on this server needs an owner or admin", substring = true).assertCountEquals(1)
         }
 }
