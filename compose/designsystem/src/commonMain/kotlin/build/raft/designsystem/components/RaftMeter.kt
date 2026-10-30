@@ -80,6 +80,8 @@ fun raftMeterLevel(used: Float, max: Float = 100f, warnAt: Float = RaftMeterDefa
  * the end, 6dp above the track. [valueText] says what is used, with the word ("62% used ·
  * resets in 3h", "Used up · resets in 2h") and is also what accessibility reads as the value;
  * [showValue] = false keeps it out of the header.
+ *
+ * raft-ui's deprecated `low` (the amount left) is not supported here: use [warnAt], the share used.
  */
 @Composable
 fun RaftMeter(
