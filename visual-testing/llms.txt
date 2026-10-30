@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-30 05:13:43 UTC
+Generated: 2026-10-30 05:40:40 UTC
 Latest run: 46561aa-20261030051258
 Latest commit: 46561aa-20261030051258
 Commit subject: fix(android): bottom tabs switch without the fade through (#3997)
 Providers: react vs android
 Summary: total 101, same 0, pass 2, basic-pass 8, different 87, missing 4
-AI analysis: ready 26 / total 101, pending 75
+AI analysis: ready 38 / total 101, pending 63
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

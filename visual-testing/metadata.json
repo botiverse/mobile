@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-30T05:13:43.880Z",
+  "generatedAt": "2026-10-30T05:40:40.472Z",
   "runId": "46561aa-20261030051258",
   "commit": "46561aa-20261030051258",
   "commitSubject": "fix(android): bottom tabs switch without the fade through (#3997)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 101,
-        "ready": 26,
-        "pending": 75
+        "ready": 38,
+        "pending": 63
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 101,
-    "ready": 26,
-    "pending": 75
+    "ready": 38,
+    "pending": 63
   },
   "componentMatrixSummary": {
     "total": 130,
