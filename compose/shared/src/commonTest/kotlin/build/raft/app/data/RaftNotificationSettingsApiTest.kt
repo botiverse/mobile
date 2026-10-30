@@ -172,6 +172,25 @@ class RaftNotificationSettingsApiTest {
     }
 
     @Test
+    fun aPauseIsNeverSentInThePastOrMoreThanAYearAhead() = runTest {
+        val now = 1_798_000_000_000L
+        assertTrue(raftPausedUntilAccepted(RaftNotificationPauseOption.TomorrowMorning.pausedUntil(now, "Pacific/Kiritimati"), now))
+        RaftNotificationPauseOption.entries.forEach { option ->
+            assertTrue(raftPausedUntilAccepted(option.pausedUntil(now, "UTC"), now), option.name)
+        }
+        assertFalse(raftPausedUntilAccepted(kotlin.time.Instant.fromEpochMilliseconds(now - 1).toString(), now))
+        assertFalse(raftPausedUntilAccepted(kotlin.time.Instant.fromEpochMilliseconds(now + RAFT_NOTIFICATION_PAUSE_MAX_MILLIS + 1).toString(), now))
+        assertFalse(raftPausedUntilAccepted("not a time", now))
+
+        val client = ScriptedAgentControlsNetworkClient()
+        RaftNotificationAccountSettingsStore.apiProvider = { RaftNotificationSettingsApi(client) }
+        RaftNotificationAccountSettingsStore.previewCache = {}
+        val tooFar = kotlin.time.Instant.fromEpochMilliseconds(now + 400L * 24 * 60 * 60 * 1000).toString()
+        assertFalse(RaftNotificationAccountSettingsStore.update(RaftNotificationAccountSettingsPatch(pausedUntil = tooFar), nowEpochMillis = now))
+        assertTrue(client.requests.isEmpty(), "never sent")
+    }
+
+    @Test
     fun serverTestNotificationWaitsForTheDevicesAck() = runTest {
         val client = ScriptedAgentControlsNetworkClient()
         client.respond("POST", "notifications/test", 200, """{"testId":"t-1","sent":true}""")

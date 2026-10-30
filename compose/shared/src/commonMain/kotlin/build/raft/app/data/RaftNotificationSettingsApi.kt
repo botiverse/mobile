@@ -493,9 +493,14 @@ object RaftNotificationAccountSettingsStore {
      * server's current settings and sends the same change once more on top of them; any other failure
      * rolls back to what was held.
      */
-    suspend fun update(patch: RaftNotificationAccountSettingsPatch): Boolean =
+    suspend fun update(patch: RaftNotificationAccountSettingsPatch, nowEpochMillis: Long = raftNowEpochMillis()): Boolean =
         writeMutex.withLock {
             val api = apiProvider() ?: return@withLock false
+            // Contract §2.1: pausedUntil is in the future and at most 366 days ahead (else 400).
+            if (patch.pausedUntil != null && !raftPausedUntilAccepted(patch.pausedUntil, nowEpochMillis)) {
+                mutableState.update { it.copy(errorCode = "notification_settings_pause_out_of_range") }
+                return@withLock false
+            }
             val before = mutableState.value.settings ?: RaftNotificationAccountSettings()
             mutableState.update { it.copy(settings = patch.appliedTo(before), saving = true, errorCode = null) }
             var version: Int? = before.version
@@ -587,6 +592,15 @@ enum class RaftNotificationPauseOption {
             }
         return until.toString()
     }
+}
+
+/** The furthest a pause may reach (contract §2.1: at most 366 days ahead). */
+const val RAFT_NOTIFICATION_PAUSE_MAX_MILLIS: Long = 366L * 24L * 60L * 60L * 1000L
+
+/** Whether the server accepts [pausedUntil] at [nowEpochMillis]: a parseable time in the future, at most 366 days on. */
+fun raftPausedUntilAccepted(pausedUntil: String, nowEpochMillis: Long): Boolean {
+    val until = runCatching { Instant.parse(pausedUntil).toEpochMilliseconds() }.getOrNull() ?: return false
+    return until > nowEpochMillis && until - nowEpochMillis <= RAFT_NOTIFICATION_PAUSE_MAX_MILLIS
 }
 
 /** `HH:mm` of a minute of the day, for the quiet hours rows. */
