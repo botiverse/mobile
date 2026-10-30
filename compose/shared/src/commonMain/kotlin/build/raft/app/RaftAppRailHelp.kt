@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftMenuSurface
@@ -19,11 +18,15 @@ import build.raft.designsystem.components.RaftMenuSurface
 internal const val RaftDocumentationUrl = "https://docs.raft.build"
 
 /**
- * From the window's bottom to the rail's Help item's bottom edge: the rail's bottom [bottomInset],
- * its 8dp inset, then Settings (the last footer item) and one item gap above it.
+ * From the window's bottom to the rail's Help item's bottom edge: the rail's [bottomInset], the
+ * footer's end inset, then Settings (the last footer item) and one item gap above it, in the
+ * rail's size for this window (compact in a short one).
  */
-internal fun raftAppRailHelpItemBottom(bottomInset: Dp): Dp =
-    bottomInset + RaftAppRailDefaults.Inset + RaftAppRailDefaults.ItemSize + RaftAppRailDefaults.ItemGap
+@Composable
+internal fun raftAppRailHelpItemBottom(bottomInset: Dp): Dp {
+    val metrics = raftAppRailWindowMetrics()
+    return bottomInset + metrics.footerBottom + metrics.itemSize + metrics.itemGap
+}
 
 /**
  * The rail's Help menu (web LeftRail `HelpMenu`, "Help & resources"): beside the rail, 8dp past

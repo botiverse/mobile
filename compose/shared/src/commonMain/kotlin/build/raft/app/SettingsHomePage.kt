@@ -6914,7 +6914,6 @@ private fun RaftAppShellReadyContent(
                     {
                         // web LeftRail footer: Help, then Settings. Computers has its own entry and
                         // dot now, so Settings dots only for an app update (Settings > About).
-                        // The collapse toggle: see TODO(rail-collapse) on RaftNavPresentation.Rail.
                         val railBottomItems =
                             remember(railNavLabels, selectedTab, moreAttention, railHelpOpen) {
                                 appShellRailFooterTabs(

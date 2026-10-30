@@ -50,6 +50,8 @@ import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftAppRail
 import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftAppRailFooterItem
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
@@ -528,29 +530,69 @@ internal fun RaftNavigationRailTabBar(
     footerTools: (@Composable () -> Unit)? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
-    // both ends, the selected sticker on the frame.
+    // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer's
+    // destinations (Help, Settings) are its footer `Action`s, after [footerTools] (the bell). No
+    // collapse `Toggle`: the app's wide layout has no collapsible sidebar (web
+    // SidebarToggleRailItem), so it is left out.
+    val select = onBottomItemSelect ?: onSelect
+    val attentionDescriptions = raftNavRailAttentionDescriptions()
     RaftDesignSystemTheme {
         RaftAppRail(
             modifier = modifier,
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
             header = header,
-            footer =
-                if (bottomItems.isNotEmpty() || footerTools != null) {
-                    {
-                        footerTools?.invoke()
-                        bottomItems.forEach { item ->
-                            RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
-                        }
-                    }
-                } else {
-                    null
+            footer = if (footerTools != null) { { footerTools() } } else null,
+            footerItems =
+                bottomItems.map { item ->
+                    val glyph = raftNavGlyph(RaftNavPresentation.Rail, item.key)
+                    RaftAppRailFooterItem.Action(
+                        key = item.key,
+                        label = item.label,
+                        onClick = { select(item.key) },
+                        icon = { ink -> RaftNavigationRailIcon(item, glyph, ink) },
+                        selected = item.selected,
+                        enabled = item.enabled,
+                        attention = item.attentionDot || item.badgeCount > 0,
+                        attentionDescription = attentionDescriptions(item.key),
+                        // web LeftRail: Help's hover opens its menu, so it shows no tooltip.
+                        showTooltip = RaftAppDestination.fromId(item.key)?.route != RaftNavRoute.Menu,
+                    )
                 },
         ) {
             items.forEach { item ->
                 RaftNavigationRailTabItem(item = item, onSelect = onSelect)
             }
         }
+    }
+}
+
+/** The screen-reader words for a rail item's dot, by its destination's badge source. */
+@Composable
+private fun raftNavRailAttentionDescriptions(): (String) -> String {
+    val more = stringResource(Res.string.tab_more_attention_dot)
+    val row = stringResource(Res.string.more_row_attention_dot)
+    val activity = stringResource(Res.string.tab_activity_unread_dot)
+    return { key ->
+        when (RaftAppDestination.fromId(key)?.badge) {
+            RaftNavBadgeSource.ServerPages, RaftNavBadgeSource.AppUpdate -> more
+            RaftNavBadgeSource.ComputersAttention, RaftNavBadgeSource.AppsReview -> row
+            else -> activity
+        }
+    }
+}
+
+@Composable
+private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftConversationKindGlyph?, ink: Color) {
+    if (glyph != null) {
+        // web LeftRail: Chat is raft-ui `ChatIcon`, not a Lucide glyph.
+        RaftConversationKindIcon(glyph, size = RaftAppRailDefaults.IconSize, color = ink)
+    } else {
+        RaftLucideIcon(
+            name = item.iconName,
+            color = raftArgbHex(ink),
+            modifier = Modifier.size(RaftAppRailDefaults.IconSize)
+        )
     }
 }
 
@@ -561,29 +603,13 @@ private fun RaftNavigationRailTabItem(
 ) {
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
-    val attentionDescription =
-        when (RaftAppDestination.fromId(item.key)?.badge) {
-            RaftNavBadgeSource.ServerPages, RaftNavBadgeSource.AppUpdate -> stringResource(Res.string.tab_more_attention_dot)
-            RaftNavBadgeSource.ComputersAttention, RaftNavBadgeSource.AppsReview -> stringResource(Res.string.more_row_attention_dot)
-            else -> stringResource(Res.string.tab_activity_unread_dot)
-        }
+    val attentionDescription = raftNavRailAttentionDescriptions()(item.key)
     val glyph = raftNavGlyph(RaftNavPresentation.Rail, item.key)
     RaftAppRailItem(
         label = item.label,
         selected = item.selected,
         onClick = { onSelect(item.key) },
-        icon = { ink ->
-            if (glyph != null) {
-                // web LeftRail: Chat is raft-ui `ChatIcon`, not a Lucide glyph.
-                RaftConversationKindIcon(glyph, size = RaftAppRailDefaults.IconSize, color = ink)
-            } else {
-                RaftLucideIcon(
-                    name = item.iconName,
-                    color = raftArgbHex(ink),
-                    modifier = Modifier.size(RaftAppRailDefaults.IconSize)
-                )
-            }
-        },
+        icon = { ink -> RaftNavigationRailIcon(item, glyph, ink) },
         enabled = item.enabled,
         attention = item.attentionDot || item.badgeCount > 0,
         attentionDescription = attentionDescription,
