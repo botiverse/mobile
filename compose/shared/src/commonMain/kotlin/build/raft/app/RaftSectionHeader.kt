@@ -140,10 +140,22 @@ internal fun RaftTopPageHeader(
     showBodyTopBanner: Boolean = true,
     // Long-press copy (raftCopyable) of the title when it is an identifier (a file name).
     titleCopyText: String? = null,
+    // PROTOTYPE (native nav bar): what a host-drawn UINavigationBar shows for this head.
+    nativeSubtitle: String? = subtitle,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
+    // PROTOTYPE: the host's UINavigationBar draws this head (title, Back, actions). The page's top
+    // safe area already includes the bar, so only that space is kept.
+    if (raftNativeNavBarPublish(title, nativeSubtitle, nativeActions)) {
+        Spacer(modifier = modifier.fillMaxWidth().height(raftTopSafeAreaPadding()))
+        if (showBodyTopBanner) {
+            RaftAppShellBodyTopBanner()
+        }
+        return
+    }
     // iPhone Duo (raft-design #859): with the system's side column, Back is the column's first
     // button, and the header keeps the title from the 16dp margin.
     val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))

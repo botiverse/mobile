@@ -1,0 +1,193 @@
+# PROTOTYPE ONLY (agent/lagoon/ios-native-nav-proto, never merged): build the Simulator app with
+# visual fixtures and capture the native-navigation demo (RAFT_PROTO_SCENE) with the prototype
+# off ("now", RAFT_NATIVE_NAV_PROTO=0) and on ("native"), plus a screen recording of each.
+name: iOS native nav prototype capture
+
+on:
+  push:
+    branches:
+      - agent/lagoon/ios-native-nav-proto
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-native-nav-proto-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    env:
+      SLOCK_VISUAL_FIXTURES: "true"
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Pin Xcode
+        run: bash scripts/ci/select_ios_xcode.sh
+
+      - name: Record toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun simctl list runtimes
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
+        with:
+          heap: 12g
+
+      - name: KSP incremental cache hygiene
+        run: rm -rf compose/shared/build/generated/ksp compose/shared/build/kotlin
+
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true --stacktrace
+
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+
+      - name: Sync shared framework (simulator, Debug, fixtures)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true \
+            --no-daemon --console=plain --stacktrace
+
+      - name: Pick simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
+          python3 - "$RUNNER_TEMP/devices.json" <<'PY' >> "$GITHUB_ENV"
+          import json, re, sys
+          d = json.load(open(sys.argv[1]))["devices"]
+          best = None
+          for runtime, devs in d.items():
+              m = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              if not m:
+                  continue
+              ver = (int(m.group(1)), int(m.group(2)))
+              if ver[0] < 26:
+                  continue
+              for x in devs:
+                  if not x["name"].startswith("iPhone"):
+                      continue
+                  pref = 2 if x["name"] in ("iPhone 17 Pro", "iPhone 17") else (1 if "Pro Max" not in x["name"] and "Air" not in x["name"] and "Duo" not in x["name"] and "Fold" not in x["name"] else 0)
+                  key = (pref, ver)
+                  if best is None or key > best[0]:
+                      best = (key, x["udid"], x["name"], runtime)
+          if best is None:
+              sys.exit("no iOS 26+ iPhone simulator")
+          print(f"SIM_UDID={best[1]}")
+          print(f"SIM_NAME={best[2]}")
+          print(f"SIM_RUNTIME={best[3]}")
+          PY
+          cat "$GITHUB_ENV" | grep SIM_
+
+      - name: Build app for Simulator
+        working-directory: compose/iosApp
+        run: |
+          set -uo pipefail
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${SIM_UDID}" \
+            -derivedDataPath build/DerivedData \
+            ARCHS=arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
+            build > "$log" 2>&1
+          status=$?
+          tail -60 "$log"
+          if [ "$status" -ne 0 ]; then
+            grep -nE "(^|[[:space:]])e: |: error:|error: |Unresolved|FAILURE:|Execution failed|BUILD FAILED" "$log" \
+              | grep -v "Using response file" | tail -100 || true
+          fi
+          exit "$status"
+
+      - name: Boot simulator and install
+        run: |
+          set -euo pipefail
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          xcrun simctl status_bar "$SIM_UDID" override --time "9:41" --dataNetwork wifi --wifiBars 3 --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "app=$app"
+          xcrun simctl install "$SIM_UDID" "$app"
+          echo "BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+
+      - name: Capture scenes
+        run: |
+          set -uo pipefail
+          out="$GITHUB_WORKSPACE/proto-out"
+          mkdir -p "$out"
+          echo "simulator: $SIM_NAME $SIM_RUNTIME" | tee "$out/simulator.txt"
+          capture() {
+            local mode=$1 scene=$2 flag=$3 marker=$4
+            local log="$out/$mode-$scene.log"
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 1
+            SIMCTL_CHILD_RAFT_PROTO_SCENE="$scene" SIMCTL_CHILD_RAFT_NATIVE_NAV_PROTO="$flag" \
+              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
+            local pid=$!
+            for _ in $(seq 1 120); do
+              grep -q "$marker" "$log" && break
+              sleep 0.5
+            done
+            if ! grep -q "$marker" "$log"; then echo "::warning::$mode/$scene: marker not seen"; fi
+          }
+          for mode in now native; do
+            flag=0; [ "$mode" = native ] && flag=1
+            for scene in home thread members midswipe; do
+              capture "$mode" "$scene" "$flag" "RAFT_PROTO_READY scene=$scene"
+              xcrun simctl io "$SIM_UDID" screenshot "$out/$mode-$scene.png"
+              echo "captured $mode-$scene"
+            done
+            # The video: start recording, relaunch with the scripted push / swipe-back.
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 1
+            xcrun simctl io "$SIM_UDID" recordVideo --codec h264 --force "$out/$mode-video.mp4" &
+            rec=$!
+            sleep 2
+            capture "$mode" video "$flag" "RAFT_PROTO_DONE scene=video"
+            sleep 1
+            kill -INT "$rec" || true
+            wait "$rec" || true
+            echo "recorded $mode-video"
+          done
+          xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+          ls -la "$out"
+
+      - name: Upload captures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-native-nav-proto-${{ github.run_id }}
+          path: |
+            proto-out
+            xcodebuild-ios.log
+          if-no-files-found: warn
+          retention-days: 7

@@ -5687,6 +5687,17 @@ internal fun ThreadMembersPageContent(
     }
 }
 
+/** PROTOTYPE (native nav): the conversation's Chat / Tasks / Files strip, for the proto fixture page. */
+@Composable
+internal fun ThreadNativeNavProtoModeTabs() {
+    RaftTopTabBar(
+        items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
+        selectedKey = RaftThreadTab.Chat.toString(),
+        onSelectedKeyChange = {},
+        itemKeyPrefix = "thread-tab"
+    )
+}
+
 @Composable
 internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
@@ -17673,8 +17684,30 @@ internal fun ThreadPageHeader(
                     emptyList()
                 },
         )
+    // PROTOTYPE (native nav bar): the conversation's actions as system bar buttons.
+    val nativeNavBarActions =
+        if (!showActions) {
+            emptyList()
+        } else {
+            buildList {
+                if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
+                    add(RaftNativeNavBarAction("members", "Members", "person.2", onShowMembers))
+                }
+                if (payload.threadHeaderSearchAction() != null) {
+                    add(RaftNativeNavBarAction("search", "Search", "magnifyingglass", onOpenSearch))
+                }
+                if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
+                    add(RaftNativeNavBarAction("settings", "Settings", "gearshape", onShowSettings))
+                }
+                if (payload.threadHeaderOpenInParentActionVisible()) {
+                    add(RaftNativeNavBarAction("open-in-channel", "Open in Channel", "arrow.up.forward.square", onOpenInChannel))
+                }
+            }
+        }
     RaftTopPageHeader(
         title = localizedHeaderTitle,
+        nativeSubtitle = headerSubtitle,
+        nativeActions = nativeNavBarActions,
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentStartPadding =

@@ -82,7 +82,13 @@ private val homeChannelListAgentStatuses: Map<String, SharedServerMemberStatus> 
  * test (`HomeChannelListScreenshotTest`); the caller pins the theme.
  */
 @Composable
-internal fun HomeChannelListVisualContent(unreadStale: Boolean = false) {
+internal fun HomeChannelListVisualContent(
+    unreadStale: Boolean = false,
+    // PROTOTYPE (native nav): the host draws the tab bar / the head.
+    showBottomBar: Boolean = true,
+    serverSwitcherInTopBar: Boolean = false,
+    onChannelClick: (String) -> Unit = {},
+) {
     val fixture = VisualFixtureData.HomeChannelList
     val resolver: RaftAgentStatusResolver =
         remember {
@@ -109,9 +115,11 @@ internal fun HomeChannelListVisualContent(unreadStale: Boolean = false) {
         agentStatusResolver = resolver,
         contentRefreshEnabled = false,
         selectedTabKey = "home",
-        showBottomBar = true,
+        showBottomBar = showBottomBar,
         searchAndActivityOnShellNav = true,
+        serverSwitcherInTopBar = serverSwitcherInTopBar,
         outerPadding = 0.dp,
-        unreadStale = unreadStale
+        unreadStale = unreadStale,
+        onChannelClick = onChannelClick
     )
 }

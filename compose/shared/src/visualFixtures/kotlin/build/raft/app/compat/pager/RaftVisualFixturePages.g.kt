@@ -62,6 +62,8 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_members_agent_detail_state_visual" to { build.raft.app.ComposeMembersAgentDetailStateVisualPage() },
         "compose_members_agent_detail_visual" to { build.raft.app.ComposeMembersAgentDetailVisualPage() },
         "compose_members_restart_dialog_visual" to { build.raft.app.ComposeMembersRestartDialogVisualPage() },
+        "compose_native_nav_proto_home" to { build.raft.app.ComposeNativeNavProtoHomePage() },
+        "compose_native_nav_proto_thread" to { build.raft.app.ComposeNativeNavProtoThreadPage() },
         "compose_raft_ui_avatar_visual" to { build.raft.app.ComposeRaftUiAvatarVisualPage() },
         "compose_raft_ui_banner_visual" to { build.raft.app.ComposeRaftUiBannerVisualPage() },
         "compose_raft_ui_button_badge_visual" to { build.raft.app.ComposeRaftUiButtonBadgeVisualPage() },
