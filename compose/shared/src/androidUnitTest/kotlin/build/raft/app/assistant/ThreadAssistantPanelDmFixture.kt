@@ -167,7 +167,13 @@ private val AssistantDmMessagesBody =
        "content":"Done. I'll ping you here at 15:00.",
        "createdAt":"2026-10-30T08:11:00Z","senderId":"$AssistantDmFixtureAgentId","senderName":"Otto","senderType":"agent","messageType":"chat"}
     ],
-    "threadSummariesByParentMessageId":{"assistant-dm-m1":{"threadChannelId":"assistant-dm-fixture-thread","replyCount":2}}}
+    "threadSummariesByParentMessageId":{"assistant-dm-m1":{
+      "threadChannelId":"assistant-dm-fixture-thread","parentChannelId":"$AssistantDmFixtureChannelId","parentChannelType":"dm",
+      "replyCount":2,"unreadCount":0,"lastReplyAt":"2026-10-30T08:06:00Z",
+      "latestReplies":[
+        {"messageId":"assistant-dm-r1","seq":1,"preview":"Which threads?","senderId":"$DmOwnerId","senderType":"user","senderName":"Artin","createdAt":"2026-10-30T08:05:00Z"},
+        {"messageId":"assistant-dm-r2","seq":2,"preview":"#proj-mobile-release, #design and the Hands triage.","senderId":"$AssistantDmFixtureAgentId","senderType":"agent","senderName":"Otto","createdAt":"2026-10-30T08:06:00Z"}
+      ]}}}
     """.trimIndent()
 
 internal object AssistantDmFixtureNetworkApi : SharedThreadNetworkApi {
