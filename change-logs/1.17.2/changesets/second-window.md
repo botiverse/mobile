@@ -3,7 +3,7 @@ type: fixed
 area: app-shell
 platforms:
   - android
-pull_request: TBD
+pull_request: https://github.com/botiverse/mobile/pull/3998
 rollout: full
 ---
 
