@@ -37,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.RaftNotificationAccountSettingsPatch
 import build.raft.app.data.RaftNotificationAccountSettingsStore
 import build.raft.app.data.RaftNotificationPauseOption
@@ -674,11 +673,13 @@ private fun ServerPushMode.settingsNotificationModeDetail(): String =
 @Composable
 private fun SettingsNotificationAccountCard() {
     val accountState by RaftNotificationAccountSettingsStore.state.collectAsState()
-    val settings = accountState.settings ?: RaftNotificationAccountSettings()
+    // Shown once the account settings loaded: an older server without `me/notification-settings`
+    // (or no answer yet) shows no controls that could only fail.
+    val settings = accountState.settings ?: return
     val scope = rememberCoroutineScope()
     var pauseDialogOpen by remember { mutableStateOf(false) }
     var quietTimeEditing by remember { mutableStateOf<Boolean?>(null) } // true: start, false: end
-    val busy = accountState.saving || accountState.settings == null
+    val busy = accountState.saving
     fun update(patch: RaftNotificationAccountSettingsPatch) {
         scope.launch { RaftNotificationAccountSettingsStore.update(patch) }
     }
@@ -797,11 +798,18 @@ private fun SettingsNotificationAccountCard() {
                         title = raftMinuteOfDayLabel(minute),
                         detail = "",
                         selected = minute == current,
-                        enabled = true,
+                        // Start and end must differ (an empty window); the other end's time is not offered.
+                        enabled = minute != (if (editingStart) settings.quietHours.endMinute else settings.quietHours.startMinute),
                         onClick = {
                             quietTimeEditing = null
+                            // An edit also records this device's zone: the hours mean local time here.
+                            val zone = raftCurrentTimeZoneId()
                             val quiet =
-                                if (editingStart) settings.quietHours.copy(startMinute = minute) else settings.quietHours.copy(endMinute = minute)
+                                if (editingStart) {
+                                    settings.quietHours.copy(startMinute = minute, timeZone = zone)
+                                } else {
+                                    settings.quietHours.copy(endMinute = minute, timeZone = zone)
+                                }
                             update(RaftNotificationAccountSettingsPatch(quietHours = quiet))
                         }
                     )

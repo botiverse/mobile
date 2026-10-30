@@ -1122,7 +1122,8 @@ class SharedSettingsStoreTest {
         val preferences = MapSharedPreferenceStore()
         val previewStore = KeyValuePushPreviewModePreferenceStore(preferences)
         val accountWrites = mutableListOf<PushPreviewMode>()
-        var accountAccepts = true
+        var accountAccepts: Boolean? = true
+        var legacyReRegistrations = 0
         val store =
             SharedSettingsStore(
                 dataSource =
@@ -1134,6 +1135,7 @@ class SharedSettingsStoreTest {
                         chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository(),
                         pushPreviewModePreferenceStore = previewStore,
                         accountPreviewModeWriter = { mode -> accountWrites += mode; accountAccepts },
+                        onLegacyPreviewModeSaved = { legacyReRegistrations += 1 },
                         accountSettingsLoader = {}
                     ),
                 scope = scope
@@ -1169,6 +1171,13 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Full.wireName))
         assertEquals("hidden", previewStore.readPushPreviewModeSync())
         assertEquals(listOf(PushPreviewMode.Hidden, PushPreviewMode.Full), accountWrites)
+        assertEquals(0, legacyReRegistrations)
+
+        // An older server without the account route: device-local as before, sent with the registration.
+        accountAccepts = null
+        store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.SenderOnly.wireName))
+        assertEquals("sender_only", previewStore.readPushPreviewModeSync())
+        assertEquals(1, legacyReRegistrations)
         scope.cancel()
     }
 

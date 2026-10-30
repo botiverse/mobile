@@ -3268,7 +3268,7 @@ private fun RaftStructuralHomeShellContent(
                             muted = conversation.activityMuted
                         )
                     }
-                }
+                }.whenLevelsSupported()
             val activeNotificationLevelLabel = rememberRaftNotificationLevelMenuLabel(activeNotificationTarget)
             val pinMenuItems = activeConversation?.let { conversation ->
                 raftHomeConversationMenuItems(

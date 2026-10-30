@@ -17825,7 +17825,7 @@ internal fun ThreadPageHeader(
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
                             taskFollowLabels = taskConversation,
                             drawLocally = toggleFocus == null,
-                            notificationLevelTarget = notificationLevelTarget,
+                            notificationLevelTargetInput = notificationLevelTarget,
                         )
                     }
                 }
@@ -18551,8 +18551,10 @@ private fun ThreadHeaderFocusModeMenu(
      */
     drawLocally: Boolean = false,
     /** The thread's notification level row ("Notifications: <level>"); null leaves it out. */
-    notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
 ) {
+    // An older server without the unified API shows no level row.
+    val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }

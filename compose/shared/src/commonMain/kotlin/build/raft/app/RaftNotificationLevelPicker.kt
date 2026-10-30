@@ -93,6 +93,23 @@ internal fun RaftNotificationLevelSetting.localizedNotificationLevelSettingLabel
         RaftNotificationLevelSetting.None -> stringResource(Res.string.notification_level_none)
     }
 
+/**
+ * Whether [serverId] runs the unified notification API ([RaftNotificationCapability]): the level
+ * rows show only then, so an older server shows no menu entry that could only fail.
+ */
+@Composable
+internal fun rememberRaftNotificationLevelsSupported(serverId: String?): Boolean {
+    val supported by build.raft.app.data.RaftNotificationCapability.supportedByServer.collectAsState()
+    return serverId != null && supported[serverId] == true
+}
+
+/** [target] when its server runs the unified API, else null. */
+@Composable
+internal fun RaftNotificationLevelTarget?.whenLevelsSupported(): RaftNotificationLevelTarget? {
+    val supported = rememberRaftNotificationLevelsSupported(this?.serverId)
+    return this?.takeIf { supported }
+}
+
 /** The current setting's label ("Default (All new messages)", "Nothing", ...), from the process level store. */
 @Composable
 internal fun rememberRaftNotificationLevelCurrentLabel(target: RaftNotificationLevelTarget): String {

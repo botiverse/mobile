@@ -78,8 +78,16 @@ internal data class RaftPushRegistrationPayload(
 /** The preview key set of this build: all keys of slock docs/contracts/notifications.md §1.5. */
 internal const val RAFT_PUSH_PREVIEW_KEY_SET = 2
 
-/** What the device reports with its registration (contract §3.1). */
-data class RaftPushDeviceState(val alertsEnabled: Boolean, val osPermission: String)
+/**
+ * What the device reports with its registration (contract §3.1). [legacyPreviewMode] is set only
+ * while the server is not known to run the unified API: an older server reads the preview choice
+ * from the registration, as before; the new one copies only a changed value into the account.
+ */
+data class RaftPushDeviceState(
+    val alertsEnabled: Boolean,
+    val osPermission: String,
+    val legacyPreviewMode: String? = null
+)
 
 /** The four `osPermission` wire values. */
 internal val RAFT_PUSH_OS_PERMISSIONS: Set<String> = setOf("granted", "denied", "provisional", "unknown")
@@ -105,10 +113,13 @@ object RaftPushDeviceStateHost {
 /** The registration's device state on both platforms: the shared notifications switch and the host's permission. */
 internal fun raftPushDeviceStateProvider(): () -> RaftPushDeviceState? {
     val store by lazy { KeyValueNotificationPreferenceStore(raftSharedPreferenceStore()) }
+    val previewStore by lazy { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
     return {
         RaftPushDeviceState(
             alertsEnabled = store.readNotificationEnabledSync(),
-            osPermission = RaftPushDeviceStateHost.osPermission
+            osPermission = RaftPushDeviceStateHost.osPermission,
+            legacyPreviewMode =
+                previewStore.readPushPreviewModeSync().takeIf { RaftNotificationCapability.accountSupported() != true }
         )
     }
 }
@@ -462,6 +473,7 @@ internal class RaftPushRegistrationCoordinator(
                 appVersion = appVersion.trim(),
                 alertsEnabled = currentDeviceState()?.alertsEnabled,
                 osPermission = currentDeviceState()?.osPermission,
+                previewMode = currentDeviceState()?.legacyPreviewMode,
                 previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET
             )
         if (!spec.accepts(payload)) {
@@ -568,7 +580,10 @@ internal class RaftPushRegistrationCoordinator(
     private fun currentDeviceState(): RaftPushDeviceState? =
         try {
             deviceStateProvider()?.let { state ->
-                state.copy(osPermission = state.osPermission.takeIf { it in RAFT_PUSH_OS_PERMISSIONS } ?: "unknown")
+                state.copy(
+                    osPermission = state.osPermission.takeIf { it in RAFT_PUSH_OS_PERMISSIONS } ?: "unknown",
+                    legacyPreviewMode = state.legacyPreviewMode?.let { PushPreviewMode.fromWire(it)?.wireName ?: PUSH_PREVIEW_MODE_UNREADABLE }
+                )
             }
         } catch (_: Throwable) {
             warningLogger("device_state_read_failed fallback=omit")
@@ -595,7 +610,7 @@ internal class RaftPushRegistrationCoordinator(
         val payload = decodePayloadOrNull(payloadJson) ?: return payloadJson
         val next =
             payload.copy(
-                previewMode = null,
+                previewMode = state?.legacyPreviewMode,
                 alertsEnabled = state?.alertsEnabled,
                 osPermission = state?.osPermission,
                 previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET

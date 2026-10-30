@@ -5,6 +5,7 @@ import build.raft.app.data.RaftNotificationTestAck
 import build.raft.app.data.RaftPushMessageType
 import build.raft.app.data.parseRaftFcmNotificationRetract
 import build.raft.app.data.parseRaftPushBadge
+import build.raft.app.network.raftProcessIsForeground
 import build.raft.app.raftSystemNotificationTargetsVisibleConversation
 import build.raft.app.shared.AndroidUnreadNotificationPoster
 import build.raft.app.shared.RaftNotificationAlertsPreference
@@ -53,9 +54,12 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             }
             RaftFcmMessageDecision.DropUnknownType ->
                 RaftAppLog.i(TAG, "fcm_message_dropped reason=unknown_type")
-            RaftFcmMessageDecision.DropAlertsDisabled ->
+            RaftFcmMessageDecision.DropAlertsDisabled -> {
                 // The second guard: the server already stops alerting a registration with alertsEnabled=false.
                 RaftAppLog.i(TAG, "fcm_message_suppressed reason=alerts_disabled")
+                // A Settings test answered at once instead of waiting out the 15 s.
+                data["testId"]?.takeIf { it.isNotBlank() }?.let { RaftNotificationTestAck.ack(it, shown = false) }
+            }
             RaftFcmMessageDecision.Alert -> postAlert(data)
         }
     }
@@ -68,6 +72,12 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun postAlert(data: Map<String, String>) {
+        if (raftFcmAlertSuppressedInForeground(data["category"], foreground = raftProcessIsForeground())) {
+            // In the foreground only the in-app banner shows (it gets the same notification over the
+            // socket), as Slack does: no second, system copy.
+            RaftAppLog.i(TAG, "fcm_message_suppressed reason=app_foreground")
+            return
+        }
         if (
             raftSystemNotificationTargetsVisibleConversation(
                 serverId = data["serverId"],
@@ -100,6 +110,13 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
         const val TAG = "SlockFCM"
     }
 }
+
+/**
+ * A message notification while the app is in the foreground: the in-app banner shows it, so the
+ * system copy is not posted. Reminders, notices and tests have no in-app banner and still post.
+ */
+internal fun raftFcmAlertSuppressedInForeground(category: String?, foreground: Boolean): Boolean =
+    foreground && category !in setOf("reminder", "system_notice", "test")
 
 internal enum class RaftFcmMessageDecision {
     Alert,

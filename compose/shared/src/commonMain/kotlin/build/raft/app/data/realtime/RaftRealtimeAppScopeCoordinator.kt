@@ -11,6 +11,8 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.NotificationNoticeReceived
+import build.raft.app.data.RaftNotificationPushDedupe
+import build.raft.app.data.raftDedupeKey
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.optString
@@ -644,13 +646,17 @@ class RaftRealtimeAppScopeCoordinator(
             }
         }
         if (event is NotificationRetracted) sink.onNotificationRetracted(event)
-        if (event is NotificationNoticeReceived) {
+        if (event is NotificationNoticeReceived && RaftNotificationPushDedupe.firstForTray(event.raftDedupeKey())) {
             sink.maybePostBackgroundNotificationNotice(event, isAppInForeground = decision.isAppInForeground)
         }
         val currentServerId = decision.serverId ?: return
         // task #459: the tray posts from the server-qualified stream only —
         // message:new is a data-sync trigger and never reaches the poster.
-        if (decision.shouldPostBackgroundUnreadNotification && event is NotificationPushReceived) {
+        if (
+            decision.shouldPostBackgroundUnreadNotification &&
+            event is NotificationPushReceived &&
+            RaftNotificationPushDedupe.firstForTray(event.raftDedupeKey())
+        ) {
             sink.maybePostBackgroundUnreadNotification(
                 serverId = currentServerId,
                 event = event,

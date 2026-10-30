@@ -375,128 +375,22 @@ enum RaftIosPushHost {
         )
     }
 
+    /// Conversation target, or (message-less reminder / notice / test, `agent` route) the server's Activity
+    /// target (`slockNotificationTarget: "activity"`). See `RaftIosNotificationOpen`.
     private static func sanitizedSystemNotificationOpenPayload(
         userInfo: [AnyHashable: Any],
         categoryIdentifier: String?,
         shellInstanceId: String? = nil
     ) -> [String: String]? {
-        func stringValue(_ key: String) -> String? {
-            guard let value = userInfo[key] as? String else {
-                return nil
-            }
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-
-        let supportedKinds: Set<String> = ["channel", "dm", "thread"]
-        // Unified notifications (docs/contracts/notifications.md §4.5): newer servers also send a `route`
-        // object. Legacy fields are derived from it; explicit valid top-level legacy fields still win, so
-        // older servers keep working unchanged.
-        let route = userInfo["route"] as? [AnyHashable: Any]
-        func routeValue(_ key: String) -> String? {
-            guard let value = route?[key] as? String else {
-                return nil
-            }
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-        var routeKind: String?
-        var routeChannelId: String?
-        var routeThreadId: String?
-        var routeParentChannelId: String?
-        var routeParentMessageId: String?
-        var routeTaskId: String?
-        var routeTaskConversationChannelId: String?
-        var routeTaskMessageId: String?
-        let routeType = routeValue("type")
-        switch routeType {
-        case "channel", "dm":
-            routeKind = routeType
-            routeChannelId = routeValue("channelId")
-        case "thread":
-            routeKind = "thread"
-            routeParentChannelId = routeValue("parentChannelId")
-            routeParentMessageId = routeValue("parentMessageId")
-            routeChannelId = stringValue("conversationId") ?? stringValue("threadId") ?? stringValue("channelId")
-            routeThreadId = routeChannelId
-        case "task":
-            if let parentChannelType = routeValue("parentChannelType"), ["channel", "dm"].contains(parentChannelType) {
-                routeKind = parentChannelType
-            }
-            routeChannelId = routeValue("parentChannelId")
-            routeTaskId = routeValue("taskId")
-            routeTaskConversationChannelId = stringValue("conversationId") ?? stringValue("taskConversationChannelId")
-            routeTaskMessageId = routeValue("messageId") ?? stringValue("taskMessageId")
-        default:
-            // `agent` (and any unknown type): no conversation open target on mobile yet, so nothing is
-            // derived; without legacy fields the payload is rejected below, as before.
-            break
-        }
-        let legacyKind = stringValue("kind").flatMap { supportedKinds.contains($0) ? $0 : nil }
-        guard
-            let serverId = stringValue("serverId") ?? routeValue("serverId"),
-            let channelId = stringValue("channelId") ?? routeChannelId,
-            let messageId = routeValue("messageId")
-                ?? stringValue("messageId")
-                ?? (routeType == "task" ? stringValue("taskMessageId") : nil),
-            let kind = legacyKind ?? routeKind,
-            supportedKinds.contains(kind)
-        else {
-            return nil
-        }
-        let threadId = stringValue("threadId") ?? routeThreadId ?? channelId
-        var payload = [
-            "slockNotificationServerId": serverId,
-            "slockNotificationThreadId": threadId,
-            "slockNotificationChannelId": channelId,
-            "slockNotificationMessageId": messageId,
-            "slockNotificationKind": kind,
-        ]
-        if let parentChannelId = stringValue("parentChannelId") ?? routeParentChannelId {
-            payload["slockNotificationParentChannelId"] = parentChannelId
-        }
-        if let parentMessageId = stringValue("parentMessageId") ?? routeParentMessageId {
-            payload["slockNotificationParentMessageId"] = parentMessageId
-        }
-        // Task v2 task-reply push (slock #11445): top-level custom keys next to `channelId`; shared
-        // `parseRaftTaskConversationPushTarget` decides the route. A `task` route supplies them too.
-        if let taskConversationChannelId = routeTaskConversationChannelId ?? stringValue("taskConversationChannelId") {
-            payload["slockNotificationTaskConversationChannelId"] = taskConversationChannelId
-            if let taskId = stringValue("taskId") ?? routeTaskId {
-                payload["slockNotificationTaskId"] = taskId
-            }
-            if let taskMessageId = routeTaskMessageId ?? stringValue("taskMessageId") {
-                payload["slockNotificationTaskMessageId"] = taskMessageId
-            }
-        }
-        if let raftCategory = stringValue("raftCategory") {
-            payload["slockNotificationRaftCategory"] = raftCategory
-        }
-        let category =
-            categoryIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-                ?? ((userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-        if let category {
-            payload["slockNotificationCategory"] = category
-        }
-        // task #483: explicit shell target wins; a `slockShellInstanceId` key
-        // already present in userInfo also carries through so a future
-        // server-authored payload targets a shell without a scene.
-        let targetShellId =
-            shellInstanceId?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-                ?? stringValue("slockShellInstanceId")
-        if let targetShellId {
-            payload["slockShellInstanceId"] = targetShellId
-        }
-        return payload
+        RaftIosNotificationOpen.sanitizedPayload(
+            userInfo: userInfo,
+            categoryIdentifier: categoryIdentifier,
+            shellInstanceId: shellInstanceId
+        )
     }
 
     private static func systemNotificationOpenKey(_ payload: [String: String]) -> String {
-        [
-            payload["slockNotificationServerId"] ?? "",
-            payload["slockNotificationThreadId"] ?? "",
-            payload["slockNotificationMessageId"] ?? "",
-        ].joined(separator: "|")
+        RaftIosNotificationOpen.dedupeKey(payload)
     }
 
     private static func drainPendingSystemNotificationOpens() {
@@ -671,6 +565,12 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             queue: .main
         ) { _ in
             RaftIosPushHost.refreshOsPermission()
+            // Review N1: close delivered alerts that an applied retract covers (a late alert posted after it).
+            RaftIosRetractWatermarks.removeCoveredDelivered { removed in
+                if removed > 0 {
+                    RaftIosDiagnosticsRecord("info", "SlockIosPush", "retract_watermark_swept removed=\(removed)")
+                }
+            }
         }
         RaftIosDesktopShortcutHost.install()
         if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
@@ -750,14 +650,37 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
         // A Settings test (slock docs/contracts/notifications.md §6): confirm it is being shown.
-        if let testId = notification.request.content.userInfo["testId"] as? String, !testId.isEmpty {
+        if let testId = userInfo["testId"] as? String, !testId.isEmpty {
             RaftNotificationTestAck.shared.ack(testId: testId, shown: true)
         }
-        if RaftIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
+        // Review N1: an alert that arrives after the retract covering it (out-of-order delivery) is dropped.
+        if RaftIosRetractWatermarks.isCovered(
+            userInfo: userInfo,
+            postedAt: notification.date,
+            watermarks: RaftIosRetractWatermarks.load(),
+            now: Date()
+        ) {
+            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=retracted")
+            completionHandler([])
+            return
+        }
+        if RaftIosPushHost.targetsVisibleConversation(userInfo: userInfo) {
             // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
             completionHandler([.badge])
+            return
+        }
+        // The in-app banner renders message notifications only: a reminder, account notice or test
+        // (no message) keeps its system banner in the foreground.
+        let raftCategory = (notification.request.content.userInfo["raftCategory"] as? String) ?? ""
+        let messageLess = ["reminder", "system_notice", "test"].contains(raftCategory)
+        if UIApplication.shared.applicationState == .active && !messageLess {
+            // Review S7: in the foreground only the shared in-app banner shows (it gets the same
+            // notification over the socket); the system copy goes to Notification Center silently.
+            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present mode=list_only reason=foreground")
+            completionHandler([.list, .badge])
             return
         }
         RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
@@ -772,8 +695,10 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         let content = response.notification.request.content
         // task #483: a notification whose serverId maps to exactly one live
         // shell targets only that shell; anything else broadcasts as before.
-        let serverId = (content.userInfo["serverId"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Message-less notices (contract §4.1) may name the server only in `route`; the open payload itself
+        // (conversation or Activity target) is built by RaftIosNotificationOpen.
+        let serverId = RaftIosNotificationRetraction.string(content.userInfo["serverId"])
+            ?? RaftIosNotificationRetraction.string((content.userInfo["route"] as? [AnyHashable: Any])?["serverId"])
         var shellInstanceId: String?
         if let serverId, !serverId.isEmpty {
             let matches = RaftIosShellWindowRegistry.contexts(forServerId: serverId)

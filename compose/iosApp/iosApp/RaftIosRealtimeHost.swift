@@ -924,11 +924,14 @@ final class RaftIosRealtimeHost: NSObject {
 
     /** Kotlin RealtimeSocketEvents.UserScopedServerEvents: events that may name any of the member's servers.
      *  `notification:push` / `notification:retract` go to the user's room for any of their servers; other
-     *  workspaces' notifications must still be shown / closed. */
+     *  workspaces' notifications must still be shown / closed. `notification_prefs:updated` (contract §2.3)
+     *  carries its own `serverId`: another workspace's level change must still reach the level store, or that
+     *  workspace's levels and badge stay stale until the next sign-in load. */
     private static let userScopedServerEvents: Set<String> = [
         GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
         "notification:push",
         RaftIosNotificationRetraction.socketEventName,
+        "notification_prefs:updated",
     ]
 
     private func payloadServerGate(connectionServerId: String, rawPayload: String) -> (accept: Bool, reason: String, payloadServerId: String) {

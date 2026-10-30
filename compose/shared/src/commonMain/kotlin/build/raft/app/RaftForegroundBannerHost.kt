@@ -111,7 +111,12 @@ internal data class RaftForegroundMessageBanner(
     val iconName: RaftLucideIconName?,
     val senderMemberId: String?,
     val avatarWireValue: String?,
-    val avatarLabel: String
+    val avatarLabel: String,
+    /**
+     * Set for another workspace's notification (contract §4.5: shown like any other): its tap goes
+     * through window navigation, which switches to [serverId] first and then opens it.
+     */
+    val crossServerSource: ConversationOpenSourceMessageIdentity? = null
 )
 
 /** One banner model, route owner and expiry clock for one AppShell/window. */
@@ -852,10 +857,11 @@ internal fun raftNotificationPushBannerOrNull(
 ): RaftForegroundMessageBanner? {
     val normalizedCurrentServerId = currentServerId?.takeIf { it.isNotBlank() }
         ?: return null.also { onSuppressed("current_server_missing") }
-    if (normalizedCurrentServerId != event.serverId.value) {
-        onSuppressed("server_mismatch")
-        return null
-    }
+    // Contract §4.5: another workspace's notification is shown like any other; its open target is
+    // resolved under its own server (this window's conversation directory is the current server's).
+    val otherServer = normalizedCurrentServerId != event.serverId.value
+    val targetServerId = event.serverId.value
+    val directory = if (otherServer) SharedConversationDirectoryState() else conversationDirectory
     val sourceIdentity =
         ConversationOpenSourceMessageIdentity(
             source = ConversationOpenSource.ForegroundBanner,
@@ -872,12 +878,12 @@ internal fun raftNotificationPushBannerOrNull(
             conversationKind = event.kind
         )
     val openRequest =
-        (resolveOpenRequest(normalizedCurrentServerId, sourceIdentity, conversationDirectory)
+        (resolveOpenRequest(targetServerId, sourceIdentity, directory)
             as? ConversationOpenResolution.Resolved)
             ?.request
             ?: return null.also { onSuppressed("identity_incomplete") }
     val conversation = openRequest.conversationIdentity
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+    if (!otherServer && conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
         onSuppressed("visible_conversation")
         return null
     }
@@ -896,7 +902,8 @@ internal fun raftNotificationPushBannerOrNull(
         iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
         senderMemberId = event.senderId?.takeIf { event.senderKind != null }?.value,
         avatarWireValue = null,
-        avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" }
+        avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" },
+        crossServerSource = sourceIdentity.takeIf { otherServer }
     )
 }
 

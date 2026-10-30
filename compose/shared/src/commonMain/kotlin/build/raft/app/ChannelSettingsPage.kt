@@ -752,7 +752,7 @@ internal fun ChannelSettingsContent(
                 longMessageCollapseSetting = longMessageCollapseSetting,
                 onToggleMute = callbacks.onToggleMute,
                 onTogglePin = callbacks.onTogglePin,
-                notificationLevelTarget = notificationLevelTarget
+                notificationLevelTargetInput = notificationLevelTarget
             )
         }
         val actions = channelSettingsActionRows(model)
@@ -1251,8 +1251,10 @@ private fun ChannelPreferencesSection(
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit,
-    notificationLevelTarget: RaftNotificationLevelTarget? = null
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null
 ) {
+    // An older server without the unified API shows no Notifications row.
+    val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     if (notificationLevelDialogOpen && notificationLevelTarget != null) {
         RaftNotificationLevelDialog(target = notificationLevelTarget, onDismiss = { notificationLevelDialogOpen = false })

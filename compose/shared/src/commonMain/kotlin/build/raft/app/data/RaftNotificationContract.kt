@@ -439,3 +439,98 @@ fun buildRaftPresenceActivityPayload(active: Boolean): String =
 
 private fun JsonObject.notificationStringOrNull(key: String): String? =
     (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotBlank() }
+
+// ---------------------------------------------------------------------------
+// Dedupe across sockets
+// ---------------------------------------------------------------------------
+
+/** The newest [capacity] keys seen; thread-safe. */
+class RaftRecentKeys(private val capacity: Int) {
+    private val lock = kotlinx.atomicfu.locks.SynchronizedObject()
+    private val keys = LinkedHashMap<String, Unit>()
+
+    /** True the first time [key] is seen while it is among the newest [capacity]. */
+    fun firstSeen(key: String): Boolean =
+        kotlinx.atomicfu.locks.synchronized(lock) {
+            if (keys.containsKey(key)) {
+                keys.remove(key)
+                keys[key] = Unit
+                false
+            } else {
+                keys[key] = Unit
+                while (keys.size > capacity) keys.remove(keys.keys.first())
+                true
+            }
+        }
+}
+
+/**
+ * Every socket of the user is in the user room, and `notification:push` is user-scoped, so the same
+ * notification can arrive once per socket (two workspaces in two windows, multi-session runtimes).
+ * Each consumer (tray, in-app banner) handles an envelope `id` once; an older server's push without
+ * one is keyed by its message.
+ */
+object RaftNotificationPushDedupe {
+    private const val CAPACITY = 256
+    private val tray = RaftRecentKeys(CAPACITY)
+    private val banner = RaftRecentKeys(CAPACITY)
+
+    fun firstForTray(key: String): Boolean = tray.firstSeen(key)
+
+    fun firstForBanner(key: String): Boolean = banner.firstSeen(key)
+}
+
+/** The dedupe key of a socket push: its envelope id, else its message. */
+fun build.raft.app.model.NotificationPushReceived.raftDedupeKey(): String =
+    notificationId ?: "message:${serverId.value}:${messageId.value}"
+
+fun build.raft.app.model.NotificationNoticeReceived.raftDedupeKey(): String =
+    notificationId ?: "notice:$groupKey:$title:$body"
+
+/**
+ * "Retracted through" per group: an alert that arrives after the retraction that covers it (FCM
+ * HIGH vs NORMAL, socket vs push) is not posted. A numeric mark covers seq <= throughSeq; a mark
+ * of "all", or an alert without seq, covers only what arrives within [lateGraceMillis] of the
+ * retraction (a later one is a new message). Bounded and expiring.
+ */
+class RaftRetractWatermarks(
+    private val capacity: Int = 256,
+    private val ttlMillis: Long = 3L * 24L * 60L * 60L * 1000L,
+    private val lateGraceMillis: Long = 60_000L
+) {
+    private data class Mark(val throughSeq: Long?, val recordedAtMillis: Long)
+
+    private val lock = kotlinx.atomicfu.locks.SynchronizedObject()
+    private val marks = LinkedHashMap<String, Mark>()
+
+    fun record(retract: RaftNotificationRetract, nowMillis: Long) {
+        kotlinx.atomicfu.locks.synchronized(lock) {
+            val held = marks.remove(retract.groupKey)
+            val through =
+                when {
+                    retract.throughSeq == null -> null
+                    held?.throughSeq != null -> maxOf(held.throughSeq, retract.throughSeq)
+                    else -> retract.throughSeq
+                }
+            marks[retract.groupKey] = Mark(through, nowMillis)
+            while (marks.size > capacity) marks.remove(marks.keys.first())
+        }
+    }
+
+    fun clear() {
+        kotlinx.atomicfu.locks.synchronized(lock) { marks.clear() }
+    }
+
+    fun covers(groupKey: String?, seq: Long?, nowMillis: Long): Boolean {
+        val key = groupKey?.takeIf { it.isNotBlank() } ?: return false
+        return kotlinx.atomicfu.locks.synchronized(lock) {
+            val mark = marks[key] ?: return@synchronized false
+            if (nowMillis - mark.recordedAtMillis > ttlMillis) {
+                marks.remove(key)
+                return@synchronized false
+            }
+            val through = mark.throughSeq
+            if (through != null && seq != null) seq <= through else nowMillis - mark.recordedAtMillis <= lateGraceMillis
+        }
+    }
+}

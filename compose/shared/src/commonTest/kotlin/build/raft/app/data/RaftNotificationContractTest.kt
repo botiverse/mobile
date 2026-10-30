@@ -208,4 +208,26 @@ class RaftNotificationContractTest {
         assertNull(parseRaftPushSeq(""))
         assertNull(parseRaftPushSeq("null"))
     }
+
+    @Test
+    fun aLateAlertWhoseRetractionArrivedFirstIsCovered() {
+        val marks = RaftRetractWatermarks(capacity = 2)
+        marks.record(RaftNotificationRetract("s1", "s1:c1", "c1", 10L), nowMillis = 0L)
+        assertTrue(marks.covers("s1:c1", 10L, nowMillis = 5_000L))
+        assertFalse(marks.covers("s1:c1", 11L, nowMillis = 5_000L), "a newer message posts")
+        assertFalse(marks.covers("s1:c2", 1L, nowMillis = 5_000L))
+        // A later, smaller retraction keeps the larger mark.
+        marks.record(RaftNotificationRetract("s1", "s1:c1", "c1", 4L), nowMillis = 6_000L)
+        assertTrue(marks.covers("s1:c1", 9L, nowMillis = 7_000L))
+        // "All" (or no seq): only what arrives just after the retraction.
+        marks.record(RaftNotificationRetract("s1", "s1:c3", "c3", null), nowMillis = 10_000L)
+        assertTrue(marks.covers("s1:c3", 50L, nowMillis = 20_000L))
+        assertFalse(marks.covers("s1:c3", 50L, nowMillis = 200_000L))
+        // Bounded: a third group pushes the oldest mark out.
+        marks.record(RaftNotificationRetract("s1", "s1:c5", "c5", 1L), nowMillis = 21_000L)
+        assertFalse(marks.covers("s1:c1", 9L, nowMillis = 22_000L))
+        // Expires after 3 days.
+        marks.record(RaftNotificationRetract("s1", "s1:c4", "c4", 5L), nowMillis = 0L)
+        assertFalse(marks.covers("s1:c4", 1L, nowMillis = 4L * 24 * 60 * 60 * 1000))
+    }
 }

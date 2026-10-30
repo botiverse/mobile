@@ -312,6 +312,73 @@ private suspend fun <T> notificationRequest(
         DataResult.Error(ScreenError(code = "notification_settings_network_failed", retryable = true))
     }
 
+/**
+ * Whether the server runs the unified notification API (slock docs/contracts/notifications.md):
+ * `GET notification-levels` answering is "yes", a 404 is an older server. Per server in memory; the
+ * environment-wide answer of the account route is persisted so a cold start knows it before the
+ * first request. On an older server the app behaves as the previous version did: the registration
+ * carries `previewMode`, the preview choice is device-local, `fcmActive` gates the local post, and
+ * the account card and level menus are hidden.
+ */
+object RaftNotificationCapability {
+    private val mutableByServer = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    /** serverId -> the unified API answered (true) or the route is missing (false). Absent: not asked yet. */
+    val supportedByServer: StateFlow<Map<String, Boolean>> = mutableByServer.asStateFlow()
+
+    private val mutableAccount = MutableStateFlow<Boolean?>(null)
+
+    /** `me/notification-settings` answered (true), 404 (false), or not known yet (null). */
+    val accountApiSupported: StateFlow<Boolean?> = mutableAccount.asStateFlow()
+
+    @Volatile
+    internal var store: () -> SharedPreferenceStore? = { runCatching { raftSharedPreferenceStore() }.getOrNull() }
+
+    private var restored = false
+
+    /** The account answer, restored from the device the first time it is asked. */
+    fun accountSupported(): Boolean? {
+        if (!restored) {
+            restored = true
+            if (mutableAccount.value == null) {
+                mutableAccount.value =
+                    when (store()?.getString(RAFT_NOTIFICATION_UNIFIED_API_KEY)) {
+                        "true" -> true
+                        "false" -> false
+                        else -> null
+                    }
+            }
+        }
+        return mutableAccount.value
+    }
+
+    fun isSupported(serverId: String): Boolean? = mutableByServer.value[serverId]
+
+    internal fun recordServer(serverId: String, supported: Boolean) {
+        mutableByServer.update { it + (serverId to supported) }
+    }
+
+    internal fun recordAccount(supported: Boolean) {
+        val before = accountSupported()
+        restored = true
+        mutableAccount.value = supported
+        runCatching { store()?.putString(RAFT_NOTIFICATION_UNIFIED_API_KEY, supported.toString()) }
+        // The registration carries previewMode only for an older server: re-send it when that flips.
+        if (before != supported) RaftPushRegistrationLifecycle.onDeviceStateChanged()
+    }
+
+    internal fun resetForTests() {
+        mutableByServer.value = emptyMap()
+        mutableAccount.value = null
+        restored = false
+    }
+}
+
+internal const val RAFT_NOTIFICATION_UNIFIED_API_KEY = "notifications:unified_api_supported"
+
+private fun DataResult<*>.isRouteMissing(): Boolean =
+    this is DataResult.Error && error.code == "notification_settings_http_404"
+
 /** Every server's level in one place, for the badge sum and the level pickers. */
 private fun currentNotificationApi(): RaftNotificationSettingsApi? =
     RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftNotificationSettingsApi)
@@ -335,14 +402,40 @@ object RaftNotificationLevelStore {
     /** `GET notification-levels` for [serverId]; keeps the held copy on failure. */
     suspend fun refresh(serverId: String, priority: DataRequestPriority = DataRequestPriority.Visible): Boolean {
         val api = apiProvider() ?: return false
+        val startVersions = mutableState.value[serverId]?.versions.orEmpty()
         val result =
             notificationRequest(
                 block = { api.serverLevels(serverId, priority) },
                 contractCode = "notification_levels_contract_mismatch",
                 parse = { parseRaftServerNotificationLevels(it, serverId) }
             )
+        if (result.isRouteMissing()) RaftNotificationCapability.recordServer(serverId, supported = false)
         val fetched = (result as? DataResult.Content)?.data ?: return false
-        mutableState.update { all -> all + (serverId to fetched.copy(versions = all[serverId]?.versions.orEmpty())) }
+        RaftNotificationCapability.recordServer(serverId, supported = true)
+        mutableState.update { all ->
+            val current = all[serverId]
+            if (current == null) {
+                all + (serverId to fetched)
+            } else {
+                // A realtime update that landed while the GET was in flight is newer than its answer:
+                // keep those keys, take the rest from the answer.
+                val newer = current.versions.keys - startVersions.keys +
+                    current.versions.filter { (key, version) -> (startVersions[key] ?: Long.MIN_VALUE) < version }.keys
+                var merged = fetched.copy(versions = current.versions)
+                for (key in newer) {
+                    val scope = RaftNotificationLevelScope.fromWire(key.substringBefore(':')) ?: continue
+                    val id = key.substringAfter(':')
+                    val setting =
+                        when (scope) {
+                            RaftNotificationLevelScope.Server -> RaftNotificationLevelSetting.of(current.server)
+                            RaftNotificationLevelScope.Channel -> current.channelSetting(id)
+                            RaftNotificationLevelScope.Thread -> current.threadSetting(id)
+                        }
+                    merged = merged.with(scope, id, setting)
+                }
+                all + (serverId to merged)
+            }
+        }
         return true
     }
 
@@ -368,6 +461,7 @@ object RaftNotificationLevelStore {
                 contractCode = "notification_level_contract_mismatch",
                 parse = ::parseRaftNotificationLevelResponse
             )
+        if (result.isRouteMissing()) RaftNotificationCapability.recordServer(serverId, supported = false)
         when (result) {
             is DataResult.Content -> {
                 val update = result.data
@@ -379,7 +473,19 @@ object RaftNotificationLevelStore {
                     all + (serverId to current.with(update.scope, update.id, update.level).copy(versions = versions))
                 }
             }
-            else -> mutableState.update { all -> all + (serverId to previous) }
+            else ->
+                // Roll back only the key this write changed: a realtime update of another key that
+                // landed meanwhile stays.
+                mutableState.update { all ->
+                    val current = all[serverId] ?: previous
+                    val restoredSetting =
+                        when (scope) {
+                            RaftNotificationLevelScope.Server -> RaftNotificationLevelSetting.of(previous.server)
+                            RaftNotificationLevelScope.Channel -> previous.channelSetting(id)
+                            RaftNotificationLevelScope.Thread -> previous.threadSetting(id)
+                        }
+                    all + (serverId to current.with(scope, id, restoredSetting))
+                }
         }
         return result
     }
@@ -470,6 +576,8 @@ object RaftNotificationAccountSettingsStore {
                 contractCode = "notification_settings_contract_mismatch",
                 parse = ::parseRaftNotificationSettingsResponse
             )
+        if (result.isRouteMissing()) RaftNotificationCapability.recordAccount(supported = false)
+        if (result is DataResult.Content) RaftNotificationCapability.recordAccount(supported = true)
         return when (result) {
             is DataResult.Content -> {
                 accept(result.data.settings)
@@ -519,6 +627,7 @@ object RaftNotificationAccountSettingsStore {
                     mutableState.update { it.copy(saving = false) }
                     return@withLock true
                 }
+                if (response?.code == 404) RaftNotificationCapability.recordAccount(supported = false)
                 if (response?.code == 409 && attempt == 0) {
                     val current = parseRaftNotificationAccountSettingsEnvelope(response.errorBodyText ?: response.bodyText)
                     if (current != null) {
@@ -536,10 +645,16 @@ object RaftNotificationAccountSettingsStore {
             false
         }
 
-    /** [update], or null when no account API is available (no signed-in shared runtime). */
+    /**
+     * [update], or null when the account API is not there: no signed-in shared runtime, or an older
+     * server without `me/notification-settings` (the caller then keeps the device-local behaviour).
+     */
     suspend fun updateOrNull(patch: RaftNotificationAccountSettingsPatch): Boolean? {
         if (apiProvider() == null) return null
-        return update(patch)
+        if (RaftNotificationCapability.accountSupported() == false) return null
+        val saved = update(patch)
+        if (!saved && RaftNotificationCapability.accountSupported() == false) return null
+        return saved
     }
 
     /** `notification_prefs:updated` `type: "account"`. Dropped when its version is not newer. */

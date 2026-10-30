@@ -704,6 +704,11 @@ class SharedSettingsDataSource(
     private val accountPreviewModeWriter: suspend (PushPreviewMode) -> Boolean? = { mode ->
         RaftNotificationAccountSettingsStore.updateOrNull(RaftNotificationAccountSettingsPatch(previewMode = mode))
     },
+    /**
+     * An older server (no account route): the choice is device-local as before, and the push
+     * registration carries it, so re-send that.
+     */
+    private val onLegacyPreviewModeSaved: () -> Unit = { RaftPushRegistrationLifecycle.onDeviceStateChanged() },
     /** Reads the account settings (and so the preview choice) before the Notifications page shows. */
     private val accountSettingsLoader: suspend () -> Unit = { RaftNotificationAccountSettingsStore.load() },
     /**
@@ -1246,11 +1251,13 @@ class SharedSettingsDataSource(
         val store =
             pushPreviewModePreferenceStore
                 ?: return DataResult.Error(ScreenError("settings_push_preview_mode_unavailable", retryable = false))
-        if (accountPreviewModeWriter(selectedMode) == false) {
+        val savedOnAccount = accountPreviewModeWriter(selectedMode)
+        if (savedOnAccount == false) {
             return DataResult.Error(ScreenError("settings_push_preview_mode_save_failed", retryable = true))
         }
         store.savePushPreviewMode(selectedMode.wireName)
-        diagnosticsLogger?.invoke("push_preview_mode_user_choice mode=${selectedMode.wireName}")
+        if (savedOnAccount == null) onLegacyPreviewModeSaved()
+        diagnosticsLogger?.invoke("push_preview_mode_user_choice mode=${selectedMode.wireName} account=${savedOnAccount != null}")
         return DataResult.Content(store.pushPreviewModeSnapshot())
     }
 

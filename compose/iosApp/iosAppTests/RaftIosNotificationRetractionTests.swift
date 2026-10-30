@@ -128,6 +128,180 @@ final class RaftIosNotificationRetractionTests: XCTestCase {
         XCTAssertEqual(removed, ["rebuilt"])
     }
 
+    // MARK: Watermarks (late alert after its retract)
+
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func marks(_ entries: [(String, Int64?)], at date: Date) -> [String: RaftIosRetractWatermark] {
+        entries.reduce(into: [:]) { result, entry in
+            result = RaftIosRetractWatermarks.recording(groupKey: entry.0, throughSeq: entry.1, into: result, now: date)
+        }
+    }
+
+    func testWatermarkCoversOlderOrEqualSeqOnlyInItsGroup() {
+        let watermarks = marks([("s1:c1", 5)], at: t0)
+        let now = t0.addingTimeInterval(600)
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 4, watermarks: watermarks, now: now))
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 5, watermarks: watermarks, now: now))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 6, watermarks: watermarks, now: now))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c2", seq: 1, watermarks: watermarks, now: now))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: nil, seq: 1, watermarks: watermarks, now: now))
+    }
+
+    func testWatermarkKeepsLargestThroughSeq() {
+        let watermarks = marks([("s1:c1", 9), ("s1:c1", 3)], at: t0)
+        XCTAssertEqual(watermarks["s1:c1"]?.throughSeq, 9)
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 8, watermarks: watermarks, now: t0))
+    }
+
+    func testWatermarkExpiresAfterThreeDays() {
+        let watermarks = marks([("s1:c1", 5), ("s1:c2", nil)], at: t0)
+        let justBefore = t0.addingTimeInterval(3 * 24 * 60 * 60 - 1)
+        let after = t0.addingTimeInterval(3 * 24 * 60 * 60 + 1)
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 5, watermarks: watermarks, now: justBefore))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: 5, watermarks: watermarks, now: after))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c2", seq: nil, postedAt: t0, watermarks: watermarks, now: after))
+        XCTAssertTrue(RaftIosRetractWatermarks.pruned(watermarks, now: after).isEmpty)
+    }
+
+    func testAllWatermarkCoversWhatWasPostedUpToTheRetractPlusGrace() {
+        let watermarks = marks([("s1:reminder", nil)], at: t0)
+        let now = t0.addingTimeInterval(30)
+        // A late alert, with or without seq, posted right after the retract: covered.
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(
+            groupKey: "s1:reminder", seq: nil, postedAt: t0.addingTimeInterval(20), watermarks: watermarks, now: now
+        ))
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(
+            groupKey: "s1:reminder", seq: 99, postedAt: t0.addingTimeInterval(-5), watermarks: watermarks, now: now
+        ))
+        // A genuinely new alert later on: not covered. Unknown post date: not covered.
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(
+            groupKey: "s1:reminder", seq: nil, postedAt: t0.addingTimeInterval(3600), watermarks: watermarks, now: t0.addingTimeInterval(3600)
+        ))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:reminder", seq: 1, watermarks: watermarks, now: now))
+    }
+
+    func testNumericWatermarkCoversSeqlessNotificationOnlyByDate() {
+        let watermarks = marks([("s1:c1", 5)], at: t0)
+        let now = t0.addingTimeInterval(3600)
+        XCTAssertTrue(RaftIosRetractWatermarks.isCovered(
+            groupKey: "s1:c1", seq: nil, postedAt: t0.addingTimeInterval(-60), watermarks: watermarks, now: now
+        ))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(
+            groupKey: "s1:c1", seq: nil, postedAt: t0.addingTimeInterval(600), watermarks: watermarks, now: now
+        ))
+        XCTAssertFalse(RaftIosRetractWatermarks.isCovered(groupKey: "s1:c1", seq: nil, watermarks: watermarks, now: now))
+    }
+
+    func testWatermarkStoreEvictsOldestBeyondBound() {
+        var watermarks: [String: RaftIosRetractWatermark] = [:]
+        let total = RaftIosRetractWatermarks.maxEntries + 5
+        for index in 0..<total {
+            watermarks = RaftIosRetractWatermarks.recording(
+                groupKey: "s1:c\(index)", throughSeq: 1, into: watermarks, now: t0.addingTimeInterval(Double(index))
+            )
+        }
+        XCTAssertEqual(watermarks.count, RaftIosRetractWatermarks.maxEntries)
+        XCTAssertNil(watermarks["s1:c0"])
+        XCTAssertNil(watermarks["s1:c4"])
+        XCTAssertNotNil(watermarks["s1:c5"])
+        XCTAssertNotNil(watermarks["s1:c\(total - 1)"])
+    }
+
+    func testWatermarkPersistenceRoundTrip() {
+        let suite = "RaftIosNotificationRetractionTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("no defaults") }
+        defer { defaults.removePersistentDomain(forName: suite) }
+        RaftIosRetractWatermarks.record(retract("s1:c1", through: 7), defaults: defaults, now: t0)
+        RaftIosRetractWatermarks.record(retract("s1:c2", through: nil), defaults: defaults, now: t0)
+        let loaded = RaftIosRetractWatermarks.load(defaults: defaults, now: t0.addingTimeInterval(10))
+        XCTAssertEqual(loaded["s1:c1"], RaftIosRetractWatermark(throughSeq: 7, recordedAt: t0))
+        XCTAssertEqual(loaded["s1:c2"], RaftIosRetractWatermark(throughSeq: nil, recordedAt: t0))
+        XCTAssertTrue(RaftIosRetractWatermarks.load(defaults: defaults, now: t0.addingTimeInterval(4 * 24 * 60 * 60)).isEmpty)
+    }
+
+    func testCoveredDeliveredIdentifiers() {
+        let watermarks = marks([("s1:c1", 5)], at: t0)
+        let delivered: [(identifier: String, userInfo: [AnyHashable: Any], date: Date)] = [
+            ("late-old", ["groupKey": "s1:c1", "seq": 3], t0.addingTimeInterval(5)),
+            ("new", ["groupKey": "s1:c1", "seq": 6], t0.addingTimeInterval(5)),
+            ("rebuilt", ["serverId": "s1", "conversationId": "c1", "seq": "5"], t0),
+            ("other", ["groupKey": "s2:c1", "seq": 1], t0),
+        ]
+        XCTAssertEqual(
+            RaftIosRetractWatermarks.coveredIdentifiers(delivered: delivered, watermarks: watermarks, now: t0.addingTimeInterval(10)),
+            ["late-old", "rebuilt"]
+        )
+    }
+
+    // MARK: Open payload
+
+    func testMessagelessReminderWithNullRouteOpensActivity() {
+        let payload = RaftIosNotificationOpen.sanitizedPayload(userInfo: [
+            "type": "alert", "id": "reminder:r1:1700", "raftCategory": "reminder", "serverId": "s1",
+            "groupKey": "s1:reminder", "route": NSNull(), "routeUrl": "/s/acme/activity",
+            "messageId": NSNull(), "channelId": NSNull(), "kind": NSNull(), "seq": NSNull(),
+            "aps": ["category": "RAFT_MESSAGE"],
+        ])
+        XCTAssertEqual(payload, [
+            "slockNotificationServerId": "s1",
+            "slockNotificationTarget": "activity",
+            "slockNotificationRaftCategory": "reminder",
+            "slockNotificationId": "reminder:r1:1700",
+            "slockNotificationGroupKey": "s1:reminder",
+        ])
+    }
+
+    func testAgentRouteOpensActivityWithShell() {
+        let payload = RaftIosNotificationOpen.sanitizedPayload(
+            userInfo: [
+                "id": "notice:n1", "raftCategory": "agent_attention",
+                "route": ["type": "agent", "serverId": "s2", "agentId": "a1"],
+            ],
+            shellInstanceId: "shell-1"
+        )
+        XCTAssertEqual(payload?["slockNotificationServerId"], "s2")
+        XCTAssertEqual(payload?["slockNotificationTarget"], "activity")
+        XCTAssertEqual(payload?["slockNotificationRaftCategory"], "agent_attention")
+        XCTAssertEqual(payload?["slockShellInstanceId"], "shell-1")
+        XCTAssertNil(payload?["slockNotificationMessageId"])
+    }
+
+    func testDmRouteStillOpensConversation() {
+        let payload = RaftIosNotificationOpen.sanitizedPayload(
+            userInfo: [
+                "id": "message:m1", "raftCategory": "dm", "groupKey": "s1:d1",
+                "route": ["type": "dm", "serverId": "s1", "channelId": "d1", "messageId": "m1"],
+            ],
+            categoryIdentifier: "RAFT_MESSAGE"
+        )
+        XCTAssertEqual(payload, [
+            "slockNotificationServerId": "s1",
+            "slockNotificationThreadId": "d1",
+            "slockNotificationChannelId": "d1",
+            "slockNotificationMessageId": "m1",
+            "slockNotificationKind": "dm",
+            "slockNotificationRaftCategory": "dm",
+            "slockNotificationCategory": "RAFT_MESSAGE",
+        ])
+    }
+
+    func testOpenPayloadRejectsBackgroundPushesAndServerless() {
+        XCTAssertNil(RaftIosNotificationOpen.sanitizedPayload(userInfo: ["type": "retract", "serverId": "s1", "groupKey": "s1:c1"]))
+        XCTAssertNil(RaftIosNotificationOpen.sanitizedPayload(userInfo: ["type": "sync", "serverId": "s1"]))
+        XCTAssertNil(RaftIosNotificationOpen.sanitizedPayload(userInfo: ["raftCategory": "reminder", "route": NSNull()]))
+    }
+
+    func testActivityOpensDoNotCollapseInDedupeKey() {
+        let first = RaftIosNotificationOpen.sanitizedPayload(userInfo: ["serverId": "s1", "id": "reminder:r1:1"])!
+        let second = RaftIosNotificationOpen.sanitizedPayload(userInfo: ["serverId": "s1", "id": "reminder:r2:2"])!
+        XCTAssertNotEqual(RaftIosNotificationOpen.dedupeKey(first), RaftIosNotificationOpen.dedupeKey(second))
+        let message = RaftIosNotificationOpen.sanitizedPayload(userInfo: [
+            "serverId": "s1", "channelId": "c1", "messageId": "m1", "kind": "channel",
+        ])!
+        XCTAssertEqual(RaftIosNotificationOpen.dedupeKey(message), "s1|c1|m1")
+    }
+
     // MARK: Presence
 
     func testPresenceActivityPayloads() {

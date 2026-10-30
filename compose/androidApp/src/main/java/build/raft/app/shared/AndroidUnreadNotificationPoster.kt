@@ -23,6 +23,7 @@ import build.raft.app.data.PUSH_PREVIEW_MODE_UNREADABLE
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftAndroidNotificationChannelKind
 import build.raft.app.data.RaftNotificationRetract
+import build.raft.app.data.RaftRetractWatermarks
 import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.data.parseRaftPushSeq
 import build.raft.app.data.raftAndroidNotificationChannelKind
@@ -61,6 +62,16 @@ internal object AndroidUnreadNotificationPoster {
         val serverGate = systemUnreadNotificationServerGate(notificationServerId = request.optString("serverId"))
         if (!serverGate.shouldPost) {
             return mapOf("status" to "error", "code" to serverGate.code)
+        }
+        // A late alert whose retraction already arrived: the conversation was read meanwhile.
+        if (
+            retractWatermarks.covers(
+                AndroidUnreadNotificationGrouping.retractionGroupKey(request),
+                parseRaftPushSeq(request.optString("seq")),
+                System.currentTimeMillis()
+            )
+        ) {
+            return mapOf("status" to "ok", "code" to "already_retracted")
         }
         ensureSharedNotificationChannels(appContext)
         if (!hasNotificationPermission(appContext)) {
@@ -116,6 +127,9 @@ internal object AndroidUnreadNotificationPoster {
      * messages. Must hold [groupingLock].
      */
     private val serverBadges = mutableMapOf<String, Int>()
+
+    /** What the retractions this process saw already closed (review N1). */
+    internal val retractWatermarks = RaftRetractWatermarks()
 
     /** The conversations each server's posted summary counted; must hold [groupingLock]. */
     private val postedSummaryConversations = mutableMapOf<String, Set<Int>>()
@@ -208,6 +222,7 @@ internal object AndroidUnreadNotificationPoster {
     @SuppressLint("MissingPermission") // Only cancels, or re-posts a summary over posted conversations.
     fun retract(context: Context, retract: RaftNotificationRetract): Int {
         val appContext = context.applicationContext
+        retractWatermarks.record(retract, System.currentTimeMillis())
         return runCatching {
             synchronized(groupingLock) {
                 val fromTray =
@@ -276,6 +291,7 @@ internal object AndroidUnreadNotificationPoster {
             lastPostMarks.clear()
             postedGroupSeqs.clear()
             serverBadges.clear()
+            retractWatermarks.clear()
             postedSummaryConversations.clear()
             pendingSummaryServers.clear()
         }
@@ -705,8 +721,20 @@ internal object AndroidUnreadNotificationPoster {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val appContext = context.applicationContext
         val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Replaced by the HIGH-importance v2 (importance is fixed once a channel exists).
-        runCatching { manager.deleteNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID) }
+        // DMs move to v2 (HIGH; a channel's importance is fixed once it exists). v2 is created once,
+        // from what the user made of v1, and v1 goes only once nothing is showing on it.
+        val legacyDm = runCatching { manager.getNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID) }.getOrNull()
+        val dmChannel =
+            NotificationChannel(
+                UNREAD_DM_NOTIFICATION_CHANNEL_ID,
+                appContext.getString(R.string.notification_unread_dm_channel_name),
+                dmChannelImportance(legacyDm?.importance)
+            ).apply {
+                description = appContext.getString(R.string.notification_unread_dm_channel_description)
+                if (legacyDm != null && manager.getNotificationChannel(UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) {
+                    copyUserChoicesFrom(legacyDm)
+                }
+            }
         manager.createNotificationChannels(
             listOf(
                 NotificationChannel(
@@ -731,13 +759,7 @@ internal object AndroidUnreadNotificationPoster {
                 ).apply {
                     description = appContext.getString(R.string.notification_unread_channel_channel_description)
                 },
-                NotificationChannel(
-                    UNREAD_DM_NOTIFICATION_CHANNEL_ID,
-                    appContext.getString(R.string.notification_unread_dm_channel_name),
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = appContext.getString(R.string.notification_unread_dm_channel_description)
-                },
+                dmChannel,
                 NotificationChannel(
                     UNREAD_MENTION_NOTIFICATION_CHANNEL_ID,
                     appContext.getString(R.string.notification_unread_mention_channel_name),
@@ -747,6 +769,40 @@ internal object AndroidUnreadNotificationPoster {
                 }
             )
         )
+        retireLegacyDmChannel(manager)
+    }
+
+    /**
+     * v2's importance from v1's (null: no v1, a fresh install). v1 was created at DEFAULT, so DEFAULT
+     * means untouched and becomes HIGH; anything else is the user's choice (blocked, lowered, raised)
+     * and stays.
+     */
+    internal fun dmChannelImportance(legacyImportance: Int?): Int =
+        when (legacyImportance) {
+            null, NotificationManager.IMPORTANCE_DEFAULT -> NotificationManager.IMPORTANCE_HIGH
+            else -> legacyImportance
+        }
+
+    /** Sound, vibration, lock screen and Do Not Disturb choices the user made on v1. */
+    private fun NotificationChannel.copyUserChoicesFrom(legacy: NotificationChannel) {
+        setSound(legacy.sound, legacy.audioAttributes)
+        enableVibration(legacy.shouldVibrate())
+        legacy.vibrationPattern?.let { vibrationPattern = it }
+        enableLights(legacy.shouldShowLights())
+        lockscreenVisibility = legacy.lockscreenVisibility
+        setBypassDnd(legacy.canBypassDnd())
+        setShowBadge(legacy.canShowBadge())
+    }
+
+    /** Deletes v1 once v2 exists and none of v1's notifications is in the tray (deleting cancels them). */
+    private fun retireLegacyDmChannel(manager: NotificationManager) {
+        runCatching {
+            if (manager.getNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) return
+            if (manager.getNotificationChannel(UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) return
+            val showing =
+                manager.activeNotifications.any { it.notification.channelId == LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID }
+            if (!showing) manager.deleteNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID)
+        }
     }
 
     fun isNotificationChannelBlocked(context: Context, channelId: String): Boolean {
@@ -805,7 +861,7 @@ internal object AndroidUnreadNotificationPoster {
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
         val appContext = context.applicationContext
         val basePageData =
-            RaftCmpActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
         val multiShellHostEnabled =
             runCatching {
                 KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())

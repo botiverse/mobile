@@ -346,9 +346,8 @@ class PushRegistrationTest {
 
         assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = " https://api.example/ ", now = clock.now))
         assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = "https://api.example", now = clock.now))
-        // FCM is fully rolled out: the per-server rollout answer no longer gates the local post.
-        assertTrue(coordinator.isRemotePushActiveFor("server-2", now = clock.now), "fcmActive=false")
-        assertTrue(coordinator.isRemotePushActiveFor("server-3", now = clock.now), "not in the answer")
+        assertFalse(coordinator.isRemotePushActiveFor("server-2", now = clock.now), "fcmActive=false")
+        assertFalse(coordinator.isRemotePushActiveFor("server-3", now = clock.now), "not in the answer")
         assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
         assertEquals(installationId, coordinator.currentInstallationId())
     }
@@ -497,8 +496,7 @@ class PushRegistrationTest {
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to false)
         assertTrue(coordinator.handleSessionSaved())
         assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-1", now = clock.now))
-        // user-2's own answer confirms the registration; fcmActive=false no longer gates (FCM fully rolled out).
-        assertTrue(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
         assertEquals("user-2", coordinator.storedDeliveryStatus()?.userId)
     }
 
@@ -1022,6 +1020,67 @@ class PushRegistrationTest {
 
         assertTrue(
             api.calls.single().endsWith(""","appVersion":"1.2.0","alertsEnabled":true,"osPermission":"granted","previewKeySet":2}"""),
+            api.calls.single()
+        )
+    }
+
+    @Test
+    fun aGrantedPermissionReSendsTheRegistrationWithGranted() = runBlocking {
+        // Review B1: the permission answer must reach the server at once, not at the next start.
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                deviceStateProvider = { RaftPushDeviceState(alertsEnabled = true, osPermission = RaftPushDeviceStateHost.osPermission) }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        var changes = 0
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
+                override fun onSessionSaved() = Unit
+
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
+
+                override suspend fun unbindBeforeLogout() = Unit
+
+                override fun onDeviceStateChanged() {
+                    changes += 1
+                }
+            }
+        )
+        RaftPushDeviceStateHost.updateOsPermission("unknown")
+        assertTrue(coordinator.registerFcm())
+        assertTrue(api.calls.last().contains(""""osPermission":"unknown""""), api.calls.last())
+        changes = 0
+
+        RaftPushDeviceStateHost.updateOsPermission("granted")
+        RaftPushDeviceStateHost.updateOsPermission("granted")
+        assertEquals(1, changes, "one re-registration per change")
+        assertTrue(coordinator.handleDeviceStateChanged())
+        assertTrue(api.calls.last().contains(""""osPermission":"granted""""), api.calls.last())
+        RaftPushRegistrationLifecycle.clearForTests()
+    }
+
+    @Test
+    fun anOlderServerGetsThePreviewChoiceInTheRegistration() = runBlocking {
+        // Review S1: before the unified API is known, the registration carries previewMode as before.
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                deviceStateProvider = {
+                    RaftPushDeviceState(alertsEnabled = true, osPermission = "granted", legacyPreviewMode = "private")
+                }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        // An unreadable choice fails closed, as the device store does.
+        assertTrue(
+            api.calls.single().endsWith(""","previewMode":"hidden","alertsEnabled":true,"osPermission":"granted","previewKeySet":2}"""),
             api.calls.single()
         )
     }

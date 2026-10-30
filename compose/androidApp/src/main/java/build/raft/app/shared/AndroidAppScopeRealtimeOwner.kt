@@ -102,19 +102,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 // The OS permission rides the registration (osPermission): a change made in system
                 // settings while the app was away re-registers, so the server stops (or resumes)
                 // alerting this device (slock docs/contracts/notifications.md §3.1).
-                installedApplicationContext?.let { context ->
-                    val granted =
-                        runCatching {
-                            androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
-                        }.getOrNull()
-                    build.raft.app.data.RaftPushDeviceStateHost.updateOsPermission(
-                        when (granted) {
-                            true -> "granted"
-                            false -> "denied"
-                            null -> "unknown"
-                        }
-                    )
-                }
+                installedApplicationContext?.let(RaftNotificationPermissionReporter::report)
             } else {
                 takePendingProductAppOpen()
                 RaftProductEvents.onAppBackground()

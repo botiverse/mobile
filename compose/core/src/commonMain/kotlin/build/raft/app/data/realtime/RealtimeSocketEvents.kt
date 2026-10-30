@@ -129,7 +129,9 @@ object RealtimeSocketEvents {
     val UserScopedServerEvents: Set<String> =
         // A notification (and its retraction) of any of the member's servers reaches whichever
         // server's socket is open: the app shows other workspaces' notifications too (contract §4.5).
-        setOf(AppearanceUpdated, NotificationPush, NotificationRetract)
+        // notification_prefs:updated is applied by its payload serverId too (levels, the badge's
+        // server levels); a channel mute names a channel id the other server's Home does not hold.
+        setOf(AppearanceUpdated, NotificationPush, NotificationRetract, NotificationPrefsUpdated)
 
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(

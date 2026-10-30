@@ -38,4 +38,14 @@ class RaftFirebaseMessagingDecisionTest {
         assertEquals(RaftFcmMessageDecision.Sync, raftFcmMessageDecision(mapOf("type" to "sync"), off))
         assertFalse("the switch is read only for an alert", switchRead)
     }
+
+    @Test
+    fun inTheForegroundOnlyTheInAppBannerShowsMessages() {
+        assertEquals(true, raftFcmAlertSuppressedInForeground("dm", foreground = true))
+        assertEquals(true, raftFcmAlertSuppressedInForeground("RAFT_MESSAGE", foreground = true))
+        assertEquals(false, raftFcmAlertSuppressedInForeground("dm", foreground = false))
+        // No in-app banner for these: the system notification still shows.
+        assertEquals(false, raftFcmAlertSuppressedInForeground("reminder", foreground = true))
+        assertEquals(false, raftFcmAlertSuppressedInForeground("test", foreground = true))
+    }
 }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftDedupeKey
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
@@ -3031,6 +3032,11 @@ private fun RaftAppShellReadyContent(
             )
         }
     var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    // A notification without a conversation (reminder, notice, test, agent route; contract §4.5):
+    // switch to its server and open Activity. From the launch pageData (Android) or the open event (iOS).
+    var pendingNotificationActivityServerId by remember(pager.pageData.params.toString()) {
+        mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
+    }
     var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
@@ -3083,6 +3089,12 @@ private fun RaftAppShellReadyContent(
                 val targetShellId =
                     eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
+                val activityServerId = eventData?.toKuiklyJson()?.appShellNotificationActivityServerId()
+                if (activityServerId != null) {
+                    bridge.log("notification_open_activity source=system_notification targetServerId=$activityServerId")
+                    pendingNotificationActivityServerId = activityServerId
                     return@observe
                 }
                 val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
@@ -6023,6 +6035,10 @@ private fun RaftAppShellReadyContent(
                             if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
                                 return@runIfCurrentGrant
                             }
+                            // One banner per notification, however many of the user's sockets delivered it.
+                            if (!build.raft.app.data.RaftNotificationPushDedupe.firstForBanner(event.raftDedupeKey())) {
+                                return@runIfCurrentGrant
+                            }
                             if (latestForegroundMessageBannersEnabled) {
                                 val banner =
                                     raftNotificationPushBannerOrNull(
@@ -6787,6 +6803,24 @@ private fun RaftAppShellReadyContent(
         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
         if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
         bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
+    }
+
+    LaunchedEffect(pendingNotificationActivityServerId, readySession?.currentServerId) {
+        val target = pendingNotificationActivityServerId ?: return@LaunchedEffect
+        val session = readySession ?: return@LaunchedEffect
+        pendingNotificationActivityServerId = null
+        if (session.servers.none { it.id == target }) {
+            bridge.logWarn("notification_open_activity_drop reason=unknown_server targetServerId=$target")
+            return@LaunchedEffect
+        }
+        if (session.currentServerId != target) {
+            session.withAppShellSelectedServer(target)
+                ?.let { switched -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched)) }
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(target)))
+        }
+        selectAppShellTab("activity", directChildSwitch = true)
+        bridge.log("notification_open_activity_done targetServerId=$target")
     }
 
     // D1a: the server panel's pages open the pages the More rows opened, as pushed pages that
@@ -8501,11 +8535,26 @@ private fun RaftAppShellReadyContent(
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
                 foregroundBannerStore.dismiss(target.id)
-                openHomeMessageRequest(
-                    request = target.openRequest,
-                    source = "foreground_banner",
-                    fallbackAnchorMessageId = target.focusedMessageId
-                )
+                val crossServerSource = target.crossServerSource
+                if (crossServerSource != null) {
+                    // Another workspace: switch to it first, then open (window navigation).
+                    val enqueued =
+                        windowNavigationCoordinator.enqueue(
+                            WindowNavigationIntent(
+                                serverId = target.serverId,
+                                sourceIdentity = crossServerSource,
+                                source = "foreground_banner"
+                            )
+                        )
+                    bridge.log("window_navigation_received source=foreground_banner enqueued=$enqueued targetServerId=${target.serverId}")
+                    systemNotificationNavigationTick += 1
+                } else {
+                    openHomeMessageRequest(
+                        request = target.openRequest,
+                        source = "foreground_banner",
+                        fallbackAnchorMessageId = target.focusedMessageId
+                    )
+                }
             },
             onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
@@ -15360,6 +15409,12 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
         conversationKind = if (payload.parentMessageId.isNullOrBlank()) null else ConversationKind.Thread
     )
 }
+
+private const val AppShellNotificationTargetKey = "slockNotificationTarget"
+
+/** The server of a notification open that targets Activity (no conversation), else null. */
+internal fun JSONObject.appShellNotificationActivityServerId(): String? =
+    takeIf { optString(AppShellNotificationTargetKey).trim() == "activity" }?.appShellNotificationServerId()
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
