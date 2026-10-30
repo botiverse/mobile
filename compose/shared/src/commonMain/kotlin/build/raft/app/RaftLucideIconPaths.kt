@@ -1345,6 +1345,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M14 18h6"),
                     ),
                 )
+            RaftLucideIconName.LayoutGrid ->
+                RaftLucideIconSpec(
+                    "layout-grid",
+                    listOf(
+                        RaftLucidePathSpec("M 4.0 3.0 H 9.0 A 1.0 1.0 0 0 1 10.0 4.0 V 9.0 A 1.0 1.0 0 0 1 9.0 10.0 H 4.0 A 1.0 1.0 0 0 1 3.0 9.0 V 4.0 A 1.0 1.0 0 0 1 4.0 3.0 Z"),
+                        RaftLucidePathSpec("M 15.0 3.0 H 20.0 A 1.0 1.0 0 0 1 21.0 4.0 V 9.0 A 1.0 1.0 0 0 1 20.0 10.0 H 15.0 A 1.0 1.0 0 0 1 14.0 9.0 V 4.0 A 1.0 1.0 0 0 1 15.0 3.0 Z"),
+                        RaftLucidePathSpec("M 15.0 14.0 H 20.0 A 1.0 1.0 0 0 1 21.0 15.0 V 20.0 A 1.0 1.0 0 0 1 20.0 21.0 H 15.0 A 1.0 1.0 0 0 1 14.0 20.0 V 15.0 A 1.0 1.0 0 0 1 15.0 14.0 Z"),
+                        RaftLucidePathSpec("M 4.0 14.0 H 9.0 A 1.0 1.0 0 0 1 10.0 15.0 V 20.0 A 1.0 1.0 0 0 1 9.0 21.0 H 4.0 A 1.0 1.0 0 0 1 3.0 20.0 V 15.0 A 1.0 1.0 0 0 1 4.0 14.0 Z"),
+                    ),
+                )
             RaftLucideIconName.LayoutList ->
                 RaftLucideIconSpec(
                     "layout-list",

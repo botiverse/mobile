@@ -846,7 +846,7 @@ class SharedSettingsDataSource(
         val result = sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val canManage = session.canManageCurrentServer()
         if (serverId != null && result is DataResult.Content) computersSource?.recordAddComputerGate(serverId, canManage)
-        return result.withAddComputerGate(canManage).withRuntimeUsageGate(session)
+        return result.withAddComputerGate(canManage).withRuntimeUsageGate(session).withComputersCommandContext(computerCommandContext(session))
     }
 
     /**
@@ -858,6 +858,7 @@ class SharedSettingsDataSource(
         val serverId = session?.currentServerId ?: return null
         val cached = computersSource?.cachedSettingsComputersForServer(serverId) ?: return null
         return cached.withAddComputerGate(session.canManageCurrentServer()).withRuntimeUsageGate(session)
+            .withComputersCommandContext(computerCommandContext(session))
     }
 
     /** Cache-first machine page: the last page loaded for [machineId] on the current server. */
@@ -3241,12 +3242,20 @@ class SharedSettingsStore(
                 progress.copy(requestId = event.requestId, done = true, errorCode = if (event.ok) null else event.error ?: "restart_failed")
             )
         }
-        if (event.ok &&
-            _state.value.route.destination == SharedSettingsDestination.ComputerDetail &&
-            _state.value.route.itemId == event.machineId
-        ) {
-            dataSource.loadComputerDetail(event.machineId, forceComputers = true)
-                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+        if (event.ok) reloadComputerAfterControl(event.machineId)
+    }
+
+    /** Re-reads the machine a restart or upgrade touched: its detail page, or the Computers page's cards. */
+    private suspend fun reloadComputerAfterControl(machineId: String) {
+        when (_state.value.route.destination) {
+            SharedSettingsDestination.ComputerDetail ->
+                if (_state.value.route.itemId == machineId) {
+                    dataSource.loadComputerDetail(machineId, forceComputers = true)
+                        .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                }
+            SharedSettingsDestination.Computers ->
+                dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+            else -> Unit
         }
     }
 
@@ -3258,9 +3267,10 @@ class SharedSettingsStore(
         val id = machineId.trim().takeIf { it.isNotBlank() } ?: return
         val target = targetVersion.trim().takeIf { it.isNotBlank() } ?: return
         if (_state.value.computerControl.upgradeSubmitting?.machineId == id) return
+        // The detail page's computer, or the Computers page's card (its next step upgrades too).
         val availabilityKey =
-            (_state.value.computerDetail as? ScreenLoadState.Content)?.data?.computer
-                ?.takeIf { it.id == id }
+            ((_state.value.computerDetail as? ScreenLoadState.Content)?.data?.computer?.takeIf { it.id == id }
+                ?: (_state.value.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == id })
                 ?.let(::settingsComputerUpgradeAvailabilityKey)
         val request = SettingsComputerUpgradeRequest(machineId = id, targetVersion = target)
         updateComputerControl { copy(upgradeSubmitting = request, upgradeRefusal = null) }
@@ -3285,10 +3295,7 @@ class SharedSettingsStore(
             }
         }
         // Hold the in-flight state until the refreshed row (with the server's pending request) lands.
-        if (_state.value.route.destination == SharedSettingsDestination.ComputerDetail && _state.value.route.itemId == id) {
-            dataSource.loadComputerDetail(id, forceComputers = true)
-                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
-        }
+        reloadComputerAfterControl(id)
         updateComputerControl { copy(upgradeSubmitting = null) }
     }
 
@@ -4163,7 +4170,8 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
 
 /**
  * Marks each machine the viewer may read runtime account usage of, by the detail page's rule
- * ([settingsComputerPermissions] `canEdit`), so the Computers page skips the others' reads.
+ * ([settingsComputerPermissions] `canEdit`), so the Computers page skips the others' reads; and
+ * each one they may manage (restart / upgrade), so only theirs show a card's next step.
  */
 private fun DataResult<SettingsComputersSnapshot>.withRuntimeUsageGate(
     session: StoredAuthSession?
@@ -4175,14 +4183,20 @@ private fun DataResult<SettingsComputersSnapshot>.withRuntimeUsageGate(
         data.copy(
             computers =
                 data.computers.map { computer ->
+                    val permissions = settingsComputerPermissions(serverRole = role, currentUserId = userId, computer = computer)
                     computer.copy(
-                        canViewRuntimeUsage =
-                            settingsComputerPermissions(serverRole = role, currentUserId = userId, computer = computer).canEdit
+                        canViewRuntimeUsage = permissions.canEdit,
+                        canManage = permissions.canEdit || permissions.canRemove
                     )
                 }
         )
     )
 }
+
+private fun DataResult<SettingsComputersSnapshot>.withComputersCommandContext(
+    context: SettingsComputerCommandContext?
+): DataResult<SettingsComputersSnapshot> =
+    if (this is DataResult.Content && context != null) DataResult.Content(data.copy(commandContext = context)) else this
 
 private fun DataResult<SettingsComputerDetailSnapshot>.withComputerCommandContext(
     context: SettingsComputerCommandContext?

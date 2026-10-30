@@ -22,7 +22,14 @@ import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.ComputersRackView
+import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
+import build.raft.app.data.SettingsComputerCommandContext
+import build.raft.app.data.SettingsComputerControlState
+import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
+import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
+import build.raft.app.resources.*
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerVersionGateSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
@@ -43,12 +50,17 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * JVM screenshots of the Computers list page (`settings.computers`), light and dark: web
- * ComputersRack cards for an online computer, one with an upgrade, one below the version floor,
- * one with low disk and more agents than one line holds, and an offline one (dimmed agents, no
- * meters). The online cards carry Disk / Memory meters (normal, low-disk warning, "—" when not
- * reported) and runtime usage lines: normal, warning from 80%, used up, a stale read (dimmed),
- * "—" with nothing read, "—" with an account needing attention, and Other runtimes.
+ * JVM screenshots of the Computers page, light and dark, with its header and the List / Cards
+ * toggle. Cards (`settings.computers`): web ComputersRack cards for an online computer, one with
+ * an upgrade, one below the version floor, one with low disk and more agents than one line holds,
+ * and an offline one (dimmed agents, no meters). The online cards carry Disk / Memory meters
+ * (normal, low-disk warning, "—" when not reported) and runtime usage lines: normal, warning from
+ * 80%, used up, a stale read (dimmed), "—" with nothing read, "—" with an account needing
+ * attention, and Other runtimes. Each card ends with its next step: Studio restarting, build-box
+ * "Upgrade to v1.0.53", old-node "Upgrading…", the laptop's restart command with its copy button;
+ * gpu-rig (up to date, and the viewer may not manage it) has none.
+ * List (`settings.computers.list`): the same computers as phone list rows (tile with its light,
+ * name with the agent count and Low disk, facts, description), no meters, no next step.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -71,7 +83,13 @@ class ComputersRackCardsScreenshotTest {
     @Test
     fun computersDark() = capture("settings.computers.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    @Test
+    fun computersListLight() = capture("settings.computers.list", RaftAppAppearance.Light, ComputersRackView.List)
+
+    @Test
+    fun computersListDark() = capture("settings.computers.list.dark", RaftAppAppearance.Dark, ComputersRackView.List)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, view: ComputersRackView = ComputersRackView.Cards) {
         RaftAppThemeState.apply(appearance)
         val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
@@ -80,7 +98,7 @@ class ComputersRackCardsScreenshotTest {
                 pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
             }
         activity.setContent {
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ComputersListVisualContent(appearance) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ComputersListVisualContent(appearance, view) }
         }
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
@@ -104,7 +122,7 @@ class ComputersRackCardsScreenshotTest {
 }
 
 @Composable
-private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
+private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: ComputersRackView) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -130,6 +148,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 310 * gib, totalBytes = 994 * gib),
                         memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 18 * gib, totalBytes = 64 * gib),
                         canViewRuntimeUsage = true,
+                        canManage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-build",
@@ -145,7 +164,11 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         latestComputerVersion = "1.0.53",
                         runtimes = listOf("claude", "kimi-sdk", "opencode"),
                         memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 2 * gib, totalBytes = 32 * gib),
+                        remoteUpgradeSupported = true,
+                        broadcastPolicy = SettingsComputerBroadcastPolicySnapshot(eligibility = "eligible", targetVersion = "1.0.53"),
+                        description = "CI runners",
                         canViewRuntimeUsage = true,
+                        canManage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-old",
@@ -161,7 +184,15 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         runtimes = listOf("claude", "grok"),
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 40 * gib, totalBytes = 256 * gib),
                         memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 16 * gib),
+                        upgradeRequest =
+                            SettingsComputerUpgradeRequestSnapshot(
+                                id = "u-old",
+                                targetVersion = "1.0.53",
+                                requestedAt = "2026-10-22T02:08:00Z",
+                                state = "pending",
+                            ),
                         canViewRuntimeUsage = true,
+                        canManage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-gpu",
@@ -191,10 +222,12 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         runtimes = listOf("claude", "codex"),
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
                         canViewRuntimeUsage = true,
+                        canManage = true,
                     ),
                 ),
             canAddComputer = true,
             latestComputerVersion = "1.0.53",
+            commandContext = SettingsComputerCommandContext(serverSlug = "acme", deploymentEnv = "production"),
         )
     val names = listOf("Wug", "Jony", "Lagoon", "Tenny", "Artea", "Kirby", "Mochi", "Pixel", "Nova", "Orbit", "Quill", "Rune", "Sable", "Tide", "Umber")
     fun agents(machine: String, count: Int, offset: Int = 0) =
@@ -209,15 +242,25 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
         )
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
-            RaftComputersTheme {
-                RaftSettingsComputersContent(
-                    model = raftComputersListModel(ScreenLoadState.Content(snapshot)),
-                    onRetry = {},
-                    onAddComputer = {},
-                    onOpenComputer = {},
-                    agentsByMachine = agentsByMachine,
-                    usageLoads = rackUsageFixture(),
-                )
+            SettingsDetailShell(
+                title = stringResource(Res.string.settings_computers_title),
+                subtitle = "",
+                applyTopSafeArea = false,
+                onBack = {},
+                trailingContent = { RaftComputersRackViewToggle(view) {} },
+            ) {
+                RaftComputersTheme {
+                    RaftSettingsComputersContent(
+                        model = raftComputersListModel(ScreenLoadState.Content(snapshot)),
+                        onRetry = {},
+                        onAddComputer = {},
+                        onOpenComputer = {},
+                        agentsByMachine = agentsByMachine,
+                        usageLoads = rackUsageFixture(),
+                        rackView = view,
+                        computerControl = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m-studio")),
+                    )
+                }
             }
         }
     }

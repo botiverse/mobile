@@ -375,6 +375,28 @@ class LocalPreferencesTest {
     }
 
     @Test
+    fun computersRackViewDefaultsToCardsAndKeepsTheChoice() {
+        val backing = InMemoryRaftKeyValueStore()
+        val repository = KeyValueComputersRackViewPreferenceRepository(backing)
+
+        assertEquals(ComputersRackView.Cards, repository.getComputersRackViewSync())
+
+        assertEquals(ComputersRackView.List, repository.selectComputersRackViewSync(ComputersRackView.List))
+        // A new repository over the same device store (the page opened again) reads the choice.
+        assertEquals(ComputersRackView.List, KeyValueComputersRackViewPreferenceRepository(backing).getComputersRackViewSync())
+
+        repository.selectComputersRackViewSync(ComputersRackView.Cards)
+        assertEquals(ComputersRackView.Cards, KeyValueComputersRackViewPreferenceRepository(backing).getComputersRackViewSync())
+    }
+
+    @Test
+    fun computersRackViewReadsAnUnknownValueAsCards() {
+        val repository = KeyValueComputersRackViewPreferenceRepository(InMemoryRaftKeyValueStore(mapOf("computers:rackView" to "grid")))
+
+        assertEquals(ComputersRackView.Cards, repository.getComputersRackViewSync())
+    }
+
+    @Test
     fun pushPreviewModeDefaultsToFullWhenNeverStored() = runBlocking {
         val store = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
 
