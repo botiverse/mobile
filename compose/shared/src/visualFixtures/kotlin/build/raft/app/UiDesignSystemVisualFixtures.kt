@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -86,8 +88,10 @@ internal fun UiCheckMarkerVisualContent() {
     // a `flex flex-col gap-3 text-sm font-bold` stack, each row `gap-3`. The third is
     // `shape="circle"` checked: a black disc with the check knocked out, not a radio dot.
     // The web passes no tone, so "Circle yellow" is only the label.
+    // The three rows (84dp) run 4dp into the frame's bottom padding, as CSS lets them;
+    // unbounded so Compose doesn't squash the last 20dp disc into a 20x16 pill.
     UiDesignSystemFrame(height = 112.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             UiCheckMarkerRow("Square checked", checked = true, shape = RaftCheckboxShape.Square)
             UiCheckMarkerRow("Square unchecked", checked = false, shape = RaftCheckboxShape.Square)
             UiCheckMarkerRow("Circle yellow", checked = true, shape = RaftCheckboxShape.Circle)
@@ -157,13 +161,16 @@ internal fun UiAvatarListRowVisualContent() {
     // semibold title over a Space Mono subtitle, the trailing slot centred. The second row
     // is selected (`info-soft` across the row) and carries the hairline from the text
     // column (63dp). "Online" is a solid success badge, "Open" a 32dp default button.
+    // The avatars are slock `AvatarSlot type="human" humanPlaceholder`: Lucide `User` in the
+    // fallback (raft-ui avatar.tsx md `[&>svg]:size-4.5`), as the app draws a person with
+    // no photo or name (RaftAppAvatarFallback), not raft-ui's default dotted-ring glyph.
     UiDesignSystemFrame(height = 168.dp) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             RaftListRow(
                 title = "Cindy",
                 subtitle = "Claude Code",
                 onClick = {},
-                leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                leading = { UiHumanPlaceholderAvatar() },
                 trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) }
             )
             RaftListRow(
@@ -172,10 +179,21 @@ internal fun UiAvatarListRowVisualContent() {
                 onClick = {},
                 divider = true,
                 selected = true,
-                leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                leading = { UiHumanPlaceholderAvatar() },
                 trailing = { RaftButton("Open", onClick = {}) }
             )
         }
+    }
+}
+
+@Composable
+private fun UiHumanPlaceholderAvatar() {
+    RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) {
+        RaftLucideIcon(
+            RaftLucideIconName.User,
+            modifier = Modifier.size(RaftAvatarSize.Md.iconSize),
+            color = raftArgbHex(RaftColor.StickerInk)
+        )
     }
 }
 

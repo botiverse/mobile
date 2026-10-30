@@ -6965,10 +6965,12 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 284
             )
+        // The composer sits at 24dp from the screen edge and 14dp from the top; web's
+        // 342x100 canvas puts it 20dp in and 8dp down, so the window starts 4dp / 6dp in.
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(
-                leftDp = 24,
-                topDp = 0,
+                leftDp = 4,
+                topDp = 6,
                 widthDp = 342,
                 heightDp = 100
             )

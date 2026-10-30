@@ -121,8 +121,8 @@ val LocalRaftListRowInks = staticCompositionLocalOf<RaftListRowInks?> { null }
 
 /**
  * raft-ui ListRowGroup, the inset list: rows flush inside one card (`layer-card`, 1dp
- * `line-hairline`, container radius, clipped, no padding of its own), so a selected
- * row's wash follows the corners. Give every row after the first `divider = true`.
+ * `line-hairline` border the rows sit inside, container radius, clipped, no padding of
+ * its own), so a selected row's wash follows the corners. Give every row after the first `divider = true`.
  * Provides `layer-card` as [LocalRaftSurfaceColor].
  */
 @Composable
@@ -140,7 +140,12 @@ fun RaftListRowGroup(
                 .raftSafeAreaHorizontalPadding()
                 .clip(shape)
                 .background(colors.layerCard, shape)
-                .border(RaftStroke.Hairline, colors.lineHairline, shape),
+                .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                // CSS `border` takes its own 1px: the rows sit inside it, so a selected row's
+                // wash never runs under the (translucent) hairline and tints it info-blue.
+                .padding(RaftStroke.Hairline)
+                // ...and are clipped to the padding box's inner radius, as CSS clips them.
+                .clip(RoundedCornerShape(RaftRadius.Container - RaftStroke.Hairline)),
             content = content,
         )
     }

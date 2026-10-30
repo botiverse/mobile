@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -181,7 +183,9 @@ internal fun UiFormFieldVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Unbounded like CSS: the error line runs into the bottom padding instead of
+        // being clipped by the 264dp the padding leaves.
+        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftField(
                 label = "Email",
                 required = true
@@ -357,8 +361,8 @@ internal fun UiSpinnerVisualContent() {
     // web: `flex items-center gap-5` of Spinner xs / sm / md / lg and an inverse sm in a
     // `bg-black p-2` span. The span is a flex item holding an inline-flex spinner, so its
     // content box is one 24px line with the spinner sitting on the baseline (the bottom).
-    // The spinners are pinned to step 1 (top-right pixel lit) so the capture is
-    // deterministic; the web frame depends on its capture timing.
+    // The spinners are pinned to the rest step 0 (top-left pixel lit), the frame web shows
+    // with `animation: none` (and raft-ui's reduced-motion rest frame).
     Box(
         modifier =
             Modifier
@@ -382,7 +386,7 @@ internal fun UiSpinnerVisualContent() {
     }
 }
 
-private const val UiSpinnerVisualStillStep = 1
+private const val UiSpinnerVisualStillStep = 0
 
 @Composable
 internal fun UiSlugInputVisualContent() {
@@ -417,13 +421,17 @@ internal fun UiSectionEyebrowVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(92.dp)
+                .clipToBounds()
                 .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
         // web `ui-section-eyebrow`: hint "Recent Activity", ink "Applications", and a
         // `bg-fill-muted px-2 py-1` label "Choose Avatar" that the flex column stretches to
-        // the full 310px content width.
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // the full 310px content width. The 92px canvas is too short on both sides: web
+        // overflows and clips (`overflow: hidden`), so this lays the column out unbounded
+        // and clips at the frame rather than squashing the third row to nothing. Raise
+        // both canvases together (~112) to show the whole stack.
+        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftAppSectionEyebrow(label = "Recent Activity")
             RaftAppSectionEyebrow(label = "Applications", color = RaftColor.TextBlack)
             Box(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -443,7 +451,10 @@ internal fun UiSelectionPopoverVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
+        // The panel (223dp) runs 3dp into the bottom padding, as on web; unbounded so
+        // Compose doesn't squash the last row.
         RaftSelectionPopover(
+            modifier = Modifier.wrapContentHeight(Alignment.Top, unbounded = true),
             title = "Channels",
             showClear = true,
             search = "des",
