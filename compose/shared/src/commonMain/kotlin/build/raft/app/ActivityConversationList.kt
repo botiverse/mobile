@@ -1060,10 +1060,18 @@ private fun ActivityConversationLeading(
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val colors = RaftTheme.colors
-    // raft-ui InboxItemLeading: the conversation the row lives in. A thread leads with its channel's
-    // tile or its DM peer's face, with the thread badge in the corner (raft-ui InboxItemLeadingBadge).
+    // Draft (cindyz, icon flip): a thread or task in a channel leads with the thread / task mark in the
+    // tile and the channel's glyph in the corner badge. A thread in a DM keeps its peer's face with the
+    // thread badge (DM rows unchanged).
+    val flipped = model.leadingThreadBadge && model.dmPeer == null && !model.threadInDirectMessage
     val threadBadge: (@Composable () -> Unit)? =
-        if (model.leadingThreadBadge) {
+        if (flipped) {
+            {
+                RaftInboxItemLeadingBadge {
+                    HomeSidebarChannelGlyph(model.channelSymbol, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                }
+            }
+        } else if (model.leadingThreadBadge) {
             {
                 RaftInboxItemLeadingBadge {
                     if (model.taskConversation) {
@@ -1122,7 +1130,11 @@ private fun ActivityConversationLeading(
             // not loaded yet shows the DM icon, never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
                 val objectIcon = model.objectIcon
-                if (model.leadingKind == ActivityConversationLeadingKind.Object && objectIcon != null) {
+                if (flipped && model.taskConversation) {
+                    RaftLucideIcon(RaftLucideIconName.ListTodo, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
+                } else if (flipped) {
+                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = ConversationTileGlyph)
+                } else if (model.leadingKind == ActivityConversationLeadingKind.Object && objectIcon != null) {
                     RaftLucideIcon(objectIcon, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
                 } else if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
                     RaftLucideIcon(RaftLucideIconName.MessageCircle, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
