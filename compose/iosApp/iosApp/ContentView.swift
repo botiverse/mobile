@@ -383,7 +383,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             button.accessibilityLabel = first.label
             if let count = first.badge, count > 0 {
                 if #available(iOS 26.0, *) {
-                    button.badge = .count(count)
+                    // The bridge always calls on the main thread; the Badge factory is main-actor.
+                    MainActor.assumeIsolated { button.badge = .count(count) }
                 }
                 button.accessibilityValue = "\(count)"
             }
