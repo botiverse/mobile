@@ -52,6 +52,16 @@ class ThreadAssistantPanelScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
+    /**
+     * RaftPagerHost installs Raft's Coil loader; another test in this JVM may already have made
+     * Coil's default singleton. Installing it first (and tolerating that) marks it installed, as
+     * the other screenshot tests with images do.
+     */
+    @org.junit.Before
+    fun installImageLoader() {
+        runCatching { build.raft.app.image.raftInstallImageLoader() }
+    }
+
     @Test
     fun openLight() = capture("assistant.panel.open", RaftAppAppearance.Light, paused = false)
 
