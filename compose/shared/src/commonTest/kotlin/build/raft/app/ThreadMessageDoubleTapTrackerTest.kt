@@ -176,7 +176,7 @@ class ThreadMessageDoubleTapTrackerTest {
         assertFalse(threadMessageRowTapGesturesFor(PointerType.Mouse), "desktop, an iPad with a mouse or trackpad")
         assertFalse(threadMessageRowTapGesturesFor(PointerType.Stylus))
         assertFalse(threadMessageRowTapGesturesFor(PointerType.Eraser))
-        assertFalse(threadMessageRowTapGesturesFor(PointerType.Unknown))
+        assertTrue(threadMessageRowTapGesturesFor(PointerType.Unknown), "a tap injected without a tool type")
     }
 
     @Test

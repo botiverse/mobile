@@ -27144,7 +27144,7 @@ private fun ThreadMessageCardContent(
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
                                     { offset, pointerType ->
-                                        selection.lastPointerDownFromTouch = pointerType == PointerType.Touch
+                                        selection.lastPointerDownFromTouch = pointerType.raftIsTouchLike()
                                         selection.dismissalGestureInFlight =
                                             inPlaceSelectionHost?.onRowPointerDown(
                                                 messageId = message.id,
@@ -29368,13 +29368,21 @@ internal fun threadMessageCanQuickReact(
 
 /**
  * Whether a down of [type] gets the message row's tap gestures (tap opens the thread, double tap
- * shows the quick reaction bar). Only a finger: with a mouse, a trackpad or a
+ * shows the quick reaction bar). Only a finger (or a tool-less tap, [raftIsTouchLike]): with a mouse, a trackpad or a
  * stylus (desktop, an iPad with a pointer) a click on a message does nothing at row level and a
  * double click selects a word, like any text (stdrc + raft-design #878, "desktop unchanged").
  * Links, buttons, reactions and images inside the row keep their own clicks; the press-and-hold
  * menu off the body and the pressed wash (which also reveals a compact row's time) are not gated.
  */
-internal fun threadMessageRowTapGesturesFor(type: PointerType): Boolean = type == PointerType.Touch
+internal fun threadMessageRowTapGesturesFor(type: PointerType): Boolean = type.raftIsTouchLike()
+
+/**
+ * A finger, or a down without a tool type ([PointerType.Unknown]: a tap injected without one, as
+ * instrumentation's `MotionEvent.obtain` and some automation tools send). Those are taps, not a
+ * mouse: the nightly visual capture's message-body tap stopped opening the thread when only
+ * [PointerType.Touch] counted.
+ */
+internal fun PointerType.raftIsTouchLike(): Boolean = this == PointerType.Touch || this == PointerType.Unknown
 
 /**
  * Whether a pointer event on a message row is a right-click that opens the message menu at the
