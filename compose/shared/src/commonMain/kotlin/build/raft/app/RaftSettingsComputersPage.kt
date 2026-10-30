@@ -721,11 +721,12 @@ private fun RaftComputerRackActionRow(action: RaftComputerRackAction, onUpgrade:
             }
         RaftComputerRackAction.Upgrading ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                // Web: the disabled button keeps its label beside the spinner.
                 RaftButton(
                     text = stringResource(Res.string.settings_computers_upgrading),
                     onClick = {},
-                    loading = true,
-                    loadingLabel = stringResource(Res.string.settings_computers_upgrading),
+                    enabled = false,
+                    leadingIcon = { RaftSpinner(size = RaftSpinnerSize.Sm) },
                 )
             }
         is RaftComputerRackAction.Restarting ->
@@ -760,8 +761,9 @@ internal fun RaftComputersRackViewToggle(view: ComputersRackView, onViewChange: 
 
 /**
  * Web MobileComputersPanel's phone row: the device tile with its light on the corner, the name
- * with the computer's agent count (and Low disk), the facts in Space Mono ("Ubuntu 24.04 · v1.0.49
- * → v1.0.53", or "Offline · Last seen …"), and its description. No meters; the row opens the computer.
+ * with the computer's agent count (and Low disk), the version fact in Space Mono ("v1.0.49 →
+ * v1.0.53", or "Offline · Last seen …"), then its description and OS. No meters; the row opens
+ * the computer.
  */
 @Composable
 private fun RaftComputerListRow(row: RaftComputerRowModel, agentCount: Int, divider: Boolean, onClick: () -> Unit) {
@@ -769,8 +771,9 @@ private fun RaftComputerListRow(row: RaftComputerRowModel, agentCount: Int, divi
         title = row.name,
         onClick = onClick,
         divider = divider,
-        subtitle = raftComputerFactsText(row.cardFacts()),
-        description = row.description,
+        // Web phone row: the version fact on its own line (never cut by the OS), the OS below.
+        subtitle = raftComputerFactsText(row.cardFacts().let { if (it is RaftComputerCardFacts.Online) it.copy(osName = null) else it }),
+        description = listOfNotNull(row.description, row.osName.takeIf { row.online }).joinToString(" · ").ifBlank { null },
         descriptionMaxLines = 1,
         leading = {
             Box {
