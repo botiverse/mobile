@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.zIndex
@@ -287,13 +287,22 @@ private fun RaftFloatingOverlayDismissBarrier(
             .pointerInput(dismissClickableActive) {
                 awaitEachGesture {
                     val tap = RaftOutsideTapTracker()
+                    // Where each finger went down. A finger always wobbles a few pixels during a
+                    // tap, so "moved" means past the touch slop, not any position change (before
+                    // 1.17.0 any wobble cancelled the tap and the menu would not close).
+                    val downPositions = mutableMapOf<PointerId, Offset>()
                     while (true) {
                         val event = awaitPointerEvent()
+                        val moved =
+                            event.changes.any { change ->
+                                val start = downPositions.getOrPut(change.id) { change.previousPosition }
+                                (change.position - start).getDistance() > viewConfiguration.touchSlop
+                            }
                         event.changes.forEach { it.consume() }
                         val dismiss =
                             tap.onEvent(
                                 anyPressed = event.changes.any { it.pressed },
-                                moved = event.changes.any { it.positionChanged() },
+                                moved = moved,
                             ) ?: continue
                         if (dismiss && dismissClickableActive) currentOnDismiss()
                         break
@@ -304,11 +313,12 @@ private fun RaftFloatingOverlayDismissBarrier(
 }
 
 /**
- * One outside gesture on the dismiss barrier: a press and its release without movement is a tap
- * that dismisses. Only a press starts a gesture. A mouse also sends hover events (enter, move,
- * exit) with no button down: the barrier appearing under the pointer sends an enter at once, and
- * counting that "release" as a tap closed a click-opened popover the moment it opened (desktop,
- * the thread followers popover). Touch input always starts with the press, so it is unchanged.
+ * One outside gesture on the dismiss barrier: a press and its release without moving past the
+ * touch slop is a tap that dismisses; a drag (a scroll attempt) does not. Only a press starts a
+ * gesture. A mouse also sends hover events (enter, move, exit) with no button down: the barrier
+ * appearing under the pointer sends an enter at once, and counting that "release" as a tap closed
+ * a click-opened popover the moment it opened (desktop, the thread followers popover). Touch input
+ * always starts with the press, so it is unchanged.
  */
 internal class RaftOutsideTapTracker {
     private var down = false
