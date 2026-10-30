@@ -139,7 +139,11 @@ internal class SharedCreateAgentCoordinator(
                 )
         ) {
             is DataResult.Content -> {
-                val fallbackById = RUNTIME_MODELS[normalizedRuntime].orEmpty().associateBy { it.id }
+                // Live detection wins; the catalog's list (`modelsSource: fallback`) only fills missing labels.
+                val fallbackById =
+                    (RaftRuntimeCatalogNames.entry(normalizedRuntime, normalizedServerId)?.models ?: RUNTIME_MODELS[normalizedRuntime])
+                        .orEmpty()
+                        .associateBy { it.id }
                 val presentation =
                     canonicalizeRuntimeModelPresentation(
                         runtimeId = normalizedRuntime,

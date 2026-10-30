@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftChoicePicker
 import build.raft.designsystem.components.RaftChoicePickerSheetSurface
+import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.text.RaftText
@@ -82,6 +83,64 @@ class ChoicePickerScreenshotTest {
                         emptyText = { "No computers match “$it”" },
                         searchable = true,
                         searchPlaceholder = "Search computers",
+                        modifier = Modifier.height(sheetHeight),
+                    )
+                }
+            }
+        }
+
+    private fun runtimes(): List<RaftComboboxOption<String>> =
+        listOf(
+            RaftComboboxOption("claude", "Claude Code", description = "Claude Max · 5h 72% left", group = "Ready on this computer"),
+            RaftComboboxOption("codex", "Codex CLI", group = "Ready on this computer"),
+            RaftComboboxOption("qwen", "Qwen Code", group = "Ready on this computer", badge = "Experimental"),
+            RaftComboboxOption("qoder", "Qoder", group = "Not available on this server", enabled = false, badge = "Experimental"),
+            RaftComboboxOption(
+                "builtin",
+                "Built-in Pi",
+                group = "Needs a Raft Computer update",
+                enabled = false,
+                triggerLabel = "Built-in Pi (update Raft Computer)",
+            ),
+            RaftComboboxOption("pi", "Pi", group = "Not installed on this computer", enabled = false, triggerLabel = "Pi (not installed)"),
+            RaftComboboxOption("opencode", "OpenCode", group = "Not installed on this computer", enabled = false),
+        )
+
+    /**
+     * Grouped options (the runtime picker, web #11783 / #11794 / #11822): group headings among
+     * radios too; in the sheet a separator between groups, never under a heading; the
+     * Experimental badge after a label and in the trigger; the list action as the last row.
+     */
+    @Test
+    fun choicePickerGrouped() =
+        capture("choice_picker_grouped") {
+            val action = RaftComboboxListAction("Show All Supported") {}
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("Up to 5: grouped radios, a badge, the list action")
+                    RaftChoicePicker(
+                        value = "qwen",
+                        options = runtimes().take(4),
+                        onValueChange = {},
+                        title = "Runtime",
+                        emptyText = { "" },
+                        listAction = action,
+                    )
+                    Caption("The trigger keeps the badge")
+                    RaftField(label = "Runtime") {
+                        RaftChoicePicker(value = "qwen", options = runtimes(), onValueChange = {}, title = "Runtime", emptyText = { "" })
+                    }
+                }
+                Column(Modifier.width(358.dp).padding(bottom = 24.dp)) {
+                    Caption("6-10: the sheet with groups and the list action", Modifier.padding(bottom = 12.dp))
+                    RaftChoicePickerSheetSurface(
+                        value = "qwen",
+                        options = runtimes(),
+                        onPick = {},
+                        title = "Runtime",
+                        emptyText = { "" },
+                        searchable = false,
+                        listAction = RaftComboboxListAction("Show Installed Only") {},
                         modifier = Modifier.height(sheetHeight),
                     )
                 }

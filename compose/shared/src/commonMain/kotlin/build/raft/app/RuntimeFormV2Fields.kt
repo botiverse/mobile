@@ -6,6 +6,8 @@ import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.ServerRuntimeCatalog
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -521,7 +523,13 @@ internal fun rememberRuntimeFormV2SourceRefresh(
     return effective to refresh
 }
 
-/** Runtime picker plus the v2 form body, in the create dialog's runtime slot. */
+/**
+ * Runtime picker plus the v2 form body, in the create and edit dialogs' runtime slot. The
+ * runtimes are [catalog]'s (the server catalog, its cache, or the bundled table), grouped by
+ * what the selected computer runs ([runtimePickerRows]); [currentRuntimeId] is the agent's own
+ * runtime when switching (null when creating), pinned first; [serverSelectable] is the
+ * runtime-options row's `canSelectInThisContext` when known.
+ */
 @Composable
 internal fun RuntimeFormV2RuntimeSection(
     runtime: String,
@@ -531,21 +539,30 @@ internal fun RuntimeFormV2RuntimeSection(
     enabled: Boolean,
     /** The computer whose usage gives each runtime its quota line; null: no lines. */
     quotaMachine: RuntimeQuotaMachine? = null,
+    catalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+    currentRuntimeId: String? = null,
+    serverSelectable: (String) -> Boolean? = { null },
     content: @Composable () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
-    val runtimeOptions = createAgentRuntimeDropdownItems(
-        machineRuntimeIds = machineRuntimeIds,
-        allowStaticFallback = false,
-        currentRuntimeId = runtime,
-        comingSoonSuffix = stringResource(Res.string.agent_create_suffix_coming_soon),
-        notInstalledSuffix = stringResource(Res.string.agent_create_suffix_not_installed)
-    )
+    // Show All Supported belongs to the computer it was asked on: another computer starts collapsed.
+    var showAll by remember(quotaMachine?.machineId) { mutableStateOf(false) }
+    val rows =
+        runtimePickerRows(
+            catalog = catalog,
+            machineRuntimeIds = machineRuntimeIds,
+            selectedRuntimeId = runtime,
+            showAll = showAll,
+            currentRuntimeId = currentRuntimeId,
+            serverSelectable = serverSelectable
+        )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftFieldLabel(text = stringResource(Res.string.agent_create_label_runtime))
         RuntimeSelectChoice(
             runtime = runtime,
-            runtimeOptions = runtimeOptions,
+            rows = rows,
+            showAll = showAll,
+            onShowAllChange = { showAll = it },
             quotaMachine = quotaMachine,
             enabled = enabled && runtimeAvailabilityError == null,
             emptyLabel =

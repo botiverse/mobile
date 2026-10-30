@@ -107,7 +107,10 @@ internal fun raftComboboxFocusesSearch(creates: Boolean): Boolean = creates
  * says what the value means, `text-caption` `foreground-hint`; never the label again in
  * another form), the [group] it is listed under (consecutive options with the same group
  * share one group label), [keywords] that search matches too (an id, an email, a former
- * name), and whether it can be picked.
+ * name), and whether it can be picked. [badge]: a raft-ui `Badge.Experimental` (solid
+ * `success`) after the label, in the list and in the trigger. [triggerLabel]: what the closed
+ * trigger says when it differs from the list's label (a group heading in the list already says
+ * part of it); the label otherwise.
  */
 @Immutable
 data class RaftComboboxOption<out T>(
@@ -117,6 +120,8 @@ data class RaftComboboxOption<out T>(
     val group: String? = null,
     val keywords: List<String> = emptyList(),
     val enabled: Boolean = true,
+    val badge: String? = null,
+    val triggerLabel: String? = null,
 )
 
 /**
@@ -178,7 +183,19 @@ internal fun raftComboboxRows(options: List<RaftComboboxOption<*>>): List<RaftCo
 
 /** The trigger's text for [value]: its option's label, or the value itself while its option hasn't loaded (or was typed). */
 internal fun <T> raftComboboxLabelOf(options: List<RaftComboboxOption<T>>, value: T): String =
-    options.firstOrNull { it.value == value }?.label ?: value.toString()
+    options.firstOrNull { it.value == value }?.let { it.triggerLabel ?: it.label } ?: value.toString()
+
+/** The [RaftComboboxOption.badge] of [value]'s option, for the trigger. */
+internal fun <T> raftComboboxBadgeOf(options: List<RaftComboboxOption<T>>, value: T): String? =
+    options.firstOrNull { it.value == value }?.badge
+
+/**
+ * A row at the end of a picker's list that changes what the list shows (raft-ui
+ * `SelectActionItem`: Show All Supported / Show Installed Only). It is not a value: pressing it
+ * runs [onClick] and leaves the list open.
+ */
+@Immutable
+data class RaftComboboxListAction(val label: String, val onClick: () -> Unit)
 
 /**
  * raft-ui ComboboxSelect, one value. The trigger is the field Select's
@@ -723,6 +740,7 @@ internal fun RaftComboboxOptionRow(
     description: String? = null,
     enabled: Boolean = true,
     leading: (@Composable () -> Unit)? = null,
+    badge: String? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val colors = RaftTheme.colors
@@ -781,7 +799,14 @@ internal fun RaftComboboxOptionRow(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // raft-ui 0.13: a long option wraps to two lines, then clamps.
-            RaftText(text, style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (badge == null) {
+                RaftText(text, style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftText(text, Modifier.weight(1f, fill = false), style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    RaftExperimentalBadge(badge, enabled = enabled)
+                }
+            }
             if (description != null) {
                 RaftText(
                     description,
@@ -832,6 +857,7 @@ internal fun <T> RaftComboboxMenuRows(
                     description = option.description,
                     enabled = option.enabled,
                     leading = if (optionLeading != null) { { optionLeading(option) } } else null,
+                    badge = option.badge,
                 )
             }
         }
@@ -878,6 +904,8 @@ internal fun <T> RaftComboboxSheetSurface(
     optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)? = null,
     inWindow: Boolean = false,
     searchable: Boolean = true,
+    separateGroups: Boolean = false,
+    listAction: RaftComboboxListAction? = null,
 ) {
     val search = remember { FocusRequester() }
     if (searchable && inWindow && raftComboboxFocusesSearch(creates = onCreate != null)) {
@@ -921,6 +949,8 @@ internal fun <T> RaftComboboxSheetSurface(
                     onCreate = onCreate,
                     createLabel = createLabel,
                     optionLeading = optionLeading,
+                    separateGroups = separateGroups,
+                    listAction = listAction,
                 )
             },
             headerAction = if (onClear != null) { { RaftComboboxClear(clearLabel, onClear) } } else null,
@@ -954,8 +984,10 @@ private fun <T> RaftComboboxList(
     onCreate: ((String) -> Unit)?,
     createLabel: (String) -> String,
     optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)?,
+    separateGroups: Boolean = false,
+    listAction: RaftComboboxListAction? = null,
 ) {
-    if (options.isEmpty() && (createQuery == null || onCreate == null)) {
+    if (options.isEmpty() && (createQuery == null || onCreate == null) && listAction == null) {
         // ComboboxEmpty: never an empty list; says what found nothing.
         RaftText(
             emptyText(query.trim()),
@@ -982,7 +1014,11 @@ private fun <T> RaftComboboxList(
         }
         items(rows.size) { i ->
             when (val row = rows[i]) {
-                is RaftComboboxRow.Group -> RaftMenuLabel(row.label, Modifier.semantics { heading() })
+                is RaftComboboxRow.Group -> {
+                    // Raft DS Select: a separator between groups, never under a heading.
+                    if (separateGroups && i > 0) RaftMenuSeparator()
+                    RaftMenuLabel(row.label, Modifier.semantics { heading() })
+                }
                 is RaftComboboxRow.Option -> {
                     val option = options[row.index]
                     RaftComboboxOptionRow(
@@ -992,9 +1028,48 @@ private fun <T> RaftComboboxList(
                         description = option.description,
                         enabled = option.enabled,
                         leading = if (optionLeading != null) { { optionLeading(option) } } else null,
+                        badge = option.badge,
                     )
                 }
             }
         }
+        if (listAction != null) {
+            item {
+                if (options.isNotEmpty()) RaftMenuSeparator()
+                RaftComboboxActionRow(listAction)
+            }
+        }
     }
+}
+
+/**
+ * [RaftComboboxListAction]'s row: an option row's metrics (36dp minimum, control radius, 10dp
+ * padding), `text-callout` medium in `foreground-muted`, `brand-soft` while pressed; a button,
+ * not a value, so it has no check and no selected state.
+ */
+@Composable
+internal fun RaftComboboxActionRow(action: RaftComboboxListAction, modifier: Modifier = Modifier) {
+    val colors = RaftTheme.colors
+    val source = remember { MutableInteractionSource() }
+    val isFocused = raftIsFocused(source)
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = true, highlighted = isFocused)
+    val style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .raftStateOverlay(overlay, RaftRadius.Chip)
+            .raftPointerHover(source)
+            .clickable(source, indication = null, role = Role.Button, onClick = action.onClick)
+            .padding(horizontal = 10.dp, vertical = raftOptionInset(style)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftText(action.label, style = style, color = colors.foregroundMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** raft-ui `Badge.Experimental`: a solid `success` badge saying [text] (the app's word for it). */
+@Composable
+fun RaftExperimentalBadge(text: String, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    RaftBadge(text = text, modifier = modifier, variant = RaftBadgeVariant.Success, enabled = enabled)
 }

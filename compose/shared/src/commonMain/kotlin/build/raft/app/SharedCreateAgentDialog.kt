@@ -20,6 +20,10 @@ import build.raft.app.model.validateAgentName
 import build.raft.app.data.DataResult
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.RaftRuntimeCatalogNames
+import build.raft.app.data.RuntimeCatalogSource
 import build.raft.app.data.runtimeFormV2Availability
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.SharedCreateAgentFormStore
@@ -281,41 +285,6 @@ private fun normalizeCreateAgentRuntimeIds(runtimeIds: List<String>): List<Strin
         .filter { it.isNotBlank() }
         .distinct()
 
-internal fun createAgentRuntimeDropdownItems(
-    machineRuntimeIds: List<String> = emptyList(),
-    allowStaticFallback: Boolean = true,
-    currentRuntimeId: String? = null,
-    comingSoonSuffix: String = " (coming soon)",
-    notInstalledSuffix: String = " (not installed)"
-): List<CreateAgentDropdownItem> {
-    val machineRuntimeIdsNormalized = normalizeCreateAgentRuntimeIds(machineRuntimeIds)
-    if (machineRuntimeIdsNormalized.isEmpty()) {
-        return if (allowStaticFallback) {
-            RUNTIMES.filter { it.supported && (!it.deprecated || it.id == currentRuntimeId) }.map { runtime ->
-                CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
-            }
-        } else {
-            emptyList()
-        }
-    }
-    val available = machineRuntimeIdsNormalized.toSet()
-    val legacyItems = RUNTIMES.filter { !it.deprecated || it.id == currentRuntimeId }.map { runtime ->
-        val selectable = runtime.supported && runtime.id in available
-        val unavailableSuffix =
-            when {
-                !runtime.supported -> comingSoonSuffix
-                runtime.id !in available -> notInstalledSuffix
-                else -> ""
-            }
-        CreateAgentDropdownItem(
-            id = runtime.id,
-            label = runtime.displayName + unavailableSuffix,
-            enabled = selectable
-        )
-    }
-    return legacyItems
-}
-
 internal fun createAgentRuntimeAvailabilityError(
     selectedMachineId: String?,
     machineRuntimeIds: List<String>,
@@ -413,10 +382,23 @@ internal fun SharedCreateAgentDialog(
     val selectedQuotaMachine =
         machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
-    val supportedRuntimeIds = remember {
-        RUNTIMES.filter { it.supported && !it.deprecated }.map { it.id }.toSet()
-    }
     val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
+    // The runtimes this server offers (GET servers/:id/runtimes): the cached answer first, then the
+    // server's; the bundled table until either lands. Never blocks the dialog.
+    var serverRuntimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId) {
+        mutableStateOf(RaftRuntimeCatalogNames.catalog(cleanCreateAgentServerId) ?: BundledRuntimeCatalog)
+    }
+    LaunchedEffect(createAgentFormStore, cleanCreateAgentServerId) {
+        val formStore = createAgentFormStore ?: return@LaunchedEffect
+        if (cleanCreateAgentServerId.isBlank()) return@LaunchedEffect
+        if (serverRuntimeCatalog.source == RuntimeCatalogSource.Bundled) {
+            formStore.cachedServerRuntimeCatalog(cleanCreateAgentServerId).let { if (it != serverRuntimeCatalog) serverRuntimeCatalog = it }
+        }
+        formStore.loadServerRuntimeCatalog(cleanCreateAgentServerId, DataRequestPriority.Visible).let {
+            if (it != serverRuntimeCatalog) serverRuntimeCatalog = it
+        }
+    }
+    val supportedRuntimeIds = remember(serverRuntimeCatalog) { serverRuntimeCatalog.creatableRuntimeIds() }
     // The computer's runtime-options rows: which runtimes have a v2 form (`runtimeFormV2` marker) and
     // whether Built-in is offered. Reloaded on every computer change; a failure leaves it unknown.
     var runtimeCatalogAttempt by remember { mutableStateOf(0) }
@@ -736,6 +718,8 @@ internal fun SharedCreateAgentDialog(
                     item(key = "runtime") {
                         RuntimeFormV2RuntimeSection(
                             runtime = runtime,
+                            catalog = serverRuntimeCatalog,
+                            serverSelectable = { id -> runtimeCatalog?.options?.firstOrNull { it.runtimeId == id }?.canSelectInThisContext },
                             quotaMachine = selectedQuotaMachine,
                             onRuntimeChange = { newRuntime -> runtime = newRuntime },
                             machineRuntimeIds = selectedMachineRuntimeIds,

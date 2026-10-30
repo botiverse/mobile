@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.BundledRuntimeCatalog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,45 +15,41 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun runtimeDropdownUsesSupportedRuntimes() {
-        val items = createAgentRuntimeDropdownItems()
-
-        assertTrue(items.isNotEmpty())
+    fun runtimePickerOffersTheBundledCreatableRuntimesWithoutTheServerCatalog() {
+        val rows = runtimePickerRows(BundledRuntimeCatalog, emptyList(), selectedRuntimeId = "", showAll = true).rows
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
-            items.map { it.id }
+            listOf("claude", "codex", "grok", "builtin", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder"),
+            rows.map { it.id }.sortedBy { id -> BundledRuntimeCatalog.runtimes.indexOfFirst { it.id == id } }
         )
-        assertFalse(items.any { it.custom })
     }
 
     @Test
-    fun runtimeDropdownUsesSelectedMachineRuntimesWhenAvailable() {
-        val items =
-            createAgentRuntimeDropdownItems(
-                listOf("codex", "claude", "custom-runtime", "codex", " ")
-            )
-
-        assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
-            items.map { it.id }
-        )
-        assertEquals("Claude Code", items.first { it.id == "claude" }.label)
-        assertEquals("Codex CLI", items.first { it.id == "codex" }.label)
-        assertEquals("Pi (not installed)", items.first { it.id == "pi" }.label)
-        assertTrue(items.first { it.id == "claude" }.enabled)
-        assertTrue(items.first { it.id == "codex" }.enabled)
-        assertFalse(items.first { it.id == "pi" }.enabled)
-        assertFalse(items.any { it.custom })
+    fun runtimePickerUsesSelectedMachineRuntimes() {
+        val rows =
+            runtimePickerRows(
+                BundledRuntimeCatalog,
+                listOf("codex", "claude", "custom-runtime", "codex", " "),
+                selectedRuntimeId = "codex",
+                showAll = true
+            ).rows.associateBy { it.id }
+        assertEquals("Claude Code", rows.getValue("claude").name)
+        assertEquals("Codex CLI", rows.getValue("codex").name)
+        assertTrue(rows.getValue("claude").enabled)
+        assertTrue(rows.getValue("codex").enabled)
+        assertFalse(rows.getValue("pi").enabled)
+        assertEquals(RuntimePickerSuffix.NotInstalled, rows.getValue("pi").suffix)
+        assertFalse("custom-runtime" in rows)
     }
 
     @Test
-    fun runtimeDropdownRetainsOnlyTheCurrentDeprecatedRuntimeWhileEditing() {
-        val createIds = createAgentRuntimeDropdownItems().map { it.id }
+    fun runtimePickerRetainsOnlyTheCurrentDeprecatedRuntimeWhileEditing() {
+        val createIds = runtimePickerRows(BundledRuntimeCatalog, emptyList(), "", showAll = true).rows.map { it.id }
         assertFalse("copilot" in createIds)
         assertFalse("kimi" in createIds)
         assertFalse("gemini" in createIds)
+        assertFalse("antigravity" in createIds)
 
-        val editingKimiIds = createAgentRuntimeDropdownItems(currentRuntimeId = "kimi").map { it.id }
+        val editingKimiIds = runtimePickerRows(BundledRuntimeCatalog, emptyList(), "kimi", showAll = true, currentRuntimeId = "kimi").rows.map { it.id }
         assertTrue("kimi" in editingKimiIds)
         assertFalse("gemini" in editingKimiIds)
     }
@@ -60,22 +57,12 @@ class SharedCreateAgentDialogTest {
     @Test
     fun copilotIsHiddenForCreationAndSwitchingButRetainedForExistingAgent() {
         val installed = listOf("codex", "copilot")
-        assertFalse(createAgentRuntimeDropdownItems(installed).any { it.id == "copilot" })
-        assertFalse(createAgentRuntimeDropdownItems(installed, currentRuntimeId = "codex").any { it.id == "copilot" })
-        val existing = createAgentRuntimeDropdownItems(installed, currentRuntimeId = "copilot")
+        assertFalse(runtimePickerRows(BundledRuntimeCatalog, installed, "codex", showAll = true).rows.any { it.id == "copilot" })
+        assertFalse(
+            runtimePickerRows(BundledRuntimeCatalog, installed, "codex", showAll = true, currentRuntimeId = "codex").rows.any { it.id == "copilot" }
+        )
+        val existing = runtimePickerRows(BundledRuntimeCatalog, installed, "copilot", showAll = true, currentRuntimeId = "copilot").rows
         assertTrue(existing.single { it.id == "copilot" }.enabled)
-        assertTrue(createAgentRuntimeDropdownItems(currentRuntimeId = "copilot").any { it.id == "copilot" })
-    }
-
-    @Test
-    fun runtimeDropdownCanDisableStaticFallbackForMachineWithNoRuntimeData() {
-        val items =
-            createAgentRuntimeDropdownItems(
-                machineRuntimeIds = listOf(" ", ""),
-                allowStaticFallback = false
-            )
-
-        assertTrue(items.isEmpty())
     }
 
     @Test

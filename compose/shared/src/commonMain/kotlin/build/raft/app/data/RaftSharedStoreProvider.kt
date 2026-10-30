@@ -2014,6 +2014,19 @@ internal class RaftSharedStoreProvider private constructor(
                     computers = RaftComputersNetworkApi(networkClient(scope)),
                     agents = RaftAgentsNetworkApi(networkClient(scope)),
                     logger = formLogger
+                ),
+                serverRuntimeCatalogs = SharedServerRuntimeCatalogRepository(
+                    api = RaftServerRuntimeCatalogNetworkApi(networkClient(scope)),
+                    scope = threadSendScope,
+                    cache = ServerRuntimeCatalogCache(sharedPreferenceStore),
+                    scopeProvider = {
+                        shellAuthStore.readSession()?.let { session ->
+                            val environment = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                            val account = session.user.id.trim()
+                            if (environment.isBlank() || account.isBlank()) null else "$environment|$account"
+                        }
+                    },
+                    logger = formLogger
                 )
             ).also { store ->
                 (shellAuthStore as? RaftAuthSessionEventSource)?.let { events ->

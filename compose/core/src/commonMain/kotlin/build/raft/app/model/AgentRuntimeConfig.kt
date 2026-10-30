@@ -106,29 +106,41 @@ data class RuntimeConfig(
 
 // ── Runtimes ──
 
+/**
+ * The bundled runtime table: the last resort after the server catalog
+ * (`GET /api/servers/:id/runtimes`, shared `ServerRuntimeCatalog`) and its per-server cache.
+ * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at f5fe2ca864 (PR #12065).
+ * [displayName] is the bare product name; a label that names a lifecycle status adds it
+ * (" (deprecated)", " (experimental)") from the app's strings.
+ */
 data class RuntimeInfo(
     val id: String,
     val displayName: String,
     val binary: String,
     val supported: Boolean,
-    val deprecated: Boolean = false
+    val deprecated: Boolean = false,
+    val abbreviation: String = "",
+    val experimental: Boolean = false
 )
 
 val RUNTIMES: List<RuntimeInfo> = listOf(
-    RuntimeInfo(id = "claude", displayName = "Claude Code", binary = "claude", supported = true),
-    RuntimeInfo(id = "codex", displayName = "Codex CLI", binary = "codex", supported = true),
-    RuntimeInfo(id = "grok", displayName = "Grok Build", binary = "grok", supported = true),
-    RuntimeInfo(id = "builtin", displayName = "Built-in Pi", binary = "", supported = true),
-    RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", binary = "agy", supported = true),
-    RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", binary = "", supported = true),
-    RuntimeInfo(id = "kimi", displayName = "Kimi CLI (deprecated)", binary = "kimi", supported = true, deprecated = true),
-    RuntimeInfo(id = "copilot", displayName = "Copilot CLI", binary = "copilot", supported = true, deprecated = true),
-    RuntimeInfo(id = "cursor", displayName = "Cursor CLI", binary = "cursor-agent", supported = true),
-    RuntimeInfo(id = "gemini", displayName = "Gemini CLI (deprecated)", binary = "gemini", supported = true, deprecated = true),
-    RuntimeInfo(id = "opencode", displayName = "OpenCode", binary = "opencode", supported = true),
-    RuntimeInfo(id = "pi", displayName = "Pi", binary = "pi", supported = true)
+    RuntimeInfo(id = "claude", displayName = "Claude Code", abbreviation = "CC", binary = "claude", supported = true),
+    RuntimeInfo(id = "codex", displayName = "Codex CLI", abbreviation = "CX", binary = "codex", supported = true),
+    RuntimeInfo(id = "grok", displayName = "Grok Build", abbreviation = "GK", binary = "grok", supported = true),
+    RuntimeInfo(id = "builtin", displayName = "Built-in Pi", abbreviation = "BP", binary = "", supported = true),
+    RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", abbreviation = "AG", binary = "agy", supported = true, deprecated = true),
+    RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", abbreviation = "KC", binary = "", supported = true),
+    RuntimeInfo(id = "kimi", displayName = "Kimi CLI", abbreviation = "KL", binary = "kimi", supported = true, deprecated = true),
+    RuntimeInfo(id = "copilot", displayName = "Copilot CLI", abbreviation = "CP", binary = "copilot", supported = true, deprecated = true),
+    RuntimeInfo(id = "cursor", displayName = "Cursor CLI", abbreviation = "CU", binary = "cursor-agent", supported = true),
+    RuntimeInfo(id = "gemini", displayName = "Gemini CLI", abbreviation = "GM", binary = "gemini", supported = true, deprecated = true),
+    RuntimeInfo(id = "opencode", displayName = "OpenCode", abbreviation = "OC", binary = "opencode", supported = true),
+    RuntimeInfo(id = "pi", displayName = "Pi", abbreviation = "PI", binary = "pi", supported = true),
+    RuntimeInfo(id = "qwen", displayName = "Qwen Code", abbreviation = "QW", binary = "qwen", supported = true, experimental = true),
+    RuntimeInfo(id = "qoder", displayName = "Qoder", abbreviation = "QD", binary = "qodercli", supported = true, experimental = true)
 )
 
+/** The bundled table's name for [id], else [id] itself. Shared code goes through the catalog first. */
 fun getRuntimeDisplayName(id: String): String =
     RUNTIMES.firstOrNull { it.id == id }?.displayName ?: id
 

@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import build.raft.app.model.AgentStatus
-import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.model.isExternalAgentRuntime
 
 /**
@@ -65,7 +65,7 @@ internal const val ExternalAgentRuntimeDisplayName = "External agent"
 
 /** Web shared `getRuntimeDisplayName`: the external sentinel reads "External agent". */
 internal fun raftAgentRuntimeDisplayName(runtime: String): String =
-    if (isExternalAgentRuntime(runtime)) ExternalAgentRuntimeDisplayName else getRuntimeDisplayName(runtime)
+    if (isExternalAgentRuntime(runtime)) ExternalAgentRuntimeDisplayName else runtimeCatalogDisplayName(runtime)
 
 /** One element of a DM row's trailing column, in render order. */
 internal enum class RaftHomeDmTrailingSlot {

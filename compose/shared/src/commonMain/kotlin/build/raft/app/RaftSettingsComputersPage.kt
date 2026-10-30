@@ -845,8 +845,9 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
             RaftComputerRuntimeAvailability.NotInstalled -> stringResource(Res.string.agent_create_suffix_not_installed)
             RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(Res.string.settings_computers_runtime_suffix_update_computer)
         }
+    val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
     RaftBadge(
-        text = chip.name + suffix,
+        text = chip.name + experimental + suffix,
         // Long press copies the runtime name without the "(not installed)" style suffix.
         modifier = Modifier.raftCopyable(chip.name),
         appearance = RaftBadgeAppearance.Soft,

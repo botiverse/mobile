@@ -109,6 +109,8 @@ fun RaftSelectTrigger(
     onCollapse: (() -> Unit)? = null,
     leadingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    /** A raft-ui `Badge.Experimental` after the value ([RaftComboboxOption.badge] of the chosen option). */
+    badge: String? = null,
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -132,7 +134,8 @@ fun RaftSelectTrigger(
             .border(RaftStroke.Field, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {
-                if (label != null) contentDescription = if (shown.isEmpty()) label else "$label, $shown"
+                val spoken = if (badge != null && value != null) "$shown $badge" else shown
+                if (label != null) contentDescription = if (spoken.isEmpty()) label else "$label, $spoken"
                 when (expanded) {
                     true -> collapse { onCollapse?.invoke(); onCollapse != null }
                     false -> expand { onClick(); true }
@@ -149,15 +152,22 @@ fun RaftSelectTrigger(
                 Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { leadingIcon() }
             }
         }
-        RaftText(
-            shown,
+        Row(
             Modifier.weight(1f),
-            // In a field the value and placeholder keep `font-field` (400), like an input's.
-            style = if (field.inField) base else base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
-            color = look.ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftText(
+                shown,
+                Modifier.weight(1f, fill = false),
+                // In a field the value and placeholder keep `font-field` (400), like an input's.
+                style = if (field.inField) base else base.copy(fontWeight = if (value != null) FontWeight.SemiBold else FontWeight.Medium),
+                color = look.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (badge != null && value != null) RaftExperimentalBadge(badge, enabled = enabled)
+        }
         RaftGlyphIcon(RaftGlyph.ChevronDown, size = 16.dp, color = look.chevron)
     }
 }

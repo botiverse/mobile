@@ -47,8 +47,21 @@ internal class SharedCreateAgentFormStore(
     private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {
         SharedCreateAgentFormOwner("test-environment", "test-account", "test-session")
     },
-    private val runtimeFormV2Loader: RuntimeFormV2Loader? = null
+    private val runtimeFormV2Loader: RuntimeFormV2Loader? = null,
+    /** The server runtime catalog (`GET servers/:id/runtimes`); null: the bundled table only. */
+    private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null
 ) {
+    /**
+     * The runtimes [serverId] offers: the server's answer, else its cached answer, else the bundled
+     * table. Never fails ([SharedServerRuntimeCatalogRepository]).
+     */
+    suspend fun loadServerRuntimeCatalog(serverId: String, priority: DataRequestPriority): ServerRuntimeCatalog =
+        serverRuntimeCatalogs?.load(serverId, priority) ?: BundledRuntimeCatalog
+
+    /** [serverId]'s cached catalog (else bundled), without a request: what to show before the load lands. */
+    suspend fun cachedServerRuntimeCatalog(serverId: String): ServerRuntimeCatalog =
+        serverRuntimeCatalogs?.cached(serverId) ?: BundledRuntimeCatalog
+
     /** Runtime form v2 for this server (the only runtime form), or null without a loader or server. */
     fun runtimeFormV2Access(serverId: String): RuntimeFormV2Access? {
         val loader = runtimeFormV2Loader ?: return null

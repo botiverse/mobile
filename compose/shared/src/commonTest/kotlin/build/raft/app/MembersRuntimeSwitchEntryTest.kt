@@ -38,16 +38,19 @@ class MembersRuntimeSwitchEntryTest {
     @Test
     fun v2EditRuntimeOptionsAreTheComputerRuntimesWithNotInstalledDisabled() {
         val items =
-            createAgentRuntimeDropdownItems(
+            runtimePickerRows(
+                build.raft.app.data.BundledRuntimeCatalog,
                 machineRuntimeIds = listOf("builtin", "codex"),
-                allowStaticFallback = false,
+                selectedRuntimeId = "builtin",
+                showAll = true,
                 currentRuntimeId = "builtin"
-            )
+            ).rows
         val enabled = items.filter { it.enabled }.map { it.id }.toSet()
         assertTrue("builtin" in enabled && "codex" in enabled, "items=$items")
+        assertEquals(RuntimePickerGroup.Current, items.first().group)
         val claude = items.single { it.id == "claude" }
         assertEquals(false, claude.enabled)
-        assertTrue(claude.label.endsWith(" (not installed)"))
+        assertEquals(RuntimePickerSuffix.NotInstalled, claude.suffix)
     }
 
     @Test
