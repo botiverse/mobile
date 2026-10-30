@@ -2926,7 +2926,10 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         latestComputerVersion = latestComputerVersion,
         latestComputerReleaseNotes = latestComputerReleaseNotes,
         creator = creator,
-        agentScopes = agentScopes
+        agentScopes = agentScopes,
+        osRelease = osRelease,
+        diskStatus = diskStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
+        memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) }
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

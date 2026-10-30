@@ -12,6 +12,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
+import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
@@ -21,7 +22,7 @@ const val SETTINGS_COMPUTERS_VISUAL_PAGE = "compose_settings_computers_visual"
 
 /**
  * Native Settings > Computers with seeded store states and no network: `fixtureKey` is `list`
- * (mixed online / offline / update-available rows), `empty`, `error` or `detail` (agents and a
+ * (rack cards: online, upgrade, low disk with many agents, offline), `empty`, `error` or `detail` (agents and a
  * scanned workspace list). The snapshots go through the production state mapping
  * ([raftComputersListModel], [raftComputerDetailModel]) and content composables; the clock is
  * pinned so relative times are stable.
@@ -90,11 +91,18 @@ private fun SettingsComputersVisualContent() {
                         onRetry = {},
                         onAddComputer = {},
                         onOpenComputer = {},
+                        agentsByMachine = visualAgentsByMachine(),
                     )
                 }
             }
         }
     }
+}
+
+private fun visualAgentsByMachine(): Map<String, List<RaftComputerCardAgent>> {
+    val names = listOf("Wug", "Jony", "Lagoon", "Tenny", "Artea", "Kirby", "Mochi", "Pixel", "Nova", "Orbit", "Quill", "Rune")
+    fun agents(machine: String, count: Int) = List(count) { RaftComputerCardAgent("$machine-a$it", names[it % names.size], avatarWireValue = null) }
+    return mapOf("machine-studio" to agents("machine-studio", 3), "machine-build" to agents("machine-build", 12), "machine-laptop" to agents("machine-laptop", 2))
 }
 
 private fun visualComputers() =
@@ -109,18 +117,24 @@ private fun visualComputers() =
                     isComputer = true,
                     online = true,
                     hostname = "studio.local",
-                    platform = "macOS 15.1",
+                    platform = "darwin arm64",
                     runtimes = listOf("claude", "codex"),
                     createdAt = "2026-08-01T09:00:00Z",
                 ),
                 SettingsComputerSnapshot(
                     id = "machine-build",
                     name = "build-box",
-                    daemonVersion = "0.64.1",
+                    daemonVersion = "",
+                    computerVersion = "1.4.0",
+                    isComputer = true,
+                    upgradeAvailable = true,
                     online = true,
                     hostname = "build-01",
-                    platform = "Ubuntu 24.04",
+                    platform = "linux x64",
+                    osRelease = "Ubuntu 24.04",
                     runtimes = listOf("claude"),
+                    latestComputerVersion = "1.4.2",
+                    diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6.0 * 1024 * 1024 * 1024, totalBytes = 500.0 * 1024 * 1024 * 1024),
                 ),
                 SettingsComputerSnapshot(
                     id = "machine-laptop",
