@@ -16,7 +16,7 @@ move off Kuikly (see the CMP migration assessment, §3.2 `:ui-cmp`).
 Sources of truth:
 
 - Colour tokens: generated from the one vendored raft-ui source pinned in
-  `tools/design-tokens/manifest.json` (currently 0.50.0, the version slock `packages/web`
+  `tools/design-tokens/manifest.json` (currently 0.52.2, the version slock `packages/web`
   ships), the same source as the tokens in compose/shared. Bumping raft-ui is a source +
   manifest change that regenerates both outputs together.
 - Component specs and state rules: the raft-design docs site
