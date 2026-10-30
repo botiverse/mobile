@@ -94,11 +94,9 @@ private fun AssistantDmFixtureContent() {
                 networkApi = AssistantDmFixtureNetworkApi,
                 sessionStore = sessionStore,
                 cacheEnvironmentIdProvider = { DmEnvironmentId },
-                replyCacheIdentityAuthority = {
-                    replyCacheIdentityAuthority.capture().also { println("assistant_dm_fixture identity=${it != null}") }
-                },
+                replyCacheIdentityAuthority = { replyCacheIdentityAuthority.capture() },
                 threadPageSizeProvider = { 30 },
-                diagnosticsLogger = { message -> println("assistant_dm_fixture $message") },
+                diagnosticsLogger = {},
             )
         }
     val tasksDataSource = remember { SharedTasksDataSource(AssistantDmFixtureTasksApi) }
@@ -135,7 +133,6 @@ private fun AssistantDmFixtureContent() {
         composerDraftPersistSlice = provider.composerDraftPersistSlice,
         eventBus = provider.eventBus,
         onBack = {},
-        onAuthRequired = { code -> println("assistant_dm_fixture auth_required=$code") },
     )
 }
 
