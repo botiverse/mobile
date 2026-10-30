@@ -11,3 +11,6 @@ internal actual fun raftRichTextPlatformCaps(): RaftRichTextPlatformCaps =
         raftRefChrome = true,
         reactionAtlas = true
     )
+
+/** Minikin: a lone letter-spaced character has no advance on Android 15+, so chip padding is a placeholder. */
+internal actual fun raftPlatformInlineSpacerIsPlaceholder(): Boolean = true

@@ -211,18 +211,19 @@ internal fun taskNumberFromRefLabel(label: String): Int? =
 internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     style: RaftMarkdownTaskChipStyle,
     label: String,
+    spacerAsPlaceholder: Boolean = raftPlatformInlineSpacerIsPlaceholder(),
     trailing: AnnotatedString.Builder.() -> Unit = {},
 ) {
-    // The lead (with the painted status pixel) and the trail are glued spacers, not placeholders,
-    // so the chip never wraps between its pixel / padding and its number on either renderer: a
-    // placeholder lead could end a line on iOS and leave a sliver of the box there (artin 10-29).
+    // The lead (with the painted status pixel) and the trail are glued spacers in the form each
+    // text engine honours (appendRaftInlineSpacer), so the chip keeps its padding (artin 10-30,
+    // Android 15+) and never wraps between its pixel / padding and its number (artin 10-29, iOS).
     // The whole chip is set at the inline chip's 0.875em, so the painted box measures its own text.
     withRaftInlineBox(style.box) {
         withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
-            appendRaftInlineSpacer(style.leadingGap, style.pixel?.toInlineMark())
+            appendRaftInlineSpacer(style.leadingGap, leading = true, mark = style.pixel?.toInlineMark(), asPlaceholder = spacerAsPlaceholder)
             withStyle(style.textSpanStyle()) { append(label) }
             trailing()
-            appendRaftInlineSpacer(style.trailingGap)
+            appendRaftInlineSpacer(style.trailingGap, leading = false, asPlaceholder = spacerAsPlaceholder)
         }
     }
 }
