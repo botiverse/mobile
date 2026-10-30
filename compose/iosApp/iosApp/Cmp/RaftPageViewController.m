@@ -268,6 +268,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     _raftAdaptivePanePublishingActive = YES;
     [self raftPublishAdaptivePaneForCurrentBounds:@"appear"];
     [self raftPublishWindowInsets];
+    [RaftIosTopBandDiagnostics notePageAppear];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
