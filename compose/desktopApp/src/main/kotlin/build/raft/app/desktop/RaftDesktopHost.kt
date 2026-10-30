@@ -110,7 +110,7 @@ private fun RaftDesktopPageContent(navigator: RaftDesktopNavigator, page: RaftDe
                 events = page.events,
             )
         }
-    // Window facts for the adaptive layout (rail + split panes at >= 840dp): the page's size,
+    // Window facts for the adaptive layout (rail + split panes at >= 768dp): the page's size,
     // republished on every resize. A page under the top one is 0x0 and publishes nothing.
     val publisher = remember { RaftDesktopAdaptivePanePublisher(page.events::send) }
     val density = LocalDensity.current.density

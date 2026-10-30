@@ -296,7 +296,7 @@ internal val RaftAppShellBottomBarLeave: ExitTransition = ExitTransition.None
 internal fun raftImeVisible(): Boolean = raftImeBottomPx(LocalDensity.current) > 0
 
 // task #23/#45: the left navigation rail owns tab selection whenever the user's
-// desktop-mode setting is on and the window is in the dual-pane (flat, >=840dp)
+// desktop-mode setting is on and the window is in the dual-pane (flat, >=768dp)
 // layout. The setting default is ON; compact layouts always keep the bottom bar.
 internal fun raftAdaptiveNavRailActive(
     desktopModeEnabled: Boolean,

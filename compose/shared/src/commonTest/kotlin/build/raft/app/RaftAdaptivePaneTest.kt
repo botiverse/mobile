@@ -26,7 +26,7 @@ class RaftAdaptivePaneTest {
     @Test
     fun halfFoldedWindowTakesDualPaneWhenWideEnough() {
         // task #180 (artin 2026-10-17): a half-folded posture is no longer excluded from the second
-        // pane. 2200px / 2f density = 1100dp, above the 840dp rule, so it is DualPane. This reverses
+        // pane. 2200px / 2f density = 1100dp, above the 768dp rule, so it is DualPane. This reverses
         // the previous "half-fold never opens a second pane" contract on purpose.
         val state =
             reduceRaftAdaptivePane(
@@ -50,7 +50,7 @@ class RaftAdaptivePaneTest {
             reduceRaftAdaptivePane(
                 RaftAdaptivePaneState(),
                 RaftAdaptivePaneEvent(
-                    widthPx = 1600,
+                    widthPx = 1400,
                     heightPx = 1200,
                     density = 2f,
                     posture = RaftAdaptivePanePosture.HalfFolded
@@ -58,6 +58,25 @@ class RaftAdaptivePaneTest {
             )
 
         assertEquals(RaftAdaptivePaneLayout.Compact, state.layout)
+    }
+
+    @Test
+    fun theRailStartsAtTheIpadMinisPortraitWidth() {
+        // Direction A (#proj-mobile 10-30): wide from 744dp (artin), not 840 and 24 under the web's
+        // `md` 768, so every iPad held upright gets the rail: 744 (iPad mini 6 and later), 768,
+        // 810, 820 (Air 11"), 834 (Pro 11"). Phones in portrait keep the phone layout.
+        assertEquals(744f, DualPaneMinimumWidthDp)
+        fun layoutAt(widthPt: Int, scale: Float = 2f) =
+            reduceRaftAdaptivePane(
+                RaftAdaptivePaneState(),
+                RaftAdaptivePaneEvent((widthPt * scale).toInt(), (1100 * scale).toInt(), scale, RaftAdaptivePanePosture.Flat)
+            ).layout
+        listOf(744, 768, 810, 820, 834, 1024, 1366).forEach { width ->
+            assertEquals(RaftAdaptivePaneLayout.DualPane, layoutAt(width), "width $width")
+        }
+        listOf(402, 700, 743).forEach { width ->
+            assertEquals(RaftAdaptivePaneLayout.Compact, layoutAt(width), "width $width")
+        }
     }
 
     @Test

@@ -111,7 +111,7 @@ internal const val RaftAdaptivePanePagerEvent = "slockAdaptivePaneChanged"
  * Task #180 (artin 2026-10-17): a HALF_OPENED / half-folded posture no longer suppresses the second
  * pane. It follows the same width rule as every other posture -- half-folded devices are a real
  * large-screen shape (the folded-out half), and treating them as compact left those users on a
- * phone layout beside an 840dp-capable window. The Unknown posture still means "no window facts
+ * phone layout beside a wide-capable window. The Unknown posture still means "no window facts
  * yet" and stays compact. The side reply-thread column keeps its own, higher gate (>=1200dp plus
  * detail-area headroom), so this widens DualPane only.
  */
@@ -238,8 +238,14 @@ private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =
         else -> RaftAdaptivePanePosture.Unknown
     }
 
-/** The window width (dp) from which the app lays out wide: two panes, the navigation rail. */
-internal const val DualPaneMinimumWidthDp = 840f
+/**
+ * The window width (dp) from which the app lays out wide: two panes, the navigation rail. 744,
+ * the iPad mini's portrait width, so every iPad held upright gets the rail (artin 10-30). That is
+ * 24 below the web's `md` breakpoint (packages/web MainLayout `(min-width: 768px)`): a browser
+ * window that narrow is rare, an iPad mini is not. It was 840, Android's expanded width class.
+ * Every wide/compact decision reads this constant.
+ */
+internal const val DualPaneMinimumWidthDp = 744f
 
 internal fun RaftAdaptivePanePosture.toRaftAdaptivePanePostureWireName(): String =
     when (this) {

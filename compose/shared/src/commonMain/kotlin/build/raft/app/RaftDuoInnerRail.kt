@@ -14,6 +14,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftAppRailDefaults
+import build.raft.designsystem.components.RaftAppRailMetrics
+import build.raft.designsystem.components.raftAppRailCompact
+import build.raft.designsystem.components.raftAppRailMetrics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Dp
 import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
@@ -66,11 +72,13 @@ internal fun RaftAppRailServerTile(
     val label = stringResource(Res.string.server_tab_a11y_label, server.name)
     val actionLabel = stringResource(Res.string.server_tab_switch_action)
     val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
+    // The rail's item square: 40dp, 36dp in a compact (short-window) rail.
+    val itemSize = RaftAppRailDefaults.metrics.itemSize
     RaftAvatarBadgeBox(
         size = RaftAvatarSize.Md,
         modifier =
             Modifier
-                .size(RaftAppRailDefaults.ItemSize)
+                .size(itemSize)
                 .raftPointerHover(source)
                 .clickable(
                     interactionSource = source,
@@ -89,7 +97,7 @@ internal fun RaftAppRailServerTile(
             }
         },
     ) {
-        ServerSwitcherAvatarTile(server, size = RaftAppRailDefaults.ItemSize)
+        ServerSwitcherAvatarTile(server, size = itemSize)
         Box(Modifier.matchParentSize().raftStateOverlay(overlay, RaftRadius.Sticker))
     }
 }
@@ -131,7 +139,19 @@ internal fun RaftAppRailNotificationBell(
 }
 
 /** The rail's width with its seam: the rail's popovers open past it, 8dp (the popover gap) beyond. */
-internal val RaftAppRailOuterWidth = RaftAppRailDefaults.Width + RaftStroke.Hairline
+internal val RaftAppRailOuterWidth: Dp
+    @Composable get() = raftAppRailWindowMetrics().width + RaftStroke.Hairline
+
+/**
+ * The rail's metrics for this window, by the rail's own rule ([raftAppRailCompact] on the window
+ * height): for what sits beside the rail outside its composition (its popovers), where
+ * [RaftAppRailDefaults.metrics] would read the regular size.
+ */
+@Composable
+internal fun raftAppRailWindowMetrics(): RaftAppRailMetrics {
+    val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+    return raftAppRailMetrics(raftAppRailCompact(windowHeight))
+}
 
 /** A popover's gap from the rail's seam and from the window's edge (raft-ui `sideOffset` 8). */
 internal val RaftAppRailPopoverGap = 8.dp
@@ -150,7 +170,7 @@ internal fun appShellRailItemsWithSearch(
         RaftBottomTabItemPayload(
             key = AppShellRailSearchKey,
             label = searchLabel,
-            iconName = RaftLucideIconName.Search,
+            iconName = RaftNavPresentation.Rail.iconOf(RaftAppDestination.Search).lucide,
             selected = searchOpen,
         )
     ) + items.map { if (searchOpen) it.copy(selected = false) else it }

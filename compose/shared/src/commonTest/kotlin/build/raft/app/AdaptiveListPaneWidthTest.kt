@@ -79,10 +79,12 @@ class AdaptiveListPaneWidthTest {
     }
 
     @Test fun defaultsFitTheNarrowestDualPaneWindow() {
-        // Narrowest dual-pane row: the 840dp window minus the 64dp rail.
-        assertEquals(240f, raftListPaneWidthDp(sidebar, sidebar.defaultDp, 776f))
-        assertEquals(380f, raftListPaneWidthDp(list, list.defaultDp, 776f))
-        assertTrue(776f - RAFT_LIST_PANE_DIVIDER_DP - 380f >= RAFT_LIST_PANE_MAIN_MIN_DP)
+        // Narrowest dual-pane row: the 768dp window (web `md`) minus the 57dp rail. The sidebar
+        // keeps its default; the list gives way to the main's minimum, as on the web at `md`.
+        val row = DualPaneMinimumWidthDp - 57f
+        assertEquals(240f, raftListPaneWidthDp(sidebar, sidebar.defaultDp, row))
+        assertEquals(row - RAFT_LIST_PANE_DIVIDER_DP - RAFT_LIST_PANE_MAIN_MIN_DP, raftListPaneWidthDp(list, list.defaultDp, row))
+        assertTrue(raftListPaneWidthDp(list, list.defaultDp, row) >= list.minDp)
         assertEquals(380f, raftListPaneWidthDp(list, list.defaultDp, null))
     }
 

@@ -331,7 +331,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
         nav.transitionCoordinator != nil || self.transitionCoordinator != nil ||
         self.presentedViewController != nil || nav.presentedViewController != nil ||
         self.isBeingDismissed || self.isMovingFromParentViewController ||
-        window.bounds.size.width < 840.0) return nil;
+        window.bounds.size.width < 744.0) return nil; // shared DualPaneMinimumWidthDp
     // A SwiftUI/container ancestor can present a sheet without disappearing this child.
     for (UIViewController *ancestor = self.parentViewController; ancestor; ancestor = ancestor.parentViewController) {
         if (ancestor.presentedViewController || ancestor.transitionCoordinator || ancestor.isBeingDismissed) return nil;

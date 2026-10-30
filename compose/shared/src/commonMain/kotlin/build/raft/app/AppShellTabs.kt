@@ -5,19 +5,16 @@ import build.raft.app.data.raftComputerAttentionPairs
 import build.raft.app.data.raftComputerAttentionUnseen
 
 /**
- * Per-key bottom-tab icon. Activity uses the Lucide `activity` glyph, the same icon as the web
- * Activity nav item (artin 2026-10-20, Activity as a bottom tab); DMs/More keep the #94 icons.
+ * The phone bar's icon for [key]: its destination's compact icon ([RaftAppDestination]); Activity
+ * is the Lucide `activity` glyph, the web Activity nav item's (artin 2026-10-20).
  */
 internal fun appShellTabIcon(key: String): RaftLucideIconName =
+    RaftAppDestination.fromId(key)?.let { RaftNavPresentation.PhoneBar.iconOf(it).lucide } ?: appShellLegacyTabIcon(key)
+
+/** Keys that are no destination any more: the Slack-nav `dms` tab (task #94). */
+internal fun appShellLegacyTabIcon(key: String): RaftLucideIconName =
     when (key) {
-        "home" -> RaftLucideIconName.House
         "dms" -> RaftLucideIconName.MessageCircle
-        "activity" -> RaftLucideIconName.Activity
-        "more" -> RaftLucideIconName.Ellipsis
-        "tasks" -> RaftLucideIconName.SquareCheckBig
-        "members" -> RaftLucideIconName.Users
-        "settings" -> RaftLucideIconName.Settings
-        AppShellSearchTabKey -> RaftLucideIconName.Search
         else -> RaftLucideIconName.Circle
     }
 
@@ -29,7 +26,7 @@ internal fun appShellTabIcon(key: String): RaftLucideIconName =
  * so the wide rail, deep links and old launch values still select them directly.
  */
 internal val AppShellPhoneBottomBarKeys: List<String> =
-    listOf("home", "activity", "tasks", AppShellSearchTabKey, "more")
+    RaftNavPresentation.PhoneBar.destinations.map { it.id }
 
 /** The tabs of [AppShellPhoneBottomBarKeys]; every slot is a real tab. */
 internal val AppShellPhoneBottomTabKeys: List<String> = AppShellPhoneBottomBarKeys
@@ -169,14 +166,49 @@ internal fun raftMoreAttention(
 internal fun appShellMoreTabShowsDot(attention: Set<RaftMoreAttention>, selected: Boolean): Boolean =
     attention.isNotEmpty() && !selected
 
-/** Wide-rail tab entries (web LeftRail): Settings is pinned to the rail bottom separately. */
-internal val AppShellRailTabKeys: List<String> = listOf("home", "activity", "tasks", "members")
+/**
+ * Wide-rail entries, top to bottom: [RaftNavPresentation.Rail], the web LeftRail's set (Chat,
+ * Activity, Tasks, Members, Computers, Apps; Help and Settings in its footer).
+ */
+internal val AppShellRailTabKeys: List<String> = RaftNavPresentation.Rail.destinations.map { it.id }
+
+/** The rail's entries for [selectedTab] ([raftNavItems] on [RaftNavPresentation.Rail]). */
+internal fun appShellRailTabs(
+    selectedTab: String,
+    labelFor: (String) -> String,
+    activityUnreadCount: Int = 0,
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
+): List<RaftBottomTabItemPayload> =
+    raftNavItems(
+        presentation = RaftNavPresentation.Rail,
+        ids = AppShellRailTabKeys,
+        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        labelFor = labelFor,
+        badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
+    )
+
+/** The rail's footer ([RaftNavPresentation.Rail]'s `footer`): Help (selected while its menu is open), Settings. */
+internal fun appShellRailFooterTabs(
+    selectedTab: String,
+    labelFor: (String) -> String,
+    helpOpen: Boolean,
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
+): List<RaftBottomTabItemPayload> =
+    raftNavItems(
+        presentation = RaftNavPresentation.Rail,
+        ids = RaftNavPresentation.Rail.footer.map { it.id },
+        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        labelFor = labelFor,
+        badges = RaftNavBadgeInputs(moreAttention = moreAttention),
+        menuOpen = helpOpen,
+    )
 
 /**
  * The wide-screen rail keeps the phone bar's destinations in the phone bar's order (nav spec
  * 2026-10-21 §5, raft-design responsive.md: "keeps the phone's destinations in the phone's
- * order"): Home (with DMs beside it), Activity, Tasks, Search, then Members, which the phone
- * reaches through More. More's own page is the Settings entry pinned to the rail bottom.
+ * order"): Home (with DMs beside it), Activity, Tasks, Search, then Members, Computers and Apps,
+ * which the phone reaches through the server panel / Settings. More's own page is the Settings
+ * entry pinned to the rail bottom.
  * Entries not listed keep their relative order after these.
  */
 internal val AppShellRailOrder: List<String> =
@@ -187,6 +219,8 @@ internal val AppShellRailOrder: List<String> =
         "tasks",
         AppShellRailSearchKey,
         "members",
+        RaftAppDestination.Computers.id,
+        RaftAppDestination.Apps.id,
     )
 
 internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
@@ -224,9 +258,9 @@ internal const val AppShellServerTabKey = "more"
 
 /** The server's pages in the server panel, in order; each opens the page the More row opened. */
 internal enum class RaftServerMenuEntry(val key: String) {
-    Members("members"),
-    Computers(SettingsDestinationComputers),
-    Settings("settings"),
+    Members(RaftAppDestination.Members.id),
+    Computers(RaftAppDestination.Computers.id),
+    Settings(RaftAppDestination.Settings.id),
     ;
 
     companion object {
@@ -278,8 +312,7 @@ internal fun raftServerMenuModel(
 /**
  * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
  * in the apps' desktop mode"). The phone keeps every page: it has no rail. On a wide screen the
- * rail already has Members and Settings, and Computers is a Settings section, so the row would
- * only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
+ * rail already has Members, Computers and Settings, so the row would only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
  */
 internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,

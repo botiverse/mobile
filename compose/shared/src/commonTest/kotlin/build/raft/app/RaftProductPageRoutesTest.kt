@@ -58,8 +58,12 @@ class RaftProductPageRoutesTest {
             )
         keys.forEach { (key, destination) -> assertEquals(destination, appShellNavDestination(key), key) }
         assertNull(appShellNavDestination("dms"))
-        // Every phone bar slot and rail entry has a destination.
-        (AppShellPhoneBottomBarKeys + AppShellRailTabKeys).forEach { key ->
+        assertEquals(RaftNavDestination.Computers, appShellNavDestination("computers"))
+        // The rail's Apps and Help have no value in the app's NAV_DESTINATIONS mirror yet.
+        assertNull(appShellNavDestination("apps"))
+        assertNull(appShellNavDestination("help"))
+        // Every other phone bar slot and rail entry has a destination.
+        (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps").forEach { key ->
             assertEquals(true, appShellNavDestination(key) != null, key)
         }
     }

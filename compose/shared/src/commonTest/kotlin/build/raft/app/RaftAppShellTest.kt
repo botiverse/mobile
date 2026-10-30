@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftConversationKindGlyph
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
@@ -1662,14 +1663,55 @@ class RaftAppShellTest {
 
     @Test
     fun railTabsKeepWebLeftRailEntries() {
-        val tabs =
-            appShellBottomTabs(
-                selectedKey = "members",
-                orderedTabKeys = AppShellRailTabKeys,
-                labelFor = { it }
-            )
-        assertEquals(listOf("home", "activity", "tasks", "members"), tabs.map { it.key })
-        assertEquals(listOf(false, false, false, true), tabs.map { it.selected })
+        // Direction A (#proj-mobile 10-30): web LeftRail's entries, order and icons.
+        val tabs = appShellRailTabs(selectedTab = "members", labelFor = { it })
+        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), tabs.map { it.key })
+        assertEquals(listOf(false, false, false, true, false, false), tabs.map { it.selected })
+        assertEquals(
+            listOf(
+                RaftLucideIconName.MessageSquare,
+                RaftLucideIconName.Activity,
+                RaftLucideIconName.ListTodo,
+                RaftLucideIconName.Users,
+                RaftLucideIconName.Monitor,
+                RaftLucideIconName.Blocks,
+            ),
+            tabs.map { it.iconName },
+        )
+        // Chat draws raft-ui ChatIcon on the rail; the phone bar has no glyph.
+        assertEquals(RaftConversationKindGlyph.Chat, raftNavGlyph(RaftNavPresentation.Rail, "home"))
+        assertNull(raftNavGlyph(RaftNavPresentation.PhoneBar, "home"))
+        assertNull(raftNavGlyph(RaftNavPresentation.Rail, "tasks"))
+    }
+
+    @Test
+    fun railComputersAndSettingsCarryTheirOwnDots() {
+        val computers = setOf(RaftMoreAttention.Computers)
+        val update = setOf(RaftMoreAttention.AppUpdate)
+        fun dots(attention: Set<RaftMoreAttention>, selectedTab: String = "home") =
+            (appShellRailTabs(selectedTab, labelFor = { it }, moreAttention = attention) +
+                appShellRailFooterTabs(selectedTab, labelFor = { it }, helpOpen = false, moreAttention = attention))
+                .filter { it.attentionDot }
+                .map { it.key }
+        // An unseen computer dots Computers, no longer Settings.
+        assertEquals(listOf("computers"), dots(computers))
+        // An app update is read in Settings > About: it dots Settings.
+        assertEquals(listOf("settings"), dots(update))
+        assertEquals(listOf("computers", "settings"), dots(computers + update))
+        // The selected Settings wears no dot; Apps has no signal yet.
+        assertEquals(emptyList<String>(), dots(update, selectedTab = "settings"))
+        assertEquals(emptyList<String>(), dots(emptySet()))
+        // The phone's More tab keeps the combined dot.
+        assertTrue(appShellMoreTabShowsDot(computers, selected = false))
+    }
+
+    @Test
+    fun railFooterIsHelpThenSettings() {
+        val footer = appShellRailFooterTabs("settings", labelFor = { it }, helpOpen = true)
+        assertEquals(listOf("help", "settings"), footer.map { it.key })
+        assertEquals(listOf(RaftLucideIconName.CircleQuestionMark, RaftLucideIconName.Settings), footer.map { it.iconName })
+        assertEquals(listOf(true, true), footer.map { it.selected })
+        assertEquals(listOf(false, false), appShellRailFooterTabs("home", labelFor = { it }, helpOpen = false).map { it.selected })
     }
 
     @Test

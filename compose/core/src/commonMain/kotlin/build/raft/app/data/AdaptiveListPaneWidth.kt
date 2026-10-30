@@ -33,8 +33,9 @@ const val RAFT_LIST_PANE_LEGACY_STORAGE_KEY = "mobile:adaptive_list_pane_width_d
 
 /**
  * Narrowest the detail beside the list may get (web `MAIN_COLUMN_MIN_WIDTH`). It was 400 when the
- * list defaulted to 360 and the 840dp window had to fit both; the web's 360 fits the same window
- * with either kind's default (64 rail + 380 + 1 + 360 = 805).
+ * list defaulted to 360 and the 840dp window had to fit both; the web's 360 fits the narrowest
+ * wide window (768dp) with the sidebar default (57 rail + 240 + 1 + 360 = 658) and clamps the
+ * list kind there (768 - 57 - 1 - 360 = 350, above its 240 minimum), as the web does at `md`.
  */
 @RaftCoreInternalApi
 const val RAFT_LIST_PANE_MAIN_MIN_DP = 360f

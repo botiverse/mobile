@@ -50,6 +50,8 @@ new product concept gets a Japanese rendering.
 | Retracted (message, by its owner) | 取り消し | "This message was retracted." = 「このメッセージは取り消されました。」; copied from the web ja catalog `message.delegated.retracted` (RFC 077) |
 | Connected Apps | 連携アプリ | OAuth surface |
 | Marketplace | マーケットプレイス | |
+| Apps (the server's Apps page, rail entry) | アプリ | Web `apps.page.title`; Settings' OAuth row stays 連携アプリ |
+| Help (rail) / Help & resources | ヘルプ / ヘルプとリソース | Web `layout.leftRail.tabHelp` / `helpMenuTitle` |
 | Bot (an App's bot) | ボット | Badge after an App Bot's name: ボット / ボット · <App>; copied from the web ja catalog (botiverse/slock #11273) |
 | Built-in | 組み込み | |
 | Join link | 参加リンク | |

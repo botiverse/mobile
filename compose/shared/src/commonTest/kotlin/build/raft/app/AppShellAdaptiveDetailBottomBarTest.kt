@@ -55,10 +55,10 @@ class AppShellAdaptiveDetailBottomBarTest {
 
     @Test
     fun aTabletTurnedToPortraitShowsTheKeptConversationAlone() {
-        // 1280x800dp landscape (Split) -> 800x1280dp portrait: below 840dp, the same selection is
+        // 1280x700dp landscape (Split) -> 700x1280dp portrait: below 768dp, the same selection is
         // kept and presented DetailOnly, which hides the bar.
-        val wide = RaftAdaptivePaneState(2560, 1600, 2f, RaftAdaptivePanePosture.Flat, RaftAdaptivePaneLayout.DualPane)
-        val portrait = reduceRaftAdaptivePane(wide, RaftAdaptivePaneEvent(1600, 2560, 2f, RaftAdaptivePanePosture.Flat))
+        val wide = RaftAdaptivePaneState(2560, 1400, 2f, RaftAdaptivePanePosture.Flat, RaftAdaptivePaneLayout.DualPane)
+        val portrait = reduceRaftAdaptivePane(wide, RaftAdaptivePaneEvent(1400, 2560, 2f, RaftAdaptivePanePosture.Flat))
         assertEquals(RaftAdaptivePaneLayout.Compact, portrait.layout)
         val identity =
             RaftAdaptiveDetailIdentity(serverId = "s", threadId = "t", surfaceKind = RaftThreadSurfaceKind.Channel)
