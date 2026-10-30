@@ -347,11 +347,8 @@ import UIKit
     private static func machineName() -> String {
         var info = utsname()
         uname(&info)
-        return withUnsafePointer(to: &info.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: MemoryLayout.size(ofValue: info.machine)) {
-                String(cString: $0)
-            }
-        }
+        let bytes = Mirror(reflecting: info.machine).children.compactMap { $0.value as? CChar }
+        return String(decoding: bytes.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     private static func emit(_ message: String, _ walk: Walk) {
