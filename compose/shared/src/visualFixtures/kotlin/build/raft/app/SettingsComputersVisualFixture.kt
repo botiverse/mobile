@@ -8,6 +8,14 @@ import build.raft.app.base.BasePager
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.RuntimeAccountUsageAccount
+import build.raft.app.data.RuntimeAccountUsageHealth
+import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAccountUsageSnapshot
+import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
@@ -22,7 +30,8 @@ const val SETTINGS_COMPUTERS_VISUAL_PAGE = "compose_settings_computers_visual"
 
 /**
  * Native Settings > Computers with seeded store states and no network: `fixtureKey` is `list`
- * (rack cards: online, upgrade, low disk with many agents, offline), `empty`, `error` or `detail` (agents and a
+ * (rack cards: online, upgrade, low disk with many agents, offline; Disk / Memory meters and runtime
+ * usage lines: normal, warning, used up, stale, "—"), `empty`, `error` or `detail` (agents and a
  * scanned workspace list). The snapshots go through the production state mapping
  * ([raftComputersListModel], [raftComputerDetailModel]) and content composables; the clock is
  * pinned so relative times are stable.
@@ -92,6 +101,7 @@ private fun SettingsComputersVisualContent() {
                         onAddComputer = {},
                         onOpenComputer = {},
                         agentsByMachine = visualAgentsByMachine(),
+                        usageLoads = visualUsageLoads(),
                     )
                 }
             }
@@ -103,6 +113,36 @@ private fun visualAgentsByMachine(): Map<String, List<RaftComputerCardAgent>> {
     val names = listOf("Wug", "Jony", "Lagoon", "Tenny", "Artea", "Kirby", "Mochi", "Pixel", "Nova", "Orbit", "Quill", "Rune")
     fun agents(machine: String, count: Int) = List(count) { RaftComputerCardAgent("$machine-a$it", names[it % names.size], avatarWireValue = null) }
     return mapOf("machine-studio" to agents("machine-studio", 3), "machine-build" to agents("machine-build", 12), "machine-laptop" to agents("machine-laptop", 2))
+}
+
+/** Studio: normal + warning; build-box: used up + stale Kimi; no memory report there ("—"). */
+private fun visualUsageLoads(): Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> {
+    fun window(ratio: Double?, status: RuntimeAccountUsageWindowStatus = RuntimeAccountUsageWindowStatus.Ok) =
+        RuntimeAccountUsageWindow(id = "five_hour", label = "5h", status = status, usedRatio = ratio, resetsAt = null)
+    fun loaded(provider: String, window: RuntimeAccountUsageWindow, stale: Boolean = false) =
+        RuntimeAccountUsageLoad.Loaded(
+            RuntimeAccountUsageRead.Available(
+                stale = stale,
+                snapshot =
+                    RuntimeAccountUsageSnapshot(
+                        provider,
+                        null,
+                        listOf(RuntimeAccountUsageAccount("acct", "Max", null, RuntimeAccountUsageHealth.Ok, listOf(window))),
+                    ),
+            ),
+        )
+    return mapOf(
+        "machine-studio" to
+            mapOf(
+                RuntimeAccountUsageProvider.Claude to loaded("claude", window(0.42)),
+                RuntimeAccountUsageProvider.Codex to loaded("codex", window(0.86)),
+            ),
+        "machine-build" to
+            mapOf(
+                RuntimeAccountUsageProvider.Claude to loaded("claude", window(null, RuntimeAccountUsageWindowStatus.LimitReached)),
+                RuntimeAccountUsageProvider.Kimi to loaded("kimi", window(0.3), stale = true),
+            ),
+    )
 }
 
 private fun visualComputers() =
@@ -118,8 +158,11 @@ private fun visualComputers() =
                     online = true,
                     hostname = "studio.local",
                     platform = "darwin arm64",
-                    runtimes = listOf("claude", "codex"),
+                    runtimes = listOf("claude", "codex", "cursor"),
                     createdAt = "2026-08-01T09:00:00Z",
+                    diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 310.0 * 1024 * 1024 * 1024, totalBytes = 994.0 * 1024 * 1024 * 1024),
+                    memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 18.0 * 1024 * 1024 * 1024, totalBytes = 64.0 * 1024 * 1024 * 1024),
+                    canViewRuntimeUsage = true,
                 ),
                 SettingsComputerSnapshot(
                     id = "machine-build",
@@ -132,9 +175,10 @@ private fun visualComputers() =
                     hostname = "build-01",
                     platform = "linux x64",
                     osRelease = "Ubuntu 24.04",
-                    runtimes = listOf("claude"),
+                    runtimes = listOf("claude", "kimi-sdk", "opencode"),
                     latestComputerVersion = "1.4.2",
                     diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6.0 * 1024 * 1024 * 1024, totalBytes = 500.0 * 1024 * 1024 * 1024),
+                    canViewRuntimeUsage = true,
                 ),
                 SettingsComputerSnapshot(
                     id = "machine-laptop",

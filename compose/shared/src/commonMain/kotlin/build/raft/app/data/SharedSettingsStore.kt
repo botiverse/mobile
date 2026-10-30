@@ -846,7 +846,7 @@ class SharedSettingsDataSource(
         val result = sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val canManage = session.canManageCurrentServer()
         if (serverId != null && result is DataResult.Content) computersSource?.recordAddComputerGate(serverId, canManage)
-        return result.withAddComputerGate(canManage)
+        return result.withAddComputerGate(canManage).withRuntimeUsageGate(session)
     }
 
     /**
@@ -857,7 +857,7 @@ class SharedSettingsDataSource(
         val session = sessionStore.readSession()
         val serverId = session?.currentServerId ?: return null
         val cached = computersSource?.cachedSettingsComputersForServer(serverId) ?: return null
-        return cached.withAddComputerGate(session.canManageCurrentServer())
+        return cached.withAddComputerGate(session.canManageCurrentServer()).withRuntimeUsageGate(session)
     }
 
     /** Cache-first machine page: the last page loaded for [machineId] on the current server. */
@@ -4160,6 +4160,29 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
     }
+
+/**
+ * Marks each machine the viewer may read runtime account usage of, by the detail page's rule
+ * ([settingsComputerPermissions] `canEdit`), so the Computers page skips the others' reads.
+ */
+private fun DataResult<SettingsComputersSnapshot>.withRuntimeUsageGate(
+    session: StoredAuthSession?
+): DataResult<SettingsComputersSnapshot> {
+    if (this !is DataResult.Content) return this
+    val role = session.settingsCurrentServer()?.role
+    val userId = session?.user?.id
+    return DataResult.Content(
+        data.copy(
+            computers =
+                data.computers.map { computer ->
+                    computer.copy(
+                        canViewRuntimeUsage =
+                            settingsComputerPermissions(serverRole = role, currentUserId = userId, computer = computer).canEdit
+                    )
+                }
+        )
+    )
+}
 
 private fun DataResult<SettingsComputerDetailSnapshot>.withComputerCommandContext(
     context: SettingsComputerCommandContext?

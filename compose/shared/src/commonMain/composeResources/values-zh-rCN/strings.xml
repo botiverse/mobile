@@ -2317,6 +2317,12 @@
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">上次在线 %1$s。</string>
     <string name="settings_computers_rack_agents_overflow">+%1$d</string>
+    <string name="settings_computers_rack_percent_used">已用 %1$s</string>
+    <string name="settings_computers_rack_used_up">已用完</string>
+    <string name="settings_computers_rack_other_runtimes">其他运行时</string>
+    <string name="settings_computers_rack_usage_unavailable">%1$s：无法获取用量</string>
+    <string name="settings_computers_rack_usage_meter">%1$s 账户：%2$s</string>
+    <string name="settings_computers_rack_usage_meter_stale">%1$s 账户：%2$s · 最后已知值</string>
     <string name="settings_computers_disk_low">磁盘不足</string>
     <string name="settings_computers_needs_upgrade">需要升级</string>
     <string name="settings_computers_needs_reinstall">需要重装</string>
