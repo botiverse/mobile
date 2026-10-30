@@ -9,7 +9,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.hasClickAction
@@ -35,8 +37,9 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Add Member (web ChannelMembers add view): ticking candidates only selects them and counts them
  * in "Add Selected (N)", which is disabled at 0 and sends the selection as one batch; the
- * Create Agent row asks to create an agent that joins this channel (named after a search that
- * found no one); members already in the channel are not listed.
+ * Create Agent and Create External Agent rows ask to create that kind of agent, which joins
+ * this channel (named after a search that found no one), and are disabled together with the
+ * reason without permission; members already in the channel are not listed.
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -61,7 +64,7 @@ class ChannelAddMemberPanelUiTest {
 
     private class Calls {
         val batches = mutableListOf<List<String>>()
-        val creates = mutableListOf<String>()
+        val creates = mutableListOf<Pair<String, MembersCreateAgentMode>>()
     }
 
     private val candidates =
@@ -88,7 +91,7 @@ class ChannelAddMemberPanelUiTest {
                     addMemberErrorCode = null,
                     onSubmitBatch = { picked -> calls.batches += picked.map { it.id } },
                     canCreateAgents = canCreateAgents,
-                    onCreateAgent = { name -> calls.creates += name },
+                    onCreateAgent = { name, mode -> calls.creates += name to mode },
                 )
             }
         }
@@ -147,28 +150,46 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun createAgentRowOpensCreateForThisChannel() =
+    fun createAgentRowOpensManagedCreateForThisChannel() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls)
-            onNodeWithText("Joins #design automatically after creation").assertExists()
+            // Both rows say the new agent joins this channel.
+            onAllNodesWithText("Joins #design automatically after creation").assertCountEquals(2)
             onNodeWithText("Create Agent").performClick()
-            assertEquals(listOf(""), calls.creates)
+            assertEquals(listOf("" to MembersCreateAgentMode.Managed), calls.creates)
 
             // A search that finds no one names the new agent after it.
             onNode(hasSetTextAction()).performTextInput("@mia")
             onNodeWithText("No members match \"@mia\"").assertExists()
             onNodeWithText("Create Agent “mia”").performClick()
-            assertEquals(listOf("", "mia"), calls.creates)
+            assertEquals(listOf("" to MembersCreateAgentMode.Managed, "mia" to MembersCreateAgentMode.Managed), calls.creates)
         }
 
     @Test
-    fun withoutCreatePermissionTheRowStaysDisabledWithTheReason() =
+    fun createExternalAgentRowOpensExternalCreateForThisChannel() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            show(calls)
+            onNodeWithText("Create External Agent").performClick()
+            assertEquals(listOf("" to MembersCreateAgentMode.External), calls.creates)
+
+            onNode(hasSetTextAction()).performTextInput("mia")
+            onNodeWithText("Create External Agent “mia”").performClick()
+            assertEquals(listOf("" to MembersCreateAgentMode.External, "mia" to MembersCreateAgentMode.External), calls.creates)
+        }
+
+    @Test
+    fun withoutCreatePermissionBothRowsStayDisabledWithTheReason() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls, canCreateAgents = false)
             onNodeWithText("Create Agent").performClick()
+            onNodeWithText("Create External Agent").performClick()
             assertTrue(calls.creates.isEmpty())
-            onNodeWithText("creating Agents on this server needs an owner or admin", substring = true).assertExists()
+            onNodeWithText("Create Agent").assertIsNotEnabled()
+            onNodeWithText("Create External Agent").assertIsNotEnabled()
+            // The reason shows once, under both rows.
+            onAllNodesWithText("creating Agents on this server needs an owner or admin", substring = true).assertCountEquals(1)
         }
 }
