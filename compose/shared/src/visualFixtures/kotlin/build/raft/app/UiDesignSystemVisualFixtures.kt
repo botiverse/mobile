@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -87,8 +88,10 @@ internal fun UiCheckMarkerVisualContent() {
     // a `flex flex-col gap-3 text-sm font-bold` stack, each row `gap-3`. The third is
     // `shape="circle"` checked: a black disc with the check knocked out, not a radio dot.
     // The web passes no tone, so "Circle yellow" is only the label.
+    // The three rows (84dp) run 4dp into the frame's bottom padding, as CSS lets them;
+    // unbounded so Compose doesn't squash the last 20dp disc into a 20x16 pill.
     UiDesignSystemFrame(height = 112.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             UiCheckMarkerRow("Square checked", checked = true, shape = RaftCheckboxShape.Square)
             UiCheckMarkerRow("Square unchecked", checked = false, shape = RaftCheckboxShape.Square)
             UiCheckMarkerRow("Circle yellow", checked = true, shape = RaftCheckboxShape.Circle)
