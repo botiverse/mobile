@@ -6,6 +6,8 @@ composePlugin = "1.12.2"
 # Compose Multiplatform 1.12.x ships Material3 on its own line (1.9.0 = Jetpack Material3 1.4.0).
 cmpMaterial3 = "1.9.0"
 cmpLifecycle = "2.11.0"
+# JetBrains Navigation 3 (desktop host only for now; built against CMP 1.10+, we ship 1.12.2).
+cmpNavigation3 = "1.2.0"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.12.0"
@@ -134,6 +136,7 @@ cmp-material3 = { group = "org.jetbrains.compose.material3", name = "material3",
 cmp-components-resources = { group = "org.jetbrains.compose.components", name = "components-resources", version.ref = "composePlugin" }
 cmp-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "cmpLifecycle" }
 cmp-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "cmpLifecycle" }
+cmp-navigation3-ui = { group = "org.jetbrains.androidx.navigation3", name = "navigation3-ui", version.ref = "cmpNavigation3" }
 androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidxComposeRuntime" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }

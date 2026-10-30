@@ -42,7 +42,7 @@ fun main(args: Array<String>) {
     RaftDesktopComposerTemporaryFiles.install()
 
     application {
-        val navigator = RaftDesktopNavigator(onEmpty = ::exitApplication)
+        val navigator = RaftDesktopNavigator()
         val windowState = rememberWindowState(size = DpSize(1200.dp, 800.dp))
         // Default 1200x800: wide enough (>= 840dp) for the rail and split panes. Narrower windows
         // get the phone layout, down to a phone-sized minimum.

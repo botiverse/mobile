@@ -2,13 +2,11 @@ package build.raft.app.desktop
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -26,25 +24,46 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.ui.NavDisplay
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.RaftCmpHost
 
 /**
- * Renders [navigator]'s page stack. Every page stays composed while it is on the stack (its state
- * and ViewModels survive a page opened on top, like an Android Activity) but only the top one is
- * laid out and drawn. Each page gets its own host (bridge, navigator, events) and ViewModel store,
- * cleared when the page leaves the stack. Esc / Cmd+[ go back. A mouse's back / forward buttons
- * step through the shell's history ([RaftDesktopNavigator.history]).
+ * Renders [navigator]'s back stack with Navigation 3: a `NavDisplay` over [RaftDesktopNavigator.pages]
+ * with [RaftDesktopStackSceneStrategy]. Every page stays composed while it is on the stack (its
+ * state and ViewModels survive a page opened on top, like an Android Activity) but only the top one
+ * is laid out and drawn. Each page gets its own host (bridge, navigator, events) and ViewModel
+ * store, cleared when the page leaves the stack. Esc / Cmd+[ go back. A mouse's back / forward
+ * buttons step through the shell's history ([RaftDesktopNavigator.history]).
+ */
+@Composable
+fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
+    Box(Modifier.fillMaxSize()) {
+        RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
+        RaftDesktopToasts.Overlay()
+    }
+}
+
+/**
+ * The back stack's `NavDisplay` with the window's back input; [pageContent] draws one entry.
+ * Back with only the root page left does nothing here: the key handler leaves the key unconsumed
+ * (the shell's own back handling — closing a pane, its wide history — gets it) and `NavDisplay`'s
+ * back handler is off (no previous entry) and a no-op anyway.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
-    val top = navigator.pages.lastOrNull() ?: return
+internal fun RaftDesktopNavDisplay(
+    navigator: RaftDesktopNavigator,
+    pageContent: @Composable (RaftDesktopPage) -> Unit,
+) {
+    // The root page never leaves the stack; guard NavDisplay's non-empty requirement anyway.
+    if (navigator.pages.isEmpty()) return
+    val sceneStrategy = remember { RaftDesktopStackSceneStrategy<RaftDesktopPage>() }
     Box(
         Modifier
             .fillMaxSize()
@@ -62,14 +81,18 @@ fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
                 raftDesktopHistoryMouseButton(event.button)?.let(navigator::history)
             }
     ) {
-        navigator.pages.forEach { page ->
-            key(page.id) {
-                Box(if (page === top) Modifier.fillMaxSize() else Modifier.size(0.dp)) {
-                    RaftDesktopPageContent(navigator, page)
+        NavDisplay(
+            backStack = navigator.pages,
+            // The window's back event (Esc that nothing focused or no page handler took): close the
+            // pushed page on top; never the root (back() is false there).
+            onBack = { if (navigator.pages.size > 1) navigator.back() },
+            sceneStrategies = listOf(sceneStrategy),
+            entryProvider = { page ->
+                NavEntry(page, contentKey = page.contentKey, metadata = raftDesktopPaneRoleMetadata(page.args.pageName)) {
+                    pageContent(page)
                 }
-            }
-        }
-        RaftDesktopToasts.Overlay()
+            },
+        )
     }
 }
 
