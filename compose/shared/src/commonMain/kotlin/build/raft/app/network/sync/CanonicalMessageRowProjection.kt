@@ -13,7 +13,8 @@ import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireExternalAuthor
-import build.raft.app.data.toExternalMessageAuthor
+import build.raft.app.data.externalMessageAuthorOrFallback
+import build.raft.app.data.externalSenderIdOrSyntheticKey
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
@@ -71,21 +72,30 @@ fun CanonicalMessageRow.toAppMessage(
             diagnostics = diagnostics,
             contract = MemberKindWireContract.MessageSender,
         ) ?: return null
-    // RealtimeEventMapper parity: an external_projection sender is shown only with its frozen author.
+    // RealtimeEventMapper parity: an External sender keeps its row; a missing/partial frozen
+    // author renders with the fallback author, and a blank sender id becomes a synthetic key.
     val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=canonical_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
     val resolvedExternalAuthor =
-        if (external) externalAuthor?.toWireExternalAuthor()?.toExternalMessageAuthor(senderName.ifBlank { null }) else null
+        if (external) {
+            externalMessageAuthorOrFallback(
+                externalAuthor?.toWireExternalAuthor(),
+                senderName.ifBlank { null },
+                "canonical_message_sender",
+                id,
+                diagnostics,
+            )
+        } else {
+            null
+        }
+    val authorId =
+        if (resolvedExternalAuthor != null) externalSenderIdOrSyntheticKey(senderId, resolvedExternalAuthor, id) else senderId
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val fallbackAuthor = MemberProfile(
-        id = MemberId(senderId),
+        id = MemberId(authorId),
         displayName = resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId },
-        handle = senderName.ifBlank { senderId },
+        handle = resolvedExternalAuthor?.let { senderName.ifBlank { it.displayName } } ?: senderName.ifBlank { senderId },
         kind = authorKind,
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
+        description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
         avatarUrl = resolvedExternalAuthor?.avatarUrl,
         avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId }).toRaftAvatarLabel(),
         presence = Presence.Offline,
@@ -122,7 +132,8 @@ fun CanonicalMessageRow.toAppMessage(
     )
 }
 
-/** Same lossy app projection as the REST/realtime `WireExternalAuthor` (workspaceName is not shown). */
+/** Same lossy app projection as the REST/realtime `WireExternalAuthor` (workspaceName is not shown).
+ *  Blank strings are fields the decoder kept as absent; `toExternalMessageAuthor` reads them as absent. */
 private fun CanonicalExternalAuthorWire.toWireExternalAuthor(): WireExternalAuthor = WireExternalAuthor(
     displayName = displayName,
     provider = provider,
@@ -136,7 +147,8 @@ private fun CanonicalExternalAuthorWire.toWireExternalAuthor(): WireExternalAuth
     workspaceId = workspaceId,
     installId = installId,
     appRegistrationId = appRegistrationId,
-    actorProjectionRevision = actorProjectionRevision,
+    // The server requires revision > 0; the decoder stores 0 for an absent one.
+    actorProjectionRevision = actorProjectionRevision.takeIf { it > 0 },
 )
 
 private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(

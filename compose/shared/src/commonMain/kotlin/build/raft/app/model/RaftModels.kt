@@ -253,12 +253,18 @@ data class ExternalMessageAuthor(
     val installId: String? = null,
     val appRegistrationId: String? = null,
     val actorProjectionRevision: Long? = null,
+    /**
+     * The wire carried no display name (no `externalAuthor.displayName`, no `senderName`):
+     * [displayName] is an English stand-in and the message header shows the localized
+     * "External user" label instead.
+     */
+    val displayNameIsFallback: Boolean = false,
 )
 
-/** Provider subtitle label, web parity (`formatProviderLabel` in MessageItem.tsx):
- *  "slack" renders as "Slack", other providers pass through verbatim. */
-fun ExternalMessageAuthor.providerLabel(): String =
-    provider.trim().let { if (it.equals("slack", ignoreCase = true)) "Slack" else it }
+/** Provider subtitle label, web parity (`formatExternalProviderLabel`):
+ *  "slack" renders as "Slack", other providers pass through verbatim, blank is null. */
+fun ExternalMessageAuthor.providerLabel(): String? =
+    provider.trim().takeIf { it.isNotEmpty() }?.let { if (it.equals("slack", ignoreCase = true)) "Slack" else it }
 
 @Serializable
 enum class Presence {

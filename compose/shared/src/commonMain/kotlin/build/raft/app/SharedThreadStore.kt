@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
@@ -15603,10 +15604,14 @@ internal fun RaftThreadMessageItem.toMessage(
             diagnostics = diagnostics,
             contract = MemberKindWireContract.ProjectedMessageAuthor,
         ) ?: return null
-    if (authorMemberKind == MemberKind.External && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=thread_item_author field=externalAuthor value=missing messageId=$id")
-        return null
-    }
+    // An External row without its frozen author (older cached rows) keeps rendering with the fallback author.
+    val resolvedExternalAuthor =
+        if (authorMemberKind == MemberKind.External) {
+            externalAuthor
+                ?: externalMessageAuthorOrFallback(null, authorName, "thread_item_author", id, diagnostics)
+        } else {
+            null
+        }
     val resolvedMessageType = messageType.strictMessageTypeOrNull("thread_item_message", diagnostics) ?: return null
     val hasTaskProjection = taskId != null || taskNumber != null || taskStatus != null
     val resolvedTaskStatus =
@@ -15658,7 +15663,7 @@ internal fun RaftThreadMessageItem.toMessage(
         attachments = attachments.map { attachment -> attachment.toAttachment() },
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
-        externalAuthor = if (authorMemberKind == MemberKind.External) externalAuthor else null,
+        externalAuthor = resolvedExternalAuthor,
         delegatedBy = if (authorMemberKind == MemberKind.Human) delegatedBy else null,
         deletedAt = deletedAt,
         replyCount = replyCount,

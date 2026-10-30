@@ -33,7 +33,9 @@ import build.raft.app.model.Heartbeat
 import build.raft.app.data.WireDelegatedBy
 import build.raft.app.data.WireExternalAuthor
 import build.raft.app.data.toMessageDelegatedBy
-import build.raft.app.data.toExternalMessageAuthor
+import build.raft.app.data.LenientWireExternalAuthorSerializer
+import build.raft.app.data.externalMessageAuthorOrFallback
+import build.raft.app.data.externalSenderIdOrSyntheticKey
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
@@ -492,6 +494,7 @@ private data class MessageWireDto(
     val forwardBundle: WireForwardMessageBundle? = null,
     val conversationContext: ConversationContextWireDto? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
+    @Serializable(with = LenientWireExternalAuthorSerializer::class)
     val externalAuthor: WireExternalAuthor? = null,
     /** `MessageMention[]` (web `messageStore.ts`); null/absent on producers that omit it. */
     val mentions: List<MessageMentionWireDto>? = null,
@@ -937,12 +940,6 @@ private data class PinnedUpdatedDto(
 // ── DTO → domain mappers ─────────────────────────────────────────────────────
 
 private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
-    val authorId =
-        senderId?.trim()?.takeIf { it.isNotBlank() }
-            ?: run {
-                diagnostics("projection_value_rejected source=realtime_message_sender field=member_id value=blank")
-                return null
-            }
     val resolvedMessageType = messageType.strictMessageTypeOrNull("realtime_message_type", diagnostics) ?: return null
     val senderKind =
         senderType.strictMemberKindOrNull(
@@ -951,19 +948,32 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
             contract = MemberKindWireContract.MessageSender,
         ) ?: return null
     val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=realtime_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
+    // A missing/partial externalAuthor renders with a fallback author, never drops the message.
     val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName) else null
+        if (external) {
+            externalMessageAuthorOrFallback(externalAuthor, senderName, "realtime_message_sender", id, diagnostics)
+        } else {
+            null
+        }
+    // An External sender (Slack bridge) may arrive without a sender id: it gets a stable synthetic
+    // key, never a navigation target. User/agent senders still require a real id.
+    val authorId =
+        if (resolvedExternalAuthor != null) {
+            externalSenderIdOrSyntheticKey(senderId, resolvedExternalAuthor, id)
+        } else {
+            senderId?.trim()?.takeIf { it.isNotBlank() }
+                ?: run {
+                    diagnostics("projection_value_rejected source=realtime_message_sender field=member_id value=blank")
+                    return null
+                }
+        }
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(authorId),
         displayName = resolvedExternalAuthor?.displayName ?: senderName ?: authorId,
-        handle = senderName ?: authorId,
+        handle = senderName ?: resolvedExternalAuthor?.displayName ?: authorId,
         kind = authorKind,
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
+        description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
         avatarUrl = resolvedExternalAuthor?.avatarUrl,
         avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).toRaftAvatarLabel(),
         presence = Presence.Offline,

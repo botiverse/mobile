@@ -11,6 +11,9 @@ import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.canonical.message.TaskDomainFields
+import build.raft.app.MemberKindWireContract
+import build.raft.app.model.MemberKind
+import build.raft.app.parsedMemberKindOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -85,13 +88,20 @@ fun decodeCanonicalMessageWire(
         .values
         .toSet()
 
+    // An External sender (Slack bridge, `external_projection` / `third_party_app`) may carry no
+    // sender id; the row is kept with a blank one and projected with a synthetic, non-navigable key.
+    // User/agent senders still require a string id.
+    val externalSender =
+        rawJson.strictString("senderType").parsedMemberKindOrNull(MemberKindWireContract.MessageSender) ==
+            MemberKind.External
+    val externalSenderIdMissing = externalSender && rawJson.strictString("senderId") == null
     val invalidRequired = buildSet {
-        REQUIRED_WIRE_KEYS.filterTo(this) { !rawJson.containsKey(it) }
+        REQUIRED_WIRE_KEYS.filterTo(this) { !rawJson.containsKey(it) && !(it == "senderId" && externalSenderIdMissing) }
         if (rawJson.strictString("id") == null) add("id")
         if (rawJson.strictLong("seq") == null) add("seq")
         if (rawJson.strictString("channelId") == null) add("channelId")
         if (rawJson.strictString("senderType") == null) add("senderType")
-        if (rawJson.strictString("senderId") == null) add("senderId")
+        if (rawJson.strictString("senderId") == null && !externalSenderIdMissing) add("senderId")
         if (rawJson.strictString("content") == null) add("content")
         if (rawJson.strictString("messageType") == null) add("messageType")
         if (!rawJson.isNullableString("randomId")) add("randomId")
@@ -108,7 +118,7 @@ fun decodeCanonicalMessageWire(
         channelId = rawJson.strictString("channelId")!!,
         seq = rawJson.strictLong("seq")!!,
         senderType = rawJson.strictString("senderType")!!,
-        senderId = rawJson.strictString("senderId")!!,
+        senderId = rawJson.strictString("senderId") ?: "",
         content = rawJson.strictString("content")!!,
         messageType = rawJson.strictString("messageType")!!,
         createdAt = rawJson.strictString("createdAt")!!,
@@ -125,7 +135,8 @@ fun decodeCanonicalMessageWire(
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
         // RFC 077: `null` = live, absent on the task-status projector; neither is a retraction.
         deletedAt = normalizeCanonicalRetraction(rawJson.nullableString("deletedAt")),
-        // `null` for every non-external sender; a malformed object decodes to null like the other nested shapes.
+        // `null` for every non-external sender and for a non-object value. A partial object is kept:
+        // absent fields are stored blank and the projection fills the display fallback.
         externalAuthor = (rawJson["externalAuthor"] as? JsonObject)?.toCanonicalExternalAuthor(),
     )
 
@@ -219,21 +230,26 @@ private fun JsonObject.toCanonicalConversationContext(): CanonicalConversationCo
     )
 }
 
-private fun JsonObject.toCanonicalExternalAuthor(): CanonicalExternalAuthorWire? =
+/**
+ * Keeps whatever the wire carried. The persisted row shape requires every identity string, so an
+ * absent one is stored as `""` (and an absent revision as 0); the app projection treats blank as
+ * absent and shows the fallback author rather than dropping the message.
+ */
+private fun JsonObject.toCanonicalExternalAuthor(): CanonicalExternalAuthorWire =
     CanonicalExternalAuthorWire(
-        actorKind = strictString("actorKind") ?: return null,
-        actorProjectionRevision = strictLong("actorProjectionRevision") ?: return null,
-        appRegistrationId = strictString("appRegistrationId") ?: return null,
+        actorKind = strictString("actorKind").orEmpty(),
+        actorProjectionRevision = strictLong("actorProjectionRevision") ?: 0L,
+        appRegistrationId = strictString("appRegistrationId").orEmpty(),
         avatarDigest = nullableString("avatarDigest"),
         avatarUrl = nullableString("avatarUrl"),
-        displayName = strictString("displayName") ?: return null,
-        externalActorId = strictString("externalActorId") ?: return null,
-        externalConversationId = strictString("externalConversationId") ?: return null,
-        externalMessageId = strictString("externalMessageId") ?: return null,
-        installId = strictString("installId") ?: return null,
-        projectionId = strictString("projectionId") ?: return null,
-        provider = strictString("provider") ?: return null,
-        workspaceId = strictString("workspaceId") ?: return null,
+        displayName = strictString("displayName").orEmpty(),
+        externalActorId = strictString("externalActorId").orEmpty(),
+        externalConversationId = strictString("externalConversationId").orEmpty(),
+        externalMessageId = strictString("externalMessageId").orEmpty(),
+        installId = strictString("installId").orEmpty(),
+        projectionId = strictString("projectionId").orEmpty(),
+        provider = strictString("provider").orEmpty(),
+        workspaceId = strictString("workspaceId").orEmpty(),
         workspaceName = nullableString("workspaceName"),
     )
 

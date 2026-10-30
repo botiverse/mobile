@@ -415,6 +415,7 @@
     <string name="thread_author_you">你</string>
     <string name="thread_error_open_thread">无法打开消息列</string>
     <string name="thread_external_author_hint">外部 %1$s 用户</string>
+    <string name="message_author_external_fallback">外部用户</string>
     <string name="thread_error_open_profile">无法打开资料</string>
     <string name="thread_error_comments_unavailable">评论不可用</string>
     <string name="thread_error_send_comment">无法发送评论</string>
