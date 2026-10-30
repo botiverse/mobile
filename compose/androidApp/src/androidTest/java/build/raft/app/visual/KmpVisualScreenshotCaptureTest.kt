@@ -1484,11 +1484,12 @@ class KmpVisualScreenshotCaptureTest {
                         // changedRatio is deliberately absent from both - see the
                         // detect lambda above for why it cannot decide this.
                         val menuReported = logcatContainsToken(menuVisibleToken)
-                        val addedSaturated = after.countNewSaturatedPixelsComparedWith(
+                        val addedSaturatedRegion = after.countNewSaturatedPixelsComparedWith(
                             before = before,
                             topPx = 0,
                             bottomPx = after.height,
-                        ).count
+                        )
+                        val addedSaturated = addedSaturatedRegion.count
                         // The two are kept as separate evidence, not merged into one
                         // verdict. @HuaTuo and @LiBai drew the line: the token is the
                         // app's own account of itself, the pixels are the only
@@ -1535,11 +1536,42 @@ class KmpVisualScreenshotCaptureTest {
                                 threadOpenBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
                         )
                         if (composerBoundaryVisible) {
+                            // The last row's menu may never sit UNDER the Composer (artin,
+                            // 2026-08-25). Two placements satisfy that:
+                            //  - it opens below the finger and paints over the Composer
+                            //    (bottom band changes); this was the only outcome while the
+                            //    menu was 129dp tall;
+                            //  - it does not fit below and the Auto placement flips it above
+                            //    the finger, so its bottom edge sits at press - 8dp, above the
+                            //    pressed row and therefore above the Composer.
+                            // Since #3768 (Select Text, web #11467) the Compact menu always has
+                            // a second tool row (181dp), which no longer fits between the last
+                            // row and the screen edge, so the flip is now the expected outcome:
+                            // the band only catches the menu shadow's tail (0.0499 on runs
+                            // 40587985314..40958967322). The flip is recognised by the menu's
+                            // coloured reaction row (its top row) ending above the press point;
+                            // a menu opened below starts below it.
+                            val pressYPx =
+                                targetYDp * InstrumentationRegistry.getInstrumentation()
+                                    .targetContext.resources.displayMetrics.density
+                            val flippedAboveFinger =
+                                addedSaturatedRegion.maxY in 0 until pressYPx.toInt()
+                            Log.i(
+                                VISUAL_LOG_TAG,
+                                "$caseId compact-menu composer bottomBandChangedRatio=" +
+                                    "$composerChangedRatio reactionRowY=" +
+                                    "${addedSaturatedRegion.minY}..${addedSaturatedRegion.maxY} " +
+                                    "pressYPx=$pressYPx flippedAboveFinger=$flippedAboveFinger"
+                            )
                             assertTrue(
-                                "Compact menu must paint over the Composer boundary (by design; " +
-                                    "otherwise the Composer would cover the menu); " +
-                                    "bottomBandChangedRatio=$composerChangedRatio",
-                                composerChangedRatio >= THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO
+                                "Compact menu on the last row must either paint over the Composer " +
+                                    "boundary or open above the pressed row (otherwise the " +
+                                    "Composer would cover the menu); " +
+                                    "bottomBandChangedRatio=$composerChangedRatio " +
+                                    "reactionRowY=${addedSaturatedRegion.minY}.." +
+                                    "${addedSaturatedRegion.maxY} pressYPx=$pressYPx",
+                                flippedAboveFinger ||
+                                    composerChangedRatio >= THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO
                             )
                         }
                         menuArtifact = after
@@ -7314,7 +7346,9 @@ class KmpVisualScreenshotCaptureTest {
         // - if it did not overlap, the Composer would cover the menu instead. So
         // this is a FLOOR, not a ceiling: too little change in the bottom band
         // means the menu failed to reach the Composer. Correct reading observed
-        // 0.14443202; the no-gesture noise floor is 2.7e-5.
+        // 0.14443202 with the 129dp menu; the no-gesture noise floor is 2.7e-5.
+        // Only one of the two accepted placements: since #3768 the 181dp menu
+        // flips above the last row instead (see the assertion's comment).
         private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO = 0.05f
         private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
