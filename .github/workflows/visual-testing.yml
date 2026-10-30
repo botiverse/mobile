@@ -477,12 +477,13 @@ jobs:
     # Blacksmith macOS pool (ios-release.yml's Xcode 26.6 fallback pool). Not yet on the
     # Xcode 27.1 default (2026-10-28): that needs GitHub's billed xcode-27 image and would move
     # the capture SDK; it uses the image's default Xcode.
-    runs-on: blacksmith-12vcpu-macos-latest
-    timeout-minutes: 75
+    runs-on: xcode-27
+    timeout-minutes: 90
     env:
+      XCODE_APP_PATH: /Applications/Xcode_27.1.app
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
       # baseline geometry — no crop step needed before diffing.
-      SIM_DEVICE: iPhone 14
+      SIM_DEVICE: iPhone 17 Pro
       # compile visual fixture @Page routes into commonMain; the cocoapods
       # phase runs gradle with this env inherited
       SLOCK_VISUAL_FIXTURES: "true"

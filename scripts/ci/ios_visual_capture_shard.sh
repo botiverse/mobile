@@ -97,7 +97,9 @@ while IFS=$'\t' read -r case_id page_name page_data; do
     printf '%s\n' "$handled_scroll_drops" \
       | tee "$out_dir/$case_id.scroll-safety.log"
   fi
+  sleep 4
   xcrun simctl io "$udid" screenshot "$out_dir/$case_id.png"
+  cp "$launch_log" "$diag_dir/$case_id.launch.log" || true
   # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
   # after the first frame so the metadata step can merge per-case caps.
   grep "SLOCK_RICHTEXT_CAPS " "$launch_log" > "$out_dir/$case_id.caps.log" 2>/dev/null || true

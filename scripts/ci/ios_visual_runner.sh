@@ -47,7 +47,18 @@ rs = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and (r.get
 if not rs: sys.exit("No available iOS Simulator runtime; install it in Xcode before using this runner")
 print(max(rs, key=lambda r: tuple(map(int, r["version"].split("."))))["identifier"])
 ')
-    devtype=$(xcrun simctl list devicetypes -j | python3 -c 'import json,sys,os; print(next(d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == os.environ["SIM_DEVICE"]))')
+    devtype=$(RUNTIME="$runtime" python3 -c '
+import json,os,subprocess
+rts=json.loads(subprocess.check_output(["xcrun","simctl","list","runtimes","-j"]))["runtimes"]
+rt=next(r for r in rts if r["identifier"]==os.environ["RUNTIME"])
+sup=[d for d in rt.get("supportedDeviceTypes",[]) if d.get("productFamily","iPhone")=="iPhone" or "iPhone" in d["name"]]
+names=[d["name"] for d in sup]
+print("supported:", names, file=__import__("sys").stderr)
+want=os.environ["SIM_DEVICE"]
+pick=next((d for d in sup if d["name"]==want), None) or next((d for d in sup if "Pro" in d["name"] and "Max" not in d["name"]), None) or sup[-1]
+print(pick["identifier"])
+')
+    echo "runtime=$runtime devtype=$devtype" >&2
     : > "$IOS_CAPTURE_TEMP/simulator-udids"
     i=0
     while [ "$i" -lt "$shards" ]; do

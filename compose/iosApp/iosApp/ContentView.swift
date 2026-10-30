@@ -27,8 +27,8 @@ struct ContentView: View {
                 // a VC embedded via a representable never gets consulted. The home
                 // indicator has no SwiftUI control before iOS 16 (deployment target
                 // is 14.1); left visible for now (fixed bottom bar, low diff impact).
-                .statusBar(hidden: true)
                 .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { RaftProbeViewDump.run() }
                     // Settle signal for the capture job: it reads this line via
                     // `simctl launch --console` (+ a small buffer) before taking
                     // the screenshot, so it never catches the launch splash.
@@ -196,5 +196,35 @@ private struct ShellContextResolver: UIViewRepresentable {
                     ?? RaftIosShellContext()
             onResolve(resolved)
         }
+    }
+}
+
+
+// PROBE (not for merge): prints every view or layer that could be a hairline near the top inset.
+enum RaftProbeViewDump {
+    static func run() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let ws = scene as? UIWindowScene else { continue }
+            for window in ws.windows {
+                let top = window.safeAreaInsets.top
+                print("RAFT_VIEW_DUMP window=\(type(of: window)) bounds=\(window.bounds) safeTop=\(top) scale=\(window.screen.scale) statusBarHidden=\(ws.statusBarManager?.isStatusBarHidden ?? false)")
+                walk(window, window: window, top: top, depth: 0)
+            }
+        }
+    }
+
+    private static func walk(_ view: UIView, window: UIWindow, top: CGFloat, depth: Int) {
+        let f = view.convert(view.bounds, to: window)
+        let near = abs(f.minY - top) < 3 || abs(f.maxY - top) < 3
+        if depth < 12 || f.height <= 3 || near {
+            print("RAFT_VIEW_DUMP v d=\(depth) \(type(of: view)) frame=\(f) hidden=\(view.isHidden) alpha=\(view.alpha) bg=\(String(describing: view.backgroundColor)) clips=\(view.clipsToBounds)")
+        }
+        for layer in view.layer.sublayers ?? [] where layer.delegate == nil {
+            let lf = view.layer.convert(layer.frame, to: window.layer)
+            if lf.height <= 3 || abs(lf.minY - top) < 3 || abs(lf.maxY - top) < 3 {
+                print("RAFT_VIEW_DUMP l d=\(depth) owner=\(type(of: view)) \(type(of: layer)) frame=\(lf) hidden=\(layer.isHidden) opacity=\(layer.opacity) bg=\(String(describing: layer.backgroundColor))")
+            }
+        }
+        for sub in view.subviews { walk(sub, window: window, top: top, depth: depth + 1) }
     }
 }
