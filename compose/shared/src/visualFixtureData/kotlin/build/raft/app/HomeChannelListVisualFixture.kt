@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.model.AgentStatus
@@ -82,7 +83,11 @@ private val homeChannelListAgentStatuses: Map<String, SharedServerMemberStatus> 
  * test (`HomeChannelListScreenshotTest`); the caller pins the theme.
  */
 @Composable
-internal fun HomeChannelListVisualContent(unreadStale: Boolean = false) {
+internal fun HomeChannelListVisualContent(
+    unreadStale: Boolean = false,
+    /** A status bar inset for the head to paint under (iOS-like phone top); null keeps the page's own. */
+    topSafeArea: Dp? = null,
+) {
     val fixture = VisualFixtureData.HomeChannelList
     val resolver: RaftAgentStatusResolver =
         remember {
@@ -112,6 +117,7 @@ internal fun HomeChannelListVisualContent(unreadStale: Boolean = false) {
         showBottomBar = true,
         searchAndActivityOnShellNav = true,
         outerPadding = 0.dp,
-        unreadStale = unreadStale
+        unreadStale = unreadStale,
+        topSafeAreaOverride = topSafeArea,
     )
 }

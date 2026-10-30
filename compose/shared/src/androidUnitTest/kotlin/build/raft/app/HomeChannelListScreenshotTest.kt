@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -74,7 +76,27 @@ class HomeChannelListScreenshotTest {
     fun homeChannelListBotsDark() =
         capture("screens.home.channel-list.bots.dark", RaftAppAppearance.Dark, RaftThemeId.Bots)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, theme: RaftThemeId = RaftThemeId.Raft) {
+    // The head under an iPhone status bar (iPhone 17 Pro: 62pt): the frame runs up under it in one
+    // piece, with no line where the status bar ends (artin 2026-10-30, Boring theme on iOS).
+    @Test
+    fun homeChannelListStatusBarInsetLight() =
+        capture("screens.home.channel-list.status-bar", RaftAppAppearance.Light, topSafeArea = IosStatusBarInset)
+
+    @Test
+    fun homeChannelListStatusBarInsetBoringLight() =
+        capture(
+            "screens.home.channel-list.status-bar.boring",
+            RaftAppAppearance.Light,
+            RaftThemeId.Boring,
+            topSafeArea = IosStatusBarInset,
+        )
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        theme: RaftThemeId = RaftThemeId.Raft,
+        topSafeArea: Dp? = null,
+    ) {
         RaftAppThemeState.apply(appearance)
         RaftAppThemeState.setRaftTheme(theme)
         val activity = activities.launch()
@@ -85,7 +107,7 @@ class HomeChannelListScreenshotTest {
                 pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
             }
         activity.setContent {
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { HomeChannelListVisualContent() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { HomeChannelListVisualContent(topSafeArea = topSafeArea) }
         }
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
@@ -110,3 +132,5 @@ class HomeChannelListScreenshotTest {
         return null
     }
 }
+
+private val IosStatusBarInset = 62.dp
