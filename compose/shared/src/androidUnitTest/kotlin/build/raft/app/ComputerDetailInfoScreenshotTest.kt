@@ -1,7 +1,6 @@
 package build.raft.app
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -26,10 +25,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import java.io.File
 import java.time.Duration
-import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertNotNull
-import kotlin.test.fail
 import org.junit.After
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -92,35 +89,8 @@ class ComputerDetailInfoScreenshotTest {
         verifyOrRecord(name, bitmap)
     }
 
-    private fun verifyOrRecord(name: String, actual: Bitmap) {
-        val reportDir = File("build/reports/home-screenshots").apply { mkdirs() }
-        File(reportDir, "$name.png").outputStream().use { actual.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        val golden = File(GOLDEN_DIR, "$name.png")
-        if (record) {
-            golden.parentFile.mkdirs()
-            golden.outputStream().use { actual.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            println("recorded ${golden.path} (${actual.width}x${actual.height})")
-            return
-        }
-        val actualCopy = File(reportDir, "$name.actual.png")
-        if (!golden.exists()) {
-            actualCopy.outputStream().use { actual.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            fail("missing golden ${golden.path}; record with RAFT_SCREENSHOT_RECORD=true (actual: ${actualCopy.path})")
-        }
-        val expected = BitmapFactory.decodeFile(golden.path) ?: fail("unreadable golden ${golden.path}")
-        if (expected.width != actual.width || expected.height != actual.height) {
-            actualCopy.outputStream().use { actual.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            fail("$name: size ${actual.width}x${actual.height} != golden ${expected.width}x${expected.height}")
-        }
-        val diff = Bitmap.createBitmap(actual.width, actual.height, Bitmap.Config.ARGB_8888)
-        val mismatched = screenshotMismatches(expected, actual, diff)
-        val ratio = mismatched.toDouble() / (actual.width * actual.height)
-        if (ratio > MAX_MISMATCH_RATIO) {
-            actualCopy.outputStream().use { actual.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            File(reportDir, "$name.diff.png").outputStream().use { diff.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            fail("$name: $mismatched pixels (${"%.4f".format(ratio * 100)}%) differ from ${golden.path}; actual and diff in ${reportDir.path}")
-        }
-    }
+    private fun verifyOrRecord(name: String, actual: Bitmap) =
+        RaftRobolectricScreenshot.verifyOrRecord(name, actual, File("build/reports/home-screenshots"))
 
     private fun settle() {
         repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
@@ -135,10 +105,6 @@ class ComputerDetailInfoScreenshotTest {
     }
 
     private companion object {
-        const val GOLDEN_DIR = "src/androidUnitTest/screenshots"
-        const val CHANNEL_DELTA = 8
-        const val MAX_MISMATCH_RATIO = 0.001
-
         val MEMORY_LIMIT_NOT_APPLIED =
             SettingsComputerAgentScopesSnapshot(
                 state = "unavailable",
@@ -147,29 +113,6 @@ class ComputerDetailInfoScreenshotTest {
                 reason = "memory_controller_not_delegated",
                 memoryMax = "6G",
             )
-
-        val record: Boolean =
-            System.getProperty("raft.screenshot.record").toBoolean() ||
-                System.getenv("RAFT_SCREENSHOT_RECORD").toBoolean()
-
-        /** Pixels outside ±[CHANNEL_DELTA] on any ARGB channel; paints them red in [diff]. */
-        fun screenshotMismatches(expected: Bitmap, actual: Bitmap, diff: Bitmap): Int {
-            var mismatched = 0
-            for (y in 0 until actual.height) {
-                for (x in 0 until actual.width) {
-                    val a = actual.getPixel(x, y)
-                    val e = expected.getPixel(x, y)
-                    val same = (0 until 32 step 8).all { shift -> abs(((a ushr shift) and 0xFF) - ((e ushr shift) and 0xFF)) <= CHANNEL_DELTA }
-                    if (same) {
-                        diff.setPixel(x, y, (a and 0x00FFFFFF) or 0x40000000)
-                    } else {
-                        mismatched++
-                        diff.setPixel(x, y, 0xFFFF0000.toInt())
-                    }
-                }
-            }
-            return mismatched
-        }
     }
 }
 

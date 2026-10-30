@@ -64,8 +64,9 @@ benchmarkMacro = "1.5.0"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
 # Roborazzi: record / verify / compare tasks and diff reports for the design system's desktop
-# screenshot tests (compose/designsystem). 1.77.0 is the latest release; its Compose Desktop
-# module is built against CMP 1.10.3, aligned to composePlugin by cmp-ui-test-junit4 below.
+# screenshot tests (compose/designsystem) and :shared's Robolectric ones (roborazzi-android).
+# 1.77.0 is the latest release; its Compose Desktop module is built against CMP 1.10.3, aligned
+# to composePlugin by cmp-ui-test-junit4 below.
 roborazzi = "1.77.0"
 
 [libraries]
@@ -142,6 +143,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
+roborazzi-android = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-painter = { group = "io.github.takahirom.roborazzi", name = "roborazzi-painter", version.ref = "roborazzi" }
 
 [plugins]

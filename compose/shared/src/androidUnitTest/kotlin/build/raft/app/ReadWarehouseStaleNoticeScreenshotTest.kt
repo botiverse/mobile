@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
  * unchanged: the notice is the only difference from the plain captures.
  *
  * Top 470dp of a 390dp-wide phone, enough for the head, the notice and the first rows.
- * Goldens: `src/androidUnitTest/screenshots/<name>.png`; record with `RAFT_SCREENSHOT_RECORD=true`.
+ * Goldens: `src/androidUnitTest/screenshots/<name>.png`; record with `:shared:recordRoborazziDebug`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

@@ -13,7 +13,7 @@ import org.robolectric.annotation.GraphicsMode
  * less 8dp on each side (at most 480dp), 8dp from both screen edges.
  *
  * A 390dp-wide phone, the top 640dp. Goldens: `src/androidUnitTest/screenshots/<name>.png`;
- * record with `RAFT_SCREENSHOT_RECORD=true`.
+ * record with `:shared:recordRoborazziDebug`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
