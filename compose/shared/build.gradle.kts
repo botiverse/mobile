@@ -231,6 +231,13 @@ kotlin {
                 // Embedded web content (RaftSandboxWebView.desktop.kt): desktop only, never on the
                 // Android / iOS graphs. Its JNA-loaded natives ship inside the jar.
                 implementation(libs.wrywebview)
+                // Video / audio attachment playback (RaftVideoPlayer.desktop.kt): AVFoundation on macOS
+                // through the JNI bridge inside the jar. Its kotlinx-datetime 0.8 (only for its disabled
+                // debug log) would bump the app's 0.7.1, and coroutines-test is a mis-scoped runtime dep.
+                implementation("io.github.kdroidfilter:composemediaplayer:${libs.versions.composeMediaPlayer.get()}") {
+                    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-datetime")
+                    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-test")
+                }
             }
         }
         val androidUnitTest by getting {

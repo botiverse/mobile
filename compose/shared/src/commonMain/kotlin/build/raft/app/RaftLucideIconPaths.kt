@@ -491,6 +491,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M9 21H3v-6"),
                     ),
                 )
+            RaftLucideIconName.Minimize2 ->
+                RaftLucideIconSpec(
+                    "minimize-2",
+                    listOf(
+                        RaftLucidePathSpec("m14 10 7-7"),
+                        RaftLucidePathSpec("M20 10h-6V4"),
+                        RaftLucidePathSpec("m3 21 7-7"),
+                        RaftLucidePathSpec("M4 14h6v6"),
+                    ),
+                )
             RaftLucideIconName.Menu ->
                 RaftLucideIconSpec(
                     "menu",
@@ -2023,6 +2033,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M18 21a8 8 0 0 0-16 0"),
                         RaftLucidePathSpec("M 5.0 8.0 A 5.0 5.0 0 1 0 15.0 8.0 A 5.0 5.0 0 1 0 5.0 8.0 Z"),
                         RaftLucidePathSpec("M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"),
+                    ),
+                )
+            RaftLucideIconName.Volume2 ->
+                RaftLucideIconSpec(
+                    "volume-2",
+                    listOf(
+                        RaftLucidePathSpec("M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"),
+                        RaftLucidePathSpec("M16 9a5 5 0 0 1 0 6"),
+                        RaftLucidePathSpec("M19.364 18.364a9 9 0 0 0 0-12.728"),
                     ),
                 )
             RaftLucideIconName.VolumeX ->
