@@ -3804,7 +3804,7 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_member_detail",
             pageData = memberDetailVisualPageData(
                 instanceId = "visual-members-human-profile",
-                memberId = "visual-human-1",
+                memberId = "visual-user",
                 memberKind = "human"
             ),
             crop = FULL_VIEWPORT_CROP,

@@ -18,7 +18,6 @@ object VisualFixtureData {
     object Humans {
         object Owner {
             const val ID: String = "visual-user"
-            const val MEMBER_ID: String = "visual-human-1"
             const val NAME: String = "artin"
             const val DISPLAY_NAME: String = "artin"
             const val HANDLE: String = "@artin"

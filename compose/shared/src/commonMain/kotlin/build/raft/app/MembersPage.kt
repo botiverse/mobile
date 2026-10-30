@@ -1859,7 +1859,7 @@ private val membersAgentDetailVisualMember = MemberProfile(
 )
 
 private val membersHumanDetailVisualMember = MemberProfile(
-    id = MemberId("visual-human-1"),
+    id = MemberId("visual-user"),
     displayName = "artin",
     handle = "@artin",
     kind = MemberKind.Human,
