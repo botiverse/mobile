@@ -266,7 +266,7 @@ object VisualFixtureData {
             const val DISPLAY_NAME: String = "Daemon Only Probe"
             const val AVATAR: String = "pixel:robot"
             const val AVATAR_LABEL: String = "DO"
-            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
+            const val DESCRIPTION: String = "Bound to a bare daemon (not a managed Computer): web shows Connected · legacy vX, never a computer version."
             const val STATUS: String = "active"
             const val SERVER_ROLE: String = "member"
             const val ACTIVITY: String = "working"
