@@ -231,19 +231,48 @@ internal fun AnnotatedString.Builder.appendRaftInlineGap(width: Dp) {
 }
 
 /**
- * Appends a spacer [width] wide that never wraps away from its neighbours: a word joiner whose
- * advance is its letter spacing. Inside a chip box use this, not a placeholder: the iOS (Skia)
- * line breaker makes every placeholder a word of its own and breaks on either side of it, word
- * joiner or not, so a placeholder lead could end a line while the label wrapped, leaving the
- * chip box as a sliver at the line end (artin 10-29). Text keeps the joiner on both renderers.
+ * Appends a spacer [width] wide inside a chip box that never wraps away from the label, in the
+ * form each text engine actually honours ([asPlaceholder], see
+ * [raftPlatformInlineSpacerIsPlaceholder]). [leading]: the spacer precedes the label (the word
+ * joiner goes after it), else it follows the label (the joiner goes before it).
+ *
+ * - Android (Minikin): a gap placeholder glued by a word joiner. Android 15+ Minikin adds no letter
+ *   spacing at the edges of a style run, so a one-character letter-spaced run has no advance at
+ *   all: the letter-spaced joiner below collapsed to 0 and the chip lost its padding (artin 10-30,
+ *   "#3954" clipped). Android's line breaker honours the joiner around a placeholder.
+ * - Skia (iOS, desktop): a word joiner whose advance is its letter spacing. Skia's line breaker
+ *   makes every placeholder a word of its own and breaks on either side of it, word joiner or
+ *   not, so a placeholder lead could end a line while the label wrapped, leaving the chip box as a
+ *   sliver at the line end (artin 10-29). Skia letter-spaces a lone joiner.
+ *
  * [mark] is painted inside the spacer by [raftInlineDecorations].
  */
-internal fun AnnotatedString.Builder.appendRaftInlineSpacer(width: Dp, mark: RaftInlineMarkStyle? = null) {
+internal fun AnnotatedString.Builder.appendRaftInlineSpacer(
+    width: Dp,
+    leading: Boolean,
+    mark: RaftInlineMarkStyle? = null,
+    asPlaceholder: Boolean = raftPlatformInlineSpacerIsPlaceholder(),
+) {
     if (width <= 0.dp) return
+    if (asPlaceholder) {
+        if (!leading) append(RaftInlineWordJoiner)
+        if (mark != null) pushStringAnnotation(RAFT_INLINE_MARK_ANNOTATION_TAG, mark.encode())
+        appendRaftInlineGap(width)
+        if (mark != null) pop()
+        if (leading) append(RaftInlineWordJoiner)
+        return
+    }
     if (mark != null) pushStringAnnotation(RAFT_INLINE_MARK_ANNOTATION_TAG, mark.encode())
     withStyle(SpanStyle(letterSpacing = width.value.sp)) { append(RaftInlineWordJoiner) }
     if (mark != null) pop()
 }
+
+/**
+ * True where in-box chip padding must be a placeholder rather than a letter-spaced word joiner:
+ * Android's Minikin (no letter spacing on a one-character run since Android 15). False on Skia
+ * (iOS, desktop), whose line breaker splits around placeholders. See [appendRaftInlineSpacer].
+ */
+internal expect fun raftPlatformInlineSpacerIsPlaceholder(): Boolean
 
 /** Width a gap placeholder id reserves, or null when [id] is not a gap. */
 internal fun raftInlineGapWidth(id: String): Dp? =

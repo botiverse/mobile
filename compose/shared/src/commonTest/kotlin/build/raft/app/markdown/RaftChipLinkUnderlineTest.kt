@@ -47,13 +47,24 @@ class RaftChipLinkUnderlineTest {
                 // A chip whose link spans its padding gaps as well as its label.
                 withLink(url("https://b.example")) { withRaftInlineChipGaps(chip) { withRaftInlineBox(chip) { append("#b") } } }
                 append(" and ")
-                // A chip with letter-spaced padding spacers inside its box, linked across the box.
+                // A chip with letter-spaced padding spacers inside its box (Skia), linked across the box.
                 withRaftInlineChipGaps(chip) {
                     withLink(url("https://c.example")) {
                         withRaftInlineBox(chip) {
-                            appendRaftInlineSpacer(4.dp)
+                            appendRaftInlineSpacer(4.dp, leading = true, asPlaceholder = false)
                             append("#c")
-                            appendRaftInlineSpacer(4.dp)
+                            appendRaftInlineSpacer(4.dp, leading = false, asPlaceholder = false)
+                        }
+                    }
+                }
+                append(" and ")
+                // The same with placeholder padding spacers (Android).
+                withRaftInlineChipGaps(chip) {
+                    withLink(url("https://d.example")) {
+                        withRaftInlineBox(chip) {
+                            appendRaftInlineSpacer(4.dp, leading = true, asPlaceholder = true)
+                            append("#d")
+                            appendRaftInlineSpacer(4.dp, leading = false, asPlaceholder = true)
                         }
                     }
                 }
@@ -62,7 +73,7 @@ class RaftChipLinkUnderlineTest {
             }
         assertEquals(listOf("web.example"), text.underlinedTexts())
         val extents = text.raftInlineChipExtents().map { text.text.substring(it.first, it.last + 1) }
-        assertEquals(listOf("￼⁠#a⁠￼", "￼⁠#b⁠￼", "￼⁠⁠#c⁠⁠￼"), extents)
+        assertEquals(listOf("￼⁠#a⁠￼", "￼⁠#b⁠￼", "￼⁠⁠#c⁠⁠￼", "￼⁠￼⁠#d⁠￼⁠￼"), extents)
     }
 
     @Test
