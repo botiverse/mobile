@@ -31,7 +31,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Wide pane roles (artin 2026-10-29): channel settings, and a member's profile, opened from a
- * conversation on the wide layout are a supporting pane right of it (web ChannelSettingsSheet /
+ * conversation on the wide layout (and Add Member, the members page's add view) are a supporting
+ * pane right of it (web ChannelSettingsSheet /
  * ProfilePanel, at most 420 wide), the rail, the sidebar and the conversation staying. The
  * conversation is a fixture; the panes are the channel settings fixture of
  * [ChannelSettingsScreenshotTest] and the agent profile visual fixture. Verify / record as
@@ -57,6 +58,14 @@ class WideChannelSettingsPaneScreenshotTest {
 
     @Test
     fun agentProfilePaneDark() = capture("shell.wide.agent-profile.dark", RaftAppAppearance.Dark, AgentProfilePane)
+
+    // artin 2026-10-30 (web parity): Add Member is the members page's add view, so on the wide
+    // layout it is this pane too (web ChannelMembers `presentation="panel"`), never a centred modal.
+    @Test
+    fun addMemberPaneLight() = capture("shell.wide.add-member", RaftAppAppearance.Light, AddMemberPane)
+
+    @Test
+    fun addMemberPaneDark() = capture("shell.wide.add-member.dark", RaftAppAppearance.Dark, AddMemberPane)
 
     private fun capture(name: String, appearance: RaftAppAppearance, pane: PaneFixture = ChannelSettingsPane) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -136,6 +145,11 @@ class WideChannelSettingsPaneScreenshotTest {
         PaneFixture(
             "Ada: the channel settings now open beside the conversation" to "Linus: and the chat stays where it was",
         ) { ChannelSettingsVisualContent() }
+
+    private val AddMemberPane =
+        PaneFixture(
+            "Ada: can we add Cindy to #design?" to "Linus: Add Member opens beside the chat",
+        ) { ChannelAddMemberPanelVisualScreen() }
 
     private val AgentProfilePane =
         PaneFixture(

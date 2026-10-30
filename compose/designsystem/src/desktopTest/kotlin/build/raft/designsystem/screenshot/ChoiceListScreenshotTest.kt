@@ -12,7 +12,12 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftChoiceListGroup
+import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
@@ -28,7 +33,8 @@ import kotlin.test.Test
  * three rows with two description lines (a used-up window in `warning-strong`), an info action
  * and a disabled row; eight rows with the search field, the frame scrolling past 288dp; a
  * search keeping the chosen row first above the matches; a search matching nothing else; and
- * no items at all.
+ * no items at all. [RaftMultiChoiceList]: checkboxes under Agents / Humans headings with avatars
+ * and a footer, a search keeping the chosen row first, nothing matching, and no items.
  */
 class ChoiceListScreenshotTest {
     private fun capture(name: String, content: @Composable () -> Unit) =
@@ -103,6 +109,69 @@ class ChoiceListScreenshotTest {
                     Case(computers(8), value = "c3", query = "tyz")
                     Caption("Nothing else matches")
                     Case(computers(8), value = "c3", query = "zzz", action = false)
+                }
+            }
+        }
+
+    @Composable
+    private fun people(): List<RaftChoiceListItem<String>> =
+        listOf(
+            Triple("agent:cindy", "Cindy", "Chief of Staff"),
+            Triple("agent:ux", "Product UX Designer", "Turns product feedback, screenshots, and release notes into actionable UX specs."),
+            Triple("human:artin", "artin", "Owner"),
+            Triple("human:designer", "Designer", "Product design"),
+        ).map { (value, name, description) ->
+            val agent = value.startsWith("agent:")
+            RaftChoiceListItem(
+                value = value,
+                label = name,
+                descriptions = listOf(AnnotatedString(description)),
+                searchText = "$name $description",
+                group = if (agent) "agent" else "human",
+                media = {
+                    RaftAvatar(
+                        type = if (agent) RaftAvatarType.Agent else RaftAvatarType.Human,
+                        size = RaftAvatarSize.Xs,
+                        initials = name.take(1).uppercase(),
+                    )
+                },
+            )
+        }
+
+    @Composable
+    private fun MultiCase(values: Set<String>, query: String = "", items: List<RaftChoiceListItem<String>> = people()) {
+        RaftMultiChoiceList(
+            items = items,
+            values = values,
+            onValuesChange = {},
+            query = query,
+            onQueryChange = {},
+            searchPlaceholder = "Name",
+            clearSearchLabel = "Clear search",
+            noMatchLabel = "No members match \"$query\"",
+            emptyLabel = "All members added",
+            groups = listOf(RaftChoiceListGroup("agent", "Agents"), RaftChoiceListGroup("human", "Humans")),
+            footer = { RaftText("Create Agent", style = RaftTheme.typography.callout, modifier = Modifier.width(300.dp)) },
+        )
+    }
+
+    @Test
+    fun choiceListMultiple() =
+        capture("choice_list_multiple") {
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("multiple: groups, media, footer; two chosen")
+                    MultiCase(values = setOf("agent:cindy", "human:designer"))
+                }
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("Searching \"art\": the chosen row stays first in its group")
+                    MultiCase(values = setOf("human:designer"), query = "art")
+                    Caption("Nothing else matches")
+                    MultiCase(values = setOf("human:designer"), query = "zzz")
+                }
+                Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Caption("No items")
+                    MultiCase(values = emptySet(), items = emptyList())
                 }
             }
         }

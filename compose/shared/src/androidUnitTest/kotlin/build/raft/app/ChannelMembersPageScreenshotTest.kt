@@ -17,7 +17,8 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
-import build.raft.app.resources.StringDesc
+import build.raft.app.resources.*
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
@@ -46,7 +47,21 @@ class ChannelMembersPageScreenshotTest {
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
+    @Test
+    fun channelMembersAddLight() = capture("channel.members.add", RaftAppAppearance.Light) { ChannelAddMemberPanelVisualScreen() }
+
+    @Test
+    fun channelMembersAddDark() = capture("channel.members.add.dark", RaftAppAppearance.Dark) { ChannelAddMemberPanelVisualScreen() }
+
+    // Two ticked: their badges above the list and "Add Selected (2)".
+    @Test
+    fun channelMembersAddSelectedLight() = capture("channel.members.add.selected", RaftAppAppearance.Light) { AddMemberSelectedContent() }
+
+    @Test
+    fun channelMembersAddSelectedDark() = capture("channel.members.add.selected.dark", RaftAppAppearance.Dark) { AddMemberSelectedContent() }
+
+    private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ChannelMembersVisualContent() }) {
         // zh-CN copy, restored here (not in a DisposableEffect: the activity outlives the
         // capture) so later screenshot tests in the same JVM keep their locale.
         val previousLocale = StringDesc.localeType
@@ -59,7 +74,7 @@ class ChannelMembersPageScreenshotTest {
                             pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
                         }
                     }
-                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ChannelMembersVisualContent() }
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
             }
         } finally {
             StringDesc.localeType = previousLocale
@@ -134,5 +149,35 @@ private fun ChannelMembersVisualContent() {
             onRemoveMember = {},
             onSubmit = {},
         )
+    }
+}
+
+/** The members page header over the add view with Cindy and Designer ticked. */
+@Composable
+private fun AddMemberSelectedContent() {
+    val candidates =
+        remember {
+            listOf(
+                RaftThreadMemberItem("agent-cindy", "Cindy", handle = "Cindy", kind = "agent", description = "Keeps visual testing release notes aligned.", avatarUrl = "pixel:robot"),
+                RaftThreadMemberItem("agent-product-ux", "Product UX Designer", handle = "Product-UX-Designer", kind = "agent", description = "Turns product feedback, screenshots, and release notes into actionable UX specs.", avatarUrl = "pixel:paint"),
+                RaftThreadMemberItem("user_artin", "artin", handle = "artin", description = "Owner"),
+                RaftThreadMemberItem("user_designer", "Designer", handle = "designer", description = "Product design"),
+            )
+        }
+    build.raft.app.components.RaftDesignSystemTheme {
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+            ChannelMembersPageHeader(title = stringResource(Res.string.thread_action_add_member), count = null, refreshing = false, onBack = {})
+            ThreadAddMemberPanel(
+                members = emptyList(),
+                candidates = candidates,
+                canAddMembers = true,
+                channelName = "design",
+                addMemberStatus = "idle",
+                addMemberErrorCode = null,
+                initialSelectedKeys = setOf("agent:agent-cindy", "human:user_designer"),
+                onSubmitBatch = {},
+                canCreateAgents = true,
+            )
+        }
     }
 }

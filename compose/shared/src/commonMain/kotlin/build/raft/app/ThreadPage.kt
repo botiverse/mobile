@@ -5328,11 +5328,13 @@ private fun ThreadMembersPageScreen() {
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
             canCreateAgents = canCreateAgents,
             localServerId = route.serverId.value,
-            onCreateAgent = { name, mode ->
+            channelName = channelName,
+            // web: the row opens the create dialog itself (managed agent), the channel preselected.
+            onCreateAgent = { name ->
                 if (canCreateAgents && liveOwner == routeOwner) {
                     RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.ChannelMembers)
                     createAgentName = name
-                    createAgentMode = mode
+                    createAgentMode = MembersCreateAgentMode.Managed
                 }
             },
             onSubmit = { selectedMembers ->
@@ -5459,8 +5461,9 @@ internal fun ThreadMembersPageContent(
     onRemoveMember: (RaftThreadMemberItem) -> Unit,
     onSubmit: (List<RaftThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
-    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
+    onCreateAgent: (String) -> Unit = {},
     localServerId: String? = null,
+    channelName: String = "",
 ) {
     val rosterListState = rememberLazyListState()
     // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
@@ -5472,25 +5475,30 @@ internal fun ThreadMembersPageContent(
     // with compose/designsystem parts (ChannelMembersPage.kt).
     RaftDesignSystemTheme {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-        ChannelMembersPageHeader(
-            title = stringResource(if (addDialogVisible) Res.string.thread_action_add_member else Res.string.thread_members_heading),
-            count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },
-            refreshing = rosterPullState.headerRefreshing(refreshing),
-            onBack = {
-                if (addDialogVisible) {
-                    if (addMemberStatus != "adding") onAddVisibleChange(false)
-                } else onBack()
-            },
-        )
+        // In Add Member the header's Back returns to the roster (web `add-member-back`), also when
+        // the members page is the first page of the wide layout's supporting pane (no Close there).
+        CompositionLocalProvider(
+            LocalRaftPaneBackCloses provides (LocalRaftPaneBackCloses.current && !addDialogVisible),
+        ) {
+            ChannelMembersPageHeader(
+                title = stringResource(if (addDialogVisible) Res.string.thread_action_add_member else Res.string.thread_members_heading),
+                count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },
+                refreshing = rosterPullState.headerRefreshing(refreshing),
+                onBack = {
+                    if (addDialogVisible) {
+                        if (addMemberStatus != "adding") onAddVisibleChange(false)
+                    } else onBack()
+                },
+            )
+        }
         if (addDialogVisible && canAddMembers) {
-            ThreadAddMemberModal(
-                inline = true, members = members, candidates = candidates,
-                localServerId = localServerId,
+            ThreadAddMemberPanel(
+                members = members, candidates = candidates,
+                localServerId = localServerId, channelName = channelName,
                 canAddMembers = canAddMembers, agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver, addMemberStatus = addMemberStatus,
-                addMemberErrorCode = addMemberErrorCode,
-                onDismiss = { onAddVisibleChange(false) },
-                onSubmit = { onSubmit(listOf(it)) }, onSubmitBatch = onSubmit,
+                addMemberErrorCode = addMemberErrorCode, bottomSafeArea = bottomSafeArea,
+                onSubmitBatch = onSubmit,
                 canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
             )
         } else {
@@ -6107,61 +6115,65 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
     }
 }
 
+/**
+ * `components.channel.members.add-panel`: the members page in Add Member (web ChannelMembers
+ * `presentation="page"` add view) for #design. As the React fixture, the channel roster is
+ * empty, so every server agent and person is a candidate (agents Cindy and Product UX Designer,
+ * people artin and Designer), nothing is selected yet, and the owner may create agents.
+ */
 @Composable
 internal fun ChannelAddMemberPanelVisualScreen() {
-    val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        ThreadAddMemberModal(
-            members = members,
-            candidates = candidates,
-            canAddMembers = true,
-            addMemberStatus = "idle",
-            addMemberErrorCode = null,
-            initialSelectedId = "user_designer",
-            showSelectedCheckmark = false,
-            onDismiss = {},
-            onSubmit = {}
-        )
-    }
+    ThreadMembersPageContent(
+        members = emptyList(),
+        filteredMembers = emptyList(),
+        filteredExternal = emptyList(),
+        externalMemberCount = 0,
+        candidates = candidates,
+        rosterQuery = TextFieldValue(""),
+        onQueryChange = {},
+        agentsExpanded = true,
+        humansExpanded = true,
+        externalExpanded = true,
+        onAgentsExpandedChange = {},
+        onHumansExpandedChange = {},
+        onExternalExpandedChange = {},
+        addDialogVisible = true,
+        onAddVisibleChange = {},
+        addMemberStatus = "idle",
+        addMemberErrorCode = null,
+        removalGate = ThreadMemberRemovalGateState(),
+        membersFailed = false,
+        membersLoading = false,
+        refreshing = false,
+        canAddMembers = true,
+        agentStatusResolver = EmptyRaftAgentStatusResolver,
+        memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+        onBack = {},
+        onRefresh = {},
+        onOpenMember = {},
+        onRemoveMember = {},
+        onSubmit = {},
+        canCreateAgents = true,
+        channelName = "design",
+    )
 }
 
-// Canonical #design roster (task #370): mirrors the react channel-members
-// fixture (packages/web/visual-testing/VisualTestingCases.tsx, channel-members
-// kind) — agent Cindy with her activity detail, human artin as Owner, both
-// removable, no remote-server badge. Identity/avatar/copy values come from
-// fixtureData.json via VisualFixtureData.
-private fun channelPanelVisualMembers(): List<RaftThreadMemberItem> =
+// Canonical add-member candidates (task #370): the React case serves an empty
+// channel roster, so every visual agent (Cindy, Product UX Designer) and every
+// server member (artin, Designer) is a candidate; values from fixtureData.json.
+private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
     listOf(
         RaftThreadMemberItem(
             id = "agent-cindy",
             displayName = "Cindy",
             handle = "Cindy",
-            roleLabel = "Capturing visual testing baselines",
+            roleLabel = "",
+            description = "Keeps visual testing release notes aligned.",
             avatarUrl = "pixel:robot",
             avatarLabel = "CI",
-            kind = "agent",
-            canRemove = true
+            kind = "agent"
         ),
-        RaftThreadMemberItem(
-            id = "visual-user",
-            displayName = "artin",
-            handle = "artin",
-            roleLabel = "Owner",
-            avatarLabel = "AR",
-            kind = "human",
-            canRemove = true
-        )
-    )
-
-// Canonical add-member candidates (task #370): react shows agent Product UX
-// Designer plus humans artin and Designer (Designer preselected). The artin
-// candidate row intentionally uses a local id that differs from the member
-// roster's "visual-user" so the android row renders plain like react's
-// (a matching memberKey would add the JOINED marker, which react does not
-// show for this fixture).
-private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
-    listOf(
         RaftThreadMemberItem(
             id = "agent-product-ux",
             displayName = "Product UX Designer",
@@ -35798,292 +35810,13 @@ internal fun ThreadMembersPagerRow(
     )
 }
 
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun ThreadAddMemberModal(
-    members: List<RaftThreadMemberItem>,
-    candidates: List<RaftThreadMemberItem>,
-    canAddMembers: Boolean,
-    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
-    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    addMemberStatus: String,
-    addMemberErrorCode: String?,
-    initialSelectedId: String? = null,
-    showSelectedCheckmark: Boolean = true,
-    inline: Boolean = false,
-    localServerId: String? = null,
-    onDismiss: () -> Unit,
-    onSubmit: (RaftThreadMemberItem) -> Unit,
-    onSubmitBatch: ((List<RaftThreadMemberItem>) -> Unit)? = null,
-    canCreateAgents: Boolean = false,
-    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
-) {
-    val userFacingErrorLabels = threadUserFacingErrorLabels()
-    // Caller-local TextFieldValue is the sole editor owner for the search box;
-    // the modal's mount is the session boundary, so it is never re-seeded from
-    // a projected String (task #130 Phase D).
-    var query by remember { mutableStateOf(TextFieldValue()) }
-    var selectedKey by remember(candidates, initialSelectedId) {
-        mutableStateOf(candidates.firstOrNull { it.id == initialSelectedId }?.memberKey)
-    }
-    var selectedKeys by remember { mutableStateOf(emptySet<String>()) }
-    var localError by remember { mutableStateOf(false) }
-    val currentKeys = remember(members, localServerId) { threadAddMemberJoinedKeys(members, localServerId) }
-    val selectedCandidates = candidates.filter { it.memberKey in selectedKeys && it.memberKey !in currentKeys }
-    val filteredCandidates = filterThreadAddMemberCandidates(query = query.text, candidates = candidates)
-    val createName = query.text.trim().removePrefix("@").takeIf { filteredCandidates.isEmpty() }.orEmpty()
-    val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
-    val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
-    val blocked = !canAddMembers || addMemberStatus == "no_permission"
-    val adding = addMemberStatus == "adding"
-    var createAgentMenuOpen by remember { mutableStateOf(false) }
-    var createAgentMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    val addFailedLabel = stringResource(Res.string.thread_add_member_failed)
-    val genericErrorLabel = stringResource(Res.string.common_error)
-    val errorText =
-        when {
-            blocked -> stringResource(Res.string.thread_add_member_no_permission)
-            localError -> stringResource(Res.string.thread_add_member_select_before_adding)
-            addMemberStatus == "failed" ->
-                "$addFailedLabel: " +
-                    (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
-                        ?: genericErrorLabel)
-            else -> null
-        }
-    val content: @Composable () -> Unit = {
-        Column(modifier = if (inline) Modifier.fillMaxSize() else Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!errorText.isNullOrBlank()) {
-                Text(
-                    text = errorText,
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                    color = RaftColor.AccentRed
-                )
-            }
-            Text(
-                text = stringResource(Res.string.thread_add_member_search),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack
-            )
-            RaftBrutalSearchField(
-                value = query,
-                placeholder = stringResource(Res.string.thread_add_member_name_placeholder),
-                leadingIcon = RaftLucideIconName.Search,
-                enabled = !blocked,
-                onValueChange = {
-                    if (!blocked) {
-                        query = it
-                        if (!inline) selectedKey = null
-                        localError = false
-                    }
-                }
-            )
-            val candidateRows: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
-                if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        selectedCandidates.forEach { member ->
-                            RaftToolbarChip(label = member.displayName, uppercase = false, active = true,
-                                trailingIconName = RaftLucideIconName.X, enabled = !adding,
-                                onClick = { selectedKeys = selectedKeys - member.memberKey })
-                        }
-                    }
-                }
-                if (filteredCandidates.isEmpty()) {
-                    item {
-                        ThreadModalEmptyState(
-                            title =
-                                if (candidates.isEmpty()) {
-                                    stringResource(Res.string.thread_add_member_no_people_loaded)
-                                } else {
-                                    stringResource(Res.string.thread_add_member_no_matching_people)
-                                },
-                            detail =
-                                if (candidates.isEmpty()) {
-                                    stringResource(Res.string.thread_members_refresh_detail)
-                                } else {
-                                    stringResource(Res.string.thread_add_member_try_different_search)
-                                }
-                        )
-                    }
-                } else {
-                    if (humanCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(Res.string.thread_members_humans)) }
-                        items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
-                            val member = humanCandidates[index]
-                            val alreadyJoined = member.memberKey in currentKeys
-                            val interaction =
-                                threadAddMemberRowInteraction(
-                                    memberKey = member.memberKey,
-                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
-                                    blocked = blocked,
-                                    adding = adding,
-                                    alreadyJoined = alreadyJoined
-                                )
-                            // web `ChannelMembers` add panel: an App Bot gets the Bot badge, no light.
-                            val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
-                            val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
-                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            RaftModalCompactMemberRow(
-                                titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
-                                title = member.displayName,
-                                subtitle = threadAddMemberCandidateSubtitle(member.description),
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
-                                cacheServerId = member.sourceServerId,
-                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                selected = interaction.selected,
-                                selectionChecked = if (inline) interaction.selected else null,
-                                enabled = interaction.enabled,
-                                clickEnabled = interaction.clickEnabled,
-                                avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(Res.string.thread_add_member_joined) else "",
-                                onClick = {
-                                    if (inline) {
-                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
-                                    } else {
-                                        selectedKey = member.memberKey
-                                        onSubmit(member)
-                                    }
-                                    localError = false
-                                }
-                            )
-                        }
-                    }
-                    if (agentCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(Res.string.thread_members_agents)) }
-                        items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
-                            val member = agentCandidates[index]
-                            val alreadyJoined = member.memberKey in currentKeys
-                            val interaction =
-                                threadAddMemberRowInteraction(
-                                    memberKey = member.memberKey,
-                                    selectedKey = if (inline && member.memberKey in selectedKeys) member.memberKey else if (inline) null else selectedKey,
-                                    blocked = blocked,
-                                    adding = adding,
-                                    alreadyJoined = alreadyJoined
-                                )
-                            // web `ChannelMembers` add panel: an App Bot gets the Bot badge, no light.
-                            val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
-                            val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
-                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            RaftModalCompactMemberRow(
-                                titleBadge = appBot?.let { bot -> { RaftAppBotBadge(identity = bot, botName = member.displayName) } },
-                                title = member.displayName,
-                                subtitle = threadAddMemberCandidateSubtitle(member.description),
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
-                                cacheServerId = member.sourceServerId,
-                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                selected = interaction.selected,
-                                selectionChecked = if (inline) interaction.selected else null,
-                                enabled = interaction.enabled,
-                                clickEnabled = interaction.clickEnabled,
-                                avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(Res.string.thread_add_member_joined) else "",
-                                onClick = {
-                                    if (inline) {
-                                        selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
-                                    } else {
-                                        selectedKey = member.memberKey
-                                        onSubmit(member)
-                                    }
-                                    localError = false
-                                }
-                            )
-                        }
-                    }
-
-                }
-            }
-            if (inline) {
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
-                RaftBrutalActionButton(
-                    label = if (createName.isBlank()) stringResource(Res.string.thread_members_create_agent)
-                        else stringResource(Res.string.thread_members_create_named_agent, createName),
-                    modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
-                    enabled = !adding && canCreateAgents,
-                    onClick = {},
-                    onClick2 = { anchor ->
-                        if (canCreateAgents) {
-                            createAgentMenuAnchor = anchor
-                            createAgentMenuOpen = true
-                        }
-                    },
-                )
-                if (!canCreateAgents) Text(stringResource(Res.string.thread_members_create_no_permission), style = RaftType.Caption)
-                RaftButton(
-                    text = stringResource(Res.string.thread_members_add_selected, selectedCandidates.size),
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
-                    enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
-                    onClick = { onSubmitBatch?.invoke(selectedCandidates) },
-                    variant = RaftButtonVariant.Primary,
-                    size = RaftButtonSize.Lg,
-                )
-            } else {
-                RaftModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,
-                    content = candidateRows)
-            }
-        }
-    }
-    if (inline) {
-        Box(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            content()
-        }
-    } else {
-        RaftUnifiedDialog(
-            title = stringResource(Res.string.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
-            minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
-            titleFontSize = 18, titleLineHeight = 22,
-        ) { content() }
-    }
-    if (createAgentMenuOpen && createAgentMenuAnchor != null) {
-        RaftUiControlledMenu(
-            expanded = true,
-            anchor = createAgentMenuAnchor!!,
-            width = 220.dp,
-            items = listOf(
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.Managed.name,
-                    label = stringResource(Res.string.agent_create_action_create),
-                    icon = RaftLucideIconName.Bot
-                ),
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.External.name,
-                    label = stringResource(Res.string.agent_create_action_create_external),
-                    icon = RaftLucideIconName.Link2
-                )
-            ),
-            onSelect = { id ->
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
-                val mode = MembersCreateAgentMode.entries.firstOrNull { it.name == id } ?: return@RaftUiControlledMenu
-                onCreateAgent(createName, mode)
-            },
-            onDismiss = {
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
-            }
-        )
-    }
-}
-
 internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight: Int = 288): Int {
     val sectionCount = listOf(agentCount, humanCount).count { it > 0 }
     val rowCount = agentCount + humanCount
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
 }
 
-private val RaftThreadMemberItem.memberKey: String
+internal val RaftThreadMemberItem.memberKey: String
     get() = "${kind.lowercase()}:$id"
 
 internal data class ThreadAddMemberRowInteraction(
@@ -36206,12 +35939,12 @@ private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): Str
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
-private fun RaftThreadMemberItem.modalAvatarWireValue(): String? =
+internal fun RaftThreadMemberItem.modalAvatarWireValue(): String? =
     avatarUrl?.takeIf { it.isNotBlank() }
         ?: "pixel:robot".takeIf { kind.equals("agent", ignoreCase = true) }
 
 // The name the initials come from; never the member id (no name shows the placeholder icon).
-private fun RaftThreadMemberItem.modalAvatarLabel(): String =
+internal fun RaftThreadMemberItem.modalAvatarLabel(): String =
     listOf(displayName, handle).map(String::trim).firstOrNull { it.isNotEmpty() && it != id } ?: avatarLabel
 
 /** The agent whose App Bot identity a channel member / add-member row shows; null for people. */
@@ -36300,7 +36033,7 @@ private fun RaftThreadMemberItem.localizedModalRoleLabel(): String =
     }
 
 @Composable
-private fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
+internal fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
     agentStatusResolver: RaftAgentStatusResolver
 ): RaftAgentStatusIndicatorState? {
     val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, id)
