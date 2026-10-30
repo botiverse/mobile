@@ -190,7 +190,8 @@ class ThemeDecorScreenshotTest {
     @Composable
     private fun Rail(height: Dp) {
         Box(Modifier.height(height)) {
-            RaftAppRail(footer = { Item("Settings", AppIcon.Settings) }) {
+            // Regular whatever the capture's height: the decor strip, not the compact rail, is under test.
+            RaftAppRail(compact = false, footer = { Item("Settings", AppIcon.Settings) }) {
                 Item("Home", AppIcon.House, selected = true)
                 Item("Activity", AppIcon.Activity)
                 Item("Tasks", AppIcon.SquareCheckBig)

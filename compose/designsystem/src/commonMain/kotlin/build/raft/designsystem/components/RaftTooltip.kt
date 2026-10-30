@@ -4,8 +4,14 @@ import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.PlainTooltip
@@ -22,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -44,6 +51,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -65,6 +73,18 @@ internal object RaftTooltipMetrics {
 
     /** How long a long press keeps it open (Material's `BasicTooltipDefaults.TooltipDuration`). */
     const val TouchDuration = 1500L
+
+    /** A shortcut's `Kbd` after the label (tooltip body `[&_[data-slot=kbd]]:ml-1.5`). */
+    val KbdGap = 6.dp
+
+    /** The `Kbd` inside a tooltip: `h-4 min-w-4 px-1 py-0`, 3dp radius (kbd `rounded-[3px]`). */
+    val KbdHeight = 16.dp
+    val KbdMinWidth = 16.dp
+    val KbdPaddingX = 4.dp
+    val KbdRadius = 3.dp
+
+    /** kbd `in-data-[slot=tooltip-content]`: `foreground-on-hud` at 70% for the text and the ring. */
+    const val KbdInkAlpha = 0.7f
 }
 
 /** Which side of its anchor a [RaftTooltip] opens on. */
@@ -94,8 +114,8 @@ internal val LocalRaftTooltipPreview = staticCompositionLocalOf { false }
 /**
  * The physical side of its anchor a [RaftTooltip] opens on, beside it and centred on it, with
  * the caret on the bubble's edge facing the anchor. It flips to the other side when the window
- * has no room on this one. Not public API: [RaftSideActionColumn] sets it so its tooltips open
- * toward the content, never off the screen edge the column stands on.
+ * has no room on this one. Not public API: [RaftSideActionColumn] and [RaftAppRailItem] set it so
+ * their tooltips open toward the content, never off the screen edge the column stands on.
  */
 internal enum class RaftTooltipSide { Left, Right }
 
@@ -132,6 +152,10 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
  *
  * [openOnLongPress] = false leaves the long press to [content] (an icon button with its own
  * long-press action): the tooltip then opens only under a mouse or trackpad pointer.
+ *
+ * [shortcut] adds its keyboard shortcut after [text] ("⌘\"), as raft-ui's tooltip with a `Kbd`
+ * (web LeftRail's "Collapse sidebar ⌘\"): 6dp after the label, a 16dp-high chip with a 1dp ring,
+ * mono 12/16 regular, both in `foreground-on-hud` at 70%. Screen readers don't get it from here.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,6 +164,7 @@ fun RaftTooltip(
     modifier: Modifier = Modifier,
     openOnLongPress: Boolean = true,
     placement: RaftTooltipPlacement = LocalRaftTooltipPlacement.current,
+    shortcut: String? = null,
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
@@ -153,12 +178,28 @@ fun RaftTooltip(
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
     Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
         val label: @Composable () -> Unit = {
-            RaftText(
-                text = text,
-                modifier = Modifier.padding(horizontal = RaftTooltipMetrics.ExtraPaddingX),
-                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-                color = colors.foregroundOnHud,
-            )
+            if (shortcut == null) {
+                RaftText(
+                    text = text,
+                    modifier = Modifier.padding(horizontal = RaftTooltipMetrics.ExtraPaddingX),
+                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                    color = colors.foregroundOnHud,
+                )
+            } else {
+                Row(
+                    Modifier.padding(horizontal = RaftTooltipMetrics.ExtraPaddingX),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftText(
+                        text = text,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                        color = colors.foregroundOnHud,
+                    )
+                    Spacer(Modifier.width(RaftTooltipMetrics.KbdGap))
+                    RaftTooltipKbd(shortcut, colors.foregroundOnHud.let { it.copy(alpha = it.alpha * RaftTooltipMetrics.KbdInkAlpha) })
+                }
+            }
         }
         val density = LocalDensity.current
         val spacing = with(density) { RaftTooltipMetrics.AnchorSpacing.roundToPx() }
@@ -227,6 +268,22 @@ fun RaftTooltip(
             enableUserInput = false,
             content = content,
         )
+    }
+}
+
+/** raft-ui `Kbd` inside a tooltip (see [RaftTooltip]'s `shortcut`), in [ink]. */
+@Composable
+private fun RaftTooltipKbd(text: String, ink: Color) {
+    val shape = RoundedCornerShape(RaftTooltipMetrics.KbdRadius)
+    Box(
+        Modifier
+            .height(RaftTooltipMetrics.KbdHeight)
+            .widthIn(min = RaftTooltipMetrics.KbdMinWidth)
+            .border(RaftStroke.Hairline, ink, shape)
+            .padding(horizontal = RaftTooltipMetrics.KbdPaddingX),
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftText(text = text, style = RaftTheme.typography.monoMeta, color = ink, maxLines = 1, softWrap = false)
     }
 }
 
