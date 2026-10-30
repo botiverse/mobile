@@ -360,6 +360,13 @@ internal fun ThreadMessageVisualScreen() {
         }
     }
 }
+/**
+ * The message of `components.thread.message-menu.task`: slock VisualTestingCases.tsx
+ * `threadMessageMenuFixture(true)` inlines it (it is not in the shared fixtureData.json).
+ */
+private const val THREAD_MESSAGE_MENU_TASK_BODY =
+    "Task conversion follow-up for #design: capture the grouped menu before publish."
+
 @Composable
 internal fun ThreadMessageVisualScreenContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -624,6 +631,8 @@ internal fun ThreadMessageVisualScreenContent() {
                 baseMessage.taskId == null
             ) {
                 baseMessage.copy(
+                    // web threadMessageMenuFixture(isTaskVariant = true) posts its own text.
+                    body = if (menuVariant == "task") THREAD_MESSAGE_MENU_TASK_BODY else baseMessage.body,
                     taskId = "task-menu-246",
                     taskNumber = 246,
                     taskStatus = "in_progress",
