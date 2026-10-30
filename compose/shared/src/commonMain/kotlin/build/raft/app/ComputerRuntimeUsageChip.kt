@@ -593,7 +593,7 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
     }
 }
 
-/** One usage window: "X% left · resets …" or "Used up", as the web `RuntimeAccountUsageChip`. */
+/** One usage window: "X% used · resets …" or "Used up", as the web `RuntimeAccountUsageChip` (raft-ui 0.50). */
 @Composable
 internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, timeContext: RaftTimeContext?) {
     val ratio = window.usedRatio
@@ -616,22 +616,24 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
         }
         return
     }
-    // Used up by the provider's word or the ratio itself, not by rounding: 0.4% left still
-    // reads "0% left", as the web says.
+    // Used up by the provider's word or the ratio itself, not by rounding: 0.4% left reads
+    // "100% used" (rounded), not "Used up", as the web says.
     val usedUp = window.status == RuntimeAccountUsageWindowStatus.LimitReached || ratio >= 1.0
     val reset =
         window.resetsAt?.let { resetsAt ->
             raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
                 ?: stringResource(Res.string.settings_computers_runtime_usage_later)
         }
-    val percentLeft = "${runtimeUsagePercentLeft(ratio)}%"
+    val percentUsed = "${runtimeUsagePercentUsed(ratio)}%"
     val valueText =
         when {
             usedUp && reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up_reset_unavailable)
             usedUp -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up, reset.orEmpty())
-            reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_left_reset_unavailable, percentLeft)
-            else -> stringResource(Res.string.settings_computers_runtime_usage_window_left, percentLeft, reset)
+            reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_reset_unavailable, percentUsed)
+            else -> stringResource(Res.string.settings_computers_runtime_usage_window_used, percentUsed, reset)
         }
+    // raft-ui 0.50 Meter: fills with what is used, warning from 80% used, a full warning bar
+    // when used up.
     RaftMeter(
         used = if (usedUp) 100f else (ratio * 100.0).toFloat(),
         valueText = valueText,
@@ -640,8 +642,8 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
     )
 }
 
-/** Web `runtimeUsagePercentLeft`: `100 - round(usedRatio * 100)`. */
-internal fun runtimeUsagePercentLeft(usedRatio: Double): Int = 100 - kotlin.math.round(usedRatio * 100.0).toInt()
+/** Web `runtimeUsagePercentUsed`: `round(usedRatio * 100)`. */
+internal fun runtimeUsagePercentUsed(usedRatio: Double): Int = kotlin.math.round(usedRatio * 100.0).toInt()
 
 @Composable
 private fun RuntimeAccountUsageHealth.label(): String =

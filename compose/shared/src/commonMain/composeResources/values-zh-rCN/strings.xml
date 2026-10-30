@@ -2266,8 +2266,8 @@
     <string name="settings_computers_runtime_usage_account_fallback">运行时账户</string>
     <string name="settings_computers_runtime_usage_reauth_description">请在此计算机上重新登录。在提供方重新认证前，已隐藏最后已知百分比。</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">无法解析用量格式</string>
-    <string name="settings_computers_runtime_usage_window_left">剩 %1$s · %2$s重置</string>
-    <string name="settings_computers_runtime_usage_window_left_reset_unavailable">剩 %1$s · 重置时间暂不可用</string>
+    <string name="settings_computers_runtime_usage_window_used">已用 %1$s · %2$s重置</string>
+    <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 重置时间暂不可用</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重置</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完 · 重置时间暂不可用</string>
     <string name="settings_computers_runtime_usage_later">稍后</string>
@@ -2821,7 +2821,7 @@
     <string name="member_runtime_usage_stale">数据已过期，以下数值可能不再准确。</string>
     <string name="runtime_quota_window_five_hour">5 小时</string>
     <string name="runtime_quota_window_week">本周</string>
-    <string name="runtime_quota_left">%1$s 剩 %2$s</string>
+    <string name="runtime_quota_used">%1$s 已用 %2$s</string>
     <string name="runtime_quota_used_up">%1$s 已用完，%2$s恢复</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
     <string name="runtime_quota_attention">%1$s · 需要处理</string>
@@ -3152,8 +3152,8 @@
     <string name="agent_migration_target_search">搜索计算机</string>
     <string name="agent_migration_target_clear_search">清除搜索</string>
     <string name="agent_migration_target_no_matches">没有匹配项</string>
-    <string name="agent_migration_target_memory_free">内存剩 %1$s</string>
-    <string name="agent_migration_target_disk_free">磁盘剩 %1$s</string>
+    <string name="agent_migration_target_memory_used">内存已用 %1$s</string>
+    <string name="agent_migration_target_disk_used">磁盘已用 %1$s</string>
     <string name="agent_migration_target_agents_title">Agent</string>
     <string name="agent_migration_target_agents_none">没有 Agent</string>
     <string name="agent_migration_target_agents_one">%1$s 个 Agent</string>
@@ -3161,12 +3161,11 @@
     <string name="agent_migration_target_offline">离线</string>
     <string name="agent_migration_target_details">%1$s 的详情</string>
     <string name="agent_migration_target_memory">内存</string>
-    <string name="agent_migration_target_memory_detail">剩 %1$s，共 %2$s</string>
+    <string name="agent_migration_target_used_detail">已用 %1$s · 剩 %2$s，共 %3$s</string>
     <string name="agent_migration_target_memory_unknown">暂未上报</string>
     <string name="agent_migration_target_memory_offline">离线，没有内存数据</string>
     <string name="agent_migration_target_memory_offline_for">离线 %1$s，没有内存数据</string>
     <string name="agent_migration_target_disk">磁盘</string>
-    <string name="agent_migration_target_disk_detail">剩 %1$s，共 %2$s</string>
     <string name="agent_migration_target_disk_unknown">暂未上报</string>
     <string name="agent_migration_target_disk_offline">离线，没有磁盘数据</string>
     <string name="agent_migration_target_disk_offline_for">离线 %1$s，没有磁盘数据</string>

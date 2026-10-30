@@ -13,7 +13,8 @@ import kotlin.test.assertEquals
 
 /**
  * The Move dialog target list's computer line and details (web targetComputerInfo.ts,
- * botiverse/slock 424c5203 #11038, row order from #11086 716c3711; strings from packages/web/src/i18n/messages/en.ts).
+ * botiverse/slock 424c5203 #11038, row order from #11086 716c3711, "used" from #11855 96cc6349; strings from
+ * packages/web/src/i18n/messages/en.ts).
  */
 class AgentMigrationTargetInfoTest {
     private val gb = 1024.0 * 1024.0 * 1024.0
@@ -21,8 +22,8 @@ class AgentMigrationTargetInfoTest {
     private val en =
         AgentMigrationTargetInfoCopy(
             offline = "Offline",
-            memoryFree = { "$it RAM free" },
-            diskFree = { "$it disk free" },
+            memoryUsed = { "RAM $it used" },
+            diskUsed = { "Disk $it used" },
             agents = { count -> if (count == 0) "No agents" else if (count == 1) "1 agent" else "$count agents" }
         )
 
@@ -39,9 +40,9 @@ class AgentMigrationTargetInfoTest {
         val disk = ComputerSizeStatus(120 * gb, 500 * gb)
         val cases =
             listOf(
-                computer(memory = memory, disk = disk, agents = 3) to "3 agents · 12.0 GB RAM free · 120.0 GB disk free",
+                computer(memory = memory, disk = disk, agents = 3) to "3 agents · RAM 63% used · Disk 76% used",
                 // An older Computer reports no memory: the part is left out.
-                computer(disk = disk, agents = 1) to "1 agent · 120.0 GB disk free",
+                computer(disk = disk, agents = 1) to "1 agent · Disk 76% used",
                 computer(agents = 0) to "No agents",
                 // Offline: said first; a lingering report is ignored.
                 computer(online = false, memory = memory, disk = disk, agents = 3) to "Offline · 3 agents",
@@ -66,7 +67,7 @@ class AgentMigrationTargetInfoTest {
             RuntimeQuotaLineCopy(
                 fiveHour = "5h",
                 week = "Week",
-                left = { window, percent -> "$window $percent left" },
+                used = { window, percent -> "$window $percent used" },
                 usedUp = { window, reset -> "$window used up, resets $reset" },
                 usedUpNoReset = { window -> "$window used up" },
                 attention = { plan -> "$plan · needs attention" }
@@ -77,13 +78,13 @@ class AgentMigrationTargetInfoTest {
                 planLabel = "Claude Max",
                 segments =
                     listOf(
-                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.FiveHour, "Current session", 0, usedUp = true, resetsAt = "2026-10-23T15:00:00.000Z"),
-                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.Week, "Current week (all models)", 55, usedUp = false, resetsAt = null)
+                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.FiveHour, "Current session", 100, usedUp = true, resetsAt = "2026-10-23T15:00:00.000Z"),
+                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.Week, "Current week (all models)", 45, usedUp = false, resetsAt = null)
                     ),
                 attention = false
             )
         val parts = runtimeQuotaLineParts(summary, copy) { "in 3 hours" }
-        assertEquals(listOf("Claude Max", "5h used up, resets in 3 hours", "Week 55% left"), parts.map { it.text })
+        assertEquals(listOf("Claude Max", "5h used up, resets in 3 hours", "Week 45% used"), parts.map { it.text })
         assertEquals(listOf(false, true, false), parts.map { it.usedUp })
     }
 }

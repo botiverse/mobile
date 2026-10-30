@@ -39,8 +39,8 @@ import build.raft.designsystem.theme.RaftTheme
 /*
  * The Move dialog's target list (web TargetComputerList / targetComputerInfo /
  * TargetComputerDetails, botiverse/slock 424c5203 #11038; raft-design #767 and ChoiceList): an
- * always-open radio list of the computers, each with its quota line and its own line (free
- * memory, free disk, agents), an info button opening its details, and a search field above
+ * always-open radio list of the computers, each with its quota line and its own line (agents,
+ * memory used, disk used), an info button opening its details, and a search field above
  * 5 options.
  */
 
@@ -50,27 +50,37 @@ internal fun AgentMigrationComputer.liveDiskStatus(): ComputerSizeStatus? = disk
 /** Web `liveMemoryStatus`: the memory report on the same terms as the disk. */
 internal fun AgentMigrationComputer.liveMemoryStatus(): ComputerSizeStatus? = memoryStatus.takeIf { online }
 
+/**
+ * Web `resourceUsedPercent` (botiverse/slock #11855): how much of a disk or memory is used, in
+ * whole percent, JavaScript rounding (floor(x + 0.5)), as the Computers rack shows it.
+ */
+internal fun agentMigrationResourceUsedPercent(status: ComputerSizeStatus): Int =
+    kotlin.math.floor((1.0 - status.availableBytes / status.totalBytes) * 100.0 + 0.5).toInt()
+
 /** The words of a computer's own line ([agentMigrationTargetInfoLine]). */
 internal class AgentMigrationTargetInfoCopy(
     val offline: String,
-    val memoryFree: (size: String) -> String,
-    val diskFree: (size: String) -> String,
+    /** "RAM 63% used": ("63%"). */
+    val memoryUsed: (percent: String) -> String,
+    /** "Disk 76% used": ("76%"). */
+    val diskUsed: (percent: String) -> String,
     val agents: (count: Int) -> String
 )
 
 /**
- * Web `targetComputerInfoLine` (botiverse/slock #11086): "Offline" first for an offline
+ * Web `targetComputerInfoLine` (botiverse/slock #11086, #11855): "Offline" first for an offline
  * computer, then its agents (what people compare by, so never the part a narrow row cuts off),
- * its free memory (older Computers report none: left out) and its free disk, joined by " · "
- * ("3 agents · 12.0 GB RAM free · 120.0 GB disk free"). Memory and disk only while online.
+ * how much of its memory is used (older Computers report none: left out) and of its disk, joined
+ * by " · " ("3 agents · RAM 63% used · Disk 76% used"): what is used, as the Computers rack says
+ * it (stdrc 10-29); the details have the free sizes. Memory and disk only while online.
  * Knowing nothing, there is no line.
  */
 internal fun agentMigrationTargetInfoLine(computer: AgentMigrationComputer, copy: AgentMigrationTargetInfoCopy): String? {
     val parts = mutableListOf<String>()
     if (computer.offline) parts += copy.offline
     computer.agentCount?.let { parts += copy.agents(it) }
-    computer.liveMemoryStatus()?.let { parts += copy.memoryFree(RaftFormat.bytes(it.availableBytes)) }
-    computer.liveDiskStatus()?.let { parts += copy.diskFree(RaftFormat.bytes(it.availableBytes)) }
+    computer.liveMemoryStatus()?.let { parts += copy.memoryUsed("${agentMigrationResourceUsedPercent(it)}%") }
+    computer.liveDiskStatus()?.let { parts += copy.diskUsed("${agentMigrationResourceUsedPercent(it)}%") }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
@@ -97,16 +107,16 @@ internal fun agentMigrationOfflineDuration(lastHeartbeat: String?, nowMillis: Lo
 @Composable
 private fun rememberAgentMigrationTargetInfoCopy(): AgentMigrationTargetInfoCopy {
     val offline = stringResource(Res.string.agent_migration_target_offline)
-    val memory = stringResource(Res.string.agent_migration_target_memory_free, "\u0001")
-    val disk = stringResource(Res.string.agent_migration_target_disk_free, "\u0001")
+    val memory = stringResource(Res.string.agent_migration_target_memory_used, "\u0001")
+    val disk = stringResource(Res.string.agent_migration_target_disk_used, "\u0001")
     val none = stringResource(Res.string.agent_migration_target_agents_none)
     val one = stringResource(Res.string.agent_migration_target_agents_one, "\u0001")
     val other = stringResource(Res.string.agent_migration_target_agents_other, "\u0001")
     return remember(offline, memory, disk, none, one, other) {
         AgentMigrationTargetInfoCopy(
             offline = offline,
-            memoryFree = { memory.replace("\u0001", it) },
-            diskFree = { disk.replace("\u0001", it) },
+            memoryUsed = { memory.replace("\u0001", it) },
+            diskUsed = { disk.replace("\u0001", it) },
             agents = { count ->
                 when (count) {
                     0 -> none
@@ -293,7 +303,6 @@ private fun AgentMigrationTargetDetailsContent(
                     computer.offline,
                     offlineFor,
                     SizeWords(
-                        Res.string.agent_migration_target_memory_detail,
                         Res.string.agent_migration_target_memory_unknown,
                         Res.string.agent_migration_target_memory_offline,
                         Res.string.agent_migration_target_memory_offline_for
@@ -308,7 +317,6 @@ private fun AgentMigrationTargetDetailsContent(
                     computer.offline,
                     offlineFor,
                     SizeWords(
-                        Res.string.agent_migration_target_disk_detail,
                         Res.string.agent_migration_target_disk_unknown,
                         Res.string.agent_migration_target_disk_offline,
                         Res.string.agent_migration_target_disk_offline_for
@@ -319,7 +327,6 @@ private fun AgentMigrationTargetDetailsContent(
 }
 
 private class SizeWords(
-    val detail: org.jetbrains.compose.resources.StringResource,
     val unknown: org.jetbrains.compose.resources.StringResource,
     val offline: org.jetbrains.compose.resources.StringResource,
     val offlineFor: org.jetbrains.compose.resources.StringResource
@@ -328,7 +335,14 @@ private class SizeWords(
 @Composable
 private fun agentMigrationSizeText(status: ComputerSizeStatus?, offline: Boolean, offlineFor: String?, words: SizeWords): String =
     when {
-        status != null -> stringResource(words.detail, RaftFormat.bytes(status.availableBytes), RaftFormat.bytes(status.totalBytes))
+        // What is used, as the row says it, then free of total (web #11855 `usedDetail`).
+        status != null ->
+            stringResource(
+                Res.string.agent_migration_target_used_detail,
+                "${agentMigrationResourceUsedPercent(status)}%",
+                RaftFormat.bytes(status.availableBytes),
+                RaftFormat.bytes(status.totalBytes)
+            )
         offline && offlineFor != null -> stringResource(words.offlineFor, offlineFor)
         offline -> stringResource(words.offline)
         else -> stringResource(words.unknown)

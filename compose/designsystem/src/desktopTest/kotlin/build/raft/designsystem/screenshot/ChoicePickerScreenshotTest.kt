@@ -41,8 +41,8 @@ class ChoicePickerScreenshotTest {
                 label = "computer-$index",
                 description =
                     when (index % 3) {
-                        1 -> "Claude Max · 5h 72% left · Week 40% left"
-                        2 -> "Claude Max · 5h used up, resets in 3 hours · Week 12% left"
+                        1 -> "Claude Max · 5h 28% used · Week 60% used"
+                        2 -> "Claude Max · 5h used up, resets in 3 hours · Week 88% used"
                         else -> null
                     },
                 enabled = index != 4,
@@ -91,7 +91,7 @@ class ChoicePickerScreenshotTest {
 
     private fun runtimes(): List<RaftComboboxOption<String>> =
         listOf(
-            RaftComboboxOption("claude", "Claude Code", description = "Claude Max · 5h 72% left", group = "Ready on this computer"),
+            RaftComboboxOption("claude", "Claude Code", description = "Claude Max · 5h 28% used", group = "Ready on this computer"),
             RaftComboboxOption("codex", "Codex CLI", group = "Ready on this computer"),
             RaftComboboxOption("qwen", "Qwen Code", group = "Ready on this computer", badge = "Experimental"),
             RaftComboboxOption("qoder", "Qoder", group = "Not available on this server", enabled = false, badge = "Experimental"),

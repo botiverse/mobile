@@ -4,7 +4,8 @@ import kotlin.math.floor
 
 /**
  * The compact quota line a machine/runtime picker shows under each option (design-system rule,
- * #proj-mobile 3e35629b): "Claude Max · 5 小时 剩 72% · 本周 剩 40%".
+ * #proj-mobile 3e35629b): "Claude Max · 5 小时 已用 28% · 本周 已用 60%". Usage says what is used
+ * (raft-ui 0.50, web #11855).
  *
  * - Only the 5-hour and the weekly window, always in that order; a missing one is left out.
  * - A used-up window reads "5 小时 已用完，3 小时后恢复" (without a reset time: "已用完").
@@ -76,12 +77,12 @@ private fun genericRuntimeQuotaWindowClass(clean: String): RuntimeQuotaWindowCla
         else -> RuntimeQuotaWindowClass.Other
     }
 
-/** One window on the line: its name, what is left, and whether it is used up. */
+/** One window on the line: its name, what is used, and whether it is used up. */
 internal data class RuntimeQuotaSegment(
     /** Null: shown under [rawLabel] (the fallback when no window is recognised). */
     val kind: RuntimeQuotaWindowKind?,
     val rawLabel: String,
-    val percentLeft: Int,
+    val percentUsed: Int,
     val usedUp: Boolean,
     val resetsAt: String?
 )
@@ -95,8 +96,8 @@ internal data class RuntimeQuotaSummary(
     val attention: Boolean
 )
 
-/** Web `runtimeUsagePercentLeft`: whole percent left, JavaScript rounding (floor(x + 0.5)). */
-internal fun runtimeQuotaPercentLeft(usedRatio: Double): Int = 100 - floor(usedRatio.coerceIn(0.0, 1.0) * 100.0 + 0.5).toInt()
+/** Web `runtimeUsagePercentUsed`: whole percent used, JavaScript rounding (floor(x + 0.5)). */
+internal fun runtimeQuotaPercentUsed(usedRatio: Double): Int = floor(usedRatio.coerceIn(0.0, 1.0) * 100.0 + 0.5).toInt()
 
 /**
  * The compact line's facts for one runtime's usage [read], or null when there is nothing
@@ -143,7 +144,7 @@ private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?): 
     return RuntimeQuotaSegment(
         kind = kind,
         rawLabel = label,
-        percentLeft = if (usedUp) 0 else runtimeQuotaPercentLeft(ratio),
+        percentUsed = if (usedUp) 100 else runtimeQuotaPercentUsed(ratio),
         usedUp = usedUp,
         resetsAt = resetsAt
     )
@@ -153,8 +154,8 @@ private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?): 
 internal class RuntimeQuotaLineCopy(
     val fiveHour: String,
     val week: String,
-    /** "5 小时 剩 72%": (window, "72%"). */
-    val left: (window: String, percent: String) -> String,
+    /** "5 小时 已用 28%": (window, "28%"). */
+    val used: (window: String, percent: String) -> String,
     /** "5 小时 已用完，3 小时后恢复": (window, relative reset). */
     val usedUp: (window: String, reset: String) -> String,
     val usedUpNoReset: (window: String) -> String,
@@ -183,7 +184,7 @@ internal fun runtimeQuotaPlanName(provider: RuntimeAccountUsageProvider, planLab
 internal data class RuntimeQuotaLinePart(val text: String, val usedUp: Boolean = false)
 
 /**
- * The compact line in pieces: the plan, then each window ("5 小时 剩 72%"), or the plan's
+ * The compact line in pieces: the plan, then each window ("5 小时 已用 28%"), or the plan's
  * "needs attention" alone. [resetLabel] turns a reset timestamp into its relative words
  * ("3 小时后"); null or blank drops the reset.
  */
@@ -206,13 +207,13 @@ internal fun runtimeQuotaLineParts(
                 val reset = segment.resetsAt?.let(resetLabel)?.trim()?.takeIf { it.isNotEmpty() }
                 RuntimeQuotaLinePart(if (reset != null) copy.usedUp(name, reset) else copy.usedUpNoReset(name), usedUp = true)
             } else {
-                RuntimeQuotaLinePart(copy.left(name, "${segment.percentLeft}%"))
+                RuntimeQuotaLinePart(copy.used(name, "${segment.percentUsed}%"))
             }
         }
     return listOf(RuntimeQuotaLinePart(plan)) + windows
 }
 
-/** The compact line as one string: "Claude Max · 5 小时 剩 72% · 本周 剩 40%" ([runtimeQuotaLineParts]). */
+/** The compact line as one string: "Claude Max · 5 小时 已用 28% · 本周 已用 60%" ([runtimeQuotaLineParts]). */
 internal fun formatRuntimeQuotaLine(
     summary: RuntimeQuotaSummary,
     copy: RuntimeQuotaLineCopy,

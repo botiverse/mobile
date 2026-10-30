@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The compact quota line of the machine/runtime pickers ("Claude Max · 5 小时 剩 72% · 本周 剩 40%").
+ * The compact quota line of the machine/runtime pickers ("Claude Max · 5 小时 已用 28% · 本周 已用 60%").
  * Window labels are the ones `@botiverse/oar` 0.69 writes (runtimes/<provider>/account-usage.js)
  * and the generic spellings slock's fixtures use; window ids are opaque on the wire.
  */
@@ -14,7 +14,7 @@ class RuntimeQuotaLineTest {
         RuntimeQuotaLineCopy(
             fiveHour = "5 小时",
             week = "本周",
-            left = { window, percent -> "$window 剩 $percent" },
+            used = { window, percent -> "$window 已用 $percent" },
             usedUp = { window, reset -> "$window 已用完，${reset}恢复" },
             usedUpNoReset = { window -> "$window 已用完" },
             attention = { plan -> "$plan · 需要处理" }
@@ -78,25 +78,25 @@ class RuntimeQuotaLineTest {
                 window("Current week (all models)", 0.6),
                 window("Current session", 0.28)
             )
-        assertEquals("Claude Max · 5 小时 剩 72% · 本周 剩 40%", line(RuntimeAccountUsageProvider.Claude, usage))
+        assertEquals("Claude Max · 5 小时 已用 28% · 本周 已用 60%", line(RuntimeAccountUsageProvider.Claude, usage))
     }
 
     @Test
     fun usedUpWindowSaysWhenItComesBack() {
         val withReset = read(window("Current session", 1.0, RuntimeAccountUsageWindowStatus.LimitReached, "2026-10-23T05:00:00Z"), window("Current week (all models)", 0.6))
-        assertEquals("Claude Max · 5 小时 已用完，3 小时后恢复 · 本周 剩 40%", line(RuntimeAccountUsageProvider.Claude, withReset))
+        assertEquals("Claude Max · 5 小时 已用完，3 小时后恢复 · 本周 已用 60%", line(RuntimeAccountUsageProvider.Claude, withReset))
         val noReset = read(window("Current session", 1.0, RuntimeAccountUsageWindowStatus.LimitReached))
         assertEquals("Claude Max · 5 小时 已用完", line(RuntimeAccountUsageProvider.Claude, noReset))
-        // 0.4% left is not used up: it reads 0% left, as the web's meter says.
-        assertEquals("Claude Max · 5 小时 剩 0%", line(RuntimeAccountUsageProvider.Claude, read(window("Current session", 0.996))))
+        // 0.4% left is not used up: it reads 100% used (rounded), not "used up", as the web says.
+        assertEquals("Claude Max · 5 小时 已用 100%", line(RuntimeAccountUsageProvider.Claude, read(window("Current session", 0.996))))
     }
 
     @Test
     fun missingWindowsAreLeftOut() {
-        assertEquals("Codex Pro · 本周 剩 90%", line(RuntimeAccountUsageProvider.Codex, read(window("Codex · 1 week", 0.1), plan = "pro")))
+        assertEquals("Codex Pro · 本周 已用 10%", line(RuntimeAccountUsageProvider.Codex, read(window("Codex · 1 week", 0.1), plan = "pro")))
         // Unparseable windows count as missing, never as 0%.
         assertEquals(
-            "Kimi · 本周 剩 75%",
+            "Kimi · 本周 已用 25%",
             line(RuntimeAccountUsageProvider.Kimi, read(window("5h limit", null, RuntimeAccountUsageWindowStatus.Unavailable), window("Weekly limit", 0.25), plan = null))
         )
     }
@@ -104,7 +104,7 @@ class RuntimeQuotaLineTest {
     @Test
     fun withNothingRecognisedTheTightestWindowShowsUnderItsRawLabel() {
         val usage = read(window("Monthly included usage", 0.3), window("Pay-as-you-go", 0.5), plan = null)
-        assertEquals("Grok · Pay-as-you-go 剩 50%", line(RuntimeAccountUsageProvider.Grok, usage))
+        assertEquals("Grok · Pay-as-you-go 已用 50%", line(RuntimeAccountUsageProvider.Grok, usage))
         // Per-model windows never stand in for the account's.
         assertNull(line(RuntimeAccountUsageProvider.Claude, read(window("Current week (Opus)", 0.3))))
     }

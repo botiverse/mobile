@@ -166,7 +166,9 @@ class ComputersApiTest {
               {"id":"c-3","name":"Build Box","status":"offline","isComputer":true,"agentCount":0,"diskStatus":null,"memoryStatus":null},
               {"id":"c-4","name":"Old Server Row","status":"online","isComputer":true},
               {"id":"c-5","name":"Bad Report","status":"online","isComputer":true,
-               "diskStatus":{"availableBytes":-1,"totalBytes":0},"memoryStatus":{"availableBytes":1}}
+               "diskStatus":{"availableBytes":-1,"totalBytes":0},"memoryStatus":{"availableBytes":1}},
+              {"id":"c-6","name":"Over Report","status":"online","isComputer":true,
+               "diskStatus":{"availableBytes":2048,"totalBytes":1024},"memoryStatus":null}
             ],"latestDaemonVersion":null,"latestComputerVersion":"1.0.53"}
             """.trimIndent()
         val machines =
@@ -185,6 +187,8 @@ class ComputersApiTest {
         // Web readableDiskStatus: no positive total or a negative free size is not shown.
         assertEquals(null, machines.getValue("c-5").diskStatus)
         assertEquals(null, machines.getValue("c-5").memoryStatus)
+        // Web #11855: more free than total is unreadable too (it would read a negative "% used").
+        assertEquals(null, machines.getValue("c-6").diskStatus)
     }
 
     @Test
