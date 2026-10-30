@@ -23,6 +23,7 @@ import build.raft.app.data.PUSH_PREVIEW_MODE_UNREADABLE
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftAndroidNotificationChannelKind
 import build.raft.app.data.RaftNotificationRetract
+import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.data.parseRaftPushSeq
 import build.raft.app.data.raftAndroidNotificationChannelKind
 import build.raft.app.data.RaftConversationReadHost
@@ -108,6 +109,13 @@ internal object AndroidUnreadNotificationPoster {
      * a retraction that arrives before the tray lists the post; must hold [groupingLock].
      */
     private val postedGroupSeqs = mutableMapOf<Int, Pair<String, Long?>>()
+
+    /**
+     * The server's own badge term per server (`serverBadge` of the newest alert / sync / retract
+     * push, contract §1.4): the summary's number. Absent: the summary counts its conversations'
+     * messages. Must hold [groupingLock].
+     */
+    private val serverBadges = mutableMapOf<String, Int>()
 
     /** The conversations each server's posted summary counted; must hold [groupingLock]. */
     private val postedSummaryConversations = mutableMapOf<String, Set<Int>>()
@@ -232,6 +240,25 @@ internal object AndroidUnreadNotificationPoster {
     }
 
     /**
+     * A push named [serverId]'s own badge term (`serverBadge`): the server's summary shows it as its
+     * number from now on, re-posted at once when it is in the tray.
+     */
+    @SuppressLint("MissingPermission") // Only re-posts a summary over posted conversations.
+    fun applyServerBadge(context: Context, serverId: String, serverBadge: Int) {
+        val appContext = context.applicationContext
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        runCatching {
+            synchronized(groupingLock) {
+                if (serverBadges[server] == serverBadge) return@synchronized
+                serverBadges[server] = serverBadge
+                if (postedSummaryConversations.containsKey(server)) {
+                    refreshServerSummary(appContext, server, SummaryRefresh.Now)
+                }
+            }
+        }
+    }
+
+    /**
      * The user swiped conversation [notificationId] away (null: an older delete intent without the id):
      * forget it, then recount or remove the summaries.
      */
@@ -248,6 +275,7 @@ internal object AndroidUnreadNotificationPoster {
             recentPosts.reset()
             lastPostMarks.clear()
             postedGroupSeqs.clear()
+            serverBadges.clear()
             postedSummaryConversations.clear()
             pendingSummaryServers.clear()
         }
@@ -305,6 +333,7 @@ internal object AndroidUnreadNotificationPoster {
         NotificationManagerCompat.from(appContext)
             .notify(AndroidUnreadNotificationGrouping.CONVERSATION_TAG, notificationId, notification)
         lastPostMarks[notificationId] = postCounter.incrementAndGet()
+        parseRaftPushBadge(request.optString("serverBadge"))?.let { serverBadges[serverId] = it }
         postedGroupSeqs[notificationId] =
             AndroidUnreadNotificationGrouping.retractionGroupKey(notification.extras).orEmpty() to
                 AndroidUnreadNotificationGrouping.retractionSeq(notification.extras)
@@ -392,7 +421,7 @@ internal object AndroidUnreadNotificationPoster {
                 val posted =
                     activeUnreadNotifications(context)
                         .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG && it.id == summaryId }
-                if (posted != null && posted.notification.number == entries.sumOf { it.count }) {
+                if (posted != null && posted.notification.number == summaryNumber(serverId, entries)) {
                     postedSummaryConversations[serverId] = conversations
                     return
                 }
@@ -407,12 +436,17 @@ internal object AndroidUnreadNotificationPoster {
                 serverId = serverId,
                 channelId = summaryChannelId(context, entries),
                 entries = entries,
-                contentIntent = unreadSummaryContentIntent(context, summaryId)
+                contentIntent = unreadSummaryContentIntent(context, summaryId),
+                number = summaryNumber(serverId, entries)
             )
         )
         postedSummaryConversations[serverId] = conversations
         pendingSummaryServers.remove(serverId)
     }
+
+    /** Must hold [groupingLock]. The server's own badge term when a push named one, else the tray's message count. */
+    private fun summaryNumber(serverId: String, entries: List<UnreadSummaryEntry>): Int =
+        serverBadges[serverId] ?: entries.sumOf { it.count }
 
     /** Must hold [groupingLock]. One deferred update per server, however many ask for it. */
     private fun deferSummary(context: Context, serverId: String) {
@@ -607,7 +641,9 @@ internal object AndroidUnreadNotificationPoster {
         serverId: String,
         channelId: String,
         entries: List<UnreadSummaryEntry>,
-        contentIntent: PendingIntent?
+        contentIntent: PendingIntent?,
+        /** The summary's number: the server's badge term (`serverBadge`) when known. */
+        number: Int = entries.sumOf { it.count }
     ): Notification {
         val appContext = context.applicationContext
         val total = entries.sumOf { it.count }
@@ -632,7 +668,7 @@ internal object AndroidUnreadNotificationPoster {
             .setContentTitle(appName)
             .setContentText(countText)
             .setStyle(inbox)
-            .setNumber(total)
+            .setNumber(number)
             .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)

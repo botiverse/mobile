@@ -128,6 +128,17 @@ class AndroidUnreadNotificationContractTest {
     }
 
     @Test
+    fun theServerSummaryShowsTheServersOwnBadgeTerm() {
+        // Contract §1.4: serverBadge is that server's Activity unread; the summary's number follows it.
+        post(fcm(conversationId = "channel-1", messageId = "m-1", serverBadge = "7"))
+        post(fcm(conversationId = "channel-2", messageId = "m-2", serverBadge = "7"))
+        assertEquals(7, summaryOf("server-1")?.notification?.number)
+        // A sync or retract for that server moves it.
+        AndroidUnreadNotificationPoster.applyServerBadge(context, "server-1", 3)
+        assertEquals(3, summaryOf("server-1")?.notification?.number)
+    }
+
+    @Test
     fun theAccountSoundSettingSilencesThePost() {
         val silent =
             AndroidUnreadNotificationPoster.buildUnreadNotification(
@@ -169,6 +180,12 @@ class AndroidUnreadNotificationContractTest {
     private fun conversations(): List<StatusBarNotification> =
         manager.activeNotifications.filter { it.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG }
 
+    private fun summaryOf(serverId: String): StatusBarNotification? =
+        manager.activeNotifications.singleOrNull {
+            it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG &&
+                it.id == AndroidUnreadNotificationGrouping.summaryNotificationId(serverId)
+        }
+
     private fun conversationOf(groupKey: String): StatusBarNotification? =
         conversations().singleOrNull { it.notification.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_GROUP_KEY) == groupKey }
 
@@ -179,7 +196,8 @@ class AndroidUnreadNotificationContractTest {
         messageId: String = "m-1",
         seq: String = "10",
         category: String = "channel",
-        silent: String = "false"
+        silent: String = "false",
+        serverBadge: String = ""
     ): JSONObject =
         raftFcmUnreadNotificationRequest(
             mapOf(
@@ -194,6 +212,7 @@ class AndroidUnreadNotificationContractTest {
                 "category" to category,
                 "priority" to "normal",
                 "silent" to silent,
+                "serverBadge" to serverBadge,
                 "title" to "#general",
                 "body" to "Alice: hello",
                 "notificationKey" to "message:$messageId"

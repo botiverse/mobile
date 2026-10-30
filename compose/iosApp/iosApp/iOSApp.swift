@@ -750,6 +750,10 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A Settings test (slock docs/contracts/notifications.md §6): confirm it is being shown.
+        if let testId = notification.request.content.userInfo["testId"] as? String, !testId.isEmpty {
+            RaftNotificationTestAck.shared.ack(testId: testId, shown: true)
+        }
         if RaftIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
             // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")

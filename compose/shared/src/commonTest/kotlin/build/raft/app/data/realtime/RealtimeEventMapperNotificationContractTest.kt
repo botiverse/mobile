@@ -4,6 +4,7 @@ import build.raft.app.data.RaftNotificationRoute
 import build.raft.app.data.parseRaftNotificationRoute
 import build.raft.app.model.NotificationAccountSettingsChanged
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationNoticeReceived
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
@@ -61,6 +62,35 @@ class RealtimeEventMapperNotificationContractTest {
         assertNull(push.category)
         assertNull(push.seq)
         assertNull(push.routeJson)
+    }
+
+    @Test
+    fun anEventWithoutAMessageMapsToANotice() {
+        // Contract §4.1: reminder / system_notice / test carry null identity fields and a groupKey.
+        val notice =
+            assertIs<NotificationNoticeReceived>(
+                mapper.map(
+                    RealtimeSocketEvents.NotificationPush,
+                    """
+                    {"serverId":"s1","kind":null,"channelId":null,"threadId":null,"parentChannelId":null,
+                     "parentMessageId":null,"messageId":null,"seq":null,"conversationId":null,
+                     "title":"Reminder","body":"Standup","tag":"s1:reminder","id":"reminder:r1:2026-10-30T09:00:00.000Z",
+                     "category":"reminder","priority":"high","groupKey":"s1:reminder","route":null,
+                     "routeUrl":"/s/acme/activity","silent":false}
+                    """.trimIndent()
+                )
+            )
+        assertEquals("reminder", notice.category)
+        assertEquals("s1:reminder", notice.groupKey)
+        assertEquals("reminder:r1:2026-10-30T09:00:00.000Z", notice.notificationId)
+        assertNull(notice.routeJson)
+        // Without a category and groupKey a message-less payload stays dropped.
+        assertNull(
+            mapper.map(
+                RealtimeSocketEvents.NotificationPush,
+                """{"serverId":"s1","messageId":null,"title":"x","body":"y","tag":"t"}"""
+            )
+        )
     }
 
     @Test

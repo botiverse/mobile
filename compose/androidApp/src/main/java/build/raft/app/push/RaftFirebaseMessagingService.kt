@@ -1,8 +1,10 @@
 package build.raft.app.push
 
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.RaftNotificationTestAck
 import build.raft.app.data.RaftPushMessageType
 import build.raft.app.data.parseRaftFcmNotificationRetract
+import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.raftSystemNotificationTargetsVisibleConversation
 import build.raft.app.shared.AndroidUnreadNotificationPoster
 import build.raft.app.shared.RaftNotificationAlertsPreference
@@ -41,11 +43,14 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             RaftFcmMessageDecision.Retract -> {
                 val retract = parseRaftFcmNotificationRetract(data)
                 val closed = retract?.let { AndroidUnreadNotificationPoster.retract(applicationContext, it) } ?: 0
+                applyServerBadge(data)
                 RaftAppLog.i(TAG, "fcm_message_handled type=retract parsed=${retract != null} closed=$closed")
             }
-            RaftFcmMessageDecision.Sync ->
-                // The launcher badge follows the tray's notification counts (setNumber); nothing else to update.
+            RaftFcmMessageDecision.Sync -> {
+                // The launcher badge follows the tray (setNumber); a per-server sync updates that server's summary.
+                applyServerBadge(data)
                 RaftAppLog.i(TAG, "fcm_message_handled type=sync")
+            }
             RaftFcmMessageDecision.DropUnknownType ->
                 RaftAppLog.i(TAG, "fcm_message_dropped reason=unknown_type")
             RaftFcmMessageDecision.DropAlertsDisabled ->
@@ -53,6 +58,13 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
                 RaftAppLog.i(TAG, "fcm_message_suppressed reason=alerts_disabled")
             RaftFcmMessageDecision.Alert -> postAlert(data)
         }
+    }
+
+    /** `serverBadge` (contract §1.4): the server's own term, shown as its summary's number. */
+    private fun applyServerBadge(data: Map<String, String>) {
+        val serverId = data["serverId"]?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val serverBadge = parseRaftPushBadge(data["serverBadge"]) ?: return
+        AndroidUnreadNotificationPoster.applyServerBadge(applicationContext, serverId, serverBadge)
     }
 
     private fun postAlert(data: Map<String, String>) {
@@ -74,6 +86,10 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
         }
         val request = raftFcmUnreadNotificationRequest(data)
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
+        // A test from Settings (contract §6): confirm whether it reached the tray.
+        data["testId"]?.takeIf { it.isNotBlank() }?.let { testId ->
+            RaftNotificationTestAck.ack(testId, shown = result["status"] == "ok")
+        }
         RaftAppLog.i(
             TAG,
             "fcm_message_handled type=alert dataKeys=${data.keys.sorted().joinToString(",")} status=${result["status"]} code=${result["code"]}"
@@ -152,5 +168,6 @@ private val FCM_UNREAD_NOTIFICATION_KEYS =
         "priority",
         "silent",
         "badge",
+        "serverBadge",
         "testId"
     )

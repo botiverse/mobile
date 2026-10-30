@@ -7,6 +7,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -211,7 +212,11 @@ data class RaftServerNotificationLevels(
     val server: RaftNotificationLevel = RAFT_DEFAULT_SERVER_NOTIFICATION_LEVEL,
     val channels: Map<String, RaftNotificationLevelSetting> = emptyMap(),
     val threads: Map<String, RaftNotificationLevelSetting> = emptyMap(),
-    /** The newest `prefsVersion` applied per scope id; an update not newer than it is dropped. */
+    /**
+     * The newest `prefsVersion` applied per (type, scope) key ([raftNotificationPrefsVersionKey]:
+     * `server:<id>`, `channel:<id>`, `thread:<id>`); an update not newer than its key's is dropped.
+     * Never compared across keys (contract §2.3): a channel's mute and its level have their own.
+     */
     val versions: Map<String, Long> = emptyMap(),
     /** [server] came from the server (not the default of a server only known by a channel update). */
     val serverLevelKnown: Boolean = false
@@ -257,6 +262,9 @@ fun parseRaftServerNotificationLevels(bodyText: String, requestedServerId: Strin
             serverLevelKnown = RaftNotificationLevel.fromWire(wire.server) != null
         )
     }.getOrNull()
+
+/** The dedupe key of a level event (contract §2.3): `server:<id>`, `channel:<id>`, `thread:<id>`. */
+fun raftNotificationPrefsVersionKey(scope: RaftNotificationLevelScope, id: String): String = "${scope.wireName}:$id"
 
 /** The network half; every call names its priority. */
 internal class RaftNotificationSettingsApi(private val networkClient: RaftNetworkClient) {
@@ -365,8 +373,9 @@ object RaftNotificationLevelStore {
                 val update = result.data
                 mutableState.update { all ->
                     val current = all[serverId] ?: previous
+                    val versionKey = raftNotificationPrefsVersionKey(update.scope, update.id)
                     val versions =
-                        update.prefsVersion?.let { current.versions + (update.id to it) } ?: current.versions
+                        update.prefsVersion?.let { current.versions + (versionKey to it) } ?: current.versions
                     all + (serverId to current.with(update.scope, update.id, update.level).copy(versions = versions))
                 }
             }
@@ -408,9 +417,10 @@ object RaftNotificationLevelStore {
     ) {
         mutableState.update { all ->
             val current = all[serverId] ?: RaftServerNotificationLevels(serverId)
-            val held = current.versions[id]
+            val versionKey = raftNotificationPrefsVersionKey(scope, id)
+            val held = current.versions[versionKey]
             if (prefsVersion != null && held != null && prefsVersion <= held) return@update all
-            val versions = prefsVersion?.let { current.versions + (id to it) } ?: current.versions
+            val versions = prefsVersion?.let { current.versions + (versionKey to it) } ?: current.versions
             all + (serverId to current.with(scope, id, setting).copy(versions = versions))
         }
     }
@@ -600,3 +610,142 @@ fun raftPausedUntilLabel(epochMillis: Long, nowEpochMillis: Long = raftNowEpochM
     return "${until.date.toString().drop(5)} $time"
 }
 
+
+// ---------------------------------------------------------------------------
+// Test notification (contract §6)
+// ---------------------------------------------------------------------------
+
+@Serializable
+private data class NotificationTestDevice(val kind: String, val installationId: String)
+
+@Serializable
+private data class NotificationTestRequestBody(val device: NotificationTestDevice)
+
+@Serializable
+private data class NotificationTestSendResponse(val testId: String? = null, val sent: Boolean = false, val reason: String? = null)
+
+@Serializable
+private data class NotificationTestStatusResponse(val status: String? = null, val reason: String? = null)
+
+@Serializable
+private data class NotificationTestAckBody(val shown: Boolean)
+
+fun buildRaftNotificationTestBody(installationId: String): String =
+    notificationSettingsJson.encodeToString(
+        NotificationTestRequestBody.serializer(),
+        NotificationTestRequestBody(NotificationTestDevice(kind = "mobile", installationId = installationId))
+    )
+
+/** What the server reports for a test it sent to this device. */
+sealed interface RaftNotificationTestOutcome {
+    /** The device confirmed it displayed it. */
+    data object Shown : RaftNotificationTestOutcome
+
+    /** Sent, but not shown within the wait (or the device said it did not show it). */
+    data class NotShown(val reason: String?) : RaftNotificationTestOutcome
+
+    /** The server could not send it (`sent: false`, or `failed`). */
+    data class Failed(val reason: String?) : RaftNotificationTestOutcome
+
+    /** The server path is not available (no registration, an older server, offline): test locally. */
+    data object Unavailable : RaftNotificationTestOutcome
+}
+
+/** How long a client waits for the device's ack (contract §6: 15 s, then `not_shown`). */
+const val RAFT_NOTIFICATION_TEST_WAIT_MILLIS: Long = 15_000L
+private const val RAFT_NOTIFICATION_TEST_POLL_MILLIS: Long = 1_000L
+
+/**
+ * `POST notifications/test` to this device's push registration, then `GET notifications/test/:id`
+ * until the device acks it or [RAFT_NOTIFICATION_TEST_WAIT_MILLIS] passes. The real transport
+ * (APNs / FCM) carries it, so a shown test proves the whole path.
+ */
+internal suspend fun raftSendServerTestNotification(
+    networkClient: RaftNetworkClient? = RaftSharedStoreRegistry.currentOrNull()?.networkClient,
+    installationId: String? = RaftPushRegistrationLifecycle.installationIdOrNull(),
+    pollMillis: Long = RAFT_NOTIFICATION_TEST_POLL_MILLIS,
+    waitMillis: Long = RAFT_NOTIFICATION_TEST_WAIT_MILLIS
+): RaftNotificationTestOutcome {
+    val client = networkClient ?: return RaftNotificationTestOutcome.Unavailable
+    val installation = installationId?.takeIf { it.isNotBlank() } ?: return RaftNotificationTestOutcome.Unavailable
+    val sendResponse =
+        try {
+            client.request(
+                priority = DataRequestPriority.Foreground,
+                path = "notifications/test",
+                method = "POST",
+                bodyText = buildRaftNotificationTestBody(installation)
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            return RaftNotificationTestOutcome.Unavailable
+        }
+    if (!sendResponse.isSuccessful) return RaftNotificationTestOutcome.Unavailable
+    val sent =
+        sendResponse.bodyText
+            ?.let { runCatching { notificationSettingsJson.decodeFromString(NotificationTestSendResponse.serializer(), it) }.getOrNull() }
+            ?: return RaftNotificationTestOutcome.Unavailable
+    val testId = sent.testId?.takeIf { it.isNotBlank() }
+    if (!sent.sent || testId == null) {
+        return if (sent.reason == "no_device") RaftNotificationTestOutcome.Unavailable else RaftNotificationTestOutcome.Failed(sent.reason)
+    }
+    var waited = 0L
+    while (waited < waitMillis) {
+        kotlinx.coroutines.delay(pollMillis)
+        waited += pollMillis
+        val statusResponse =
+            try {
+                client.request(priority = DataRequestPriority.Foreground, path = "notifications/test/$testId")
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                continue
+            }
+        val status =
+            statusResponse.bodyText
+                ?.takeIf { statusResponse.isSuccessful }
+                ?.let { runCatching { notificationSettingsJson.decodeFromString(NotificationTestStatusResponse.serializer(), it) }.getOrNull() }
+                ?: continue
+        when (status.status) {
+            "shown" -> return RaftNotificationTestOutcome.Shown
+            "not_shown" -> return RaftNotificationTestOutcome.NotShown(status.reason)
+            "failed" -> return RaftNotificationTestOutcome.Failed(status.reason)
+        }
+    }
+    return RaftNotificationTestOutcome.NotShown("timeout")
+}
+
+/** The settings row's result for an [RaftNotificationTestOutcome]; null: run the local test instead. */
+internal fun RaftNotificationTestOutcome.toSystemNotificationActionResult(): SystemNotificationActionResult? =
+    when (this) {
+        RaftNotificationTestOutcome.Shown -> SystemNotificationActionResult(SystemNotificationActionStatus.Ok, code = "sent")
+        is RaftNotificationTestOutcome.NotShown ->
+            SystemNotificationActionResult(SystemNotificationActionStatus.Error, code = "test_not_shown", message = reason.orEmpty())
+        is RaftNotificationTestOutcome.Failed ->
+            SystemNotificationActionResult(SystemNotificationActionStatus.Error, code = "test_failed", message = reason.orEmpty())
+        RaftNotificationTestOutcome.Unavailable -> null
+    }
+
+/**
+ * The device's confirmation that it displayed test [testId] (`POST notifications/test/:id/ack`):
+ * Android once the FCM test is posted, iOS from `willPresent`. Best effort, never throws.
+ */
+object RaftNotificationTestAck {
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+
+    fun ack(testId: String, shown: Boolean) {
+        val id = testId.trim().takeIf { it.isNotEmpty() } ?: return
+        val client = RaftSharedStoreRegistry.currentOrNull()?.networkClient ?: return
+        scope.launch {
+            runCatching {
+                client.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "notifications/test/$id/ack",
+                    method = "POST",
+                    bodyText = notificationSettingsJson.encodeToString(NotificationTestAckBody.serializer(), NotificationTestAckBody(shown))
+                )
+            }
+        }
+    }
+}

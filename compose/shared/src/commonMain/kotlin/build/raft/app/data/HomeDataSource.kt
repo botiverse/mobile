@@ -341,7 +341,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,
         is build.raft.app.model.NotificationAccountSettingsChanged,
-        is build.raft.app.model.NotificationRetracted -> false
+        is build.raft.app.model.NotificationRetracted,
+        is build.raft.app.model.NotificationNoticeReceived -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

@@ -63,11 +63,20 @@ internal data class RaftPushRegistrationPayload(
      */
     val alertsEnabled: Boolean? = null,
     /** The OS notification permission: `granted`, `denied`, `provisional` or `unknown`. */
-    val osPermission: String? = null
+    val osPermission: String? = null,
+    /**
+     * The newest preview localization key set this build ships (contract §3.1): 2 = every §1.5 key.
+     * APNs then carries `loc-key`s only from that set; any other key arrives as plain English text.
+     */
+    val previewKeySet: Int? = null
 ) {
     /** The registration without its device state: what identifies the token binding itself. */
-    fun identity(): RaftPushRegistrationPayload = copy(previewMode = null, alertsEnabled = null, osPermission = null)
+    fun identity(): RaftPushRegistrationPayload =
+        copy(previewMode = null, alertsEnabled = null, osPermission = null, previewKeySet = null)
 }
+
+/** The preview key set of this build: all keys of slock docs/contracts/notifications.md §1.5. */
+internal const val RAFT_PUSH_PREVIEW_KEY_SET = 2
 
 /** What the device reports with its registration (contract §3.1). */
 data class RaftPushDeviceState(val alertsEnabled: Boolean, val osPermission: String)
@@ -262,6 +271,9 @@ internal interface RaftPushRegistrationLifecycleSink {
 
     /** The device state changed (notifications switch, OS permission): re-send the registration. */
     fun onDeviceStateChanged() {}
+
+    /** This device's installation id, the one its push registration carries; null before install. */
+    fun installationIdOrNull(): String? = null
 }
 
 internal object RaftPushRegistrationLifecycle {
@@ -304,6 +316,8 @@ internal object RaftPushRegistrationLifecycle {
     fun onDeviceStateChanged() {
         sink?.onDeviceStateChanged()
     }
+
+    fun installationIdOrNull(): String? = runCatching { sink?.installationIdOrNull() }.getOrNull()
 
     internal fun clearForTests() {
         sessionEventsObserverJob?.cancel()
@@ -447,7 +461,8 @@ internal class RaftPushRegistrationCoordinator(
                 env = env.trim().lowercase(),
                 appVersion = appVersion.trim(),
                 alertsEnabled = currentDeviceState()?.alertsEnabled,
-                osPermission = currentDeviceState()?.osPermission
+                osPermission = currentDeviceState()?.osPermission,
+                previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET
             )
         if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
@@ -578,7 +593,13 @@ internal class RaftPushRegistrationCoordinator(
     private fun withCurrentDeviceState(payloadJson: String): String {
         val state = currentDeviceState()
         val payload = decodePayloadOrNull(payloadJson) ?: return payloadJson
-        val next = payload.copy(previewMode = null, alertsEnabled = state?.alertsEnabled, osPermission = state?.osPermission)
+        val next =
+            payload.copy(
+                previewMode = null,
+                alertsEnabled = state?.alertsEnabled,
+                osPermission = state?.osPermission,
+                previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET
+            )
         if (next == payload) return payloadJson
         return pushRegistrationJson.encodeToString(next)
     }
@@ -637,6 +658,8 @@ internal class RaftPushRegistrationCoordinator(
 
     fun currentInstallationId(): String? =
         store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
+
+    override fun installationIdOrNull(): String? = currentInstallationId()
 
     private fun storedDeliveryStatusFor(userId: String, environmentId: String?): RaftPushDeliveryStatus? =
         storedDeliveryStatus()?.takeIf { status ->

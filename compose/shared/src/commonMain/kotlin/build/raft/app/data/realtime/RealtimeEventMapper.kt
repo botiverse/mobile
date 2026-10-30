@@ -52,6 +52,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationAccountSettingsChanged
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationNoticeReceived
 import build.raft.app.model.NotificationRetracted
 import build.raft.app.data.RaftNotificationLevelSetting
 import build.raft.app.data.parseRaftNotificationAccountSettingsObject
@@ -382,7 +383,9 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.PinnedUpdated ->
                 decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
-                decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull(diagnosticsLogger)
+                decodeOrNull(NotificationPushDto.serializer(), element)?.let { dto ->
+                    dto.toDomainOrNull(diagnosticsLogger) ?: dto.toNoticeOrNull()
+                }
             else -> null
         }
     } catch (_: SerializationException) {
@@ -918,12 +921,13 @@ private data class NotificationPrefsWireDto(
 @Serializable
 private data class NotificationPushDto(
     val serverId: String,
-    val kind: String,
+    // Null for an event without a message (reminder, system_notice, test; contract §4.1).
+    val kind: String? = null,
     val channelId: String? = null,
     val threadId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
-    val messageId: String,
+    val messageId: String? = null,
     val title: String = "",
     val body: String = "",
     val tag: String = "",
@@ -1863,8 +1867,8 @@ private fun NotificationPushDto.toDomainOrNull(
     diagnostics: (String) -> Unit,
 ): NotificationPushReceived? {
     val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
-    val cleanMessageId = messageId.takeIf { it.isNotBlank() } ?: return null
-    val parsedKind = parseConversationKindOrNull(kind) ?: return null
+    val cleanMessageId = messageId?.takeIf { it.isNotBlank() } ?: return null
+    val parsedKind = kind?.let(::parseConversationKindOrNull) ?: return null
     val cleanChannelId = channelId?.takeIf { it.isNotBlank() }
     val cleanThreadId = threadId?.takeIf { it.isNotBlank() }
     val cleanParentChannelId = parentChannelId?.takeIf { it.isNotBlank() }
@@ -1920,6 +1924,27 @@ private fun NotificationPushDto.toDomainOrNull(
         seq = seq,
         groupKey = groupKey?.takeIf { it.isNotBlank() },
         conversationId = conversationId?.takeIf { it.isNotBlank() },
+        routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
+        silent = silent
+    )
+}
+
+/**
+ * An event without a message (contract §4.1): accepted when it names its `category` and `groupKey`;
+ * anything else without a message stays dropped.
+ */
+private fun NotificationPushDto.toNoticeOrNull(): NotificationNoticeReceived? {
+    if (!messageId.isNullOrBlank()) return null
+    val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
+    val cleanCategory = category?.takeIf { it.isNotBlank() } ?: return null
+    val cleanGroupKey = groupKey?.takeIf { it.isNotBlank() } ?: return null
+    return NotificationNoticeReceived(
+        serverId = ServerId(cleanServerId),
+        category = cleanCategory,
+        groupKey = cleanGroupKey,
+        notificationId = id?.takeIf { it.isNotBlank() },
+        title = title,
+        body = body,
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
         silent = silent
     )

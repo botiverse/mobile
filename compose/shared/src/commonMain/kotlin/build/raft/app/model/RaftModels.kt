@@ -1264,6 +1264,23 @@ data class NotificationPushReceived(
 ) : RealtimeEvent
 
 /**
+ * `notification:push` of an event without a message (contract §4.1: `reminder`, `system_notice`,
+ * `test`): no conversation identity, a `groupKey` of `<serverId>:reminder|notice|test`, and the open
+ * target in [routeJson] (null: the app's Activity).
+ */
+@Serializable
+data class NotificationNoticeReceived(
+    val serverId: ServerId,
+    val category: String,
+    val groupKey: String,
+    val notificationId: String? = null,
+    val title: String,
+    val body: String,
+    val routeJson: String? = null,
+    val silent: Boolean? = null
+) : RealtimeEvent
+
+/**
  * `notification_prefs:updated` with `type: "channel" | "thread" | "server"` (contract §2.3): one
  * explicit level changed. [level] is a `NotificationLevelSetting` wire value; [scopeId] is the
  * server, channel (or DM) or thread channel id. Drop it when [prefsVersion] is not newer.

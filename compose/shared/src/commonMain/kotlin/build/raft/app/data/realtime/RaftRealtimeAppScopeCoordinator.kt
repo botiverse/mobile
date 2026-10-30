@@ -10,6 +10,7 @@ import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.NotificationRetracted
+import build.raft.app.model.NotificationNoticeReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.optString
@@ -73,6 +74,9 @@ interface RaftRealtimeAppScopeSink {
 
     /** A conversation was read on some device: close the tray notifications it covers. */
     fun onNotificationRetracted(event: NotificationRetracted) = Unit
+
+    /** A reminder / notice / test notification (no message) for the tray of a device without FCM. */
+    suspend fun maybePostBackgroundNotificationNotice(event: NotificationNoticeReceived, isAppInForeground: Boolean) = Unit
 }
 
 interface RaftRealtimeHostContext : RaftRealtimeAppScopeConnection, RaftRealtimeAppScopeSink {
@@ -640,6 +644,9 @@ class RaftRealtimeAppScopeCoordinator(
             }
         }
         if (event is NotificationRetracted) sink.onNotificationRetracted(event)
+        if (event is NotificationNoticeReceived) {
+            sink.maybePostBackgroundNotificationNotice(event, isAppInForeground = decision.isAppInForeground)
+        }
         val currentServerId = decision.serverId ?: return
         // task #459: the tray posts from the server-qualified stream only —
         // message:new is a data-sync trigger and never reaches the poster.

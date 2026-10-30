@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.Utils
@@ -365,7 +366,11 @@ internal fun SettingsNativeDetailPageContent(
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_SETTINGS, result))
             }
             SharedSettingsEffect.SendTestNotification -> {
-                val result = settingsCapabilities.sendTestNotification()
+                // The server sends it through the real transport to this device (contract §6); the
+                // local test only runs where that path is not available (no registration, older server).
+                val result =
+                    build.raft.app.data.raftSendServerTestNotification().toSystemNotificationActionResult()
+                        ?: settingsCapabilities.sendTestNotification()
                 onSettingsIntent(SharedSettingsIntent.CompleteSystemNotificationAction(MOBILE_ACTION_TEST_NOTIFICATION, result))
             }
             is SharedSettingsEffect.ClearStorage -> {

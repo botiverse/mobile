@@ -52,7 +52,9 @@ internal object PushPreviewKeys {
             "agent_attention" -> SENDER_ONLY_AGENT to HIDDEN_AGENT
             "reminder" -> SENDER_ONLY_REMINDER to HIDDEN_REMINDER
             "system_notice", "test" -> SENDER_ONLY_NOTICE to HIDDEN_NOTICE
-            "dm", "channel", "thread", "direct_message", "channel_unread", "general_unread" -> SENDER_ONLY_MESSAGE to HIDDEN_MESSAGE
+            "dm", "direct_message" -> SENDER_ONLY_MESSAGE to HIDDEN_MESSAGE
+            // channel / thread, the local request's channel_unread / general_unread, an older server's
+            // RAFT_MESSAGE: "mentioned you" only when the message mentions me.
             else -> if (mentioned) SENDER_ONLY_MENTION to HIDDEN_MENTION else SENDER_ONLY_MESSAGE to HIDDEN_MESSAGE
         }
 }

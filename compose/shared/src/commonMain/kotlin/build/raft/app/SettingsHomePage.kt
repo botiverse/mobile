@@ -16026,6 +16026,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
         is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
         is build.raft.app.model.NotificationRetracted -> "notification_retract"
+        is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -16060,6 +16061,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is build.raft.app.model.NotificationLevelChanged,
         is build.raft.app.model.NotificationAccountSettingsChanged -> "realtime_content_apply"
         is NotificationPushReceived,
+        is build.raft.app.model.NotificationNoticeReceived,
         is build.raft.app.model.NotificationRetracted -> "realtime_notification_apply"
     }
 

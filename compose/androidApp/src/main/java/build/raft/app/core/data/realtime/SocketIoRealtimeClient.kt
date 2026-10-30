@@ -969,6 +969,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is NotificationLevelChanged -> "notification_level_changed"
     is NotificationAccountSettingsChanged -> "notification_account_settings_changed"
     is NotificationRetracted -> "notification_retract"
+    is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
 }
 
 private val realtimeAuthRefreshExecutor =

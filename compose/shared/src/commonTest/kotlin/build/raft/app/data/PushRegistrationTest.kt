@@ -62,7 +62,7 @@ class PushRegistrationTest {
         assertTrue(coordinator.retryPendingRegistration(reason = "login"))
         assertEquals(1, api.calls.size)
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewKeySet":2}""",
             api.calls.single()
         )
 
@@ -326,7 +326,7 @@ class PushRegistrationTest {
             )
         )
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewKeySet":2}""",
             api.calls.single(),
             "an FID is case-sensitive: it is trimmed but never lowercased"
         )
@@ -874,21 +874,21 @@ class PushRegistrationTest {
         assertTrue(coordinator.registerFcm())
 
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","alertsEnabled":false,"osPermission":"denied"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","alertsEnabled":false,"osPermission":"denied","previewKeySet":2}""",
             api.calls.single()
         )
         state = RaftPushDeviceState(alertsEnabled = true, osPermission = "granted")
         assertTrue(coordinator.handleDeviceStateChanged())
-        assertTrue(api.calls.last().endsWith(""","alertsEnabled":true,"osPermission":"granted"}"""), api.calls.last())
+        assertTrue(api.calls.last().endsWith(""","alertsEnabled":true,"osPermission":"granted","previewKeySet":2}"""), api.calls.last())
     }
 
     @Test
     fun anUnknownPermissionReadsUnknownAndAFailedReadOmitsTheDeviceState() = runBlocking {
         val cases =
             listOf<Pair<() -> RaftPushDeviceState?, String>>(
-                { RaftPushDeviceState(alertsEnabled = true, osPermission = "maybe") } to ""","alertsEnabled":true,"osPermission":"unknown"}""",
-                { null } to ""","appVersion":"1.3.0"}""",
-                { error("store unavailable") } to ""","appVersion":"1.3.0"}"""
+                { RaftPushDeviceState(alertsEnabled = true, osPermission = "maybe") } to ""","alertsEnabled":true,"osPermission":"unknown","previewKeySet":2}""",
+                { null } to ""","appVersion":"1.3.0","previewKeySet":2}""",
+                { error("store unavailable") } to ""","appVersion":"1.3.0","previewKeySet":2}"""
             )
         for ((provider, expectedEnd) in cases) {
             val api = RecordingPushRegistrationApi()
@@ -1021,7 +1021,7 @@ class PushRegistrationTest {
         assertTrue(coordinator.retryPendingRegistration(reason = "startup"))
 
         assertTrue(
-            api.calls.single().endsWith(""","appVersion":"1.2.0","alertsEnabled":true,"osPermission":"granted"}"""),
+            api.calls.single().endsWith(""","appVersion":"1.2.0","alertsEnabled":true,"osPermission":"granted","previewKeySet":2}"""),
             api.calls.single()
         )
     }
