@@ -5329,12 +5329,13 @@ private fun ThreadMembersPageScreen() {
             canCreateAgents = canCreateAgents,
             localServerId = route.serverId.value,
             channelName = channelName,
-            // web: the row opens the create dialog itself (managed agent), the channel preselected.
-            onCreateAgent = { name ->
+            // The two rows (web sidebar Agents "+" order: Create Agent, Create External Agent) open
+            // that create dialog directly, the channel preselected.
+            onCreateAgent = { name, mode ->
                 if (canCreateAgents && liveOwner == routeOwner) {
                     RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.ChannelMembers)
                     createAgentName = name
-                    createAgentMode = MembersCreateAgentMode.Managed
+                    createAgentMode = mode
                 }
             },
             onSubmit = { selectedMembers ->
@@ -5461,7 +5462,7 @@ internal fun ThreadMembersPageContent(
     onRemoveMember: (RaftThreadMemberItem) -> Unit,
     onSubmit: (List<RaftThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
-    onCreateAgent: (String) -> Unit = {},
+    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
     localServerId: String? = null,
     channelName: String = "",
 ) {

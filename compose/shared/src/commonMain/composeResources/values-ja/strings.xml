@@ -2798,6 +2798,7 @@
     <string name="thread_members_create_no_permission">ここではメンバーを追加できますが、このサーバーでエージェントを作成するにはオーナーまたは管理者の権限が必要です。権限の付与を依頼するか、オーナーまたは管理者にエージェントを作成してもらってから追加してください。</string>
     <string name="thread_members_created_join_failed">Agent は作成されましたが、チャンネルへの参加に失敗しました。再作成せずに参加を再試行できます。</string>
     <string name="thread_members_create_named_agent">エージェント「%1$s」を作成</string>
+    <string name="thread_members_create_named_external_agent">外部エージェント「%1$s」を作成</string>
     <string name="app_update_download_paused">ダウンロード一時停止中 — 再開を待っています</string>
     <string name="app_update_download_failed">ダウンロードに失敗しました。再試行してください。</string>
     <string name="thread_audio_playback_position">再生位置</string>

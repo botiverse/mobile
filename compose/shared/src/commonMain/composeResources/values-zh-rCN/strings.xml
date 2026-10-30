@@ -2798,6 +2798,7 @@
     <string name="thread_members_create_no_permission">你可以往这个群里加成员，但在本服务器创建 Agent 需要 owner/admin 权限。请找他们开通，或让他们先建好再由你加进来。</string>
     <string name="thread_members_created_join_failed">Agent 已创建，但加入频道失败。请重试加入，不会重复创建。</string>
     <string name="thread_members_create_named_agent">创建 Agent「%1$s」</string>
+    <string name="thread_members_create_named_external_agent">创建外部 Agent「%1$s」</string>
     <string name="app_update_download_paused">下载已暂停，等待继续</string>
     <string name="app_update_download_failed">下载失败，点击重试重新下载。</string>
     <string name="thread_audio_playback_position">播放位置</string>

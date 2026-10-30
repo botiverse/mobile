@@ -67,8 +67,9 @@ import build.raft.designsystem.tokens.RaftStroke
  *
  * Search, then raft-ui ChoiceList `multiple` ([RaftMultiChoiceList]): an Agents and a Humans
  * heading, a checkbox per candidate (tapping ticks it, never adds it), the selected people as
- * removable badges above the list, the "Create Agent" row pinned under it (the new agent joins
- * this channel once created), and "Add Selected (N)" — disabled at 0 — sending one atomic batch.
+ * removable badges above the list, the "Create Agent" and "Create External Agent" rows pinned
+ * under it (the new agent joins this channel once created), and "Add Selected (N)" — disabled at
+ * 0 — sending one atomic batch.
  * Members already in this server's projection are not listed (web `memberCandidates`).
  */
 @Composable
@@ -87,7 +88,7 @@ internal fun ThreadAddMemberPanel(
     initialSelectedKeys: Set<String> = emptySet(),
     onSubmitBatch: (List<RaftThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
-    onCreateAgent: (String) -> Unit = {},
+    onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     var query by remember { mutableStateOf("") }
@@ -208,12 +209,12 @@ internal fun ThreadAddMemberPanel(
             matchedValues = matchedKeys,
             fill = true,
             footer = {
-                ThreadAddMemberCreateAgentRow(
+                ThreadAddMemberCreateAgentRows(
                     canCreateAgents = canCreateAgents,
                     createName = createName,
                     channelName = channelName,
                     enabled = !adding,
-                    onClick = { onCreateAgent(createName) },
+                    onCreateAgent = { mode -> onCreateAgent(createName, mode) },
                 )
             },
         )
@@ -265,13 +266,57 @@ private fun ThreadAddMemberAvatar(
 private val ThreadAddMemberAvatarSize = 20.dp
 
 /**
- * The list's footer (web `createAgentFooter`): a dashed plus tile, "Create Agent" (or
- * "Create Agent “name”" on the brand wash when the search found no one) and "Joins #channel
- * automatically after creation". Without create permission the row stays, disabled, with the
- * reason, so the way out is never hidden.
+ * The list's footer: the web sidebar Agents "+" menu's two entries, in its order and wording
+ * (`layout.sidebar.createAgent` / `createExternalAgent`), as rows: "Create Agent" (managed) and
+ * "Create External Agent". Both open their create dialog with this channel preselected; a
+ * search that found no one names the new agent in both. Without create permission both rows
+ * stay, disabled, with the reason once under them, so the way out is never hidden.
+ */
+@Composable
+internal fun ThreadAddMemberCreateAgentRows(
+    canCreateAgents: Boolean,
+    createName: String,
+    channelName: String,
+    enabled: Boolean,
+    onCreateAgent: (MembersCreateAgentMode) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        ThreadAddMemberCreateAgentRow(
+            mode = MembersCreateAgentMode.Managed,
+            canCreateAgents = canCreateAgents,
+            createName = createName,
+            channelName = channelName,
+            enabled = enabled,
+            onClick = { onCreateAgent(MembersCreateAgentMode.Managed) },
+        )
+        ThreadAddMemberCreateAgentRow(
+            mode = MembersCreateAgentMode.External,
+            canCreateAgents = canCreateAgents,
+            createName = createName,
+            channelName = channelName,
+            enabled = enabled,
+            onClick = { onCreateAgent(MembersCreateAgentMode.External) },
+        )
+        if (!canCreateAgents) {
+            RaftText(
+                stringResource(Res.string.thread_members_create_no_permission),
+                modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp),
+                style = RaftTheme.typography.caption,
+                color = RaftTheme.colors.foregroundHint,
+            )
+        }
+    }
+}
+
+/**
+ * One create row (web `createAgentFooter`): a dashed tile (plus for a managed agent, the web
+ * menu's plug for an external one), "Create Agent" / "Create External Agent" (or with
+ * “name” when the search found no one; the managed row then sits on the brand wash as the
+ * suggested way out) and "Joins #channel automatically after creation".
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRow(
+    mode: MembersCreateAgentMode,
     canCreateAgents: Boolean,
     createName: String,
     channelName: String,
@@ -280,67 +325,68 @@ internal fun ThreadAddMemberCreateAgentRow(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val promoted = createName.isNotBlank()
+    val external = mode == MembersCreateAgentMode.External
+    val named = createName.isNotBlank() && canCreateAgents
+    val promoted = named && !external
     val active = canCreateAgents && enabled
     val chipShape = RoundedCornerShape(RaftRadius.Chip)
     val tileInk = if (canCreateAgents) colors.foregroundHint else colors.foregroundDisabled
     val source = remember { MutableInteractionSource() }
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle, enabled = active)
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .then(if (promoted && canCreateAgents) Modifier.background(colors.brandSoft, chipShape) else Modifier)
+            .then(if (promoted) Modifier.background(colors.brandSoft, chipShape) else Modifier)
             .raftStateOverlay(overlay, chipShape)
             .raftPointerHover(source, enabled = active)
             .clickable(interactionSource = source, indication = null, enabled = active, role = Role.Button, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            // web: `size-6 rounded-sticker border-[1.5px] border-dashed border-foreground-hint`.
-            Box(
-                Modifier.size(24.dp).drawBehind {
-                    val stroke = RaftStroke.Control.toPx()
-                    val inset = stroke / 2f
-                    drawRoundRect(
-                        color = tileInk,
-                        topLeft = Offset(inset, inset),
-                        size = Size(size.width - stroke, size.height - stroke),
-                        cornerRadius = CornerRadius((RaftRadius.Sticker.toPx() - inset).coerceAtLeast(0f)),
-                        style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
-                    )
+        // web: `size-6 rounded-sticker border-[1.5px] border-dashed border-foreground-hint`.
+        Box(
+            Modifier.size(24.dp).drawBehind {
+                val stroke = RaftStroke.Control.toPx()
+                val inset = stroke / 2f
+                drawRoundRect(
+                    color = tileInk,
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - stroke, size.height - stroke),
+                    cornerRadius = CornerRadius((RaftRadius.Sticker.toPx() - inset).coerceAtLeast(0f)),
+                    style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
+                )
+            },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (external) {
+                RaftSlotIcon(RaftLucideIconName.Plug, size = 14.dp, color = tileInk)
+            } else {
+                RaftGlyphIcon(RaftGlyph.Plus, size = 14.dp, color = tileInk)
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            RaftText(
+                when {
+                    external && named -> stringResource(Res.string.thread_members_create_named_external_agent, createName)
+                    external -> stringResource(Res.string.agent_create_action_create_external)
+                    named -> stringResource(Res.string.thread_members_create_named_agent, createName)
+                    else -> stringResource(Res.string.thread_members_create_agent)
                 },
-                contentAlignment = Alignment.Center,
-            ) { RaftGlyphIcon(RaftGlyph.Plus, size = 14.dp, color = tileInk) }
-            Column(Modifier.weight(1f)) {
+                style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = if (active) colors.foreground else colors.foregroundDisabled,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (canCreateAgents) {
                 RaftText(
-                    if (promoted && canCreateAgents) {
-                        stringResource(Res.string.thread_members_create_named_agent, createName)
-                    } else {
-                        stringResource(Res.string.thread_members_create_agent)
-                    },
-                    style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (active) colors.foreground else colors.foregroundDisabled,
+                    stringResource(Res.string.thread_add_member_create_agent_auto_join, "#$channelName"),
+                    style = typography.caption,
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (canCreateAgents) {
-                    RaftText(
-                        stringResource(Res.string.thread_add_member_create_agent_auto_join, "#$channelName"),
-                        style = typography.caption,
-                        color = colors.foregroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
-        }
-        if (!canCreateAgents) {
-            RaftText(
-                stringResource(Res.string.thread_members_create_no_permission),
-                modifier = Modifier.padding(top = 6.dp),
-                style = typography.caption,
-                color = colors.foregroundHint,
-            )
         }
     }
 }
