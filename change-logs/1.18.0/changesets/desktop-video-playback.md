@@ -3,7 +3,7 @@ type: added
 area: conversation
 platforms:
   - desktop
-pull_request: TBD
+pull_request: https://github.com/botiverse/mobile/pull/3989
 rollout: full
 ---
 
