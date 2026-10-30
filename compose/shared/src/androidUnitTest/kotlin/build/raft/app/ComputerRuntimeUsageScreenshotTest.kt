@@ -67,7 +67,7 @@ class ComputerRuntimeUsageScreenshotTest {
     @Test
     fun sheetDark() = capture("settings.computer.runtime_usage.sheet.dark", RaftAppAppearance.Dark) { RuntimeUsageSheetContent(it) }
 
-    // The agent profile's usage card says what is left, like the sheet above (artin 10-29).
+    // The agent profile's usage card says what is used, like the sheet above (web #11855).
     @Test
     fun memberCardLight() = capture("members.runtime_usage.card", RaftAppAppearance.Light) { RuntimeUsageMemberCardContent() }
 
@@ -181,7 +181,7 @@ private fun RuntimeUsageChipsContent(@Suppress("UNUSED_PARAMETER") appearance: R
     }
 }
 
-/** The sheet Claude Code's chip opens: plenty left, low (12% left) and used up. */
+/** The sheet Claude Code's chip opens: 62% used, high (88% used warns) and used up (raft-ui 0.50). */
 @Composable
 private fun RuntimeUsageSheetContent(@Suppress("UNUSED_PARAMETER") appearance: RaftAppAppearance) {
     val read = remember { Json.parseToJsonElement(CLAUDE_USAGE).toRuntimeAccountUsageRead()!! }

@@ -73,7 +73,7 @@ private fun RuntimePickerFixture(showAll: Boolean) {
             selectedRuntimeId = "qwen",
             showAll = showAll
         )
-    val options = runtimePickerOptions(rows.rows, rememberRuntimePickerCopy(), mapOf("claude" to "Claude Max · 5h 72% left"))
+    val options = runtimePickerOptions(rows.rows, rememberRuntimePickerCopy(), mapOf("claude" to "Claude Max · 5h 28% used"))
     val title = stringResource(Res.string.agent_create_label_runtime)
     val action =
         RaftComboboxListAction(

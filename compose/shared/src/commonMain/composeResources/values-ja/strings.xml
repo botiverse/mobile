@@ -2260,8 +2260,8 @@
     <string name="settings_computers_runtime_usage_account_fallback">ランタイムアカウント</string>
     <string name="settings_computers_runtime_usage_reauth_description">このコンピューターでもう一度ログインしてください。プロバイダーの認証が完了するまで、最後に取得した割合は表示されません。</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">使用量の形式を解析できません</string>
-    <string name="settings_computers_runtime_usage_window_left">残り %1$s · リセット：%2$s</string>
-    <string name="settings_computers_runtime_usage_window_left_reset_unavailable">残り %1$s · リセット時刻不明</string>
+    <string name="settings_computers_runtime_usage_window_used">使用済み %1$s · リセット：%2$s</string>
+    <string name="settings_computers_runtime_usage_window_used_reset_unavailable">使用済み %1$s · リセット時刻不明</string>
     <string name="settings_computers_runtime_usage_window_used_up">上限に達しました · リセット：%1$s</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">上限に達しました · リセット時刻不明</string>
     <string name="settings_computers_runtime_usage_later">後ほど</string>
@@ -2815,7 +2815,7 @@
     <string name="member_runtime_usage_stale">データが古くなっています。以下の値は正確でない可能性があります。</string>
     <string name="runtime_quota_window_five_hour">5 時間</string>
     <string name="runtime_quota_window_week">今週</string>
-    <string name="runtime_quota_left">%1$s 残り %2$s</string>
+    <string name="runtime_quota_used">%1$s 使用済み %2$s</string>
     <string name="runtime_quota_used_up">%1$s 上限に達しました（%2$sにリセット）</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 上限に達しました</string>
     <string name="runtime_quota_attention">%1$s · 対応が必要</string>

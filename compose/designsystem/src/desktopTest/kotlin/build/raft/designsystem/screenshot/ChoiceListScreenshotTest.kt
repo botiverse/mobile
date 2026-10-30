@@ -47,8 +47,8 @@ class ChoiceListScreenshotTest {
         val warning = RaftTheme.colors.warningStrong
         return buildAnnotatedString {
             append("Claude Max · ")
-            if (usedUp) withStyle(SpanStyle(color = warning)) { append("5h used up, resets in 3 hours") } else append("5h 72% left")
-            append(" · Week 40% left")
+            if (usedUp) withStyle(SpanStyle(color = warning)) { append("5h used up, resets in 3 hours") } else append("5h 28% used")
+            append(" · Week 60% used")
         }
     }
 

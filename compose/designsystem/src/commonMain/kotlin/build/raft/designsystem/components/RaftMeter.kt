@@ -40,42 +40,46 @@ enum class RaftMeterSize(val track: Dp) {
     Md(8.dp),
 }
 
-/** raft-ui Meter `data-level`: what is left decides the colour; there is no variant. */
+/** raft-ui Meter `data-level` (0.50): what is used decides the colour; there is no variant. */
 enum class RaftMeterLevel {
-    /** More than `low` left: the `info` fill, up to a full bar (never `success`). */
-    Plenty,
+    /** Under `warnAt` used: the `info` fill (never `success`). */
+    Normal,
 
-    /** `low` or less left: the `warning` fill and a `warning-strong` value. */
-    Low,
+    /** `warnAt` or more used: the `warning` fill and a `warning-strong` value. */
+    High,
 
-    /** Nothing left: an empty `warning-muted` track with a 1dp `warning` edge. */
-    Empty,
+    /** All of it used: a full `warning` bar and a `warning-strong` value. */
+    Full,
 }
 
+/** raft-ui Meter's default `warnAt`: it warns from 80% used (the old "20% left"). */
+const val RaftMeterDefaultWarnAt: Float = 0.8f
+
 /**
- * raft-ui Meter's level: what is left is `max - used` (used clamped to 0..max); `low` is "at
- * or below" and defaults to 20% of [max].
+ * raft-ui Meter's level (0.50): the share used is `used / max` (used clamped to 0..max);
+ * [warnAt] is the share used (0..1, "at or above") from which it warns.
  */
-fun raftMeterLevel(used: Float, max: Float = 100f, low: Float? = null): RaftMeterLevel {
-    val left = max - used.coerceIn(0f, max)
-    val lowAt = (low ?: (max * 0.2f)).coerceIn(0f, max)
+fun raftMeterLevel(used: Float, max: Float = 100f, warnAt: Float = RaftMeterDefaultWarnAt): RaftMeterLevel {
+    val share = if (max > 0f) used.coerceIn(0f, max) / max else 1f
     return when {
-        left <= 0f -> RaftMeterLevel.Empty
-        left <= lowAt -> RaftMeterLevel.Low
-        else -> RaftMeterLevel.Plenty
+        share >= 1f -> RaftMeterLevel.Full
+        share >= warnAt.coerceIn(0f, 1f) -> RaftMeterLevel.High
+        else -> RaftMeterLevel.Normal
     }
 }
 
 /**
- * raft-ui Meter (`wip`): how much of an allowance is left, such as a usage limit that resets.
- * It takes what is [used] (0..[max], as the provider reports it) and draws what is left, full
- * to start and draining: a `fill-muted` track (sticker radius) holding a fill that is a sticker
- * with a 1.5dp `sticker-ink` inset edge. The colour follows [raftMeterLevel].
+ * raft-ui Meter (`wip`, 0.50): how much of an allowance is used, such as a usage limit that
+ * resets. The bar fills as it is used: a `fill-muted` track (sticker radius) holding a fill of
+ * [used] / [max] that is a sticker with a 1.5dp `sticker-ink` inset edge. The colour follows
+ * [raftMeterLevel]: `info` until [warnAt] of [max] is used, then `warning`; used up is a full
+ * `warning` bar. Never `danger`, no `success`.
  *
  * The optional header is [label] (footnote semibold, ink) at the start and [valueText]
- * (footnote, tabular, `foreground-muted`; `warning-strong` when low or used up) at the end,
- * 6dp above the track. [valueText] leads with what is left ("38% left · resets in 3h") and is
- * also what accessibility reads as the value; [showValue] = false keeps it out of the header.
+ * (footnote, tabular, `foreground-muted`; `warning-strong` from [warnAt] and when used up) at
+ * the end, 6dp above the track. [valueText] says what is used, with the word ("62% used ·
+ * resets in 3h", "Used up · resets in 2h") and is also what accessibility reads as the value;
+ * [showValue] = false keeps it out of the header.
  */
 @Composable
 fun RaftMeter(
@@ -83,7 +87,7 @@ fun RaftMeter(
     valueText: String,
     modifier: Modifier = Modifier,
     max: Float = 100f,
-    low: Float? = null,
+    warnAt: Float = RaftMeterDefaultWarnAt,
     size: RaftMeterSize = RaftMeterSize.Md,
     label: String? = null,
     showValue: Boolean = true,
@@ -91,13 +95,10 @@ fun RaftMeter(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val safeMax = if (max > 0f) max else 1f
-    val left = safeMax - used.coerceIn(0f, safeMax)
-    val fraction = (left / safeMax).coerceIn(0f, 1f)
-    val level = raftMeterLevel(used, safeMax, low)
-    val fill = if (level == RaftMeterLevel.Low) RaftUiPalette.warning else RaftUiPalette.info
-    val valueColor = if (level == RaftMeterLevel.Plenty) colors.foregroundMuted else colors.warningStrong
-    val track = if (level == RaftMeterLevel.Empty) colors.warningMuted else colors.fillMuted
-    val trackEdge = if (level == RaftMeterLevel.Empty) RaftUiPalette.warning else null
+    val fraction = (used.coerceIn(0f, safeMax) / safeMax).coerceIn(0f, 1f)
+    val level = raftMeterLevel(used, safeMax, warnAt)
+    val fill = if (level == RaftMeterLevel.Normal) RaftUiPalette.info else RaftUiPalette.warning
+    val valueColor = if (level == RaftMeterLevel.Normal) colors.foregroundMuted else colors.warningStrong
     val edge = RaftUiPalette.stickerInk
     Column(
         modifier.fillMaxWidth().semantics(mergeDescendants = true) {
@@ -133,7 +134,7 @@ fun RaftMeter(
             }
         }
         Canvas(Modifier.fillMaxWidth().height(size.track)) {
-            drawMeterTrack(track, trackEdge)
+            drawMeterTrack(colors.fillMuted)
             if (fraction > 0f) {
                 drawMeterFill(Size(this.size.width * fraction, this.size.height), fill, edge)
             }
@@ -141,20 +142,8 @@ fun RaftMeter(
     }
 }
 
-private fun DrawScope.drawMeterTrack(color: Color, edge: Color?) {
-    val radius = CornerRadius(RaftRadius.Sticker.toPx())
-    drawRoundRect(color = color, cornerRadius = radius)
-    if (edge == null) return
-    // inset-ring-1 inset-ring-(--meter-track-edge): the 1dp edge sits inside the track.
-    val stroke = RaftStroke.Hairline.toPx()
-    val half = stroke / 2f
-    drawRoundRect(
-        color = edge,
-        topLeft = Offset(half, half),
-        size = Size(size.width - stroke, size.height - stroke),
-        cornerRadius = CornerRadius((radius.x - half).coerceAtLeast(0f)),
-        style = Stroke(width = stroke),
-    )
+private fun DrawScope.drawMeterTrack(color: Color) {
+    drawRoundRect(color = color, cornerRadius = CornerRadius(RaftRadius.Sticker.toPx()))
 }
 
 private fun DrawScope.drawMeterFill(fillSize: Size, color: Color, edge: Color) {

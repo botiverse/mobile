@@ -66,15 +66,15 @@ internal fun RuntimeAccountUsageLoad?.quotaSummary(key: RuntimeAccountUsageKey):
 internal fun rememberRuntimeQuotaLineCopy(): RuntimeQuotaLineCopy {
     val fiveHour = stringResource(Res.string.runtime_quota_window_five_hour)
     val week = stringResource(Res.string.runtime_quota_window_week)
-    val left = stringResource(Res.string.runtime_quota_left, "\u0001", "\u0002")
+    val used = stringResource(Res.string.runtime_quota_used, "\u0001", "\u0002")
     val usedUp = stringResource(Res.string.runtime_quota_used_up, "\u0001", "\u0002")
     val usedUpNoReset = stringResource(Res.string.runtime_quota_used_up_no_reset, "\u0001")
     val attention = stringResource(Res.string.runtime_quota_attention, "\u0001")
-    return remember(fiveHour, week, left, usedUp, usedUpNoReset, attention) {
+    return remember(fiveHour, week, used, usedUp, usedUpNoReset, attention) {
         RuntimeQuotaLineCopy(
             fiveHour = fiveHour,
             week = week,
-            left = { window, percent -> left.replace("\u0001", window).replace("\u0002", percent) },
+            used = { window, percent -> used.replace("\u0001", window).replace("\u0002", percent) },
             usedUp = { window, reset -> usedUp.replace("\u0001", window).replace("\u0002", reset) },
             usedUpNoReset = { window -> usedUpNoReset.replace("\u0001", window) },
             attention = { plan -> attention.replace("\u0001", plan) }

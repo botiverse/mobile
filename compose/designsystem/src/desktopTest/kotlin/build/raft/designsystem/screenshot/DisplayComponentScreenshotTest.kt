@@ -752,20 +752,20 @@ class DisplayComponentScreenshotTest {
             }
         }
 
-    /** Plenty (full and part), low (20% left is already low), used up, sm stacked, no value. */
+    /** raft-ui 0.50: none and part used, high (80% used already warns), used up (a full warning bar), sm stacked, no value. */
     @Test
     fun meter() =
         capture("meter") {
             Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                RaftMeter(used = 0f, label = "Weekly limit", valueText = "100% left · resets in 6 days")
-                RaftMeter(used = 62f, label = "5-hour limit", valueText = "38% left · resets in 3h")
-                RaftMeter(used = 80f, label = "Opus weekly", valueText = "20% left · resets tomorrow")
+                RaftMeter(used = 0f, label = "Weekly limit", valueText = "0% used · resets in 6 days")
+                RaftMeter(used = 62f, label = "5-hour limit", valueText = "62% used · resets in 3h")
+                RaftMeter(used = 80f, label = "Opus weekly", valueText = "80% used · resets tomorrow")
                 RaftMeter(used = 100f, label = "5-hour limit", valueText = "Used up · resets in 2h")
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    RaftMeter(used = 12f, size = RaftMeterSize.Sm, label = "5-hour limit", valueText = "88% left · resets in 4h")
-                    RaftMeter(used = 91f, size = RaftMeterSize.Sm, label = "Weekly limit", valueText = "9% left · resets in 2 days")
+                    RaftMeter(used = 12f, size = RaftMeterSize.Sm, label = "5-hour limit", valueText = "12% used · resets in 4h")
+                    RaftMeter(used = 91f, size = RaftMeterSize.Sm, label = "Weekly limit", valueText = "91% used · resets in 2 days")
                 }
-                RaftMeter(used = 45f, valueText = "55% left", showValue = false)
+                RaftMeter(used = 45f, valueText = "45% used", showValue = false)
             }
         }
 

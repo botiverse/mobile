@@ -66,7 +66,7 @@ class AgentMigrationTargetInfoTest {
             RuntimeQuotaLineCopy(
                 fiveHour = "5h",
                 week = "Week",
-                left = { window, percent -> "$window $percent left" },
+                used = { window, percent -> "$window $percent used" },
                 usedUp = { window, reset -> "$window used up, resets $reset" },
                 usedUpNoReset = { window -> "$window used up" },
                 attention = { plan -> "$plan · needs attention" }
@@ -77,13 +77,13 @@ class AgentMigrationTargetInfoTest {
                 planLabel = "Claude Max",
                 segments =
                     listOf(
-                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.FiveHour, "Current session", 0, usedUp = true, resetsAt = "2026-10-23T15:00:00.000Z"),
-                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.Week, "Current week (all models)", 55, usedUp = false, resetsAt = null)
+                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.FiveHour, "Current session", 100, usedUp = true, resetsAt = "2026-10-23T15:00:00.000Z"),
+                        RuntimeQuotaSegment(RuntimeQuotaWindowKind.Week, "Current week (all models)", 45, usedUp = false, resetsAt = null)
                     ),
                 attention = false
             )
         val parts = runtimeQuotaLineParts(summary, copy) { "in 3 hours" }
-        assertEquals(listOf("Claude Max", "5h used up, resets in 3 hours", "Week 55% left"), parts.map { it.text })
+        assertEquals(listOf("Claude Max", "5h used up, resets in 3 hours", "Week 45% used"), parts.map { it.text })
         assertEquals(listOf(false, true, false), parts.map { it.usedUp })
     }
 }

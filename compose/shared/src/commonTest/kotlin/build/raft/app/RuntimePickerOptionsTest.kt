@@ -122,7 +122,7 @@ class RuntimePickerOptionsTest {
                 experimental = "Experimental"
             )
         val rows = runtimePickerRows(catalog, listOf("claude", "qwen"), selectedRuntimeId = "claude", showAll = true, currentRuntimeId = "pi").rows
-        val options = runtimePickerOptions(rows, copy, descriptions = mapOf("claude" to "Claude Max · 5h 72% left")).associateBy { it.value }
+        val options = runtimePickerOptions(rows, copy, descriptions = mapOf("claude" to "Claude Max · 5h 28% used")).associateBy { it.value }
         // The current runtime's group does not say "not installed": the label does.
         assertEquals("Pi (not installed)", options.getValue("pi").label)
         assertEquals("Current runtime", options.getValue("pi").group)
@@ -132,7 +132,7 @@ class RuntimePickerOptionsTest {
         assertEquals("Experimental", options.getValue("qwen").badge)
         assertEquals("Qwen Code", options.getValue("qwen").label)
         assertNull(options.getValue("claude").badge)
-        assertEquals("Claude Max · 5h 72% left", options.getValue("claude").description)
+        assertEquals("Claude Max · 5h 28% used", options.getValue("claude").description)
         assertEquals("Update the app to use this runtime", options.getValue("future").description)
         assertFalse(options.getValue("future").enabled)
     }

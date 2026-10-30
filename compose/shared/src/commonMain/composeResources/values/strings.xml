@@ -2260,8 +2260,8 @@
     <string name="settings_computers_runtime_usage_account_fallback">Runtime account</string>
     <string name="settings_computers_runtime_usage_reauth_description">Sign in again on this Computer. Last-known percentages are hidden until the provider authenticates.</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">Usage format unavailable</string>
-    <string name="settings_computers_runtime_usage_window_left">%1$s left · resets %2$s</string>
-    <string name="settings_computers_runtime_usage_window_left_reset_unavailable">%1$s left · reset time unavailable</string>
+    <string name="settings_computers_runtime_usage_window_used">%1$s used · resets %2$s</string>
+    <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s used · reset time unavailable</string>
     <string name="settings_computers_runtime_usage_window_used_up">Used up · resets %1$s</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Used up · reset time unavailable</string>
     <string name="settings_computers_runtime_usage_later">later</string>
@@ -2815,7 +2815,7 @@
     <string name="member_runtime_usage_stale">Data is out of date. Values below may no longer be accurate.</string>
     <string name="runtime_quota_window_five_hour">5h</string>
     <string name="runtime_quota_window_week">Week</string>
-    <string name="runtime_quota_left">%1$s %2$s left</string>
+    <string name="runtime_quota_used">%1$s %2$s used</string>
     <string name="runtime_quota_used_up">%1$s used up, resets %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s used up</string>
     <string name="runtime_quota_attention">%1$s · needs attention</string>

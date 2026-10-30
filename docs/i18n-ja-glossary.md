@@ -23,6 +23,7 @@ new product concept gets a Japanese rendering.
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
+| Runtime usage "62% used" / "Used up" | 使用済み 62% / 上限に達しました | Usage says what is used, never what is left (raft-ui 0.50); copied from the web ja catalog (botiverse/slock #11855) |
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |
 | Artifact / Artifacts | Artifact / Artifacts | Workspace Artifacts; kept in English as the web ja catalog does (「無題の Artifact」); the app name is always "Artifacts" |

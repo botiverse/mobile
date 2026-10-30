@@ -330,8 +330,9 @@ internal fun MembersRuntimeUsageAccountCard(
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // The Computers sheet's account block: the raft-ui StatusChip and "X% left · resets …"
-        // rows, the same as the web (artin 10-29: no square badge, no "X% used").
+        // The Computers sheet's account block: the raft-ui StatusChip and "X% used · resets …"
+        // rows, the same as the web (artin 10-29: no square badge; web #11855 / raft-ui 0.50:
+        // usage says what is used).
         ComputerRuntimeUsageAccountBlock(account, timeContext)
     }
 }
