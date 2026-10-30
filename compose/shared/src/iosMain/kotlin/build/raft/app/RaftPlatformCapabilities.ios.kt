@@ -77,6 +77,8 @@ internal fun raftIosAppTabBarRendererForMajorVersion(majorVersion: Long): String
 // Media3 PlayerView, task #556 phase 2).
 internal actual fun raftPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun raftPlatformPlaysAudioOnlyMedia(): Boolean = true
+
 internal actual fun raftPlatformSupportsVideoAttachmentContainer(
     container: RaftPreviewableVideoContainer
 ): Boolean =

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
@@ -36,3 +37,20 @@ internal expect fun RaftVideoPlayer(
     onFirstFrame: () -> Unit,
     modifier: Modifier = Modifier,
 )
+
+/**
+ * True around a [RaftVideoPlayer] that plays an audio-only attachment (the file preview's audio
+ * panel). Hosts that cannot play audio-only media ([raftPlatformPlaysAudioOnlyMedia] false) route
+ * it to their "not available" state before creating a player.
+ */
+internal val LocalRaftVideoPlayerAudioOnly = staticCompositionLocalOf { false }
+
+/**
+ * Whether the preview's video panel hands its controls to the platform host. An audio-only file on
+ * a host that cannot play audio keeps the shared card and controls, as before that host had a player.
+ */
+internal fun raftFilePreviewVideoUsesNativeController(
+    audioOnly: Boolean,
+    platformNativeController: Boolean,
+    platformPlaysAudioOnly: Boolean
+): Boolean = platformNativeController && (!audioOnly || platformPlaysAudioOnly)

@@ -72,6 +72,7 @@ import build.raft.app.model.RaftWorkspaceFilePreview
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.binaryDownloadUrlDiagnostics
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -7689,7 +7690,10 @@ internal enum class RaftPreviewableVideoContainer {
 
 internal enum class RaftVideoPlayerFormatProfile {
     AndroidMedia3,
-    IosAvPlayer
+    IosAvPlayer,
+
+    /** The Compose desktop app on macOS: ComposeMediaPlayer's AVFoundation (AVPlayer) bridge. */
+    DesktopMacAvFoundation
 }
 
 internal fun raftVideoPlayerFormatProfileSupports(
@@ -7704,7 +7708,8 @@ internal fun raftVideoPlayerFormatProfileSupports(
         // AVPlayer's file-backed audiovisual families. WebM/Matroska/TS/PS/FLV
         // are not admitted merely because a particular OS/device might decode
         // their samples through another framework.
-        RaftVideoPlayerFormatProfile.IosAvPlayer ->
+        RaftVideoPlayerFormatProfile.IosAvPlayer,
+        RaftVideoPlayerFormatProfile.DesktopMacAvFoundation ->
             when (container) {
                 RaftPreviewableVideoContainer.Mp4,
                 RaftPreviewableVideoContainer.QuickTime,
@@ -8567,7 +8572,12 @@ private fun RaftFilePreviewVideoPanel(
     var seekRequest by remember(source) { mutableStateOf<RaftFilePreviewVideoSeekRequest?>(null) }
     val canPlay = source.isNotBlank()
     val isPlaying = playState == PlayState.PLAYING
-    val nativeController = raftPlatformUsesNativeVideoController()
+    val nativeController =
+        raftFilePreviewVideoUsesNativeController(
+            audioOnly = audioOnly,
+            platformNativeController = raftPlatformUsesNativeVideoController(),
+            platformPlaysAudioOnly = raftPlatformPlaysAudioOnlyMedia()
+        )
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -8587,26 +8597,28 @@ private fun RaftFilePreviewVideoPanel(
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
-                RaftFilePreviewKuiklyVideo(
-                    source = source,
-                    playControl = playControl,
-                    seekRequest = seekRequest,
-                    onPlayStateChanged = { playState = it },
-                    onPlayTimeChanged = { current, total ->
-                        val (safeCurrent, safeTotal) =
-                            raftVideoProgressForUi(
-                                currentMs = current,
-                                durationMs = total,
-                                terminal = playState == PlayState.PLAY_END,
-                            )
-                        currentTimeMs = safeCurrent
-                        totalTimeMs = safeTotal
-                    },
-                    onFirstFrame = {
-                        firstFrameVisible = true
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                CompositionLocalProvider(LocalRaftVideoPlayerAudioOnly provides audioOnly) {
+                    RaftFilePreviewKuiklyVideo(
+                        source = source,
+                        playControl = playControl,
+                        seekRequest = seekRequest,
+                        onPlayStateChanged = { playState = it },
+                        onPlayTimeChanged = { current, total ->
+                            val (safeCurrent, safeTotal) =
+                                raftVideoProgressForUi(
+                                    currentMs = current,
+                                    durationMs = total,
+                                    terminal = playState == PlayState.PLAY_END,
+                                )
+                            currentTimeMs = safeCurrent
+                            totalTimeMs = safeTotal
+                        },
+                        onFirstFrame = {
+                            firstFrameVisible = true
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
             if (!canPlay) {
                 RaftFilePreviewVideoOverlayText(

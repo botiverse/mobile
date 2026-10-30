@@ -121,6 +121,13 @@ internal expect fun raftPlatformDefaultAppTabBarRenderer(): String?
 internal expect fun raftPlatformUsesNativeVideoController(): Boolean
 
 /**
+ * Whether the platform's media host plays audio-only attachments (no video track). Android
+ * (Media3) and iOS (AVPlayer) do; the desktop video player cannot, so desktop keeps its
+ * "not available" notice and the shared audio card for them.
+ */
+internal expect fun raftPlatformPlaysAudioOnlyMedia(): Boolean
+
+/**
  * Whether the platform's concrete video host can demux the detected attachment container.
  *
  * This is intentionally a container gate, not a codec promise: Media3, AVPlayer, and ArkUI

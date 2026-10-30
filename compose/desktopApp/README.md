@@ -75,7 +75,8 @@ Not configured here. Compose Desktop reads them from Gradle properties, e.g.:
 
 ## Desktop gaps (TODO(desktop))
 
-PDF, video and embedded web views, animated images, attachment pickers / uploads, settings
+PDF and embedded web views, animated images, attachment pickers / uploads, settings
 host actions (storage, diagnostics, notifications, developer environment, account linking),
 notifications and the app icon (`.icns`) are not implemented yet; they show a notice or do
-nothing.
+nothing. Video plays on macOS 14+ only (ComposeMediaPlayer's AVFoundation bridge); elsewhere video
+attachments stay download cards. Audio-only media does not play yet and keeps the "not available" notice.
