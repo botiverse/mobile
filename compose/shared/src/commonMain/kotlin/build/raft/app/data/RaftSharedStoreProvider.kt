@@ -358,6 +358,14 @@ internal class RaftSharedStoreRegistryState<T : Any, A>(
             instance = created
             created
         }
+
+    /** Tests that build the provider (a page rendered whole) drop it again, so later tests start without one. */
+    fun clearForTests() {
+        synchronized(lock) {
+            instance = null
+            boundFactory = null
+        }
+    }
 }
 
 internal class RaftSharedStoreRegistryAccess<T : Any, A>(
@@ -375,6 +383,8 @@ internal class RaftSharedStoreRegistryAccess<T : Any, A>(
         state.unbindFactoryBeforeFirstGet(handle)
 
     fun get(arguments: A): T = state.get(arguments)
+
+    fun clearForTests() = state.clearForTests()
 }
 
 internal class ProcessReadReceiptOwnerLifecycle(
@@ -4615,6 +4625,9 @@ internal object RaftSharedStoreRegistry {
         )
 
     fun currentOrNull(): RaftSharedStoreProvider? = access.currentOrNull()
+
+    /** See [RaftSharedStoreRegistryState.clearForTests]: unit tests only. */
+    internal fun clearForTests() = access.clearForTests()
 
     fun bindFactoryBeforeFirstGet(
         factory: RaftSharedStoreProviderFactory,

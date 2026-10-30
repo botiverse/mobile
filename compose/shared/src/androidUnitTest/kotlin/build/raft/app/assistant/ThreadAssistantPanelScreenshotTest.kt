@@ -33,6 +33,16 @@ import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPagerHost
 import kotlinx.serialization.json.JsonObject
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_APP_LOGIN_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
+import build.raft.app.data.RaftLocalPreferenceStore
+import build.raft.app.data.RaftSharedKeyValueStoreProvider
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.SharedApiEnvironmentStore
 
 /**
  * The assistant's panel open over a page (web AssistantOtter's phone Drawer with
@@ -60,6 +70,33 @@ class ThreadAssistantPanelScreenshotTest {
     @org.junit.Before
     fun installImageLoader() {
         runCatching { build.raft.app.image.raftInstallImageLoader() }
+    }
+
+    /**
+     * The conversation page builds the process's shared store provider, which reads app-scope
+     * key-value stores (MMKV in the app): in-memory ones here.
+     */
+    @org.junit.Before
+    fun installKeyValueStores() {
+        listOf(
+            RAFT_AUTH_SESSION_MMKV_NAMESPACE,
+            RaftLocalPreferenceStore.KuiklyNamespace,
+            RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE,
+            RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE,
+            RAFT_DEVICE_STATE_MMKV_NAMESPACE,
+            RAFT_APP_LOGIN_MMKV_NAMESPACE,
+            SharedApiEnvironmentStore.Namespace,
+        ).forEach { namespace ->
+            val store = InMemoryRaftKeyValueStore()
+            RaftSharedKeyValueStoreProvider.installAppScopeFactory(namespace) { store }
+        }
+    }
+
+    /** Later tests in this JVM expect no provider and no app-scope stores (RaftEnvironmentIndicatorTest). */
+    @org.junit.After
+    fun dropSharedStores() {
+        RaftSharedStoreRegistry.clearForTests()
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
     }
 
     @Test
