@@ -17,6 +17,8 @@ import build.raft.app.TextField
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.withRaftFontWeight
 import build.raft.app.raftArgbHex
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -38,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
@@ -93,14 +94,17 @@ internal fun RaftSelectionPopover(
 }
 
 // raft selection-popover geometry (web SelectionPopover): header px-4 pt-2.5 pb-1 with a
-// 12/16 caption, a 40dp search row over a hairline, and a p-1.5 list of 36dp rows.
+// 12/16 caption, a 40dp search row over a hairline, and a p-1 list of 36dp rows.
 private val RaftSelectionHeaderHeight = 30.dp
 private val RaftSelectionSearchHeight = 41.dp
+
+/** web SelectionPopover list: `p-1` (4dp), tighter than the menu's `p-1.5`. */
+private val RaftSelectionListPadding = 4.dp
 
 /**
  * raft-ui 0.6.0 selection popover (web `SelectionPopover`): overlay surface (container
  * radius, popover layer, seam ring, float shadow); sentence-case caption header in hint
- * ink with an underlined Clear; optional search row; 36dp control-radius option rows in
+ * ink with a muted TextLink Clear; optional search row; 36dp control-radius option rows in
  * callout type, the checked row bold with a trailing 16dp check. No row dividers.
  */
 @Composable
@@ -136,17 +140,14 @@ private fun RaftLookSelectionPopover(
                     modifier = Modifier.weight(1f)
                 )
                 if (showClear) {
-                    Box(modifier = Modifier.clickable { onClear() }) {
-                        Text(
-                            text = stringResource(Res.string.common_clear),
-                            style =
-                                RaftType.Caption
-                                    .copy(fontSize = 12.sp, lineHeight = 16.sp, textDecoration = TextDecoration.Underline)
-                                    .withRaftFontWeight(FontWeight.SemiBold),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1
-                        )
-                    }
+                    // web SelectionPopover: `<TextLink className="text-caption">` (muted, no
+                    // underline at rest; underlined on hover/press).
+                    RaftTextLink(
+                        text = stringResource(Res.string.common_clear),
+                        onClick = onClear,
+                        style = RaftTheme.typography.caption,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -178,7 +179,7 @@ private fun RaftLookSelectionPopover(
             }
             RaftLookSeparator()
         }
-        Column(modifier = Modifier.fillMaxWidth().padding(RaftMetrics.PopupPadding)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(RaftSelectionListPadding)) {
             if (options.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(
@@ -410,10 +411,10 @@ internal fun RaftUiControlledSelectionPopover(
     val searchHeight = if (search != null) RaftSelectionSearchHeight else 0.dp
     val optionHeight =
         if (options.isEmpty()) {
-            // raft: p-1.5 list, no row dividers, 36dp rows (empty row = callout + py-2).
-            36.dp + RaftMetrics.PopupPadding * 2
+            // raft: p-1 list, no row dividers, 36dp rows (empty row = callout + py-2).
+            36.dp + RaftSelectionListPadding * 2
         } else {
-            (RaftMetrics.MenuRowHeight.value * options.size).dp + RaftMetrics.PopupPadding * 2
+            (RaftMetrics.MenuRowHeight.value * options.size).dp + RaftSelectionListPadding * 2
         }
     // raft overlays float on a shadow that takes no layout space.
     val contentSize =
