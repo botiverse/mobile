@@ -3437,4 +3437,10 @@
     <string name="emoji_picker_skin_tone_medium_dark">中等-深肤色</string>
     <string name="emoji_picker_skin_tone_dark">较深肤色</string>
     <string name="emoji_picker_names_language">zh</string>
+    <string name="assistant_otter_open">打开助理</string>
+    <string name="assistant_otter_open_with_state">打开助理：%1$s</string>
+    <string name="assistant_otter_state_new">新消息</string>
+    <string name="assistant_otter_state_confirm">需要你确认</string>
+    <string name="assistant_otter_state_working">工作中</string>
+    <string name="assistant_otter_state_away">不在</string>
 </resources>

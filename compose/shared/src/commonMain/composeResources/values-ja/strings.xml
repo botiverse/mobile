@@ -3437,4 +3437,10 @@
     <string name="emoji_picker_skin_tone_medium_dark">やや濃い肌の色</string>
     <string name="emoji_picker_skin_tone_dark">濃い肌の色</string>
     <string name="emoji_picker_names_language">en</string>
+    <string name="assistant_otter_open">アシスタントを開く</string>
+    <string name="assistant_otter_open_with_state">アシスタントを開く：%1$s</string>
+    <string name="assistant_otter_state_new">新しいメッセージ</string>
+    <string name="assistant_otter_state_confirm">確認が必要です</string>
+    <string name="assistant_otter_state_working">作業中</string>
+    <string name="assistant_otter_state_away">不在</string>
 </resources>

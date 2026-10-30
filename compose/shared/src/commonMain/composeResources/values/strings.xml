@@ -3437,4 +3437,10 @@
     <string name="emoji_picker_skin_tone_medium_dark">Medium-dark skin tone</string>
     <string name="emoji_picker_skin_tone_dark">Dark skin tone</string>
     <string name="emoji_picker_names_language">en</string>
+    <string name="assistant_otter_open">Open Assistant</string>
+    <string name="assistant_otter_open_with_state">Open Assistant: %1$s</string>
+    <string name="assistant_otter_state_new">New message</string>
+    <string name="assistant_otter_state_confirm">Needs your OK</string>
+    <string name="assistant_otter_state_working">Working</string>
+    <string name="assistant_otter_state_away">Away</string>
 </resources>
