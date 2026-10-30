@@ -5605,6 +5605,13 @@ data class HomeServerActivityUnreadProjection(
             ?.serverId
             ?.let(countsByServer::get)
 
+    /** Every server's count, when this projection belongs to [expectedOwner]'s environment and account. */
+    fun countsForAccountOf(expectedOwner: ReadReceiptOwner?): Map<String, Long> =
+        expectedOwner?.takeIf(::hasSameEnvironmentAndAccount)?.let { countsByServer }.orEmpty()
+
+    fun serverPushMutedForAccountOf(expectedOwner: ReadReceiptOwner?): Map<String, Boolean> =
+        expectedOwner?.takeIf(::hasSameEnvironmentAndAccount)?.let { serverPushMutedByServer }.orEmpty()
+
     fun serverPushMutedFor(expectedOwner: ReadReceiptOwner?): Boolean =
         expectedOwner?.takeIf(::hasSameEnvironmentAndAccount)
             ?.serverId
@@ -6000,6 +6007,11 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ServerAppearanceUpdated -> "appearance_updated"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.AgentActivitySubscribed -> "agent_activity_subscribed"
+        // Never dirty Home (updatesHomeSnapshot is false); named for the diagnostics only.
+        is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
+        is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
+        is build.raft.app.model.NotificationRetracted -> "notification_retract"
+        is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
         else -> "realtime"
     }
 

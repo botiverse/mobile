@@ -50,6 +50,14 @@ import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationAccountSettingsChanged
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationNoticeReceived
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.data.RaftNotificationLevelSetting
+import build.raft.app.data.parseRaftNotificationAccountSettingsObject
+import build.raft.app.data.parseRaftNotificationRetractObject
+import build.raft.app.data.parseRaftNotificationRouteObject
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -363,10 +371,21 @@ class RealtimeEventMapper(
                     diagnostics = diagnosticsLogger,
                     canonicalServerModePresent = (element["prefs"] as? JsonObject)?.containsKey("serverPushMode") == true
                 )
+            RealtimeSocketEvents.NotificationRetract ->
+                parseRaftNotificationRetractObject(element)?.let { retract ->
+                    NotificationRetracted(
+                        serverId = ServerId(retract.serverId),
+                        groupKey = retract.groupKey,
+                        conversationId = retract.conversationId,
+                        throughSeq = retract.throughSeq
+                    )
+                }
             RealtimeSocketEvents.PinnedUpdated ->
                 decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
-                decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull(diagnosticsLogger)
+                decodeOrNull(NotificationPushDto.serializer(), element)?.let { dto ->
+                    dto.toDomainOrNull(diagnosticsLogger) ?: dto.toNoticeOrNull()
+                }
             else -> null
         }
     } catch (_: SerializationException) {
@@ -902,12 +921,13 @@ private data class NotificationPrefsWireDto(
 @Serializable
 private data class NotificationPushDto(
     val serverId: String,
-    val kind: String,
+    // Null for an event without a message (reminder, system_notice, test; contract §4.1).
+    val kind: String? = null,
     val channelId: String? = null,
     val threadId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
-    val messageId: String,
+    val messageId: String? = null,
     val title: String = "",
     val body: String = "",
     val tag: String = "",
@@ -920,14 +940,30 @@ private data class NotificationPushDto(
     val senderName: String? = null,
     val messagePreview: String? = null,
     val mentioned: Boolean? = null,
+    // Unified notification envelope (slock docs/contracts/notifications.md §4.1).
+    val id: String? = null,
+    val category: String? = null,
+    val seq: Long? = null,
+    val groupKey: String? = null,
+    val conversationId: String? = null,
+    val route: JsonObject? = null,
+    val silent: Boolean? = null,
 )
 
+/**
+ * `notification_prefs:updated`. A channel mute keeps its original shape (`prefs.activityMuted`, no
+ * `type`); the unified contract (§2.3) adds `type: "account" | "server" | "channel" | "thread"`
+ * with `level` (or `settings` for the account). An account update has no scope or prefsVersion.
+ */
 @Serializable
 private data class NotificationPrefsUpdatedDto(
+    val type: String? = null,
     val serverId: String? = null,
-    val scopeId: String,
+    val scopeId: String = "",
     val prefs: NotificationPrefsWireDto = NotificationPrefsWireDto(),
-    val prefsVersion: Long,
+    val prefsVersion: Long? = null,
+    val level: String? = null,
+    val settings: JsonObject? = null,
 )
 
 @Serializable
@@ -1739,7 +1775,26 @@ private fun NotificationPrefsUpdatedDto.toDomain(
     diagnostics: (String) -> Unit,
     canonicalServerModePresent: Boolean
 ): RealtimeEvent? {
+    if (type == "account") {
+        val parsed = settings?.let(::parseRaftNotificationAccountSettingsObject) ?: return null
+        return NotificationAccountSettingsChanged(parsed)
+    }
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    val prefsVersion = prefsVersion ?: return null
+    if ((type == "channel" || type == "thread") && prefs.activityMuted == null) {
+        val cleanServerId = serverId?.takeIf { it.isNotBlank() } ?: return null
+        val setting = RaftNotificationLevelSetting.fromWire(level) ?: run {
+            diagnostics("projection_value_rejected source=realtime_notification_level field=level value=unknown")
+            return null
+        }
+        return NotificationLevelChanged(
+            serverId = ServerId(cleanServerId),
+            scope = type,
+            scopeId = cleanScopeId,
+            level = setting.wireName,
+            prefsVersion = prefsVersion
+        )
+    }
     val serverMode = if (canonicalServerModePresent) {
         ServerPushMode.fromWire(prefs.serverPushMode)
             ?: run {
@@ -1812,8 +1867,8 @@ private fun NotificationPushDto.toDomainOrNull(
     diagnostics: (String) -> Unit,
 ): NotificationPushReceived? {
     val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
-    val cleanMessageId = messageId.takeIf { it.isNotBlank() } ?: return null
-    val parsedKind = parseConversationKindOrNull(kind) ?: return null
+    val cleanMessageId = messageId?.takeIf { it.isNotBlank() } ?: return null
+    val parsedKind = kind?.let(::parseConversationKindOrNull) ?: return null
     val cleanChannelId = channelId?.takeIf { it.isNotBlank() }
     val cleanThreadId = threadId?.takeIf { it.isNotBlank() }
     val cleanParentChannelId = parentChannelId?.takeIf { it.isNotBlank() }
@@ -1863,7 +1918,35 @@ private fun NotificationPushDto.toDomainOrNull(
         senderKind = senderKind,
         senderName = senderName?.takeIf { it.isNotBlank() },
         messagePreview = messagePreview?.takeIf { it.isNotBlank() },
-        mentioned = mentioned
+        mentioned = mentioned,
+        notificationId = id?.takeIf { it.isNotBlank() },
+        category = category?.takeIf { it.isNotBlank() },
+        seq = seq,
+        groupKey = groupKey?.takeIf { it.isNotBlank() },
+        conversationId = conversationId?.takeIf { it.isNotBlank() },
+        routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
+        silent = silent
+    )
+}
+
+/**
+ * An event without a message (contract §4.1): accepted when it names its `category` and `groupKey`;
+ * anything else without a message stays dropped.
+ */
+private fun NotificationPushDto.toNoticeOrNull(): NotificationNoticeReceived? {
+    if (!messageId.isNullOrBlank()) return null
+    val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
+    val cleanCategory = category?.takeIf { it.isNotBlank() } ?: return null
+    val cleanGroupKey = groupKey?.takeIf { it.isNotBlank() } ?: return null
+    return NotificationNoticeReceived(
+        serverId = ServerId(cleanServerId),
+        category = cleanCategory,
+        groupKey = cleanGroupKey,
+        notificationId = id?.takeIf { it.isNotBlank() },
+        title = title,
+        body = body,
+        routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
+        silent = silent
     )
 }
 

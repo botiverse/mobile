@@ -114,13 +114,24 @@ object RealtimeSocketEvents {
     // #4233, staging 31042ed06). Literal until the next contract regeneration.
     const val NotificationPush = "notification:push"
 
+    // Unified notification contract (slock docs/contracts/notifications.md §5): the server closes
+    // notifications of a conversation that was read on any device; every client reports whether
+    // the user is actively using it. Literals until the next contract regeneration.
+    const val NotificationRetract = "notification:retract"
+    const val PresenceActivity = "presence:activity"
+
     /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
      * whichever server the app has open receives it: the payload `serverId` names the server
      * that changed, not the connected one. Gates that drop a payload naming another server than
      * the connection's let these through (web applies them by payload `serverId`).
      */
-    val UserScopedServerEvents: Set<String> = setOf(AppearanceUpdated)
+    val UserScopedServerEvents: Set<String> =
+        // A notification (and its retraction) of any of the member's servers reaches whichever
+        // server's socket is open: the app shows other workspaces' notifications too (contract §4.5).
+        // notification_prefs:updated is applied by its payload serverId too (levels, the badge's
+        // server levels); a channel mute names a channel id the other server's Home does not hold.
+        setOf(AppearanceUpdated, NotificationPush, NotificationRetract, NotificationPrefsUpdated)
 
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
@@ -130,5 +141,6 @@ object RealtimeSocketEvents {
             NotificationPrefsUpdated,
             PinnedUpdated,
             NotificationPush,
+            NotificationRetract,
         )
 }

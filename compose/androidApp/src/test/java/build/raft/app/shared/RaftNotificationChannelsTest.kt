@@ -37,5 +37,10 @@ class RaftNotificationChannelsTest {
                 RaftBackgroundConnectionService.CHANNEL_ID,
             )
         assertEquals(expected, manager.notificationChannels.map { it.id }.toSet())
+        // Contract §4.3: DMs and mentions/requests are HIGH, everything else DEFAULT.
+        val importance = manager.notificationChannels.associate { it.id to it.importance }
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, importance[AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID])
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, importance[AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID])
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, importance[AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID])
     }
 }

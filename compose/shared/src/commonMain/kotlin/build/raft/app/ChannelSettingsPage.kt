@@ -459,6 +459,14 @@ private fun ChannelSettingsPageScreen() {
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
+                        notificationLevelTarget =
+                            RaftNotificationLevelTarget(
+                                serverId = route.serverId.value,
+                                scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
+                                id = route.channelId.value,
+                                isDirectMessage = channel.kind == ConversationKind.DirectMessage,
+                                muted = muted
+                            ),
                         callbacks =
                             ChannelSettingsCallbacks(
                                 onOpenMembers = {
@@ -683,6 +691,8 @@ internal fun ChannelSettingsContent(
     model: ChannelSettingsUiModel,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    /** The channel's notification level row (design §4.3: "Notifications" next to Mute); null hides it. */
+    notificationLevelTarget: RaftNotificationLevelTarget? = null,
     callbacks: ChannelSettingsCallbacks,
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
@@ -741,7 +751,8 @@ internal fun ChannelSettingsContent(
                 enabled = model.writeActionsEnabled,
                 longMessageCollapseSetting = longMessageCollapseSetting,
                 onToggleMute = callbacks.onToggleMute,
-                onTogglePin = callbacks.onTogglePin
+                onTogglePin = callbacks.onTogglePin,
+                notificationLevelTargetInput = notificationLevelTarget
             )
         }
         val actions = channelSettingsActionRows(model)
@@ -1239,8 +1250,15 @@ private fun ChannelPreferencesSection(
     enabled: Boolean,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     onToggleMute: () -> Unit,
-    onTogglePin: () -> Unit
+    onTogglePin: () -> Unit,
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null
 ) {
+    // An older server without the unified API shows no Notifications row.
+    val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
+    var notificationLevelDialogOpen by remember { mutableStateOf(false) }
+    if (notificationLevelDialogOpen && notificationLevelTarget != null) {
+        RaftNotificationLevelDialog(target = notificationLevelTarget, onDismiss = { notificationLevelDialogOpen = false })
+    }
     RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             ChannelPreferenceRow(
@@ -1259,6 +1277,16 @@ private fun ChannelPreferencesSection(
                 divider = true,
                 onToggle = onToggleMute
             )
+            if (notificationLevelTarget != null) {
+                RaftListRow(
+                    title = stringResource(Res.string.notification_level_title),
+                    variant = RaftListRowVariant.Plain,
+                    onClick = { notificationLevelDialogOpen = true },
+                    divider = true,
+                    description = rememberRaftNotificationLevelCurrentLabel(notificationLevelTarget),
+                    wrapDescription = true,
+                )
+            }
             // Device-local display preference: available without write permission on the channel.
             ChannelPreferenceRow(
                 title = stringResource(Res.string.conversation_long_message_collapse),

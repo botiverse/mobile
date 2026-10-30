@@ -3767,10 +3767,14 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     NSDictionary *params = RaftBridgeParams(args);
     NSInteger count = MAX(0, [params[@"count"] respondsToSelector:@selector(integerValue)] ? [params[@"count"] integerValue] : 0);
     RaftBridgeRunOnMain(^{
+        if (@available(iOS 16.0, *)) {
+            [[UNUserNotificationCenter currentNotificationCenter] setBadgeCount:count withCompletionHandler:nil];
+        } else {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        [UIApplication sharedApplication].applicationIconBadgeNumber = count;
+            [UIApplication sharedApplication].applicationIconBadgeNumber = count;
 #pragma clang diagnostic pop
+        }
         NSLog(@"[%@][info] appBadge count=%ld source=%@ stale=%@",
               RaftBridgeDefaultLogTag,
               (long)count,

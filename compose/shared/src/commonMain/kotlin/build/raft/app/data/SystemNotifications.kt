@@ -90,7 +90,11 @@ class PersistentNotificationPreferenceRepository(
         )
 
     override suspend fun setNotificationEnabled(enabled: Boolean): NotificationPreferenceSnapshot {
+        val changed = store.readNotificationEnabled() != enabled
         store.saveNotificationEnabled(enabled)
+        // The switch is the registration's alertsEnabled (slock docs/contracts/notifications.md §3.1):
+        // the server stops alerting this device when it is off, so off really means off for FCM/APNs.
+        if (changed) RaftPushRegistrationLifecycle.onDeviceStateChanged()
         return getNotificationPreference()
     }
 
@@ -149,7 +153,17 @@ data class SystemUnreadNotificationRequest(
      */
     val senderName: String? = null,
     /** The message mentions the current user; picks the "mentioned you" wording when redacted. */
-    val mentioned: Boolean = false
+    val mentioned: Boolean = false,
+    /**
+     * Unified contract fields (slock docs/contracts/notifications.md §4.1), null for a request built
+     * locally from a message: the real `category` (picks the Android channel), the `groupKey` and
+     * message `seq` a retraction matches, the account sound setting ([silent]) and the click target.
+     */
+    val contractCategory: String? = null,
+    val groupKey: String? = null,
+    val seq: Long? = null,
+    val silent: Boolean = false,
+    val routeJson: String? = null
 )
 
 data class SystemUnreadNotificationServerGateResult(
@@ -157,21 +171,17 @@ data class SystemUnreadNotificationServerGateResult(
     val code: String
 )
 
-fun systemUnreadNotificationServerGate(
-    notificationServerId: String?,
-    currentServerId: String?
-): SystemUnreadNotificationServerGateResult {
+/**
+ * A notification needs the server it belongs to (its tap switches there first). Any of the member's
+ * servers is shown, not only the selected one (slock docs/contracts/notifications.md §4.5): the
+ * server already decided this notification is due.
+ */
+fun systemUnreadNotificationServerGate(notificationServerId: String?): SystemUnreadNotificationServerGateResult {
     val notificationServer = notificationServerId?.trim().takeIf { !it.isNullOrBlank() }
-    val currentServer = currentServerId?.trim().takeIf { !it.isNullOrBlank() }
-    return when {
-        notificationServer == null ->
-            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing")
-        currentServer == null ->
-            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "current_server_missing")
-        notificationServer != currentServer ->
-            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_mismatch")
-        else ->
-            SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed")
+    return if (notificationServer == null) {
+        SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing")
+    } else {
+        SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed")
     }
 }
 
@@ -209,19 +219,21 @@ fun buildSystemUnreadNotificationRequest(
     }
     val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
     val preview = markdownToPreviewText(message.body, RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
+    // A DM is never "mentioned you" (slock docs/contracts/notifications.md §1.5): every DM is for you.
     val mentioned =
-        currentMemberHandle
-            ?.trim()
-            ?.removePrefix("@")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { handle ->
-                message.body.contains("@$handle", ignoreCase = true) ||
-                    message.body.contains(handle, ignoreCase = true)
-            } == true
+        conversationKind != ConversationKind.DirectMessage &&
+            currentMemberHandle
+                ?.trim()
+                ?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { handle ->
+                    message.body.contains("@$handle", ignoreCase = true) ||
+                        message.body.contains(handle, ignoreCase = true)
+                } == true
     val category =
         when {
-            mentioned -> SystemUnreadNotificationCategory.Mention
             conversationKind == ConversationKind.DirectMessage -> SystemUnreadNotificationCategory.DirectMessage
+            mentioned -> SystemUnreadNotificationCategory.Mention
             conversationKind == ConversationKind.Channel || conversationKind == ConversationKind.Thread ->
                 SystemUnreadNotificationCategory.ChannelUnread
             else -> SystemUnreadNotificationCategory.GeneralUnread
@@ -278,8 +290,9 @@ fun buildSystemUnreadNotificationRequest(
  * task #459: tray request from the server-qualified notification stream
  * (`notification:push`, server PR #4233). Sender exclusion, mention/scope
  * qualification and mute are already decided server-side; the local policy
- * left is foreground/visible-thread suppression (the caller's decision) and
- * the current-server gate inside the poster (#435, unchanged).
+ * left is foreground/visible-thread suppression (the caller's decision). Every
+ * server's notification is posted (the unified contract retired the
+ * current-server gate).
  */
 fun buildSystemUnreadNotificationRequestFromPush(
     push: NotificationPushReceived,
@@ -309,7 +322,12 @@ fun buildSystemUnreadNotificationRequestFromPush(
         body = push.body.ifBlank { "Sent a new message." },
         notificationKey = "unread:message:${push.messageId.value}",
         senderName = push.senderName?.trim()?.takeIf { it.isNotEmpty() },
-        mentioned = push.mentioned == true
+        mentioned = push.mentioned == true && push.kind != ConversationKind.DirectMessage,
+        contractCategory = push.category,
+        groupKey = push.groupKey ?: push.conversationId?.let { raftNotificationGroupKey(push.serverId.value, it) },
+        seq = push.seq,
+        silent = push.silent == true,
+        routeJson = push.routeJson
     )
 }
 

@@ -35,6 +35,9 @@ import build.raft.app.push.RaftPlayServicesAvailability
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.model.NotificationNoticeReceived
+import build.raft.app.data.RaftNotificationRetract
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
@@ -257,6 +260,71 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         )
     }
 
+    override fun emitPresenceActivity(active: Boolean) {
+        client.emitPresenceActivity(active)
+    }
+
+    /** Another device read the conversation: close what this tray shows of it (contract §5). */
+    override fun onNotificationRetracted(event: NotificationRetracted) {
+        val closed =
+            AndroidUnreadNotificationPoster.retract(
+                appContext,
+                RaftNotificationRetract(
+                    serverId = event.serverId.value,
+                    groupKey = event.groupKey,
+                    conversationId = event.conversationId,
+                    throughSeq = event.throughSeq
+                )
+            )
+        RaftAppLog.i(LOG_TAG, "notification_retract source=socket serverId=${event.serverId.value} closed=$closed")
+    }
+
+    /**
+     * A reminder, account notice or test (contract §4.1, no message) on a device FCM does not reach:
+     * the same gates as a message (switch, foreground, FCM delivering), posted under its `groupKey`;
+     * a tap opens the app (Activity).
+     */
+    override suspend fun maybePostBackgroundNotificationNotice(event: NotificationNoticeReceived, isAppInForeground: Boolean) {
+        val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
+        val remotePushActive =
+            isRemotePushActive(
+                appContext,
+                sessionStore,
+                NotificationPushReceived(
+                    serverId = event.serverId,
+                    kind = build.raft.app.model.ConversationKind.Channel,
+                    messageId = build.raft.app.model.MessageId(event.notificationId ?: event.groupKey),
+                    title = event.title,
+                    body = event.body,
+                    tag = event.groupKey
+                )
+            )
+        if (!shouldPostBackgroundUnreadNotification(false, preferenceEnabled, isAppInForeground, remotePushActive)) {
+            RaftAppLog.w(
+                LOG_TAG,
+                "background_notice_skip reason=${backgroundUnreadNotificationSkipReason(false, preferenceEnabled, isAppInForeground, remotePushActive)} " +
+                    "serverId=${event.serverId.value} category=${event.category}"
+            )
+            return
+        }
+        val request =
+            org.json.JSONObject()
+                .put("serverId", event.serverId.value)
+                .put("groupKey", event.groupKey)
+                .put("category", event.category)
+                .put("title", event.title.ifBlank { "Raft" })
+                .put("body", event.body)
+                .put("notificationKey", event.notificationId ?: event.groupKey)
+                .put("messageId", event.notificationId ?: event.groupKey)
+                .put("silent", event.silent == true)
+                .put("route", event.routeJson.orEmpty())
+        val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
+        RaftAppLog.w(
+            LOG_TAG,
+            "background_notice_result code=${result["code"]} status=${result["status"]} serverId=${event.serverId.value} category=${event.category}"
+        )
+    }
+
     override suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
         event: NotificationPushReceived,
@@ -470,21 +538,6 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             )
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
-            runCatching {
-                AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
-                val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
-                val value =
-                    store.decodeString(
-                        AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
-                        null
-                    ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
-                value == "true"
-            }.getOrElse { error ->
-                RaftAppLog.w(
-                    LOG_TAG,
-                    "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
-                )
-                false
-            }
+            RaftNotificationAlertsPreference.isEnabled(context)
     }
 }

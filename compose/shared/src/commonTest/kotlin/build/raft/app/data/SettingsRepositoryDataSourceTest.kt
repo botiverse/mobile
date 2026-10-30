@@ -693,7 +693,9 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(mentionsOnly is DataResult.Content)
         assertEquals(false, mentionsOnly.data.muteServer.enabled)
         assertEquals(ServerPushMode.Mentions.wireName, mentionsOnly.data.serverNotificationMode.selectedKey)
-        assertEquals("""{"serverPushMode":"mentions"}""", network.notificationSettingsBodies.single())
+        // Unified write path (slock docs/contracts/notifications.md §2.2).
+        assertEquals("""{"scope":"server","id":"server-1","level":"mentions"}""", network.notificationLevelBodies.single())
+        assertTrue(network.notificationSettingsBodies.isEmpty())
         assertTrue(revokedInvite is DataResult.Content)
         assertEquals("invite-1", network.deletedInviteId)
         assertTrue(createdJoinLink is DataResult.Content)
@@ -784,8 +786,8 @@ class SettingsRepositoryDataSourceTest {
         val result = repository.setServerNotificationMode(ServerPushMode.All)
 
         assertFalse(result is DataResult.Content)
-        // The PATCH reached the server and failed: the stored copy keeps the last confirmed value.
-        assertEquals(1, network.notificationSettingsBodies.size)
+        // The PUT reached the server and failed: the stored copy keeps the last confirmed value.
+        assertEquals(1, network.notificationLevelBodies.size)
         assertEquals(ServerPushMode.None, lastKnown.read("user-1", "server-1")?.mode)
     }
 
@@ -1510,6 +1512,7 @@ class SettingsRepositoryDataSourceTest {
         val joinLinkBodies = mutableListOf<String>()
         val agreementBodies = mutableListOf<String>()
         val notificationSettingsBodies = mutableListOf<String>()
+        val notificationLevelBodies = mutableListOf<String>()
         val onboardingBodies = mutableListOf<String>()
         val profileBodies = mutableListOf<String>()
         val translationBodies = mutableListOf<String>()
@@ -1664,6 +1667,25 @@ class SettingsRepositoryDataSourceTest {
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })
+                normalized == "notification-levels" && method == "PUT" && !canonicalNotificationModeSupported ->
+                    response("{}", 404)
+                normalized == "notification-levels" && method == "PUT" && notificationSettingsPatchResponseCode != null -> {
+                    notificationLevelBodies += bodyText.orEmpty()
+                    response("{}", notificationSettingsPatchResponseCode)
+                }
+                normalized == "notification-levels" && method == "PUT" -> {
+                    notificationLevelBodies += bodyText.orEmpty()
+                    currentServerPushMode =
+                        when {
+                            bodyText?.contains("\"mentions\"") == true -> "mentions"
+                            bodyText?.contains("\"none\"") == true -> "none"
+                            else -> "all"
+                        }
+                    response(
+                        """{"scope":"server","id":"server-1","serverId":"server-1","level":"$currentServerPushMode",""" +
+                            """"effective":"$currentServerPushMode","muted":false,"prefsVersion":1}"""
+                    )
+                }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" &&
                     notificationSettingsPatchResponseCode != null -> {
                     notificationSettingsBodies += bodyText.orEmpty()

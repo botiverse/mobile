@@ -337,6 +337,12 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ActivityChanged -> false
         // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
         is build.raft.app.model.ServerAppearanceUpdated -> false
+        // Notification levels, account settings and retractions change no Home row; the notification
+        // level store and the platform tray handle them.
+        is build.raft.app.model.NotificationLevelChanged,
+        is build.raft.app.model.NotificationAccountSettingsChanged,
+        is build.raft.app.model.NotificationRetracted,
+        is build.raft.app.model.NotificationNoticeReceived -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

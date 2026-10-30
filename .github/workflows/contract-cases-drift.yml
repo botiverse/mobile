@@ -34,6 +34,10 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
       - "scripts/sync_slock_contract_cases.py"
+      # Notification level fixture (slock docs/contracts/fixtures/notification-levels.json).
+      - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/NotificationLevelContractCasesTest.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftNotificationContract.kt"
+      - "scripts/sync_slock_notification_levels.py"
       - ".github/workflows/contract-cases-drift.yml"
 
 permissions:
@@ -59,12 +63,19 @@ jobs:
           ref: ${{ inputs.slock_source_ref || 'staging' }}
           token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
           path: slock-source
-          sparse-checkout: packages/shared
+          sparse-checkout: |
+            packages/shared
+            docs/contracts/fixtures
 
       - name: Compare the vendored copy with slock
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: python3 scripts/sync_slock_contract_cases.py --check
+
+      - name: Compare the vendored notification level fixture with slock
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: python3 scripts/sync_slock_notification_levels.py --check
 
       # TODO(#proj-mobile:#70): ping @Lagoon in Raft on a red scheduled run. The
       # repo has no chat notification hook yet (visual-patrol only writes a step

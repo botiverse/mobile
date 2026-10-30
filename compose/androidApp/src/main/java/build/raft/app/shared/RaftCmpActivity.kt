@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.raft.app.data.legacyOpenFields
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
@@ -1514,8 +1515,16 @@ internal open class RaftCmpActivity :
         super.onPause()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // The notification permission rides the push registration (osPermission): report the
+        // answer now, not at the next app start.
+        RaftNotificationPermissionReporter.report(applicationContext)
+    }
+
     override fun onResume() {
         super.onResume()
+        RaftNotificationPermissionReporter.report(applicationContext)
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         RaftResumeFrameProbe.onActivityResumed(this, pageName)
         suppressVisualKeyboard()
@@ -2988,6 +2997,8 @@ internal open class RaftCmpActivity :
         const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
         internal const val KEY_APP_SHELL_NOTIFICATION_SERVER_ID = "slockNotificationServerId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_TARGET = "slockNotificationTarget"
+        internal const val NOTIFICATION_TARGET_ACTIVITY = "activity"
         internal const val KEY_APP_SHELL_NOTIFICATION_THREAD_ID = "slockNotificationThreadId"
         internal const val KEY_APP_SHELL_NOTIFICATION_CHANNEL_ID = "slockNotificationChannelId"
         internal const val KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID = "slockNotificationMessageId"
@@ -3020,6 +3031,8 @@ internal open class RaftCmpActivity :
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"
         private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
+        /** The unified contract's DM category (slock docs/contracts/notifications.md §1.2). */
+        private const val NOTIFICATION_CATEGORY_DM = "dm"
         private const val ACTION_OPEN_DIAGNOSTICS = "build.raft.app.diagnostics.OPEN"
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
@@ -3225,6 +3238,44 @@ internal open class RaftCmpActivity :
             return appShellPageData.withAndroidHostPageData(PAGE_APP_SHELL)
         }
 
+        /**
+         * The tap target of a notification (contract §4.5): its legacy conversation fields, else
+         * its `route` (a notice's target, a newer server's payload), else switch to its server and
+         * open Activity (`route` null: reminders, account notices, tests; or an agent route).
+         */
+        internal fun buildNotificationTapAppShellPageData(request: JSONObject): JSONObject? {
+            buildUnreadNotificationAppShellPageData(request)?.let { return it }
+            val route = build.raft.app.data.parseRaftNotificationRoute(request.optTrimmedString("route"))
+            if (route != null) {
+                val fields = JSONObject()
+                route.legacyOpenFields().forEach { (key, value) -> fields.put(key, value) }
+                // The conversation itself: a thread's own channel is the push's conversationId.
+                val conversation =
+                    request.optTrimmedString("conversationId")
+                        ?: fields.optTrimmedString("channelId")
+                conversation?.let {
+                    if (!fields.has("channelId")) fields.put("channelId", it)
+                    fields.put("threadId", it)
+                }
+                if (route is build.raft.app.data.RaftNotificationRoute.Task) {
+                    request.optTrimmedString("conversationId")?.let { fields.put("taskConversationChannelId", it) }
+                    fields.optTrimmedString("taskMessageId")?.let { fields.put("messageId", it) }
+                }
+                buildUnreadNotificationAppShellPageData(fields)?.let { return it }
+            }
+            val serverId = route?.serverId ?: request.optTrimmedString("serverId") ?: return null
+            return buildNotificationActivityAppShellPageData(serverId, request.optTrimmedString("id") ?: request.optTrimmedString("groupKey"))
+        }
+
+        /** Open the app shell on [serverId]'s Activity tab (`slockNotificationTarget: activity`). */
+        internal fun buildNotificationActivityAppShellPageData(serverId: String, notificationId: String?): JSONObject =
+            JSONObject()
+                .put("instanceId", "notification-activity-$serverId-${notificationId.orEmpty()}")
+                .put(KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+                .put(KEY_APP_SHELL_NOTIFICATION_TARGET, NOTIFICATION_TARGET_ACTIVITY)
+                .put(KEY_APP_SHELL_INITIAL_TAB, NOTIFICATION_TARGET_ACTIVITY)
+                .withAndroidHostPageData(PAGE_APP_SHELL)
+
         internal fun buildUnreadNotificationThreadPageData(request: JSONObject): JSONObject? {
             val threadId = request.optTrimmedString("threadId") ?: return null
             val messageId = request.optTrimmedString("messageId") ?: return null
@@ -3235,7 +3286,9 @@ internal open class RaftCmpActivity :
             val surfaceKind =
                     when {
                         parentChannelId != null && parentMessageId != null -> THREAD_SURFACE_REPLY_THREAD
-                        request.optString("category") == NOTIFICATION_CATEGORY_DIRECT_MESSAGE -> THREAD_SURFACE_DIRECT_MESSAGE
+                        request.optString("category") == NOTIFICATION_CATEGORY_DIRECT_MESSAGE ||
+                            request.optString("category") == NOTIFICATION_CATEGORY_DM ||
+                            request.optString("kind") == THREAD_SURFACE_DIRECT_MESSAGE -> THREAD_SURFACE_DIRECT_MESSAGE
                         else -> THREAD_SURFACE_CHANNEL
                     }
             val instanceId = "notification-thread-$threadId-$messageId"
@@ -5264,6 +5317,7 @@ internal class RaftBridgeModule(
     private fun requestPostNotificationsPermission(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         val hostActivity = activity ?: appContext as? Activity ?: return false
+        RaftNotificationPermissionReporter.markRequested(hostActivity)
         hostActivity.runOnUiThread {
             hostActivity.requestPermissions(
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),

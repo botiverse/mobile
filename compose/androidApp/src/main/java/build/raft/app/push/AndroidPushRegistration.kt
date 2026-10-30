@@ -31,6 +31,8 @@ internal object AndroidPushRegistration {
                 is RaftFcmAvailability.Unavailable -> "fcm_unavailable"
                 is RaftFcmAvailability.Deferred -> "fcm_deferred"
             }
+        // Before the first upsert, so the registration starts with the real OS permission.
+        build.raft.app.shared.RaftNotificationPermissionReporter.report(context)
         runCatching {
             RaftAndroidPushRegistrationBridge.install(
                 candidateInstallationId = UUID.randomUUID().toString(),

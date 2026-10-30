@@ -16948,6 +16948,17 @@ private fun ThreadPageContentContent(
                         markUnreadThreadChannelId?.let { threadChannelId ->
                             { onThreadEvent(MARK_THREAD_UNREAD_ACTION, null, threadChannelId, null) }
                         },
+                    notificationLevelTarget =
+                        threadNotificationLevelTarget(
+                            serverId = forwardServerId?.value,
+                            replyThreadOrTask = timelineSlice.replyThreadSurface || data.taskConversationChrome != null,
+                            threadChannelId =
+                                payload.streamChannelId?.takeIf { it.isNotBlank() }
+                                    ?: panelFollowAction?.threadChannelId,
+                            parentChannelId = payload.parentChannelId,
+                            parentIsDirectMessage = payload.parentChannelKind == "dm",
+                            muted = payload.activityMuted
+                        ),
                 )
             },
             body = {
@@ -17570,6 +17581,11 @@ internal fun ThreadPageHeader(
     onMarkThreadUnread: (() -> Unit)? = null,
     /** Task v2: the task's title block and More menu rows (null: not a task, or not known yet). */
     taskConversationChrome: TaskConversationHeaderChrome? = null,
+    /**
+     * The thread's (or task conversation's) notification level row in the More menu (slock
+     * docs/contracts/notifications.md §1.1); null leaves it out.
+     */
+    notificationLevelTarget: RaftNotificationLevelTarget? = null,
 ) {
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
@@ -17809,6 +17825,7 @@ internal fun ThreadPageHeader(
                             onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
                             taskFollowLabels = taskConversation,
                             drawLocally = toggleFocus == null,
+                            notificationLevelTargetInput = notificationLevelTarget,
                         )
                     }
                 }
@@ -18533,9 +18550,15 @@ private fun ThreadHeaderFocusModeMenu(
      * request to the shell drew nothing (1.17.0 build 3: the task page's More did nothing).
      */
     drawLocally: Boolean = false,
+    /** The thread's notification level row ("Notifications: <level>"); null leaves it out. */
+    notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
 ) {
+    // An older server without the unified API shows no level row.
+    val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
     val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var notificationLevelDialogOpen by remember { mutableStateOf(false) }
+    val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
     val items =
         buildList {
             if (!drawLocally) add(
@@ -18606,6 +18629,17 @@ private fun ThreadHeaderFocusModeMenu(
                     )
                 )
             }
+            // Design §4.3: the thread's level (All replies = follow / Mentions / Nothing / Default).
+            if (notificationLevelTarget != null) {
+                add(
+                    RaftBrutalDropdownMenuItem(
+                        id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                        label = notificationLevelLabel,
+                        icon = RaftLucideIconName.BellRing,
+                        enabled = true
+                    )
+                )
+            }
         }
     // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
@@ -18648,6 +18682,7 @@ private fun ThreadHeaderFocusModeMenu(
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                    NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                     else -> Unit // dismissed
                 }
             }
@@ -18728,10 +18763,14 @@ private fun ThreadHeaderFocusModeMenu(
                     MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
                     SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                    NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
                 }
             },
             onDismiss = { localMenuAnchor = null },
         )
+    }
+    if (notificationLevelDialogOpen && notificationLevelTarget != null) {
+        RaftNotificationLevelDialog(target = notificationLevelTarget, onDismiss = { notificationLevelDialogOpen = false })
     }
 }
 
@@ -18747,6 +18786,7 @@ internal const val MARK_THREAD_UNREAD_MENU_ITEM_ID = "thread-mark-unread"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 internal const val SEARCH_IN_TASK_MENU_ITEM_ID = "task-search"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
+internal const val NOTIFICATION_LEVEL_MENU_ITEM_ID = "thread-notification-level"
 
 @Composable
 internal fun ThreadHeaderActionButton(
@@ -37128,3 +37168,29 @@ internal fun threadTaskDetailMenuOwnerIdentity(taskId: TaskId, slot: String): St
  * Stable anchor-owner identity for the task detail dialog's status/assignee
  * popover anchors, so multiple concurrent overlays stay scoped per task slot.
  */
+
+/**
+ * The level target of a reply thread or task conversation page: its own channel id under its
+ * server, inheriting from [parentChannelId]. Null on a channel / DM page (those have their level in
+ * the sidebar menu and the channel settings) or while the server or channel is not known.
+ */
+internal fun threadNotificationLevelTarget(
+    serverId: String?,
+    replyThreadOrTask: Boolean,
+    threadChannelId: String?,
+    parentChannelId: String?,
+    parentIsDirectMessage: Boolean,
+    muted: Boolean
+): RaftNotificationLevelTarget? {
+    if (!replyThreadOrTask) return null
+    val server = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val thread = threadChannelId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return RaftNotificationLevelTarget(
+        serverId = server,
+        scope = build.raft.app.data.RaftNotificationLevelScope.Thread,
+        id = thread,
+        parentChannelId = parentChannelId?.trim()?.takeIf { it.isNotEmpty() && it != thread },
+        isDirectMessage = parentIsDirectMessage,
+        muted = muted
+    )
+}

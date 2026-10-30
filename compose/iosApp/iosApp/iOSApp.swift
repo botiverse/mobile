@@ -73,6 +73,78 @@ enum RaftIosPushHost {
         )
     }
 
+    /// `aps.category` of every Raft alert push (contract §4.2). No actions yet.
+    static let messageCategoryIdentifier = "RAFT_MESSAGE"
+
+    static func registerNotificationCategories() {
+        let category = UNNotificationCategory(
+            identifier: messageCategoryIdentifier,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// App icon badge (contract §1.4: the cross-server Activity sum). [completion] runs once applied.
+    static func setBadgeCount(_ count: Int, completion: @escaping () -> Void = {}) {
+        let count = max(0, count)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(count) { error in
+                if let error {
+                    RaftIosDiagnosticsRecord(
+                        "warn",
+                        "SlockIosPush",
+                        "badge_set_failed errorType=\(String(describing: type(of: error)))"
+                    )
+                }
+                completion()
+            }
+        } else {
+            runOnMain {
+                UIApplication.shared.applicationIconBadgeNumber = count
+                completion()
+            }
+        }
+    }
+
+    /// APNs background push (`content-available`): `sync` sets the badge, `retract` removes the
+    /// group's delivered notifications and then sets the badge. Alert / unknown types: `.noData`.
+    static func handleBackgroundPush(
+        userInfo: [AnyHashable: Any],
+        completion: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let push = RaftIosNotificationRetraction.parseBackgroundPush(userInfo) else {
+            completion(.noData)
+            return
+        }
+        switch push {
+        case .sync(let badge):
+            guard let badge else {
+                RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_skipped reason=missing_badge")
+                completion(.noData)
+                return
+            }
+            setBadgeCount(badge) {
+                RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_applied badge=\(badge)")
+                completion(.newData)
+            }
+        case .retract(let retract):
+            RaftIosNotificationRetraction.apply(
+                retract,
+                badgeSetter: { badge, done in setBadgeCount(badge, completion: done) }
+            ) { removed in
+                RaftIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "background_retract_applied removed=\(removed) wholeGroup=\(retract.throughSeq == nil) " +
+                        "badgeApplied=\(retract.badge != nil)"
+                )
+                completion(removed > 0 || retract.badge != nil ? .newData : .noData)
+            }
+        }
+    }
+
     private static func setRemoteNotificationsEnabled(_ enabled: Bool) {
         runOnMain {
             desiredRemoteNotificationsEnabled = enabled
@@ -100,6 +172,7 @@ enum RaftIosPushHost {
                 "SlockIosPush",
                 "notification_permission_status status=\(authorizationStatusName(status)) trigger=authenticated_session"
             )
+            reportOsPermission(status)
             guard status == .notDetermined else {
                 registerForRemoteNotificationsIfCurrent(generation: generation)
                 return
@@ -118,6 +191,7 @@ enum RaftIosPushHost {
                         "notification_permission_request_finished granted=\(granted)"
                     )
                 }
+                refreshOsPermission()
                 registerForRemoteNotificationsIfCurrent(generation: generation)
             }
         }
@@ -142,6 +216,30 @@ enum RaftIosPushHost {
                 "SlockIosPush",
                 "remote_notifications_state_applied enabled=true"
             )
+        }
+    }
+
+    /// The registration's `osPermission` (slock docs/contracts/notifications.md §3.1): `denied` makes
+    /// the server send this device only sync / retract pushes. Shared re-registers when it changes.
+    static func reportOsPermission(_ status: UNAuthorizationStatus) {
+        let value: String
+        switch status {
+        case .authorized, .ephemeral:
+            value = "granted"
+        case .denied:
+            value = "denied"
+        case .provisional:
+            value = "provisional"
+        default:
+            value = "unknown"
+        }
+        RaftPushDeviceStateHost.shared.updateOsPermission(value: value)
+    }
+
+    /// Re-reads the permission (app foreground: it may have changed in Settings meanwhile).
+    static func refreshOsPermission() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            reportOsPermission(settings.authorizationStatus)
         }
     }
 
@@ -277,78 +375,22 @@ enum RaftIosPushHost {
         )
     }
 
+    /// Conversation target, or (message-less reminder / notice / test, `agent` route) the server's Activity
+    /// target (`slockNotificationTarget: "activity"`). See `RaftIosNotificationOpen`.
     private static func sanitizedSystemNotificationOpenPayload(
         userInfo: [AnyHashable: Any],
         categoryIdentifier: String?,
         shellInstanceId: String? = nil
     ) -> [String: String]? {
-        func stringValue(_ key: String) -> String? {
-            guard let value = userInfo[key] as? String else {
-                return nil
-            }
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-
-        guard
-            let serverId = stringValue("serverId"),
-            let channelId = stringValue("channelId"),
-            let messageId = stringValue("messageId"),
-            let kind = stringValue("kind"),
-            ["channel", "dm", "thread"].contains(kind)
-        else {
-            return nil
-        }
-        let threadId = stringValue("threadId") ?? channelId
-        var payload = [
-            "slockNotificationServerId": serverId,
-            "slockNotificationThreadId": threadId,
-            "slockNotificationChannelId": channelId,
-            "slockNotificationMessageId": messageId,
-            "slockNotificationKind": kind,
-        ]
-        if let parentChannelId = stringValue("parentChannelId") {
-            payload["slockNotificationParentChannelId"] = parentChannelId
-        }
-        if let parentMessageId = stringValue("parentMessageId") {
-            payload["slockNotificationParentMessageId"] = parentMessageId
-        }
-        // Task v2 task-reply push (slock #11445): top-level custom keys next to `channelId`; shared
-        // `parseRaftTaskConversationPushTarget` decides the route.
-        if let taskConversationChannelId = stringValue("taskConversationChannelId") {
-            payload["slockNotificationTaskConversationChannelId"] = taskConversationChannelId
-            if let taskId = stringValue("taskId") {
-                payload["slockNotificationTaskId"] = taskId
-            }
-            if let taskMessageId = stringValue("taskMessageId") {
-                payload["slockNotificationTaskMessageId"] = taskMessageId
-            }
-        }
-        let category =
-            categoryIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-                ?? ((userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-        if let category {
-            payload["slockNotificationCategory"] = category
-        }
-        // task #483: explicit shell target wins; a `slockShellInstanceId` key
-        // already present in userInfo also carries through so a future
-        // server-authored payload targets a shell without a scene.
-        let targetShellId =
-            shellInstanceId?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
-                ?? stringValue("slockShellInstanceId")
-        if let targetShellId {
-            payload["slockShellInstanceId"] = targetShellId
-        }
-        return payload
+        RaftIosNotificationOpen.sanitizedPayload(
+            userInfo: userInfo,
+            categoryIdentifier: categoryIdentifier,
+            shellInstanceId: shellInstanceId
+        )
     }
 
     private static func systemNotificationOpenKey(_ payload: [String: String]) -> String {
-        [
-            payload["slockNotificationServerId"] ?? "",
-            payload["slockNotificationThreadId"] ?? "",
-            payload["slockNotificationMessageId"] ?? "",
-        ].joined(separator: "|")
+        RaftIosNotificationOpen.dedupeKey(payload)
     }
 
     private static func drainPendingSystemNotificationOpens() {
@@ -514,6 +556,22 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         )
         RaftIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
+        RaftIosPushHost.registerNotificationCategories()
+        // osPermission rides the push registration; a change in Settings re-registers on return.
+        RaftIosPushHost.refreshOsPermission()
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            RaftIosPushHost.refreshOsPermission()
+            // Review N1: close delivered alerts that an applied retract covers (a late alert posted after it).
+            RaftIosRetractWatermarks.removeCoveredDelivered { removed in
+                if removed > 0 {
+                    RaftIosDiagnosticsRecord("info", "SlockIosPush", "retract_watermark_swept removed=\(removed)")
+                }
+            }
+        }
         RaftIosDesktopShortcutHost.install()
         if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
             RaftIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "cold_launch")
@@ -579,15 +637,50 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         RaftIosPushHost.didFailToRegister(error: error)
     }
 
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        RaftIosPushHost.handleBackgroundPush(userInfo: userInfo, completion: completionHandler)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        if RaftIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
+        let userInfo = notification.request.content.userInfo
+        // A Settings test (slock docs/contracts/notifications.md §6): confirm it is being shown.
+        if let testId = userInfo["testId"] as? String, !testId.isEmpty {
+            RaftNotificationTestAck.shared.ack(testId: testId, shown: true)
+        }
+        // Review N1: an alert that arrives after the retract covering it (out-of-order delivery) is dropped.
+        if RaftIosRetractWatermarks.isCovered(
+            userInfo: userInfo,
+            postedAt: notification.date,
+            watermarks: RaftIosRetractWatermarks.load(),
+            now: Date()
+        ) {
+            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=retracted")
+            completionHandler([])
+            return
+        }
+        if RaftIosPushHost.targetsVisibleConversation(userInfo: userInfo) {
             // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
             RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
             completionHandler([.badge])
+            return
+        }
+        // The in-app banner renders message notifications only: a reminder, account notice or test
+        // (no message) keeps its system banner in the foreground.
+        let raftCategory = (notification.request.content.userInfo["raftCategory"] as? String) ?? ""
+        let messageLess = ["reminder", "system_notice", "test"].contains(raftCategory)
+        if UIApplication.shared.applicationState == .active && !messageLess {
+            // Review S7: in the foreground only the shared in-app banner shows (it gets the same
+            // notification over the socket); the system copy goes to Notification Center silently.
+            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present mode=list_only reason=foreground")
+            completionHandler([.list, .badge])
             return
         }
         RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
@@ -602,8 +695,10 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         let content = response.notification.request.content
         // task #483: a notification whose serverId maps to exactly one live
         // shell targets only that shell; anything else broadcasts as before.
-        let serverId = (content.userInfo["serverId"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Message-less notices (contract §4.1) may name the server only in `route`; the open payload itself
+        // (conversation or Activity target) is built by RaftIosNotificationOpen.
+        let serverId = RaftIosNotificationRetraction.string(content.userInfo["serverId"])
+            ?? RaftIosNotificationRetraction.string((content.userInfo["route"] as? [AnyHashable: Any])?["serverId"])
         var shellInstanceId: String?
         if let serverId, !serverId.isEmpty {
             let matches = RaftIosShellWindowRegistry.contexts(forServerId: serverId)

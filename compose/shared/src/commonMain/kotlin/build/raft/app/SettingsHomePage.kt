@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftDedupeKey
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
@@ -3031,6 +3032,11 @@ private fun RaftAppShellReadyContent(
             )
         }
     var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    // A notification without a conversation (reminder, notice, test, agent route; contract §4.5):
+    // switch to its server and open Activity. From the launch pageData (Android) or the open event (iOS).
+    var pendingNotificationActivityServerId by remember(pager.pageData.params.toString()) {
+        mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
+    }
     var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
@@ -3083,6 +3089,12 @@ private fun RaftAppShellReadyContent(
                 val targetShellId =
                     eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
+                val activityServerId = eventData?.toKuiklyJson()?.appShellNotificationActivityServerId()
+                if (activityServerId != null) {
+                    bridge.log("notification_open_activity source=system_notification targetServerId=$activityServerId")
+                    pendingNotificationActivityServerId = activityServerId
                     return@observe
                 }
                 val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
@@ -3940,17 +3952,56 @@ private fun RaftAppShellReadyContent(
                     sharedStores.readReceiptOwner(serverId, accountId)
                 }
             }
-    // Forward the process-owned selected-server Activity projection to the host badge. Source is
-    // diagnostics-only; hosts display count and must not branch on provenance.
-    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary, authoritativeHomeStartAllowed) {
+    val notificationLevelsByServer by build.raft.app.data.RaftNotificationLevelStore.state.collectAsState()
+    // Every server's level (the badge leaves out `none` servers) and the account settings, once per
+    // signed-in account; realtime `notification_prefs:updated` keeps them current afterwards.
+    val notificationAccountUserId = readySession?.user?.id?.takeIf { it.isNotBlank() }
+    LaunchedEffect(notificationAccountUserId) {
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
+            build.raft.app.data.RaftNotificationLevelStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
+        }
+        build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
+    }
+    // The selected server's explicit channel / thread levels, for the sidebar and thread menus' labels.
+    LaunchedEffect(notificationAccountUserId, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        build.raft.app.data.RaftNotificationLevelStore.refresh(serverId, build.raft.app.data.DataRequestPriority.Background)
+    }
+    // Forward the badge to the host: the selected server's live Activity projection plus every other
+    // server's Activity unread, without servers set to `none` (slock docs/contracts/notifications.md
+    // §1.4), the same number the push badge carries. Source is diagnostics-only; hosts display count
+    // and must not branch on provenance.
+    LaunchedEffect(
+        homeState.appBadgeCount,
+        activityUnreadSummary,
+        authoritativeHomeStartAllowed,
+        homeState.serverActivityUnread,
+        notificationLevelsByServer
+    ) {
         val fallback = homeState.appBadgeCount
         val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
-        bridge.appBadge(
-            count = if (useActivityProjection && activityUnreadSummary.hasValue) {
+        val currentServerCount =
+            if (useActivityProjection && activityUnreadSummary.hasValue) {
                 activityUnreadSummary.totalUnreadCount
             } else {
                 fallback.count
-            },
+            }
+        bridge.appBadge(
+            count =
+                build.raft.app.data.raftAppBadgeAcrossServers(
+                    currentServerId = readyServerId,
+                    currentServerCount = currentServerCount,
+                    otherServerCounts = homeState.serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
+                    serverPushMuted = homeState.serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
+                    levels =
+                        notificationLevelsByServer
+                            .filterValues { it.serverLevelKnown }
+                            .mapValues { it.value.server }
+                ),
             source =
                 if (useActivityProjection && activityUnreadSummary.hasValue) {
                     build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
@@ -5984,6 +6035,10 @@ private fun RaftAppShellReadyContent(
                             if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
                                 return@runIfCurrentGrant
                             }
+                            // One banner per notification, however many of the user's sockets delivered it.
+                            if (!build.raft.app.data.RaftNotificationPushDedupe.firstForBanner(event.raftDedupeKey())) {
+                                return@runIfCurrentGrant
+                            }
                             if (latestForegroundMessageBannersEnabled) {
                                 val banner =
                                     raftNotificationPushBannerOrNull(
@@ -6748,6 +6803,24 @@ private fun RaftAppShellReadyContent(
         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
         if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
         bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
+    }
+
+    LaunchedEffect(pendingNotificationActivityServerId, readySession?.currentServerId) {
+        val target = pendingNotificationActivityServerId ?: return@LaunchedEffect
+        val session = readySession ?: return@LaunchedEffect
+        pendingNotificationActivityServerId = null
+        if (session.servers.none { it.id == target }) {
+            bridge.logWarn("notification_open_activity_drop reason=unknown_server targetServerId=$target")
+            return@LaunchedEffect
+        }
+        if (session.currentServerId != target) {
+            session.withAppShellSelectedServer(target)
+                ?.let { switched -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched)) }
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(target)))
+        }
+        selectAppShellTab("activity", directChildSwitch = true)
+        bridge.log("notification_open_activity_done targetServerId=$target")
     }
 
     // D1a: the server panel's pages open the pages the More rows opened, as pushed pages that
@@ -8462,11 +8535,26 @@ private fun RaftAppShellReadyContent(
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
                 foregroundBannerStore.dismiss(target.id)
-                openHomeMessageRequest(
-                    request = target.openRequest,
-                    source = "foreground_banner",
-                    fallbackAnchorMessageId = target.focusedMessageId
-                )
+                val crossServerSource = target.crossServerSource
+                if (crossServerSource != null) {
+                    // Another workspace: switch to it first, then open (window navigation).
+                    val enqueued =
+                        windowNavigationCoordinator.enqueue(
+                            WindowNavigationIntent(
+                                serverId = target.serverId,
+                                sourceIdentity = crossServerSource,
+                                source = "foreground_banner"
+                            )
+                        )
+                    bridge.log("window_navigation_received source=foreground_banner enqueued=$enqueued targetServerId=${target.serverId}")
+                    systemNotificationNavigationTick += 1
+                } else {
+                    openHomeMessageRequest(
+                        request = target.openRequest,
+                        source = "foreground_banner",
+                        fallbackAnchorMessageId = target.focusedMessageId
+                    )
+                }
             },
             onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
@@ -15322,6 +15410,12 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
     )
 }
 
+private const val AppShellNotificationTargetKey = "slockNotificationTarget"
+
+/** The server of a notification open that targets Activity (no conversation), else null. */
+internal fun JSONObject.appShellNotificationActivityServerId(): String? =
+    takeIf { optString(AppShellNotificationTargetKey).trim() == "activity" }?.appShellNotificationServerId()
+
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
 
@@ -15984,6 +16078,10 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
         is PerReceiverPinnedChanged -> "pinned_updated"
         is NotificationPushReceived -> "notification_push"
+        is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
+        is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
+        is build.raft.app.model.NotificationRetracted -> "notification_retract"
+        is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -16014,8 +16112,12 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged,
         is ServerNotificationPreferencesChanged,
-        is PerReceiverPinnedChanged -> "realtime_content_apply"
-        is NotificationPushReceived -> "realtime_notification_apply"
+        is PerReceiverPinnedChanged,
+        is build.raft.app.model.NotificationLevelChanged,
+        is build.raft.app.model.NotificationAccountSettingsChanged -> "realtime_content_apply"
+        is NotificationPushReceived,
+        is build.raft.app.model.NotificationNoticeReceived,
+        is build.raft.app.model.NotificationRetracted -> "realtime_notification_apply"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =

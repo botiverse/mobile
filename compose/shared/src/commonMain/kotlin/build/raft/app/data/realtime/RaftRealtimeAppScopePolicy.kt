@@ -211,11 +211,13 @@ object RaftRealtimeAppScopePolicy {
 
     /**
      * Server push already delivers [serverId]'s tray notifications to this device, so the background
-     * realtime path must not post a second copy. True only when the stored delivery-status answer belongs
-     * to the current environment, signed-in user and installation, is at most
-     * [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS] old at [nowMillis], lists [serverId] (the event's server, not
-     * the selected one), and says `fcmActive`. No answer, an old answer, a missing server or any mismatch
-     * reads false (post locally): a possible duplicate beats a missed notification.
+     * realtime path must not post a second copy. True when the stored delivery-status answer belongs to
+     * the current environment, signed-in user and installation, is at most
+     * [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS] old at [nowMillis], and says `fcmActive` for [serverId].
+     * A server running the unified contract always answers `fcmActive: true` (§3.1); an older one may
+     * answer false (rollout switch off, FCM not configured), and then the local post is the only one.
+     * No answer, an old answer, a missing server or any mismatch reads false (post locally): a
+     * possible duplicate beats a missed notification.
      */
     fun isRemotePushActive(
         serverId: ServerId,

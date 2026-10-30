@@ -1246,5 +1246,68 @@ data class NotificationPushReceived(
     val senderKind: MemberKind? = null,
     val senderName: String? = null,
     val messagePreview: String? = null,
-    val mentioned: Boolean? = null
+    val mentioned: Boolean? = null,
+    /**
+     * Unified notification envelope additions (slock `docs/contracts/notifications.md` §4.1): the
+     * dedupe [notificationId], the real [category] (`dm`, `mention`, `thread`, ...), the message
+     * [seq] in [conversationId], [groupKey] (`<serverId>:<conversationId>`, what a retraction names),
+     * the click target [routeJson] (a `NotificationRoute` object as JSON text) and [silent] (the
+     * account sound setting is off). Null on servers that predate the contract.
+     */
+    val notificationId: String? = null,
+    val category: String? = null,
+    val seq: Long? = null,
+    val groupKey: String? = null,
+    val conversationId: String? = null,
+    val routeJson: String? = null,
+    val silent: Boolean? = null
+) : RealtimeEvent
+
+/**
+ * `notification:push` of an event without a message (contract §4.1: `reminder`, `system_notice`,
+ * `test`): no conversation identity, a `groupKey` of `<serverId>:reminder|notice|test`, and the open
+ * target in [routeJson] (null: the app's Activity).
+ */
+@Serializable
+data class NotificationNoticeReceived(
+    val serverId: ServerId,
+    val category: String,
+    val groupKey: String,
+    val notificationId: String? = null,
+    val title: String,
+    val body: String,
+    val routeJson: String? = null,
+    val silent: Boolean? = null
+) : RealtimeEvent
+
+/**
+ * `notification_prefs:updated` with `type: "channel" | "thread" | "server"` (contract §2.3): one
+ * explicit level changed. [level] is a `NotificationLevelSetting` wire value; [scopeId] is the
+ * server, channel (or DM) or thread channel id. Drop it when [prefsVersion] is not newer.
+ */
+@Serializable
+data class NotificationLevelChanged(
+    val serverId: ServerId,
+    val scope: String,
+    val scopeId: String,
+    val level: String,
+    val prefsVersion: Long
+) : RealtimeEvent
+
+/** `notification_prefs:updated` with `type: "account"`: the account-wide settings changed. */
+@Serializable
+data class NotificationAccountSettingsChanged(
+    val settings: build.raft.app.data.RaftNotificationAccountSettings
+) : RealtimeEvent
+
+/**
+ * `notification:retract` (contract §5): the read position of [conversationId] moved forward on some
+ * device; close notifications of [groupKey] whose seq is at most [throughSeq] (null: all of them).
+ */
+@Serializable
+data class NotificationRetracted(
+    val serverId: ServerId,
+    val groupKey: String,
+    val conversationId: String,
+    val throughSeq: Long? = null
 ) : RealtimeEvent

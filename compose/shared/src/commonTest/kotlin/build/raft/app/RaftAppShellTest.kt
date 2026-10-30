@@ -3546,7 +3546,7 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun notificationPushBannerSuppressedForOtherServerAndVisibleConversation() {
+    fun notificationPushBannerShowsOtherServersAndSuppressesTheVisibleConversation() {
         val suppressed = mutableListOf<String>()
         val crossServer =
             raftNotificationPushBannerOrNull(
@@ -3565,8 +3565,11 @@ class RaftAppShellTest {
                 onSuppressed = suppressed::add
             )
 
-        assertNull(crossServer)
-        assertEquals(listOf("server_mismatch"), suppressed)
+        // Contract §4.5: another workspace's notification is shown like any other; its tap switches
+        // workspace through window navigation.
+        assertEquals("server-2", crossServer?.serverId)
+        assertEquals("channel-1", crossServer?.crossServerSource?.channelId)
+        assertEquals(emptyList(), suppressed)
 
         suppressed.clear()
         val visible =

@@ -130,34 +130,19 @@ class SystemNotificationsTest {
     }
 
     @Test
-    fun unreadNotificationServerGateAllowsCurrentServerOnly() {
+    fun unreadNotificationServerGateAllowsEveryServerButNeedsOne() {
+        // The unified contract (§4.5): another workspace's notification is shown like any other.
         assertEquals(
             SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed"),
-            systemUnreadNotificationServerGate(
-                notificationServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-        assertEquals(
-            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_mismatch"),
-            systemUnreadNotificationServerGate(
-                notificationServerId = "server-2",
-                currentServerId = "server-1"
-            )
+            systemUnreadNotificationServerGate(notificationServerId = "server-2")
         )
         assertEquals(
             SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing"),
-            systemUnreadNotificationServerGate(
-                notificationServerId = "",
-                currentServerId = "server-1"
-            )
+            systemUnreadNotificationServerGate(notificationServerId = "")
         )
         assertEquals(
-            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "current_server_missing"),
-            systemUnreadNotificationServerGate(
-                notificationServerId = "server-1",
-                currentServerId = null
-            )
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing"),
+            systemUnreadNotificationServerGate(notificationServerId = null)
         )
     }
 
@@ -266,6 +251,32 @@ class SystemNotificationsTest {
         assertEquals("host-channel", host.channelId)
         assertEquals("server-peer", peer.serverId)
         assertEquals("peer-channel", peer.channelId)
+    }
+
+    @Test
+    fun pushRequestCarriesTheContractEnvelope() {
+        val request =
+            requireNotNull(
+                buildSystemUnreadNotificationRequestFromPush(
+                    push =
+                        notificationPush("server-2", "dm-1").copy(
+                            kind = ConversationKind.DirectMessage,
+                            category = "dm",
+                            seq = 41L,
+                            conversationId = "dm-1",
+                            silent = true,
+                            routeJson = """{"type":"dm","serverId":"server-2","channelId":"dm-1","messageId":"canonical-message"}"""
+                        ),
+                    isVisibleThread = false,
+                    isAppInForeground = false
+                )
+            )
+        assertEquals("dm", request.contractCategory)
+        assertEquals(41L, request.seq)
+        // groupKey rebuilt from serverId + conversationId when the payload carries none.
+        assertEquals("server-2:dm-1", request.groupKey)
+        assertTrue(request.silent)
+        assertEquals(RaftAndroidNotificationChannelKind.DirectMessage, raftAndroidNotificationChannelKind(request.contractCategory))
     }
 
     private fun notificationPush(serverId: String, channelId: String): NotificationPushReceived =

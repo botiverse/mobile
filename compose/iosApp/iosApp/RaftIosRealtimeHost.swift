@@ -70,6 +70,8 @@ final class RaftIosRealtimeHost: NSObject {
         /// move it up from elsewhere drops the horizon (connectRuntimeLocked).
         var horizon: String?
         var presenceTransportEpoch: Int64 = 0
+        /// Last `presence:activity` `active` value sent on this connection; nil = none since connect.
+        var presenceActiveSent: Bool?
 
         init(serverId: String) {
             self.serverId = serverId
@@ -84,6 +86,10 @@ final class RaftIosRealtimeHost: NSObject {
     private var foregroundEpoch: Int64 = 0
     private var didInstallObservers = false
     private var lifecyclePolicy: RaftIosRealtimeLifecyclePolicy?
+    /// App/shell visibility as last reported by the lifecycle policy; nil until known (see init).
+    private var shellVisible: Bool?
+    /// `presence:activity` heartbeat while visible and at least one socket is connected (contract §5).
+    private var presenceTimer: DispatchSourceTimer?
 
     var statusLabel: String {
         queue.sync {
@@ -96,6 +102,17 @@ final class RaftIosRealtimeHost: NSObject {
     private override init() {
         super.init()
         installObserversIfNeeded()
+        // The host may be created after the first didBecomeActive, so seed visibility from the current
+        // application state unless a lifecycle event already set it.
+        DispatchQueue.main.async { [weak self] in
+            let active = UIApplication.shared.applicationState == .active
+            self?.queue.async {
+                guard let self, self.shellVisible == nil else { return }
+                self.shellVisible = active
+                if active { self.sendPresenceActivityLocked(active: true) }
+                self.updatePresenceTimerLocked()
+            }
+        }
     }
 
     func handleCommand(_ command: NSDictionary) {
@@ -348,6 +365,62 @@ final class RaftIosRealtimeHost: NSObject {
         postPresenceTransportConnected(runtime: runtime)
         requestStartingHorizon(runtime: runtime, generation: generation)
         rejoinChannels(runtime: runtime, reason: "connect")
+        runtime.presenceActiveSent = nil
+        if shellVisible == true {
+            emitPresenceActivity(runtime: runtime, active: true)
+        }
+        updatePresenceTimerLocked()
+    }
+
+    // MARK: presence:activity (contract §5)
+
+    private func emitPresenceActivity(runtime: Runtime, active: Bool) {
+        guard runtime.state == .connected, runtime.socket != nil else { return }
+        // A heartbeat repeats `true`; `false` is sent once per connection (hide, then background).
+        if !active && runtime.presenceActiveSent == false { return }
+        emit(runtime: runtime, eventName: RaftIosPresenceActivity.eventName, payload: RaftIosPresenceActivity.payload(active: active))
+        runtime.presenceActiveSent = active
+    }
+
+    private func sendPresenceActivityLocked(active: Bool) {
+        for runtime in runtimes.values where runtime.state == .connected {
+            emitPresenceActivity(runtime: runtime, active: active)
+        }
+    }
+
+    private func updatePresenceTimerLocked() {
+        let shouldRun = shellVisible == true && runtimes.values.contains { $0.state == .connected }
+        if !shouldRun {
+            presenceTimer?.cancel()
+            presenceTimer = nil
+            return
+        }
+        guard presenceTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let interval = RaftIosPresenceActivity.heartbeatInterval
+        timer.schedule(deadline: .now() + interval, repeating: interval)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            guard self.shellVisible == true, self.runtimes.values.contains(where: { $0.state == .connected }) else {
+                self.updatePresenceTimerLocked()
+                return
+            }
+            self.sendPresenceActivityLocked(active: true)
+        }
+        presenceTimer = timer
+        timer.resume()
+    }
+
+    /// Foreground-only socket copy of the APNs retract: closes the group's delivered notifications.
+    /// The badge is not touched (the socket event carries none).
+    private func applyNotificationRetractLocked(rawPayload: String) {
+        guard let retract = RaftIosNotificationRetraction.parseSocketRetract(rawPayload: rawPayload) else {
+            log("notification_retract_rejected reason=invalid_payload")
+            return
+        }
+        RaftIosNotificationRetraction.apply(retract, completion: { [weak self] removed in
+            self?.log("notification_retract_applied removed=\(removed) wholeGroup=\(retract.throughSeq == nil)")
+        })
     }
 
     /// Asks this socket for a starting horizon while none is held. Never waited for: the ack is used only
@@ -484,6 +557,9 @@ final class RaftIosRealtimeHost: NSObject {
             return
         }
         postRawEvent(runtime: runtime, params: params, eventName: eventName, rawPayload: rawPayload)
+        if eventName == RaftIosNotificationRetraction.socketEventName {
+            applyNotificationRetractLocked(rawPayload: rawPayload)
+        }
         if eventName == GeneratedRealtimeContract.SocketEvent.syncResumeResponse {
             applySyncResumeHorizonLocked(runtime: runtime, params: params, rawPayload: rawPayload)
         }
@@ -735,6 +811,7 @@ final class RaftIosRealtimeHost: NSObject {
             runtime.roomEngine.resetRoomStateForHost()
         }
         record("info", "disconnect serverId=\(runtime.serverId) reason=\(reason) keepSession=\(keepSession)")
+        updatePresenceTimerLocked()
     }
 
     private func requestAuthRefresh(runtime: Runtime, reason: String) {
@@ -817,6 +894,9 @@ final class RaftIosRealtimeHost: NSObject {
         if visible {
             foregroundEpoch += 1
         }
+        shellVisible = visible
+        sendPresenceActivityLocked(active: visible)
+        updatePresenceTimerLocked()
         // task #483: every live shell is foregrounded / backgrounded together.
         let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
         for shellId in shellIds.isEmpty
@@ -842,9 +922,16 @@ final class RaftIosRealtimeHost: NSObject {
         )
     }
 
-    /** Kotlin RealtimeSocketEvents.UserScopedServerEvents: events that may name any of the member's servers. */
+    /** Kotlin RealtimeSocketEvents.UserScopedServerEvents: events that may name any of the member's servers.
+     *  `notification:push` / `notification:retract` go to the user's room for any of their servers; other
+     *  workspaces' notifications must still be shown / closed. `notification_prefs:updated` (contract §2.3)
+     *  carries its own `serverId`: another workspace's level change must still reach the level store, or that
+     *  workspace's levels and badge stay stale until the next sign-in load. */
     private static let userScopedServerEvents: Set<String> = [
         GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
+        "notification:push",
+        RaftIosNotificationRetraction.socketEventName,
+        "notification_prefs:updated",
     ]
 
     private func payloadServerGate(connectionServerId: String, rawPayload: String) -> (accept: Bool, reason: String, payloadServerId: String) {
@@ -1007,6 +1094,7 @@ final class RaftIosRealtimeHost: NSObject {
         "notification_prefs:updated",
         "pinned:updated",
         "notification:push",
+        RaftIosNotificationRetraction.socketEventName,
     ]
 }
 
@@ -1028,6 +1116,10 @@ extension RaftIosRealtimeHost: RaftIosRealtimeLifecycleTarget {
     func disconnectRealtimeForBackground() {
         queue.async { [weak self] in
             guard let self else { return }
+            // presence:activity active:false goes out before the sockets close (no-op when the
+            // preceding hide already sent it).
+            self.shellVisible = false
+            self.sendPresenceActivityLocked(active: false)
             for runtime in self.runtimes.values {
                 self.disconnectRuntimeLocked(runtime, reason: "background", keepSession: true)
             }

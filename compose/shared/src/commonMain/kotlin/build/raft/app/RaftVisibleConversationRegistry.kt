@@ -121,7 +121,8 @@ internal fun raftSystemNotificationPushEventOrNull(
                 when {
                     parentMessage != null || (thread != null && channel != null && thread != channel) ->
                         ConversationKind.Thread
-                    category.clean() == "direct_message" -> ConversationKind.DirectMessage
+                    // `dm` is the unified contract's category; `direct_message` the older local one.
+                    category.clean() == "direct_message" || category.clean() == "dm" -> ConversationKind.DirectMessage
                     else -> ConversationKind.Channel
                 }
             else -> return null

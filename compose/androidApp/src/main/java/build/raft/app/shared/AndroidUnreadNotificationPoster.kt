@@ -17,12 +17,16 @@ import android.net.Uri
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import build.raft.app.R
-import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.PUSH_PREVIEW_MODE_UNREADABLE
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.RaftAndroidNotificationChannelKind
+import build.raft.app.data.RaftNotificationRetract
+import build.raft.app.data.RaftRetractWatermarks
+import build.raft.app.data.parseRaftPushBadge
+import build.raft.app.data.parseRaftPushSeq
+import build.raft.app.data.raftAndroidNotificationChannelKind
 import build.raft.app.data.RaftConversationReadHost
 import build.raft.app.data.RaftConversationReadListener
 import build.raft.app.data.SystemUnreadNotificationRequest
@@ -40,9 +44,12 @@ internal object AndroidUnreadNotificationPoster {
 
     internal const val UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID = "slock-unread-general-v1"
     internal const val UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID = "slock-unread-channel-v1"
-    internal const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
-    // Also used by the Settings test notification so the test exercises the
-    // same HIGH-importance channel real mentions ride on.
+    // DMs ride a HIGH-importance channel (slock docs/contracts/notifications.md §4.3). A channel's
+    // importance cannot change once created, so v1 (DEFAULT) is replaced by v2 and deleted.
+    internal const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v2"
+    internal const val LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
+    // Mentions and requests (task assigned, agent asks, reminders, account notices, tests). Also used
+    // by the Settings test notification so the test exercises the same HIGH-importance channel.
     const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
 
     fun postUnreadNotification(context: Context, request: SystemUnreadNotificationRequest): Map<String, Any> =
@@ -50,13 +57,21 @@ internal object AndroidUnreadNotificationPoster {
 
     fun postUnreadNotification(context: Context, request: JSONObject): Map<String, Any> {
         val appContext = context.applicationContext
-        val serverGate =
-            systemUnreadNotificationServerGate(
-                notificationServerId = request.optString("serverId"),
-                currentServerId = currentSelectedServerId(appContext)
-            )
+        // Every server's notification is shown, not only the selected workspace's (contract §4.5);
+        // its tap switches to that server first.
+        val serverGate = systemUnreadNotificationServerGate(notificationServerId = request.optString("serverId"))
         if (!serverGate.shouldPost) {
             return mapOf("status" to "error", "code" to serverGate.code)
+        }
+        // A late alert whose retraction already arrived: the conversation was read meanwhile.
+        if (
+            retractWatermarks.covers(
+                AndroidUnreadNotificationGrouping.retractionGroupKey(request),
+                parseRaftPushSeq(request.optString("seq")),
+                System.currentTimeMillis()
+            )
+        ) {
+            return mapOf("status" to "ok", "code" to "already_retracted")
         }
         ensureSharedNotificationChannels(appContext)
         if (!hasNotificationPermission(appContext)) {
@@ -66,7 +81,7 @@ internal object AndroidUnreadNotificationPoster {
             return mapOf("status" to "error", "code" to "notifications_disabled")
         }
         val category = request.optString("category")
-        val channelId = notificationChannelIdForCategory(category)
+        val channelId = notificationChannelIdForCategory(category, mentioned = request.optBoolean("mentioned", false))
         if (isNotificationChannelBlocked(appContext, channelId)) {
             return mapOf("status" to "error", "code" to "channel_blocked", "channelId" to channelId)
         }
@@ -99,6 +114,22 @@ internal object AndroidUnreadNotificationPoster {
 
     /** The [postCounter] value of each conversation's last post; must hold [groupingLock]. */
     private val lastPostMarks = mutableMapOf<Int, Long>()
+
+    /**
+     * The retraction identity (`groupKey`, newest `seq`) of each conversation this process posted, for
+     * a retraction that arrives before the tray lists the post; must hold [groupingLock].
+     */
+    private val postedGroupSeqs = mutableMapOf<Int, Pair<String, Long?>>()
+
+    /**
+     * The server's own badge term per server (`serverBadge` of the newest alert / sync / retract
+     * push, contract §1.4): the summary's number. Absent: the summary counts its conversations'
+     * messages. Must hold [groupingLock].
+     */
+    private val serverBadges = mutableMapOf<String, Int>()
+
+    /** What the retractions this process saw already closed (review N1). */
+    internal val retractWatermarks = RaftRetractWatermarks()
 
     /** The conversations each server's posted summary counted; must hold [groupingLock]. */
     private val postedSummaryConversations = mutableMapOf<String, Set<Int>>()
@@ -183,6 +214,66 @@ internal object AndroidUnreadNotificationPoster {
     }
 
     /**
+     * A conversation was read on some device (FCM `retract`, socket `notification:retract`; contract
+     * §4.3 / §5): cancels each conversation notification of [retract]'s group whose newest seq is at
+     * most its `throughSeq` (all of the group when null), then recounts or removes the server's
+     * summary. A notification with a newer message stays.
+     */
+    @SuppressLint("MissingPermission") // Only cancels, or re-posts a summary over posted conversations.
+    fun retract(context: Context, retract: RaftNotificationRetract): Int {
+        val appContext = context.applicationContext
+        retractWatermarks.record(retract, System.currentTimeMillis())
+        return runCatching {
+            synchronized(groupingLock) {
+                val fromTray =
+                    activeUnreadNotifications(appContext)
+                        .filter { posted ->
+                            posted.tag == AndroidUnreadNotificationGrouping.CONVERSATION_TAG &&
+                                !recentPosts.isCleared(posted.id) &&
+                                retract.covers(
+                                    AndroidUnreadNotificationGrouping.retractionGroupKey(posted.notification.extras),
+                                    AndroidUnreadNotificationGrouping.retractionSeq(posted.notification.extras)
+                                )
+                        }
+                        .map { it.id }
+                val justPosted =
+                    postedGroupSeqs
+                        .filter { (id, identity) -> recentPosts.has(id) && retract.covers(identity.first, identity.second) }
+                        .keys
+                val targets = (fromTray + justPosted).toSet()
+                if (targets.isEmpty()) return@synchronized 0
+                val manager = NotificationManagerCompat.from(appContext)
+                for (id in targets) {
+                    recentPosts.clear(id)
+                    postedGroupSeqs.remove(id)
+                    manager.cancel(AndroidUnreadNotificationGrouping.CONVERSATION_TAG, id)
+                }
+                refreshServerSummary(appContext, retract.serverId.trim(), SummaryRefresh.Now)
+                targets.size
+            }
+        }.getOrDefault(0)
+    }
+
+    /**
+     * A push named [serverId]'s own badge term (`serverBadge`): the server's summary shows it as its
+     * number from now on, re-posted at once when it is in the tray.
+     */
+    @SuppressLint("MissingPermission") // Only re-posts a summary over posted conversations.
+    fun applyServerBadge(context: Context, serverId: String, serverBadge: Int) {
+        val appContext = context.applicationContext
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        runCatching {
+            synchronized(groupingLock) {
+                if (serverBadges[server] == serverBadge) return@synchronized
+                serverBadges[server] = serverBadge
+                if (postedSummaryConversations.containsKey(server)) {
+                    refreshServerSummary(appContext, server, SummaryRefresh.Now)
+                }
+            }
+        }
+    }
+
+    /**
      * The user swiped conversation [notificationId] away (null: an older delete intent without the id):
      * forget it, then recount or remove the summaries.
      */
@@ -198,6 +289,9 @@ internal object AndroidUnreadNotificationPoster {
         synchronized(groupingLock) {
             recentPosts.reset()
             lastPostMarks.clear()
+            postedGroupSeqs.clear()
+            serverBadges.clear()
+            retractWatermarks.clear()
             postedSummaryConversations.clear()
             pendingSummaryServers.clear()
         }
@@ -255,6 +349,10 @@ internal object AndroidUnreadNotificationPoster {
         NotificationManagerCompat.from(appContext)
             .notify(AndroidUnreadNotificationGrouping.CONVERSATION_TAG, notificationId, notification)
         lastPostMarks[notificationId] = postCounter.incrementAndGet()
+        parseRaftPushBadge(request.optString("serverBadge"))?.let { serverBadges[serverId] = it }
+        postedGroupSeqs[notificationId] =
+            AndroidUnreadNotificationGrouping.retractionGroupKey(notification.extras).orEmpty() to
+                AndroidUnreadNotificationGrouping.retractionSeq(notification.extras)
         val history = UnreadConversationHistory.readFrom(notification.extras)
         recentPosts.record(
             notificationId = notificationId,
@@ -339,7 +437,7 @@ internal object AndroidUnreadNotificationPoster {
                 val posted =
                     activeUnreadNotifications(context)
                         .firstOrNull { it.tag == AndroidUnreadNotificationGrouping.SUMMARY_TAG && it.id == summaryId }
-                if (posted != null && posted.notification.number == entries.sumOf { it.count }) {
+                if (posted != null && posted.notification.number == summaryNumber(serverId, entries)) {
                     postedSummaryConversations[serverId] = conversations
                     return
                 }
@@ -354,12 +452,17 @@ internal object AndroidUnreadNotificationPoster {
                 serverId = serverId,
                 channelId = summaryChannelId(context, entries),
                 entries = entries,
-                contentIntent = unreadSummaryContentIntent(context, summaryId)
+                contentIntent = unreadSummaryContentIntent(context, summaryId),
+                number = summaryNumber(serverId, entries)
             )
         )
         postedSummaryConversations[serverId] = conversations
         pendingSummaryServers.remove(serverId)
     }
+
+    /** Must hold [groupingLock]. The server's own badge term when a push named one, else the tray's message count. */
+    private fun summaryNumber(serverId: String, entries: List<UnreadSummaryEntry>): Int =
+        serverBadges[serverId] ?: entries.sumOf { it.count }
 
     /** Must hold [groupingLock]. One deferred update per server, however many ask for it. */
     private fun deferSummary(context: Context, serverId: String) {
@@ -509,16 +612,25 @@ internal object AndroidUnreadNotificationPoster {
             Bundle().apply {
                 putString(AndroidUnreadNotificationGrouping.EXTRA_SERVER_ID, serverId)
                 putString(AndroidUnreadNotificationGrouping.EXTRA_CONVERSATION_KEY, AndroidUnreadNotificationGrouping.conversationKey(request))
+                putString(AndroidUnreadNotificationGrouping.EXTRA_GROUP_KEY, AndroidUnreadNotificationGrouping.retractionGroupKey(request))
+                parseRaftPushSeq(request.optString("seq"))?.let { putLong(AndroidUnreadNotificationGrouping.EXTRA_SEQ, it) }
                 putString(AndroidUnreadNotificationGrouping.EXTRA_TITLE, text.title)
                 history.writeTo(this)
             }
+        val highPriority =
+            channelId == UNREAD_DM_NOTIFICATION_CHANNEL_ID || channelId == UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
         return NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(text.title)
             .setContentText(text.body)
             .setStyle(style)
             .setNumber(history.count)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            // Launchers that badge show a dot or this count (contract §1.4 "where supported").
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
+            // The account sound setting is off (FCM `silent: "true"`, socket `silent: true`).
+            .setSilent(unreadNotificationSilent(request))
+            // Pre-O devices take the priority from the notification, not its channel.
+            .setPriority(if (highPriority) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
@@ -545,7 +657,9 @@ internal object AndroidUnreadNotificationPoster {
         serverId: String,
         channelId: String,
         entries: List<UnreadSummaryEntry>,
-        contentIntent: PendingIntent?
+        contentIntent: PendingIntent?,
+        /** The summary's number: the server's badge term (`serverBadge`) when known. */
+        number: Int = entries.sumOf { it.count }
     ): Notification {
         val appContext = context.applicationContext
         val total = entries.sumOf { it.count }
@@ -570,7 +684,8 @@ internal object AndroidUnreadNotificationPoster {
             .setContentTitle(appName)
             .setContentText(countText)
             .setStyle(inbox)
-            .setNumber(total)
+            .setNumber(number)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion)
@@ -597,15 +712,6 @@ internal object AndroidUnreadNotificationPoster {
             )
         }.getOrNull() ?: PushPreviewMode.fromWire(PUSH_PREVIEW_MODE_UNREADABLE) ?: PushPreviewMode.Hidden
 
-    // Lock-free: posting can run on the main thread, where waiting on the session lock can
-    // deadlock (#3823).
-    private fun currentSelectedServerId(context: Context): String? =
-        runCatching {
-            KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
-                .readCommittedSessionSnapshot()
-                ?.currentServerId
-        }.getOrNull()
-
     fun hasNotificationPermission(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context.applicationContext, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -615,6 +721,20 @@ internal object AndroidUnreadNotificationPoster {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val appContext = context.applicationContext
         val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // DMs move to v2 (HIGH; a channel's importance is fixed once it exists). v2 is created once,
+        // from what the user made of v1, and v1 goes only once nothing is showing on it.
+        val legacyDm = runCatching { manager.getNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID) }.getOrNull()
+        val dmChannel =
+            NotificationChannel(
+                UNREAD_DM_NOTIFICATION_CHANNEL_ID,
+                appContext.getString(R.string.notification_unread_dm_channel_name),
+                dmChannelImportance(legacyDm?.importance)
+            ).apply {
+                description = appContext.getString(R.string.notification_unread_dm_channel_description)
+                if (legacyDm != null && manager.getNotificationChannel(UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) {
+                    copyUserChoicesFrom(legacyDm)
+                }
+            }
         manager.createNotificationChannels(
             listOf(
                 NotificationChannel(
@@ -639,13 +759,7 @@ internal object AndroidUnreadNotificationPoster {
                 ).apply {
                     description = appContext.getString(R.string.notification_unread_channel_channel_description)
                 },
-                NotificationChannel(
-                    UNREAD_DM_NOTIFICATION_CHANNEL_ID,
-                    appContext.getString(R.string.notification_unread_dm_channel_name),
-                    NotificationManager.IMPORTANCE_DEFAULT
-                ).apply {
-                    description = appContext.getString(R.string.notification_unread_dm_channel_description)
-                },
+                dmChannel,
                 NotificationChannel(
                     UNREAD_MENTION_NOTIFICATION_CHANNEL_ID,
                     appContext.getString(R.string.notification_unread_mention_channel_name),
@@ -655,6 +769,40 @@ internal object AndroidUnreadNotificationPoster {
                 }
             )
         )
+        retireLegacyDmChannel(manager)
+    }
+
+    /**
+     * v2's importance from v1's (null: no v1, a fresh install). v1 was created at DEFAULT, so DEFAULT
+     * means untouched and becomes HIGH; anything else is the user's choice (blocked, lowered, raised)
+     * and stays.
+     */
+    internal fun dmChannelImportance(legacyImportance: Int?): Int =
+        when (legacyImportance) {
+            null, NotificationManager.IMPORTANCE_DEFAULT -> NotificationManager.IMPORTANCE_HIGH
+            else -> legacyImportance
+        }
+
+    /** Sound, vibration, lock screen and Do Not Disturb choices the user made on v1. */
+    private fun NotificationChannel.copyUserChoicesFrom(legacy: NotificationChannel) {
+        setSound(legacy.sound, legacy.audioAttributes)
+        enableVibration(legacy.shouldVibrate())
+        legacy.vibrationPattern?.let { vibrationPattern = it }
+        enableLights(legacy.shouldShowLights())
+        lockscreenVisibility = legacy.lockscreenVisibility
+        setBypassDnd(legacy.canBypassDnd())
+        setShowBadge(legacy.canShowBadge())
+    }
+
+    /** Deletes v1 once v2 exists and none of v1's notifications is in the tray (deleting cancels them). */
+    private fun retireLegacyDmChannel(manager: NotificationManager) {
+        runCatching {
+            if (manager.getNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) return
+            if (manager.getNotificationChannel(UNREAD_DM_NOTIFICATION_CHANNEL_ID) == null) return
+            val showing =
+                manager.activeNotifications.any { it.notification.channelId == LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID }
+            if (!showing) manager.deleteNotificationChannel(LEGACY_UNREAD_DM_NOTIFICATION_CHANNEL_ID)
+        }
     }
 
     fun isNotificationChannelBlocked(context: Context, channelId: String): Boolean {
@@ -713,7 +861,7 @@ internal object AndroidUnreadNotificationPoster {
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
         val appContext = context.applicationContext
         val basePageData =
-            RaftCmpActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
         val multiShellHostEnabled =
             runCatching {
                 KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
@@ -743,12 +891,19 @@ internal object AndroidUnreadNotificationPoster {
             }
     }
 
-    private fun notificationChannelIdForCategory(category: String): String =
-        when (category) {
-            "channel_unread" -> UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID
-            "direct_message" -> UNREAD_DM_NOTIFICATION_CHANNEL_ID
-            "mention" -> UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
-            else -> UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID
+    /** The account sound setting is off for this post (FCM `silent: "true"`, socket `silent: true`). */
+    internal fun unreadNotificationSilent(request: JSONObject): Boolean = request.optBoolean("silent", false)
+
+    /**
+     * Contract §4.3: `dm` → the DM channel (HIGH); mentions and requests → the mention channel (HIGH);
+     * everything else → the channel channel (DEFAULT). The pre-contract wire values of this app's own
+     * local requests map the same way ([raftAndroidNotificationChannelKind]).
+     */
+    internal fun notificationChannelIdForCategory(category: String, mentioned: Boolean = false): String =
+        when (raftAndroidNotificationChannelKind(category.takeIf { it.isNotBlank() }, mentioned)) {
+            RaftAndroidNotificationChannelKind.DirectMessage -> UNREAD_DM_NOTIFICATION_CHANNEL_ID
+            RaftAndroidNotificationChannelKind.Mention -> UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
+            RaftAndroidNotificationChannelKind.Channel -> UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID
         }
 
     internal fun SystemUnreadNotificationRequest.toJson(): JSONObject =
@@ -760,10 +915,14 @@ internal object AndroidUnreadNotificationPoster {
             .put("parentChannelId", parentChannelId.orEmpty())
             .put("parentMessageId", parentMessageId.orEmpty())
             .put("kind", conversationKindWireValue().orEmpty())
-            .put("category", category.wireValue)
+            .put("category", contractCategory ?: category.wireValue)
             .put("title", title)
             .put("body", body)
             .put("notificationKey", notificationKey)
             .put("senderName", senderName.orEmpty())
             .put("mentioned", mentioned)
+            .put("groupKey", groupKey.orEmpty())
+            .put("seq", seq?.toString().orEmpty())
+            .put("silent", silent)
+            .put("route", routeJson.orEmpty())
 }

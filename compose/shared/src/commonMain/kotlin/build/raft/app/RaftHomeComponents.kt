@@ -2032,6 +2032,8 @@ private fun RaftStructuralHomeShellContent(
     var sectionDialogTarget by remember(currentServerId) { mutableStateOf<RaftHomeSectionDialogTarget?>(null) }
     var sectionDeleteConfirmId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var moveToSectionConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    // The conversation whose notification level picker is open (slock docs/contracts/notifications.md §1.1).
+    var notificationLevelTarget by remember(currentServerId) { mutableStateOf<RaftNotificationLevelTarget?>(null) }
     // Web parity: long-pressing a system section header (web right-click)
     // opens that section's menu — sort, display, new section.
     var activeSystemSectionMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
@@ -3255,6 +3257,19 @@ private fun RaftStructuralHomeShellContent(
                     RaftHomeSortSection.DirectMessages -> displayedDirectMessages.size > 1
                     null -> false
                 }
+            val activeNotificationTarget =
+                activeConversation?.let { conversation ->
+                    currentServerId.takeIf { it.isNotBlank() }?.let { serverId ->
+                        RaftNotificationLevelTarget(
+                            serverId = serverId,
+                            scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
+                            id = conversation.id,
+                            isDirectMessage = activeIsDirectMessage,
+                            muted = conversation.activityMuted
+                        )
+                    }
+                }.whenLevelsSupported()
+            val activeNotificationLevelLabel = rememberRaftNotificationLevelMenuLabel(activeNotificationTarget)
             val pinMenuItems = activeConversation?.let { conversation ->
                 raftHomeConversationMenuItems(
                     conversation = conversation,
@@ -3264,7 +3279,8 @@ private fun RaftStructuralHomeShellContent(
                     activeIsDirectMessage = activeIsDirectMessage,
                     activeCanArchive = activeCanArchive,
                     activeCanLeave = activeCanLeave,
-                    markAllReadEnabled = onMarkConversationReadAll != null
+                    markAllReadEnabled = onMarkConversationReadAll != null,
+                    notificationLevelLabel = activeNotificationTarget?.let { activeNotificationLevelLabel }
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -3292,6 +3308,7 @@ private fun RaftStructuralHomeShellContent(
                             // task #512: opens the move-to-section submenu on the
                             // same anchor (pinMenuAnchor survives menu close).
                             "move-to-section" -> moveToSectionConversationId = activeConversationId
+                            "notification-level" -> notificationLevelTarget = activeNotificationTarget
                             "sort-channels" -> {
                                 sortOverlaySection = activeMenuSection
                             }
@@ -3300,6 +3317,9 @@ private fun RaftStructuralHomeShellContent(
                     }
                 )
                 }
+            }
+            notificationLevelTarget?.let { target ->
+                RaftNotificationLevelDialog(target = target, onDismiss = { notificationLevelTarget = null })
             }
             if (activePinnedMemberMenuKey != null) {
                 val resolvedPinAnchor = pinMenuAnchor
@@ -3754,7 +3774,9 @@ internal fun raftHomeConversationMenuItems(
     activeCanLeave: Boolean = false,
     canMoveToSection: Boolean = true,
     /** Both `thread_unread_badge_v0` and `sidebar_mark_all_read_v0` are on for this server. */
-    markAllReadEnabled: Boolean = false
+    markAllReadEnabled: Boolean = false,
+    /** "Notifications: <level>" (design §4.3, next to mute); null leaves the row out. */
+    notificationLevelLabel: String? = null
 ): List<RaftBaseMenuItem> =
     buildList {
         // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
@@ -3809,6 +3831,9 @@ internal fun raftHomeConversationMenuItems(
                     icon = if (conversation.activityMuted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff
                 )
             )
+        }
+        if (notificationLevelLabel != null) {
+            add(RaftBaseMenuItem(id = "notification-level", label = notificationLevelLabel, icon = RaftLucideIconName.BellRing))
         }
         // Mobile-only: the manual reorder overlay stands in for web drag-and-drop.
         if (sortableFromMenu) {
