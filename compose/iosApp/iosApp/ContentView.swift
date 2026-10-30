@@ -272,7 +272,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private(set) var largeTitle: Bool
 
     // Mirror state
-    private var mirror: UIScrollView?
+    private var mirror: RaftScrollMirror?
+    private var expandedBarHeight: CGFloat = 0
+    private var notFollowedChecks = 0
+    private var followedChecks = 0
     private var reportedOffset: CGFloat = 0
     private var reportedContentHeight: CGFloat = 0
     private var expandedTop: CGFloat = 0
@@ -357,8 +360,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             item.titleView = nil
         }
         // iOS 26 navigation subtitles; looked up at run time so the prototype builds on any SDK.
+        // A title view carries its own subtitle (else UIKit draws it a second time under it).
         if item.responds(to: NSSelectorFromString("setSubtitle:")) {
-            item.setValue(subtitle, forKey: "subtitle")
+            item.setValue(item.titleView == nil ? subtitle : nil, forKey: "subtitle")
         }
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
         var barItems: [UIBarButtonItem] = []
@@ -423,9 +427,13 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     // MARK: Large-title mirror
 
-    func onNativeNavBarScroll(offset: Double, contentHeight: Double) {
+    func onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Bool) {
         reportedOffset = CGFloat(offset)
         reportedContentHeight = CGFloat(contentHeight)
+        if let mirror, mirror.simulatedDragging != dragging {
+            mirror.simulatedDragging = dragging
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_MIRROR dragging=\(dragging)")
+        }
         applyMirror()
         if largeTitle, collapseRange > 0 {
             // Read back what UIKit did with the bar once it has laid out.
@@ -435,7 +443,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     private func ensureMirror() {
         guard largeTitle, mirror == nil, let controller, controller.isViewLoaded else { return }
-        let scroll = UIScrollView(frame: controller.view.bounds)
+        let scroll = RaftScrollMirror(frame: controller.view.bounds)
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scroll.isUserInteractionEnabled = false
         scroll.scrollsToTop = false
@@ -476,6 +484,13 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         if mirror.frame != controller.view.bounds { mirror.frame = controller.view.bounds }
         measureMetricsIfNeeded(reason: reason)
         applyMirror()
+        if reason == "appear" {
+            // A pushed page appears while the push still runs: measure once it has settled.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.measureMetricsIfNeeded(reason: "settled")
+                self?.applyMirror()
+            }
+        }
     }
 
     private var settled: Bool {
@@ -491,6 +506,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         expandedTop = top
         collapseRange = range
         metricsSource = source
+        expandedBarHeight = controller.navigationController?.navigationBar.frame.height ?? 0
         bridge.setLargeTitleMetrics(expandedTop: Double(top), collapseRange: Double(range))
         RaftNativeNavProtoDemo.marker(
             "RAFT_PROTO_LARGE_TITLE expandedTop=\(top) range=\(range) source=\(source) reason=\(reason)"
@@ -499,6 +515,21 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     /// The large title's own row in the bar (UIKit's private large-title view), else the
     /// iOS 26 default; corrected below from what the bar really does once fully collapsed.
+    static func largeTitleView(in bar: UINavigationBar?) -> UIView? {
+        guard let bar else { return nil }
+        var found: UIView?
+        func walk(_ view: UIView) {
+            if found != nil { return }
+            if NSStringFromClass(type(of: view)).contains("LargeTitle") {
+                found = view
+                return
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(bar)
+        return found
+    }
+
     private static func largeTitleHeight(in bar: UINavigationBar?) -> (CGFloat, String) {
         guard let bar else { return (52, "default") }
         var found: UIView?
@@ -520,15 +551,37 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         guard largeTitle, collapseRange > 0, settled, let controller else { return }
         let actual = controller.view.safeAreaInsets.top
         let expected = expandedTop - min(reportedOffset, collapseRange)
+        let bar = controller.navigationController?.navigationBar
+        let barHeight = bar?.frame.height ?? 0
+        var largeTitleState = "-"
+        if let large = RaftNativeNavBarHost.largeTitleView(in: bar) {
+            largeTitleState = String(format: "h=%.1f alpha=%.2f ty=%.1f", large.frame.height, large.alpha, large.transform.ty)
+        }
         if abs(reportedOffset - lastLoggedOffset) >= 6 || (reportedOffset == 0 && lastLoggedOffset != 0) {
             lastLoggedOffset = reportedOffset
             RaftNativeNavProtoDemo.marker(
-                String(format: "RAFT_PROTO_MIRROR offset=%.1f expectedTop=%.1f safeTop=%.1f mirrorY=%.1f",
-                       reportedOffset, expected, actual, mirror?.contentOffset.y ?? 0)
+                String(format: "RAFT_PROTO_MIRROR offset=%.1f expectedTop=%.1f safeTop=%.1f mirrorY=%.1f barH=%.1f largeTitle=",
+                       reportedOffset, expected, actual, mirror?.contentOffset.y ?? 0, barHeight) + largeTitleState
             )
         }
+        // Does UIKit follow the mirror continuously? Checked mid-collapse: the bar (or the safe
+        // area) must have shrunk by part of the way. Three misses: inline title instead.
+        if reportedOffset >= collapseRange * 0.4, reportedOffset <= collapseRange * 0.9, metricsSource != "failed" {
+            let shrunk = (expandedBarHeight - barHeight) + (expandedTop - actual)
+            if shrunk >= collapseRange * 0.15 {
+                followedChecks += 1
+                notFollowedChecks = 0
+            } else {
+                notFollowedChecks += 1
+                if notFollowedChecks >= 3, followedChecks == 0 {
+                    RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN mirror_not_tracked_midway offset=\(reportedOffset)")
+                    fallBackToInline()
+                    return
+                }
+            }
+        }
         if reportedOffset >= collapseRange + 4 {
-            if abs(actual - expandedTop) < 0.5 {
+            if (expandedTop - actual) + (expandedBarHeight - barHeight) < 0.5 {
                 // UIKit did not follow the mirror at all.
                 stuckReports += 1
                 if stuckReports >= 20 { fallBackToInline() }
@@ -536,7 +589,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
                 stuckReports = 0
                 // Fully collapsed now: the bar's real collapse range.
                 let real = expandedTop - actual
-                if real > 0, abs(real - collapseRange) > 0.5 {
+                if actual < expandedTop - 0.5, abs(real - collapseRange) > 0.5 {
                     RaftNativeNavProtoDemo.marker("RAFT_PROTO_LARGE_TITLE refine range=\(collapseRange)->\(real)")
                     collapseRange = real
                     metricsSource = "observed"
@@ -567,6 +620,15 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     func scriptedScrollEnd() {
         bridge.scriptedScrollEnd()
     }
+}
+
+/// The hidden scroll view UIKit's large title tracks. It is never touched; while the page's
+/// Compose list is being dragged / flung it reports itself as tracking and dragging, as a real
+/// scroll view under a finger would (UIKit tracks a dragged content scroll view interactively).
+final class RaftScrollMirror: UIScrollView {
+    var simulatedDragging = false
+    override var isTracking: Bool { simulatedDragging || super.isTracking }
+    override var isDragging: Bool { simulatedDragging || super.isDragging }
 }
 
 /// The conversation's title: channel glyph tile / DM avatar, title over subtitle, the refresh
@@ -983,11 +1045,10 @@ enum RaftNativeNavProtoDemo {
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
             after(5) { marker("RAFT_PROTO_READY scene=thread") }
         case "members":
-            after(1) {
-                push("compose_native_nav_proto_thread", on: nav, animated: false)
-                push("compose_channel_members_parity_visual", on: nav, animated: false)
-            }
-            after(5) { marker("RAFT_PROTO_READY scene=members") }
+            // The conversation publishes its title first, so Members' Back can name it.
+            after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
+            after(3) { push("compose_channel_members_parity_visual", on: nav, animated: true) }
+            after(7) { marker("RAFT_PROTO_READY scene=members") }
         case "midswipe":
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
             after(5) {

@@ -10,6 +10,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -98,7 +100,7 @@ interface RaftNativeNavBarListener {
      * The primary list scrolled: [offset] points from the expanded top (collapse first, then the
      * list's own offset), [contentHeight] the list's estimated content height in points.
      */
-    fun onNativeNavBarScroll(offset: Double, contentHeight: Double)
+    fun onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Boolean)
 }
 
 class RaftNativeNavBarBridge {
@@ -178,6 +180,9 @@ class RaftNativeNavBarBridge {
     internal var listOffset = 0f
     internal var listContentHeight = 0f
 
+    /** Page: a finger (or the capture script) is on the list, or its fling / snap is running. */
+    internal var dragging = false
+
     internal val collapseActive: Boolean get() = expandedTop > 0f && collapseRange > 0f
 
     /**
@@ -192,7 +197,7 @@ class RaftNativeNavBarBridge {
     }
 
     internal fun reportScroll() {
-        listener?.onNativeNavBarScroll((collapse + listOffset).toDouble(), listContentHeight.toDouble())
+        listener?.onNativeNavBarScroll((collapse + listOffset).toDouble(), listContentHeight.toDouble(), dragging)
     }
 
     internal var scriptedScrollHandler: ((Float) -> Unit)? = null
@@ -320,6 +325,10 @@ private class RaftNativeNavBarCollapseConnection(
     }
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (source == NestedScrollSource.UserInput && !bridge.dragging) {
+            bridge.dragging = true
+            bridge.reportScroll()
+        }
         if (!bridge.collapseActive) return Offset.Zero
         val dyPt = available.y / density
         val used =
@@ -341,6 +350,10 @@ private class RaftNativeNavBarCollapseConnection(
 
     override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
         snap()
+        if (bridge.dragging) {
+            bridge.dragging = false
+            bridge.reportScroll()
+        }
         return Velocity.Zero
     }
 
@@ -368,19 +381,32 @@ internal fun Modifier.raftNativeNavBarPrimaryList(state: LazyListState): Modifie
     val density = LocalDensity.current.density
     val connection = remember(bridge, state, density) { RaftNativeNavBarCollapseConnection(bridge, state, density) }
     val dispatcher = remember { NestedScrollDispatcher() }
+    val scope = rememberCoroutineScope()
     val innerConnection = remember { object : NestedScrollConnection {} }
     DisposableEffect(bridge, state, dispatcher) {
         bridge.scriptedScrollHandler = { dyPt ->
-            // What Compose's scrollable does for one drag delta: pre-scroll up the chain, the list
-            // takes what it can, post-scroll the rest.
-            val delta = Offset(0f, -dyPt * density)
-            val pre = dispatcher.dispatchPreScroll(delta, NestedScrollSource.UserInput)
-            val left = delta - pre
-            val listConsumed = -state.dispatchRawDelta(-left.y)
-            dispatcher.dispatchPostScroll(Offset(0f, listConsumed), Offset(0f, left.y - listConsumed), NestedScrollSource.UserInput)
+            // What Compose's scrollable does for one drag delta, inside the list's scroll scope:
+            // pre-scroll up the chain, the list takes what it can, post-scroll the rest.
+            scope.launch {
+                state.scroll(MutatePriority.UserInput) {
+                    val delta = Offset(0f, -dyPt * density)
+                    val pre = dispatcher.dispatchPreScroll(delta, NestedScrollSource.UserInput)
+                    val left = delta - pre
+                    val listConsumed = -scrollBy(-left.y)
+                    dispatcher.dispatchPostScroll(
+                        Offset(0f, listConsumed),
+                        Offset(0f, left.y - listConsumed),
+                        NestedScrollSource.UserInput
+                    )
+                }
+            }
         }
         bridge.scriptedScrollEndHandler = {
-            dispatcher.coroutineScope.launch { connection.snap() }
+            // The release: a zero-velocity fling through the chain (a mid-collapse snaps).
+            scope.launch {
+                val pre = dispatcher.dispatchPreFling(Velocity.Zero)
+                dispatcher.dispatchPostFling(Velocity.Zero - pre, Velocity.Zero)
+            }
         }
         onDispose {
             bridge.scriptedScrollHandler = null
