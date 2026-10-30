@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-30T05:40:39.142Z",
+  "generatedAt": "2026-10-30T22:02:47.971Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,99 +8,48 @@
   "analysisModel": "MiniMax-M3.1-Flash-Preview",
   "summary": {
     "total": 101,
-    "ready": 38,
-    "pending": 63
+    "ready": 16,
+    "pending": 85
   },
   "cases": [
     {
       "id": "components.ui.segmented-control.states",
-      "status": "ready",
-      "imageHash": "p1:8ffd8ffd000000001ffc1ffc07fc07fc07fe07fefffe7ffefffefffefffefffefffefffef07ef07ef07ee07ec02ec02e8006800680068006f07ee07ed06ed04efffef8fefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000080000001fffffffffff01ffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:24:34.751Z",
-      "severity": "medium",
-      "summary": [
-        "At the 342×96 source scale, Android's selected \"Mentions 3\" pill is roughly 3 px taller than React's and extends farther above and below the gray track.",
-        "Android's selected-state black outline is visibly thicker, approximately 2 px versus roughly 1 px on React.",
-        "The Android selected pill is centered slightly lower while its horizontal bounds remain effectively aligned with React."
-      ],
-      "likelyCauses": [
-        "The Android implementation uses a larger selected-item height or additional vertical padding.",
-        "Selected-border stroke width is defined independently on Android instead of using the shared design token."
-      ],
-      "suggestedOwner": "Android UI component owner, coordinated with the shared design-system owner",
-      "suggestedFixes": [
-        "Normalize the selected-pill height to React's approximately 32 px at the 342×96 source scale.",
-        "Vertically center the selected pill within the segmented-control track.",
-        "Use the React-equivalent 1 px selected-state border stroke and shared corner-radius token."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.042066006064544026
+      "status": "pending",
+      "imageHash": "p1:8ffd8ffd000000001ffc1ffc07fc07fc07fe07fefffe7ffefffefffefffefffefffefffef07ef07ef03ee07ec036c02e8006800680068006f03ee07ed02ed04efffef8fefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.938Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03803538553173058
     },
     {
       "id": "components.ui.button.states",
-      "status": "ready",
-      "imageHash": "p1:00010001fffc7ffc1ffc1ffc1ffe1ffefffefffefffefffed13e803e801e001e901e801e801e801ef01e201e803e801efffefffe809e809eef7e267e911e800e891e001e80de809efffed1fefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff01ffffff81fffffffffff",
-      "generatedAt": "2026-10-23T10:42:37.109Z",
-      "severity": "medium",
-      "summary": [
-        "Android enabled-button outlines are about twice as thick as React's, making every active button visually heavier; the disabled outline is also slightly thicker and darker.",
-        "Android button boxes are approximately 2–9 displayed pixels wider, most noticeably for Continue and Disabled, which also reduces the gap before Disabled.",
-        "Save and Add start slightly farther left on Android, while the later columns drift right because button widths and spacing differ.",
-        "Android button labels render marginally wider and heavier, especially Delete, Continue, and Disabled, although font size and baseline remain close.",
-        "No controls are missing or clipped; pink fills, corner radii, row heights, and overall two-row alignment are otherwise consistent."
-      ],
-      "likelyCauses": [
-        "Android uses a different stroke-width and disabled-border color token from React.",
-        "Button padding, minimum width, or intrinsic text measurement differs between platform implementations.",
-        "Android uses a different font fallback or font-weight setting for button labels."
-      ],
-      "suggestedOwner": "Android design-system/button component owner",
-      "suggestedFixes": [
-        "Match React's enabled and disabled border thickness and disabled-border color.",
-        "Normalize horizontal padding, minimum width, and inter-column gaps across both platforms.",
-        "Align the first-column start position and preserve consistent row offsets.",
-        "Use the same font family, size, weight, and baseline settings for button labels.",
-        "Verify each state at the same screenshot scale after updating shared sizing tokens."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.058683127572016436
+      "status": "pending",
+      "imageHash": "p1:00010001fffc7ffc1ffc1ffc1ffe1ffefffefffefffefffed13e803e801e001e801e801e801e801ef01e201e801e801efffefffe809e809ef7be267e908e800e908e001e80fe809edffed1fefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff01ffffff81fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.941Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.05048083170890183
     },
     {
       "id": "components.ui.button.states.elegant",
-      "status": "ready",
-      "imageHash": "p1:00010001fffc7ffc0ffc0ffc0ffe0ffefffefffefffefffed13e803e801e001e901e801e801e801ef01e201e803e801efffefffe809e809eef7e267e911e800e891e001e80de809efffed1fefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff01ffffff81fffffffffff",
-      "generatedAt": "2026-10-23T11:57:32.574Z",
-      "severity": "medium",
-      "summary": [
-        "Android uses a much heavier outline on every button (roughly 5–6 px versus 2–3 px in React), affecting filled, outline, and disabled states.",
-        "Android buttons are slightly wider; Continue is shifted about 8 px right and Disabled about 6 px right, with Disabled also roughly 10 px wider.",
-        "Text styling, fill colors, corner radii, row heights, labels, and overall row alignment are otherwise consistent, with no missing or clipped elements."
-      ],
-      "likelyCauses": [
-        "The Android button borderWidth uses a larger token than the React border.",
-        "Native drawable stroke or inset handling adds visual thickness at the rendered density.",
-        "Platform width, minimum-width, and horizontal-padding tokens differ, particularly for Continue and Disabled."
-      ],
-      "suggestedOwner": "Android design-system/button component owner",
-      "suggestedFixes": [
-        "Reduce the Android stroke to the React-equivalent 1–2 dp and verify it at the target density.",
-        "Align Android button widths, minimum widths, and horizontal padding with the React specifications, starting with Continue and Disabled.",
-        "Recheck grid insets and inter-column gaps after correcting stroke width so button bounds match React positions.",
-        "Preserve the current label typography, fills, corner radii, and row spacing, which already appear consistent."
-      ],
-      "intentional": [
-        "The header badge reads ANDROID on the right instead of REACT on the left; this is an expected platform label rather than a component mismatch."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.058683127572016436
+      "status": "pending",
+      "imageHash": "p1:00010001fffc7ffc0ffc0ffc0ffe0ffefffefffefffefffed13e803e801e001e801e801e801e801ef01e201e801e801efffefffe809e809ef7be267e908e800e908e001e80fe809edffed1fefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff01ffffff81fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.944Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.05048083170890183
     },
     {
       "id": "components.ui.card.states",
@@ -129,12 +78,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.08932492048835539
+      "metricMismatch": 0.090448343079922
     },
     {
       "id": "components.ui.card.states.elegant",
       "status": "ready",
-      "imageHash": "p1:f003f0031ffc1ffc0ffc0ffcffff7ffffffefffefffefffffffefffffffeffff80fe81ffc0fec0fffffeffffdffeffffc006c007fffeffffc1fec1fffffeffffc003c0038001800180018001c0038003c002c003fffefffffffefffffffefffffffefffffffefffffffeffff0000000000000000fffffffffff81fffffffffff",
+      "imageHash": "p1:f003f0031ffc1ffc0ffc0ffcffff7ffffffefffefffefffffffefffffffeffff80fe81ffc0fec0fffffefffffffeffffc006c007fffeffffc1fec1fffffeffffc003c0038001800180018001c0038003c002c003fffefffffffefffffffefffffffefffffffefffffffeffff0000000000000000fffffffffff81fffffffffff",
       "generatedAt": "2026-10-23T10:42:37.114Z",
       "severity": "medium",
       "summary": [
@@ -154,58 +103,38 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.08932492048835539
+      "metricMismatch": 0.090448343079922
     },
     {
       "id": "components.ui.badge.states",
       "status": "pending",
-      "imageHash": "p1:ffffffff00000002fffcfffc1ffc1ffc1fff1ffefffffffffffffffffffffffffffffffff00ff00fe00ff007800f8007c00fc007f00ff00fffffffff80ff80ff80ff80ff80ff80ff80ff80ff81ff81ffffffffffffffffffffffffffffffffffffffffff00000000fffffffffffffffffff01ffffff81fffffffffffffffffff",
-      "generatedAt": "2026-10-30T05:32:54.740Z",
+      "imageHash": "p1:ffffffff00000002fffcfffc1ffc1ffc1fff1ffefffffffffffffffffffffffffffffffff007f00fe007f00780078007e007c007f007f00fffffffff80ff80ff80ff80ff80ff80ff80ff80ff80ff81ffffffffffffffffffffffffffffffffffffffffff00000000fffffffffffffffffff01ffffff01fffffffffffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.935Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.09761420459360959
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11536641523292934
     },
     {
       "id": "components.ui.form-field.states",
-      "status": "ready",
-      "imageHash": "p1:e00040000ffc0ffc3ffe7ffefffefffe9ffe1ffe9ffe91fa80000000a7fe23fc81fe01fcbffc0000c002800081fe01fe80fe8002b800000090fe10fc807e007cfffc2b008002800080fe80fefffefffe87fe0ffe87fe87fefffe0000fffe7ffefffe7ffef800800087fe07fe83fe87fe0000000000000000fff01fffffff7fff",
-      "generatedAt": "2026-10-23T10:28:57.680Z",
-      "severity": "medium",
-      "summary": [
-        "Android renders the Email and Description field outlines noticeably thicker and darker than React, while their bounds remain aligned.",
-        "The Android Server Name error outline is also thicker than React's red outline.",
-        "The lower portion of the Android \"Name is required\" message is clipped, while the complete message is visible in React.",
-        "Labels, field text, helper text, alignment, and vertical spacing otherwise match closely."
-      ],
-      "likelyCauses": [
-        "Android uses a different outline stroke width than the React CSS border.",
-        "Neutral and error border colors are not using fully shared design tokens.",
-        "The Android error message has insufficient line height or bottom spacing, or the capture bounds exclude part of the text."
-      ],
-      "suggestedOwner": "Android form-field component owner, coordinated with the shared design-system team",
-      "suggestedFixes": [
-        "Match Android's default and error outline stroke widths to the React implementation.",
-        "Align Android neutral and error border colors with the shared component tokens.",
-        "Add sufficient bottom space for the error text and increase the measured component height or adjust its vertical offset so the full message remains visible.",
-        "Re-run the 342×296 component-bounds comparison after updating the Android field."
-      ],
-      "intentional": [
-        "The top-right platform badge intentionally reads \"ANDROID\" instead of \"REACT\"."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.04807987812373782
+      "status": "pending",
+      "imageHash": "p1:e00040000ffc0ffc3ffe7ffefffefffe9ffe1ffe9ffe91fa80000000a7fe23fc81fe01fcbffc0000c002800081fe01fe80fe8002ba00000098fe10fc807e007cfffc2b0080028000807e80fefffefffe87fe0ffe87fe87fefffe0000fffe7ffefffe7ffef800800083fe07fe83fe07fe0000000000000000fff01fffffff7fff",
+      "generatedAt": "2026-10-30T22:02:46.976Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.051260690515076535
     },
     {
       "id": "components.ui.form-field.states.elegant",
       "status": "ready",
-      "imageHash": "p1:f804f80407fc07fc7ffe6ffefffefffe9ffe1ffe9ffe9ffe80000000e7fe23fc81fe01fcbffe0000c002c00081fe89fe80fe8002fe00000099fe11fc807e007cfffe3f008002800080fe80fefffefffe87fe8ffe87fe87fefffe8000fffe7ffefffe7ffefc02800087fe87fe83fe87fe0000000000000000fff01fffffffffff",
+      "imageHash": "p1:f804f80407fc07fc7ffe6ffefffefffe9ffe1ffe9ffe9ffe80000000e7fe23fc81fe01fcbffe0000d002c00081fe89fe80fe8002fe00000099fe11fc807e007cfffe3f0080028000807e80fefffefffe87fe8ffe87fe87fefffe8000fffe7ffefffe7ffefc02800087fe07fe83fe87fe0000000000000000fff01fffffffffff",
       "generatedAt": "2026-10-23T10:55:13.681Z",
       "severity": "medium",
       "summary": [
@@ -229,12 +158,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.04807987812373782
+      "metricMismatch": 0.051260690515076535
     },
     {
       "id": "components.ui.textarea.states",
       "status": "ready",
-      "imageHash": "p1:000000001ffc1ffc1ffe1ffefffe7ffe800000003ffc3ffc8002000280020002b6fe3ffe807e007c7bfe7bfc7ffe7ffc7ffe7ffc3ffc3ffc80008000fffefff88038fff8807e003efffe003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffefffe7ffe00000000fffffffffff01ffffffe7fff",
+      "imageHash": "p1:000000001ffc1ffc1ffe1ffefffe7ffe800000003ffc3ffc8002000280020002b6fe3ffe807e007c7bfe7bfc7ffe7ffc7ffe7ffc3ffc3ffc80008000fffefff88038fff8803e003efffe003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffefffe7ffe00000000fffffffffff00ffffffe7fff",
       "generatedAt": "2026-10-23T10:28:58.515Z",
       "severity": "medium",
       "summary": [
@@ -263,12 +192,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.06206359520199678
+      "metricMismatch": 0.05985385273884303
     },
     {
       "id": "components.ui.textarea.states.elegant",
       "status": "ready",
-      "imageHash": "p1:0000000007fc07fc07fe0ffefffe7ffe800000003ffc3ffc8002000280020002b6fe3ffe807e007c7bfe7bfc7ffe7ffc7ffe7ffc3ffc3ffc80008000fffefff88038fff8807e003efffe003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffefffe7ffe00000000fffffffffff01ffffffe7fff",
+      "imageHash": "p1:0000000007fc07fc07fe0ffefffe7ffe800000003ffc3ffc8002000280020002b6fe3ffe807e007c7bfe7bfc7ffe7ffc7ffe7ffc3ffc3ffc80008000fffefff88038fff8803e003efffe003efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffefffe7ffe00000000fffffffffff00ffffffe7fff",
       "generatedAt": "2026-10-23T10:29:20.739Z",
       "severity": "medium",
       "summary": [
@@ -292,56 +221,38 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.06206359520199678
+      "metricMismatch": 0.05985385273884303
     },
     {
       "id": "components.ui.checkbox.states",
-      "status": "ready",
-      "imageHash": "p1:80018001000400041ffc1ffc1ffe1ffc7ffe7ffefffefffefffefffe9ffe3ffe80fe00fe80fe00fe9ffe1ffefffefffebffe3ffec01e001ec01e001ebffe3ffefffefffefffebffe80fe00fe80fe00febffebffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-23T10:43:06.021Z",
-      "severity": "low",
-      "summary": [
-        "Android checkbox controls show a soft gray outer ring or elevation around their edges, most noticeably on the unchecked and disabled states; React uses cleaner, hard-edged controls.",
-        "The Android unchecked box has a gray-black, slightly doubled outline, while React uses a uniform solid black border.",
-        "The Android disabled-checked box has a darker gray perimeter around the light-gray fill; React renders a flat light-gray fill with a white check and no prominent outline.",
-        "Label typography, row spacing, alignment, and component bounds appear consistent, with no missing states or visible clipping."
-      ],
-      "likelyCauses": [
-        "The Android implementation is applying Material elevation or an additional outer stroke layer.",
-        "Platform-specific border, outline, and disabled-color tokens differ from the React implementation.",
-        "The checkbox shape and checkmark may be drawn with separate platform-specific components rather than shared visual tokens."
-      ],
-      "suggestedOwner": "Android design-system and UI components owner",
-      "suggestedFixes": [
-        "Remove the Android checkbox elevation or outer halo so its edges match the crisp React rendering.",
-        "Use the same solid black stroke color and width for the unchecked state.",
-        "Render the disabled checked state as a flat light-gray fill without a dark perimeter while retaining the white checkmark.",
-        "Align shared checkbox tokens for border width, corner radius, fill colors, and checkmark stroke, then rerun the 342×132 visual comparison."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.04333047827199876
-    },
-    {
-      "id": "components.ui.checkbox.states.elegant",
       "status": "pending",
-      "imageHash": "p1:80018001080408040ffc0ffc07fe07fc7ffe7ffefffefffefffefffe9ffe3ffe80fe00fe80fe00fe9ffe1ffefffefffebffe3ffec01e001ec01e001ebffe3ffefffefffefffebffe80fe00fe80fe00febffebffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:32:54.827Z",
+      "imageHash": "p1:80018001000400041ffc1ffc1ffe1ffc7ffe7ffefffefffefffefffe9ffe3ffe80fe00fe80fe00fe9ffe1ffefffefffebffe3ffec01e001ec01e001ebffe3ffefffefffefffebffe80fe00fe80fe00febffebffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00ffffffe3fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.966Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unterminated string in JSON at position 536 (line 6 column 184)",
-      "raw": "{\n  \"severity\": \"low\",\n  \"summary\": [\n    \"Android checkbox graphics are slightly offset: the checked control is about 1 device pixel higher, while the unchecked and disabled controls are slightly narrower and right-shifted.\",\n    \"The Android checkmark has subtly different proportions and appears marginally thinner and higher within the black box.\",\n    \"Label glyph widths differ slightly between platforms, most noticeably in the narrower Android rendering of “Disabled checked”; font size, weight, baseline, and starting alignment",
-      "metricMismatch": 0.04333047827199876
+      "error": "codex CLI not found",
+      "metricMismatch": 0.057076614094157985
+    },
+    {
+      "id": "components.ui.checkbox.states.elegant",
+      "status": "pending",
+      "imageHash": "p1:80018001080408040ffc0ffc07fe07fc7ffe7ffefffefffefffefffe9ffe3ffe80fe00fe80fe00fe9ffe1ffefffefffebffe3ffec01e001ec01e001ebffe3ffefffefffefffebffe80fe00fe80fe00febffebffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00ffffffe3fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.970Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.057076614094157985
     },
     {
       "id": "components.ui.check-marker.states",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc1ffe1ffefffefffefffefffefffefffe9ffe1ffe80fe00fe80fe00fe9ffe1ffefffefffebffebffe9ffe1ffec07e007e807e00febffebffefffefffebffebffe8bfe03fe81fe01fe81fe83fefffefffefffefffe0000000000000000fffffffffffffffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc1ffe1ffefffefffefffefffefffefffe9ffe1ffe80fe00fe80fe00fe9ffe1ffefffefffebffebffe9ffe1ffec07e007e807e00febffebffefffefffebffebffe8bfe03fe81fe01fe81fe03fefffefffefffefffe0000000000000000fffffffffffffffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-10-23T11:47:50.884Z",
       "severity": "low",
       "summary": [
@@ -366,21 +277,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.04435858163928341
+      "metricMismatch": 0.047462406015037595
     },
     {
       "id": "components.ui.attention-dot.states",
       "status": "pending",
-      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc0ffe0ffc3ffe3ffefffefffefffefffefffefffefffefffefffefffe800600068006000688060886fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffffffffffff00ffffff01ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:32:54.848Z",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc0ffe0ffc3ffe3ffefffefffefffefffefffefffefffefffefffefffe800600060006000684060886fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffffffffffff00ffffff01ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:46.992Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.032967836257309924
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04219460688758936
     },
     {
       "id": "components.ui.status-dot.states",
@@ -436,7 +346,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.032064180762539585
+      "metricMismatch": 0.034644930725858836
     },
     {
       "id": "components.ui.skeleton.states",
@@ -460,102 +370,51 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.0005739657786441033
+      "metricMismatch": 0.0005977907732294119
     },
     {
       "id": "components.ui.spinner.states",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:80018001000000001ffc1ffc1ffc1ffc1ffe1ffe7ffe7ffefffefffefffefffefffefffefe7efe7efe7efc7ef87ef87e007e007ec47e047ef87ef87efe7efc7efe7efc7efe7efe7efffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000bff18ffdfffffffffff00ffffff01ffffffe7fffffffffff",
-      "generatedAt": "2026-10-23T10:30:12.491Z",
-      "severity": "low",
-      "summary": [
-        "Every light spinner on Android highlights the upper-right cell, while React highlights the upper-left cell.",
-        "The dark spinner variant has the same mismatch: Android's active white cell is upper-right, while React's is upper-left.",
-        "Spinner sizes, inactive gray cells, dark container bounds, and header styling otherwise appear closely matched, with no clipping or missing elements."
-      ],
-      "likelyCauses": [
-        "Android maps the active state to a different cell index than React.",
-        "The spinner animation start angle, rotation phase, or screenshot capture timing differs between implementations."
-      ],
-      "suggestedOwner": "Android UI component and animation owner",
-      "suggestedFixes": [
-        "Map Android's active cell to the upper-left position to match React for every spinner size.",
-        "Apply the same cell mapping to the dark variant so its active white cell is upper-left.",
-        "Synchronize or freeze the animation phase during Slock capture to compare equivalent spinner frames."
-      ],
-      "intentional": [
-        "The REACT and ANDROID badge labels are platform identifiers and are not a visual regression."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.022240585360341236
+      "generatedAt": "2026-10-30T22:02:47.001Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.016971777269260135
     },
     {
       "id": "components.ui.slug-input.states",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:ffffffff000000001ffc1ffc0ffc1ffc7ffe7ffefffefffefffefffe8000800080000000bffe3ffcbffe3ffca1fe21fca1fe21fcbffe3ffc8000800080008000fffefffefffec00280008000fffefffefffebffea03ea03ee03ea03efffefffebffe8000c002800000000000fffffffffffffffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-23T10:30:34.939Z",
-      "severity": "medium",
-      "summary": [
-        "Android renders both slug-input outlines at roughly twice the React stroke width, making the active field noticeably heavier.",
-        "Android's disabled field outline is both thicker and darker than React's thin light-gray outline.",
-        "Android's internal vertical dividers are lighter than React's, and the active-state leading slash is also lighter.",
-        "The Android outer frame is visibly thicker than React's. Text size, weight, field spacing, and overall component bounds appear closely matched."
-      ],
-      "likelyCauses": [
-        "The Android implementation uses a 2dp border while the React implementation uses a 1px border.",
-        "Disabled border colors are not using the same shared design token across platforms.",
-        "Divider and prefix colors have platform-specific overrides.",
-        "Android density or stroke rendering may be amplifying the specified border width."
-      ],
-      "suggestedOwner": "Android design-system/component team",
-      "suggestedFixes": [
-        "Reduce the Android input border width to match the React 1px/1dp stroke.",
-        "Use the React-equivalent light-gray color for the Android disabled-state border.",
-        "Align Android divider and active-prefix colors with the shared React tokens.",
-        "Match the outer frame stroke weight if that frame is part of the tested UI rather than test-harness chrome.",
-        "Retest at the target Android density while preserving the current text metrics, padding, and field dimensions."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.052817989113646324
+      "generatedAt": "2026-10-30T22:02:47.016Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.058426272116234745
     },
     {
       "id": "components.ui.section-eyebrow.states",
-      "status": "ready",
-      "imageHash": "p1:80000001000000000ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffefffe7ffe03fe07fe83fe03fefbfef3fefffe7ffefffefffefffe7ffe07fe07fe87fe07fe9ffe9ffefffe7ffefffefffedbfafffe8002fffe8002fffe83fe7ffe0000000080010001fffffffffff00ffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-23T10:56:01.225Z",
-      "severity": "medium",
-      "summary": [
-        "React shows an extra light-gray container at the bottom with a bold dark-gray “Choose Avatar” label; Android has no corresponding element.",
-        "The React “Choose Avatar” text is vertically clipped by the 92px component boundary.",
-        "The “Recent Activity” and “Applications” headings otherwise have matching alignment, typography, weight, and color."
-      ],
-      "likelyCauses": [
-        "Android may not render the adjacent “Choose Avatar” section or state.",
-        "React may allow the following section to overflow into the section-eyebrow crop.",
-        "The Android bottom region may be missing the React light-gray background fill."
-      ],
-      "suggestedOwner": "Android UI owner, with cross-platform component/layout review",
-      "suggestedFixes": [
-        "If “Choose Avatar” is in scope, render the same label, typography, color, and light-gray container on Android.",
-        "Match the container’s horizontal inset to the other section content.",
-        "Adjust vertical spacing so the bottom label is either fully visible or excluded consistently.",
-        "If the React label is out of scope, prevent following content from overflowing into the component crop."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.18213407915925084
+      "status": "pending",
+      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffefffefffefffefffefffe83fe07fe83fe03fefbfefbfefffefffefffefffefffefffe07fe07fe87fe07fe9ffe9ffefffefffefffefffefffedffe800280028002820283fe83fe0000000080018001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.013Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.035493827160493874
     },
     {
       "id": "components.ui.section-header.states",
       "status": "ready",
-      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffc7ffe7ffefffe7ffefffefffefffefffefff0fff0fff0fff0fff07ff483f007f087f807f0fff6fff4fff0fff0fff87ff080020006c0024002fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80008001000000001ffc1ffc0ffc0ffc0ffe0ffc7ffe7ffefffe7ffefffefffefffefffefff0fff0fff0fff0fff07ff483f007f087f007f0fff6fff4fff0fff0fff87ff080020006c0024002fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fffffffffffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-10-23T11:48:22.009Z",
       "severity": "low",
       "summary": [
@@ -582,54 +441,38 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.03420166578061312
+      "metricMismatch": 0.029800933309705235
     },
     {
       "id": "components.ui.selection-popover.states",
       "status": "pending",
-      "imageHash": "p1:0000000007fc0ffc07fe0ffefffefffec002c002fffe7ffec7f20ff200007ffa30047ffe0ffc0ffe0ffc4ffe00007ffe3ffc7ffe67fc67fe67fa67fa7ffe7ffe7ffe7ffe60fe60fe60fe60fe7ffe7ffe7ffe7ffe60fe60fe7ffe7ffe7ffe7ffe61fe61fe63fe7ffe3ffc0000c002c00200000000fffffffffff00ffffffe7fff",
-      "generatedAt": "2026-10-30T05:32:54.896Z",
+      "imageHash": "p1:0000000007fc0ffc07fe0ffefffefffec002c002fffe7ffec7f20ff200007ffe30047ffe0ffc0ffe0ffc4ffe00007ffe3ffc7ffe67fc67fc63fa67f87ffe7ffe7ffe7ffe60fe61fe61fe65fe7ffe7ffe7ffe7ffe60fe60fe7ffe7ffe7ffe7ffe61fe61fe63fe63fe3ffc0000c002c00200000000fffffffffff00ffffffe7fff",
+      "generatedAt": "2026-10-30T22:02:47.038Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.22351532122487283
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20237966314964362
     },
     {
       "id": "components.ui.menu-item.states",
-      "status": "ready",
-      "imageHash": "p1:000000011ffc1ffc0ffc1ffc3ffe3ffefffefffec002c002fffefffefffefffe83f883f883fe03fe7ffe7ffe7ffe7ffe83fe03fe83fe83fe7ffe7ffe7ffe7ffe7ffe7ffe89fe01fe81fe01fe7ffe7ffe7ffe7ffe7ffe7ffe81fe81fe81fe01fefe007e0080000000fffeeffe0000000000000000fff81ffffff00fffffffffff",
-      "generatedAt": "2026-10-23T11:57:56.619Z",
-      "severity": "low",
-      "summary": [
-        "The separator above “Delete Message” differs: React uses an inset divider with rounded upper corners, while Android uses a straight horizontal rule flush with the card edges.",
-        "No visible differences were found in the menu labels, shortcut, text colors, vertical spacing, outer card bounds, clipping, or disabled-state treatment."
-      ],
-      "likelyCauses": [
-        "Android uses a default full-width Divider without React's inset and corner-radius treatment.",
-        "React renders the separator as the top border of a separately styled rounded menu-item container."
-      ],
-      "suggestedOwner": "Android UI component owner",
-      "suggestedFixes": [
-        "Replace the Android separator with the shared divider component or matching design tokens.",
-        "Match React's horizontal inset, upper-corner radius, thickness, and vertical position for the separator.",
-        "Re-run the visual test at the target density and font scale to confirm the divider geometry."
-      ],
-      "intentional": [
-        "The top-right badges differ only because they identify the React and Android platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.21905549349862374
+      "status": "pending",
+      "imageHash": "p1:000000011ffc1ffc0ffc1ffc3ffe3ffefffefffec002c002fffefffefffefffe83f883f883fe03fe7ffe7ffe7ffe7ffe83fe03fe83fe83fe7ffe7ffe7ffe7ffe7ffe7ffe81fe01fe81fe01fe7ffe7ffe7ffe7ffe7ffe7ffe81fe81fe81fe01febe007e0080000000fffeeffe0000000000000000fff81ffffff00fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.030Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22436501157179256
     },
     {
       "id": "components.ui.select.states",
       "status": "ready",
-      "imageHash": "p1:000000001ffc1ffc1ffc1ffc7ffe7ffefffefffe80008000bffc30048ffe1ffc8ffc0ffcdffe3ffc80000000c0028000fffefffec0028000c00200028000800080028002e0020000fffec002fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00fffffffffff",
+      "imageHash": "p1:000000001ffc1ffc1ffc1ffc7ffe7ffefffefffe80008000bffc30048ffe1ffc8ffc0ffcdffe3ffc80000000c0028000fffefffec0028000c00200028000800080028002c0020000fffec002fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000000000000000fffffffffff00fffffffffff",
       "generatedAt": "2026-10-23T10:31:25.016Z",
       "severity": "low",
       "summary": [
@@ -654,56 +497,39 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.03453340299967178
+      "metricMismatch": 0.03388028107688079
     },
     {
       "id": "components.ui.surface-list-item.states",
       "status": "pending",
-      "imageHash": "p1:000000010ffc0ffc0ffc0ffc3ffe3ffefffefffefffefffefffefffefffefffec3fe83fec3fec3fefffefffec07ec03ec77ec77efffefffefffefffefffefffe80008002fe028c028000800280008002ba00fe02800080028002800280008000fffefffefffefffefffefffe0000000000000000fffffffffff01fffffffffff",
-      "generatedAt": "2026-10-30T05:32:54.910Z",
+      "imageHash": "p1:000000010ffc0ffc0ffc0ffc3ffe3ffefffefffefffefffefffefffefffefffec3fe83fec3fec3fefffefffec07ec03ec77ec77efffefffefffefffefffefffe80008002ff028c028000800280008002bb00fe02800080028002800280008000fffefffefffefffefffefffe0000000000000000fffffffffff01fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.049Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.06626430749237766
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06588943869645625
     },
     {
       "id": "components.ui.avatar-list-row.states",
-      "status": "ready",
-      "imageHash": "p1:80038003fffcfffc0ffc0ffc0fff1ffffffefffffffefffffffefffffffeffffcffecfffc3f283f3c3f383f3cff38ff3c0f281f3cffecffffffefffffffefffff98af11fc4628ee3800c8001800280018fe28fe180288021c0228023ff9eff9ffffedff3fffefffffffefffe00000000fffffffffff81ffffff81fffffffffff",
-      "generatedAt": "2026-10-23T10:44:34.528Z",
-      "severity": "medium",
-      "summary": [
-        "Both Android avatar tiles contain a dotted circular loading/ring indicator around the person glyph, while React shows only the plain person icon.",
-        "The Android second-row title is truncated and misspelled as “Product UX Desgin...”; React displays the complete “Product UX Designer”.",
-        "Android clips the second-row title before the Open button, whereas React preserves the full title within the available space."
-      ],
-      "likelyCauses": [
-        "The Android avatar component is rendering a loading or busy icon variant for every row.",
-        "The Android implementation applies an overly restrictive title width or text-layout constraint.",
-        "The Android title source contains a spelling error and may use a fixed-width label."
-      ],
-      "suggestedOwner": "Android AvatarListRow component owner",
-      "suggestedFixes": [
-        "Use the same plain person glyph as React, or align the loading indicator with the corresponding React avatar state.",
-        "Correct the title to “Product UX Designer”.",
-        "Adjust the Android title width and ellipsis logic so the full title fits before the Open button.",
-        "Add visual regression coverage for avatar state icons and long list-row titles."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.09962406015037595
+      "status": "pending",
+      "imageHash": "p1:800380037ffc7ffc0ffc0ffc0fff0ffefffefffefffefffefffefffefffefffecffecffec3f283f2c3e283e3cfe38fe3c0f281f3cbfec9fefffefffefefafffef102f01e80228e62800c8001800280018fe28f8180288001c0228022ff0eff1efffefffbfffefffefffefffe00000000fffffffffff81ffffff81fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.045Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.107941535938612
     },
     {
       "id": "components.auth.register.inputs",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-10-30T05:32:54.921Z",
+      "generatedAt": "2026-10-30T22:02:47.022Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -715,231 +541,215 @@
     {
       "id": "components.navigation.tabbar.states",
       "status": "pending",
-      "imageHash": "p1:ffffffff00000000fffe7ffe1ffc1ffc0ffc0ffc0fff0ffe7fff7fff00000000fffefffe9fff1bff8ff91bff9a491a5f9a591e4f93d912699a49164f9ff91e4f8fff1fffffff1fff9249ffff9249b6dbffff9249ffff93dffffffffe000000000000fffffffffffffffffffffffb3ffffff81ffffffffffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:32:54.934Z",
+      "imageHash": "p1:ffffffff00000000fffe7ffe1ffc1ffc0ffc0ffc0fff0ffe7fff7fff00000000fffefffe9fff1bff8ff91bff9a491a5f9a591e4f93d912699a49164f9ff91e4f8fff1fffffff1fff9240ffff9240b6dbffff9249ffff93dffffffffe000000000000fffffffffffffffffffffffb3ffffff81ffffffffffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.041Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1632858499525166
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16169040835707504
     },
     {
       "id": "components.thread.composer.empty",
       "status": "pending",
-      "imageHash": "p1:bffdbffd000000001ffc1ffc0ffc0ffc0ffe0ffefffe7ffefffefffe8000fffefffe0001fffe7ffcfffe7ffcc1fe33fcc0fe03fcf5fe0bfcfffe7ffcfffe7ffcffba7ff8d7b83f9887c0038087c00380dfb80798fffe7fbc80010000c0020000fffefffe0000000000000000fffffffffff81ffffff00ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:33:21.569Z",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffc0ffc0ffe0ffefffefffec002c00280008001fffe3ffcfffebffcdffe81fcc0fe81fcc1fe7ffcfffe7ffcfffe7ff8fffebf98ffb8838087808380878083808fb87fbcfffe800080008001c002fffefffefffefffe0000000000000000fffffffffffffffbfffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.063Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.11726770630279404
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10338367552664973
     },
     {
       "id": "components.thread.composer.states",
       "status": "pending",
-      "imageHash": "p1:ffffffff00000000bffc9ffc0ffc0ffc0fff0ffefffefffffffeffff8001ffffffff0001fffe7ffdfffe7ffec002000ec0030006ffda0006fffe7ffecffe7ff8c1fe7ff1c1fe3f91fffe0381fffe03c1fff90791ffb97ff1d7c9000187c10001cfc1ffff0000000000000000fffffffffff81ffffff00fffffff7fffffffffff",
-      "generatedAt": "2026-10-30T05:33:29.374Z",
+      "imageHash": "p1:e003e0031ffc1ffc0ffc0ffc0ffe0ffcfffe7ffefffefffe80008001fffefffcfffe90fec0028002c0028002fffefffefffe83fec1fe81fec1febbfcfffefffefffefff9fff9bf99dfb98381878183818781ff99ffb90000fff900008003fffffffefffffffeffff0000ffff8000fffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.060Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.17990253411306045
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10980164575986195
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
       "status": "pending",
-      "imageHash": "p1:87fc0ffc01fc01fc31fe13fefffefffef03ecffee01e003ec00ec87ec00ee002f00ee002f6def05ee002f3fee002f00ef45ef006fffef002ccc2f00efffe0002d9fe0000c1fe03fcfffe7ffcdf887fb887c00380bfb80780c0020000fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81ffffffe7fff",
-      "generatedAt": "2026-10-30T05:33:33.362Z",
+      "imageHash": "p1:87fc0ffc01fc01fc31fe33fefffefffef01ec03ee01ec03ec00ee00ec00ef00ef006f002effef83ee002f01ee002f00ee01ef002fffef00eddc2f01efffe8000ddfe01fcc1fe81fcfffe7ffcdfb88b8087808380bfb88010c0028002fffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81ffffffe7fff",
+      "generatedAt": "2026-10-30T22:02:47.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.17555958862673926
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1522596401604266
     },
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
-      "imageHash": "p1:ffffffff00020002fffcfffc03fc03fc03ff03fffffffffffffefffffffeffffffff0001c0077ffdc0027fffc00b000fffff0007fffe1807c1fe7fffc1fe7ff9fffe7ff9fffe3f99fff90381ffb90381d7990791c7817ff9c7810001ff990003fff9ffff0000000000000000fffffffffffb1ffffff00fffffffffffffffffff",
-      "generatedAt": "2026-10-30T05:33:35.873Z",
+      "imageHash": "p1:ffffffff0ffc0ffc07fc07fc03fe03fefffe7ffefffefffe80008001fffefffcfffe91fec0028002c0028802fffefffefffe83fec1fe81fec1febbfefffefffefffefff9fff9bf99df398381c7018381c701ff99ffb90000fff90000c003fffffffefffffffeffff0000ffff8001fffffffffffffff00ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.068Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.18942170240415857
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11624481049953128
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "pending",
-      "imageHash": "p1:fffcfffc03fc03fc3ffe7ffe8022fffe8020fffefffefffe88fefffe800287fefffefffefffe0002c1fe0002fffefffedcfe003ed0fe007efffefffedf3efffed13e03fefffefffedf3e20fec00230fe80007ffefffe0001dffe3ffcfffe3ffcfff87ff887c10781ffb90781c0030011fffe000600000000fffa1ffffffe7fff",
-      "generatedAt": "2026-10-30T05:33:36.231Z",
+      "imageHash": "p1:affc0ffc03fc03fcfffe7ffefffefffefffefffefffefffec3fec3fe99feddfe8000800081f2800299fe9ffe80128006fffe5ffefffe7ffec1fe41fefffe7ffed13ed0fedb3edefefffe8002d02e8000fffe9ffc80003ffcfe3e3b909ffe8381fffe8000ffb8dc6e8781000080300001fffeffff0000fffffff01ffffffe7fff",
+      "generatedAt": "2026-10-30T22:02:47.095Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.518803809291748
+      "error": "codex CLI not found",
+      "metricMismatch": 0.35876728859185003
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "pending",
-      "imageHash": "p1:effceffc03fc03fc7ffe7ffefffefffefffefffefffefffefffefffefffefffefffefffefffefffedff2fffe8002300280020002fffe0002e0067ffec0020006fffe4006c0067ffec0060002fffe406680007fcefffe00009ffe3ffcfffe3ffcffb87ff887810381ffb00380c0020000fffe000200000000fff81ffffffe3fff",
-      "generatedAt": "2026-10-30T05:33:51.412Z",
+      "imageHash": "p1:effceffc03fc03fc7ffe7ffefffefffefffefffefffefffefffefffefffefffefffefffefffefffedff2dffa8002c00280028002fffe768ee0067ffec0024006fffe7ffec0067cfec0024006fffe7ffe80008000fffe80009ffe3ffcfffe3ffcffb83fb887810381ffb00b90c0028000fffe7ffe00000000fff81ffffffe3fff",
+      "generatedAt": "2026-10-30T22:02:47.092Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.35466313352826506
+      "error": "codex CLI not found",
+      "metricMismatch": 0.26602298570500327
     },
     {
       "id": "components.thread.composer.image-preview",
       "status": "pending",
-      "imageHash": "p1:0800080003fc07fc07fe07fefffefffe87fe4ffee7fe0ffecffe0ffe8ffe1ffe8ffe1ffecffe1ffe87fa1ffe80000000fffe0084c00e0000fffe7ffcc7fe7fb0cffe0380fffe07808780000087c07ffe8018fffec042fffefffefffe0000fffefffffffefffffffefffffffefffffffeffff0000ffff0000fff01ffffffe7fff",
-      "generatedAt": "2026-10-30T05:34:03.335Z",
+      "imageHash": "p1:0800080003fc07fc07fe07fefffee7fe87fe87fee7fe87fecffe8ffe8ffe8ffe8ffe8ffecffe8ffe87fa800280000000fffe000cc006000cfffe0ffcc7fe0ffccffe3ff8fffe0b908780038087803fb080388000c042fffefffefffe0000fffefffffffefffffffefffffffefffffffeffff0000ffff0000fff01ffffffe7fff",
+      "generatedAt": "2026-10-30T22:02:47.103Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1323129497268548
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10758188337785479
     },
     {
       "id": "components.thread.files.list",
       "status": "pending",
-      "imageHash": "p1:000000001ffe1ffc7ffe7ffefffe7ffec01e401ec00e400ec8ba4bfec83e481efffe7ffefffe7ffefffe7ffed03e503ec03e403ec03e401e8ffe1ffefffe7ffefffe7ffefffe7ffed00e501ecb9a4f9ac81e401edffe5ffefffe7ffefffe7ffefffe7c3efc3e7c3efc3e7c3efdbe7c3efffe7ffe00000000fff81ffffff83fff",
-      "generatedAt": "2026-10-30T05:34:14.798Z",
+      "imageHash": "p1:000000001ffe1ffc7ffe7ffefffe7ffec00e401ec00e400ec8ba4bfec83e481efffe7ffefffe7ffefffe7ffed03e503ec03e403ec03e401e8ffe1ffefffe7ffefffe7ffefffe7ffed00e501ecb9a4f9ac81e401edffe5ffefffe7ffefffe7ffefffe7c3efc3e7c3efc3e7c3efdbe7c3efffe7ffe00000000fff81ffffffa3fff",
+      "generatedAt": "2026-10-30T22:02:47.120Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.040708293763849324
+      "error": "codex CLI not found",
+      "metricMismatch": 0.047539569484013944
     },
     {
       "id": "components.thread.header.states",
       "status": "pending",
-      "imageHash": "p1:ffffffff000000001ffc1ffc0ffe0ffc7fff7ffffffefffeffffffffc1ffc1ffc1f4c1f401f001f48ff00ff0c014c014e00fc01fffffffff700070008ffe8ffe8fff0fff87ff07ff813f013f813f093f87ff07fe8fff0ffff8027802fffe7ffefffffffffffe7ffe00000000fffffffffffffffffff81ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:34:15.594Z",
+      "imageHash": "p1:ffffffff000000001ffc1ffc0ffe0ffc7fff7ffffffefffeffffffffc1ffc1ffc1f4c1f401f001f48ff00ff0c014c014e01fc01fffffffff700070008ffe8ffe87ff0fff87ff07ff811f013f811f093f87ff07fe8fff0ffff8027802fffe7ffefffffffffffe7ffe00000000fffffffffffffffffff81ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.100Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.12012583095916429
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1147056030389364
     },
     {
       "id": "components.thread.message.row",
       "status": "pending",
-      "imageHash": "p1:ffffffff3ffc7ffc1ffc1ffc0ffe1ffefffffffffffeffffbfff0fff03fa0007000004ff1fff1fff1fff1fff0001000f8002c01fffffffffc012e00fc001c00ffffffe0fffffffffe7ffc03fc7ffc01ffffffffffffeffffe212efffe000c3ffe002efffffffffff0000000000000000fffffffffff81ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:34:22.969Z",
+      "imageHash": "p1:800100037ffc7ffc0ffc1ffc1fff1ffffffeffffbfff1fff03ff00070000047f1fff1fff0001001f0000000ffffefffff872e18fc001c007e64afffffffeffffc7fec01fc7fee01ffffeffffeefae07fe003e03fe003f07ffffefffffffe0000efff0001efffffffffffffff0000fffffffffffffff81ffffff81fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.117Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.2971988795518208
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19228132350304294
     },
     {
       "id": "components.thread.message-row.deleted-human",
       "status": "pending",
-      "imageHash": "p1:f003f0030ffc0ffc07fc07fc03fe03fefffefffefffefffebfff0dfe0018001e000005fe1f1e3ffe1fff1ffe000300000001e002fffefffefffee006c00ec006e00efff6fffefffeeffec07ec3fec07ec3fefffeeffefffefffecbfe0000c3fefffffffefffffffeffff0000ffff0000fffffffffff81ffffffe7fffffffffff",
-      "generatedAt": "2026-10-30T05:34:23.708Z",
+      "imageHash": "p1:ffffffff000000000ffc0ffc03fe03fc3fff3ffffffefffffffeffff3f9f003e00120000000000be1f1f3fff1fff1fff19eb000300014001e003fffffffefffffefec00fc00ec00fe00efffffffefffffffeefffeffec3ffc3fec7ffc7feefffeffefffffffe7ffe00000000fffffffffffffffffff81ffffffe7fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.124Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.21300398947457766
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1958499017322547
     },
     {
       "id": "components.thread.message-menu.default",
       "status": "pending",
-      "imageHash": "p1:01fc01fc7ffe01fe8000800280000008e07a600080024082c002607ee07e703ee07e707ee07e707ee07e703ee1fe703ee07e703ee07e70fef07e703ee3fe703ee000703efffe7000fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:34:35.258Z",
+      "imageHash": "p1:01fc01fc7ffe01fe8000800280000000e07a600080024082c002607ee07e703ee0fe707ef07e707ef07e703ee1fe703ee07e703ee07e70fef07e703ee3fe703ee000703efffe7000fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.185Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.23464036402425026
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23093328472475394
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "pending",
-      "imageHash": "p1:01fc01fc7ffe03fe8000800280000008e0fe6000c0004082e07e607ee07e703ee0fe707ef0fe707ee1fe703ee1fe703ee07e703ee07e70fee3fe703ee3fe703ee000757efffe7020fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:34:42.410Z",
+      "imageHash": "p1:01fc01fc7ffe03fe8000800280000000e0766000800240c2c002607ee07e703ee07e707ee0fe707ee0fe703ee1fe703ee07e703ee07e70fef07e703ee3fe703ee000757efffe7020fffe7000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.189Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.23543194123762845
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23161819311108411
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "pending",
-      "imageHash": "p1:07fc07fcfffe7ffe80000000800000009000500080000000801a70828000000280000000f03e4000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffee0025c0000020000fff83fff",
-      "generatedAt": "2026-10-30T05:34:46.040Z",
+      "imageHash": "p1:07fc07fcfffe7ffe80000000800000009000500080000000801270828000000280000000f01e4000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffec00a5c0000020000fff83fff",
+      "generatedAt": "2026-10-30T22:02:47.192Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.11635374893668737
+      "error": "codex CLI not found",
+      "metricMismatch": 0.11571069793818611
     },
     {
       "id": "components.thread.forward-modal",
       "status": "pending",
-      "imageHash": "p1:0f9c0ffc006000600000006000000000000000000000100007fe07fe07fe07fe07fe07fe07fe07fe80fe40fe87fe07fe87fe07fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:35:00.505Z",
+      "imageHash": "p1:0ffc0ffc00600060006000600000000001fc00001a02100007fe07fe07fe07fe07fe07fe07fe07fe80fe40fe87fe07fe87fe07fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.205Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.02092801879531736
+      "error": "codex CLI not found",
+      "metricMismatch": 0.016364550843223857
     },
     {
       "id": "components.thread.comment-anchor",
       "status": "ready",
-      "imageHash": "p1:03fc07fc07fe000e007e100607fe0b4280020012e0020002e0025ffefefe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe000e003e00020010000e07fe07fe000e7ff87ff800000000fff81fff",
+      "imageHash": "p1:03fc07fc07fe000e007e100607fe0b4280020012e0020002e0025ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe0006003e00060010000e07fe07fe000e7ff87ff800000000fff81fff",
       "generatedAt": "2026-10-30T05:26:54.463Z",
       "severity": "medium",
       "summary": [
@@ -967,149 +777,103 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.0853779317049459
+      "metricMismatch": 0.08619043761223855
     },
     {
       "id": "components.home.titlebar.states",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffcfffe53fe7fff0002000300020002400effff0002ffff0002fffe401effff0002ffff0002fffe58fefffe0006fffe0002fffe4076fffe48fefffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-10-23T12:00:09.929Z",
-      "severity": "high",
-      "summary": [
-        "React renders one compact title bar, while Android renders three title-bar states plus an expanded workspace switcher.",
-        "Android's first title bar is approximately 15 px higher and 10-12 px narrower than React's equivalent bar.",
-        "Android includes gray uppercase state captions, varied product names, visible chevrons, and an ellipsized long title; React shows only \"Raft Design\" without truncation.",
-        "Android adds a pink badge to the identity icon and a pink unread indicator to the bell; the corresponding React indicators are absent.",
-        "The Android expanded switcher, including its rounded shadowed card, yellow selected row, checkmark, second workspace row, and gray monospace paths, is missing from React."
-      ],
-      "likelyCauses": [
-        "The platforms are rendering different fixture or story states, with Android showing a state gallery and React showing only the default state.",
-        "React does not implement the long-name, short-name, unread-notification, and expanded-switcher variants.",
-        "The title-bar container uses different vertical insets and horizontal sizing on each platform.",
-        "Identity and notification badge assets or layering rules are not shared between React and Android.",
-        "Different icon and typography resources are producing inconsistent title weight and workspace-row rendering."
-      ],
-      "suggestedOwner": "Home title-bar UI owner, with support from the React and Android component teams",
-      "suggestedFixes": [
-        "Capture the same title-bar state and fixture on both platforms before comparing, or make React render the complete Android-equivalent state gallery.",
-        "Align the title-bar width, horizontal inset, and first-bar vertical position with the Android dimensions.",
-        "Implement the unread bell dot and overlapping compact identity badge using the same offsets, colors, and outline treatment.",
-        "Match the compact title typography, truncation behavior, chevron spacing, and state-caption styling.",
-        "Add the expanded switcher with the same rounded bounds, shadow, selected-row color, checkmark placement, icon sizing, and monospace path treatment."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.2764656836931718
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffcffffffff0003000300030003ffff707f0007000300030003ffff7d1f8037000300030003e1ffffff81ff000700030007000340ff80074aff81ff480791ffffffffffffffc1ffffffefffffffc3fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-10-30T22:02:47.214Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.28431360635152103
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "ready",
-      "imageHash": "p1:07fc04047ffe7ffe7ffe00007ffe00007ffe000e7ffe000e7ffe404e7ffe407e7ffe003e7ffe001e7ffe405e7ffe407e7ffe00007ffe00007ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:18:15.040Z",
-      "severity": "high",
-      "summary": [
-        "The React side renders no notification-center UI below the test metadata; the Android side renders the complete component.",
-        "Android includes the rounded notification card, “Notifications” header, “2 items” count, divider, two notification rows, status icons, message text, and action buttons; all are absent on React.",
-        "The Android card is approximately 14–376 px from the left and 69–338 px from the top, with side margins, a gray outline, rounded corners, and a drop shadow; React has no visible component bounds.",
-        "Android uses pink filled primary buttons with heavy black rounded borders and white outlined secondary buttons; no corresponding controls are visible on React.",
-        "The Android component is fully visible without clipping or cropping."
-      ],
-      "likelyCauses": [
-        "The React notification-center component is not mounted in the captured state.",
-        "The React fixture may be gated on data, selection, or open-state conditions that leave the component empty.",
-        "The captured React element may resolve to an empty wrapper because of an incorrect component-bounds selector.",
-        "A visibility or display style may be hiding the React component.",
-        "The React capture may occur before asynchronous notification data or layout rendering completes."
-      ],
-      "suggestedOwner": "React Home / Notification Center owner",
-      "suggestedFixes": [
-        "Render the notification-center component in the React fixture with the two-notification state.",
-        "Verify that the React visibility and open-state conditions are true during visual testing.",
-        "Use a stable selector that targets the populated notification card rather than an empty wrapper.",
-        "Wait for notification data and layout completion before taking the screenshot.",
-        "After restoring the React component, align its card bounds, typography, spacing, colors, borders, and button styling with the Android reference."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.13543970510795156
+      "status": "pending",
+      "imageHash": "p1:07fc07fc7ff87ffefff8000203fa000003fa000e0000000e0006405e607e407e6ffe003e001c001e2006407e607e407e607e000000005c02fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.283Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18006170589108983
     },
     {
       "id": "components.home.search.results",
       "status": "pending",
-      "imageHash": "p1:08000ffc000041fc0000c1fc800204008886042282327ffefffe7ffe9ffe46fe87fe401e80007efe8000003edfff002edffe7ffe87fe1ffe80020ffefffe00008cfe01ae800301fefffe0006fffe7ffefffe1ffefffe0002fffe7ffeffff01defffe000efffe7ffefffe781efffe7c3efffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-10-30T05:35:09.350Z",
+      "imageHash": "p1:00000e04000041c400000000000240008086088882125ffedffe5ffe8ffe407e87fe401e000060fe80005ffe8ffe1ffe8ffe01fe81fa000e80060ffefffe00fe807a000680020206effe01fafffe73fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.286Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.24832908008263455
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20124188169211865
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "pending",
-      "imageHash": "p1:0ffe0ffc27fc000027fc0000ff870000fcc70000ffff0000ffff0000ffff0000feff8fffc21fffffe007ffffffffcfffffffffff8fffddffa44fffffffffffff9fffffffecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-10-30T05:35:15.699Z",
+      "imageHash": "p1:0ffe0ffc27fc000027fc0000ff870000fcc70000ffff0000ffff0000ffff0000feff8fffc21fffffe407ffffffffdfffffffebff8fffffffac5fffffffffffff9fffffffecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.288Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unterminated string in JSON at position 1760 (line 18 column 162)",
-      "raw": "{\n  \"severity\": \"high\",\n  \"summary\": [\n    \"React renders a compact floating channel popover of roughly 215×146 dp beneath the filter row; Android renders a near-full-width bottom sheet starting around 202 dp from the top and extending to the viewport bottom.\",\n    \"Android dims the underlying page with a modal scrim, while React has no scrim and the popover floats directly over the results.\",\n    \"Android typography is generally larger, heavier, and darker. The Android \\\"Channels\\\" title is approximately 18 dp bold versus roughly 13–14 dp semibold gray in React.\",\n    \"Android adds a Clear action, search icon, selected checkmark, and a third \\\"@Product UX Designer\\\" row; React shows only \\\"Channels\\\", \\\"Search...\\\", \\\"# design\\\", and \\\"# android-artifacts\\\".\",\n    \"React has a visible gray outline, approximately 10 dp corner radius on all corners, and a drop shadow. Android uses a borderless white sheet with rounded top corners and divider-separated rows.\"\n  ],\n  \"likelyCauses\": [\n    \"Android uses a modal bottom-sheet or dialog component, while React uses an anchored popover component.\",\n    \"Android renders a broader selection model that includes channels, people, and computers,…",
-      "metricMismatch": 0.3128603448508662
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30954483466331806
     },
     {
       "id": "components.home.saved.results",
       "status": "pending",
-      "imageHash": "p1:0ffc0ffc6ffe4ffea3fea3fee1fee3fef7fe67fe817e807e80088009800a000a87fe87fefefefcfe805e001a80188019801a0d3e8ffedffee0fee07e804a000980188018803efffee7fefffe807efffe8008fffe800afffe87fefffefcfefffe801efffe8018fffe801afffedffefffee0fefffe804afffe00000000fffc1fff",
-      "generatedAt": "2026-10-30T05:35:16.301Z",
+      "imageHash": "p1:0ffc0ffc0ffe0ffe83fe23fee1fe63fe77fe67fe807e007e803a0008801a000a807e07fefefe7cfe800e001a801a0018801a001e8ffe5ffee07e206e804a0008800a0018801e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.265Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.10594122702215514
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07199008572805965
     },
     {
       "id": "components.home.activity.results",
       "status": "pending",
-      "imageHash": "p1:0ffc0ffc00000ffe0000a3fe0000e07e07f84ffec7fc4ffefffe7ffee018601880108000ddf8c000e07efffe80386070e1f88000f7fee000807e7ffef07ee7e2fffe807efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:35:26.008Z",
+      "imageHash": "p1:0ffc0ffc00000ffe0000a3fe0000e07e07fc4ffec7fc4ffefffe7ffee018601880108000fdf8c000e07efffe80386070e0f88000f7fee000807e7ffef27ee7e2fffe807efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.269Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.17755454945607752
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17653115764321192
     },
     {
       "id": "components.tasks.panel.states",
       "status": "pending",
-      "imageHash": "p1:1ffc1ffc0000000000000000803e40468c7e4c62847e7f00fe7e7ff09ffe4ffefffe7ffefffe7ffe8002800281fe81fec0024726cffe40fecffec0fefffe7ffe87fe43fefffe7ffec3be47fe8006800687fe05fec7fe807efffe7ffe8ffe47fefffe7ffec7fe47f280028002c7fe800efffe7ffe9ffe4ffe00000000fff83fff",
-      "generatedAt": "2026-10-30T05:35:29.449Z",
+      "imageHash": "p1:1ffc1ffc0000000000000000803e40468c7e4c62847e7f00fe7e7ff09ffe4ffefffe7ffefffe7ffe8002800280fe81fec4024726cffe40fecffec0fefffe7ffe87fe43fefffe7ffec5de47fe8006800687fe05fec3fe807efffe7ffe8ffe47fefffe7ffec7fe47f280020002c7fe800efffe7ffe9ffe4ffe00000000fff83fff",
+      "generatedAt": "2026-10-30T22:02:47.305Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "pi analysis failed (timeout): This operation was aborted",
-      "metricMismatch": 0.10375737567680698
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10545867595630631
     },
     {
       "id": "components.tasks.status-menu",
       "status": "ready",
-      "imageHash": "p1:000000000ffc0ffc0ffe1ffefffe7ffefffe7ffe83fe83fe83fe03fefdfe79fe7ffe7ffe8ffe0ffe5efe5ffe7efe7efe00fe04fe02fe00fe7efe7efe5efe7efe06fe06fe6efe06fe7efe7efe0efe1efe0efe0efe7efe7efe3efe7efe0efe0efe7efe4efe00fe30fe81fe01fefffe67fe0000000000000000fff00ffffffe7fff",
+      "imageHash": "p1:000000000ffc0ffc0ffe1ffefffe7ffefffe7ffe83fe83fe81fe03fefdfe79fe7ffe7ffe8ffe0ffe5efe5ffe7efe7efe00fe04fe02fe00fe7efe7efe7efe7efe06fe06fe6efe06fe7efe7efe0efe1efe0efe0efe7efe7efe3efe7efe0efe0efe7efe4efe00fe30fe81fe01fefffe67fe0000000000000000fff00ffffffe7fff",
       "generatedAt": "2026-10-30T05:18:43.102Z",
       "severity": "medium",
       "summary": [
@@ -1132,120 +896,77 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.16962438146648673
+      "metricMismatch": 0.16913205378117657
     },
     {
       "id": "components.home.create-channel.dialog",
       "status": "pending",
-      "imageHash": "p1:bffefffe000000000000200400003ffc80f07ffcfff13ffcffff3ffc9fff7ffcfbff7ffcffff7ffcffff3ffcffff3ffcffff3ffcffff7ffcffff07fc87ff07fccfff7ffcffff3ffcffff7ffcffff7ffcffff47fc8fff47fccfff67fcffff7ffcdfff47fc9fff47fcffff7f80ffff7f80ffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:35:41.855Z",
+      "imageHash": "p1:bffefffe000000000000340400003ffcebf17ffcfff13ffcffff3ffcbfff7ffcffff7ffcffff7ffcffff3ffcffff3ffcffff3ffcffff7ffcffff07fc87ff07fcefff7ffcffff3ffcffff7ffcffff7ffcffff47fc8fff47fccfff67fcffff7ffcdfff47fc9fff47fcffff7f80ffff7f80ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.357Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.39255444836013553
+      "error": "codex CLI not found",
+      "metricMismatch": 0.35678190950702804
     },
     {
       "id": "components.members.create-agent.dialog",
       "status": "pending",
-      "imageHash": "p1:ffffffff000000000000000000007ffca1f87ffcffff3e6cffff000cc09f7ffccbff7ffcffff3efcfbff7ffcffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff2ffcfb7f3ffcffff3ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:35:42.429Z",
+      "imageHash": "p1:ffffffff000000000000000000007ffcfbff7ffcffff3e6cffff000cc00f7ffccfff7ffcffff3efcffff7ffcffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff2ffcdaff3ffcffff3ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.371Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.490484533020078
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4370502018606284
     },
     {
       "id": "components.members.create-agent.dialog-error",
       "status": "pending",
-      "imageHash": "p1:8ffe01fc0000000000003ffc000037fc01f03c0cfbff000cffff23fc800f7ffcc3ff1cfcffff7ffcd1ff7ffcffff7ffcffff3ffcffff3ffcffff7ffcffff7ffcffff3ffcc01f3ffcffff3ffcffff3ffcffff7ffcffff7ffcffff400cffff7ffcffff3ffcffff27fcffff7ffcffff7ffcffff3ffcffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:35:49.144Z",
+      "imageHash": "p1:8ffe01fc0000000000003ffc000037fce1ff3c0cffff000cffff23fc800f7ffcc3ff1cfcffff7ffcf9ff7ffcffff7ffcffff3ffcffff3ffcffff7ffcffff7ffcffff3ffcc01f3ffcffff3ffcffff3ffcffff7ffcffff7ffcffff400cffff7ffcffff3ffcffff3ffcffff7ffcffff7ffcffff3ffcffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.376Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unterminated string in JSON at position 142 (line 4 column 104)",
-      "raw": "{\n  \"severity\": \"high\",\n  \"summary\": [\n    \"React uses a full-width bottom sheet starting roughly 85dp below the viewport top and extending to",
-      "metricMismatch": 0.48499851473785127
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4614351683072062
     },
     {
       "id": "components.members.create-agent.dialog-onboarding",
-      "status": "ready",
-      "imageHash": "p1:ffff7ffeffff0000dfff000083ff7ffcffff37fcffff3c0cfe7f000cfc3b3ffcf83b7ffcfc3b1cfcfc7b7ffcfffb7ffcfe797ffcfffd3ffcfff93ffcf8033ffcffff05fcffff3ffcc00f2ffcffff3ffcffff7ffcffff400cffff7ffcffff3ffcffff27fcffff7ffcffff7ffcffff3ffcffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:19:03.663Z",
-      "severity": "high",
-      "summary": [
-        "Android shows an inset, rounded white modal over a dark gray scrim, while React shows a full-width white panel without a scrim.",
-        "Android uses a bold dark \"Create Agent\" header with an X icon; React instead shows lighter gray onboarding copy, \"Set up your server,\" and a larger \"Meet Cindy\" heading, with no close icon.",
-        "The limit notice differs in shape and emphasis: React uses a rounded peach box with no visible border, while Android uses a square-cornered peach box with a thick black border and heavier text.",
-        "React includes a large centered Cindy onboarding card with a pixel-art avatar; Android omits it and instead adds Computer radio buttons plus Name and Description fields.",
-        "Runtime and footer layouts differ: React has an empty \"Select...\" runtime dropdown, a full-width disabled \"Create Cindy\" button, and two text links; Android has \"Codex CLI,\" an unavailable-runtime notice, and right-aligned \"Cancel\" and disabled \"Create\" buttons."
-      ],
-      "likelyCauses": [
-        "Android is rendering the generic Create Agent form rather than the React onboarding variant.",
-        "The two screenshots use different form, runtime, and selection states.",
-        "Android is applying platform-specific modal, alert, typography, and footer styling instead of shared design-system tokens.",
-        "The baseline uses a modal-viewport crop while Android uses viewport bounds, exposing different scrim and surrounding-area coverage."
-      ],
-      "suggestedOwner": "Android Create Agent dialog team, with design-system support",
-      "suggestedFixes": [
-        "Render the onboarding variant in Android: use the \"Set up your server,\" \"Meet Cindy,\" description, and centered Cindy profile card instead of the generic radio and text fields.",
-        "Match the container bounds and layering to React by using the full-width rounded panel treatment and avoiding the dark full-viewport scrim.",
-        "Standardize the limit notice to the React peach fill, rounded corners, borderless treatment, font size, and weight.",
-        "Align runtime and footer controls with React, including the empty runtime value, refresh icon, full-width disabled primary action, and adjacent secondary links.",
-        "Capture both implementations with the same onboarding fixture, interaction state, and modal-viewport crop contract."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.5822501046434696
+      "status": "pending",
+      "imageHash": "p1:affe01fcffff0000c7ff3ffc83ff27fcffff3c0cffff0004fe7b01fcfc3b3ffcf83b007cf83b3ffcfc3b3ffcfff93ffcfe791ffcfff929fcfff93ffcc00307fce7ff080cff8f2ffcc00f3ffcffff7ffcffff000cffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff7efcffff3ffcffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.379Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.5519652718704852
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:bfffffff000000000000000000007ffca1f87ffcffff3e6cffff000cc09f7ffccbff7ffcffff3efcfbff7ffcffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff2ffcfb7f3ffcffff3ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff77fcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:19:21.486Z",
-      "severity": "high",
-      "summary": [
-        "React uses a wide lower-edge modal that extends beyond the viewport bottom, while Android uses a fully contained rounded dialog with dark margins on every side.",
-        "The header layout differs: React places the close icon on the left and a disabled Create button on the right with a divider; Android places the title on the left and close icon on the right, with no divider or header button.",
-        "The agent-limit alert is a rounded, borderless pale-pink panel with mixed regular/bold text in React, but a square black-bordered peach panel with bold text and an underlined upgrade link in Android.",
-        "Computer selection is a bordered dropdown on React, but two radio rows on Android; Android additionally shows a gray disabled offline device option.",
-        "Android narrows and heightens the description field, wraps its value into three lines, adds the gray suffix “(optional),” shows a runtime-unavailable banner, displays “Claude Code” as the runtime, and exposes Cancel/Create footer actions."
-      ],
-      "likelyCauses": [
-        "Android uses a separate native dialog implementation rather than the React modal component.",
-        "Responsive styling is applying different modal bounds, field dimensions, header order, and action placement.",
-        "The available computer and runtime data differ between platforms, producing radio options, selected runtime, and warning content.",
-        "The Android alert and description-label styles do not share the React design tokens."
-      ],
-      "suggestedOwner": "Android mobile UI team",
-      "suggestedFixes": [
-        "Align the Android dialog container, header order, divider, and action-button placement with the React specification, or record an approved platform-specific exception.",
-        "Restyle the agent-limit alert to use the React borderless rounded pink treatment, mixed text weight, and non-underlined second line.",
-        "Use the React dropdown treatment for computer selection, or align the radio component, spacing, disabled colors, and selected indicator with an approved mobile variant.",
-        "Match description-label styling, field width and height, and wrapping; omit the optional suffix if it is not part of the shared design.",
-        "Resolve runtime/computer state differences at the data layer, then render the same required marker, placeholder, selected value, and warnings specified by the baseline."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.49080453950122194
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000007ffcfbff7ffcffff3e6cffff000cc00f7ffccfff7ffcffff3efcffff7ffcffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff2ffcdaff3ffcffff3ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff77fcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.391Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4373702083417723
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000000000000000007ffcfbff7ffcffff7efcffff000cffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:ffffffff000000000000000000007ffcffff7ffcffff7efcffff000cffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff7ffcffff0000ffff0000efff0000ffffffff",
       "generatedAt": "2026-10-30T05:35:51.134Z",
       "severity": "high",
       "summary": [
@@ -1273,21 +994,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.40733516965744454
+      "metricMismatch": 0.40625497900379415
     },
     {
       "id": "components.members.agent-detail.profile",
       "status": "pending",
-      "imageHash": "p1:1ffe1ffcc01e4016c03f401685da04da8ffe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff800707ffdf6f4fffffff0fffdfff01ff9fffffff8fff7fffc3ff7fff87ffdfff87ff00ff81ff0cff9fff94ffd7fffdff9fff7fff9fff1fffffff8c3fdfff1cff8fff1cff9fff43ff97ffffff07fe03faffff7fff",
-      "generatedAt": "2026-10-30T05:35:52.528Z",
+      "imageHash": "p1:1ffe1ffcc01e4016c03f401686da04da87fe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff800707ffdf6f4fffffff0fffdfff01ff9fffffff8fff7fffc3ff7fff87ffdfff87ff00ff81ff0cffdfff94ffd7fffdff9fff7fff9fff1fffffff8c3fdfff1cff8fff1cff9fff43ff97ffffff07fe03faffffffff",
+      "generatedAt": "2026-10-30T22:02:47.447Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1477731194555839
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14672195892575035
     },
     {
       "id": "components.channel.settings.panel",
@@ -1320,155 +1040,104 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.4693813208031218
+      "metricMismatch": 0.46865556770770045
     },
     {
       "id": "components.channel.members.add-panel",
       "status": "pending",
-      "imageHash": "p1:ffffffff00000000000000000000000000000000000000003ffe00007ffe00007ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe5ffe7ffe7ffe7ffe7ffc7ffe00007ffe0000200400000000000000000000000000000000000080000001ffffffff",
-      "generatedAt": "2026-10-30T05:36:09.533Z",
+      "imageHash": "p1:0ffe0ffcc3fe43fec1fe41fe9ffe0c008ffe07fcfffe5fc2ca7e4ffec03e403ec01e7ffec01e401ee01e7ff6c01e481ee07e4016c03e4ffeebde403ec00e7ffeeffe401ec03e7ffefffe407ec03e4036fffe4ffedffe403ec7fe7ffefffe7ffec1fe7ffee1fe43fee07e616ee03e7ffefffe4000c0027ffe00004002fffa3fff",
+      "generatedAt": "2026-10-30T22:02:47.463Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.35844371531575325
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17726907549182436
     },
     {
       "id": "components.settings.root.page",
       "status": "pending",
-      "imageHash": "p1:1ffc1ff407fe000083fe00001ffe7ffe8ffe0ffec7fe03fec0fe01fec0fe07fec3fe07fec3fe07fec3fe0ffedffe0ffe87fe47fec7fe0ffec3fe4ffec3fe07fe9ffe03fe8ffe07fe81fe03fe83fe03fec3fe07fec1fe07fe83fe7ffe83fe0ffefffe0ffe8ffe07fecffe03fe81fe7ffe81fe7ffe87fe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:36:15.463Z",
+      "imageHash": "p1:1ffc1ff407fe000083fe00001ffe7ffe87fe0ffec7fe03fec0fe01fec0fe07fec3fe07fec3fe07fec3fe0ffedffe0ffe87fe47fe87fe0ffec3fe4ffec3fe07fe9ffe03fe8bfe07fe81fe03fe83fe03fec3fe07fec1fe07fe83fe7ffe83fe0ffefffe0ffe8ffe07fecffe03fe81fe7ffe81fe7ffe83fe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.469Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.10924339395903382
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10825366927262658
     },
     {
       "id": "components.settings.account.page",
       "status": "pending",
-      "imageHash": "p1:0ffc1ffc47fe47fe83fe43fecffe4ffefffe4ffecbfe83fec1fe83fecffe4ffefffe400e87fe400ecffe47fecffe4f26c00248c6c382573edffe423ec07e47fec3fe5ffed7fe40fe80fe430ef3c6400ec042739efffe410ec1c27ffefee240fec3fe60fe80464ffec81e4ffe807e07fe807e5ffefffe400e00000000fff83fff",
-      "generatedAt": "2026-10-30T05:36:15.569Z",
+      "imageHash": "p1:0ffc1ffc47fe47fe83fe43fecffe4ffefffe4ffec9fe83fec1fe83fecffe4ffefffe400287fe4002cffe47fecffe4f38c00248c2c382573edffe423ec07e47fec3fe5ffef7fe40fe80fe4382f3c64082c0c273e6fffe41c2c1c27ffefce240fec3fe60fe80024ffec80e4ffe807e07fe807e7ffefffe400200000000fff83fff",
+      "generatedAt": "2026-10-30T22:02:47.479Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.2186839227123587
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22948245365306974
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffce7fe47fec3fe47fedffe5ffefffe7ffecbfe83fec1fe83fecffe447efffe400ec7fe418ecffe4ffecffe400ec7fe47fec7fe47eedffecfe6c07e5ffec002423ec00e4ffec7fe4ffec5fe400ec0fe400ee3c240fef04640fef3fe430ec1c27f9efffe438e83fe430ec10650eec01e400e807e601e000040c0fff81fff",
-      "generatedAt": "2026-10-23T12:01:58.372Z",
-      "severity": "high",
-      "summary": [
-        "Android replaces React's outlined person avatar with an A initial, a heavier black border, and a darker proportional-style @artin label instead of React's lighter monospaced text.",
-        "The form structure differs: React shows Display Name followed by Username, while Android shows a disabled Name field, then focused Display Name, omits the visible Username input, and uses a disabled Retry button instead of Save Profile.",
-        "Error treatments differ: Android adds warning-triangle icons, wraps the avatar upload failure onto two lines, places it in the profile summary, and includes profile-save and provider-link failure banners absent from React.",
-        "The Google connected-account state differs: React shows a connected status with a Disconnect button, while Android shows Not connected with a narrower Connect button.",
-        "Android's additional banners shift Connected accounts downward and push the Set a password heading, description, and button outside the captured viewport; React shows that section."
-      ],
-      "likelyCauses": [
-        "The platforms implement different account-field schemas and ordering, including Name versus Display Name and Username.",
-        "Android uses separate error-banner components and exposes a broader set of failure states.",
-        "The connected-account fixture state is not synchronized between platforms.",
-        "Additional Android banners increase vertical content consumption and push later sections below the fold.",
-        "Avatar fallback content, border tokens, and typography are not using a shared cross-platform specification."
-      ],
-      "suggestedOwner": "Android Account Settings team with shared UI parity review",
-      "suggestedFixes": [
-        "Align the field set and order across platforms, including the missing Username control, and standardize focused, disabled, and action-button styling.",
-        "Use a shared error-banner specification for iconography, wrapping, placement, and corner radius, then reconcile which failure banners belong in this state on both platforms.",
-        "Synchronize connected-account fixture states and match the Google action label and button dimensions with the canonical implementation.",
-        "Match the avatar fallback content, outline, radius, and username font weight, or formally document an approved platform divergence.",
-        "Align vertical spacing and content density so the password section is reachable within the same viewport capture, or configure deterministic scrolling and capture positioning."
-      ],
-      "intentional": [
-        "The section header is ACCOUNT on React and Profile on Android; this platform naming difference is intentional."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.33222850083039657
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc47fe47fec3fe47fedffe5ffefffe7ffecbfe83fec1fe83fecffe4006fffe4002c7fe4ffecffe4002cffe4ffec7fa47fec7fa4ff8dffe5cc2c07e423ec002433ec00e47fec7fe40fec1fe41fec0fe4182e3c27fc6f0c243c2f3f640c2c1c27ffefffe40fe83fe6dfec0024ffec01e4ffe807e4ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.485Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.27431711697114536
     },
     {
       "id": "components.settings.server.profile",
       "status": "pending",
-      "imageHash": "p1:0ffc0ffc01fe01fe01fe41fe0ffe1ffe3ffe1ffe807e0006807e0026cffe0006fffe4ffe81fa400683fe41fe9ffe43fec00207fec00207fec3fe0206fffe0206c7fe4f0e87fe7ffe83fe7ffe80027ffe81fe7ffe80fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:36:22.576Z",
+      "imageHash": "p1:0ffc1ffc01fe41fec1fe41fe0ffe1ffebffe1ffec07e0002807e01f8cffe0002fffe4ffe83fe4002c3fe43fe9ffe43fec00207fec00207fec3fe0180fffe0080c7fe7ffecffe7ffe83fe7ffe80067ffe80fe7ffe80fe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.536Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1682778385385021
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1759566438476391
     },
     {
       "id": "components.settings.appearance.page",
       "status": "pending",
-      "imageHash": "p1:0ffc0ffc43fe43fe81fe41fefffe1cfe807e21fec01e4ff6fffe4022c7fe73fec1fe7ffe80fe47fec002400ec1ee401ed0fe403ec03e7ffef3fe0002cffe0002cffe4002804e4002800241fae0be7ffefdfe7ffefffe7ffe80fe7ffec0007ffec0727ffec3fe7ffe80fe7ffe80107ffec3f27ffefbfe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:36:30.354Z",
+      "imageHash": "p1:0ffc0ffc43fe43fe81fe41fefffe1cfe807e21fec01e4ff6fffe4022c7fe73fec1fe7ffe80fe47fec002400ec1ea401ed0fe403ec03e7ffef3fe0002cffe0002cffe4002804e4002800241fae0ba7ffefdfe7ffefffe7ffe80fe7ffec0107ffec0327ffec3fe7ffe80fe7ffe80307ffec3f27ffefbfe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.552Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.25212662534937413
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2512935283077463
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "ready",
-      "imageHash": "p1:0ffc0ffc43fe41fec1fe41fec3fe7ffefffe1ffe803e0000801e0000c0224ffec02241fec03e00f0c7fe4012c7be41fecffe0010c0064f32dffe5ffec07e00f2fffe4072c03e407ec03e0032fffe4012fffe7ffefffe00f8fffe451afffe7ffefffe0e22fffe0000fffe0000fffe0000fffe43fefffe401e00024000fff81fff",
-      "generatedAt": "2026-10-23T11:43:29.270Z",
-      "severity": "high",
-      "summary": [
-        "React shows a bell icon and bold \"Push Notifications\" heading, a large bordered card, a peach \"Unavailable\" badge, explanatory copy, a disabled \"Enable Push Notifications\" button, and a separate \"Notifications on Visual Server\" row; these are absent on Android.",
-        "Android replaces the React content with a green \"Notifications allowed\" banner, an \"On this device\" card containing four switches and a test-notification action, and a \"Workspace\" radio list; these elements are absent on React.",
-        "Android uses thick black outlines, yellow active fills, a green permission banner, and divider-separated rows, while React uses thin light-gray borders, white surfaces, and a pale peach badge.",
-        "React card headings use a heavier bold weight, whereas Android settings titles use lighter regular-weight text within more compact rows.",
-        "The Android \"Only mentions\" workspace option is clipped by the bottom viewport without a visible bottom border, while the React content ends above the fold with substantial blank space."
-      ],
-      "likelyCauses": [
-        "Android renders a platform-specific notification-settings information architecture instead of a restyled version of the React page.",
-        "The two implementations use different card, switch, radio, badge, and selected-state components.",
-        "The Android page contains substantially more vertical content without enough bottom padding or viewport accommodation.",
-        "The shared visual design system is not applied consistently across the React and Android implementations."
-      ],
-      "suggestedOwner": "Android Settings/Notifications UI team",
-      "suggestedFixes": [
-        "If cross-platform parity is required, implement the React structure on Android: Push Notifications heading, unavailable badge, explanatory copy, disabled enable button, and Visual Server row.",
-        "Match the React typography hierarchy, light-gray card borders, surface colors, corner radii, and section spacing.",
-        "Use a consistent Android switch, radio, and permission-card style with the approved design tokens rather than the current heavy black-and-yellow treatment.",
-        "Add scrolling or bottom inset padding so the \"Only mentions\" card and its bottom border can render fully on short viewports.",
-        "If these platform-specific differences are intentional, create an Android-specific baseline and mask or exclude the intentionally divergent regions from this comparison."
-      ],
-      "intentional": [
-        "The Android-specific system permission, device toggles, and workspace controls may intentionally replace web push settings.",
-        "The green permission state and yellow or black active-state styling may be intentional Android-specific status indicators."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.26482730451924763
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffcc3fe43fec1fe41fedffe7ffefffe1ffe80fe0000c07e0000c0624ffec032413ec07e0010c3fe4010cffe7ffedffe01fac0064010fffe5ffec07e41fafffe0070d9fe7f7edbfe407ec1fe0010cf0243fefffe41fec3fe00f8c1fe5ffee0365ffec03e0000fffe0000fffe0000cffe4000cdfe400200020002fff83fff",
+      "generatedAt": "2026-10-30T22:02:47.556Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32192719514994395
     },
     {
       "id": "screens.auth.login.signing",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-10-30T05:36:58.237Z",
+      "generatedAt": "2026-10-30T22:02:47.471Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1479,189 +1148,138 @@
     },
     {
       "id": "screens.auth.profile-setup",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffc0000000000000000fffe7982fe7efe7efe7e7e7ee00ef00ef08ef00efffefffe81fecffee1fec1fbc406c003cffec7fec7fec7fe8000c3fb83fcc0038001dffec7fec00381fe800380fefffe803ffffe80017ffe8001fffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-10-30T05:20:18.397Z",
-      "severity": "high",
-      "summary": [
-        "React includes a Profile picture row with avatar placeholder, Upload button, and helper text; Android omits the entire section.",
-        "React's username field has an @ prefix and divider, a red error border, and the error message \"This username is already taken.\"; Android has none of these and uses a plain black border.",
-        "Android adds the subtitle \"Choose the identity people will see in Raft.\", while React has no subtitle.",
-        "The Android form is narrower: side insets are about 42 px versus 29 px in React, making controls about 27 px narrower.",
-        "Vertical alignment differs substantially: Android's Continue button is roughly 95 px higher, and the title, banner height, label colors, and focused-field outline also differ."
-      ],
-      "likelyCauses": [
-        "The Android profile-setup composition does not implement the React profile-picture controls.",
-        "Android username validation and its error presentation are not wired or styled equivalently.",
-        "The platforms use different input components, including adornment, border, error, and focus treatments.",
-        "Spacing, typography, and banner dimensions are using separate platform-specific values instead of shared design tokens."
-      ],
-      "suggestedOwner": "Android auth/profile-setup UI team, with design-system review",
-      "suggestedFixes": [
-        "Match the React form structure by removing the extra Android subtitle and adding the Profile picture avatar, Upload button, and helper copy.",
-        "Add the @ prefix and divider to the Android username field, and render the red error border and \"This username is already taken.\" message for the taken-name state.",
-        "Match React's approximately 29 px horizontal content insets, control width, input height, and rounded border geometry.",
-        "Reproduce React's focus treatment on the Display name field and align label color and weight, title size, and vertical spacing.",
-        "Reduce the Android yellow header height to the React height and position the Continue button after the restored Profile picture section."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.17193968485437683
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffc0000000000000000fffe7982fe7efe7efe7e7e7ee00ef00ef08ef00efffefffe81fecffee1fec1fbc412c003cffec7fec7fec7fe8000c3fb83fcc0038001dffedffec003c7fe800381fefffe81fefffe8001fffe80017ffe8001fffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
+      "generatedAt": "2026-10-30T22:02:47.561Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17184719352965794
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
-      "imageHash": "p1:17fe17fcc01e4016c03f401685da04da8ffe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff80070fffdf6f5fffffff0fffdfff01ff9fffffff8fff7fffc3ff7fff87ffdfff87ff00ff81ff0cff9fff94ffd7fffdff9fff7fff9fff1fffffff8c3fdfff1cff8fff1cff9fff43ff97ffffff07fe03faffffffff",
-      "generatedAt": "2026-10-30T05:36:58.376Z",
+      "imageHash": "p1:17fe17fcc01e4016c03f401686da04da87fe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff80070fffdf6f5fffffff0fffdfff01ff9fffffff8fff7fffc3ff7fff87ffdfff87ff00ff81ff0cffdfff94ffd7fffdff9fff7fff9fff1fffffff8c3fdfff1cff8fff1cff9fff43ff97ffffff07fe03faffff7fff",
+      "generatedAt": "2026-10-30T22:02:47.572Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1473005360446119
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1462429618827723
     },
     {
       "id": "screens.members.agent-detail.profile.computer-offline",
       "status": "pending",
-      "imageHash": "p1:14fe15fcc00e400ec01f401685da04da8ffe07fe8207ffff80070007831f000f8003021f87ff00ffdfffcfff80070fff9fff4fffffff0fffffff001f9fffffff9fff7fff9fff1fff87ff1fff9fff1fffd7ff137f89ff1effdfffd4fff7ffffff9fff5fffbfff1cfff7ff8cbf9fff1cff8fff1fff9fff47ff07fe4402ffffffff",
-      "generatedAt": "2026-10-30T05:37:02.907Z",
+      "imageHash": "p1:14fe15fcc00e400ec01f401686da04da87fe07fe8287ffff80070007831f000f8003021f87ff00ffcfffcfff80070fff9fff4fffffff0fffffff001f9fffffff9fff7fff9fff1fff97ff1fff8fff1fffcfff137f89ff1effdfffd4fff7ffffff9fff5fffbfff1cfff7ff8cbf9fff1cff8fff1fff9fff47ff07fe4402ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.581Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1468951269899137
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14608295864220033
     },
     {
       "id": "screens.members.agent-detail.profile.computer-missing",
       "status": "pending",
-      "imageHash": "p1:14fe15fcc00e4016c01f401685da04da8ffe07fe8207ffff80030007831f00078003021f87ff00ffcfffcfff80030fff8ffb4fffffff0fffffff00079fffffff9fff7fffdfff1fffdfff1fffd7ff7fff9fff7fff9fff5fffffffd4ffd7ffffff8fff5fff9fff1cff97ff8dbfcfff1cff9fff1bff9fff47ff0ffe4402ffffffff",
-      "generatedAt": "2026-10-30T05:37:03.834Z",
+      "imageHash": "p1:14fe15fcc00e4016c01f401686da04da87fe07fe8207ffff80030007831f00078003021f87ff00ffcfffcfff80030fff8ffb4fffffff0fffffff00079fffffff9fff7fffcfff1fffdfff1fffd7ff7fff9fff7fff9fff5fffffffd4ffd7ffffff8fff5fff9fff1cff97ff8dbfcfff1cff9fff1bff9fff47ff0ffe4402ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.630Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.14522116903633486
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1443367629386587
     },
     {
       "id": "screens.members.agent-detail.profile.no-computer",
       "status": "pending",
-      "imageHash": "p1:15fe15fcc01e4016c07f403685da04da8ffe07fe800fffff800f000f831f001f8003021f87ff00ffcfffcfff80030fffdfff4fffffff0fffdfff1fff9fffffffdfff7fffffff1fff97ff1fffdfff7fff9fff7fffffff5fffd7ff54ffdfffffff8fff5fff9fff1cffe7ff8dbf8fff1cffbfff1bff9fff47ff01fe4402ffffffff",
-      "generatedAt": "2026-10-30T05:37:12.795Z",
+      "imageHash": "p1:11fe15fcc01e4016c07f403686da04da87fe07fe800fffff800f000f831f001f8003021f87ff00ffcfffcfff80070fffdfff4fffffff0fffdfff1fff9fffffffdfff7fffffff1fffd7ff1fffdfff7fff9fff7fffffff5fffd7ff54ffdfffffff8fff5fff9fff1cffe7ff8dbf8fff1cffbfff1bff9fff47ff01fe4402ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.648Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.13570367669893735
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13466365563521965
     },
     {
       "id": "screens.members.agent-detail.profile.long-machine-name",
       "status": "pending",
-      "imageHash": "p1:17fe17fcc0074016c01f401787da07da8ffe07fe8257ffff80070003831f00078003021f87ff80ffdfffcfff80070fff87ffdfffffff1ffbffff001f9fffffff9fff7fffcfff3fffc7ffbfff87ff5fffc7ff400f89ff0c1fdfff1cfff7fff4ff9fffffffbfff5ffff7ff9cff9fff8fff8fff1cff9fff5bff87fe0002ffffffff",
-      "generatedAt": "2026-10-30T05:37:29.438Z",
+      "imageHash": "p1:17fe17fcc0074016c01f401787da07da87fe07fe8257ffff80070003831f00078003021f87ff80ffdfffcfff80070fff87ffdfffffff1ffbffff001f9fffffff9fff7fffcfff3fffc3ffbfff87ff5fffc7ff400f89ff0c1fdfff1cfff7fff4ff9fffffffbfff5fffffff9cffdfff8fff8fff1cff9fff5bff87fe0002ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.15205742563562463
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1508540257355423
     },
     {
       "id": "screens.members.agent-detail.profile.daemon-only",
       "status": "pending",
-      "imageHash": "p1:11fe15fcc01e4016c03f403685da04da8ffe07fe810fffff800f000f831f001f8003021f87ff00ffdfffcfff80070fff807f4fffffff0fffffff00039fff9fff9fffffff8eff7fff87ff1fff87ff1fffc7ff04ff83ff0c3fdfff1cfff7ffd4ff9fffffffbfff1ffff7ff9cbf9fff0fff8fff1cff9fff1bff07fe0002ffffffff",
-      "generatedAt": "2026-10-30T05:37:38.732Z",
+      "imageHash": "p1:11fe15fcc01e4016c07f403686da04da87fe07fe830fffff800f000f831f001f8003021f87ff00ffdfffcfff80070fff80774fffffff0fffffff00039fff9fff9fffffff8eff7fff87ff1fff87ff1fffc7ff04ff83ff0c3fdfff1cfff7ffd4ff9fffffffbfff1ffff7ff9cbf9fff0fff8fff1cff9fff1bff07fe0002ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.654Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1445210704689378
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14357860412362777
     },
     {
       "id": "screens.members.agent-detail.profile.no-membership",
       "status": "pending",
-      "imageHash": "p1:15fe15fcc01f401ec03f401787fa07da8ffe07fe800fffff8007000f831f000f8003021f87ff80ffdfffcfff80030fff83ffdfffffff0fffffff0003ffffffffcfff7fffc3ffffff87ffdfffc7ff00ffc9ff0cffdfff94ffd7fffdff9fffffff9fff1fffffff8cbfffff9cff8fff1cff9fffc3ffb7ffffff87fe47feffffffff",
-      "generatedAt": "2026-10-30T05:37:39.921Z",
+      "imageHash": "p1:15fe15fcc01f401ec03f401787da07da87fe07fe800fffff8007000f831f000f8003021f87ff80ffdfffcfff80030fff87ffdfffffff0fffffff0003ffffffffcfff7fffc3ffffff87ffdfffc7ff00ffcbff0cffdfff94ffd7fffdff9fffffff9fff1fffffff8cbfffff9cff8fff1cff9fffc3ffb7ffffff87fe47feffffffff",
+      "generatedAt": "2026-10-30T22:02:47.665Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.150401358339747
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14942007264282142
     },
     {
       "id": "screens.members.agent-detail.profile.loading-state",
       "status": "pending",
-      "imageHash": "p1:15fe15fcc01e4016c03f401684da04da8ffe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff80070fffdf6f5fffffff0fffdfff01ff9fffffffdfff7fffdfff7ffff7ff5fff9fffc2ffbfff9cfff7fff4ff9fff7fff8fff1fff9fff8c3f8fff1cff9fff1cff9fff43ff9ffffeefdfff4fff81fe03feffff7fff",
-      "generatedAt": "2026-10-30T05:37:44.874Z",
+      "imageHash": "p1:15fe15fcc01e4016c03f401686da04da87fe07fe820fffff800f000f831f000f8003021f87ff00ffcfffcfff80070fffdf6f5fffffff0fffdfff01ff9fffffffdfff7fffdfff7ffff7ff5fff9fffc2ffbfff9cfffffff4ff9fff7fff8fff1fff9fff8c3f87ff1cff9fff1cff9fff43ff9ffffeefdfff4fff80fe03feffffffff",
+      "generatedAt": "2026-10-30T22:02:47.672Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.14504800097217163
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14445693414887728
     },
     {
       "id": "screens.members.agent-detail.reminders",
-      "status": "ready",
-      "imageHash": "p1:03fc03fc401e4012401e401210001100100011001ffe7ffefffe0002fffe1ffefe7e447efe7e7ffef81e7ffee0167ffec0027ffef81e7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:38:07.253Z",
-      "severity": "high",
-      "summary": [
-        "Content state diverges: React shows \"Loading...\" and a \"No reminders yet\" empty state, while Android shows a populated reminder card with title, clock icon, relative time, and date. The overall 3.74% pixel mismatch exceeds the 2% tolerance.",
-        "The Android header includes a chat-bubble action and horizontal ellipsis; React has only a vertical ellipsis.",
-        "Header metadata differs: React shows the blue-gray handle \"@Product-UX-Designer\", while Android shows a gray, truncated role description.",
-        "The selected yellow Reminders pill on Android has pronounced gray drop-shadow/elevation; the React pill is flat.",
-        "The Chat tab icon differs: React uses a speech bubble containing three dots, while Android uses an empty outlined bubble."
-      ],
-      "likelyCauses": [
-        "The platforms were captured with different reminder fixtures or data-readiness states.",
-        "React rendered an empty/loading branch while Android had already resolved reminder data.",
-        "Header actions and metadata are configured independently between platforms.",
-        "The Android selected-tab theme applies an elevation style absent from React.",
-        "The platforms use different Chat tab icon assets."
-      ],
-      "suggestedOwner": "Android client team with the shared reminders feature and data-state owner",
-      "suggestedFixes": [
-        "Capture both platforms with the same deterministic reminder fixture and wait for the reminder query to resolve before snapshotting.",
-        "Align loading, empty, and populated reminder states, including precedence when a loading label and empty-state content would otherwise appear together.",
-        "Match header actions by either adding the chat action to React or removing it from Android, and standardize the menu ellipsis orientation.",
-        "Use the same header subtitle source, color treatment, and truncation behavior.",
-        "Standardize selected-tab elevation and the Chat tab icon glyph."
-      ],
-      "intentional": [
-        "The populated-versus-empty reminder difference may be intentional only if the platforms were deliberately tested with different datasets; the header, elevation, and icon differences are not explained by data state."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.037435019780991396
+      "status": "pending",
+      "imageHash": "p1:03e403ec401e4012401e4010120011002000000040027ffe80020002407e1ffe7ffe407e7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.720Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03400946517060266
     },
     {
       "id": "screens.members.agent-detail.workspace",
       "status": "ready",
-      "imageHash": "p1:03e403ec401e4012401e40100400240004000400001e7ffe0ff80ff80ff85ffa07fe41fa8ffe47fa7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "imageHash": "p1:03e403ec401e4012401e40104000240004000400001e7ffe0ff80ff80ff85ffa07fe41fa8ffe47fa7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
       "generatedAt": "2026-10-23T11:44:48.944Z",
       "severity": "medium",
       "summary": [
@@ -1690,369 +1308,273 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3.1-Flash-Preview",
       "error": null,
-      "metricMismatch": 0.03458162865745806
+      "metricMismatch": 0.034087103873833735
     },
     {
       "id": "screens.members.agent-detail.apps",
-      "status": "ready",
-      "imageHash": "p1:07fc07fc401e4016401e401222006300630063008fc05ffe8fc007fe80be4006f1fe47fe8ff043f28f6041f2807e400683fe401efffe4006fffe400efffe403afffe580afffe4002fffe47f2fffe43f2fffe401efffe407efffe43fefffe4002fffe4002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:21:41.111Z",
-      "severity": "high",
-      "summary": [
-        "The main content state differs: React shows an empty Applications view with “No connected apps yet” and an App events section, while Android shows populated “Connected Apps” cards for Raft Actions and Calendar.",
-        "React contains outlined “Grant Access” and “Refresh” buttons plus explanatory empty-state text; these controls and sections are missing from Android.",
-        "The header metadata and actions differ: React shows “@Product-UX-Designer” with a vertical overflow menu, while Android shows truncated “Turns product feedback, scree...” with a chat icon and horizontal ellipsis.",
-        "The selected Apps tab uses different icons on React and Android, and Android’s yellow pill has a gray outer outline/shadow and appears narrower.",
-        "Android introduces nested rounded card bounds, green “Active” badges, scope chips, a black URL, and outlined “View service” buttons; React has no corresponding containers or state indicators."
-      ],
-      "likelyCauses": [
-        "The platforms are rendering different connected-app data or authentication fixtures.",
-        "React and Android implement separate empty-state and connected-state component branches.",
-        "Platform-specific icon sets and header menu configurations were not normalized.",
-        "Shared spacing, border, typography, and surface tokens are not being applied consistently."
-      ],
-      "suggestedOwner": "Android Agents UI team, coordinated with the React Agents UI feature owner",
-      "suggestedFixes": [
-        "Use the same connected-app fixture and session state in both captures; render either the populated cards or the empty Applications state on both platforms.",
-        "Implement a shared Apps-screen hierarchy: section heading, grant action, connected-app cards, Active badges, scope chips, and service buttons should appear consistently.",
-        "Align the Apps and Reminders tab icons and normalize the selected pill’s border, shadow, width, and padding.",
-        "Align the header subtitle and overflow controls with the approved design, using the same agent metadata and menu treatment on both platforms.",
-        "Apply shared typography, spacing, inset, and rounded-container tokens and recheck the 390×844 viewport for bounds and clipping."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.09247512185900808
+      "status": "pending",
+      "imageHash": "p1:07fc07fc401e4016401e401262006300620063008fc05ffe87c007fe80be4006fbfe47fe8ff043f28f6041f2807e4006d3fe401efffe4006fffe400efffe403afffe580afffe4002fffe47f2fffe43f2fffe401efffe407efffe43fefffe4002fffe4002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.745Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08790051444079883
     },
     {
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
-      "imageHash": "p1:07fc07fc401e4012401e401280105010c0184000031803c0c0fe7fe0001807fac5fe45f207da07f8c01e401ec7fe01fa01fa4002c00e007244fe007e007a401ac01e7fdefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-10-30T05:38:08.617Z",
+      "imageHash": "p1:07fc07fc401e4012401e401280005010c04a4000031803c0c0fe7fe0001a07fac5fe45f207da07f8c01e401ec7fe01fa01fa4002c00e007204fe007e007a401ac01e7fdefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.748Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.07069510268562407
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06912207504624568
     },
     {
       "id": "screens.members.human.profile",
-      "status": "ready",
-      "imageHash": "p1:07fe07fc43fc43fcc3fc47fc81fe01fe80fe01fe83fe03fe83fe03fe83fe03fefffe7ffe9ffe000efffe7ffebffe3ffe9ffe7ffe9ffe1ffebffe1ffe87fe07fedffe5ffe87fe07fefffe7ffe87fe47fec1fe41fefffe81fa80025ffe800080fa800083fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-10-23T10:52:00.145Z",
-      "severity": "high",
-      "summary": [
-        "The purple avatar tiles retain the same rounded shape and fill, but React displays a person glyph while Android displays an \"A\" monogram in both the header and profile avatars.",
-        "The Description body differs: React shows \"Owner\", while Android shows \"Product design and server administration.\"",
-        "The Info role row uses a circled question mark in React and a circled information icon in Android; the role chip reads \"Owner\" versus \"Member\".",
-        "Created Agents differs in state and content: React shows count 0 and \"No agents created yet\", while Android shows count 2 and two agent rows with green and gray status squares.",
-        "React includes an Actions heading and full-width red \"Remove Member\" button that are absent on Android; Android also reduces the top-right member/chat icon to an empty speech bubble."
-      ],
-      "likelyCauses": [
-        "Android uses an initial-based avatar fallback instead of the shared person-icon artwork.",
-        "The captures use different member records or test fixtures for description, role, and created agents.",
-        "Android maps the role help affordance to an information icon rather than the React help icon.",
-        "Owner-only Actions content is conditionally rendered on Android.",
-        "Platform-specific icon assets produce the simplified top-right action glyph."
-      ],
-      "suggestedOwner": "Android Members/Profile feature team with shared design-system support",
-      "suggestedFixes": [
-        "Use the same person SVG and fallback logic for the small and large purple avatar tiles, or update the shared baseline if monograms are intentional.",
-        "Align the profile description, role badge, and created-agent data used by both platforms, or capture the same fixture state.",
-        "Use the same role help icon on both platforms and keep its label, spacing, and stroke aligned.",
-        "Match the Created Agents empty/list branches, count styling, row bounds, and status-indicator colors.",
-        "Render the Actions and \"Remove Member\" control for the equivalent owner state, and align the top-right action glyph."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.08727434142126089
+      "status": "pending",
+      "imageHash": "p1:07fe07fc43fc43fc43fc43fc81fe01fe80fe01fe037e03fe83fe03fe83fe03fefffe7ffe87fe000efffe7ffebffe3ffeeffe5ffe9ffe0ffe9ffe1ffe87fe07fe87fe1ffe87fe07fefffe7ffe83fe07fec1fe45fefffe81fafffe5ffefffe80fafffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.757Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04599350535369495
     },
     {
       "id": "components.members.agent-lifecycle-actions",
       "status": "pending",
-      "imageHash": "p1:1ffe1ffcc01c4016c03c4017860e07fe8fbe063e821efe1e831e0000820f000f8001021f87ff80ffcfffcfff800707ffdf6fdfffffff4fffffff01ff9fffffffcfff7fffc3ffffff87ffdfffc7ff00ffc9ff0cffdfff94ffd7fffdff9fffffff9fff5fffffff8cbfffff9cff8fff1cff9fffc3ffb7ffffff87fe47feffffffff",
-      "generatedAt": "2026-10-30T05:38:21.075Z",
+      "imageHash": "p1:1ffe1ffcc01c4016c03c4017860e07fe87be063e831efe1e835e0000820f000f8000021f87ff80ffdfffcfff800707ffff6fdfffffff4fffdfff01ff9fffffffcfff7fffc3ffffff87ffdfffc7ff00ffcbff0cffdfff94ffd7fffdff9fffffff9fff5fffffff8cbfffff9cff8fff1cff9fffc3ffb7ffffff87fe47feffffffff",
+      "generatedAt": "2026-10-30T22:02:47.764Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.22438800448279117
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2232551545347754
     },
     {
       "id": "components.members.avatar-management",
       "status": "pending",
       "imageHash": "p1:ffffffff000000000000000000000000ffff0000ffff00009fffffff9fffffff9fff9fffffff9fff807fffff807f807f807f807fffff807f807fbfff807fffff807f807f807fa07fffff807f807fffff807f807f807f807fffff807fffff807f807fffff807f807f807f807fffff807f807fffff807fefff89ff807fffffffff",
-      "generatedAt": "2026-10-30T05:38:21.532Z",
+      "generatedAt": "2026-10-30T22:02:47.811Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.294621663223559
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2944049499736704
     },
     {
       "id": "screens.settings.server-danger-modal",
       "status": "pending",
-      "imageHash": "p1:ffffffff800180018000000180010001800100018001000180010001800100018001000180000001ffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffbffc7fff800100018001000180010001800100018001000180010001800100010000000080018001ffffffff",
-      "generatedAt": "2026-10-30T05:38:28.157Z",
+      "imageHash": "p1:ffffffff800180018000000180010001800100018000000180010001800100018001000180000001ffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffffff7fffbffc7fff800100018001000180010001800100018001000180010001800100010000000080018001ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.833Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.39763539514724344
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3315949015001147
     },
     {
       "id": "screens.home.loading",
       "status": "pending",
-      "imageHash": "p1:0ffc0ff4000000000000000047fe4ffe87fe4ffefffe4ff2c7fc7ffef97e7ffec7fe7ffec3f27ffefffe7ffefffe7ffefffe7ffecffa43fccffa7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffec3fc7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe1ffe0ff8124a8a4912ca00004000fff81fff",
-      "generatedAt": "2026-10-30T05:38:29.520Z",
+      "imageHash": "p1:0ffc0ff4000000000000000047fe4ffe87fe4ffefffe4ffcc7fe007ef87e47fefffe03fcc3f277fefffe4ffafffe7ffefffe7ffecffa7ffecffa7ffefffe7ffefffe7ffefffe7ffefffe43fcfffe7ffefffe7ffefffe7ffec1fc7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe1ffe0ff8124a8a4912ca00004000fff81fff",
+      "generatedAt": "2026-10-30T22:02:47.837Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.1369985552450007
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14616025978585223
     },
     {
       "id": "screens.home.channel-list",
       "status": "pending",
-      "imageHash": "p1:0ffe0ffc0000000000000000cffe4ffecffe4ffefffedffecffc41fcc1fcc1fcfffe7ffee7fa43fcc1fcc3fcfffcfffedffe4ff8cff84ff8cff84ff9cff97ffefffc57fec3fe47fec7fe47fec7fe4002c002fffefffe0ffec3fd0f028ffb0ffc8fff0ffc8ffc03fe83ff0ffc87ff000080091e4e8a491ffe12406db6fffe3fff",
-      "generatedAt": "2026-10-30T05:38:34.826Z",
+      "imageHash": "p1:0ffe0ffc0000000000000000effe4ffecffe4ffefffedffecffc41fcc1fcc1fcfffe7ffee7fa43fcc1fcc3fcfffcfffedffe4ff8cff84ff8cff84ff9cff97ffefffc57fedbfe47fec7fe47fec7fe4002c002fffefffe0ffec3fd0f028ffb0ffc8fff0ffc8ffc03fe83ff0ffc87ff000080091e4e8a491ffe12406db6fffe3fff",
+      "generatedAt": "2026-10-30T22:02:47.840Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.09921483641862794
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09826393108383624
     },
     {
       "id": "screens.home.channel-list.dark",
       "status": "pending",
       "imageHash": "p1:ffffffff80018001800180018001800180018001800180018001800180038001800180018001800180038001800180018001800580058005800580078007800180018001800180018001800180018001800180018001800180018001800180018001800180038001800180018001f001e001e001f0018001ffffffffffffffff",
-      "generatedAt": "2026-10-30T05:38:44.438Z",
+      "generatedAt": "2026-10-30T22:02:47.856Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.13404693428390113
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13321755039764516
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "pending",
-      "imageHash": "p1:03fc03fc07fe07fcbffefffe003087fe00028304a0028000e00ee000e000e000e000f000e07ee000e002e000e002f000e002f000e00ef00ee00efffefffef03ee03efffef7feffdeffbef35effbefffefffef57ee07ef03ef87efffefffef75ee69efffefffef0bee006f03ee1860000e7feffff0006fffffff0ffffffff7fff",
-      "generatedAt": "2026-10-30T05:39:02.364Z",
+      "imageHash": "p1:03fc03fc07fe07fcbfff0ffe0231023200010001a001e001e00ee006e006e000e006e002e01ee07ee002e002e002e002e002e002e00ee00ee00ee00efffefefee03ee03ef7fefffeffbef4beffbefffefffefffee03ee07ef87efdfefffefffee69ef6befffefffee002e01ee096603ee7fe00000006fffffff0ffffffff7fff",
+      "generatedAt": "2026-10-30T22:02:47.808Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.2340204491646315
+      "error": "codex CLI not found",
+      "metricMismatch": 0.15790593981761558
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "pending",
-      "imageHash": "p1:cffe4ffe0fff0ffe001f000fe003e12be3ffe3ffc007c007e1ffe1bfe00fc000c000cff7efe7e007e007e00fe00fe07fe07fe071e501e00fe00fe01fe07fe07fe07fe3ffe3ffc2f7e067e00fec07e007e007e04fe003e07fe003e7ffe003e6dbe00fe7ffe001e007e003e001e00fe3ffe003e1ffe003e03fe0024002ffffffff",
-      "generatedAt": "2026-10-30T05:39:03.536Z",
+      "imageHash": "p1:cffe4ffe0fff0ffe000f000fe003e12be3ffe3ffc003c007e1ffe1bfe00fc000c007cff7e3e7e007e003e00fe00fe07fe07fe0f1e521e00fe00fe01fe03fe07fe07fe3ffe3ffc2f7e067e00fec07e007e007e04fe003e07fe003e7ffe003e6dbe00fe7ffe001e007e003e001e00fe3ffe003e1ffe003e01fe0024002ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.912Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.3241000661616775
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32096650058735365
     },
     {
       "id": "components.thread.message-row.md-link-ref",
       "status": "pending",
-      "imageHash": "p1:fffefffe03fc03fc03ff03ffffff3fff0fff00100009051e1fff1fff00030003ffffffffc003c003e003e003e03fe03fc03fc03fffffffffc007c01fe007fffffe07c01fc007e01fffffc1ffc001c1ffc001ffffc7ffc001c7ffe73fc7ffc7ffe1ffc7ffc1ffe3fffffee1ff0000ffffffff0000fffffffffff81fffffffffff",
-      "generatedAt": "2026-10-30T05:39:14.912Z",
+      "imageHash": "p1:fffefffe03fc03fc03ff03ffffff3fff0fff00100019075e1fff1fff00030003ffffffffe003c003e003e003e03fe03fc03fc03fffffffffc007c01fe003fffffe07c01fc003e01fffffc1ffc001c1ffc001ffffc7ffc001c7ffe73fc7ffc7ffe1ffc7ffc1ffe3fffffee1ff0000ffffffff0000fffffffffff81fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.849Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.24341416550718875
+      "error": "codex CLI not found",
+      "metricMismatch": 0.23739923584884826
     },
     {
       "id": "components.thread.message-row.md-latest-release",
       "status": "pending",
-      "imageHash": "p1:ffffffff00fe00fc3dff79ffffff3fff03df0012041f1fff3fff3fff1ffb3fffc081c001fff9f883c003c003c003c003e2fffe01c07fc001ffd3fffbe041c003e9ffffffc01fc1ffefffe1ffe01fc001e11fc001efffe0ffc001c0ffffffffffc0030000e233ffffe01fffffe01fffff3fe2ffff8005fffffffa1fffffffffff",
-      "generatedAt": "2026-10-30T05:39:20.515Z",
+      "imageHash": "p1:ffffffff00fe00fcffff7fffffff3fff07ff001e051f1fff3fff3fff1ffb3fffc081c001fff9e999c003c003c003c003e2fffeffc07fc001ffd7eb0be041c001ebffffffc01fc01feffff45fe01fc001e51fe003efffffe3c001c003ffffff3fc003c01fe333ffffe01f0000e01ffffffffeffff8007fffffffa1fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.879Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.24363670517516667
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2819761435146051
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
       "status": "pending",
-      "imageHash": "p1:627c03fc83fe00fe80020002f03ef00ef07ef06ef07ef07ef802f802f802f8fef93ef806f81ef806f826f836f81ef80ef806f802f83ef83ef812f812f802f802f806f83ef836f820f812f800f81ef806f802f80ef802f8cef8fef8faf802f802f81ef91ef802f80efbfefbfef802f802f006f006f006f006f002f002ffffffff",
-      "generatedAt": "2026-10-30T05:39:21.024Z",
+      "imageHash": "p1:627c62fc83fe03fe80010002f80ef00ef06ef06ef07ef07ef802f802f802f8fef83ef806f81ef806f826f836f81ef80ef806f802f81ef83ef812f812f802f802f806f83ef832f820f80af800f80ef806f802f80ef802f8cef8fef8faf800f802f81ef91ef806f80efbfefbfef802f802f002f006f002f006f002f002ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.904Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.186036679223883
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17646838416980593
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
       "status": "pending",
-      "imageHash": "p1:83fc03fc6ffe0bfe83ff03fe8103014693029102f4fef3fef0e5f35ef000f002f000f0fef0fef003f0bef02ef000f03ef001f003f206f081f022f103f021f206f80ef021f003f80ef203f003f20bf001f000f20ef43ef00ef43ef006f002f222f006f002f01ef01ef01ef01f9ff0f101fffff7fefffff7feffff8fffffffffff",
-      "generatedAt": "2026-10-30T05:39:32.986Z",
+      "imageHash": "p1:83fc83fc2bfe6bfe9fff03ff817f03bf91038103f6fef7fff4fff7fff221f803f003f0fff02ff0fff07ee003f803f07ff083f03ff083f083f106f001f40bf207f083f003f101f021f003fc0ff20bf003f20bf003f000f20bf63ef23ff63ef03ff002f021f046f003f01ef087f01ef0039fe0f01ffffffcfeffff8fffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.884Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.22063085883650402
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20529479936259598
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "pending",
-      "imageHash": "p1:ffffffff000000000ffc0ffc01fe01fc7fff7fffffffffffffffffff3fff0fff03fd00000001073f17ff1fff1f3f3fff003f001f003f001ffffff0ffffffffffc9ffc0ffc1ffc0ffc1ffe0ffffffffffffffc203c607c003c007c043c007ffffffffffffffff00000000fffffffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-10-30T05:39:40.292Z",
+      "imageHash": "p1:ffffffff000000000ffc0ffc01fe01fc7fff7fffffffffffffff3fff3fff0fff03fd00000001077f17ff1fff1f3f3fff003f003f003f003fffffffffffffffffc9ffc1ffc1ffc1ffc1ffe9ffffffffffffffc207c607c003c003c083c003ffffffffffffffff00000000fffffffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.873Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.26030876372756717
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17322180826454325
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "pending",
-      "imageHash": "p1:fffefffc03fe03feffffffff0fff07bf055f1fff00032003f05ff21be00fe003e0dfe073e00fc27fe003e0ffe001c001e005e017e001e007e003e423f403e003e007e107e1ffe1ffe0ffc1fff3ffc45fc007c007f09ff693e080e083ff3fea8be03fe003f243e20fe043ea0fe4ffe0ffe6ffffff00000000ffffffffffffffff",
-      "generatedAt": "2026-10-30T05:39:42.644Z",
+      "imageHash": "p1:fffefffc03fe03feffffffff0fff07ff057f1fff00030003f85ffc9fe00fe001e0dfe073e00fc27fe003e0ffe001c001e005e017e001e007e003e423f403e003e007e107e1ffe9ffe0ffc1fff3ffe01fc007c007f09ff093e081e083ff3fea8be03fe003e2c3e20fe041eadfe4ffe0ffe6ffffff00000000ffffffffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.908Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.24769053210979552
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22785808253230344
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
       "status": "pending",
-      "imageHash": "p1:fffcfffc007c007cffffffff83ff01ff81ff0bff80278067e067e0eff209f205fe07f303f306f183fffcfffff000f003f1e7f1f7f047f023f000f003f002e003f002f021ffe6ffb3f001f003f7fff0fff019f003f19ffc9bf00ff803f30bff83f00bf083f107f0c7f18ef0478040e7ffffffffffffff0000ffffffffffffffff",
-      "generatedAt": "2026-10-30T05:39:45.531Z",
+      "imageHash": "p1:fffcfffc007c007cffffffff83ff01bf81ff01ff80270027e027f067f209e20bff0ef60bf307f183fffffffff003f003f0f7f1f7f023f023f003f003f003e003f021f021fff3ffb3f002f003f0fff0fff002f003fcbbfc9bfc03f803f883ff83f083f083f046f0c7f0c6f047f7ffe7fff7feffff880c0000ffffffffffffffff",
+      "generatedAt": "2026-10-30T22:02:47.910Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "invalid pi JSON: Unexpected end of JSON input",
-      "raw": "",
-      "metricMismatch": 0.20342001748251748
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16521100427350432
     },
     {
       "id": "components.members.create-agent.dialog-no-computer",
-      "status": "ready",
-      "imageHash": "p1:ffffffff00000000000000000000000000003ffc00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe20007ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7f867ffe7ffe7ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe0000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-10-30T05:40:00.090Z",
-      "severity": "high",
-      "summary": [
-        "React shows a compact, vertically centered Create Agent modal occupying about 30% of the viewport height, while Android shows a much taller dialog occupying about 72% and shifted toward the top.",
-        "React displays a light-blue rounded callout titled \"Connect a computer first\" with explanatory copy; Android instead displays a peach, black-bordered agent-limit banner with an underlined upgrade link.",
-        "Android exposes a full form with a disabled Computer field, prefilled Name, Description with a 72/3000 counter, and Runtime selector; these elements are absent from React.",
-        "React has an active pink \"Add Computer\" button, while Android has a disabled gray \"Create\" button and no Add Computer action.",
-        "Android uses heavy black borders around the banner and form controls, whereas React uses a soft blue callout with no heavy dark outline."
-      ],
-      "likelyCauses": [
-        "The Android flow is rendering the general create-agent form instead of the zero-computer branch shown by React.",
-        "Computer-availability state is not being applied consistently before the Android form is composed.",
-        "Android uses separate modal sizing, content, and action mappings for the no-computer state rather than matching the React component."
-      ],
-      "suggestedOwner": "Android Create Agent dialog component team",
-      "suggestedFixes": [
-        "Add an early no-connected-computer render path in Android that matches the React compact centered dialog and light-blue \"Connect a computer first\" callout.",
-        "Render Cancel and an active pink Add Computer action in this state; hide the full form, disabled Create button, Runtime selector, character counter, and agent-limit banner.",
-        "Match React's modal bounds, vertical centering, internal padding, typography, callout color and radius, and footer spacing using shared design tokens.",
-        "Verify both implementations receive the same zero-computer state before opening the dialog."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.6337968026356652
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7f827ffe7ffe7ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe00007ffe0000000000000000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.965Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.818925615371113
     },
     {
       "id": "components.members.create-agent.dialog-empty",
-      "status": "ready",
-      "imageHash": "p1:bffe7ffe000000000000000000007ffc81f87ffcffff3e4cffff000c801f7ffccbff7ffcffff3cfcf9ff7ffcffff7ffcffff7ffcffff3ffcffff7ffcffff7ffcffff3ffcffff3ffcffff3ffcffff7ffcffff7ffcffff600cffff7ffcffff7ffcffff2ffcffff7ffcffff7ffcffff7ffcffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-10-30T05:23:49.296Z",
-      "severity": "high",
-      "summary": [
-        "Dialog bounds differ: React is a full-width bottom sheet with rounded top corners and no visible bottom edge, while Android is a vertically centered, inset card with all four rounded corners, side gutters, and a shadow.",
-        "Header and action layout differ: React has the X on the left, title beside it, a disabled Create button on the right, and a divider; Android has the title on the left, X on the right, no header divider, and a Cancel/Create footer.",
-        "The limit alert differs in shape and typography: React uses a borderless rounded peach banner with a regular first line and bold second line, while Android uses a square-cornered peach panel with a black border, bold text, and an underlined upgrade link.",
-        "The Computer field is a bordered dropdown with a chevron in React, but a radio list with one selected and one disabled offline option in Android.",
-        "Android adds a Runtime configuration unavailable banner, labels Description as optional, omits the Runtime required asterisk, uses different placeholder text, preselects Codex CLI, and indents all form content farther from the viewport edges."
-      ],
-      "likelyCauses": [
-        "Android and React use different dialog container primitives and composition patterns.",
-        "The Computer field is mapped to a different form-control component on Android.",
-        "Action-button placement is implemented independently on each platform.",
-        "Android-specific state and copy rules introduce the extra runtime banner and populated runtime value.",
-        "Shared spacing, typography, color, and component-bound tokens are not being applied consistently."
-      ],
-      "suggestedOwner": "Android Create Agent dialog component owner, with design-system support",
-      "suggestedFixes": [
-        "If React is the source of truth, render the Android dialog as a full-width bottom sheet aligned to the same top offset, with only the top corners rounded and the backdrop limited to the area above it.",
-        "Match the React header: put the X first, place the title beside it, keep the disabled Create button at the top right, add the horizontal divider, and remove the Android footer actions.",
-        "Restyle the limit banner with the React borderless rounded shape, pale-peach fill, regular-weight first line, bold second line, and no underline.",
-        "Replace the Android radio list with the React full-width bordered Computer dropdown and chevron, preserving the same field height and alignment.",
-        "Remove the extra runtime-unavailable banner and align field copy and states: Description without optional suffix, Name placeholder e.g. Alice, Runtime with an asterisk, and an unselected Select... control."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3.1-Flash-Preview",
-      "error": null,
-      "metricMismatch": 0.48604900014852626
+      "status": "pending",
+      "imageHash": "p1:8ffe03fc0000000000003ffc000037fce1fb3c0cfbff000cffff03fc800f7ffcc3ff0cfcffff3ffcf9ff7ffcffff7ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff7ffcffff200cffff7ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff7ffcffff3ffcffff0000ffff0000ffffffff",
+      "generatedAt": "2026-10-30T22:02:47.970Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4521161610024169
     },
     {
       "id": "components.members.create-agent.builtin-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-10-30T05:40:00.868Z",
+      "generatedAt": "2026-10-30T22:02:47.907Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2065,7 +1587,7 @@
       "id": "components.members.create-agent.pi-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-10-30T05:40:00.868Z",
+      "generatedAt": "2026-10-30T22:02:47.907Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

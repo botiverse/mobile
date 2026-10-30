@@ -1,30 +1,32 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-10-30T05:40:40.472Z",
-  "latestRunId": "46561aa-20261030051258",
+  "generatedAt": "2026-10-30T22:02:53.105Z",
+  "latestRunId": "f149c5a3-20261030220049",
   "latest": {
-    "runId": "46561aa-20261030051258",
-    "commit": "46561aa-20261030051258",
-    "commitSubject": "fix(android): bottom tabs switch without the fade through (#3997)",
-    "generatedAt": "2026-10-30T05:40:40.472Z",
+    "runId": "f149c5a3-20261030220049",
+    "commit": "f149c5a3-20261030220049",
+    "commitSubject": "fix(links): open Raft Desktop raft:// message links on iOS and Android (#4028)",
+    "generatedAt": "2026-10-30T22:02:53.105Z",
     "baseline": "react",
     "current": "android",
     "summary": {
       "total": 101,
       "same": 0,
       "pass": 2,
-      "basic-pass": 8,
-      "different": 87,
+      "basic-pass": 9,
+      "different": 86,
       "missing": 4
     },
     "analysisSummary": {
       "total": 101,
-      "ready": 38,
-      "pending": 63
+      "ready": 16,
+      "pending": 85
     },
     "comparisons": [
-      "react__android"
+      "react__android",
+      "react__ios",
+      "android__ios"
     ],
     "componentMatrixSummary": {
       "total": 130,
@@ -53,16 +55,16 @@
           "total": 112
         },
         "android": {
-          "active": 91,
-          "pending": 19,
+          "active": 90,
+          "pending": 18,
           "unsupported": 0,
-          "total": 110
+          "total": 108
         },
         "harmony": {
           "active": 0,
-          "pending": 84,
+          "pending": 81,
           "unsupported": 0,
-          "total": 84
+          "total": 81
         },
         "ios": {
           "active": 0,
@@ -72,9 +74,9 @@
         }
       }
     },
-    "href": "runs/46561aa-20261030051258/",
-    "componentMatrix": "runs/46561aa-20261030051258/component-matrix.json",
-    "llms": "runs/46561aa-20261030051258/metadata.json"
+    "href": "runs/f149c5a3-20261030220049/",
+    "componentMatrix": "runs/f149c5a3-20261030220049/component-matrix.json",
+    "llms": "runs/f149c5a3-20261030220049/metadata.json"
   },
   "componentMatrixSummary": {
     "total": 130,
@@ -103,16 +105,16 @@
         "total": 112
       },
       "android": {
-        "active": 91,
-        "pending": 19,
+        "active": 90,
+        "pending": 18,
         "unsupported": 0,
-        "total": 110
+        "total": 108
       },
       "harmony": {
         "active": 0,
-        "pending": 84,
+        "pending": 81,
         "unsupported": 0,
-        "total": 84
+        "total": 81
       },
       "ios": {
         "active": 0,
@@ -123,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "f149c5a3-20261030220049",
+      "commit": "f149c5a3-20261030220049",
+      "commitSubject": "fix(links): open Raft Desktop raft:// message links on iOS and Android (#4028)",
+      "generatedAt": "2026-10-30T22:02:53.105Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 101,
+        "same": 0,
+        "pass": 2,
+        "basic-pass": 9,
+        "different": 86,
+        "missing": 4
+      },
+      "analysisSummary": {
+        "total": 101,
+        "ready": 16,
+        "pending": 85
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 130,
+        "active": 110,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 90,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 35,
+            "active": 20,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 99,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 112
+          },
+          "android": {
+            "active": 90,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 81,
+            "unsupported": 0,
+            "total": 81
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/f149c5a3-20261030220049/",
+      "componentMatrix": "runs/f149c5a3-20261030220049/component-matrix.json",
+      "llms": "runs/f149c5a3-20261030220049/metadata.json"
+    },
     {
       "runId": "46561aa-20261030051258",
       "commit": "46561aa-20261030051258",

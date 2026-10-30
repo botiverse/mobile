@@ -1,0 +1,21 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.thread.composer.channel-suggestions",
+  "image": "components.thread.composer.channel-suggestions.png",
+  "pageName": "compose_thread_composer_visual",
+  "pageData": {
+    "instanceId": "visual-thread-composer-channel-suggestions",
+    "visualFixture": "channel_suggestions",
+    "pageName": "compose_thread_composer_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

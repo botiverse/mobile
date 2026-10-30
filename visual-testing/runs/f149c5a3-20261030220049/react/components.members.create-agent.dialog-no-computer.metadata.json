@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.members.create-agent.dialog-no-computer",
+  "image": "visual-testing-results/react/components.members.create-agent.dialog-no-computer.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "body",
+  "crop": {
+    "mode": "element",
+    "contract": "modal-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-30T21:39:09.067Z"
+}

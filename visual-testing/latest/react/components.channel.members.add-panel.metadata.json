@@ -11,7 +11,7 @@
   "selector": "body",
   "crop": {
     "mode": "element",
-    "contract": "modal-viewport",
+    "contract": "page-viewport",
     "rect": {
       "x": 0,
       "y": 0,
@@ -26,5 +26,5 @@
     },
     "outset": null
   },
-  "capturedAt": "2026-10-30T05:06:49.077Z"
+  "capturedAt": "2026-10-30T21:38:07.645Z"
 }
