@@ -2486,6 +2486,8 @@
     <string name="settings_server_profile_subtitle">工作空间名称、slug 和角色</string>
     <string name="settings_server_administration_title">管理</string>
     <string name="settings_server_administration_subtitle">管理员、邀请、加入链接和协议</string>
+    <string name="settings_im_bridges_title">IM Bridges</string>
+    <string name="settings_im_bridges_subtitle">管理 Raft 与外部即时通讯服务之间的连接</string>
     <string name="settings_server_label_name">名称</string>
     <string name="settings_server_label_slug">Slug</string>
     <string name="settings_server_placeholder_name">工作空间名称</string>

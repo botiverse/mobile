@@ -516,6 +516,8 @@ private const val SettingsDestinationHome = "home"
 internal const val SettingsDestinationAccount = "account"
 internal const val SettingsDestinationComputers = "computers"
 internal const val SettingsDestinationAdministration = "administration"
+/** IM Bridges, the web section `/settings/im-bridges`; a row only while `slack_bridge_v0` is on. */
+internal const val SettingsDestinationImBridges = "im-bridges"
 internal const val SettingsDestinationConnectedApps = "connected-apps"
 internal const val SettingsDestinationBilling = "billing"
 internal const val SettingsDestinationStorage = "storage"
@@ -8008,6 +8010,7 @@ private fun RaftAppShellReadyContent(
                                 openComputersPage()
                             }
                             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
+                            SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
                             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
                             SettingsDestinationHandsFeedback ->
                                 if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
@@ -8025,6 +8028,13 @@ private fun RaftAppShellReadyContent(
                     }
                     val settingsSession = (authGateState as? SharedAuthGateState.Ready)?.session
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // IM Bridges row: the server's slack_bridge_v0, live like the web
+                        // `useServerFeatureFlag` + `isSlackBridgeSurfaceEnabled` (off until resolved on).
+                        val settingsFeatureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+                        val imBridgesEnabled =
+                            remember(readyServerId, settingsFeatureFlagRevision) {
+                                settingsImBridgesEnabled(sharedStores.serverFeatureFlags, readyServerId)
+                            }
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt).
@@ -8032,7 +8042,7 @@ private fun RaftAppShellReadyContent(
                             val feedbackWeb =
                                 sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
                             SettingsWideListDetail(
-                                payload = appShellSettingsHomePayload(settingsSession),
+                                payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
                                 picked = settingsWidePicked,
@@ -8086,6 +8096,7 @@ private fun RaftAppShellReadyContent(
                                 },
                             onBack = moreChildBack,
                             session = settingsSession,
+                            imBridgesEnabled = imBridgesEnabled,
                             bottomContentPadding = appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
                             onSettingsHeaderClick = {

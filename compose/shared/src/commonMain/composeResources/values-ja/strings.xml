@@ -2486,6 +2486,8 @@
     <string name="settings_server_profile_subtitle">ワークスペースの名前、スラッグ、役割</string>
     <string name="settings_server_administration_title">管理</string>
     <string name="settings_server_administration_subtitle">管理者、招待、参加リンク、同意事項</string>
+    <string name="settings_im_bridges_title">IM ブリッジ</string>
+    <string name="settings_im_bridges_subtitle">Raft と外部メッセージングサービスとの接続を管理します</string>
     <string name="settings_server_label_name">名前</string>
     <string name="settings_server_label_slug">スラッグ</string>
     <string name="settings_server_placeholder_name">ワークスペース名</string>

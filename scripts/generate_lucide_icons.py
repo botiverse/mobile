@@ -218,6 +218,7 @@ LUCIDE_ICONS = [
     "monitor-x",
     "mosaic",
     "music",
+    "network",
     "package-check",
     "package",
     "palette",

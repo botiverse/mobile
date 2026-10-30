@@ -77,6 +77,7 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
     when (this) {
         SettingsWebViewSurface.Billing -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Billing)
         SettingsWebViewSurface.Administration -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Administration)
+        SettingsWebViewSurface.ImBridges -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.ImBridges)
         // Settings > Connected apps: the web's Integrations section.
         SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         SettingsWebViewSurface.Feedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)

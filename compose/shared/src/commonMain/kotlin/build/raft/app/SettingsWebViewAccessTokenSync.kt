@@ -22,6 +22,7 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     Billing("billing"),
     Marketplace("marketplace"),
     Administration("administration"),
+    ImBridges("im-bridges"),
     ReleaseNotes("release-notes"),
     Feedback("feedback"),
     /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */

@@ -211,6 +211,13 @@ private fun SettingsWebViewScreen() {
                 iconName = RaftLucideIconName.Shield,
                 spec = settingsAdministrationWebViewSpec,
             )
+        SettingsWebViewSurface.ImBridges ->
+            StandaloneSettingsWebViewPage(
+                pager = pager,
+                title = stringResource(Res.string.settings_im_bridges_title),
+                iconName = RaftLucideIconName.Network,
+                spec = settingsImBridgesWebViewSpec,
+            )
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
