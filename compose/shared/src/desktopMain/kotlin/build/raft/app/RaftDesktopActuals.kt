@@ -17,8 +17,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.compat.ui.PlayState
-import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.data.RaftDesktopPaths
 import build.raft.app.data.SharedAuthDataSource
 import java.io.File
@@ -73,23 +71,6 @@ internal actual fun RaftPdfDocumentView(
 ) {
     LaunchedEffect(path) { onError(RaftPdfDocumentError.Corrupt) }
     Box(modifier.fillMaxSize())
-}
-
-// TODO(desktop): no video player yet; shows a notice instead of the video.
-@Composable
-internal actual fun RaftVideoPlayer(
-    source: String,
-    playControl: VideoPlayControl,
-    seekRequestId: Int?,
-    seekTimeMs: Int,
-    muted: Boolean,
-    rate: Float,
-    onPlayStateChanged: (PlayState) -> Unit,
-    onPlayTimeChanged: (currentMs: Int, totalMs: Int) -> Unit,
-    onFirstFrame: () -> Unit,
-    modifier: Modifier,
-) {
-    RaftDesktopUnsupportedNotice("Video playback is not available on desktop yet.", modifier)
 }
 
 @Composable

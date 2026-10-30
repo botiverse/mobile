@@ -56,6 +56,8 @@ internal actual fun raftPlatformDefaultAppTabBarRenderer(): String? = null
 // Media3 PlayerView ships the mature controller (task #556 phase 2).
 internal actual fun raftPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun raftPlatformPlaysAudioOnlyMedia(): Boolean = true
+
 internal actual fun raftPlatformSupportsVideoAttachmentContainer(
     container: RaftPreviewableVideoContainer
 ): Boolean =

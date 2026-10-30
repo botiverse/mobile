@@ -39,8 +39,13 @@ sqldelight = "2.4.1"
 # Desktop-only embedded WebView: the OS engine through Wry (macOS WKWebView, Windows WebView2,
 # Linux WebKitGTK). The last Wry release of ComposeNativeWebView (Apache-2.0); see :shared desktopMain.
 # Upstream no longer maintains it (moved to Tao): owned by Lagoon, who forks it if it needs a fix.
-# Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyWryWebviewChecksum): bump both together.
+# Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
 wrywebview = "1.0.0-beta-02"
+# kdroidFilter ComposeMediaPlayer (MIT): desktop video playback (RaftVideoPlayer.desktop.kt). On macOS a
+# small JNI bridge (shipped in the jar, macOS 14+) drives AVFoundation; no bundled media runtime.
+# :shared desktopMain only, never on the Android / iOS graphs. Built against Kotlin 2.4.10 / CMP 1.11.1.
+# Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
+composeMediaPlayer = "0.11.4"
 coil = "3.6.3"
 # net.engawapg.lib:zoomable (usuiat/Zoomable): the desktop / wide image lightbox's zoom and pan
 # (mouse wheel without a modifier key, drag, double click; inside a HorizontalPager). Apache-2.0;

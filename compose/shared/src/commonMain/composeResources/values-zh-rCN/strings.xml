@@ -851,6 +851,12 @@
     <string name="thread_video_attachment_fallback_name">视频附件</string>
     <string name="thread_video_download_to_view">下载后查看</string>
     <string name="thread_video_open_in_preview">在预览中打开 %1$s</string>
+    <string name="video_player_mute">静音</string>
+    <string name="video_player_unmute">取消静音</string>
+    <string name="video_player_volume">音量</string>
+    <string name="video_player_position">播放进度</string>
+    <string name="video_player_fullscreen">全屏</string>
+    <string name="video_player_exit_fullscreen">退出全屏</string>
     <string name="thread_audio_preview_unavailable">音频预览不可用</string>
     <string name="thread_audio_preview_loading">正在加载音频预览</string>
     <string name="thread_audio_playback_failed">音频播放失败</string>

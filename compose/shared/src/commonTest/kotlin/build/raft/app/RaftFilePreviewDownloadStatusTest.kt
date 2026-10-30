@@ -1852,6 +1852,25 @@ class RaftFilePreviewDownloadStatusTest {
                 raftVideoPlayerFormatProfileSupports(RaftVideoPlayerFormatProfile.IosAvPlayer, it)
             }
         )
+        // The Compose desktop app plays through AVFoundation too (ComposeMediaPlayer on macOS).
+        assertEquals(
+            apple,
+            all.filterTo(mutableSetOf()) {
+                raftVideoPlayerFormatProfileSupports(RaftVideoPlayerFormatProfile.DesktopMacAvFoundation, it)
+            }
+        )
+    }
+
+    @Test
+    fun audioOnlyKeepsTheSharedControlsWhereTheHostCannotPlayAudio() {
+        // Android / iOS: the native controller owns audio and video alike.
+        assertTrue(raftFilePreviewVideoUsesNativeController(audioOnly = true, platformNativeController = true, platformPlaysAudioOnly = true))
+        assertTrue(raftFilePreviewVideoUsesNativeController(audioOnly = false, platformNativeController = true, platformPlaysAudioOnly = true))
+        // Desktop: its player takes video, audio keeps the shared card and controls.
+        assertTrue(raftFilePreviewVideoUsesNativeController(audioOnly = false, platformNativeController = true, platformPlaysAudioOnly = false))
+        assertFalse(raftFilePreviewVideoUsesNativeController(audioOnly = true, platformNativeController = true, platformPlaysAudioOnly = false))
+        // No native controller: shared controls for everything.
+        assertFalse(raftFilePreviewVideoUsesNativeController(audioOnly = false, platformNativeController = false, platformPlaysAudioOnly = true))
     }
 
     @Test
