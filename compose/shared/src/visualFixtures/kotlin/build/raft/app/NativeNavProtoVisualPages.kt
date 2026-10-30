@@ -75,6 +75,8 @@ private fun nativeNavProtoThreadPayload(): RaftThreadScreenPayload {
         showMembersAction = true,
         showSettingsAction = true,
         membersCount = 5,
+        // Shows the head's refresh spinner (the native title view's activity indicator).
+        backgroundRefreshing = true,
         messages = messages,
     )
 }

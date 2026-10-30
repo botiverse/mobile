@@ -161,7 +161,7 @@ jobs:
           }
           for mode in now native; do
             flag=0; [ "$mode" = native ] && flag=1
-            for scene in home thread members midswipe; do
+            for scene in home homecollapsed homehalf thread members midswipe; do
               capture "$mode" "$scene" "$flag" "RAFT_PROTO_READY scene=$scene"
               xcrun simctl io "$SIM_UDID" screenshot "$out/$mode-$scene.png"
               echo "captured $mode-$scene"

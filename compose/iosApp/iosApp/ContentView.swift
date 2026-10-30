@@ -236,6 +236,25 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
         enabled && nativePageNames.contains(pageName)
     }
 
+    /// Pages whose title is large and collapses with their primary list (the tab root, lists).
+    /// The conversation stays inline: its list is reversed (newest at the bottom), so a large
+    /// title would only show after scrolling back to the first message (Messages is inline too).
+    private static let largeTitlePageNames: Set<String> = [
+        "compose_native_nav_proto_home",
+        "compose_channel_members_parity_visual",
+        "compose_thread_members",
+    ]
+
+    static func usesLargeTitle(pageName: String) -> Bool {
+        largeTitlePageNames.contains(pageName)
+    }
+
+    /// In a capture with the prototype off, the same pages get a script-only bridge so the
+    /// scripted scroll runs in both modes.
+    static func scriptsPage(pageName: String) -> Bool {
+        demoScene != nil && nativePageNames.contains(pageName)
+    }
+
     static var demoScene: String? {
         let scene = ProcessInfo.processInfo.environment["RAFT_PROTO_SCENE"]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -243,23 +262,43 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
     }
 }
 
-/// Puts what the page's shared head publishes into the real navigation item.
+/// Puts what the page's shared head publishes into the real navigation item, and mirrors the
+/// page's primary Compose list into a hidden UIScrollView so UIKit's large title collapses with it.
 final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private weak var controller: UIViewController?
-    private let bridge: RaftNativeNavBarBridge
+    let bridge: RaftNativeNavBarBridge
     private let hostId: String
+    /// The page asks for a large title (tab root Home, the members list).
+    private(set) var largeTitle: Bool
 
-    init(controller: UIViewController, bridge: RaftNativeNavBarBridge, hostId: String) {
+    // Mirror state
+    private var mirror: UIScrollView?
+    private var reportedOffset: CGFloat = 0
+    private var reportedContentHeight: CGFloat = 0
+    private var expandedTop: CGFloat = 0
+    private var collapseRange: CGFloat = 0
+    private var metricsSource = "none"
+    private var stuckReports = 0
+    private var lastLoggedOffset: CGFloat = -1000
+    private var lastExtras: [String: Any] = [:]
+    private var lastTitle = ""
+    private var lastSubtitle: String?
+    private var lastActionsJson = "[]"
+
+    init(controller: UIViewController, bridge: RaftNativeNavBarBridge, hostId: String, largeTitle: Bool) {
         self.controller = controller
         self.bridge = bridge
         self.hostId = hostId
+        self.largeTitle = largeTitle
         super.init()
-        // Pushed pages never take the large title (only the tab root does).
-        controller.navigationItem.largeTitleDisplayMode = .never
+        controller.navigationItem.largeTitleDisplayMode = largeTitle ? .always : .never
     }
 
     func attach() {
         bridge.attachListener(listener: self)
+        if let page = controller as? RaftPageViewController {
+            page.raftNativeNavBarLayoutHook = { [weak self] reason in self?.pageDidLayout(reason: reason) }
+        }
     }
 
     deinit {
@@ -267,28 +306,61 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         RaftNativeNavBarRegistry.shared.unregister(hostId: hostId, bridge: bridge)
     }
 
-    func onNativeNavBarChanged(title: String, subtitle: String?, actionsJson: String) {
-        guard let controller else { return }
-        // The navigation item that counts is the one of the stack's child (a tab root's tab bar
-        // controller owns its own items and large title; the page only names it).
-        var owner: UIViewController = controller
+    /// The stack's child that owns the navigation item (a tab root's UITabBarController).
+    private var owner: UIViewController? {
+        guard var owner = controller else { return nil }
         while let parent = owner.parent, !(parent is UINavigationController) {
             owner = parent
         }
+        return owner
+    }
+
+    // MARK: Head
+
+    func onNativeNavBarChanged(title: String, subtitle: String?, actionsJson: String, extrasJson: String) {
+        lastTitle = title
+        lastSubtitle = subtitle
+        lastActionsJson = actionsJson
+        lastExtras = ((try? JSONSerialization.jsonObject(with: Data(extrasJson.utf8))) as? [String: Any]) ?? [:]
+        applyHead()
+    }
+
+    private func applyHead() {
+        guard let controller, let owner else { return }
         if owner !== controller {
+            // Tab root: the root controller owns the items and the large title; the page names it.
             if (owner as? UITabBarController)?.selectedViewController === controller {
-                owner.navigationItem.title = title
+                owner.navigationItem.title = lastTitle
+                owner.navigationItem.backButtonTitle = lastTitle
             }
             return
         }
         let item = controller.navigationItem
-        item.title = title
+        item.title = lastTitle
+        // Experiment (phase 1 goal 2): ask for the previous title on the next page's Back.
+        item.backButtonTitle = lastTitle
+        item.backButtonDisplayMode = .default
+        item.largeTitleDisplayMode = largeTitle ? .always : .never
+        let refreshing = (lastExtras["refreshing"] as? Bool) ?? false
+        let badge = lastExtras["badge"] as? String
+        let leading = lastExtras["leading"] as? [String: Any]
+        var subtitle = lastSubtitle
+        if largeTitle {
+            // A large title cannot carry a title view: the count goes in the subtitle line.
+            item.titleView = nil
+            if let badge, subtitle == nil { subtitle = badge }
+        } else if leading != nil || refreshing || badge != nil {
+            item.titleView = RaftNativeNavTitleView(
+                title: lastTitle, subtitle: lastSubtitle, leading: leading, badge: badge, refreshing: refreshing
+            )
+        } else {
+            item.titleView = nil
+        }
         // iOS 26 navigation subtitles; looked up at run time so the prototype builds on any SDK.
         if item.responds(to: NSSelectorFromString("setSubtitle:")) {
             item.setValue(subtitle, forKey: "subtitle")
         }
-        item.largeTitleDisplayMode = .never
-        let actions = RaftNativeNavBarHost.parseActions(actionsJson)
+        let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
         var barItems: [UIBarButtonItem] = []
         if actions.count > 1 {
             // Everything after the first action lives in the ⋯ menu (rightmost).
@@ -309,15 +381,33 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
                 menu: nil
             )
             button.accessibilityLabel = first.label
+            if let count = first.badge, count > 0 {
+                if #available(iOS 26.0, *) {
+                    button.badge = .count(count)
+                }
+                button.accessibilityValue = "\(count)"
+            }
             barItems.append(button)
         }
+        if largeTitle && refreshing {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            barItems.append(UIBarButtonItem(customView: spinner))
+        }
         item.rightBarButtonItems = barItems
+        var badgeLog = badge ?? "-"
+        if let count = actions.first?.badge { badgeLog = "button:\(count)" }
+        let hasTitleView = item.titleView != nil
+        RaftNativeNavProtoDemo.marker(
+            "RAFT_PROTO_HEAD title=\(lastTitle) large=\(largeTitle) titleView=\(hasTitleView) badge=\(badgeLog) refreshing=\(refreshing)"
+        )
     }
 
     private struct Action {
         let id: String
         let label: String
         let symbol: String
+        let badge: Int?
     }
 
     private static func parseActions(_ json: String) -> [Action] {
@@ -326,7 +416,297 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
         return rows.compactMap { row in
             guard let id = row["id"] as? String, let symbol = row["systemSymbol"] as? String else { return nil }
-            return Action(id: id, label: row["label"] as? String ?? id, symbol: symbol)
+            return Action(id: id, label: row["label"] as? String ?? id, symbol: symbol, badge: (row["badge"] as? NSNumber)?.intValue)
+        }
+    }
+
+    // MARK: Large-title mirror
+
+    func onNativeNavBarScroll(offset: Double, contentHeight: Double) {
+        reportedOffset = CGFloat(offset)
+        reportedContentHeight = CGFloat(contentHeight)
+        applyMirror()
+        if largeTitle, collapseRange > 0 {
+            // Read back what UIKit did with the bar once it has laid out.
+            DispatchQueue.main.async { [weak self] in self?.verifyMirror() }
+        }
+    }
+
+    private func ensureMirror() {
+        guard largeTitle, mirror == nil, let controller, controller.isViewLoaded else { return }
+        let scroll = UIScrollView(frame: controller.view.bounds)
+        scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scroll.isUserInteractionEnabled = false
+        scroll.scrollsToTop = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.backgroundColor = .clear
+        scroll.contentInsetAdjustmentBehavior = .always
+        scroll.accessibilityElementsHidden = true
+        // Behind the Compose content: never seen, never touched.
+        controller.view.insertSubview(scroll, at: 0)
+        mirror = scroll
+        controller.setContentScrollView(scroll, for: .top)
+        if let owner, owner !== controller {
+            owner.setContentScrollView(scroll, for: .top)
+        }
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_MIRROR_ATTACHED page=\(type(of: controller))")
+    }
+
+    private func applyMirror() {
+        guard let mirror, let controller else { return }
+        let bounds = controller.view.bounds
+        let base = expandedTop > 0 ? expandedTop : mirror.adjustedContentInset.top
+        let height = max(bounds.height + collapseRange + 400, reportedContentHeight + base + 200)
+        if abs(mirror.contentSize.height - height) > 1 || mirror.contentSize.width != bounds.width {
+            mirror.contentSize = CGSize(width: bounds.width, height: height)
+        }
+        let target = -base + reportedOffset
+        if abs(mirror.contentOffset.y - target) > 0.25 {
+            mirror.contentOffset = CGPoint(x: 0, y: target)
+        }
+    }
+
+    /// RaftPageViewController laid out / appeared.
+    private func pageDidLayout(reason: String) {
+        guard largeTitle, let controller else { return }
+        ensureMirror()
+        guard let mirror else { return }
+        if mirror.frame != controller.view.bounds { mirror.frame = controller.view.bounds }
+        measureMetricsIfNeeded(reason: reason)
+        applyMirror()
+    }
+
+    private var settled: Bool {
+        guard let controller, let nav = controller.navigationController else { return false }
+        return controller.view.window != nil && nav.transitionCoordinator == nil && !nav.isNavigationBarHidden
+    }
+
+    private func measureMetricsIfNeeded(reason: String) {
+        guard collapseRange == 0, metricsSource != "failed", reportedOffset == 0, settled, let controller else { return }
+        let top = controller.view.safeAreaInsets.top
+        guard top > 0 else { return }
+        let (range, source) = RaftNativeNavBarHost.largeTitleHeight(in: controller.navigationController?.navigationBar)
+        expandedTop = top
+        collapseRange = range
+        metricsSource = source
+        bridge.setLargeTitleMetrics(expandedTop: Double(top), collapseRange: Double(range))
+        RaftNativeNavProtoDemo.marker(
+            "RAFT_PROTO_LARGE_TITLE expandedTop=\(top) range=\(range) source=\(source) reason=\(reason)"
+        )
+    }
+
+    /// The large title's own row in the bar (UIKit's private large-title view), else the
+    /// iOS 26 default; corrected below from what the bar really does once fully collapsed.
+    private static func largeTitleHeight(in bar: UINavigationBar?) -> (CGFloat, String) {
+        guard let bar else { return (52, "default") }
+        var found: UIView?
+        func walk(_ view: UIView) {
+            if found != nil { return }
+            let name = NSStringFromClass(type(of: view))
+            if name.contains("LargeTitle"), !view.isHidden, view.bounds.height > 20, view.bounds.height < 140 {
+                found = view
+                return
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(bar)
+        if let found { return (found.bounds.height, NSStringFromClass(type(of: found))) }
+        return (52, "default")
+    }
+
+    private func verifyMirror() {
+        guard largeTitle, collapseRange > 0, settled, let controller else { return }
+        let actual = controller.view.safeAreaInsets.top
+        let expected = expandedTop - min(reportedOffset, collapseRange)
+        if abs(reportedOffset - lastLoggedOffset) >= 6 || (reportedOffset == 0 && lastLoggedOffset != 0) {
+            lastLoggedOffset = reportedOffset
+            RaftNativeNavProtoDemo.marker(
+                String(format: "RAFT_PROTO_MIRROR offset=%.1f expectedTop=%.1f safeTop=%.1f mirrorY=%.1f",
+                       reportedOffset, expected, actual, mirror?.contentOffset.y ?? 0)
+            )
+        }
+        if reportedOffset >= collapseRange + 4 {
+            if abs(actual - expandedTop) < 0.5 {
+                // UIKit did not follow the mirror at all.
+                stuckReports += 1
+                if stuckReports >= 20 { fallBackToInline() }
+            } else {
+                stuckReports = 0
+                // Fully collapsed now: the bar's real collapse range.
+                let real = expandedTop - actual
+                if real > 0, abs(real - collapseRange) > 0.5 {
+                    RaftNativeNavProtoDemo.marker("RAFT_PROTO_LARGE_TITLE refine range=\(collapseRange)->\(real)")
+                    collapseRange = real
+                    metricsSource = "observed"
+                    bridge.setLargeTitleMetrics(expandedTop: Double(expandedTop), collapseRange: Double(real))
+                }
+            }
+        }
+    }
+
+    /// The mirror did not move the bar: inline title, the page follows the live safe area again.
+    private func fallBackToInline() {
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN mirror_not_followed fallback=inline")
+        metricsSource = "failed"
+        largeTitle = false
+        collapseRange = 0
+        bridge.setLargeTitleMetrics(expandedTop: 0, collapseRange: 0)
+        owner?.navigationItem.largeTitleDisplayMode = .never
+        controller?.navigationItem.largeTitleDisplayMode = .never
+        applyHead()
+    }
+
+    /// Capture script: scrolls the page's primary list like a finger would.
+    @discardableResult
+    func scriptedScroll(dy: CGFloat) -> Bool {
+        bridge.scriptedScroll(dy: Double(dy))
+    }
+
+    func scriptedScrollEnd() {
+        bridge.scriptedScrollEnd()
+    }
+}
+
+/// The conversation's title: channel glyph tile / DM avatar, title over subtitle, the refresh
+/// spinner, and a count badge (what the Compose head carried beside its title).
+final class RaftNativeNavTitleView: UIStackView {
+    init(title: String, subtitle: String?, leading: [String: Any]?, badge: String?, refreshing: Bool) {
+        super.init(frame: .zero)
+        axis = .horizontal
+        alignment = .center
+        spacing = 8
+        if let leading, let view = Self.leadingView(leading) {
+            addArrangedSubview(view)
+        }
+        let text = UIStackView()
+        text.axis = .vertical
+        text.alignment = .leading
+        text.spacing = 0
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.textColor = .label
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        text.addArrangedSubview(titleLabel)
+        if let subtitle, !subtitle.isEmpty {
+            let sub = UILabel()
+            sub.text = subtitle
+            sub.font = .systemFont(ofSize: 12)
+            sub.textColor = .secondaryLabel
+            sub.lineBreakMode = .byTruncatingTail
+            sub.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            text.addArrangedSubview(sub)
+        }
+        addArrangedSubview(text)
+        if let badge {
+            let label = UILabel()
+            label.text = " \(badge) "
+            label.font = .systemFont(ofSize: 12, weight: .semibold)
+            label.textColor = .secondaryLabel
+            label.layer.borderColor = UIColor.separator.cgColor
+            label.layer.borderWidth = 1
+            label.layer.cornerRadius = 9
+            label.textAlignment = .center
+            label.heightAnchor.constraint(equalToConstant: 18).isActive = true
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 22).isActive = true
+            addArrangedSubview(label)
+        }
+        if refreshing {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            spinner.startAnimating()
+            addArrangedSubview(spinner)
+        }
+        accessibilityLabel = [title, subtitle].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    private static func color(_ argb: Any?, fallback: UIColor) -> UIColor {
+        guard var hex = argb as? String else { return fallback }
+        hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard hex.count == 8, let value = UInt32(hex, radix: 16) else { return fallback }
+        return UIColor(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: CGFloat((value >> 24) & 0xFF) / 255
+        )
+    }
+
+    private static func leadingView(_ leading: [String: Any]) -> UIView? {
+        let size: CGFloat = 28
+        switch leading["kind"] as? String {
+        case "channel":
+            let tile = UIView()
+            tile.backgroundColor = color(leading["tileArgb"], fallback: .systemYellow)
+            tile.layer.cornerRadius = 7
+            tile.layer.borderWidth = 1.5
+            let ink = color(leading["inkArgb"], fallback: .label)
+            tile.layer.borderColor = ink.cgColor
+            let symbol: String
+            if (leading["publicPage"] as? Bool) == true {
+                symbol = "globe"
+            } else {
+                switch leading["channelKind"] as? String {
+                case "private": symbol = "lock"
+                case "joint": symbol = "arrow.triangle.branch"
+                default: symbol = "number"
+                }
+            }
+            let image = UIImageView(image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .bold)))
+            image.tintColor = ink
+            image.translatesAutoresizingMaskIntoConstraints = false
+            tile.addSubview(image)
+            tile.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                tile.widthAnchor.constraint(equalToConstant: size),
+                tile.heightAnchor.constraint(equalToConstant: size),
+                image.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+                image.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            ])
+            return tile
+        case "avatar":
+            let circle = UIView()
+            circle.backgroundColor = color(leading["fillArgb"], fallback: .systemPurple)
+            circle.layer.cornerRadius = size / 2
+            circle.clipsToBounds = true
+            circle.translatesAutoresizingMaskIntoConstraints = false
+            let label = UILabel()
+            let words = ((leading["label"] as? String) ?? "").split(separator: " ").prefix(2)
+            label.text = words.compactMap { $0.first.map(String.init) }.joined().uppercased()
+            label.font = .systemFont(ofSize: 12, weight: .bold)
+            label.textColor = .white
+            label.translatesAutoresizingMaskIntoConstraints = false
+            circle.addSubview(label)
+            let image = UIImageView()
+            image.contentMode = .scaleAspectFill
+            image.translatesAutoresizingMaskIntoConstraints = false
+            circle.addSubview(image)
+            NSLayoutConstraint.activate([
+                circle.widthAnchor.constraint(equalToConstant: size),
+                circle.heightAnchor.constraint(equalToConstant: size),
+                label.centerXAnchor.constraint(equalTo: circle.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: circle.centerYAnchor),
+                image.leadingAnchor.constraint(equalTo: circle.leadingAnchor),
+                image.trailingAnchor.constraint(equalTo: circle.trailingAnchor),
+                image.topAnchor.constraint(equalTo: circle.topAnchor),
+                image.bottomAnchor.constraint(equalTo: circle.bottomAnchor),
+            ])
+            if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
+                URLSession.shared.dataTask(with: url) { data, _, _ in
+                    guard let data, let loaded = UIImage(data: data) else { return }
+                    DispatchQueue.main.async { image.image = loaded }
+                }.resume()
+            }
+            return circle
+        default:
+            return nil
         }
     }
 }
@@ -356,6 +736,8 @@ final class RaftNativeNavProtoRootController: UITabBarController, UITabBarContro
         fd_prefersNavigationBarHidden = !native
         if native {
             navigationItem.title = "Home"
+            navigationItem.backButtonTitle = "Home"
+            navigationItem.backButtonDisplayMode = .default
             navigationItem.largeTitleDisplayMode = .always
             let servers = UIMenu(title: "Servers", children: [
                 UIAction(title: "Raft Design", image: UIImage(systemName: "checkmark")) { _ in },
@@ -435,6 +817,7 @@ private final class RaftProtoScriptedPan: UIPanGestureRecognizer {
 
 enum RaftNativeNavProtoDemo {
     static func marker(_ text: String) {
+        guard RaftNativeNavProto.demoScene != nil else { return }
         print(text)
         fflush(stdout)
     }
@@ -509,12 +892,92 @@ enum RaftNativeNavProtoDemo {
         after(1.0 / 60.0) { step(1) }
     }
 
+    /// The native-bar host of the page on top (a tab root's selected page).
+    static func topHost(_ nav: UINavigationController) -> RaftNativeNavBarHost? {
+        var top = nav.topViewController
+        if let tabs = top as? UITabBarController { top = tabs.selectedViewController }
+        return (top as? RaftPageViewController)?.raftNativeNavBarHost as? RaftNativeNavBarHost
+    }
+
+    /// Drags the top page's primary list by [distance] points (positive: the finger moves up)
+    /// over [duration] seconds, through the page's nested-scroll chain, then releases it.
+    static func scriptedScroll(
+        _ nav: UINavigationController,
+        distance: CGFloat,
+        duration: Double,
+        completion: @escaping () -> Void = {}
+    ) {
+        guard let host = topHost(nav) else {
+            marker("RAFT_PROTO_WARN scripted_scroll_unavailable")
+            completion()
+            return
+        }
+        let steps = max(1, Int(duration * 60))
+        var done: CGFloat = 0
+        func step(_ index: Int) {
+            if index > steps {
+                host.scriptedScrollEnd()
+                marker("RAFT_PROTO_SCROLL_END distance=\(distance)")
+                after(0.4) { completion() }
+                return
+            }
+            let t = CGFloat(index) / CGFloat(steps)
+            // ease in-out, like a finger starting and slowing down
+            let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+            let target = distance * eased
+            if !host.scriptedScroll(dy: target - done) {
+                marker("RAFT_PROTO_WARN scripted_scroll_no_list")
+                completion()
+                return
+            }
+            done = target
+            after(1.0 / 60.0) { step(index + 1) }
+        }
+        after(1.0 / 60.0) { step(1) }
+    }
+
+    /// The video's second half: into the conversation, its members (scroll), and swipe back twice.
+    private static func videoPush(_ nav: UINavigationController) {
+        push("compose_native_nav_proto_thread", on: nav, animated: true)
+        after(3.5) { push("compose_channel_members_parity_visual", on: nav, animated: true) }
+        after(6.5) {
+            scriptedScroll(nav, distance: 120, duration: 1.2) {
+                after(0.8) {
+                    scriptedScroll(nav, distance: -160, duration: 1.2) {
+                        after(1.0) {
+                            scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
+                                after(2) {
+                                    scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
+                                        after(2.5) { marker("RAFT_PROTO_DONE scene=video") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     static func run(scene: String, nav: UINavigationController) {
         let mode = RaftNativeNavProto.enabled ? "native" : "now"
         marker("RAFT_PROTO_START scene=\(scene) mode=\(mode)")
         switch scene {
         case "home":
             after(4) { marker("RAFT_PROTO_READY scene=home") }
+        case "homecollapsed":
+            after(4) {
+                scriptedScroll(nav, distance: 260, duration: 1.0) {
+                    after(1.2) { marker("RAFT_PROTO_READY scene=homecollapsed") }
+                }
+            }
+        case "homehalf":
+            // Mid-collapse, held (no release): the bar and the spacer must agree.
+            after(4) {
+                guard let host = topHost(nav) else { return }
+                for _ in 0..<10 { host.scriptedScroll(dy: 2.6) }
+                after(1.2) { marker("RAFT_PROTO_READY scene=homehalf") }
+            }
         case "thread":
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
             after(5) { marker("RAFT_PROTO_READY scene=thread") }
@@ -532,13 +995,16 @@ enum RaftNativeNavProtoDemo {
                 }
             }
         case "video":
-            after(3) { push("compose_native_nav_proto_thread", on: nav, animated: true) }
-            after(6.5) { push("compose_channel_members_parity_visual", on: nav, animated: true) }
-            after(10) {
-                scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
-                    after(2) {
-                        scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
-                            after(2.5) { marker("RAFT_PROTO_DONE scene=video") }
+            // Home: collapse the large title slowly, keep scrolling, come back to the top (expands).
+            after(3) {
+                scriptedScroll(nav, distance: 140, duration: 1.8) {
+                    after(0.8) {
+                        scriptedScroll(nav, distance: 360, duration: 1.0) {
+                            after(1.0) {
+                                scriptedScroll(nav, distance: -620, duration: 2.0) {
+                                    after(1.2) { videoPush(nav) }
+                                }
+                            }
                         }
                     }
                 }

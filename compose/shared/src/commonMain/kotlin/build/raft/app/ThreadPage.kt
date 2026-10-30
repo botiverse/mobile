@@ -5565,7 +5565,8 @@ internal fun ThreadMembersPageContent(
         ) {
         LazyColumn(
             state = rosterListState,
-            modifier = Modifier.fillMaxSize(),
+            // PROTOTYPE (native nav bar): drives the host's large title.
+            modifier = Modifier.fillMaxSize().raftNativeNavBarPrimaryList(rosterListState),
             contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
@@ -17691,7 +17692,7 @@ internal fun ThreadPageHeader(
         } else {
             buildList {
                 if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
-                    add(RaftNativeNavBarAction("members", "Members", "person.2", onShowMembers))
+                    add(RaftNativeNavBarAction("members", "Members", "person.2", onShowMembers, badge = payload.membersCount.takeIf { it > 0 }))
                 }
                 if (payload.threadHeaderSearchAction() != null) {
                     add(RaftNativeNavBarAction("search", "Search", "magnifyingglass", onOpenSearch))
@@ -17708,6 +17709,25 @@ internal fun ThreadPageHeader(
         title = localizedHeaderTitle,
         nativeSubtitle = headerSubtitle,
         nativeActions = nativeNavBarActions,
+        // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
+        nativeTitleExtras =
+            RaftNativeNavBarTitleExtras(
+                leading =
+                    when {
+                        headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage ->
+                            RaftNativeNavBarTitleLeading.Avatar(
+                                label = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                                imageUrl =
+                                    (resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue)
+                                        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+                                fillArgb = raftArgbHex(raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind)),
+                            )
+                        payload.showModeTabs ->
+                            RaftNativeNavBarTitleLeading.Channel(headerDisplay.channelKind, headerDisplay.channelOnPublicPage)
+                        else -> null
+                    },
+                refreshing = payload.backgroundRefreshing,
+            ),
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentStartPadding =

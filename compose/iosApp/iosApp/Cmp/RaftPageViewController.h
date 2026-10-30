@@ -36,6 +36,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftUsesNativeNavBar;
 /** PROTOTYPE: keeps the Swift RaftNativeNavBarHost alive with the page. */
 @property (nonatomic, strong, nullable) id raftNativeNavBarHost;
+/** PROTOTYPE: called after layout / appearance (reason), for the large-title scroll mirror. */
+@property (nonatomic, copy, nullable) void (^raftNativeNavBarLayoutHook)(NSString *reason);
 
 /**
  * @param pageName the page name (the former Kuikly `@Page` name)

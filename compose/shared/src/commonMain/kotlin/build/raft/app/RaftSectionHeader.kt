@@ -143,14 +143,19 @@ internal fun RaftTopPageHeader(
     // PROTOTYPE (native nav bar): what a host-drawn UINavigationBar shows for this head.
     nativeSubtitle: String? = subtitle,
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
+    nativeTitleExtras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
     // PROTOTYPE: the host's UINavigationBar draws this head (title, Back, actions). The page's top
     // safe area already includes the bar, so only that space is kept.
-    if (raftNativeNavBarPublish(title, nativeSubtitle, nativeActions)) {
-        Spacer(modifier = modifier.fillMaxWidth().height(raftTopSafeAreaPadding()))
+    if (raftNativeNavBarPublish(title, nativeSubtitle, nativeActions, nativeTitleExtras.copy(refreshing = nativeTitleExtras.refreshing || refreshing))) {
+        RaftNativeNavBarHeadSpacer(
+            bridge = LocalRaftNativeNavBar.current!!,
+            modifier = modifier.fillMaxWidth(),
+            liveTop = raftTopSafeAreaPadding(),
+        )
         if (showBodyTopBanner) {
             RaftAppShellBodyTopBanner()
         }

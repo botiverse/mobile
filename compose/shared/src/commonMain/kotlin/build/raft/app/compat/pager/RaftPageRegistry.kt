@@ -40,6 +40,7 @@ import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.LocalRaftNativeTabBarBridge
 import build.raft.app.LocalRaftNativeNavBar
+import build.raft.app.LocalRaftNativeNavBarScript
 import build.raft.app.RaftNativeNavBarHostIdPageDataKey
 import build.raft.app.RaftNativeNavBarRegistry
 import build.raft.app.RaftNativeTabBarHostIdPageDataKey
@@ -211,6 +212,11 @@ fun RaftPagerHost(
                 RaftSideActionHostRegistry.bridgeFor(pager.pageData.params.optString(RaftSideActionHostIdPageDataKey))
             }
         )
+    // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any.
+    val nativeNavBar =
+        remember(pager) {
+            RaftNativeNavBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeNavBarHostIdPageDataKey))
+        }
     CompositionLocalProvider(
         LocalViewModelStoreOwner provides viewModelStoreOwner,
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
@@ -222,10 +228,8 @@ fun RaftPagerHost(
             },
         LocalRaftSideActionHost provides sideActionHost,
         // PROTOTYPE: the host-drawn UINavigationBar registered for this page (iOS), if any.
-        LocalRaftNativeNavBar provides
-            remember(pager) {
-                RaftNativeNavBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeNavBarHostIdPageDataKey))
-            },
+        LocalRaftNativeNavBar provides nativeNavBar?.takeIf { it.hostDrawsBar },
+        LocalRaftNativeNavBarScript provides nativeNavBar,
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {

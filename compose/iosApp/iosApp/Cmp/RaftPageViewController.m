@@ -241,6 +241,9 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftRefreshNavigationGeometry];
     [self raftPublishAdaptivePaneForCurrentBounds:@"layout"];
     [self raftPublishWindowInsets];
+    if (self.raftNativeNavBarLayoutHook != nil) {
+        self.raftNativeNavBarLayoutHook(@"layout");
+    }
 }
 
 /// The native tab bar laid out: it decides how much of the iPhone Duo side column it takes, so
@@ -280,6 +283,9 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     // only once the page is shown: disabling a recogniser mid-swipe would cancel it.
     if (RaftNativeNavProto.enabled) {
         self.navigationController.interactivePopGestureRecognizer.enabled = self.raftUsesNativeNavBar;
+    }
+    if (self.raftNativeNavBarLayoutHook != nil) {
+        self.raftNativeNavBarLayoutHook(@"appear");
     }
     _raftAdaptivePanePublishingActive = YES;
     [self raftPublishAdaptivePaneForCurrentBounds:@"appear"];

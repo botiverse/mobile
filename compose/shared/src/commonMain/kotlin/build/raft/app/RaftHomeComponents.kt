@@ -2562,6 +2562,8 @@ private fun RaftStructuralHomeShellContent(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
+                                        // PROTOTYPE (native nav bar): drives the host's large title.
+                                        .raftNativeNavBarPrimaryList(listState)
                                         .touchListener { type, _ ->
                                             if (type == TouchType.Move) {
                                                 homeUserScrollGeneration.value += 1
