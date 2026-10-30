@@ -522,7 +522,7 @@ internal fun raftForegroundMessageBannerProjectionResult(
     if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
         return RaftForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
-    val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
+    val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
     val context = conversation.resolveForegroundBannerContext(projection, conversationDirectory)
     val threadContext = projection.resolveForegroundBannerThreadContext(conversation)
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)

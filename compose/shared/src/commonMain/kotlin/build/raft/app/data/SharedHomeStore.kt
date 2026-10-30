@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.shownAuthorName
 import build.raft.app.RaftSidebarSortMode
 import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
@@ -5114,7 +5115,7 @@ private fun ConversationSummary.withRealtimePreview(
                 lastMessageSeq = latest.seq ?: lastMessageSeq,
                 lastMessagePreview = latest.body,
                 lastMessageAt = latest.timestampLabel,
-                lastMessageSenderName = latest.author.displayName
+                lastMessageSenderName = latest.shownAuthorName()
             )
         }
     return HomeRealtimeConversationPatch(next, unreadIncrement)

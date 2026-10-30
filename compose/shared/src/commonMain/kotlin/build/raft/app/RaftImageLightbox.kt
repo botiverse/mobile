@@ -105,7 +105,7 @@ internal fun raftImageLightboxRequestFor(
             .flatMap { message ->
                 message.attachments
                     .filter { it.id.isNotBlank() && isImage(it) }
-                    .map { RaftImageLightboxItem(it, senderName = message.authorName, timeLabel = message.timestampLabel) }
+                    .map { RaftImageLightboxItem(it, senderName = message.shownAuthorName(), timeLabel = message.timestampLabel) }
             }
             .distinctBy { it.attachment.id }
     val index = items.indexOfFirst { it.attachment.id == attachmentId }

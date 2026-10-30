@@ -13,12 +13,16 @@ import build.raft.app.markdown.markdownToPreviewText
 internal fun replyThreadHeaderPreviewTitle(
     origin: RaftThreadMessageItem?,
     imageLabel: String,
-    fileLabel: String
+    fileLabel: String,
+    /** The localized "External user", shown for an External author the wire did not name. */
+    externalFallbackName: String = ""
 ): String? {
     if (origin == null) return null
     val author =
         threadHeaderSafeTitleOrNull(
-            origin.externalAuthor?.displayName?.takeIf { it.isNotBlank() }
+            origin.externalAuthor
+                ?.let { externalAuthorShownName(it, it.displayName, externalFallbackName) }
+                ?.takeIf { it.isNotBlank() }
                 ?: origin.authorName.takeIf { it.isNotBlank() }
                 ?: origin.authorHandle,
             setOf(origin.authorId)

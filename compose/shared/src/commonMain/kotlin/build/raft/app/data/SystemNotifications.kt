@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.shownAuthorName
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.markdown.RaftMarkdownPreviewNotificationLength
 import build.raft.app.model.ConversationKind
@@ -206,7 +207,7 @@ fun buildSystemUnreadNotificationRequest(
     ) {
         return null
     }
-    val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
+    val sender = message.shownAuthorName().ifBlank { message.author.handle.ifBlank { "Someone" } }
     val preview = markdownToPreviewText(message.body, RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
     val mentioned =
         currentMemberHandle
