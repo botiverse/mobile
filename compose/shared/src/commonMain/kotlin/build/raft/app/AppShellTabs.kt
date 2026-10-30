@@ -3,22 +3,18 @@ package build.raft.app
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.raftComputerAttentionPairs
 import build.raft.app.data.raftComputerAttentionUnseen
-import build.raft.designsystem.components.RaftConversationKindGlyph
 
 /**
- * Per-key bottom-tab icon. Activity uses the Lucide `activity` glyph, the same icon as the web
- * Activity nav item (artin 2026-10-20, Activity as a bottom tab); DMs/More keep the #94 icons.
+ * The phone bar's icon for [key]: its destination's compact icon ([RaftAppDestination]); Activity
+ * is the Lucide `activity` glyph, the web Activity nav item's (artin 2026-10-20).
  */
 internal fun appShellTabIcon(key: String): RaftLucideIconName =
+    RaftAppDestination.fromId(key)?.let { RaftNavPresentation.PhoneBar.iconOf(it).lucide } ?: appShellLegacyTabIcon(key)
+
+/** Keys that are no destination any more: the Slack-nav `dms` tab (task #94). */
+internal fun appShellLegacyTabIcon(key: String): RaftLucideIconName =
     when (key) {
-        "home" -> RaftLucideIconName.House
         "dms" -> RaftLucideIconName.MessageCircle
-        "activity" -> RaftLucideIconName.Activity
-        "more" -> RaftLucideIconName.Ellipsis
-        "tasks" -> RaftLucideIconName.SquareCheckBig
-        "members" -> RaftLucideIconName.Users
-        "settings" -> RaftLucideIconName.Settings
-        AppShellSearchTabKey -> RaftLucideIconName.Search
         else -> RaftLucideIconName.Circle
     }
 
@@ -30,7 +26,7 @@ internal fun appShellTabIcon(key: String): RaftLucideIconName =
  * so the wide rail, deep links and old launch values still select them directly.
  */
 internal val AppShellPhoneBottomBarKeys: List<String> =
-    listOf("home", "activity", "tasks", AppShellSearchTabKey, "more")
+    RaftNavPresentation.PhoneBar.destinations.map { it.id }
 
 /** The tabs of [AppShellPhoneBottomBarKeys]; every slot is a real tab. */
 internal val AppShellPhoneBottomTabKeys: List<String> = AppShellPhoneBottomBarKeys
@@ -171,114 +167,41 @@ internal fun appShellMoreTabShowsDot(attention: Set<RaftMoreAttention>, selected
     attention.isNotEmpty() && !selected
 
 /**
- * Wide-rail entries, top to bottom, as the web LeftRail lists them (Direction A, #proj-mobile
- * 10-30): Chat (the `home` tab), Activity, Tasks, Members, Computers, Apps. Help and Settings are
- * pinned to the rail bottom separately. Computers and Apps are not shell tabs: they open the
- * pages their Settings rows open ([AppShellRailComputersKey], [AppShellRailAppsKey]).
+ * Wide-rail entries, top to bottom: [RaftNavPresentation.Rail], the web LeftRail's set (Chat,
+ * Activity, Tasks, Members, Computers, Apps; Help and Settings in its footer).
  */
-internal val AppShellRailTabKeys: List<String> =
-    listOf("home", "activity", "tasks", "members", AppShellRailComputersKey, AppShellRailAppsKey)
+internal val AppShellRailTabKeys: List<String> = RaftNavPresentation.Rail.destinations.map { it.id }
 
-/** The rail's Computers entry: opens the Computers page, as Settings > Computers does. */
-internal const val AppShellRailComputersKey = "computers"
-
-/** The rail's Apps entry: opens the Applications page, as Settings > Applications does. */
-internal const val AppShellRailAppsKey = "apps"
-
-/** The rail's Help entry in its footer, above Settings: opens the Help menu beside the rail. */
-internal const val AppShellRailHelpKey = "help"
-
-/** Rail entries that open a page over the shell instead of selecting a tab; never selected. */
-internal val AppShellRailPageKeys: Set<String> = setOf(AppShellRailComputersKey, AppShellRailAppsKey)
-
-/**
- * The rail's icon for [key], the web LeftRail's: raft-ui `ChatIcon` for Chat (drawn through
- * [appShellRailGlyph], this is its fallback), Lucide `list-todo` for Tasks, `monitor` for
- * Computers, `blocks` for Apps, `circle-question-mark` (lucide-react `CircleHelp`) for Help. The
- * phone bar keeps [appShellTabIcon].
- */
-internal fun appShellRailTabIcon(key: String): RaftLucideIconName =
-    when (key) {
-        "home" -> RaftLucideIconName.MessageSquare
-        "tasks" -> RaftLucideIconName.ListTodo
-        AppShellRailComputersKey -> RaftLucideIconName.Monitor
-        AppShellRailAppsKey -> RaftLucideIconName.Blocks
-        AppShellRailHelpKey -> RaftLucideIconName.CircleQuestionMark
-        else -> appShellTabIcon(key)
-    }
-
-/** The raft-ui glyph a rail entry draws instead of its Lucide icon: Chat is `ChatIcon`. */
-internal fun appShellRailGlyph(key: String): RaftConversationKindGlyph? =
-    if (key == "home") RaftConversationKindGlyph.Chat else null
-
-/**
- * Each rail entry's own attention dot (web LeftRail: Computers and Settings dot separately). An
- * unseen offline/outdated computer dots Computers; an app update (read in Settings > About) dots
- * Settings. Apps has no signal on mobile yet (web's is the admin-review flag of
- * `GET /integrations/permission-updates`), so it never dots. The phone's More tab keeps the
- * combined [appShellMoreTabShowsDot].
- */
-internal fun appShellRailShowsAttention(key: String, attention: Set<RaftMoreAttention>, selected: Boolean): Boolean =
-    !selected &&
-        when (key) {
-            AppShellRailComputersKey -> RaftMoreAttention.Computers in attention
-            "settings" -> RaftMoreAttention.AppUpdate in attention
-            else -> false
-        }
-
-/**
- * The rail's entries ([AppShellRailTabKeys]) for [selectedTab]: the web LeftRail's icons
- * ([appShellRailTabIcon]), Activity's unread dot, and Computers' own dot
- * ([appShellRailShowsAttention]). Computers and Apps open pages, so they are never selected.
- */
+/** The rail's entries for [selectedTab] ([raftNavItems] on [RaftNavPresentation.Rail]). */
 internal fun appShellRailTabs(
     selectedTab: String,
     labelFor: (String) -> String,
     activityUnreadCount: Int = 0,
     moreAttention: Set<RaftMoreAttention> = emptySet(),
 ): List<RaftBottomTabItemPayload> =
-    appShellBottomTabs(
+    raftNavItems(
+        presentation = RaftNavPresentation.Rail,
+        ids = AppShellRailTabKeys,
         selectedKey = retainedAppShellSelectedTab(selectedTab),
-        orderedTabKeys = AppShellRailTabKeys,
-        activityUnreadCount = activityUnreadCount,
         labelFor = labelFor,
-    ).map { item ->
-        val selected = item.selected && item.key !in AppShellRailPageKeys
-        item.copy(
-            iconName = appShellRailTabIcon(item.key),
-            selected = selected,
-            attentionDot = item.attentionDot || appShellRailShowsAttention(item.key, moreAttention, selected),
-        )
-    }
+        badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
+    )
 
-/**
- * The rail's footer, web LeftRail's order: Help (selected while its menu is open), then Settings,
- * dotted only for an app update now that Computers has its own entry.
- */
+/** The rail's footer ([RaftNavPresentation.Rail]'s `footer`): Help (selected while its menu is open), Settings. */
 internal fun appShellRailFooterTabs(
     selectedTab: String,
-    helpLabel: String,
-    settingsLabel: String,
+    labelFor: (String) -> String,
     helpOpen: Boolean,
     moreAttention: Set<RaftMoreAttention> = emptySet(),
-): List<RaftBottomTabItemPayload> {
-    val settingsSelected = retainedAppShellSelectedTab(selectedTab) == "settings"
-    return listOf(
-        RaftBottomTabItemPayload(
-            key = AppShellRailHelpKey,
-            label = helpLabel,
-            iconName = appShellRailTabIcon(AppShellRailHelpKey),
-            selected = helpOpen,
-        ),
-        RaftBottomTabItemPayload(
-            key = "settings",
-            label = settingsLabel,
-            iconName = RaftLucideIconName.Settings,
-            selected = settingsSelected,
-            attentionDot = appShellRailShowsAttention("settings", moreAttention, settingsSelected),
-        ),
+): List<RaftBottomTabItemPayload> =
+    raftNavItems(
+        presentation = RaftNavPresentation.Rail,
+        ids = RaftNavPresentation.Rail.footer.map { it.id },
+        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        labelFor = labelFor,
+        badges = RaftNavBadgeInputs(moreAttention = moreAttention),
+        menuOpen = helpOpen,
     )
-}
 
 /**
  * The wide-screen rail keeps the phone bar's destinations in the phone bar's order (nav spec
@@ -296,8 +219,8 @@ internal val AppShellRailOrder: List<String> =
         "tasks",
         AppShellRailSearchKey,
         "members",
-        AppShellRailComputersKey,
-        AppShellRailAppsKey,
+        RaftAppDestination.Computers.id,
+        RaftAppDestination.Apps.id,
     )
 
 internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
@@ -335,9 +258,9 @@ internal const val AppShellServerTabKey = "more"
 
 /** The server's pages in the server panel, in order; each opens the page the More row opened. */
 internal enum class RaftServerMenuEntry(val key: String) {
-    Members("members"),
-    Computers(SettingsDestinationComputers),
-    Settings("settings"),
+    Members(RaftAppDestination.Members.id),
+    Computers(RaftAppDestination.Computers.id),
+    Settings(RaftAppDestination.Settings.id),
     ;
 
     companion object {

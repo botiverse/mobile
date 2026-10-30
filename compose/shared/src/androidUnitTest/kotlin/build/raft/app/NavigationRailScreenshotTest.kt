@@ -113,15 +113,7 @@ class NavigationRailScreenshotTest {
                     )
                     Row(Modifier.weight(1f)) {
                         val attention = setOf(RaftMoreAttention.Computers, RaftMoreAttention.AppUpdate)
-                        val labels =
-                            mapOf(
-                                "home" to "Chat",
-                                "activity" to "Activity",
-                                "tasks" to "Tasks",
-                                "members" to "Members",
-                                AppShellRailComputersKey to "Computers",
-                                AppShellRailAppsKey to "Apps",
-                            )
+                        val labels = raftNavLabels(RaftNavPresentation.Rail)
                         RaftNavigationRailTabBar(
                             items =
                                 appShellRailTabs(
@@ -135,8 +127,7 @@ class NavigationRailScreenshotTest {
                             bottomItems =
                                 appShellRailFooterTabs(
                                     selectedTab = "home",
-                                    helpLabel = "Help",
-                                    settingsLabel = "Settings",
+                                    labelFor = { labels.getValue(it) },
                                     helpOpen = helpOpen,
                                     moreAttention = attention,
                                 ),

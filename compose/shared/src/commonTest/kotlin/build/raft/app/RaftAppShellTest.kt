@@ -1665,10 +1665,7 @@ class RaftAppShellTest {
     fun railTabsKeepWebLeftRailEntries() {
         // Direction A (#proj-mobile 10-30): web LeftRail's entries, order and icons.
         val tabs = appShellRailTabs(selectedTab = "members", labelFor = { it })
-        assertEquals(
-            listOf("home", "activity", "tasks", "members", AppShellRailComputersKey, AppShellRailAppsKey),
-            tabs.map { it.key },
-        )
+        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), tabs.map { it.key })
         assertEquals(listOf(false, false, false, true, false, false), tabs.map { it.selected })
         assertEquals(
             listOf(
@@ -1681,12 +1678,10 @@ class RaftAppShellTest {
             ),
             tabs.map { it.iconName },
         )
-        // Chat draws raft-ui ChatIcon; the others their Lucide icon.
-        assertEquals(RaftConversationKindGlyph.Chat, appShellRailGlyph("home"))
-        assertNull(appShellRailGlyph("tasks"))
-        // The phone bar keeps Home's house and Tasks' square-check.
-        assertEquals(RaftLucideIconName.House, appShellTabIcon("home"))
-        assertEquals(RaftLucideIconName.SquareCheckBig, appShellTabIcon("tasks"))
+        // Chat draws raft-ui ChatIcon on the rail; the phone bar has no glyph.
+        assertEquals(RaftConversationKindGlyph.Chat, raftNavGlyph(RaftNavPresentation.Rail, "home"))
+        assertNull(raftNavGlyph(RaftNavPresentation.PhoneBar, "home"))
+        assertNull(raftNavGlyph(RaftNavPresentation.Rail, "tasks"))
     }
 
     @Test
@@ -1695,14 +1690,14 @@ class RaftAppShellTest {
         val update = setOf(RaftMoreAttention.AppUpdate)
         fun dots(attention: Set<RaftMoreAttention>, selectedTab: String = "home") =
             (appShellRailTabs(selectedTab, labelFor = { it }, moreAttention = attention) +
-                appShellRailFooterTabs(selectedTab, "Help", "Settings", helpOpen = false, moreAttention = attention))
+                appShellRailFooterTabs(selectedTab, labelFor = { it }, helpOpen = false, moreAttention = attention))
                 .filter { it.attentionDot }
                 .map { it.key }
         // An unseen computer dots Computers, no longer Settings.
-        assertEquals(listOf(AppShellRailComputersKey), dots(computers))
+        assertEquals(listOf("computers"), dots(computers))
         // An app update is read in Settings > About: it dots Settings.
         assertEquals(listOf("settings"), dots(update))
-        assertEquals(listOf(AppShellRailComputersKey, "settings"), dots(computers + update))
+        assertEquals(listOf("computers", "settings"), dots(computers + update))
         // The selected Settings wears no dot; Apps has no signal yet.
         assertEquals(emptyList<String>(), dots(update, selectedTab = "settings"))
         assertEquals(emptyList<String>(), dots(emptySet()))
@@ -1712,11 +1707,11 @@ class RaftAppShellTest {
 
     @Test
     fun railFooterIsHelpThenSettings() {
-        val footer = appShellRailFooterTabs("settings", "Help", "Settings", helpOpen = true)
-        assertEquals(listOf(AppShellRailHelpKey, "settings"), footer.map { it.key })
+        val footer = appShellRailFooterTabs("settings", labelFor = { it }, helpOpen = true)
+        assertEquals(listOf("help", "settings"), footer.map { it.key })
         assertEquals(listOf(RaftLucideIconName.CircleQuestionMark, RaftLucideIconName.Settings), footer.map { it.iconName })
         assertEquals(listOf(true, true), footer.map { it.selected })
-        assertEquals(listOf(false, false), appShellRailFooterTabs("home", "Help", "Settings", helpOpen = false).map { it.selected })
+        assertEquals(listOf(false, false), appShellRailFooterTabs("home", labelFor = { it }, helpOpen = false).map { it.selected })
     }
 
     @Test

@@ -562,12 +562,12 @@ private fun RaftNavigationRailTabItem(
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
     val attentionDescription =
-        when (item.key) {
-            "more", "settings" -> stringResource(Res.string.tab_more_attention_dot)
-            AppShellRailComputersKey, AppShellRailAppsKey -> stringResource(Res.string.more_row_attention_dot)
+        when (RaftAppDestination.fromId(item.key)?.badge) {
+            RaftNavBadgeSource.ServerPages, RaftNavBadgeSource.AppUpdate -> stringResource(Res.string.tab_more_attention_dot)
+            RaftNavBadgeSource.ComputersAttention, RaftNavBadgeSource.AppsReview -> stringResource(Res.string.more_row_attention_dot)
             else -> stringResource(Res.string.tab_activity_unread_dot)
         }
-    val glyph = appShellRailGlyph(item.key)
+    val glyph = raftNavGlyph(RaftNavPresentation.Rail, item.key)
     RaftAppRailItem(
         label = item.label,
         selected = item.selected,

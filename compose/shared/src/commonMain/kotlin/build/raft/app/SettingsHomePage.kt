@@ -1064,16 +1064,16 @@ internal fun appShellPhoneBottomTabs(
     }
 
 /**
- * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
- * Slack-aligned) with per-key labels and icons. Icons follow the Slack-aligned preview:
- * Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ * task #94: the phone bar's payloads for the ordered tab keys: [raftNavItems] on
+ * [RaftNavPresentation.PhoneBar], so labels' order, icons and dots come from each key's
+ * [RaftAppDestination] (Home=house, Activity=activity, Tasks=square-check, More=ellipsis; the
+ * legacy `dms` keeps its message circle).
  *
  * This list is the single source of truth for every bottom-bar renderer, including the
  * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
- * appears there with its label and icon. The Search action key is never selected. Activity
- * unread is an attention dot, hidden while Activity is the selected tab
- * ([appShellActivityTabShowsDot]); More wears the same dot when Settings has something new
- * ([appShellMoreTabShowsDot]); tabs carry no numbers.
+ * appears there with its label and icon. Activity unread is an attention dot, hidden while
+ * Activity is the selected tab ([appShellActivityTabShowsDot]); More wears the same dot when
+ * Settings has something new ([appShellMoreTabShowsDot]); tabs carry no numbers.
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
@@ -1082,27 +1082,13 @@ internal fun appShellBottomTabs(
     moreAttention: Set<RaftMoreAttention> = emptySet(),
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
-    orderedTabKeys.map { key ->
-        val selected = selectedKey == key
-        RaftBottomTabItemPayload(
-            key = key,
-            label = labelFor(key),
-            iconName = appShellTabIcon(key),
-            selected = selected,
-            attentionDot =
-                when (key) {
-                    "activity" -> appShellActivityTabShowsDot(activityUnreadCount, selected)
-                    "more" -> appShellMoreTabShowsDot(moreAttention, selected)
-                    else -> false
-                },
-            nativeBadgeCount =
-                if (key == "activity" && appShellActivityTabShowsDot(activityUnreadCount, selected)) {
-                    activityUnreadCount
-                } else {
-                    0
-                },
-        )
-    }
+    raftNavItems(
+        presentation = RaftNavPresentation.PhoneBar,
+        ids = orderedTabKeys,
+        selectedKey = selectedKey,
+        labelFor = labelFor,
+        badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
+    )
 
 // task #94: valid app-shell tab keys = legacy set plus the Slack-aligned set. Slack keys only
 // enter live tab state while the Slack-nav gate is on (or a persisted order exists), so the
@@ -6200,14 +6186,17 @@ private fun RaftAppShellReadyContent(
                 selectedTab = selectedTab,
                 presentation = adaptiveWorkspaceState?.presentation,
             )
-    val homeTabLabel = stringResource(Res.string.tab_home)
-    val tasksTabLabel = stringResource(Res.string.tab_tasks)
-    val membersTabLabel = stringResource(Res.string.tab_members)
-    val settingsTabLabel = stringResource(Res.string.tab_settings)
+    // Every navigation surface's labels come from its destinations (RaftAppDestinations.kt).
+    val phoneNavLabels = raftNavLabels(RaftNavPresentation.PhoneBar)
+    val railNavLabels = raftNavLabels(RaftNavPresentation.Rail)
+    val homeTabLabel = phoneNavLabels.getValue(RaftAppDestination.Chat.id)
+    val tasksTabLabel = phoneNavLabels.getValue(RaftAppDestination.Tasks.id)
+    val membersTabLabel = stringResource(RaftAppDestination.Members.label)
+    val settingsTabLabel = stringResource(RaftAppDestination.Settings.label)
     val dmsTabLabel = stringResource(Res.string.tab_dms)
-    val activityTabLabel = stringResource(Res.string.tab_activity)
-    val searchTabLabel = stringResource(Res.string.home_nav_search)
-    val moreTabLabel = stringResource(Res.string.tab_more)
+    val activityTabLabel = phoneNavLabels.getValue(RaftAppDestination.Activity.id)
+    val searchTabLabel = phoneNavLabels.getValue(RaftAppDestination.Search.id)
+    val moreTabLabel = phoneNavLabels.getValue(RaftAppDestination.Server.id)
     // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
     // notification center keeps its own Bell dot in the Home head (task #18).
     val activityTabUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
@@ -6364,35 +6353,12 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val chatTabLabel = stringResource(Res.string.tab_chat)
-    val computersTabLabel = stringResource(Res.string.tab_computers)
-    val appsTabLabel = stringResource(Res.string.tab_apps)
-    val appShellRailTabItems = remember(
-        selectedTab,
-        chatTabLabel,
-        tasksTabLabel,
-        membersTabLabel,
-        activityTabLabel,
-        computersTabLabel,
-        appsTabLabel,
-        activityTabUnreadCount,
-        moreAttention,
-    ) {
+    val appShellRailTabItems = remember(selectedTab, railNavLabels, activityTabUnreadCount, moreAttention) {
         appShellRailTabs(
             selectedTab = selectedTab,
             activityUnreadCount = activityTabUnreadCount,
             moreAttention = moreAttention,
-            labelFor = { key ->
-                when (key) {
-                    "home" -> chatTabLabel
-                    "activity" -> activityTabLabel
-                    "tasks" -> tasksTabLabel
-                    "members" -> membersTabLabel
-                    AppShellRailComputersKey -> computersTabLabel
-                    AppShellRailAppsKey -> appsTabLabel
-                    else -> key.uppercase()
-                }
-            }
+            labelFor = { key -> railNavLabels[key] ?: key },
         )
     }
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
@@ -6401,7 +6367,6 @@ private fun RaftAppShellReadyContent(
     // server panel or the bell opens.
     LaunchedEffect(navRailActive) { railHelpOpen = false }
     LaunchedEffect(serverMenuState.open) { if (serverMenuState.open) railHelpOpen = false }
-    val helpTabLabel = stringResource(Res.string.tab_help)
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
         authoritativeHomeStartAllowed &&
@@ -6949,15 +6914,12 @@ private fun RaftAppShellReadyContent(
                     {
                         // web LeftRail footer: Help, then Settings. Computers has its own entry and
                         // dot now, so Settings dots only for an app update (Settings > About).
-                        // TODO(rail-collapse): the "collapse sidebar" toggle heads this footer on the
-                        // web (SidebarToggleRailItem); add it once RaftAppRail takes sindresorhus's
-                        // optional bottom-toggle param.
+                        // The collapse toggle: see TODO(rail-collapse) on RaftNavPresentation.Rail.
                         val railBottomItems =
-                            remember(helpTabLabel, settingsTabLabel, selectedTab, moreAttention, railHelpOpen) {
+                            remember(railNavLabels, selectedTab, moreAttention, railHelpOpen) {
                                 appShellRailFooterTabs(
                                     selectedTab = selectedTab,
-                                    helpLabel = helpTabLabel,
-                                    settingsLabel = settingsTabLabel,
+                                    labelFor = { key -> railNavLabels[key] ?: key },
                                     helpOpen = railHelpOpen,
                                     moreAttention = moreAttention,
                                 )
@@ -7004,7 +6966,8 @@ private fun RaftAppShellReadyContent(
                                     return@RaftNavigationRailTabBar
                                 }
                                 railHelpOpen = false
-                                if (key in AppShellRailPageKeys) {
+                                val destination = RaftAppDestination.fromId(key)
+                                if (destination?.route == RaftNavRoute.Page) {
                                     // Computers and Apps open the pages their Settings rows open,
                                     // over the shell; the selected tab stays.
                                     serverMenuState.dismiss()
@@ -7015,9 +6978,10 @@ private fun RaftAppShellReadyContent(
                                         wasActive = false,
                                     )
                                     bridge.log("app_shell_rail_page_open key=$key")
-                                    when (key) {
-                                        AppShellRailComputersKey -> openComputersPage()
-                                        AppShellRailAppsKey -> pager.openSettingsMarketplacePage(storeScope)
+                                    when (destination) {
+                                        RaftAppDestination.Computers -> openComputersPage()
+                                        RaftAppDestination.Apps -> pager.openSettingsMarketplacePage(storeScope)
+                                        else -> bridge.logWarn("app_shell_rail_page_unrouted key=$key")
                                     }
                                     return@RaftNavigationRailTabBar
                                 }
@@ -7043,7 +7007,7 @@ private fun RaftAppShellReadyContent(
                                     railBottomItems
                                 },
                             onBottomItemSelect = { key ->
-                                if (key == AppShellRailHelpKey) {
+                                if (RaftAppDestination.fromId(key)?.route == RaftNavRoute.Menu) {
                                     serverMenuState.dismiss()
                                     appShellTopBar.bellOpen.value = false
                                     railHelpOpen = !railHelpOpen

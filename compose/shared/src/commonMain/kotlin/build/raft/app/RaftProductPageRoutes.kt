@@ -40,20 +40,12 @@ internal fun appShellRailInlineProductPageView(key: String?): RaftProductPageVie
         else -> null
     }
 
-/** A shell tab / rail key as a navigation destination. */
+/** A shell tab / rail key as a navigation destination: its [RaftAppDestination.navEvent]. */
 internal fun appShellNavDestination(key: String): RaftNavDestination? =
-    when (key.trim()) {
-        "home" -> RaftNavDestination.Home
-        "activity" -> RaftNavDestination.Activity
-        "tasks" -> RaftNavDestination.Tasks
-        AppShellSearchTabKey, AppShellRailSearchKey -> RaftNavDestination.Search
-        "more" -> RaftNavDestination.More
-        "members" -> RaftNavDestination.Members
-        AppShellRailComputersKey -> RaftNavDestination.Computers
-        "settings" -> RaftNavDestination.Settings
-        // The rail's Apps: the shared NAV_DESTINATIONS has `apps`, the app's contract mirror not
-        // yet (a contract change of its own), so it sends no nav event.
-        else -> null
+    when (val id = key.trim()) {
+        // The rail's inline Search (iPhone Duo, no top bar) is the Search destination.
+        AppShellRailSearchKey -> RaftNavDestination.Search
+        else -> RaftAppDestination.fromId(id)?.navEvent
     }
 
 /** Settings sections the native detail page hosts; developer/diagnostics pages are not product pages. */

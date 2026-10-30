@@ -150,7 +150,7 @@ internal fun appShellRailItemsWithSearch(
         RaftBottomTabItemPayload(
             key = AppShellRailSearchKey,
             label = searchLabel,
-            iconName = RaftLucideIconName.Search,
+            iconName = RaftNavPresentation.Rail.iconOf(RaftAppDestination.Search).lucide,
             selected = searchOpen,
         )
     ) + items.map { if (searchOpen) it.copy(selected = false) else it }
