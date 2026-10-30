@@ -21,7 +21,7 @@ import build.raft.designsystem.theme.LocalRaftContentColor
  * RackRuntimeUsage.tsx`): each mark is drawn as one shape in the text's colour (web draws the SVG
  * as a CSS mask over `currentColor`), so a multi-colour mark is its silhouette here too.
  *
- * Paths: `@botiverse/oar` 0.76.3 `assets/brands/*.svg` (LobeHub lobe-icons, MIT; Pi from pi.dev;
+ * Paths: `@botiverse/oar` 0.76.3 `assets/brands` SVGs (LobeHub lobe-icons, MIT; Pi from pi.dev;
  * see that package's `assets/brands/NOTICE.md`). Brand names and marks belong to their owners.
  * Antigravity is its mask shape (the coloured fills inside it are not drawn). Path data is
  * normalized (explicit commands and separators) from the upstream SVG; geometry is unchanged.
