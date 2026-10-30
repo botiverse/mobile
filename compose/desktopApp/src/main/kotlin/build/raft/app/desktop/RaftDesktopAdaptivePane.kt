@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Window facts for the shared adaptive layout (`slockAdaptivePaneChanged`, the contract the
  * Android `AndroidAdaptivePanePublisher` and iOS `RaftIosAdaptivePanePublisher` feed). A desktop
- * window is always `flat`; shared code alone decides compact vs dual-pane (>= 840dp). Without these
+ * window is always `flat`; shared code alone decides compact vs dual-pane (>= 768dp). Without these
  * facts the posture stays Unknown and every window, however wide, gets the phone layout.
  */
 internal class RaftDesktopAdaptivePanePublisher(

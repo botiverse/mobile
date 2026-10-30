@@ -6362,30 +6362,46 @@ private fun RaftAppShellReadyContent(
             serverTabAccessibilityLabel = serverTabAccessibilityLabel
         )
     }
-    // The wide rail keeps the web LeftRail entries (Members is a rail root there).
+    // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
+    // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
+    val chatTabLabel = stringResource(Res.string.tab_chat)
+    val computersTabLabel = stringResource(Res.string.tab_computers)
+    val appsTabLabel = stringResource(Res.string.tab_apps)
     val appShellRailTabItems = remember(
         selectedTab,
-        homeTabLabel,
+        chatTabLabel,
         tasksTabLabel,
         membersTabLabel,
         activityTabLabel,
-        activityTabUnreadCount
+        computersTabLabel,
+        appsTabLabel,
+        activityTabUnreadCount,
+        moreAttention,
     ) {
-        appShellBottomTabs(
-            selectedKey = retainedAppShellSelectedTab(selectedTab),
-            orderedTabKeys = AppShellRailTabKeys,
+        appShellRailTabs(
+            selectedTab = selectedTab,
             activityUnreadCount = activityTabUnreadCount,
+            moreAttention = moreAttention,
             labelFor = { key ->
                 when (key) {
-                    "home" -> homeTabLabel
+                    "home" -> chatTabLabel
                     "activity" -> activityTabLabel
                     "tasks" -> tasksTabLabel
                     "members" -> membersTabLabel
+                    AppShellRailComputersKey -> computersTabLabel
+                    AppShellRailAppsKey -> appsTabLabel
                     else -> key.uppercase()
                 }
             }
         )
     }
+    // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
+    var railHelpOpen by remember { mutableStateOf(false) }
+    // It belongs to the rail: it closes when the window leaves the wide layout, and when the
+    // server panel or the bell opens.
+    LaunchedEffect(navRailActive) { railHelpOpen = false }
+    LaunchedEffect(serverMenuState.open) { if (serverMenuState.open) railHelpOpen = false }
+    val helpTabLabel = stringResource(Res.string.tab_help)
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
         authoritativeHomeStartAllowed &&
@@ -6884,6 +6900,7 @@ private fun RaftAppShellReadyContent(
     // posture arriving, the window turning) land after composition (sindresorhus, #3906).
     val appShellTopBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
     SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
+    LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
     val mainRouteSurface: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
         RaftAppShellSurface(
@@ -6930,23 +6947,19 @@ private fun RaftAppShellReadyContent(
                     // artin task #8: the top bar holds the server and Search, so the rail has
                     // neither (web LeftRail with the top bar).
                     {
+                        // web LeftRail footer: Help, then Settings. Computers has its own entry and
+                        // dot now, so Settings dots only for an app update (Settings > About).
+                        // TODO(rail-collapse): the "collapse sidebar" toggle heads this footer on the
+                        // web (SidebarToggleRailItem); add it once RaftAppRail takes sindresorhus's
+                        // optional bottom-toggle param.
                         val railBottomItems =
-                            remember(settingsTabLabel, selectedTab, moreAttention) {
-                                listOf(
-                                    RaftBottomTabItemPayload(
-                                        key = "settings",
-                                        label = settingsTabLabel,
-                                        iconName = RaftLucideIconName.Settings,
-                                        selected = retainedAppShellSelectedTab(selectedTab) == "settings",
-                                        // The wide server popover has no Members / Computers row (#3975), so a
-                                        // computer needing action or an app update lights Settings here, as
-                                        // More's tab does on the phone (raft-design #894).
-                                        attentionDot =
-                                            appShellMoreTabShowsDot(
-                                                moreAttention,
-                                                retainedAppShellSelectedTab(selectedTab) == "settings",
-                                            ),
-                                    )
+                            remember(helpTabLabel, settingsTabLabel, selectedTab, moreAttention, railHelpOpen) {
+                                appShellRailFooterTabs(
+                                    selectedTab = selectedTab,
+                                    helpLabel = helpTabLabel,
+                                    settingsLabel = settingsTabLabel,
+                                    helpOpen = railHelpOpen,
+                                    moreAttention = moreAttention,
                                 )
                             }
                         val railItems =
@@ -6990,6 +7003,24 @@ private fun RaftAppShellReadyContent(
                                     bridge.log("app_shell_rail_secondary_open destination=search from=rail")
                                     return@RaftNavigationRailTabBar
                                 }
+                                railHelpOpen = false
+                                if (key in AppShellRailPageKeys) {
+                                    // Computers and Apps open the pages their Settings rows open,
+                                    // over the shell; the selected tab stays.
+                                    serverMenuState.dismiss()
+                                    appShellTopBar.bellOpen.value = false
+                                    RaftProductEvents.navEntrySelected(
+                                        destination = appShellNavDestination(key),
+                                        surface = RaftNavSurface.Rail,
+                                        wasActive = false,
+                                    )
+                                    bridge.log("app_shell_rail_page_open key=$key")
+                                    when (key) {
+                                        AppShellRailComputersKey -> openComputersPage()
+                                        AppShellRailAppsKey -> pager.openSettingsMarketplacePage(storeScope)
+                                    }
+                                    return@RaftNavigationRailTabBar
+                                }
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
@@ -7012,6 +7043,14 @@ private fun RaftAppShellReadyContent(
                                     railBottomItems
                                 },
                             onBottomItemSelect = { key ->
+                                if (key == AppShellRailHelpKey) {
+                                    serverMenuState.dismiss()
+                                    appShellTopBar.bellOpen.value = false
+                                    railHelpOpen = !railHelpOpen
+                                    bridge.log("app_shell_rail_help_toggle open=$railHelpOpen")
+                                    return@RaftNavigationRailTabBar
+                                }
+                                railHelpOpen = false
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
@@ -7127,6 +7166,26 @@ private fun RaftAppShellReadyContent(
                             raftAppShellTopBarMenuTopInset(shellScope.topSafeArea),
                             besideRail = railWithoutTopBar,
                             bottomInset = shellScope.bottomSafeArea,
+                        )
+                        RaftAppRailHelpOverlay(
+                            open = railHelpOpen,
+                            onDismiss = { railHelpOpen = false },
+                            bottomInset = shellScope.bottomSafeArea,
+                            onDocumentation = {
+                                railHelpOpen = false
+                                bridge.log("app_shell_rail_help_pick item=documentation")
+                                bridge.openUrl(RaftDocumentationUrl, inBrowser = true)
+                            },
+                            onFeedback = {
+                                railHelpOpen = false
+                                bridge.log("app_shell_rail_help_pick item=feedback")
+                                // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
+                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                    pager.openSettingsFeedbackWebViewPage(storeScope)
+                                } else {
+                                    pager.openSettingsHandsFeedbackPage(storeScope)
+                                }
+                            },
                         )
                     }
                 } else {

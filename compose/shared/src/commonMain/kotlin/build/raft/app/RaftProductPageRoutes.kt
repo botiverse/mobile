@@ -49,7 +49,10 @@ internal fun appShellNavDestination(key: String): RaftNavDestination? =
         AppShellSearchTabKey, AppShellRailSearchKey -> RaftNavDestination.Search
         "more" -> RaftNavDestination.More
         "members" -> RaftNavDestination.Members
+        AppShellRailComputersKey -> RaftNavDestination.Computers
         "settings" -> RaftNavDestination.Settings
+        // The rail's Apps: the shared NAV_DESTINATIONS has `apps`, the app's contract mirror not
+        // yet (a contract change of its own), so it sends no nav event.
         else -> null
     }
 

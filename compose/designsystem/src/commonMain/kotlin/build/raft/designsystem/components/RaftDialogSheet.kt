@@ -149,7 +149,7 @@ object RaftDialogSheetDefaults {
      * The narrowest window that shows the dialog centred instead of as a sheet. raft-ui Dialog
      * "On a phone": "On a desktop and a tablet every dialog stays centered". 600dp is the
      * narrowest tablet window (Android's compact/medium width class), so a tablet in portrait
-     * and the app's 840dp two-pane layout both get the centred dialog, a phone never does.
+     * and the app's 768dp two-pane layout both get the centred dialog, a phone never does.
      */
     val CenteredMinWindowWidth = 600.dp
 

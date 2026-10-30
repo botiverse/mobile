@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -27,10 +27,16 @@ import org.robolectric.annotation.GraphicsMode
  * ([RaftAppShellTopBar]) across the window, with the current server's workspace button, the
  * workspace strip of five servers (Botiverse current, Acme Labs with unread) and the search field
  * centred, and the bell at the trailing end, dotted for the Home list's one notification; under it
- * the navigation rail ([RaftNavigationRailTabBar]) with no header and no Search: Home selected,
- * Activity with unread, Tasks, Members, then Settings in the footer; beside it the Home list pane,
- * with no head of its own (web Sidebar `hideTitle`). Fixed fixture data; verify / record as
- * [RaftRobolectricScreenshot].
+ * the navigation rail ([RaftNavigationRailTabBar]) with the web LeftRail's entries (Direction A,
+ * #proj-mobile 10-30) built by the shell's own [appShellRailTabs] / [appShellRailFooterTabs]: Chat
+ * selected, Activity with unread, Tasks, Members, Computers dotted for an unseen offline computer,
+ * Apps; Help and Settings (dotted for an app update) in the footer; beside it the Home list pane,
+ * with no head of its own (web Sidebar `hideTitle`).
+ *
+ * Captured at the windows the rail now starts at (768dp, the web's `md`): iPad portrait 768 and
+ * 834, iPad 11" landscape 1194, and a 1280 desktop window (the Compose 版's default). The Help menu
+ * open beside the rail is the desktop window's `.help` case. Fixed fixture data; verify / record
+ * as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -40,10 +46,40 @@ class NavigationRailScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun navigationRailLight() = capture("shell.navigation-rail", RaftAppAppearance.Light)
+    fun navigationRailLight() = capture("shell.navigation-rail", RaftAppAppearance.Light, 1280)
 
     @Test
-    fun navigationRailDark() = capture("shell.navigation-rail.dark", RaftAppAppearance.Dark)
+    fun navigationRailDark() = capture("shell.navigation-rail.dark", RaftAppAppearance.Dark, 1280)
+
+    @Test
+    fun navigationRailHelpLight() = capture("shell.navigation-rail.help", RaftAppAppearance.Light, 1280, helpOpen = true)
+
+    @Test
+    fun navigationRailHelpDark() = capture("shell.navigation-rail.help.dark", RaftAppAppearance.Dark, 1280, helpOpen = true)
+
+    @Test
+    @Config(qualifiers = "w768dp-h1024dp-mdpi")
+    fun ipadPortrait768Light() = capture("shell.navigation-rail.ipad-768", RaftAppAppearance.Light, 768)
+
+    @Test
+    @Config(qualifiers = "w768dp-h1024dp-mdpi")
+    fun ipadPortrait768Dark() = capture("shell.navigation-rail.ipad-768.dark", RaftAppAppearance.Dark, 768)
+
+    @Test
+    @Config(qualifiers = "w834dp-h1194dp-mdpi")
+    fun ipadPortrait834Light() = capture("shell.navigation-rail.ipad-834", RaftAppAppearance.Light, 834)
+
+    @Test
+    @Config(qualifiers = "w834dp-h1194dp-mdpi")
+    fun ipadPortrait834Dark() = capture("shell.navigation-rail.ipad-834.dark", RaftAppAppearance.Dark, 834)
+
+    @Test
+    @Config(qualifiers = "w1194dp-h834dp-mdpi")
+    fun ipadLandscapeLight() = capture("shell.navigation-rail.ipad-landscape", RaftAppAppearance.Light, 1194)
+
+    @Test
+    @Config(qualifiers = "w1194dp-h834dp-mdpi")
+    fun ipadLandscapeDark() = capture("shell.navigation-rail.ipad-landscape.dark", RaftAppAppearance.Dark, 1194)
 
     private val servers =
         listOf(
@@ -54,7 +90,7 @@ class NavigationRailScreenshotTest {
             RaftServerSwitcherItem(id = "s5", name = "Stamp", slug = "stamp", activityUnreadCount = 0L),
         )
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    private fun capture(name: String, appearance: RaftAppAppearance, windowWidth: Int, helpOpen: Boolean = false) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -62,7 +98,8 @@ class NavigationRailScreenshotTest {
                 }
             val topBar = remember { RaftAppShellTopBarState() }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftAppShellTopBar provides topBar) {
-                Column(Modifier.width(1280.dp).height(600.dp).background(RaftColor.SurfaceWhite)) {
+                Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
                     RaftAppShellTopBar(
                         currentServer = servers.first(),
                         servers = servers,
@@ -71,22 +108,38 @@ class NavigationRailScreenshotTest {
                         onServerPick = {},
                         searchLabel = "Search",
                         onSearchClick = {},
-                        windowWidth = 1280.dp,
+                        windowWidth = windowWidth.dp,
                         bell = topBar,
                     )
                     Row(Modifier.weight(1f)) {
+                        val attention = setOf(RaftMoreAttention.Computers, RaftMoreAttention.AppUpdate)
+                        val labels =
+                            mapOf(
+                                "home" to "Chat",
+                                "activity" to "Activity",
+                                "tasks" to "Tasks",
+                                "members" to "Members",
+                                AppShellRailComputersKey to "Computers",
+                                AppShellRailAppsKey to "Apps",
+                            )
                         RaftNavigationRailTabBar(
                             items =
-                                listOf(
-                                    RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
-                                    RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
-                                    RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
-                                    RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
+                                appShellRailTabs(
+                                    selectedTab = "home",
+                                    labelFor = { labels.getValue(it) },
+                                    activityUnreadCount = 3,
+                                    moreAttention = attention,
                                 ),
                             onSelect = {},
                             modifier = Modifier.fillMaxHeight(),
                             bottomItems =
-                                listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
+                                appShellRailFooterTabs(
+                                    selectedTab = "home",
+                                    helpLabel = "Help",
+                                    settingsLabel = "Settings",
+                                    helpOpen = helpOpen,
+                                    moreAttention = attention,
+                                ),
                         )
                         // The Home list pane: no head under the top bar; its notifications go to the
                         // top bar's bell.
@@ -115,6 +168,14 @@ class NavigationRailScreenshotTest {
                         }
                         Box(Modifier.weight(1f).fillMaxHeight())
                     }
+                }
+                RaftAppRailHelpOverlay(
+                    open = helpOpen,
+                    onDismiss = {},
+                    bottomInset = 0.dp,
+                    onDocumentation = {},
+                    onFeedback = {},
+                )
                 }
             }
         }

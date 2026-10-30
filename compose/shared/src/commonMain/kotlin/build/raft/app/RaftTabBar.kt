@@ -49,6 +49,7 @@ import build.raft.designsystem.components.RaftMobileNavItem
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftAppRail
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
@@ -561,17 +562,27 @@ private fun RaftNavigationRailTabItem(
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
     val attentionDescription =
-        if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
+        when (item.key) {
+            "more", "settings" -> stringResource(Res.string.tab_more_attention_dot)
+            AppShellRailComputersKey, AppShellRailAppsKey -> stringResource(Res.string.more_row_attention_dot)
+            else -> stringResource(Res.string.tab_activity_unread_dot)
+        }
+    val glyph = appShellRailGlyph(item.key)
     RaftAppRailItem(
         label = item.label,
         selected = item.selected,
         onClick = { onSelect(item.key) },
         icon = { ink ->
-            RaftLucideIcon(
-                name = item.iconName,
-                color = raftArgbHex(ink),
-                modifier = Modifier.size(RaftAppRailDefaults.IconSize)
-            )
+            if (glyph != null) {
+                // web LeftRail: Chat is raft-ui `ChatIcon`, not a Lucide glyph.
+                RaftConversationKindIcon(glyph, size = RaftAppRailDefaults.IconSize, color = ink)
+            } else {
+                RaftLucideIcon(
+                    name = item.iconName,
+                    color = raftArgbHex(ink),
+                    modifier = Modifier.size(RaftAppRailDefaults.IconSize)
+                )
+            }
         },
         enabled = item.enabled,
         attention = item.attentionDot || item.badgeCount > 0,

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.raftComputerAttentionPairs
 import build.raft.app.data.raftComputerAttentionUnseen
+import build.raft.designsystem.components.RaftConversationKindGlyph
 
 /**
  * Per-key bottom-tab icon. Activity uses the Lucide `activity` glyph, the same icon as the web
@@ -169,14 +170,122 @@ internal fun raftMoreAttention(
 internal fun appShellMoreTabShowsDot(attention: Set<RaftMoreAttention>, selected: Boolean): Boolean =
     attention.isNotEmpty() && !selected
 
-/** Wide-rail tab entries (web LeftRail): Settings is pinned to the rail bottom separately. */
-internal val AppShellRailTabKeys: List<String> = listOf("home", "activity", "tasks", "members")
+/**
+ * Wide-rail entries, top to bottom, as the web LeftRail lists them (Direction A, #proj-mobile
+ * 10-30): Chat (the `home` tab), Activity, Tasks, Members, Computers, Apps. Help and Settings are
+ * pinned to the rail bottom separately. Computers and Apps are not shell tabs: they open the
+ * pages their Settings rows open ([AppShellRailComputersKey], [AppShellRailAppsKey]).
+ */
+internal val AppShellRailTabKeys: List<String> =
+    listOf("home", "activity", "tasks", "members", AppShellRailComputersKey, AppShellRailAppsKey)
+
+/** The rail's Computers entry: opens the Computers page, as Settings > Computers does. */
+internal const val AppShellRailComputersKey = "computers"
+
+/** The rail's Apps entry: opens the Applications page, as Settings > Applications does. */
+internal const val AppShellRailAppsKey = "apps"
+
+/** The rail's Help entry in its footer, above Settings: opens the Help menu beside the rail. */
+internal const val AppShellRailHelpKey = "help"
+
+/** Rail entries that open a page over the shell instead of selecting a tab; never selected. */
+internal val AppShellRailPageKeys: Set<String> = setOf(AppShellRailComputersKey, AppShellRailAppsKey)
+
+/**
+ * The rail's icon for [key], the web LeftRail's: raft-ui `ChatIcon` for Chat (drawn through
+ * [appShellRailGlyph], this is its fallback), Lucide `list-todo` for Tasks, `monitor` for
+ * Computers, `blocks` for Apps, `circle-question-mark` (lucide-react `CircleHelp`) for Help. The
+ * phone bar keeps [appShellTabIcon].
+ */
+internal fun appShellRailTabIcon(key: String): RaftLucideIconName =
+    when (key) {
+        "home" -> RaftLucideIconName.MessageSquare
+        "tasks" -> RaftLucideIconName.ListTodo
+        AppShellRailComputersKey -> RaftLucideIconName.Monitor
+        AppShellRailAppsKey -> RaftLucideIconName.Blocks
+        AppShellRailHelpKey -> RaftLucideIconName.CircleQuestionMark
+        else -> appShellTabIcon(key)
+    }
+
+/** The raft-ui glyph a rail entry draws instead of its Lucide icon: Chat is `ChatIcon`. */
+internal fun appShellRailGlyph(key: String): RaftConversationKindGlyph? =
+    if (key == "home") RaftConversationKindGlyph.Chat else null
+
+/**
+ * Each rail entry's own attention dot (web LeftRail: Computers and Settings dot separately). An
+ * unseen offline/outdated computer dots Computers; an app update (read in Settings > About) dots
+ * Settings. Apps has no signal on mobile yet (web's is the admin-review flag of
+ * `GET /integrations/permission-updates`), so it never dots. The phone's More tab keeps the
+ * combined [appShellMoreTabShowsDot].
+ */
+internal fun appShellRailShowsAttention(key: String, attention: Set<RaftMoreAttention>, selected: Boolean): Boolean =
+    !selected &&
+        when (key) {
+            AppShellRailComputersKey -> RaftMoreAttention.Computers in attention
+            "settings" -> RaftMoreAttention.AppUpdate in attention
+            else -> false
+        }
+
+/**
+ * The rail's entries ([AppShellRailTabKeys]) for [selectedTab]: the web LeftRail's icons
+ * ([appShellRailTabIcon]), Activity's unread dot, and Computers' own dot
+ * ([appShellRailShowsAttention]). Computers and Apps open pages, so they are never selected.
+ */
+internal fun appShellRailTabs(
+    selectedTab: String,
+    labelFor: (String) -> String,
+    activityUnreadCount: Int = 0,
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
+): List<RaftBottomTabItemPayload> =
+    appShellBottomTabs(
+        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        orderedTabKeys = AppShellRailTabKeys,
+        activityUnreadCount = activityUnreadCount,
+        labelFor = labelFor,
+    ).map { item ->
+        val selected = item.selected && item.key !in AppShellRailPageKeys
+        item.copy(
+            iconName = appShellRailTabIcon(item.key),
+            selected = selected,
+            attentionDot = item.attentionDot || appShellRailShowsAttention(item.key, moreAttention, selected),
+        )
+    }
+
+/**
+ * The rail's footer, web LeftRail's order: Help (selected while its menu is open), then Settings,
+ * dotted only for an app update now that Computers has its own entry.
+ */
+internal fun appShellRailFooterTabs(
+    selectedTab: String,
+    helpLabel: String,
+    settingsLabel: String,
+    helpOpen: Boolean,
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
+): List<RaftBottomTabItemPayload> {
+    val settingsSelected = retainedAppShellSelectedTab(selectedTab) == "settings"
+    return listOf(
+        RaftBottomTabItemPayload(
+            key = AppShellRailHelpKey,
+            label = helpLabel,
+            iconName = appShellRailTabIcon(AppShellRailHelpKey),
+            selected = helpOpen,
+        ),
+        RaftBottomTabItemPayload(
+            key = "settings",
+            label = settingsLabel,
+            iconName = RaftLucideIconName.Settings,
+            selected = settingsSelected,
+            attentionDot = appShellRailShowsAttention("settings", moreAttention, settingsSelected),
+        ),
+    )
+}
 
 /**
  * The wide-screen rail keeps the phone bar's destinations in the phone bar's order (nav spec
  * 2026-10-21 §5, raft-design responsive.md: "keeps the phone's destinations in the phone's
- * order"): Home (with DMs beside it), Activity, Tasks, Search, then Members, which the phone
- * reaches through More. More's own page is the Settings entry pinned to the rail bottom.
+ * order"): Home (with DMs beside it), Activity, Tasks, Search, then Members, Computers and Apps,
+ * which the phone reaches through the server panel / Settings. More's own page is the Settings
+ * entry pinned to the rail bottom.
  * Entries not listed keep their relative order after these.
  */
 internal val AppShellRailOrder: List<String> =
@@ -187,6 +296,8 @@ internal val AppShellRailOrder: List<String> =
         "tasks",
         AppShellRailSearchKey,
         "members",
+        AppShellRailComputersKey,
+        AppShellRailAppsKey,
     )
 
 internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
@@ -278,8 +389,7 @@ internal fun raftServerMenuModel(
 /**
  * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
  * in the apps' desktop mode"). The phone keeps every page: it has no rail. On a wide screen the
- * rail already has Members and Settings, and Computers is a Settings section, so the row would
- * only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
+ * rail already has Members, Computers and Settings, so the row would only repeat them and the popover draws no row at all (artin, 10-29: "电脑端这里就不用有两个选择").
  */
 internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,

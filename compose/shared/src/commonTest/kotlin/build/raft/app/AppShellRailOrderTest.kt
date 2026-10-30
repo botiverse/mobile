@@ -10,7 +10,7 @@ class AppShellRailOrderTest {
     @Test fun railFollowsThePhoneBarOrder() {
         // The rail's entries as the shell builds them: the tab keys, then the inline Search entry.
         assertEquals(
-            listOf("home", "activity", "tasks", AppShellRailSearchKey, "members"),
+            listOf("home", "activity", "tasks", AppShellRailSearchKey, "members", AppShellRailComputersKey, AppShellRailAppsKey),
             order(*(AppShellRailTabKeys + AppShellRailSearchKey).toTypedArray()),
         )
         // The phone bar's own destinations, Search included, are in the same relative order.

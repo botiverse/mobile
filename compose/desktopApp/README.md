@@ -28,7 +28,7 @@ launch hands it to the running app and exits.
 ## Layout
 
 The host publishes the window size with a `flat` posture (`slockAdaptivePaneChanged`, as the
-Android and iOS hosts do) on start and on every resize, so a window at least 840dp wide gets the
+Android and iOS hosts do) on start and on every resize, so a window at least 768dp wide gets the
 wide layout (navigation rail, split panes) and a narrower one the phone layout.
 
 ## Realtime

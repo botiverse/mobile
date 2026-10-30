@@ -32,7 +32,7 @@ class MembersListRowVisualContractTest {
         val compact = RaftAdaptivePaneLayout.Compact
         val dual = RaftAdaptivePaneLayout.DualPane
         // Compact windows: whatever the slot is, no cap, no new padding —
-        // including a sub-840 window that happens to have a wide slot.
+        // including a sub-768 window that happens to have a wide slot.
         assertEquals(360.dp, membersListContentMaxWidth(360.dp, compact))
         assertEquals(750.dp, membersListContentMaxWidth(750.dp, compact))
         assertEquals(800.dp, membersListContentMaxWidth(800.dp, compact))

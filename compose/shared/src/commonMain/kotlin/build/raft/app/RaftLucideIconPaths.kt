@@ -182,6 +182,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z"),
                     ),
                 )
+            RaftLucideIconName.BookOpenText ->
+                RaftLucideIconSpec(
+                    "book-open-text",
+                    listOf(
+                        RaftLucidePathSpec("M12 7v14"),
+                        RaftLucidePathSpec("M16 12h2"),
+                        RaftLucidePathSpec("M16 8h2"),
+                        RaftLucidePathSpec("M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"),
+                        RaftLucidePathSpec("M6 12h2"),
+                        RaftLucidePathSpec("M6 8h2"),
+                    ),
+                )
             RaftLucideIconName.Bot ->
                 RaftLucideIconSpec(
                     "bot",
@@ -345,6 +357,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M21.818 10.1a10 10 0 0 1 0 3.8"),
                         RaftLucidePathSpec("M3.721 6.391a10 10 0 0 1 2.7-2.69"),
                         RaftLucidePathSpec("M6.391 20.279a10 10 0 0 1-2.69-2.7"),
+                    ),
+                )
+            RaftLucideIconName.CircleQuestionMark ->
+                RaftLucideIconSpec(
+                    "circle-question-mark",
+                    listOf(
+                        RaftLucidePathSpec("M 2.0 12.0 A 10.0 10.0 0 1 0 22.0 12.0 A 10.0 10.0 0 1 0 2.0 12.0 Z"),
+                        RaftLucidePathSpec("M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"),
+                        RaftLucidePathSpec("M12 17h.01"),
                     ),
                 )
             RaftLucideIconName.CircleUser ->
