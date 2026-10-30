@@ -9,8 +9,8 @@ class RaftEmojiPickerPopoverTest {
     @Test
     fun phonesKeepTheDialog() {
         assertFalse(raftEmojiPickerUsesPopover(windowWidthDp = 390f, hasAnchor = true))
-        // A small tablet held portrait lays the app out as a phone, so the picker follows it.
-        assertFalse(raftEmojiPickerUsesPopover(windowWidthDp = 744f, hasAnchor = true))
+        // A window just under the wide breakpoint lays the app out as a phone, so the picker follows it.
+        assertFalse(raftEmojiPickerUsesPopover(windowWidthDp = 743f, hasAnchor = true))
     }
 
     @Test

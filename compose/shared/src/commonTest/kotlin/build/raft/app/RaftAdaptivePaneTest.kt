@@ -50,7 +50,7 @@ class RaftAdaptivePaneTest {
             reduceRaftAdaptivePane(
                 RaftAdaptivePaneState(),
                 RaftAdaptivePaneEvent(
-                    widthPx = 1500,
+                    widthPx = 1400,
                     heightPx = 1200,
                     density = 2f,
                     posture = RaftAdaptivePanePosture.HalfFolded
@@ -61,20 +61,20 @@ class RaftAdaptivePaneTest {
     }
 
     @Test
-    fun theRailStartsAtTheWebsMdBreakpoint() {
-        // Direction A (#proj-mobile 10-30): wide from 768dp, the web's `md`, not 840. iPad portrait
-        // (768 iPad mini 5 / 9.7", 810, 820 Air 11", 834 Pro 11") gets the rail; 744 (iPad mini 6
-        // and later in portrait) and phones in portrait keep the phone layout.
-        assertEquals(768f, DualPaneMinimumWidthDp)
+    fun theRailStartsAtTheIpadMinisPortraitWidth() {
+        // Direction A (#proj-mobile 10-30): wide from 744dp (artin), not 840 and 24 under the web's
+        // `md` 768, so every iPad held upright gets the rail: 744 (iPad mini 6 and later), 768,
+        // 810, 820 (Air 11"), 834 (Pro 11"). Phones in portrait keep the phone layout.
+        assertEquals(744f, DualPaneMinimumWidthDp)
         fun layoutAt(widthPt: Int, scale: Float = 2f) =
             reduceRaftAdaptivePane(
                 RaftAdaptivePaneState(),
                 RaftAdaptivePaneEvent((widthPt * scale).toInt(), (1100 * scale).toInt(), scale, RaftAdaptivePanePosture.Flat)
             ).layout
-        listOf(768, 810, 820, 834, 1024, 1366).forEach { width ->
+        listOf(744, 768, 810, 820, 834, 1024, 1366).forEach { width ->
             assertEquals(RaftAdaptivePaneLayout.DualPane, layoutAt(width), "width $width")
         }
-        listOf(402, 744, 767).forEach { width ->
+        listOf(402, 700, 743).forEach { width ->
             assertEquals(RaftAdaptivePaneLayout.Compact, layoutAt(width), "width $width")
         }
     }
