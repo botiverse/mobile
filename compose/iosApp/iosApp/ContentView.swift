@@ -246,8 +246,19 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
     ]
 
     static func usesLargeTitle(pageName: String) -> Bool {
-        largeTitlePageNames.contains(pageName)
+        largeTitleMirror && largeTitlePageNames.contains(pageName)
     }
+
+    /// Off by default: runs 41118356672 / 41124126889 (iOS 27 simulator) showed UIKit does not
+    /// track a content scroll view whose offset is written programmatically, even when it reports
+    /// isTracking / isDragging: the bar height, the large-title view's frame / alpha / transform
+    /// and the safe area stay put mid-collapse; past the range the title toggles to inline and on
+    /// the way back the large row came back blank. A pushed page never got its large title at
+    /// all (large-title view height 0). So lists use inline titles; `RAFT_PROTO_LARGE_TITLE=1`
+    /// brings the scroll mirror back to reproduce that.
+    static let largeTitleMirror: Bool =
+        ProcessInfo.processInfo.environment["RAFT_PROTO_LARGE_TITLE"]?.trimmingCharacters(in: .whitespaces) == "1"
+
 
     /// In a capture with the prototype off, the same pages get a script-only bridge so the
     /// scripted scroll runs in both modes.
@@ -801,7 +812,7 @@ final class RaftNativeNavProtoRootController: UITabBarController, UITabBarContro
             navigationItem.title = "Home"
             navigationItem.backButtonTitle = "Home"
             navigationItem.backButtonDisplayMode = .default
-            navigationItem.largeTitleDisplayMode = .always
+            navigationItem.largeTitleDisplayMode = RaftNativeNavProto.largeTitleMirror ? .always : .never
             let servers = UIMenu(title: "Servers", children: [
                 UIAction(title: "Raft Design", image: UIImage(systemName: "checkmark")) { _ in },
                 UIAction(title: "Botiverse") { _ in },
@@ -1084,7 +1095,7 @@ struct RaftNativeNavProtoDemoView: UIViewControllerRepresentable {
         let root = RaftNativeNavProtoRootController(native: RaftNativeNavProto.enabled)
         let nav = UINavigationController(rootViewController: root)
         if RaftNativeNavProto.enabled {
-            nav.navigationBar.prefersLargeTitles = true
+            nav.navigationBar.prefersLargeTitles = RaftNativeNavProto.largeTitleMirror
         } else {
             nav.setNavigationBarHidden(true, animated: false)
         }
