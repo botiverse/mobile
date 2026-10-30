@@ -87,7 +87,8 @@ internal fun ComputerRuntimeUsageChips(
     val access = if (usable) LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess() else null
     chips.forEach { chip ->
         if (usable && chip.availability == RaftComputerRuntimeAvailability.Detected && RuntimeAccountUsageProvider.forRuntime(chip.id) != null) {
-            ComputerRuntimeUsageChip(chip.name, membersRuntimeAccountUsageKey(access, chip.id, machineId), access)
+            val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
+            ComputerRuntimeUsageChip(chip.name + experimental, membersRuntimeAccountUsageKey(access, chip.id, machineId), access)
         } else {
             plain(chip)
         }

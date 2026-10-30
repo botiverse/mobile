@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -421,6 +422,8 @@ fun RaftRadioRow(
     description: String? = null,
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     interactionSource: MutableInteractionSource? = null,
+    /** A raft-ui `Badge.Experimental` after the label. */
+    badge: String? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     RaftChoiceRow(
@@ -428,6 +431,7 @@ fun RaftRadioRow(
         description = description,
         enabled = enabled,
         modifier = modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+        badge = badge,
     ) {
         val isFocused = raftIsFocused(source)
         RaftRadioBox(selected, enabled, focused = enabled && isFocused, modifier = Modifier)
@@ -440,6 +444,7 @@ private fun RaftChoiceRow(
     description: String?,
     enabled: Boolean,
     modifier: Modifier,
+    badge: String? = null,
     control: @Composable () -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -452,7 +457,19 @@ private fun RaftChoiceRow(
         control = control,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            RaftText(label, style = labelStyle, color = if (enabled) colors.foreground else colors.foregroundDisabled)
+            if (badge == null) {
+                RaftText(label, style = labelStyle, color = if (enabled) colors.foreground else colors.foregroundDisabled)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftText(
+                        label,
+                        Modifier.weight(1f, fill = false),
+                        style = labelStyle,
+                        color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                    )
+                    RaftExperimentalBadge(badge, enabled = enabled)
+                }
+            }
             if (description != null) {
                 RaftText(description, style = typography.footnote, color = if (enabled) colors.foregroundMuted else colors.foregroundDisabled)
             }

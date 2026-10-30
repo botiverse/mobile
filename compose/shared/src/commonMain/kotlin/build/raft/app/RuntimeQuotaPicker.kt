@@ -14,6 +14,7 @@ import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.data.runtimeQuotaLineParts
 import build.raft.app.data.summarizeRuntimeQuota
 import build.raft.designsystem.components.RaftChoicePicker
+import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftSelectTrigger
 import kotlinx.coroutines.launch
@@ -182,9 +183,10 @@ internal fun RuntimePickerChoice(
     title: String,
     placeholder: String,
     enabled: Boolean,
-    emptyLabel: String? = null
+    emptyLabel: String? = null,
+    listAction: RaftComboboxListAction? = null
 ) {
-    if (options.isEmpty()) {
+    if (options.isEmpty() && listAction == null) {
         RaftSelectTrigger(value = emptyLabel, onClick = {}, placeholder = placeholder, enabled = false)
         return
     }
@@ -198,18 +200,23 @@ internal fun RuntimePickerChoice(
         placeholder = placeholder,
         searchPlaceholder = stringResource(Res.string.runtime_picker_search),
         enabled = enabled,
-        label = title
+        label = title,
+        listAction = listAction
     )
 }
 
 /**
- * The runtime picker of the create and edit dialogs: [runtimeOptions] with, on [quotaMachine],
- * each runtime's compact quota line as its description.
+ * The runtime picker of the create and edit dialogs (web parity, botiverse/slock #11783 /
+ * #11794 / #11822): [rows] grouped by what this computer can run, each runtime with, on
+ * [quotaMachine], its compact quota line as its description, and Show All Supported / Show
+ * Installed Only as the list's last row when [onShowAllChange] has something to toggle.
  */
 @Composable
 internal fun RuntimeSelectChoice(
     runtime: String,
-    runtimeOptions: List<CreateAgentDropdownItem>,
+    rows: RuntimePickerRows,
+    showAll: Boolean,
+    onShowAllChange: (Boolean) -> Unit,
     quotaMachine: RuntimeQuotaMachine?,
     enabled: Boolean,
     emptyLabel: String?,
@@ -218,17 +225,27 @@ internal fun RuntimeSelectChoice(
     val quotaLines =
         rememberRuntimeQuotaLines(
             quotaMachine?.access ?: LocalMembersRuntimeAccountUsageAccess.current,
-            remember(runtimeOptions, quotaMachine) {
-                if (quotaMachine == null) emptyList() else runtimeOptions.map { quotaMachine.request(it.id, it.id) }
+            remember(rows, quotaMachine) {
+                if (quotaMachine == null) emptyList() else rows.rows.map { quotaMachine.request(it.id, it.id) }
             }
         )
+    val copy = rememberRuntimePickerCopy()
+    val options = runtimePickerOptions(rows.rows, copy, quotaLines)
+    val showAllLabel = stringResource(Res.string.runtime_picker_show_all_supported)
+    val installedOnlyLabel = stringResource(Res.string.runtime_picker_show_installed_only)
     RuntimePickerChoice(
-        value = runtime.takeIf { id -> runtimeOptions.any { it.id == id } },
-        options = runtimeOptions.map { RaftComboboxOption(it.id, it.label, description = quotaLines[it.id], enabled = it.enabled) },
+        value = runtime.takeIf { id -> options.any { it.value == id } },
+        options = options,
         onValueChange = onSelect,
         title = stringResource(Res.string.agent_create_label_runtime),
         placeholder = stringResource(Res.string.agent_create_placeholder_select_runtime),
         enabled = enabled,
-        emptyLabel = emptyLabel
+        emptyLabel = emptyLabel,
+        listAction =
+            if (rows.canToggle) {
+                RaftComboboxListAction(if (showAll) installedOnlyLabel else showAllLabel) { onShowAllChange(!showAll) }
+            } else {
+                null
+            }
     )
 }

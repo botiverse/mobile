@@ -22,7 +22,7 @@ import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
@@ -253,7 +253,7 @@ private fun AgentMigrationTargetDetailsContent(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (usage != null && agentRuntime != null) {
             RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_title, getRuntimeDisplayName(agentRuntime)),
+                stringResource(Res.string.settings_computers_runtime_usage_title, runtimeCatalogDisplayName(agentRuntime)),
                 style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.foregroundMuted
             )

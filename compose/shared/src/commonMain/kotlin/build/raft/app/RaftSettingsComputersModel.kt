@@ -15,7 +15,9 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
-import build.raft.app.model.RUNTIMES
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.RaftRuntimeCatalogNames
+import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.getModelLabel
@@ -68,15 +70,21 @@ internal data class RaftComputerRuntimeChip(
     val id: String,
     val name: String,
     val availability: RaftComputerRuntimeAvailability,
+    /** Named with " (experimental)" in the chip (web #11771 / #11822: a separate badge in a row of chips reads as one more runtime). */
+    val experimental: Boolean = false,
 )
 
 /**
  * Web MachineDetailPanel "Detected Runtimes": every runtime a computer can run
  * (`getMachineRuntimeDisplayOptions`: supported, not deprecated), in catalog order, each
  * marked detected or why not, so the row shows what is missing as well as what is there.
+ * The runtimes are [catalog]'s: the server catalog read last in this process, else the bundled table.
  */
-internal fun raftComputerRuntimeChips(detected: List<String>): List<RaftComputerRuntimeChip> =
-    RUNTIMES.filter { it.supported && !it.deprecated }.map { runtime ->
+internal fun raftComputerRuntimeChips(
+    detected: List<String>,
+    catalog: ServerRuntimeCatalog = RaftRuntimeCatalogNames.latest() ?: BundledRuntimeCatalog,
+): List<RaftComputerRuntimeChip> =
+    catalog.runtimes.filter { it.supported && !it.deprecated }.map { runtime ->
         RaftComputerRuntimeChip(
             id = runtime.id,
             name = runtime.displayName,
@@ -86,6 +94,7 @@ internal fun raftComputerRuntimeChips(detected: List<String>): List<RaftComputer
                     runtime.binary.isEmpty() -> RaftComputerRuntimeAvailability.UpdateComputer
                     else -> RaftComputerRuntimeAvailability.NotInstalled
                 },
+            experimental = runtime.experimental,
         )
     }
 

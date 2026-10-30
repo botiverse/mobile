@@ -53,16 +53,19 @@ class AgentRuntimeConfigTest {
     // ── Runtimes / models ──
 
     @Test
-    fun runtimesContainCanonicalTwelveAndMarkLegacyEntriesDeprecated() {
+    fun runtimesMirrorTheSharedCatalogAndMarkLegacyEntriesDeprecated() {
+        // slock packages/shared/src/runtimeCatalog.ts RUNTIMES at f5fe2ca864 (PR #12065).
         val ids = RUNTIMES.map { it.id }
         assertEquals(
             listOf(
                 "claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk",
-                "kimi", "copilot", "cursor", "gemini", "opencode", "pi"
+                "kimi", "copilot", "cursor", "gemini", "opencode", "pi", "qwen", "qoder"
             ),
             ids
         )
-        assertEquals(setOf("kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
+        assertEquals(setOf("antigravity", "kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
+        assertEquals(setOf("qwen", "qoder"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
+        assertEquals("Kimi CLI", RUNTIMES.single { it.id == "kimi" }.displayName)
     }
 
     @Test

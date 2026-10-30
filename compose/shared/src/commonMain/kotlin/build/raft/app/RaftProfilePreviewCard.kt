@@ -19,7 +19,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -66,6 +66,8 @@ internal data class RaftProfilePreviewCardModel(
     val status: RaftAgentStatusIndicatorState? = null,
     /** An agent's runtime and model (web Runtime / Model rows); null leaves the row out. */
     val runtimeLabel: String? = null,
+    /** The runtime behind [runtimeLabel]: its lifecycle status (" (experimental)") is added when drawn. */
+    val runtimeId: String? = null,
     val modelLabel: String? = null,
     val readReceipt: RaftProfilePreviewReadReceipt? = null,
     /** The server whose avatar cache holds the face. */
@@ -113,7 +115,8 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let(::getRuntimeDisplayName) else null,
+        runtimeLabel = if (isAgent && appBot == null) runtimeId?.let { runtimeCatalogDisplayName(it, profile.serverId?.value) } else null,
+        runtimeId = if (isAgent && appBot == null) runtimeId else null,
         modelLabel = if (isAgent && appBot == null) profile.modelLabel() else null,
         readReceipt = if (isAgent && appBot == null) readReceipt else null,
         serverId = profile.serverId?.value,
@@ -259,7 +262,10 @@ internal fun RaftProfilePreviewCardContent(
             RaftSeparator(Modifier.padding(top = 8.dp))
             ProfilePreviewFacts(
                 listOfNotNull(
-                    model.runtimeLabel?.let { stringResource(Res.string.member_label_runtime) to it },
+                    model.runtimeLabel?.let { label ->
+                        stringResource(Res.string.member_label_runtime) to
+                            (model.runtimeId?.let { runtimeLabelWithStatus(it, model.serverId) } ?: label)
+                    },
                     model.modelLabel?.let { stringResource(Res.string.member_label_model) to it },
                 ),
                 Modifier.padding(top = 8.dp),

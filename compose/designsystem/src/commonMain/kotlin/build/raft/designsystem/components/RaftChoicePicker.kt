@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,6 +11,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
 
 // raft-design picker rule (Jasper, #proj-mobile): how one value is picked depends on how many
 // values there are, counting every option (a "Hosted" choice too):
@@ -55,6 +63,12 @@ fun raftChoicePickerVariant(optionCount: Int): RaftChoicePickerVariant =
  *
  * Picking calls [onValueChange] (not for the value already chosen) and closes the sheet.
  * A disabled option ([RaftComboboxOption.enabled]) is greyed out and cannot be picked.
+ *
+ * Grouped options ([RaftComboboxOption.group]) list under their group's heading, radios too;
+ * in the sheet a separator goes between groups, never under a heading (Raft DS Select). An
+ * option's [RaftComboboxOption.badge] follows its label in the list and in the trigger.
+ * [listAction] is a last row that changes what the list shows (after a separator in the sheet,
+ * a ghost button under the radios): it runs without picking and leaves the sheet open.
  */
 @Composable
 fun <T> RaftChoicePicker(
@@ -68,17 +82,36 @@ fun <T> RaftChoicePicker(
     searchPlaceholder: String = "Search",
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     label: String? = LocalRaftFieldState.current.label,
+    listAction: RaftComboboxListAction? = null,
 ) {
     when (val variant = raftChoicePickerVariant(options.size)) {
         RaftChoicePickerVariant.RadioGroup ->
-            RaftRadioGroup(modifier) {
-                options.forEach { option ->
-                    RaftRadioRow(
-                        label = option.label,
-                        selected = option.value == value,
-                        onClick = { if (option.value != value) onValueChange(option.value) },
-                        description = option.description,
-                        enabled = enabled && option.enabled,
+            Column(modifier) {
+                RaftRadioGroup {
+                    raftComboboxRows(options).forEachIndexed { index, row ->
+                        when (row) {
+                            is RaftComboboxRow.Group -> RaftChoicePickerGroupLabel(row.label, first = index == 0)
+                            is RaftComboboxRow.Option -> {
+                                val option = options[row.index]
+                                RaftRadioRow(
+                                    label = option.label,
+                                    selected = option.value == value,
+                                    onClick = { if (option.value != value) onValueChange(option.value) },
+                                    description = option.description,
+                                    enabled = enabled && option.enabled,
+                                    badge = option.badge,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (listAction != null) {
+                    RaftButton(
+                        listAction.label,
+                        listAction.onClick,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Md,
+                        enabled = enabled,
                     )
                 }
             }
@@ -99,6 +132,7 @@ fun <T> RaftChoicePicker(
                     label = label,
                     expanded = open,
                     onCollapse = { open = false },
+                    badge = value?.let { raftComboboxBadgeOf(options, it) },
                 )
                 if (open) {
                     RaftSheetWindow(onDismissRequest = { open = false }) { surfaceModifier ->
@@ -117,6 +151,7 @@ fun <T> RaftChoicePicker(
                             searchPlaceholder = searchPlaceholder,
                             modifier = surfaceModifier,
                             inWindow = true,
+                            listAction = listAction,
                         )
                     }
                 }
@@ -143,6 +178,7 @@ fun <T> RaftChoicePickerSheetSurface(
     onQueryChange: (String) -> Unit = {},
     searchPlaceholder: String = "Search",
     inWindow: Boolean = false,
+    listAction: RaftComboboxListAction? = null,
 ) {
     RaftComboboxSheetSurface(
         title = title,
@@ -156,5 +192,18 @@ fun <T> RaftChoicePickerSheetSurface(
         searchPlaceholder = searchPlaceholder,
         inWindow = inWindow,
         searchable = searchable,
+        separateGroups = true,
+        listAction = listAction,
+    )
+}
+
+/** A group heading among radios: `text-caption` bold `foreground-hint`, 12dp above a later group. */
+@Composable
+private fun RaftChoicePickerGroupLabel(text: String, first: Boolean) {
+    RaftText(
+        text,
+        Modifier.padding(top = if (first) 0.dp else 12.dp).semantics { heading() },
+        style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Bold),
+        color = RaftTheme.colors.foregroundHint,
     )
 }

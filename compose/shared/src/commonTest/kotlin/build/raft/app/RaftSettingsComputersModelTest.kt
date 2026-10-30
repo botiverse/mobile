@@ -434,12 +434,13 @@ class RaftSettingsComputersModelTest {
 
     @Test
     fun runtimeChipsListEveryRuntimeAComputerCanRunAndWhyOneIsMissing() {
-        val chips = raftComputerRuntimeChips(listOf("claude", "builtin", "kimi-sdk", "kimi", "pi"))
+        val chips = raftComputerRuntimeChips(listOf("claude", "builtin", "kimi-sdk", "kimi", "pi"), build.raft.app.data.BundledRuntimeCatalog)
         // The web's display options: supported and not deprecated, in catalog order.
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
+            listOf("claude", "codex", "grok", "builtin", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder"),
             chips.map { it.id },
         )
+        assertTrue(chips.single { it.id == "qwen" }.experimental)
         val byId = chips.associateBy { it.id }
         assertEquals("Claude Code", byId.getValue("claude").name)
         assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("claude").availability)
@@ -449,7 +450,7 @@ class RaftSettingsComputersModelTest {
         assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("builtin").availability)
         assertEquals(
             RaftComputerRuntimeAvailability.UpdateComputer,
-            raftComputerRuntimeChips(emptyList()).first { it.id == "builtin" }.availability,
+            raftComputerRuntimeChips(emptyList(), build.raft.app.data.BundledRuntimeCatalog).first { it.id == "builtin" }.availability,
         )
     }
 }

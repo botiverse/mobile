@@ -454,11 +454,11 @@ class MembersAgentServerRoleTest {
             )
 
         assertEquals(listOf("codex", "claude"), runtimes)
-        val runtimeItems = createAgentRuntimeDropdownItems(runtimes)
+        val runtimeItems = runtimePickerRows(build.raft.app.data.BundledRuntimeCatalog, runtimes, "codex", showAll = true).rows
         assertTrue(runtimeItems.first { it.id == "codex" }.enabled)
         assertTrue(runtimeItems.first { it.id == "claude" }.enabled)
         assertFalse(runtimeItems.first { it.id == "pi" }.enabled)
-        assertEquals("Pi (not installed)", runtimeItems.first { it.id == "pi" }.label)
+        assertEquals(RuntimePickerSuffix.NotInstalled, runtimeItems.first { it.id == "pi" }.suffix)
     }
 
     @Test

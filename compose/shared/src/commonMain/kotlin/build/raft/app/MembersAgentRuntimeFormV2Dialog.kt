@@ -29,7 +29,9 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
-import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.RaftRuntimeCatalogNames
+import build.raft.app.data.runtimeCatalogDisplayName
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -172,7 +174,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         machineRuntimeIds = machineRuntimeIds,
                         runtimeAvailabilityError = null,
                         enabled = !saving,
-                        quotaMachine = quotaMachine
+                        quotaMachine = quotaMachine,
+                        // The server catalog read in this process (the Members page warms it), else bundled.
+                        catalog = RaftRuntimeCatalogNames.catalog(access.serverId.value) ?: BundledRuntimeCatalog,
+                        currentRuntimeId = runtimeId
                     ) {
                         if (load == MembersRuntimeFormV2EditLoad.Loading) {
                             Text(
@@ -348,8 +353,8 @@ internal fun membersRuntimeFormV2SwitchConfirmation(
     toRuntimeId: String,
     activeAgent: Boolean
 ): MembersRuntimeFormV2SwitchConfirmation {
-    val from = getRuntimeDisplayName(fromRuntimeId)
-    val to = getRuntimeDisplayName(toRuntimeId)
+    val from = runtimeCatalogDisplayName(fromRuntimeId)
+    val to = runtimeCatalogDisplayName(toRuntimeId)
     return MembersRuntimeFormV2SwitchConfirmation(
         title = Res.string.member_action_switch_runtime_config.desc(),
         message =

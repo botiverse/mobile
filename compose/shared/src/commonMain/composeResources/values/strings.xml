@@ -2239,7 +2239,7 @@
     <string name="settings_computers_state_no_creator">No creator</string>
     <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">Detected Runtimes</string>
-    <string name="settings_computers_runtime_suffix_update_computer">&#160;(update computer)</string>
+    <string name="settings_computers_runtime_suffix_update_computer">&#160;(update Raft Computer)</string>
     <string name="settings_computers_runtime_usage_title">%1$s usage</string>
     <string name="settings_computers_runtime_usage_dialog_label">%1$s runtime account usage</string>
     <string name="settings_computers_runtime_usage_private">Visible with Computer edit permission or to the person who attached this Computer</string>
@@ -2816,6 +2816,18 @@
     <string name="runtime_quota_attention">%1$s · needs attention</string>
     <string name="runtime_picker_search">Search</string>
     <string name="runtime_picker_no_matches">Nothing matches “%1$s”</string>
+    <string name="runtime_picker_group_current">Current runtime</string>
+    <string name="runtime_picker_group_ready">Ready on this computer</string>
+    <string name="runtime_picker_group_not_available">Not available on this server</string>
+    <string name="runtime_picker_group_needs_computer_update">Needs a Raft Computer update</string>
+    <string name="runtime_picker_group_needs_app_update">Needs a Raft app update</string>
+    <string name="runtime_picker_group_not_installed">Not installed on this computer</string>
+    <string name="runtime_picker_needs_app_update">Update the app to use this runtime</string>
+    <string name="runtime_picker_show_all_supported">Show All Supported</string>
+    <string name="runtime_picker_show_installed_only">Show Installed Only</string>
+    <string name="runtime_suffix_deprecated">&#160;(deprecated)</string>
+    <string name="runtime_suffix_experimental">&#160;(experimental)</string>
+    <string name="runtime_badge_experimental">Experimental</string>
     <string name="auth_private_deployment_title">Self-hosted server</string>
     <string name="auth_private_deployment_hint">Enter the web and API addresses of your self-hosted Raft server. The server must run version 1.13.0 or later.</string>
     <string name="auth_private_deployment_web_label">Web address</string>

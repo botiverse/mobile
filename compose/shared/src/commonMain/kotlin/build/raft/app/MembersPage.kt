@@ -174,7 +174,6 @@ import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
-import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.MemberId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.model.MessageId
@@ -2522,6 +2521,13 @@ internal fun MembersPageContent(
                 priority = DataRequestPriority.Visible
             )
         }
+    }
+    // The server runtime catalog names runtimes on this page (subtitles, chips, the switch picker):
+    // the cached answer at once, the server's in the background.
+    LaunchedEffect(createAgentFormStore, serverId) {
+        if (serverId.isBlank()) return@LaunchedEffect
+        createAgentFormStore.cachedServerRuntimeCatalog(serverId)
+        createAgentFormStore.loadServerRuntimeCatalog(serverId, DataRequestPriority.Background)
     }
     val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
         remember(createAgentCoordinator, createAgentFormStore, serverId) {
@@ -9025,7 +9031,7 @@ private fun MembersHumanCreatedAgentRow(
         title = profile.displayName,
         onClick = onClick,
         divider = divider,
-        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { runtimeLabelWithStatus(it) }
             ?: profile.detailRoleLabel,
         leading = { MembersStickerAvatar(profile, RaftAvatarSize.Md, memberAvatarResolver) },
         trailing = observedDisplayState?.let { observed ->
@@ -9240,7 +9246,7 @@ internal fun MembersAgentProfileHeader(
                     }
                     if (runtimeId != null && appBot == null) {
                         // Web `agent-profile-runtime-chip`: the DS runtime chip led by Lucide `cpu`.
-                        val runtimeLabel = getRuntimeDisplayName(runtimeId)
+                        val runtimeLabel = runtimeLabelWithStatus(runtimeId)
                         RaftRuntimeChip(
                             text = runtimeLabel,
                             modifier = Modifier.raftCopyable(runtimeLabel),
@@ -10922,7 +10928,7 @@ internal fun MembersAgentRuntimeConfigRows(
     ) {
         MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
-                label = getRuntimeDisplayName(runtimeId),
+                label = runtimeLabelWithStatus(runtimeId),
                 runtimeId = runtimeId,
                 machineId = machineId
             )
@@ -11037,7 +11043,9 @@ internal fun membersAgentRuntimeModelDisplayLabel(
         ?.firstOrNull { it.id.trim() == normalizedModelId }
         ?.label
         .verifiedDisplayLabel()
-        ?: RUNTIME_MODELS[normalizedRuntimeId]
+        // The server catalog's models for this runtime, else the bundled list.
+        ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId)
+            ?.models
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
             .verifiedDisplayLabel()
@@ -11598,7 +11606,7 @@ private fun MembersAgentCreatedAgentRow(
     RaftListRow(
         title = profile.displayName,
         divider = divider,
-        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { runtimeLabelWithStatus(it) }
             ?: stringResource(Res.string.member_label_agent),
         leading = {
             MembersRaftAvatar(
