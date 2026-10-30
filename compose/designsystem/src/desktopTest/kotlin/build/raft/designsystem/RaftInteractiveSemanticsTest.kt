@@ -80,6 +80,9 @@ import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftModeBar
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftTab
@@ -706,5 +709,54 @@ class RaftInteractiveSemanticsTest {
             // 640 - 300 (keyboard) - 8 below, - 8 above.
             assertEquals(324f, surface.height, 0.5f, "surface height")
             onNodeWithText("Row 20").performScrollTo().assertIsDisplayed()
+        }
+
+    /** raft-ui 0.52.2 (#892): a 22dp badge button takes a tap 10dp above its box (44dp target). */
+    @Test
+    fun aBadgeButtonTakesTapsInItsWidenedTarget() =
+        runComposeUiTest {
+            var opened = false
+            setContent(
+                themed {
+                    Column(Modifier.padding(30.dp)) {
+                        RaftBadge("Codex", appearance = RaftBadgeAppearance.Soft, onClick = { opened = true }, onClickLabel = "Open usage")
+                    }
+                },
+            )
+            onNodeWithText("Codex").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            onNodeWithText("Codex").performTouchInput { click(Offset(centerX, -10.dp.toPx())) }
+            assertTrue(opened, "a tap 10dp above the badge opens it")
+        }
+
+    /** A display badge stays display-only: no role, no click action. */
+    @Test
+    fun aDisplayBadgeIsNotAButton() =
+        runComposeUiTest {
+            setContent(themed { RaftBadge("Beta") })
+            onNodeWithText("Beta").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Role))
+            onNodeWithText("Beta").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        }
+
+    /** ModeBar: the words are a polite live region; Done is a button outside it, 44dp to touch. */
+    @Test
+    fun theModeBarActionEndsTheModeAndTheWordsAreLive() =
+        runComposeUiTest {
+            var done = false
+            setContent(
+                themed {
+                    RaftModeBar(
+                        title = "Commenting · 1 draft.",
+                        description = "Select text to comment on it.",
+                        actionLabel = "Done",
+                        onAction = { done = true },
+                    )
+                },
+            )
+            onNodeWithText("Commenting · 1 draft. Select text to comment on it.")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+            onNodeWithText("Done").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            onNodeWithText("Done").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.LiveRegion))
+            onNodeWithText("Done").performTouchInput { click(Offset(centerX, height + 8.dp.toPx())) }
+            assertTrue(done, "a tap 8dp under the word ends the mode")
         }
 }

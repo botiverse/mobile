@@ -1,7 +1,10 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,14 +15,18 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
@@ -183,6 +190,15 @@ internal fun raftBadgeLook(
  * (13dp solid, 14dp otherwise) with [LocalRaftContentColor] set to the badge ink.
  * [trailing] follows the label 4dp further out (web `ml-1`), at its own size: a runtime
  * label's account-usage [RaftStatusDot] (`sm`).
+ *
+ * With [onClick] it is a badge rendered as a button (raft-ui `render={<button />}`, a runtime
+ * label that opens its usage): the medium tier on press and under a mouse or trackpad
+ * (`sticker-medium` on a solid badge, `fill-medium` on soft and outline), the focus ring,
+ * and a 44dp touch target round it (raft-ui 0.52.2, #892: a transparent hit area 44dp tall
+ * and at least 44dp wide; the look is unchanged). [onClickLabel] names the tap for screen
+ * readers when the text doesn't ("Open usage"). [copyText]: a long press copies it as
+ * [raftCopyable] does (haptic, the Copy screen-reader action), the tap still taps; without
+ * [onClick] it is [raftCopyable] on a display badge. [enabled] = false drops the tap.
  */
 @Composable
 fun RaftBadge(
@@ -193,14 +209,23 @@ fun RaftBadge(
     enabled: Boolean = true,
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    copyText: String? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     RaftBadgeFrame(
         text = text,
         look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors),
         appearance = appearance,
-        modifier = modifier,
+        modifier = if (onClick == null) modifier.raftCopyable(copyText) else modifier,
         icon = icon,
         trailing = trailing,
+        onClick = onClick,
+        onClickLabel = onClickLabel,
+        copyText = copyText,
+        enabled = enabled,
+        interactionSource = interactionSource,
     )
 }
 
@@ -217,6 +242,11 @@ internal fun RaftBadgeFrame(
     modifier: Modifier = Modifier,
     icon: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    copyText: String? = null,
+    enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val typography = RaftTheme.typography
     val textStyle: TextStyle =
@@ -225,14 +255,25 @@ internal fun RaftBadgeFrame(
             fontFeatureSettings = if (appearance == RaftBadgeAppearance.Solid) "tnum" else null,
         )
     val shape = RoundedCornerShape(look.radius)
+    // A badge rendered as a button: only then the state, so a display badge (every unread
+    // count in a list) stays as light as before.
+    val button: RaftBadgeButtonModifiers? =
+        if (onClick != null) {
+            raftBadgeButtonModifiers(appearance, look.radius, shape, onClick, onClickLabel, copyText, enabled, interactionSource)
+        } else {
+            null
+        }
     Row(
         modifier =
             modifier
+                .then(button?.outer ?: Modifier)
                 .raftDieCutEdge(look.outerRing, look.radius)
                 .height(look.height)
                 .widthIn(min = look.minWidth)
                 .background(look.fill, shape)
+                .then(button?.overlay ?: Modifier)
                 .then(if (look.edgeWidth > 0.dp) Modifier.border(look.edgeWidth, look.edge, shape) else Modifier)
+                .then(button?.gestures ?: Modifier)
                 .padding(horizontal = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
@@ -259,4 +300,66 @@ internal fun RaftBadgeFrame(
             }
         }
     }
+}
+
+/** The parts a badge button adds round [RaftBadgeFrame]'s chrome, outermost first. */
+private class RaftBadgeButtonModifiers(val outer: Modifier, val overlay: Modifier, val gestures: Modifier)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun raftBadgeButtonModifiers(
+    appearance: RaftBadgeAppearance,
+    radius: Dp,
+    shape: Shape,
+    onClick: () -> Unit,
+    onClickLabel: String?,
+    copyText: String?,
+    enabled: Boolean,
+    interactionSource: MutableInteractionSource?,
+): RaftBadgeButtonModifiers {
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    // `enabled:hover:overlay-sticker-medium` (solid), `overlay-medium` (soft),
+    // `bg-fill-medium` (outline), the same on `active:`.
+    val overlay =
+        rememberRaftStateOverlay(
+            source,
+            RaftHoverTier.Medium,
+            surface = if (appearance == RaftBadgeAppearance.Solid) RaftPressSurface.Sticker else RaftPressSurface.Paper,
+            enabled = enabled,
+        )
+    val isFocused = raftIsFocused(source)
+    val copy = rememberRaftCopyAction()
+    val haptics = rememberRaftHaptics()
+    val copyLabel = RaftTheme.strings.copy
+    val longPress: (() -> Unit)? =
+        if (copyText.isNullOrEmpty()) {
+            null
+        } else {
+            {
+                haptics.longPress()
+                copy(copyText)
+            }
+        }
+    return RaftBadgeButtonModifiers(
+        outer =
+            Modifier
+                // raft-ui 0.52.2 (#892): a badge button's hit area reaches 44dp tall and at least
+                // 44dp wide on touch; the badge still draws at its own size.
+                .raftTouchTarget(enabled, source, onClick, onLongClick = longPress)
+                .raftFocusRing(enabled && isFocused, radius, RaftTheme.colors),
+        overlay = Modifier.raftStateOverlay(overlay, shape),
+        gestures =
+            Modifier.raftPointerHover(source).combinedClickable(
+                interactionSource = source,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClickLabel = onClickLabel,
+                onLongClickLabel = if (longPress != null) copyLabel else null,
+                // The copy's haptic is ours, as [raftCopyable]'s.
+                hapticFeedbackEnabled = false,
+                onLongClick = longPress,
+                onClick = onClick,
+            ),
+    )
 }

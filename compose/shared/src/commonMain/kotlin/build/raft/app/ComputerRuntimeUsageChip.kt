@@ -57,7 +57,6 @@ import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
-import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
@@ -352,14 +351,16 @@ private fun ComputerRuntimeUsageChip(
     // stale native props when a modifier is removed); whether a tap opens is decided inside.
     RaftBadge(
         text = label,
-        // Long press copies the runtime name; a tap opens its usage.
-        modifier =
-            Modifier.raftCopyable(label, onClickLabel = dialogLabel) {
-                if (offered) {
-                    open = true
-                    controller?.onOpen()
-                }
-            },
+        // A badge button: a tap opens its usage, a long press copies the runtime name; its
+        // touch target reaches 44dp (raft-ui 0.52.2).
+        onClick = {
+            if (offered) {
+                open = true
+                controller?.onOpen()
+            }
+        },
+        onClickLabel = dialogLabel,
+        copyText = label,
         appearance = RaftBadgeAppearance.Soft,
         variant = RaftBadgeVariant.Information,
         trailing = healthDot,

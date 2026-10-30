@@ -363,7 +363,8 @@ internal fun RaftSearchRow(
  * keyboard), and no taller than that safe area less 8dp each side (or 480dp): the rows
  * scroll. Tapping outside or Back calls [onDismissRequest]. Fill it with
  * [RaftMenuItem]s, [RaftMenuLabel]s and [RaftMenuSeparator]s; a row's `onClick` should
- * also close the menu.
+ * also close the menu, a `checked` row (picking one value) included: one pick completes the
+ * choice and an open menu covers its result (raft-ui 0.51, #883, radio items close on pick).
  *
  * Keyboard: opened from the keyboard, the first row takes focus; the arrows move through
  * the rows (wrapping), Home / End go to the first / last, a letter to the next row
