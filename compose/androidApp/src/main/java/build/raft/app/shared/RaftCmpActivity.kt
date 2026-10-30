@@ -1515,7 +1515,7 @@ internal open class RaftCmpActivity :
         super.onPause()
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // The notification permission rides the push registration (osPermission): report the
         // answer now, not at the next app start.
