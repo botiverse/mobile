@@ -155,14 +155,15 @@ private val BothPaws = listOf((-37).dp, 15.dp)
 
 /**
  * The paws on the edge, by their left x from the head's middle (web `MOOD_PAWS`): the waving one
- * has only its right paw down; asleep, none. Both while it pops in.
+ * has only its right paw down, and so does the thinking one, whose left paw is on its chin (artin
+ * 10-30: three hands otherwise); asleep, none. Both while it pops in.
  */
 fun raftOtterPaws(mood: RaftOtterMood, entering: Boolean = false): List<Dp> =
     if (entering) {
         BothPaws
     } else {
         when (mood) {
-            RaftOtterMood.New -> listOf(15.dp)
+            RaftOtterMood.New, RaftOtterMood.Working -> listOf(15.dp)
             RaftOtterMood.Away -> emptyList()
             else -> BothPaws
         }
