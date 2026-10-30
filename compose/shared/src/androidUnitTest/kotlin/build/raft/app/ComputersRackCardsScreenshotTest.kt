@@ -14,7 +14,9 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerVersionGateSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
@@ -33,8 +35,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * JVM screenshots of the Computers list page (`settings.computers`), light and dark: an online
- * computer, an offline one, one with an upgrade, one with low disk and one with many agents.
+ * JVM screenshots of the Computers list page (`settings.computers`), light and dark: web
+ * ComputersRack cards for an online computer, one with an upgrade, one below the version floor,
+ * one with low disk and more agents than one line holds, and an offline one (dimmed agents).
+ * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -96,6 +100,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
             todayEpochDay = raftEpochDayForDate(2026, 10, 22),
             nowEpochMillis = 1_792_635_000_000L,
         )
+    val gib = 1024.0 * 1024.0 * 1024.0
     val snapshot =
         SettingsComputersSnapshot(
             computers =
@@ -110,6 +115,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         hostname = "studio.local",
                         platform = "darwin arm64",
                         latestComputerVersion = "1.0.53",
+                        diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 310 * gib, totalBytes = 994 * gib),
                     ),
                     SettingsComputerSnapshot(
                         id = "m-build",
@@ -121,18 +127,32 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         upgradeAvailable = true,
                         hostname = "build-01",
                         platform = "linux x64",
+                        osRelease = "Ubuntu 24.04.3 LTS",
+                        latestComputerVersion = "1.0.53",
+                    ),
+                    SettingsComputerSnapshot(
+                        id = "m-old",
+                        name = "old-node",
+                        daemonVersion = "",
+                        computerVersion = "1.0.46",
+                        isComputer = true,
+                        online = true,
+                        platform = "linux arm64",
+                        osRelease = "Debian GNU/Linux 12",
+                        versionGate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50"),
                         latestComputerVersion = "1.0.53",
                     ),
                     SettingsComputerSnapshot(
                         id = "m-gpu",
-                        name = "gpu-rig",
+                        name = "gpu-rig-with-a-rather-long-hostname",
                         daemonVersion = "",
                         computerVersion = "1.0.53",
                         isComputer = true,
                         online = true,
-                        hostname = "gpu-rig",
                         platform = "linux x64",
+                        osRelease = "Ubuntu 22.04",
                         latestComputerVersion = "1.0.53",
+                        diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
                     ),
                     SettingsComputerSnapshot(
                         id = "m-laptop",
@@ -143,11 +163,22 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         online = false,
                         platform = "darwin arm64",
                         lastHeartbeat = "2026-10-20T12:00:00Z",
-                        latestComputerVersion = "1.0.53",
+                        latestComputerVersion = "1.0.50",
                     ),
                 ),
             canAddComputer = true,
             latestComputerVersion = "1.0.53",
+        )
+    val names = listOf("Wug", "Jony", "Lagoon", "Tenny", "Artea", "Kirby", "Mochi", "Pixel", "Nova", "Orbit", "Quill", "Rune", "Sable", "Tide", "Umber")
+    fun agents(machine: String, count: Int, offset: Int = 0) =
+        List(count) { index -> RaftComputerCardAgent(id = "$machine-a$index", name = names[(index + offset) % names.size], avatarWireValue = null) }
+    val agentsByMachine =
+        mapOf(
+            "m-studio" to agents("m-studio", 3),
+            "m-build" to agents("m-build", 2, offset = 3),
+            "m-old" to agents("m-old", 1, offset = 5),
+            "m-gpu" to agents("m-gpu", 14, offset = 1),
+            "m-laptop" to agents("m-laptop", 2, offset = 7),
         )
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
@@ -157,6 +188,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                     onRetry = {},
                     onAddComputer = {},
                     onOpenComputer = {},
+                    agentsByMachine = agentsByMachine,
                 )
             }
         }

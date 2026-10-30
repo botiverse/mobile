@@ -445,6 +445,8 @@ internal data class ComputerSummary(
     val description: String?,
     val lastHeartbeat: String?,
     val createdAt: String?,
+    /** Server `osRelease`: the reported OS name and version ("Ubuntu 24.04"), Linux only; null otherwise. */
+    val osRelease: String? = null,
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
     val creatorUserId: String? = null,
     /** True when the requester attached the Computer backing this machine (false for raw daemons). */
@@ -622,6 +624,9 @@ private data class ComputerDto(
     val isComputer: Boolean = false,
     val hostname: String? = null,
     val os: String? = null,
+    // services/machineReadModel.ts `osRelease: normalizeOsRelease(machine.osRelease)` (shared
+    // OS_RELEASE_MAX_LENGTH): the OS name and version the Computer read from os-release.
+    val osRelease: String? = null,
     val description: String? = null,
     val lastHeartbeat: String? = null,
     val createdAt: String? = null,
@@ -860,6 +865,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         description = description,
         lastHeartbeat = lastHeartbeat,
         createdAt = createdAt,
+        osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
         attachedByCurrentUser = computerAttachedByCurrentUser,
         agentCount = agentCount.coerceAtLeast(0),

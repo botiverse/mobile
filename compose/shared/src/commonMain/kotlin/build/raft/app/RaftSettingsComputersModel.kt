@@ -15,6 +15,7 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
@@ -51,7 +52,27 @@ internal data class RaftComputerRowModel(
     val runtimes: List<String>,
     /** Last heartbeat (ISO timestamp) for an offline machine; null while online. */
     val lastSeenAt: String?,
+    /** The OS as one fact (web `computerOsName`): the Linux release, else macOS / Windows; null otherwise. */
+    val osName: String? = null,
+    /** What follows the version on the card's facts line (web `ComputerRowVersionFact`); null for nothing. */
+    val versionNotice: RaftComputerVersionNotice? = null,
+    /** The light on the device icon's corner (web `ComputerRowStatusDot`). */
+    val dot: RaftComputerDot = if (online) RaftComputerDot.Online else RaftComputerDot.Offline,
+    /** Online with less than 10% and under 20 GiB free (shared `isMachineDiskLow`): the "Low disk" badge. */
+    val diskLow: Boolean = false,
 )
+
+/** Web `ComputerRowVersionFact`: the version floor's chip, else the newer version to point at. */
+internal sealed interface RaftComputerVersionNotice {
+    /** `→ v{version}`. */
+    data class Available(val version: String) : RaftComputerVersionNotice
+
+    /** "Needs upgrade" (below the floor, web can upgrade it) or "Needs reinstall" (too old for that). */
+    data class BelowFloor(val reinstall: Boolean) : RaftComputerVersionNotice
+}
+
+/** Web `getComputerRowDotStatus`: pink while an upgrade waits, else the computer's presence. */
+internal enum class RaftComputerDot { Online, Offline, Upgrade }
 
 /** Why a runtime the computer could run isn't detected on it (web `runtimeAvailabilitySuffix`). */
 internal enum class RaftComputerRuntimeAvailability {
@@ -142,12 +163,64 @@ internal fun raftComputersListModel(state: ScreenLoadState<SettingsComputersSnap
         }
     }
 
+/**
+ * Web `getComputerAvailableVersion`: the newer version a Computer row points at (`→ v1.0.53`), or
+ * null. The version comparison, plus the server's eligible verdict for a Computer whose version
+ * the app has not received.
+ */
+internal fun raftComputerAvailableVersion(computer: SettingsComputerSnapshot): String? {
+    if (!computer.isComputer) return null
+    val fact = raftComputerVersionFact(computer)
+    if (fact is RaftComputerVersionFact.Outdated) return fact.availableVersion
+    val policy = computer.broadcastPolicy
+    if (fact == RaftComputerVersionFact.Unknown && computer.upgradeAvailable && policy?.eligible == true) {
+        return policy.targetVersion?.trim()?.takeIf { it.isNotBlank() }
+    }
+    return null
+}
+
+/**
+ * Web `computerOsName`: the reported release ("Ubuntu 24.04", Linux only), else "macOS" / "Windows"
+ * from the platform (`darwin arm64`, `win32 x64`); null for anything else, so the line shows no OS.
+ */
+internal fun raftComputerOsName(osRelease: String?, platform: String?): String? {
+    osRelease?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    val os = platform?.trim()?.lowercase().orEmpty()
+    return when {
+        os.startsWith("darwin") -> "macOS"
+        os.startsWith("win") -> "Windows"
+        else -> null
+    }
+}
+
+/** Shared `MACHINE_DISK_LOW_FREE_PERCENT`. */
+internal const val RAFT_COMPUTER_DISK_LOW_FREE_PERCENT = 10.0
+
+/** Shared `MACHINE_DISK_LOW_MAX_AVAILABLE_BYTES` (20 GiB). */
+internal const val RAFT_COMPUTER_DISK_LOW_MAX_AVAILABLE_BYTES = 20.0 * 1024 * 1024 * 1024
+
+/** Web `machineDiskLowPresentation != null`: online, and under both the percent and the size bound. */
+internal fun raftComputerDiskLow(computer: SettingsComputerSnapshot): Boolean {
+    val disk = computer.diskStatus ?: return false
+    if (!computer.online || disk.totalBytes <= 0.0) return false
+    return disk.availableBytes < RAFT_COMPUTER_DISK_LOW_MAX_AVAILABLE_BYTES &&
+        disk.availableBytes / disk.totalBytes * 100.0 < RAFT_COMPUTER_DISK_LOW_FREE_PERCENT
+}
+
 internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel {
     val kind = if (isComputer) RaftComputerKind.Computer else RaftComputerKind.Daemon
     val version =
         when (kind) {
             RaftComputerKind.Computer -> computerVersion?.trim()?.takeIf { it.isNotBlank() }
             RaftComputerKind.Daemon -> daemonVersion.trim().takeIf { it.isNotBlank() }
+        }
+    val availableVersion = raftComputerAvailableVersion(this)
+    val tier = raftComputerVersionTier(this)
+    val versionNotice =
+        when {
+            tier is RaftComputerVersionTier.Notice -> RaftComputerVersionNotice.BelowFloor(reinstall = tier.reinstall)
+            availableVersion != null -> RaftComputerVersionNotice.Available(availableVersion)
+            else -> null
         }
     return RaftComputerRowModel(
         id = id,
@@ -163,7 +236,107 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         description = description?.trim()?.takeIf { it.isNotBlank() },
         runtimes = runtimes.map { it.trim() }.filter { it.isNotBlank() }.distinct(),
         lastSeenAt = if (online) null else (lastHeartbeat ?: lastSeenLabel)?.trim()?.takeIf { it.isNotBlank() },
+        osName = raftComputerOsName(osRelease, platform),
+        versionNotice = versionNotice,
+        dot =
+            when {
+                kind == RaftComputerKind.Computer && versionNotice != null -> RaftComputerDot.Upgrade
+                online -> RaftComputerDot.Online
+                else -> RaftComputerDot.Offline
+            },
+        diskLow = raftComputerDiskLow(this),
     )
+}
+
+/**
+ * The facts line under a card's name (web ComputersRack card `CardDescription`): online, the OS,
+ * the version and its notice; offline, "Offline · Last seen …" instead.
+ */
+internal sealed interface RaftComputerCardFacts {
+    data class Online(
+        val osName: String?,
+        val kind: RaftComputerKind,
+        val version: String?,
+        val notice: RaftComputerVersionNotice?,
+    ) : RaftComputerCardFacts
+
+    data class Offline(val lastSeenAt: String?) : RaftComputerCardFacts
+}
+
+internal fun RaftComputerRowModel.cardFacts(): RaftComputerCardFacts =
+    if (online) {
+        RaftComputerCardFacts.Online(osName = osName, kind = kind, version = version, notice = versionNotice)
+    } else {
+        RaftComputerCardFacts.Offline(lastSeenAt)
+    }
+
+/** One agent on a computer card: its avatar opens its profile. */
+internal data class RaftComputerCardAgent(
+    val id: String,
+    val name: String,
+    val avatarWireValue: String?,
+)
+
+private const val RAFT_COMPUTER_ID_BADGE_PREFIX = "computer-id:"
+
+/**
+ * Web ComputersRack `useAgentsByMachine`: the live (not deleted) agents of the members store per
+ * computer, in the store's order. The computer is the agent's `computer-id:` badge, as the Members
+ * page groups them; an agent without one is on no computer.
+ */
+internal fun raftComputerAgentsByMachine(members: List<MemberProfile>): Map<String, List<RaftComputerCardAgent>> {
+    val byMachine = LinkedHashMap<String, MutableList<RaftComputerCardAgent>>()
+    val seen = HashSet<String>()
+    members.forEach { member ->
+        if (member.kind != MemberKind.Agent) return@forEach
+        if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return@forEach
+        val machineId =
+            member.permissionBadges.firstNotNullOfOrNull { badge ->
+                badge.removePrefix(RAFT_COMPUTER_ID_BADGE_PREFIX).trim().takeIf { badge.startsWith(RAFT_COMPUTER_ID_BADGE_PREFIX) && it.isNotBlank() }
+            } ?: return@forEach
+        if (!seen.add(member.id.value)) return@forEach
+        byMachine.getOrPut(machineId) { mutableListOf() } +=
+            RaftComputerCardAgent(
+                id = member.id.value,
+                name = member.displayName.trim().ifBlank { member.handle },
+                avatarWireValue = member.avatarWireValueForAvatarSlot(),
+            )
+    }
+    return byMachine
+}
+
+/** The page header's counts (web `ComputersRackCounts`): computers, online ones, and their agents. */
+internal data class RaftComputersCounts(val computers: Int, val online: Int, val agents: Int)
+
+internal fun raftComputersCounts(
+    rows: List<RaftComputerRowModel>,
+    agentsByMachine: Map<String, List<RaftComputerCardAgent>>,
+): RaftComputersCounts =
+    RaftComputersCounts(
+        computers = rows.size,
+        online = rows.count { it.online },
+        agents = rows.sumOf { agentsByMachine[it.id]?.size ?: 0 },
+    )
+
+/**
+ * A card's agents on exactly one line (cindyz, #triage): [visible] avatars, then "+[overflow]" in
+ * the last slot when they don't all fit. The overflow takes one slot of its own, so it replaces
+ * the last avatar that would have fit.
+ */
+internal data class RaftComputerAgentStrip(val visible: Int, val overflow: Int)
+
+internal fun raftComputerAgentStrip(total: Int, capacity: Int): RaftComputerAgentStrip {
+    val count = total.coerceAtLeast(0)
+    val slots = capacity.coerceAtLeast(1)
+    if (count <= slots) return RaftComputerAgentStrip(visible = count, overflow = 0)
+    val visible = slots - 1
+    return RaftComputerAgentStrip(visible = visible, overflow = count - visible)
+}
+
+/** How many [slot]-wide slots, [gap] apart, fit in [width] (all in dp). */
+internal fun raftComputerAgentSlotCapacity(width: Float, slot: Float, gap: Float): Int {
+    if (width <= 0f || slot <= 0f) return 0
+    return ((width + gap) / (slot + gap)).toInt()
 }
 
 internal sealed interface RaftComputerDetailModel {

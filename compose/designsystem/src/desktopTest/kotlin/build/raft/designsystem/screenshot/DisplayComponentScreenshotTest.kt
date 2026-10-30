@@ -378,6 +378,11 @@ class DisplayComponentScreenshotTest {
                         RaftCardSection { RaftText("Keep pinned channels") }
                         RaftCardSection { RaftText("Notify the owner first") }
                     }
+                    Caption("Link card: pressed; inactive")
+                    StateCell(pressed = true) {
+                        RaftCard(onClick = {}) { RaftText("studio-mac · 3 agents") }
+                    }
+                    RaftCard(inactive = true, onClick = {}) { RaftText("travel-laptop · Offline") }
                 }
                 Column(Modifier.width(300.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Caption("Option: unchecked, checked, pressed, focused")

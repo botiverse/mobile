@@ -9,6 +9,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import build.raft.designsystem.components.raftGrayscale
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.tokens.RaftUiPalette
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,7 +111,6 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
-import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowValue
 import build.raft.designsystem.components.RaftPresence
@@ -295,6 +301,17 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             refreshing = refreshing,
         )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
+    // The agents on each card: the members store's roster (as the Members page groups it), no new API.
+    val membersServerId = currentServerId?.let(::ServerId)
+    val membersEntry by
+        remember(environment.serverMembersStore, membersServerId) {
+            membersServerId?.let { environment.serverMembersStore.serverMembersEntryFlow(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+        }.collectAsState(membersServerId?.let { environment.serverMembersStore.currentServerMembersEntry(it) })
+    val agentsByMachine = remember(membersEntry?.members) { raftComputerAgentsByMachine(membersEntry?.members.orEmpty()) }
+    val agentStatusResolver =
+        remember(environment.serverMembersStore, currentServerId) {
+            raftScopedAgentStatusResolver(environment.serverMembersStore, currentServerId)
+        }
     SettingsDetailShell(
         title = stringResource(Res.string.settings_computers_title),
         subtitle = "",
@@ -317,6 +334,24 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                         } else {
                             pager.openSettingsComputerPage(environment.storeScope, identity)
                         }
+                    }
+                },
+                agentsByMachine = agentsByMachine,
+                agentStatusResolver = agentStatusResolver,
+                onOpenAgent = { agent ->
+                    val pageData =
+                        RaftMembersPayload(instanceId = "settings-computers-agent").toMemberDetailPageData(
+                            MemberDetailIdentity(MemberId(agent.id), MemberKind.Agent, currentServerId?.let(::ServerId))
+                        )
+                    if (pageData == null) {
+                        bridge.log("settings_computers_open_agent_skip reason=invalid_agent")
+                    } else {
+                        pager.openRaftPage(
+                            pageName = MEMBER_DETAIL_PAGE,
+                            pageData = pageData,
+                            storeScopeOverride = environment.storeScope,
+                            onMissingScope = { bridge.log("settings_computers_open_agent_skip reason=missing_shell_scope") },
+                        )
                     }
                 },
             )
@@ -344,6 +379,11 @@ internal fun RaftSettingsComputersContent(
     onRetry: () -> Unit,
     onAddComputer: () -> Unit,
     onOpenComputer: (String) -> Unit,
+    /** The members store's agents per computer ([raftComputerAgentsByMachine]); empty while it loads. */
+    agentsByMachine: Map<String, List<RaftComputerCardAgent>> = emptyMap(),
+    /** Live agent activity for the avatars' lights (the members store); empty in fixtures. */
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    onOpenAgent: (RaftComputerCardAgent) -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -388,10 +428,12 @@ internal fun RaftSettingsComputersContent(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RaftText(
-                                stringResource(Res.string.settings_computers_online_count, model.onlineCount, model.rows.size),
+                                raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)),
                                 modifier = Modifier.weight(1f),
-                                style = RaftTheme.typography.footnote,
+                                style = RaftTheme.typography.monoMeta,
                                 color = RaftTheme.colors.foregroundHint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             if (model.canAddComputer) {
                                 RaftButton(
@@ -403,11 +445,21 @@ internal fun RaftSettingsComputersContent(
                             }
                         }
                     }
-                    item(key = "computers") {
-                        RaftListRowGroup(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                            model.rows.forEachIndexed { index, row ->
-                                RaftComputerListRow(row = row, divider = index > 0, onClick = { onOpenComputer(row.id) })
-                            }
+                    // Web ComputersRack cards, one column on a phone.
+                    model.rows.forEachIndexed { index, row ->
+                        item(key = "computer-${row.id}") {
+                            RaftComputerRackCard(
+                                row = row,
+                                agents = agentsByMachine[row.id].orEmpty(),
+                                agentStatusResolver = agentStatusResolver,
+                                onClick = { onOpenComputer(row.id) },
+                                onOpenAgent = onOpenAgent,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .padding(top = if (index > 0) 12.dp else 0.dp),
+                            )
                         }
                     }
                     item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
@@ -416,26 +468,244 @@ internal fun RaftSettingsComputersContent(
     }
 }
 
+/** The page header's counts line: "4 computers · 3 online · 12 agents" (web `ComputersRackCounts`). */
 @Composable
-private fun RaftComputerListRow(row: RaftComputerRowModel, divider: Boolean, onClick: () -> Unit) {
-    RaftListRow(
-        title = row.name,
-        onClick = onClick,
-        divider = divider,
-        subtitle = raftComputerVersionLine(row),
-        description = row.hostDetail ?: row.description ?: row.lastSeenAt?.let { raftComputerLastSeen(it) },
-        leading = { RaftComputerTile(row) },
-        badge =
-            if (row.updateAvailable) {
-                { RaftComputerUpdateBadge() }
-            } else {
-                null
-            },
-        trailing = {
-            RaftComputerStatus(row.online)
-            RaftListRowChevron()
+private fun raftComputersCountsLine(counts: RaftComputersCounts): String =
+    listOf(
+        if (counts.computers == 1) {
+            stringResource(Res.string.settings_computers_rack_computer_count_one, counts.computers)
+        } else {
+            stringResource(Res.string.settings_computers_rack_computer_count_other, counts.computers)
         },
-    )
+        stringResource(Res.string.settings_computers_rack_online_count, counts.online),
+        if (counts.agents == 1) {
+            stringResource(Res.string.settings_computers_rack_agent_count_one, counts.agents)
+        } else {
+            stringResource(Res.string.settings_computers_rack_agent_count_other, counts.agents)
+        },
+    ).joinToString(" · ")
+
+/**
+ * One computer as a web ComputersRack card (`view === "cards"`): the device icon with its light,
+ * the name and the Low disk badge; the facts line under the name; then its agents on exactly one
+ * line. The whole card opens the computer; each avatar opens its agent. An offline computer's card
+ * sits on `fill-subtle` with its agents dimmed.
+ */
+@Composable
+private fun RaftComputerRackCard(
+    row: RaftComputerRowModel,
+    agents: List<RaftComputerCardAgent>,
+    agentStatusResolver: RaftAgentStatusResolver,
+    onClick: () -> Unit,
+    onOpenAgent: (RaftComputerCardAgent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    RaftCard(modifier = modifier, onClick = onClick, inactive = !row.online) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RaftComputerDeviceIcon(row)
+            Spacer(Modifier.size(RaftComputerCardTitleGap))
+            RaftText(
+                row.name,
+                modifier = Modifier.weight(1f, fill = false),
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (row.diskLow) {
+                Spacer(Modifier.size(8.dp))
+                RaftBadge(
+                    stringResource(Res.string.settings_computers_disk_low),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Warning,
+                )
+            }
+        }
+        RaftComputerCardFactsLine(
+            row.cardFacts(),
+            Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        RaftComputerAgentStripRow(agents, dimmed = !row.online, agentStatusResolver = agentStatusResolver, onOpenAgent = onOpenAgent)
+    }
+}
+
+private val RaftComputerCardIconSize = 20.dp
+private val RaftComputerCardTitleGap = 12.dp
+private val RaftComputerCardAvatarSize = RaftAvatarSize.Sm
+private val RaftComputerCardAvatarGap = 4.dp
+
+/** The device shape with the row's light on its corner (web `rack-row-icon` + `ComputerRowStatusDot`). */
+@Composable
+private fun RaftComputerDeviceIcon(row: RaftComputerRowModel) {
+    Box(Modifier.size(RaftComputerCardIconSize)) {
+        CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foregroundMuted) {
+            RaftComputersIcon(
+                if (row.kind == RaftComputerKind.Computer) RaftLucideIconName.Monitor else RaftLucideIconName.Server,
+                size = RaftComputerCardIconSize,
+            )
+        }
+        RaftStatusDot(
+            modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp),
+            presence =
+                when (row.dot) {
+                    RaftComputerDot.Online -> RaftPresence.Online
+                    RaftComputerDot.Offline -> RaftPresence.Offline
+                    RaftComputerDot.Upgrade -> null
+                },
+            color = if (row.dot == RaftComputerDot.Upgrade) RaftUiPalette.attention else null,
+        )
+    }
+}
+
+/**
+ * The facts line (web card `CardDescription`, Space Mono `foreground-hint`). Online it is one line
+ * that only the OS gives way on: "Ubuntu 24.04 · v1.0.49 → v1.0.53", the arrow in bold ink, the
+ * version floor's chip in bold `warning-strong`. Offline: "Offline · Last seen 2 days ago.".
+ */
+@Composable
+private fun RaftComputerCardFactsLine(facts: RaftComputerCardFacts, modifier: Modifier = Modifier) {
+    val style = RaftTheme.typography.monoMeta
+    val hint = RaftTheme.colors.foregroundHint
+    when (facts) {
+        is RaftComputerCardFacts.Offline -> {
+            val offline = stringResource(Res.string.settings_computers_status_offline)
+            val text =
+                facts.lastSeenAt?.let { "$offline · " + stringResource(Res.string.settings_computers_rack_last_seen, raftRelativeTimestampLabel(it)) }
+                    ?: offline
+            RaftText(text, modifier = modifier, style = style, color = hint)
+        }
+        is RaftComputerCardFacts.Online -> {
+            val version =
+                if (facts.kind == RaftComputerKind.Computer && facts.version != null) {
+                    stringResource(Res.string.settings_computers_rack_version, facts.version.removePrefix("v"))
+                } else {
+                    raftComputerKindVersion(facts.kind, facts.version)
+                }
+            Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+                if (facts.osName != null) {
+                    RaftText(
+                        facts.osName,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = style,
+                        color = hint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    RaftText(if (version != null) " · $version" else "", style = style, color = hint, maxLines = 1, softWrap = false)
+                } else if (version != null) {
+                    RaftText(version, style = style, color = hint, maxLines = 1, softWrap = false)
+                }
+                when (val notice = facts.notice) {
+                    is RaftComputerVersionNotice.Available ->
+                        RaftText(
+                            " → " + stringResource(Res.string.settings_computers_rack_version, notice.version.removePrefix("v")),
+                            style = style.copy(fontWeight = FontWeight.Bold),
+                            color = RaftTheme.colors.foreground,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    is RaftComputerVersionNotice.BelowFloor ->
+                        RaftText(
+                            " " +
+                                stringResource(
+                                    if (notice.reinstall) Res.string.settings_computers_needs_reinstall else Res.string.settings_computers_needs_upgrade
+                                ),
+                            style = style.copy(fontWeight = FontWeight.Bold),
+                            color = RaftTheme.colors.warningStrong,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    null -> Unit
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The computer's agents on exactly one line, so every card's sections keep their height
+ * (cindyz, #triage): as many avatars as fit, and "+N" in the last slot when they don't all fit.
+ * A computer with none keeps the line's height.
+ */
+@Composable
+private fun RaftComputerAgentStripRow(
+    agents: List<RaftComputerCardAgent>,
+    dimmed: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver,
+    onOpenAgent: (RaftComputerCardAgent) -> Unit,
+) {
+    val slot = RaftComputerCardAvatarSize.edge
+    BoxWithConstraints(Modifier.fillMaxWidth().height(slot)) {
+        val capacity = raftComputerAgentSlotCapacity(maxWidth.value, slot.value, RaftComputerCardAvatarGap.value)
+        val strip = raftComputerAgentStrip(agents.size, capacity)
+        Row(horizontalArrangement = Arrangement.spacedBy(RaftComputerCardAvatarGap), verticalAlignment = Alignment.CenterVertically) {
+            agents.take(strip.visible).forEach { agent ->
+                RaftComputerCardAgentSlot(agent, dimmed, agentStatusResolver, onClick = { onOpenAgent(agent) })
+            }
+            if (strip.overflow > 0) {
+                Box(Modifier.size(slot), contentAlignment = Alignment.Center) {
+                    RaftText(
+                        stringResource(Res.string.settings_computers_rack_agents_overflow, strip.overflow),
+                        style = RaftTheme.typography.monoMeta,
+                        color = RaftTheme.colors.foregroundHint,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One agent (web `AgentRackSlot`): its avatar with the activity light; a tap opens its profile. */
+@Composable
+private fun RaftComputerCardAgentSlot(
+    agent: RaftComputerCardAgent,
+    dimmed: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver,
+    onClick: () -> Unit,
+) {
+    val live =
+        projectHomeAgentStatusIndicatorState(
+            showPresence = true,
+            memberId = agent.id,
+            canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id),
+        )
+    val size = RaftComputerCardAvatarSize
+    val avatarWireValue = agent.avatarWireValue?.takeIf { it.isNotBlank() }
+    RaftAvatarWithStatus(
+        statusColor = live?.color,
+        avatarSize = size.edge,
+        statusPulsing = live?.pulsing == true,
+        cutoutColor = LocalRaftSurfaceColor.current,
+        modifier =
+            Modifier
+                .then(if (dimmed) Modifier.raftGrayscale(outset = 6.dp) else Modifier)
+                .clickable(role = Role.Button, onClickLabel = agent.name, onClick = onClick)
+                .semantics { contentDescription = agent.name },
+    ) {
+        RaftAvatar(
+            type = RaftAvatarType.Agent,
+            size = size,
+            initials = raftAvatarInitials(agent.name, size),
+            image =
+                if (avatarWireValue != null) {
+                    {
+                        RaftAppAvatar(
+                            avatarWireValue = avatarWireValue,
+                            label = agent.name,
+                            avatarSize = size.edge - RaftStroke.Control * 2,
+                            borderWidth = 0.dp,
+                            cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
+                            fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
+                        )
+                    }
+                } else {
+                    null
+                },
+        )
+    }
 }
 
 // endregion
@@ -1475,14 +1745,18 @@ private fun RaftComputersInlineNotice(title: String, detail: String) {
 }
 
 @Composable
-private fun raftComputerVersionLine(row: RaftComputerRowModel): String? {
+private fun raftComputerVersionLine(row: RaftComputerRowModel): String? = raftComputerKindVersion(row.kind, row.version)
+
+/** "computer v1.2.0" / "daemon v0.64.1", or null without a version. */
+@Composable
+private fun raftComputerKindVersion(kindOf: RaftComputerKind, version: String?): String? {
     val kind =
-        if (row.kind == RaftComputerKind.Computer) {
+        if (kindOf == RaftComputerKind.Computer) {
             stringResource(Res.string.settings_computers_kind_computer)
         } else {
             stringResource(Res.string.settings_computers_kind_daemon)
         }
-    return row.version?.let { stringResource(Res.string.settings_computers_run_version, kind, it.removePrefix("v")) }
+    return version?.let { stringResource(Res.string.settings_computers_run_version, kind, it.removePrefix("v")) }
 }
 
 @Composable

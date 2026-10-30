@@ -1561,7 +1561,22 @@ data class SettingsComputerSnapshot(
     /** Server `creator`: the human who attached a managed Computer; null when none (raw daemon, departed attacher). */
     val creator: SettingsComputerCreatorSnapshot? = null,
     /** Server `agentScopes`: the per-agent memory scope state the machine reported while online; null otherwise. */
-    val agentScopes: SettingsComputerAgentScopesSnapshot? = null
+    val agentScopes: SettingsComputerAgentScopesSnapshot? = null,
+    /** Server `osRelease`: the OS name and version ("Ubuntu 24.04"), reported by Linux Computers only. */
+    val osRelease: String? = null,
+    /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
+    val diskStatus: SettingsComputerSizeStatusSnapshot? = null,
+    /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */
+    val memoryStatus: SettingsComputerSizeStatusSnapshot? = null
+)
+
+/**
+ * `diskStatus` / `memoryStatus` of a machines row (slock packages/shared/src/index.ts
+ * `MachineDiskStatus` / `MachineMemoryStatus`), only a readable report (positive total, free within it).
+ */
+data class SettingsComputerSizeStatusSnapshot(
+    val availableBytes: Double,
+    val totalBytes: Double
 )
 
 /**

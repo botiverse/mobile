@@ -98,8 +98,12 @@ fun RaftMessageDelegatedAvatar(
     )
 }
 
-/** CSS `grayscale` + `opacity-[alpha]` on everything drawn inside, as one layer. */
-private fun Modifier.raftGrayscale(alpha: Float): Modifier =
+/**
+ * CSS `grayscale` + `opacity-[alpha]` on everything drawn inside, as one layer (a deleted
+ * assistant's face, an offline computer's agents). [outset] keeps room for what is drawn
+ * past the box: the face's die-cut ring, or an avatar's status light.
+ */
+fun Modifier.raftGrayscale(alpha: Float = RaftOpacity.Dimmed, outset: Dp = RaftStroke.Control): Modifier =
     drawWithContent {
         val paint =
             Paint().apply {
@@ -107,9 +111,8 @@ private fun Modifier.raftGrayscale(alpha: Float): Modifier =
                 this.alpha = alpha
             }
         drawIntoCanvas { canvas ->
-            // Leave room for the face's own die-cut ring, drawn just outside its box.
-            val outset = RaftStroke.Control.toPx()
-            canvas.saveLayer(Rect(-outset, -outset, size.width + outset, size.height + outset), paint)
+            val edge = outset.toPx()
+            canvas.saveLayer(Rect(-edge, -edge, size.width + edge, size.height + edge), paint)
             drawContent()
             canvas.restore()
         }

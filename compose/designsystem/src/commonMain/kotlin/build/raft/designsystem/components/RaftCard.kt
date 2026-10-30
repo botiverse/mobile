@@ -2,6 +2,7 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -122,7 +124,15 @@ private fun raftCardTitleStyle(variant: RaftCardVariant, typography: RaftTypogra
  * Press lays `fill-pressed` over the card, keyboard focus draws the focus ring outside
  * it, and semantics carry [role] (`RadioButton` selected, or `Checkbox` checked) with
  * [selected]; the card itself never shows the pick. [enabled] = false drops press, focus
- * and taps. Other variants ignore [onClick].
+ * and taps.
+ *
+ * A [RaftCardVariant.Default] or `Inset` card with [onClick] is a link card (raft-ui's
+ * stretched link: the card opens its subject, a list of computers): the whole card is one
+ * [Role.Button] target with the same press overlay and focus ring. Controls inside it keep
+ * their own taps.
+ *
+ * [inactive] lays the card on `fill-subtle` instead of `layer-card`: a subject that is away
+ * (an offline computer), as raft-ui's `bg-fill-subtle` on a card.
  */
 @Composable
 fun RaftCard(
@@ -138,26 +148,38 @@ fun RaftCard(
     role: Role = Role.RadioButton,
     enabled: Boolean = true,
     interactionSource: MutableInteractionSource? = null,
+    inactive: Boolean = false,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val look = raftCardLook(variant, colors)
     val shape = RoundedCornerShape(look.radius)
-    val clickable = variant == RaftCardVariant.Option && onClick != null
+    val clickable = onClick != null
+    val link = variant != RaftCardVariant.Option
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val isPressed = raftIsPressed(source)
     val pressed = clickable && enabled && isPressed
     val isFocused = raftIsFocused(source)
     val focused = clickable && enabled && isFocused
-    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerCard) {
+    // `bg-fill-subtle` on the canvas the cards sit on, opaque so lights cut out of it match.
+    val surface = if (inactive) colors.fillSubtle.compositeOver(colors.layerCanvas) else colors.layerCard
+    CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides surface) {
         Column(
             modifier
                 .raftFocusRing(focused, look.radius, colors)
                 .clip(shape)
-                .background(colors.layerCard, shape)
+                .background(surface, shape)
                 .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), look.radius)
                 .border(look.border, look.borderColor, shape)
-                .then(onClick?.takeIf { clickable }?.let { Modifier.raftOptionTarget(selected, role, enabled, source, it) } ?: Modifier),
+                .then(
+                    onClick?.let {
+                        if (link) {
+                            Modifier.clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = it)
+                        } else {
+                            Modifier.raftOptionTarget(selected, role, enabled, source, it)
+                        }
+                    } ?: Modifier
+                ),
         ) {
             val hasHeader = title != null || description != null || leading != null || trailing != null
             if (hasHeader) {
