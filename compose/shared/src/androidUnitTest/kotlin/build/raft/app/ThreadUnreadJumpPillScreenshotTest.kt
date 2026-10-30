@@ -24,7 +24,7 @@ import org.robolectric.annotation.GraphicsMode
  * busy while a tap loads the parent (web #11358 ThreadUnreadJumpPill: the `sm` spinner in place
  * of the arrow, "Loading Thread…").
  *
- * Goldens: `src/androidUnitTest/screenshots/<name>.png`; record with `RAFT_SCREENSHOT_RECORD=true`.
+ * Goldens: `src/androidUnitTest/screenshots/<name>.png`; record with `:shared:recordRoborazziDebug`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

@@ -30,7 +30,7 @@ on:
         type: string
         default: ci
       record_screenshots:
-        description: "Record the design system screenshot goldens (recordRoborazziDesktop) instead of verifying them; new or changed goldens are uploaded as the designsystem-screenshots-recorded artifact (compose/designsystem/README.md)."
+        description: "Record the screenshot goldens (:designsystem:recordRoborazziDesktop, :shared:recordRoborazziDebug) instead of verifying them; new or changed goldens are uploaded as the designsystem-screenshots-recorded and shared-screenshots-recorded artifacts (compose/designsystem/README.md, AGENTS.md \"Screenshot tests (:shared)\")."
         type: boolean
         default: false
       xcode_app_path:
@@ -385,8 +385,11 @@ jobs:
       #   the androidApp unit tests run in the same gate so stale Android host tests cannot stay
       #   hidden until a local developer run. :designsystem:verifyRoborazziDesktop is the CMP design system's
       #   unit tests plus its screenshot goldens in verify mode (compose/designsystem/README.md);
-      #   it runs desktopTest and writes Roborazzi's HTML report. A dispatch
-      #   with record_screenshots=true records the goldens instead (recordRoborazziDesktop).
+      #   it runs desktopTest and writes Roborazzi's HTML report. :shared:verifyRoborazziDebug is
+      #   the same for :shared's Robolectric screenshots: it runs testDebugUnitTest (the whole
+      #   shared suite, still a hard gate) in verify mode (AGENTS.md "Screenshot tests (:shared)").
+      #   A dispatch with record_screenshots=true records both instead (recordRoborazziDesktop,
+      #   recordRoborazziDebug); the rest of the suite still runs and must pass.
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
@@ -436,9 +439,9 @@ jobs:
             :ui-cmp:testAndroidHostTest
           )
           if [ "$RECORD_SCREENSHOTS" = true ]; then
-            tasks+=(:designsystem:recordRoborazziDesktop)
+            tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
           else
-            tasks+=(:designsystem:verifyRoborazziDesktop)
+            tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
           fi
           ./gradlew "${tasks[@]}" \
             --continue \
@@ -504,17 +507,42 @@ jobs:
           path: ${{ runner.temp }}/designsystem-screenshots-recorded/
           if-no-files-found: ignore
 
-      # HomeChannelListScreenshotTest (Robolectric, :shared:testDebugUnitTest) writes every
-      # render here, plus <name>.actual.png / .diff.png when it fails or has no golden yet;
-      # uploaded on every run so the images (and new goldens) are reviewable without Gradle.
-      - name: Upload shared Home screenshots
-        if: ${{ !cancelled() }}
+      # :shared's Robolectric screenshots (RaftRobolectricScreenshot): <name>_actual.png and
+      # <name>_compare.png (golden, diff, actual) for every golden that is missing or differs,
+      # under home-screenshots/ (thread-/shell-screenshots/ for a few tests), plus Roborazzi's HTML
+      # report (roborazzi/debug/index.html). A new golden's image is its <name>_actual.png here.
+      - name: Upload shared screenshot diffs
+        if: ${{ failure() || (github.event_name == 'workflow_dispatch' && inputs.record_screenshots) }}
         uses: actions/upload-artifact@v7
         with:
           name: shared-home-screenshots
-          path: compose/shared/build/reports/home-screenshots/
+          path: |
+            compose/shared/build/reports/home-screenshots/
+            compose/shared/build/reports/thread-screenshots/
+            compose/shared/build/reports/shell-screenshots/
+            compose/shared/build/reports/roborazzi/
           if-no-files-found: ignore
           retention-days: 7
+
+      # record_screenshots dispatch: the goldens recordRoborazziDebug added or rewrote, to copy
+      # into compose/shared/src/androidUnitTest/screenshots/ and commit (no local Gradle needed).
+      - name: Collect recorded shared screenshots
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shared-screenshots-recorded"
+          mkdir -p "$out"
+          git ls-files --modified --others --exclude-standard -z -- compose/shared/src/androidUnitTest/screenshots \
+            | xargs -0 -r cp -t "$out"
+          echo "Recorded shared goldens: $(ls "$out" | wc -l)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload recorded shared screenshots
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: shared-screenshots-recorded
+          path: ${{ runner.temp }}/shared-screenshots-recorded/
+          if-no-files-found: ignore
 
       # Every tier: the merged debug manifest (written by the unit-test build) carries the same
       # defaultConfig minSdk the connected-test APK ships with.

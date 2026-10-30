@@ -62,6 +62,12 @@ Discipline".
    ```
    Goldens: `compose/designsystem/screenshots/<component>_<light|dark>.png`.
    Review the PNG diff in the PR. Do not loosen the tolerance.
+   A page's Robolectric screenshots (`compose/shared/src/androidUnitTest`,
+   `RaftRobolectricScreenshot`) record with `:shared:recordRoborazziDebug`.
+   Without local Gradle (and for CJK goldens, always), record both through CI:
+   `gh workflow run test.yml --ref <branch> -f record_screenshots=true`, then copy
+   the `designsystem-screenshots-recorded` / `shared-screenshots-recorded`
+   artifacts into the golden folders (AGENTS.md "Screenshot tests (:shared)").
 4. Add a row to the README "Components" table; list any deliberate deviation
    under "Differences from raft-ui and its docs".
 

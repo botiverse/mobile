@@ -9,6 +9,8 @@ plugins {
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight")
+    // Screenshot tests (androidUnitTest): recordRoborazziDebug / verifyRoborazziDebug / compareRoborazziDebug.
+    id("io.github.takahirom.roborazzi")
 }
 
 val generatedRaftDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
@@ -245,6 +247,10 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-core:0.1.14")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
+                // Screenshot compare / record / report (RaftRobolectricScreenshot); the capture
+                // stays ours. AwtRoboCanvas is runtime-only in roborazzi, hence roborazzi-painter.
+                implementation(libs.roborazzi.android)
+                implementation(libs.roborazzi.painter)
             }
         }
         val androidInstrumentedTest by getting {
@@ -443,6 +449,33 @@ val verifyNoProductionVisualPages by tasks.registering {
 
 tasks.named("check").configure {
     dependsOn(verifyNoProductionVisualPages)
+}
+
+// Robolectric screenshot tests (src/androidUnitTest, RaftRobolectricScreenshot), compared and
+// recorded by Roborazzi against the goldens in src/androidUnitTest/screenshots. See AGENTS.md
+// "Screenshot tests (:shared)".
+// - testDebugUnitTest / verifyRoborazziDebug: verify against the committed goldens.
+// - recordRoborazziDebug: write goldens whose render changed (or are new); others stay as is.
+// - compareRoborazziDebug: write the comparison images without failing.
+// <name>_actual.png / <name>_compare.png go to the test's report dir (build/reports/home-screenshots
+// for most), the HTML report (Roborazzi tasks only) to build/reports/roborazzi/debug.
+val screenshotGoldenDir = layout.projectDirectory.dir("src/androidUnitTest/screenshots")
+// A roborazzi.test.* Gradle property picks the mode itself; otherwise a bare unit-test run verifies.
+val roborazziModeProperty =
+    providers.gradlePropertiesPrefixedBy("roborazzi.test.").map { props -> props.values.any { it == "true" } }
+
+roborazzi {
+    compare {
+        outputDir.set(layout.buildDirectory.dir("reports/home-screenshots"))
+    }
+}
+
+tasks.withType<Test>().matching { it.name.endsWith("UnitTest") }.configureEach {
+    // A golden-only change (a recorded golden) must rerun the tests rather than hit the cache.
+    inputs.files(fileTree(screenshotGoldenDir)).withPropertyName("screenshotGoldens")
+    // The Roborazzi tasks overwrite this (record / compare / verify) when the test starts.
+    if (!roborazziModeProperty.get()) systemProperty("roborazzi.test.verify", "true")
+    systemProperty("java.awt.headless", "true")
 }
 
 fun getCommonCompilerArgs(): List<String> {

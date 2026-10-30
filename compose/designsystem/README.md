@@ -184,7 +184,8 @@ cd compose
 - Record without local Gradle: run the Test workflow by hand (`gh workflow run test.yml
   --ref <branch> -f record_screenshots=true`) and download the
   `designsystem-screenshots-recorded` artifact (only the new or changed goldens); copy them
-  into `compose/designsystem/screenshots/` and commit.
+  into `compose/designsystem/screenshots/` and commit. The same run records `:shared`'s
+  Robolectric goldens (`shared-screenshots-recorded`; AGENTS.md "Screenshot tests (:shared)").
 - Goldens are recorded on Linux (the CI runner). Skia rasterises text slightly
   differently on macOS, so a macOS run may need a Linux re-record rather than a looser
   tolerance.

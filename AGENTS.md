@@ -294,6 +294,38 @@ When a behaviour depends on composition (what enters/leaves it, effects,
   and compose it in the test the way production does. Example:
   `RaftSupportingPaneBackUiTest` (`RaftSupportingPaneShownReport`).
 
+### Screenshot tests (:shared)
+
+Robolectric native-graphics captures of shared UI, compared with the goldens in
+`compose/shared/src/androidUnitTest/screenshots/<name>.png`.
+
+- Capture through `RaftRobolectricScreenshot.capture(...)` (a test that draws its
+  own bitmap calls `RaftRobolectricScreenshot.verifyOrRecord`). The class carries
+  `@GraphicsMode(NATIVE)` and a `@Config` viewport.
+- [Roborazzi](https://github.com/takahirom/roborazzi) compares, records and
+  reports; the capture is ours. Same tolerance as the design system: a capture
+  fails when more than 0.1% of its pixels differ by more than 8/255 in any
+  channel, or its size changed. Do not loosen it.
+  ```sh
+  cd compose
+  ./gradlew --no-daemon :shared:verifyRoborazziDebug   # verify (plain testDebugUnitTest verifies too)
+  ./gradlew --no-daemon :shared:recordRoborazziDebug   # record
+  ./gradlew --no-daemon :shared:compareRoborazziDebug  # comparison images, never fails
+  ```
+  Each runs the whole `:shared` unit-test suite; narrow it with
+  `:shared:testDebugUnitTest --tests '*FooScreenshotTest' :shared:recordRoborazziDebug`.
+- A mismatch or a missing golden leaves `<name>_actual.png` and `<name>_compare.png`
+  (golden, diff, actual) in `compose/shared/build/reports/home-screenshots/` (the
+  test's report dir); the Roborazzi tasks also write
+  `build/reports/roborazzi/debug/index.html`. When CI fails it uploads them as the
+  `shared-home-screenshots` artifact.
+- Record only rewrites goldens that are new or changed beyond the tolerance.
+- Record without local Gradle, and always for CJK goldens (CI's render): run
+  `gh workflow run test.yml --ref <branch> -f record_screenshots=true`, download
+  the `shared-screenshots-recorded` artifact (only new or changed goldens), copy
+  them into `compose/shared/src/androidUnitTest/screenshots/` and commit. The same
+  run records the design system's goldens (`designsystem-screenshots-recorded`).
+
 ## Kuikly Text Decoration Rule
 
 - In shared Kuikly Compose, do not put visual container modifiers such as
