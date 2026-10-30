@@ -1045,26 +1045,40 @@ private fun <T> RaftComboboxList(
 /**
  * [RaftComboboxListAction]'s row: an option row's metrics (36dp minimum, control radius, 10dp
  * padding), `text-callout` medium in `foreground-muted`, `brand-soft` while pressed; a button,
- * not a value, so it has no check and no selected state.
+ * not a value, so it has no check and no selected state. Under inline radios it takes the radio
+ * rows' metrics instead ([horizontalPadding] 0, [minHeight] 44dp), so its text starts where the
+ * rows and their group headings start.
  */
 @Composable
-internal fun RaftComboboxActionRow(action: RaftComboboxListAction, modifier: Modifier = Modifier) {
+internal fun RaftComboboxActionRow(
+    action: RaftComboboxListAction,
+    modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 10.dp,
+    minHeight: Dp = 36.dp,
+    enabled: Boolean = true,
+) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val isFocused = raftIsFocused(source)
-    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = true, highlighted = isFocused)
+    val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = isFocused)
     val style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium)
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 36.dp)
+            .heightIn(min = minHeight)
             .raftStateOverlay(overlay, RaftRadius.Chip)
             .raftPointerHover(source)
-            .clickable(source, indication = null, role = Role.Button, onClick = action.onClick)
-            .padding(horizontal = 10.dp, vertical = raftOptionInset(style)),
+            .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = action.onClick)
+            .padding(horizontal = horizontalPadding, vertical = raftOptionInset(style)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftText(action.label, style = style, color = colors.foregroundMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        RaftText(
+            action.label,
+            style = style,
+            color = if (enabled) colors.foregroundMuted else colors.foregroundDisabled,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

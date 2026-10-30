@@ -14316,6 +14316,7 @@ private fun SharedThreadRouteContentContent(
                                     )
                             ) {
                                 is DataResult.Content -> {
+                                    createAgentFormStore.rememberCreatedAgent(createAgentComputerServerId, request)
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
                                     )

@@ -1,7 +1,15 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.RaftRuntimeCatalogNames
+import build.raft.app.data.SharedServerRuntimeCatalogRepository
+import build.raft.app.data.followServerRuntimeCatalog
 import build.raft.app.data.MobileRuntimeForms
 import build.raft.app.data.RuntimeCatalogEntry
 import build.raft.app.data.RuntimeCatalogForm
@@ -214,4 +222,24 @@ internal fun runtimeLabelWithStatus(runtimeId: String, serverId: String? = null)
         runtimeCatalogIsExperimental(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_experimental)
         else -> name
     }
+}
+
+/**
+ * [serverId]'s runtime catalog for a page: the one read in this process for that server, else the
+ * bundled table on the first frame; then its cached answer and the server's
+ * ([followServerRuntimeCatalog]). Never another server's catalog. No repository or server: bundled.
+ */
+@Composable
+internal fun rememberServerRuntimeCatalog(
+    repository: SharedServerRuntimeCatalogRepository?,
+    serverId: String?
+): ServerRuntimeCatalog {
+    val clean = serverId?.trim().orEmpty()
+    var catalog by remember(repository, clean) {
+        mutableStateOf(RaftRuntimeCatalogNames.catalog(clean.takeIf { it.isNotBlank() }) ?: BundledRuntimeCatalog)
+    }
+    LaunchedEffect(repository, clean) {
+        repository?.followServerRuntimeCatalog(clean, catalog) { catalog = it }
+    }
+    return catalog
 }

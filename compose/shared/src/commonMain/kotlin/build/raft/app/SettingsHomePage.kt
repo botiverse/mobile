@@ -10064,6 +10064,7 @@ private fun SharedMembersScreen(
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
+                    createAgentFormStore.rememberCreatedAgent(serverId, submit)
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     val nextState =
                         when (val latest = state) {

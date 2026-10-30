@@ -21,6 +21,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
 import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.createAgentRuntimeForOptions
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.RaftRuntimeCatalogNames
 import build.raft.app.data.RuntimeCatalogSource
@@ -206,6 +207,15 @@ internal fun CreateAgentDialogVisualContent() {
 }
 
 /**
+ * After a create succeeds: remembers its Computer and runtime for the next dialog on [serverId]
+ * (web writes the last config after the create). External agents have neither and are skipped.
+ */
+internal fun SharedCreateAgentFormStore.rememberCreatedAgent(serverId: String?, submit: SharedCreateAgentDialogSubmit) {
+    if (submit.external) return
+    rememberCreatedAgent(serverId, submit.machineId, submit.runtimeFormV2?.runtimeId)
+}
+
+/**
  * Convert a dialog submit to the data-layer [build.raft.app.data.CreateAgentRequest].
  * Keeps the data layer free of UI types — the dialog knows about runtime
  * config, the coordinator knows about the body shape; the mapping lives
@@ -365,7 +375,9 @@ internal fun SharedCreateAgentDialog(
         mutableStateOf(initialName.ifBlank { suggestAgentName(takenAgentNames) })
     }
     var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
-    var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
+    // Nothing until the selected computer's runtime-options land (web: `""` until then); see
+    // [createAgentRuntimeForOptions] below.
+    var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.trim()) }
     var advancedOpen by remember(initialAdvancedOpen) { mutableStateOf(initialAdvancedOpen) }
     var selectedMachineId by remember {
         mutableStateOf<String?>(
@@ -381,7 +393,6 @@ internal fun SharedCreateAgentDialog(
     val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
     val selectedQuotaMachine =
         machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
-    var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val cleanCreateAgentServerId = createAgentServerId?.trim().orEmpty()
     // The runtimes this server offers (GET servers/:id/runtimes): the cached answer first, then the
     // server's; the bundled table until either lands. Never blocks the dialog.
@@ -413,6 +424,13 @@ internal fun SharedCreateAgentDialog(
         runtimeCatalog = (result as? DataResult.Content)?.data
     }
     val builtInRuntimeEnabled = runtimeCatalog?.options?.any { it.runtimeId == "builtin" && it.selectable } == true
+    // The default comes from the computer's runtime-options alone (installed and allowed here); the
+    // catalog only names, groups and gives forms. The last create's runtime on this server wins while
+    // it is still one of them (web CreateAgentDialog `pickCreateAgentRuntime`).
+    val rememberedRuntime =
+        remember(createAgentFormStore, cleanCreateAgentServerId, external) {
+            if (external) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
+        }
     val runtimeFormV2 = runtimeFormV2Override ?: createAgentFormStore?.runtimeFormV2Access(cleanCreateAgentServerId)
     // No v2 access (no form store or server) means no form can load: say so instead of loading forever.
     val v2Availability =
@@ -455,32 +473,27 @@ internal fun SharedCreateAgentDialog(
         }
     val v2Errors = v2Form?.let { validateRuntimeFormV2(it.form, it.sources, v2Values) }.orEmpty()
 
-    fun resetRuntimeForMachine(machineId: String) {
-        val machine = machines.firstOrNull { it.id == machineId }
-        val authoritativeRuntimeIds = machine?.runtimes.orEmpty().filterNot { it == "builtin" } +
-            if (builtInRuntimeEnabled) {
-                listOf("builtin")
-            } else emptyList()
-        val newRuntime = authoritativeRuntimeIds.firstOrNull { it in supportedRuntimeIds || it == "builtin" }
-            ?: authoritativeRuntimeIds.firstOrNull()
-            ?: runtime
-        if (newRuntime != runtime) {
-            runtime = newRuntime
+    LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
+        if (external) return@LaunchedEffect
+        if (selectedMachineId == null) {
+            selectedMachineId = createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
         }
     }
 
-    LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
+    // Keeps a choice only while this computer's runtime-options still offer it; otherwise picks the
+    // default. No usable runtime leaves the field empty instead of guessing; options still loading
+    // (or another computer's) change nothing.
+    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, external) {
         if (external) return@LaunchedEffect
-        val nextMachineId = selectedMachineId
-            ?: createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
-            ?: return@LaunchedEffect
-        if (selectedMachineId == null) {
-            selectedMachineId = nextMachineId
-        }
-        if (!machineRuntimeInitialized) {
-            resetRuntimeForMachine(nextMachineId)
-            machineRuntimeInitialized = true
-        }
+        val next =
+            createAgentRuntimeForOptions(
+                current = runtime,
+                machineId = availableSelectedMachineId,
+                options = runtimeCatalog,
+                supported = supportedRuntimeIds,
+                remembered = rememberedRuntime
+            )
+        if (next != runtime) runtime = next
     }
 
     LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt, v2Candidate) {
@@ -530,13 +543,6 @@ internal fun SharedCreateAgentDialog(
         (external || runtime in supportedRuntimeIds) &&
         (external || createAgentRuntimeFormV2SubmitReady(v2Loaded != null, v2Errors.isNotEmpty()))
     val showMachinePicker = !external
-
-    LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
-        val machineId = selectedMachineId ?: return@LaunchedEffect
-        if (!external && selectedMachineRuntimeIds.isNotEmpty() && (runtime !in selectedMachineRuntimeIds || runtime !in supportedRuntimeIds)) {
-            resetRuntimeForMachine(machineId)
-        }
-    }
 
     RaftUnifiedDialog(
         title =
@@ -611,8 +617,11 @@ internal fun SharedCreateAgentDialog(
                             onSelect = { id ->
                                 if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
                                     focusManager.clearFocus(force = true)
-                                    selectedMachineId = id
-                                    resetRuntimeForMachine(id)
+                                    if (id != selectedMachineId) {
+                                        selectedMachineId = id
+                                        // Another computer: its own runtime-options decide (web clears it too).
+                                        runtime = ""
+                                    }
                                 }
                             }
                         )

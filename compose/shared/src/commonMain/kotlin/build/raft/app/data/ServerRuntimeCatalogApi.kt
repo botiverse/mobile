@@ -300,9 +300,6 @@ internal class RaftRuntimeCatalogNameRegistry {
     }
 
     fun catalog(serverId: String?): ServerRuntimeCatalog? = serverId?.trim()?.let { catalogs[it] }
-
-    /** The catalog read last (the current server's, in practice). */
-    fun latest(): ServerRuntimeCatalog? = lastServerId?.let { catalogs[it] }
 }
 
 /** The process-wide registry every runtime name on screen reads. */
@@ -426,5 +423,33 @@ internal class SharedServerRuntimeCatalogRepository(
         logger("server_runtime_catalog server=$serverId source=${catalog.source} runtimes=${catalog.runtimes.size}")
         if (catalog.source != RuntimeCatalogSource.Bundled) names.publish(serverId, catalog)
         return catalog
+    }
+}
+
+/**
+ * Brings what a page shows for [serverId] up to date, [shown] first: the cached answer when only
+ * the bundled table is shown, then the server's. Each step goes to [emit] when it differs. Every
+ * step is [serverId]'s own (never the catalog another server read last), and a load that falls
+ * back to the bundled table never replaces a server or cached catalog already shown.
+ */
+internal suspend fun SharedServerRuntimeCatalogRepository.followServerRuntimeCatalog(
+    serverId: String,
+    shown: ServerRuntimeCatalog,
+    priority: DataRequestPriority = DataRequestPriority.Visible,
+    emit: (ServerRuntimeCatalog) -> Unit
+) {
+    val clean = serverId.trim()
+    if (clean.isBlank()) return
+    var current = shown
+    if (current.source == RuntimeCatalogSource.Bundled) {
+        val cached = cached(clean)
+        if (cached != current) {
+            current = cached
+            emit(cached)
+        }
+    }
+    val loaded = load(clean, priority)
+    if (loaded != current && !(loaded.source == RuntimeCatalogSource.Bundled && current.source != RuntimeCatalogSource.Bundled)) {
+        emit(loaded)
     }
 }

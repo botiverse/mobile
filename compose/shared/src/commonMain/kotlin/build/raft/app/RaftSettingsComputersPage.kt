@@ -56,6 +56,8 @@ import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedComputersStore
@@ -321,8 +323,16 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
         }
     }
+    // The connected computer's runtime chips name the current server's runtimes.
+    val runtimeCatalog =
+        rememberServerRuntimeCatalog(
+            remember(bridge, environment.storeScope) {
+                RaftSharedStoreRegistry.get(bridge).serverRuntimeCatalogRepository(environment.storeScope)
+            },
+            currentServerId,
+        )
     settingsState.addComputerDialog?.let { dialog ->
-        AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch)
+        AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
 }
 
@@ -507,6 +517,15 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         remember(environment.serverMembersStore, currentServerId) {
             raftScopedAgentStatusResolver(environment.serverMembersStore, currentServerId)
         }
+    // The runtime chips name the runtimes of this computer's own server: its cached catalog on a
+    // cold start, then the server's; never the catalog another server read last.
+    val runtimeCatalog =
+        rememberServerRuntimeCatalog(
+            remember(bridge, environment.storeScope) {
+                RaftSharedStoreRegistry.get(bridge).serverRuntimeCatalogRepository(environment.storeScope)
+            },
+            target.serverId ?: currentServerId,
+        )
     SettingsDetailShell(
         title = (model as? RaftComputerDetailModel.Content)?.computer?.name
             ?: stringResource(Res.string.settings_computers_detail_computer),
@@ -524,6 +543,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 onIntent = settingsViewModel::dispatch,
                 agentStatusResolver = agentStatusResolver,
                 computerControl = settingsState.computerControl,
+                runtimeCatalog = runtimeCatalog,
                 onOpenAgent = { agent ->
                     val serverId = currentServerId
                     val pageData =
@@ -579,6 +599,8 @@ internal fun RaftSettingsComputerDetailContent(
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     /** Restart / upgrade progress of the open Computer (the settings store's `computerControl`). */
     computerControl: SettingsComputerControlState = SettingsComputerControlState(),
+    /** The computer's server's runtime catalog ([rememberServerRuntimeCatalog]): the runtime chips. */
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -616,6 +638,7 @@ internal fun RaftSettingsComputerDetailContent(
                     onIntent = onIntent,
                     onOpenAgent = onOpenAgent,
                     onOpenCreator = onOpenCreator,
+                    runtimeCatalog = runtimeCatalog,
                 )
         }
     }
@@ -632,6 +655,7 @@ private fun RaftComputerDetailBody(
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
     onOpenCreator: (RaftComputerCreatorModel) -> Unit,
+    runtimeCatalog: ServerRuntimeCatalog,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -717,7 +741,7 @@ private fun RaftComputerDetailBody(
                     // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
                     Item(stringResource(Res.string.settings_computers_label_runtimes)) {
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
-                        ComputerRuntimeUsageChips(raftComputerRuntimeChips(computer.runtimes), machineId, enabled = canEdit) { chip ->
+                        ComputerRuntimeUsageChips(raftComputerRuntimeChips(computer.runtimes, runtimeCatalog), machineId, enabled = canEdit) { chip ->
                             RaftComputerRuntimeBadge(chip)
                         }
                     }

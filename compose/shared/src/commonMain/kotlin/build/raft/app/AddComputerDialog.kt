@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.AddComputerStep
 import build.raft.app.data.AddComputerType
+import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -125,7 +127,9 @@ private fun addComputerCommit(state: AddComputerDialogState, onIntent: (SharedSe
 @Composable
 internal fun AddComputerDialog(
     state: AddComputerDialogState,
-    onIntent: (SharedSettingsIntent) -> Unit
+    onIntent: (SharedSettingsIntent) -> Unit,
+    /** The current server's runtime catalog: the connected computer's runtime chips. */
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
 ) {
     // The dialog sits outside the page's design-system theme.
     RaftDesignSystemTheme {
@@ -142,14 +146,18 @@ internal fun AddComputerDialog(
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.common_cancel),
         ) {
-            AddComputerSheetBody(state, onIntent)
+            AddComputerSheetBody(state, onIntent, runtimeCatalog)
         }
     }
 }
 
 /** The phone sheet's surface without its window, for screenshot fixtures. */
 @Composable
-internal fun AddComputerSheetSurfaceForFixture(state: AddComputerDialogState, modifier: Modifier = Modifier) {
+internal fun AddComputerSheetSurfaceForFixture(
+    state: AddComputerDialogState,
+    modifier: Modifier = Modifier,
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+) {
     val head = addComputerSheetHead(state)
     RaftDialogSheetSurface(
         title = head.title,
@@ -160,12 +168,16 @@ internal fun AddComputerSheetSurfaceForFixture(state: AddComputerDialogState, mo
         modifier = modifier,
         closeLabel = stringResource(Res.string.common_close),
     ) {
-        AddComputerSheetBody(state, onIntent = {})
+        AddComputerSheetBody(state, onIntent = {}, runtimeCatalog = runtimeCatalog)
     }
 }
 
 @Composable
-private fun ColumnScope.AddComputerSheetBody(state: AddComputerDialogState, onIntent: (SharedSettingsIntent) -> Unit) {
+private fun ColumnScope.AddComputerSheetBody(
+    state: AddComputerDialogState,
+    onIntent: (SharedSettingsIntent) -> Unit,
+    runtimeCatalog: ServerRuntimeCatalog,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -178,7 +190,7 @@ private fun ColumnScope.AddComputerSheetBody(state: AddComputerDialogState, onIn
         when (state.step) {
             AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
             AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
-            AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent)
+            AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent, runtimeCatalog)
         }
     }
 }
@@ -341,7 +353,8 @@ private fun AddComputerCommandGuide(state: AddComputerDialogState, onCopy: (Stri
 @Composable
 private fun AddComputerConnectedStep(
     state: AddComputerDialogState,
-    onIntent: (SharedSettingsIntent) -> Unit
+    onIntent: (SharedSettingsIntent) -> Unit,
+    runtimeCatalog: ServerRuntimeCatalog,
 ) {
     // Caller-local TextFieldValue is the sole editor owner; the durable store
     // keeps a String projection (task #130 Phase D). Seeded once per mount —
@@ -389,7 +402,7 @@ private fun AddComputerConnectedStep(
                 color = RaftTheme.colors.foregroundMuted,
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                raftComputerRuntimeChips(state.connectedRuntimes).forEach { chip -> AddComputerRuntimeBadge(chip) }
+                raftComputerRuntimeChips(state.connectedRuntimes, runtimeCatalog).forEach { chip -> AddComputerRuntimeBadge(chip) }
             }
         }
     }

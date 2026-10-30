@@ -70,6 +70,7 @@ internal fun ChannelMembersCreateAgentDialog(
                     val result = coordinator.createAgent(request.toCreateAgentRequest())
                     if (!authority.isCurrent(receipt)) return@launch
                     if (result !is DataResult.Content) { error = failedLabel; return@launch }
+                    formStore.rememberCreatedAgent(owner.serverId, request)
                     agentId = result.data.id
                     createdId = agentId
                 }

@@ -68,7 +68,7 @@ fun raftChoicePickerVariant(optionCount: Int): RaftChoicePickerVariant =
  * in the sheet a separator goes between groups, never under a heading (Raft DS Select). An
  * option's [RaftComboboxOption.badge] follows its label in the list and in the trigger.
  * [listAction] is a last row that changes what the list shows (after a separator in the sheet,
- * a ghost button under the radios): it runs without picking and leaves the sheet open.
+ * a row flush with the radios under them): it runs without picking and leaves the sheet open.
  */
 @Composable
 fun <T> RaftChoicePicker(
@@ -106,13 +106,8 @@ fun <T> RaftChoicePicker(
                     }
                 }
                 if (listAction != null) {
-                    RaftButton(
-                        listAction.label,
-                        listAction.onClick,
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftButtonSize.Md,
-                        enabled = enabled,
-                    )
+                    // Flush with the radio rows and their headings (no button inset of its own).
+                    RaftComboboxActionRow(listAction, horizontalPadding = 0.dp, minHeight = 44.dp, enabled = enabled)
                 }
             }
         RaftChoicePickerVariant.SheetList, RaftChoicePickerVariant.SearchSheet -> {

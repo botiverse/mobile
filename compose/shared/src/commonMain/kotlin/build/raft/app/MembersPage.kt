@@ -2536,6 +2536,7 @@ internal fun MembersPageContent(
                     createAgentCoordinator
                         .createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
+                    createAgentFormStore.rememberCreatedAgent(serverId, submit)
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
                     // task #399: hand the created agent to the detail opener below so the user

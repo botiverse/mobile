@@ -263,6 +263,61 @@ class ServerRuntimeCatalogApiTest {
             assertEquals(1, api.paths.size)
         }
 
+    @Test
+    fun aPageFollowsItsOwnServersCatalogNeverTheOneReadLast() =
+        runTest {
+            val prefs = MapPreferences()
+            val names = RaftRuntimeCatalogNameRegistry()
+            val api = PerServerApi()
+            val repository =
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|acct" }, names = names)
+            // Both servers answered once before (a previous run): their own answers sit in the cache.
+            api.bodies["s1"] = ServerProjection
+            api.bodies["s2"] = ContractExample
+            repository.load("s1", DataRequestPriority.Visible)
+            repository.load("s2", DataRequestPriority.Visible)
+
+            // Cold start, offline: s2 was read last, yet a page of s1 shows s1's cached catalog.
+            val coldNames = RaftRuntimeCatalogNameRegistry()
+            api.bodies.clear()
+            val cold =
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|acct" }, names = coldNames)
+            cold.load("s2", DataRequestPriority.Visible)
+            val s1Shown = mutableListOf<ServerRuntimeCatalog>()
+            cold.followServerRuntimeCatalog("s1", BundledRuntimeCatalog) { s1Shown += it }
+            assertEquals(listOf(RuntimeCatalogSource.Cache), s1Shown.map { it.source })
+            assertEquals(listOf("claude", "copilot", "qwen", "qoder", "codex"), s1Shown.last().runtimes.map { it.id })
+
+            // Online: each page goes cache, then its server's own answer.
+            api.bodies["s1"] = ServerProjection
+            api.bodies["s2"] = ContractExample
+            val s2Shown = mutableListOf<ServerRuntimeCatalog>()
+            cold.followServerRuntimeCatalog("s2", BundledRuntimeCatalog) { s2Shown += it }
+            assertEquals(listOf(RuntimeCatalogSource.Cache, RuntimeCatalogSource.Server), s2Shown.map { it.source })
+            assertEquals(listOf("kimi-sdk"), s2Shown.last().runtimes.map { it.id })
+
+            // The computer page's chips: each server's own runtimes.
+            val s1Chips = build.raft.app.raftComputerRuntimeChips(listOf("claude"), s1Shown.last()).map { it.id }
+            val s2Chips = build.raft.app.raftComputerRuntimeChips(listOf("claude"), s2Shown.last()).map { it.id }
+            assertEquals(listOf("claude", "qwen", "qoder", "codex"), s1Chips)
+            assertEquals(listOf("kimi-sdk"), s2Chips)
+
+            // A server catalog already shown is not replaced by the bundled table when a reload fails.
+            api.bodies.clear()
+            val noCache =
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
+            val kept = mutableListOf<ServerRuntimeCatalog>()
+            noCache.followServerRuntimeCatalog("s2", s2Shown.last()) { kept += it }
+            assertEquals(emptyList(), kept)
+        }
+
+    private class PerServerApi : RaftServerRuntimeCatalogApi {
+        val bodies = mutableMapOf<String, String>()
+
+        override suspend fun runtimes(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+            bodies[serverId.value]?.let { HomeNetworkResponse(code = 200, bodyText = it) } ?: HomeNetworkResponse(code = 503, bodyText = null)
+    }
+
     private class MapPreferences : SharedPreferenceStore {
         val values = mutableMapOf<String, String>()
 
