@@ -1162,7 +1162,10 @@ internal open class RaftCmpActivity :
     private fun prepareHomeColdStartSplashIfNeeded() {
         val resolvedPageName = resolvedPageName(intent)
         val pageDataText = resolvedPageData(intent).text
-        if (!shouldInstallHomeColdStartSplash(resolvedPageName, pageDataText)) return
+        if (!shouldInstallHomeColdStartSplash(resolvedPageName, pageDataText)) {
+            appShellThemeWithoutHomeSplash(resolvedPageName)?.let(::setTheme)
+            return
+        }
 
         setTheme(R.style.Theme_Raft_AppShellStarting)
         val gate =
