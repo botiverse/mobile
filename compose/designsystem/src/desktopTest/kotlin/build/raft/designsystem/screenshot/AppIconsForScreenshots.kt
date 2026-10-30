@@ -71,6 +71,22 @@ internal enum class AppIcon(vararg val paths: String) {
         "M10.268 21a2 2 0 0 0 3.464 0",
         "M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",
     ),
+    // Lucide panel-left-close / panel-left-open / circle-question-mark: web LeftRail's footer tools.
+    PanelLeftClose(
+        "M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z",
+        "M9 3v18",
+        "m16 15-3-3 3-3",
+    ),
+    PanelLeftOpen(
+        "M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z",
+        "M9 3v18",
+        "m14 9 3 3-3 3",
+    ),
+    CircleHelp(
+        "M 2.0 12.0 A 10.0 10.0 0 1 0 22.0 12.0 A 10.0 10.0 0 1 0 2.0 12.0 Z",
+        "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3",
+        "M12 17h.01",
+    ),
     ;
 
     val parsed by lazy { paths.map { PathParser().parsePathString(it).toPath() } }
