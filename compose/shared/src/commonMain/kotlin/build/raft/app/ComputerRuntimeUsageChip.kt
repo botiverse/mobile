@@ -101,7 +101,7 @@ internal fun ComputerRuntimeUsageChips(
  * again on every auth event (sign-out, account or server switch), and cleared at once first.
  */
 @Composable
-private fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsageAccess? {
+internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsageAccess {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val storeScope =
@@ -383,6 +383,47 @@ private fun ComputerRuntimeUsageChip(
             onDismiss = { open = false },
         )
     }
+}
+
+/**
+ * The usage sheet of one provider on one computer, opened from a Computers page card line (web
+ * rack `UsageCardTrigger`). Opening reads through the shared 60 s cache, as the detail chip's
+ * sheet does; it asks the Computer for a new snapshot only when the person taps Refresh.
+ */
+@Composable
+internal fun ComputerRuntimeUsageSheetHost(
+    runtimeLabel: String,
+    key: RuntimeAccountUsageKey,
+    access: MembersRuntimeAccountUsageAccess,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val controller =
+        remember(key, access.store) {
+            ComputerRuntimeUsageController(
+                key = key,
+                store = access.store,
+                scope = scope,
+                log = access.log,
+                onIdentityChanged = access.onIdentityChanged,
+            )
+        }
+    DisposableEffect(controller) { onDispose { controller.cancel() } }
+    LaunchedEffect(controller) {
+        controller.onOpen()
+        while (true) {
+            controller.updateCooldown()
+            delay(1_000L)
+        }
+    }
+    val timeContext = LocalRaftTimeContextProvider.current?.current
+    ComputerRuntimeUsageSheet(
+        runtimeLabel = runtimeLabel,
+        state = ComputerRuntimeUsageSheetState(controller.load, controller.loading, controller.refresh, controller.cooldownLeftMillis),
+        timeContext = timeContext,
+        onRefresh = controller::refreshNow,
+        onDismiss = onDismiss,
+    )
 }
 
 /** What the usage sheet shows (web `Surface` props). */

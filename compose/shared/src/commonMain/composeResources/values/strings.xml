@@ -2317,6 +2317,12 @@
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">Last seen %1$s.</string>
     <string name="settings_computers_rack_agents_overflow">+%1$d</string>
+    <string name="settings_computers_rack_percent_used">%1$s used</string>
+    <string name="settings_computers_rack_used_up">Used up</string>
+    <string name="settings_computers_rack_other_runtimes">Other runtimes</string>
+    <string name="settings_computers_rack_usage_unavailable">%1$s: usage unavailable</string>
+    <string name="settings_computers_rack_usage_meter">%1$s account: %2$s</string>
+    <string name="settings_computers_rack_usage_meter_stale">%1$s account: %2$s · last known</string>
     <string name="settings_computers_disk_low">Low disk</string>
     <string name="settings_computers_needs_upgrade">Needs upgrade</string>
     <string name="settings_computers_needs_reinstall">Needs reinstall</string>

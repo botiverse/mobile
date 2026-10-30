@@ -1,6 +1,26 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.rememberTextMeasurer
+import build.raft.app.data.RuntimeAccountUsageKey
+import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RaftComputersRackUsageSession
+import build.raft.app.data.raftComputersRackUsageKeys
+import build.raft.designsystem.components.RaftMeter
+import build.raft.designsystem.components.RaftMeterSize
+import build.raft.designsystem.components.RaftProgressBar
+import build.raft.designsystem.components.RaftProgressBarSize
+import build.raft.designsystem.components.RaftProgressBarVariant
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.components.RaftStatusVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -300,7 +320,44 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             routeErrorCode = settingsState.routeErrorCode,
             refreshing = refreshing,
         )
-    fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
+    // Runtime usage on the cards (Tenny's request rules, [RaftComputersRackUsageSession]): read when
+    // the page opens and on pull-to-refresh only, through the usage sheet's store (60 s cache, at
+    // most 4 reads in flight), for online computers the viewer may see the usage of. The rows are
+    // the store's (permission-gated), never the first frame's cache.
+    val usageAccess = rememberShellRuntimeAccountUsageAccess()
+    val usageSession = remember(usageAccess.store) { RaftComputersRackUsageSession(usageAccess.store) }
+    val usageScope = rememberCoroutineScope()
+    var usageReads by remember { mutableStateOf<Map<RuntimeAccountUsageKey, RuntimeAccountUsageLoad>>(emptyMap()) }
+    val usageServerId = usageAccess.serverId?.takeIf { it == currentServerId }
+    val usageKeys =
+        raftComputersRackUsageKeys(
+            owner = usageAccess.owner,
+            serverId = usageServerId,
+            computers = (settingsState.computers as? ScreenLoadState.Content)?.data?.computers.orEmpty(),
+        )
+    val onUsageResult: (RuntimeAccountUsageKey, RuntimeAccountUsageLoad) -> Unit = { key, load ->
+        if (load == RuntimeAccountUsageLoad.Superseded) {
+            usageAccess.onIdentityChanged()
+        } else {
+            usageReads = usageReads + (key to load)
+        }
+    }
+    LaunchedEffect(usageKeys) {
+        // Outside this effect's scope: a list update must not cancel a read already counted as made.
+        if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.open(usageKeys, onUsageResult) }
+    }
+    val usageLoads =
+        remember(usageReads, usageAccess.owner, usageServerId) {
+            usageReads.filterKeys { it.owner == usageAccess.owner && it.serverId == usageServerId }
+                .entries
+                .groupBy({ it.key.machineId }, { it.key.provider to it.value })
+                .mapValues { (_, loads) -> loads.toMap() }
+        }
+    var openUsage by remember { mutableStateOf<Pair<RuntimeAccountUsageKey, String>?>(null) }
+    fun refresh() {
+        settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
+        if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.pullToRefresh(usageKeys, onUsageResult) }
+    }
     // The agents on each card: the members store's roster (as the Members page groups it), no new API.
     val membersServerId = currentServerId?.let(::ServerId)
     val membersEntry by
@@ -312,6 +369,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         remember(environment.serverMembersStore, currentServerId) {
             raftScopedAgentStatusResolver(environment.serverMembersStore, currentServerId)
         }
+    // The connected computer's runtime chips, and the cards' runtime lines, name the current
+    // server's runtimes.
+    val runtimeCatalog =
+        rememberServerRuntimeCatalog(
+            remember(bridge, environment.storeScope) {
+                RaftSharedStoreRegistry.get(bridge).serverRuntimeCatalogRepository(environment.storeScope)
+            },
+            currentServerId,
+        )
     SettingsDetailShell(
         title = stringResource(Res.string.settings_computers_title),
         subtitle = "",
@@ -338,6 +404,14 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 },
                 agentsByMachine = agentsByMachine,
                 agentStatusResolver = agentStatusResolver,
+                usageLoads = usageLoads,
+                runtimeCatalog = runtimeCatalog,
+                onOpenUsage = { machineId, column, label ->
+                    val owner = usageAccess.owner
+                    if (owner != null && usageServerId != null) {
+                        openUsage = RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider) to label
+                    }
+                },
                 onOpenAgent = { agent ->
                     val pageData =
                         RaftMembersPayload(instanceId = "settings-computers-agent").toMemberDetailPageData(
@@ -358,14 +432,20 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
         }
     }
-    // The connected computer's runtime chips name the current server's runtimes.
-    val runtimeCatalog =
-        rememberServerRuntimeCatalog(
-            remember(bridge, environment.storeScope) {
-                RaftSharedStoreRegistry.get(bridge).serverRuntimeCatalogRepository(environment.storeScope)
-            },
-            currentServerId,
-        )
+    openUsage?.let { (key, label) ->
+        RaftComputersTheme {
+            ComputerRuntimeUsageSheetHost(
+                runtimeLabel = label,
+                key = key,
+                access = usageAccess,
+                onDismiss = {
+                    openUsage = null
+                    // The sheet may have refreshed it: show the store's value (no request).
+                    usageScope.launch { usageSession.cached(key)?.let { load -> usageReads = usageReads + (key to load) } }
+                },
+            )
+        }
+    }
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
@@ -384,6 +464,12 @@ internal fun RaftSettingsComputersContent(
     /** Live agent activity for the avatars' lights (the members store); empty in fixtures. */
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onOpenAgent: (RaftComputerCardAgent) -> Unit = {},
+    /** The runtime usage reads per computer and provider ([RaftComputersRackUsageSession]); empty until read. */
+    usageLoads: Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> = emptyMap(),
+    /** The server's runtimes: their order and names on the cards' runtime lines. */
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+    /** A usage line was tapped: open that provider's usage sheet ([runtimeLabel] names it). */
+    onOpenUsage: (machineId: String, column: RaftRackUsageColumn, runtimeLabel: String) -> Unit = { _, _, _ -> },
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -454,6 +540,9 @@ internal fun RaftSettingsComputersContent(
                                 agentStatusResolver = agentStatusResolver,
                                 onClick = { onOpenComputer(row.id) },
                                 onOpenAgent = onOpenAgent,
+                                usageLoads = usageLoads[row.id].orEmpty(),
+                                runtimeCatalog = runtimeCatalog,
+                                onOpenUsage = { column, label -> onOpenUsage(row.id, column, label) },
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
@@ -503,6 +592,9 @@ private fun RaftComputerRackCard(
     onClick: () -> Unit,
     onOpenAgent: (RaftComputerCardAgent) -> Unit,
     modifier: Modifier = Modifier,
+    usageLoads: Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad> = emptyMap(),
+    runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
+    onOpenUsage: (RaftRackUsageColumn, String) -> Unit = { _, _ -> },
 ) {
     RaftCard(modifier = modifier, onClick = onClick, inactive = !row.online) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -531,6 +623,223 @@ private fun RaftComputerRackCard(
         )
         Spacer(Modifier.height(12.dp))
         RaftComputerAgentStripRow(agents, dimmed = !row.online, agentStatusResolver = agentStatusResolver, onOpenAgent = onOpenAgent)
+        // Online only: an offline computer's meters would be old (web `liveDiskStatus`), and it
+        // reads no usage.
+        if (row.online) {
+            val columns = remember(row.runtimes, runtimeCatalog) { raftRackRuntimeColumns(row.runtimes, runtimeCatalog.runtimes.map { it.id }) }
+            Spacer(Modifier.height(12.dp))
+            RaftComputerRackMeters(row, columns, usageLoads, runtimeCatalog, onOpenUsage)
+            if (columns.other.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                RaftComputerRackOtherRuntimes(columns.other, runtimeCatalog)
+            }
+        }
+    }
+}
+
+/** Web rack card line's name column (`grid-cols-[76px_…]`). */
+private val RaftRackLineLabelWidth = 76.dp
+private val RaftRackLineGap = 8.dp
+
+/** One line of a card's meters: its name, its bar (null: none), its value. */
+private class RaftRackLine(
+    val label: @Composable () -> Unit,
+    val bar: (@Composable () -> Unit)?,
+    val value: String,
+    val warn: Boolean,
+    val attention: Boolean = false,
+    val dimmed: Boolean = false,
+    val semantics: String,
+    val onClick: (() -> Unit)? = null,
+)
+
+/**
+ * Web rack card meters (`rack-card-meters`): Disk and Memory ("62% used" over a Progress bar,
+ * "—" when not reported), then a separator and a line per usage provider. The lines share one
+ * grid as on web: a 76dp name column, the bar, and a value column as wide as the widest value.
+ */
+@Composable
+private fun RaftComputerRackMeters(
+    row: RaftComputerRowModel,
+    columns: RaftRackRuntimeColumns,
+    usageLoads: Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>,
+    runtimeCatalog: ServerRuntimeCatalog,
+    onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
+) {
+    val diskLabel = stringResource(Res.string.agent_migration_target_disk)
+    val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
+    val resources = listOf(raftRackResourceLine(diskLabel, row.disk), raftRackResourceLine(memoryLabel, row.memory))
+    val usage = columns.usage.map { column -> raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage) }
+    val style = RaftTheme.typography.monoMeta
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val valueWidth =
+        with(density) {
+            (resources + usage).maxOf { line ->
+                val text = measurer.measure(line.value, style = style, maxLines = 1, softWrap = false).size.width.toDp()
+                text + if (line.attention) RaftStatusSize.Sm.edge + 4.dp else 0.dp
+            } + 1.dp
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        resources.forEach { RaftRackLineRow(it, valueWidth) }
+        if (usage.isNotEmpty()) {
+            RaftSeparator()
+            usage.forEach { RaftRackLineRow(it, valueWidth) }
+        }
+    }
+}
+
+@Composable
+private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
+    val click = line.onClick
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
+            .then(if (click != null) Modifier.clickable(role = Role.Button, onClickLabel = line.semantics, onClick = click) else Modifier)
+            .clearAndSetSemantics { contentDescription = line.semantics },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(RaftRackLineLabelWidth)) { line.label() }
+        Spacer(Modifier.width(RaftRackLineGap))
+        Box(Modifier.weight(1f)) { line.bar?.invoke() }
+        Spacer(Modifier.width(RaftRackLineGap))
+        Row(Modifier.width(valueWidth), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+            if (line.attention) RaftStatusDot(variant = RaftStatusVariant.Warning, size = RaftStatusSize.Sm)
+            RaftText(
+                line.value,
+                style = RaftTheme.typography.monoMeta,
+                color = if (line.warn) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundHint,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RaftRackLineText(text: String) {
+    RaftText(
+        text,
+        style = RaftTheme.typography.footnote,
+        color = RaftTheme.colors.foregroundMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** Web `RackResource` as a card line: a Progress (orange when it warns), or "—" when not reported. */
+@Composable
+private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter?): RaftRackLine {
+    if (meter == null) return RaftRackLine(label = { RaftRackLineText(label) }, bar = null, value = "—", warn = false, semantics = "$label —")
+    val value = stringResource(Res.string.settings_computers_rack_percent_used, "${meter.percentUsed}%")
+    return RaftRackLine(
+        label = { RaftRackLineText(label) },
+        bar = {
+            RaftProgressBar(
+                value = meter.percentUsed / 100f,
+                variant = if (meter.warn) RaftProgressBarVariant.Warning else RaftProgressBarVariant.Primary,
+                size = RaftProgressBarSize.Sm,
+                contentDescription = null,
+            )
+        },
+        value = value,
+        warn = meter.warn,
+        semantics = "$label $value",
+    )
+}
+
+/**
+ * Web `RackUsageCardLine`: the runtime's mark and short name, then a Meter and "x% used" /
+ * "Used up" (warning from 80%), or "—"; the attention pixel when an account needs it; a stale
+ * read dimmed. A tap opens the provider's usage sheet when the viewer may see the usage.
+ */
+@Composable
+private fun raftRackUsageLine(
+    cell: RaftRackUsageCell,
+    runtimeCatalog: ServerRuntimeCatalog,
+    canView: Boolean,
+    onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
+): RaftRackLine {
+    val runtimeId = cell.column.runtimeId
+    val name = runtimeCatalog.entry(runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
+    val shortName = name.substringBefore(' ').ifBlank { runtimeId }
+    val ink = RaftTheme.colors.foregroundMuted
+    val label: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            RaftRuntimeMark(runtimeId, color = ink)
+            RaftRackLineText(shortName)
+        }
+    }
+    val onClick = if (canView) ({ onOpenUsage(cell.column, name) }) else null
+    return when (cell) {
+        is RaftRackUsageCell.Unavailable ->
+            RaftRackLine(
+                label = label,
+                bar = null,
+                value = "—",
+                warn = false,
+                attention = cell.attention,
+                semantics = stringResource(Res.string.settings_computers_rack_usage_unavailable, name),
+                onClick = onClick,
+            )
+        is RaftRackUsageCell.Value -> {
+            val value =
+                if (cell.usedUp) {
+                    stringResource(Res.string.settings_computers_rack_used_up)
+                } else {
+                    stringResource(Res.string.settings_computers_rack_percent_used, "${cell.used}%")
+                }
+            RaftRackLine(
+                label = label,
+                bar = {
+                    RaftMeter(
+                        used = if (cell.usedUp) 100f else cell.used.toFloat(),
+                        valueText = value,
+                        size = RaftMeterSize.Sm,
+                        warnAt = RAFT_RACK_USAGE_WARN_PERCENT / 100f,
+                        showValue = false,
+                    )
+                },
+                value = value,
+                warn = cell.warn,
+                attention = cell.attention,
+                dimmed = cell.stale,
+                semantics =
+                    stringResource(
+                        if (cell.stale) Res.string.settings_computers_rack_usage_meter_stale else Res.string.settings_computers_rack_usage_meter,
+                        name,
+                        value,
+                    ),
+                onClick = onClick,
+            )
+        }
+    }
+}
+
+/** Web `RackOtherCardLine`: "Other runtimes", then each runtime's mark and name (with its status). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RaftComputerRackOtherRuntimes(runtimeIds: List<String>, runtimeCatalog: ServerRuntimeCatalog) {
+    val hint = RaftTheme.colors.foregroundHint
+    val deprecated = stringResource(Res.string.runtime_suffix_deprecated)
+    val experimental = stringResource(Res.string.runtime_suffix_experimental)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftText(stringResource(Res.string.settings_computers_rack_other_runtimes), style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
+        runtimeIds.forEach { runtimeId ->
+            val entry = runtimeCatalog.entry(runtimeId)
+            val name = entry?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
+            val suffix =
+                when {
+                    entry?.deprecated == true -> deprecated
+                    entry?.experimental == true -> experimental
+                    else -> ""
+                }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftRuntimeMark(runtimeId, color = hint)
+                RaftText(name + suffix, style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
+            }
+        }
     }
 }
 

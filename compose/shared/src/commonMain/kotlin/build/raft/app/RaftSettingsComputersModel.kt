@@ -7,6 +7,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
+import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsSectionErrorSnapshot
@@ -17,6 +18,12 @@ import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.data.ServerRuntimeCatalog
+import build.raft.app.data.RuntimeAccountUsageAccount
+import build.raft.app.data.RuntimeAccountUsageHealth
+import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.getModelLabel
@@ -60,7 +67,27 @@ internal data class RaftComputerRowModel(
     val dot: RaftComputerDot = if (online) RaftComputerDot.Online else RaftComputerDot.Offline,
     /** Online with less than 10% and under 20 GiB free (shared `isMachineDiskLow`): the "Low disk" badge. */
     val diskLow: Boolean = false,
+    /** Web `liveDiskStatus` as the card's meter: online and reported only; warns when [diskLow]. */
+    val disk: RaftComputerResourceMeter? = null,
+    /** Web `liveMemoryStatus` as the card's meter: online and reported only; never warns. */
+    val memory: RaftComputerResourceMeter? = null,
+    /** The viewer may read this computer's runtime usage (the detail page's rule). */
+    val canViewRuntimeUsage: Boolean = false,
 )
+
+/**
+ * A disk or memory on a card (web `RackResource`): "62% used" over a bar. A Progress, not a Meter
+ * (web: a disk or memory is not an allowance that resets): the disk warns by the low-disk rule,
+ * memory never does.
+ */
+internal data class RaftComputerResourceMeter(val percentUsed: Int, val warn: Boolean)
+
+/** Web `resourceUsedPercent` of a reported size; null when there is no readable report. */
+internal fun SettingsComputerSizeStatusSnapshot.toRaftComputerResourceMeter(warn: Boolean): RaftComputerResourceMeter? {
+    if (totalBytes <= 0.0) return null
+    val percent = kotlin.math.floor((1.0 - availableBytes / totalBytes) * 100.0 + 0.5).toInt().coerceIn(0, 100)
+    return RaftComputerResourceMeter(percentUsed = percent, warn = warn)
+}
 
 /** Web `ComputerRowVersionFact`: the version floor's chip, else the newer version to point at. */
 internal sealed interface RaftComputerVersionNotice {
@@ -245,6 +272,117 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
                 else -> RaftComputerDot.Offline
             },
         diskLow = raftComputerDiskLow(this),
+        disk = diskStatus?.takeIf { online }?.toRaftComputerResourceMeter(warn = raftComputerDiskLow(this)),
+        memory = memoryStatus?.takeIf { online }?.toRaftComputerResourceMeter(warn = false),
+        canViewRuntimeUsage = canViewRuntimeUsage,
+    )
+}
+
+/** A usage column on a card (web `RackUsageColumn`): one provider's account, named by [runtimeId]. */
+internal data class RaftRackUsageColumn(val provider: RuntimeAccountUsageProvider, val runtimeId: String)
+
+/** Web `RackRuntimeColumns` of one computer: a line per usage provider, then Other runtimes. */
+internal data class RaftRackRuntimeColumns(val usage: List<RaftRackUsageColumn>, val other: List<String>)
+
+/**
+ * Web `rackRuntimeColumns([machine])`: the computer's runtimes in [catalogOrder] (unknown ids
+ * last, by id); the first runtime of each usage provider names its line (Kimi Code and Kimi CLI
+ * share Kimi's), every runtime that reports no usage is in Other.
+ */
+internal fun raftRackRuntimeColumns(runtimes: List<String>, catalogOrder: List<String>): RaftRackRuntimeColumns {
+    val index = catalogOrder.withIndex().associate { (position, id) -> id to position }
+    val present =
+        runtimes.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            .sortedWith(compareBy<String> { index[it] ?: Int.MAX_VALUE }.thenBy { it })
+    val usage = mutableListOf<RaftRackUsageColumn>()
+    val other = mutableListOf<String>()
+    present.forEach { runtimeId ->
+        val provider = RuntimeAccountUsageProvider.forRuntime(runtimeId)
+        when {
+            provider == null -> other += runtimeId
+            usage.none { it.provider == provider } -> usage += RaftRackUsageColumn(provider, runtimeId)
+        }
+    }
+    return RaftRackRuntimeColumns(usage, other)
+}
+
+/** Web `RACK_USAGE_WARN_PERCENT` (raft-ui Meter's default `warnAt`, 0.8): warns from 80% used. */
+internal const val RAFT_RACK_USAGE_WARN_PERCENT = 80
+
+/** One usage line on a card (web `RackRuntimeCell` without `absent`: a card has no line then). */
+internal sealed interface RaftRackUsageCell {
+    val column: RaftRackUsageColumn
+
+    /** An account needs attention (sign in again): the warning pixel beside the value or "—". */
+    val attention: Boolean
+
+    /** Nothing to read (not allowed, not read yet, missing, failed, or every account needs attention): "—". */
+    data class Unavailable(override val column: RaftRackUsageColumn, override val attention: Boolean) : RaftRackUsageCell
+
+    /** The tightest account's share used: [warn] from 80%, [usedUp] at its limit, [stale] dimmed. */
+    data class Value(
+        override val column: RaftRackUsageColumn,
+        val used: Int,
+        val warn: Boolean,
+        val usedUp: Boolean,
+        val stale: Boolean,
+        override val attention: Boolean,
+    ) : RaftRackUsageCell
+}
+
+/** Web `BulkRuntimeUsageSummary` of one account. */
+private sealed interface RaftRackAccountSummary {
+    data object Limit : RaftRackAccountSummary
+
+    data class Used(val percent: Int) : RaftRackAccountSummary
+
+    data object Attention : RaftRackAccountSummary
+}
+
+/** Web `summarizeRuntimeUsage` of a single account. */
+private fun RuntimeAccountUsageAccount.rackSummary(): RaftRackAccountSummary? {
+    if (windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached }) return RaftRackAccountSummary.Limit
+    if (health != RuntimeAccountUsageHealth.Ok) return RaftRackAccountSummary.Attention
+    val ratios = windows.filter { it.status == RuntimeAccountUsageWindowStatus.Ok }.mapNotNull { it.usedRatio }
+    if (ratios.isEmpty()) return null
+    return RaftRackAccountSummary.Used(runtimeUsagePercentUsed(ratios.max()))
+}
+
+/**
+ * Web `rackRuntimeCell`: what a provider's line shows from its read ([load] null: not allowed or
+ * not read yet). Several accounts: the tightest one (the sheet lists them all); at a tie, a
+ * reached limit.
+ */
+internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccountUsageLoad?): RaftRackUsageCell {
+    val read = (load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
+        ?: return RaftRackUsageCell.Unavailable(column, attention = false)
+    var tightestUsed: Int? = null
+    var tightestLimit = false
+    var attention = false
+    read.snapshot.accounts.forEach { account ->
+        val summary = account.rackSummary()
+        if (summary == RaftRackAccountSummary.Attention) attention = true
+        val used =
+            when (summary) {
+                RaftRackAccountSummary.Limit -> 100
+                is RaftRackAccountSummary.Used -> summary.percent
+                else -> null
+            } ?: return@forEach
+        val limit = summary == RaftRackAccountSummary.Limit
+        val current = tightestUsed
+        if (current == null || used > current || (used == current && limit)) {
+            tightestUsed = used
+            tightestLimit = limit
+        }
+    }
+    val used = tightestUsed ?: return RaftRackUsageCell.Unavailable(column, attention)
+    return RaftRackUsageCell.Value(
+        column = column,
+        used = used,
+        warn = used >= RAFT_RACK_USAGE_WARN_PERCENT,
+        usedUp = tightestLimit,
+        stale = read.stale,
+        attention = attention,
     )
 }
 

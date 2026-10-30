@@ -13,6 +13,14 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.RuntimeAccountUsageAccount
+import build.raft.app.data.RuntimeAccountUsageHealth
+import build.raft.app.data.RuntimeAccountUsageLoad
+import build.raft.app.data.RuntimeAccountUsageProvider
+import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAccountUsageSnapshot
+import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
@@ -37,12 +45,15 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * JVM screenshots of the Computers list page (`settings.computers`), light and dark: web
  * ComputersRack cards for an online computer, one with an upgrade, one below the version floor,
- * one with low disk and more agents than one line holds, and an offline one (dimmed agents).
+ * one with low disk and more agents than one line holds, and an offline one (dimmed agents, no
+ * meters). The online cards carry Disk / Memory meters (normal, low-disk warning, "—" when not
+ * reported) and runtime usage lines: normal, warning from 80%, used up, a stale read (dimmed),
+ * "—" with nothing read, "—" with an account needing attention, and Other runtimes.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h1240dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h2000dp-xxhdpi")
 class ComputersRackCardsScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -115,7 +126,10 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         hostname = "studio.local",
                         platform = "darwin arm64",
                         latestComputerVersion = "1.0.53",
+                        runtimes = listOf("claude", "codex", "cursor", "gemini"),
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 310 * gib, totalBytes = 994 * gib),
+                        memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 18 * gib, totalBytes = 64 * gib),
+                        canViewRuntimeUsage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-build",
@@ -129,6 +143,9 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         platform = "linux x64",
                         osRelease = "Ubuntu 24.04.3 LTS",
                         latestComputerVersion = "1.0.53",
+                        runtimes = listOf("claude", "kimi-sdk", "opencode"),
+                        memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 2 * gib, totalBytes = 32 * gib),
+                        canViewRuntimeUsage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-old",
@@ -141,6 +158,10 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         osRelease = "Debian GNU/Linux 12",
                         versionGate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50"),
                         latestComputerVersion = "1.0.53",
+                        runtimes = listOf("claude", "grok"),
+                        diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 40 * gib, totalBytes = 256 * gib),
+                        memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 16 * gib),
+                        canViewRuntimeUsage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-gpu",
@@ -153,6 +174,9 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         osRelease = "Ubuntu 22.04",
                         latestComputerVersion = "1.0.53",
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
+                        memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 100 * gib, totalBytes = 128 * gib),
+                        runtimes = listOf("codex", "qwen", "pi", "copilot"),
+                        canViewRuntimeUsage = true,
                     ),
                     SettingsComputerSnapshot(
                         id = "m-laptop",
@@ -164,6 +188,9 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                         platform = "darwin arm64",
                         lastHeartbeat = "2026-10-20T12:00:00Z",
                         latestComputerVersion = "1.0.50",
+                        runtimes = listOf("claude", "codex"),
+                        diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
+                        canViewRuntimeUsage = true,
                     ),
                 ),
             canAddComputer = true,
@@ -189,8 +216,43 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance) {
                     onAddComputer = {},
                     onOpenComputer = {},
                     agentsByMachine = agentsByMachine,
+                    usageLoads = rackUsageFixture(),
                 )
             }
         }
     }
+}
+
+/**
+ * The cards' usage reads: Studio normal + warning; build-box used up + stale; old-node nothing
+ * read ("—") + an account needing attention ("—" with the pixel); gpu-rig normal. The offline
+ * laptop has a read that must not show.
+ */
+private fun rackUsageFixture(): Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> {
+    fun window(ratio: Double?, status: RuntimeAccountUsageWindowStatus = RuntimeAccountUsageWindowStatus.Ok) =
+        RuntimeAccountUsageWindow(id = "five_hour", label = "5h", status = status, usedRatio = ratio, resetsAt = null)
+    fun account(vararg windows: RuntimeAccountUsageWindow, health: RuntimeAccountUsageHealth = RuntimeAccountUsageHealth.Ok) =
+        RuntimeAccountUsageAccount(accountKey = "acct", planLabel = "Max", identityLabel = null, health = health, windows = windows.toList())
+    fun loaded(provider: String, account: RuntimeAccountUsageAccount, stale: Boolean = false) =
+        RuntimeAccountUsageLoad.Loaded(
+            RuntimeAccountUsageRead.Available(stale = stale, snapshot = RuntimeAccountUsageSnapshot(provider, null, listOf(account))),
+        )
+    return mapOf(
+        "m-studio" to
+            mapOf(
+                RuntimeAccountUsageProvider.Claude to loaded("claude", account(window(0.42), window(0.18))),
+                RuntimeAccountUsageProvider.Codex to loaded("codex", account(window(0.86))),
+            ),
+        "m-build" to
+            mapOf(
+                RuntimeAccountUsageProvider.Claude to loaded("claude", account(window(null, RuntimeAccountUsageWindowStatus.LimitReached))),
+                RuntimeAccountUsageProvider.Kimi to loaded("kimi", account(window(0.3)), stale = true),
+            ),
+        "m-old" to
+            mapOf(
+                RuntimeAccountUsageProvider.Grok to loaded("grok", account(health = RuntimeAccountUsageHealth.ReauthRequired)),
+            ),
+        "m-gpu" to mapOf(RuntimeAccountUsageProvider.Codex to loaded("codex", account(window(0.12)))),
+        "m-laptop" to mapOf(RuntimeAccountUsageProvider.Claude to loaded("claude", account(window(0.5)))),
+    )
 }

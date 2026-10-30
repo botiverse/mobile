@@ -8,7 +8,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -62,6 +64,10 @@ internal sealed interface RuntimeAccountUsageRefreshLoad {
  * `RuntimeAccountUsageClient`: a 60 s in-memory cache and request de-duplication per key, and a
  * refresh window of 2 minutes per key ([refresh] inside it answers `cooldown` without asking the
  * server). [read] with `force = true` re-reads the server.
+ *
+ * At most [maxConcurrentReads] usage GETs are in flight at once, across every key (the Computers
+ * page reads one per provider per computer; Tenny's request rules for the rack, 4); the rest
+ * wait for a slot. Refresh POSTs are not limited here: the person asks for each one.
  */
 internal class SharedRuntimeAccountUsageStore(
     private val client: RaftComputersApiClient,
@@ -69,8 +75,11 @@ internal class SharedRuntimeAccountUsageStore(
     private val currentIdentity: suspend () -> SharedComputersOwner?,
     private val clock: RaftEpochMillisSource = RaftEpochMillisSource { Clock.System.now().toEpochMilliseconds() },
     private val cacheMillis: Long = RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS,
-    private val refreshCooldownMillis: Long = RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS
+    private val refreshCooldownMillis: Long = RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS,
+    maxConcurrentReads: Int = RUNTIME_ACCOUNT_USAGE_MAX_CONCURRENT_READS
 ) {
+    private val readLimiter = Semaphore(maxConcurrentReads.coerceAtLeast(1))
+
     private class Cached(val value: RuntimeAccountUsageLoad, val expiresAt: Long)
 
     private val mutex = Mutex()
@@ -228,7 +237,7 @@ internal class SharedRuntimeAccountUsageStore(
         // session both when the request starts and when its response arrives; otherwise the
         // response may belong to another account and is dropped.
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
-        val result = client.runtimeAccountUsage(ServerId(key.serverId), key.machineId, key.provider)
+        val result = readLimiter.withPermit { client.runtimeAccountUsage(ServerId(key.serverId), key.machineId, key.provider) }
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeAccountUsageLoad.Superseded
         return when (result) {
             is DataResult.Content -> RuntimeAccountUsageLoad.Loaded(result.data)
@@ -245,6 +254,9 @@ internal class SharedRuntimeAccountUsageStore(
 }
 
 internal const val RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS: Long = 60_000L
+
+/** Usage GETs in flight at once ([SharedRuntimeAccountUsageStore]); Tenny's rack request rules. */
+internal const val RUNTIME_ACCOUNT_USAGE_MAX_CONCURRENT_READS: Int = 4
 
 /** Web `RUNTIME_ACCOUNT_USAGE_CLIENT_REFRESH_COOLDOWN_MS`: one refresh per key every 2 minutes. */
 internal const val RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS: Long = 120_000L

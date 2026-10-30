@@ -1567,7 +1567,13 @@ data class SettingsComputerSnapshot(
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
     val diskStatus: SettingsComputerSizeStatusSnapshot? = null,
     /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */
-    val memoryStatus: SettingsComputerSizeStatusSnapshot? = null
+    val memoryStatus: SettingsComputerSizeStatusSnapshot? = null,
+    /**
+     * The viewer may read this machine's runtime account usage: the detail page's rule
+     * ([settingsComputerPermissions] `canEdit`: owner/admin, the creator, or the attaching person).
+     * Set by the settings data source from the session; false until it has been.
+     */
+    val canViewRuntimeUsage: Boolean = false
 )
 
 /**

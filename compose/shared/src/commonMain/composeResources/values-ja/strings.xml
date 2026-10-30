@@ -2317,6 +2317,12 @@
     <string name="settings_computers_rack_version">v%1$s</string>
     <string name="settings_computers_rack_last_seen">最終接続は%1$sです。</string>
     <string name="settings_computers_rack_agents_overflow">+%1$d</string>
+    <string name="settings_computers_rack_percent_used">%1$s使用</string>
+    <string name="settings_computers_rack_used_up">上限到達</string>
+    <string name="settings_computers_rack_other_runtimes">その他のランタイム</string>
+    <string name="settings_computers_rack_usage_unavailable">%1$s: 使用量を取得できません</string>
+    <string name="settings_computers_rack_usage_meter">%1$s アカウント: %2$s</string>
+    <string name="settings_computers_rack_usage_meter_stale">%1$s アカウント: %2$s · 最後に取得した値</string>
     <string name="settings_computers_disk_low">ディスク不足</string>
     <string name="settings_computers_needs_upgrade">アップグレードが必要</string>
     <string name="settings_computers_needs_reinstall">再インストールが必要</string>
