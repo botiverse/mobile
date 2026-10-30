@@ -107,7 +107,7 @@
             android:documentLaunchMode="intoExisting"
             android:exported="false"
             android:launchMode="standard"
-            android:theme="@style/Theme.Raft.Starting"
+            android:theme="@style/Theme.Raft.AppShellStarting"
             android:windowSoftInputMode="adjustResize" />
         <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
              older versions: notifications, shortcuts, recents, external tools. -->

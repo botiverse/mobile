@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.app.Activity
+import build.raft.app.R
 import org.json.JSONObject
 
 /**
@@ -25,6 +26,16 @@ internal fun shouldInstallHomeColdStartSplash(pageName: String, pageDataText: St
             .getOrDefault("")
     return initialTab.isBlank() || initialTab == "home"
 }
+
+/**
+ * Theme for an app shell that opens on a tab other than Home, so skips the cold-start splash. The
+ * shell hosts' manifest themes derive from Theme.SplashScreen, which only hands over to Theme.Raft
+ * through installSplashScreen(); without it the window keeps the platform DeviceDefault parent and
+ * its action bar: a grey "Raft" title bar above the shell, whose own status bar padding then shows
+ * as an empty yellow band (a server switch into a new window that keeps the Activity tab, #3893).
+ */
+internal fun appShellThemeWithoutHomeSplash(pageName: String): Int? =
+    if (pageName == RaftCmpActivity.PAGE_APP_SHELL) R.style.Theme_Raft else null
 
 internal fun isHomeAppShellChildPageData(pageDataText: String): Boolean =
     runCatching { JSONObject(pageDataText).optString("tab") == "home" }
