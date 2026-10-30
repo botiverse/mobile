@@ -31,12 +31,9 @@ import kotlinx.serialization.json.Json
  * Wire contract (server-verified): POST `feature-flags/evaluate` with `{serverId, keys, platform}` (batch,
  * per-server; userId is derived server-side from auth, NOT in the body), returning `{evaluations:[{key,
  * enabled, reason}]}`. `platform` (slock #186, landed) is a `"web" | "mobile"` rule stage — evaluated between the
- * user and server stages — so a rollout like `sync_core_messages_v1` can target mobile-only. This client
+ * user and server stages — so a rollout can target mobile-only. This client
  * always sends `"mobile"` ([FEATURE_FLAG_PLATFORM_MOBILE]); the server treats every KMP surface as mobile.
  */
-// v1 since 1.13.0: 1.12 and the web client read `sync_core_messages_v0` without the offline-cache fixes, so a
-// per-server rule on this key reaches 1.13.0+ mobile builds only (artin, #raft-mobile-reconcile:82129b92).
-const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v1"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
@@ -64,6 +61,8 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // Retired with the Ktor 3 switch (artin 2026-10-23), no longer read by the app; server flag rows can be
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
+// sync_core_messages_v1 is no longer read either (2026-10-30): the sync-core message line is always on.
+// Gogo removes the server flag row after old clients are checked.
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -72,14 +71,11 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
  * server reporting `missing_flag` (no flag row exists). Every other server reason (`kill_switch`,
  * `flag_disabled`, any rule, `default`) is an explicit decision and is followed as sent.
  */
-// sync_core_messages_v1 joined on 2026-10-11: artin wants offline cache on by default (an offline cold
-// start or a server without the flag row used to read it as off).
 // mobile_thread_reverse_layout_v0 joined on 2026-10-12: artin wants the bottom-up thread list on by default.
 // runtime_form_v2_web (default on from 2026-10-21) is no longer read: runtime form v2 is the only form
 // (task #8, retire runtime form v1), so the server flag row can go once no client reads it.
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
     setOf(
-        SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
         MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     )
 
@@ -148,7 +144,6 @@ const val MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY: String = "mobile_sync_changes_v0
 
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
-    SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,
@@ -257,18 +252,18 @@ internal class RaftFeatureFlagsNetworkApi(
 }
 
 /**
- * Caches the registered flag evaluation per server. [prefetch] issues the batch request (this is what
- * makes `sync_core_messages_v1` traffic appear at `feature-flags/evaluate`) and updates the snapshot;
+ * Caches the registered flag evaluation per server. [prefetch] issues the batch request to
+ * `feature-flags/evaluate` and updates the snapshot;
  * [snapshotFor]/[isEnabled] are safe defaults-off reads before/without a resolve. A failed fetch leaves
  * the prior snapshot (or Unresolved) — flags default OFF, so the gated feature stays dark, never broken.
  */
 /**
- * Process-local diagnostic override seam for the boolean reads ([SharedServerFeatureFlags.isEnabled] /
- * [SharedServerFeatureFlags.isEnabledForAnyResolvedServer]). It receives the server-effective value and returns
+ * Process-local diagnostic override seam for the boolean read ([SharedServerFeatureFlags.isEnabled]). It
+ * receives the server-effective value and returns
  * the final one, so the diagnostics "Local Feature Overrides" page can still show server / override / final
  * side by side. `null` (the default, and every host that never entitles the override registry) reads the raw
- * snapshot; [SharedServerFeatureFlags.snapshotFor] is always raw. `serverId` is null for the process-wide
- * `isEnabledForAnyResolvedServer` shape.
+ * snapshot; [SharedServerFeatureFlags.snapshotFor] is always raw. `serverId` is null when the caller reads
+ * without a server.
  */
 fun interface ServerFeatureFlagDiagnosticOverride {
     fun finalEffective(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean
@@ -370,15 +365,6 @@ class SharedServerFeatureFlags(
 
     private fun applyDiagnosticOverride(serverId: ServerId?, key: String, serverEffective: Boolean): Boolean =
         diagnosticOverride?.finalEffective(serverId, key, serverEffective) ?: serverEffective
-
-    /**
-     * True if [key] is enabled in ANY resolved server snapshot. Used by the sync-core shadow-compare gate,
-     * which is a global diagnostic (not per-server user-facing behavior) and runs before the per-event
-     * serverId is resolved. Once the server evaluate accepts `platform` (slock #186) and shadow becomes
-     * per-server, replace this with a serverId-scoped read.
-     */
-    fun isEnabledForAnyResolvedServer(key: String): Boolean =
-        applyDiagnosticOverride(null, key, snapshots.values.any { it.resolved && it.isEnabled(key) })
 
     /** Evaluate the registered flags for [serverId] and cache the snapshot. Returns the resolved snapshot. */
     suspend fun prefetch(

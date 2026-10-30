@@ -1,9 +1,9 @@
 /*
- * T-app-bind shadow-compare parity gate (sync_core_messages_v1).
+ * T-app-bind shadow-compare parity gate (sync-core messages).
  *
  * Proves the NEW canonical pipeline (ingress decodeCanonicalMessageWire -> CanonicalMessageRow.toAppMessage)
  * reproduces the LEGACY realtime projection (RealtimeEventMapper) on canonical facts, for the SAME raw
- * socket payload. This is the pre-condition for moving sync_core_messages_v1 from shadow to sole-apply:
+ * socket payload. This is the pre-condition for moving sync-core messages from shadow to sole-apply:
  * shadow mode must show zero canonical-fact divergence against the authoritative path.
  *
  * Domain-outside / derived-display fields the canonical row does not carry (updatedAt-derived labels,
