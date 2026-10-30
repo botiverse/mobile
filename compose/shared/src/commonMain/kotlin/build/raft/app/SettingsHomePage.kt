@@ -16683,19 +16683,11 @@ private fun SettingsVisualLanguageRegionContent() {
         state = ScreenLoadState.Content(snapshot),
         mobileState = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
-        languageDraft = snapshot.browserLanguage.selectedKey,
-        displayDraft = snapshot.translationDisplay.selectedKey,
-        timezoneDraft = snapshot.timezone.selectedKey,
-        timeFormatDraft = snapshot.timeFormat.selectedKey,
+        pick = null,
         bottomContentPadding = RaftAppSpacing.Lg,
-        onLanguageDraftChange = {},
-        onDisplayDraftChange = {},
-        onTimezoneDraftChange = {},
-        onTimeFormatDraftChange = {},
+        onPick = {},
         onServerTranslationChange = {},
         onLocaleChange = {},
-        onSaveLanguage = {},
-        onSaveTime = {},
         onRetry = {}
     )
 }

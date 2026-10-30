@@ -27,6 +27,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.coroutines.Continuation
@@ -463,6 +464,43 @@ class SharedSettingsStoreTest {
             ),
             repository.calls
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun languageRegionFailedApplyKeepsSavedValueAndReportsError() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                languageRegionResult = DataResult.Content(languageRegionSnapshot())
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        localeRepository = FakeLocaleRepository(current = AppLocale.English),
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository(translationMode = TranslationModePreference.Manual)
+                    ),
+                scope = scope
+            )
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.LanguageRegion))
+        repository.updateLanguageRegionPreferenceResult = DataResult.Error(ScreenError("settings_language_region_network"))
+
+        store.accept(
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
+            )
+        )
+
+        // The page reverts the time zone control to this saved value and shows the error under the card.
+        val after = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
+        assertEquals("Asia/Shanghai", after.timezone.selectedKey)
+        val actionState = assertNotNull(store.state.value.actionState)
+        assertEquals(LANGUAGE_REGION_ACTION_TIMEZONE, actionState.action)
+        assertFalse(actionState.inProgress)
+        assertNotNull(actionState.errorCode)
         scope.cancel()
     }
 
@@ -3100,6 +3138,7 @@ class SharedSettingsStoreTest {
         var setServerNotificationModeResult: DataResult<SettingsMobileSnapshot>? = null
         var setServerNotificationModeFailure: Throwable? = null
         var deleteServerResult: DataResult<SettingsServerActionResult> = DataResult.Content(SettingsServerActionResult(success = true))
+        var updateLanguageRegionPreferenceResult: DataResult<SettingsLanguageRegionSnapshot>? = null
 
         private fun SettingsLanguageRegionPreferenceUpdateRequest.callLabel(): String =
             when {
@@ -3657,6 +3696,7 @@ class SharedSettingsStoreTest {
             request: SettingsLanguageRegionPreferenceUpdateRequest
         ): DataResult<SettingsLanguageRegionSnapshot> {
             calls += "updateLanguageRegionPreference:${request.callLabel()}"
+            updateLanguageRegionPreferenceResult?.let { return it }
             val current =
                 (languageRegionResult as? DataResult.Content)?.data
                     ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)

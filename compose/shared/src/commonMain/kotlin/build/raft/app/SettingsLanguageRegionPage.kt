@@ -2,11 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonSize
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
@@ -14,6 +10,8 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
@@ -39,19 +37,11 @@ internal fun SettingsLanguageRegionContent(
     state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
     mobileState: ScreenLoadState<SettingsMobileSnapshot>,
     actionState: SharedSettingsActionState?,
-    languageDraft: String,
-    displayDraft: String,
-    timezoneDraft: String,
-    timeFormatDraft: String,
+    pick: SettingsLanguageRegionPick?,
     bottomContentPadding: Dp,
-    onLanguageDraftChange: (String) -> Unit,
-    onDisplayDraftChange: (String) -> Unit,
-    onTimezoneDraftChange: (String) -> Unit,
-    onTimeFormatDraftChange: (String) -> Unit,
+    onPick: (SettingsLanguageRegionPick) -> Unit,
     onServerTranslationChange: (Boolean) -> Unit,
     onLocaleChange: (String) -> Unit,
-    onSaveLanguage: () -> Unit,
-    onSaveTime: () -> Unit,
     onRetry: () -> Unit
 ) {
     LazyColumn(
@@ -102,6 +92,7 @@ internal fun SettingsLanguageRegionContent(
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
+                val busy = settingsLanguageRegionBusy(actionState, pick)
                 (mobileState as? ScreenLoadState.Content)?.data?.let { mobileSnapshot ->
                     item {
                         SettingsAppLanguageCard(
@@ -114,23 +105,19 @@ internal fun SettingsLanguageRegionContent(
                 item {
                     SettingsLanguagePreferenceCard(
                         snapshot = snapshot,
-                        languageDraft = languageDraft,
-                        displayDraft = displayDraft,
                         actionState = actionState,
-                        onLanguageDraftChange = onLanguageDraftChange,
-                        onDisplayDraftChange = onDisplayDraftChange,
-                        onSubmit = onSaveLanguage
+                        pick = pick,
+                        busy = busy,
+                        onPick = onPick
                     )
                 }
                 item {
                     SettingsDateTimePreferenceCard(
                         snapshot = snapshot,
-                        timezoneDraft = timezoneDraft,
-                        timeFormatDraft = timeFormatDraft,
                         actionState = actionState,
-                        onTimezoneDraftChange = onTimezoneDraftChange,
-                        onTimeFormatDraftChange = onTimeFormatDraftChange,
-                        onSubmit = onSaveTime
+                        pick = pick,
+                        busy = busy,
+                        onPick = onPick
                     )
                 }
             }
@@ -142,33 +129,27 @@ internal fun SettingsLanguageRegionContent(
 @Composable
 private fun SettingsLanguagePreferenceCard(
     snapshot: SettingsLanguageRegionSnapshot,
-    languageDraft: String,
-    displayDraft: String,
     actionState: SharedSettingsActionState?,
-    onLanguageDraftChange: (String) -> Unit,
-    onDisplayDraftChange: (String) -> Unit,
-    onSubmit: () -> Unit
+    pick: SettingsLanguageRegionPick?,
+    busy: Boolean,
+    onPick: (SettingsLanguageRegionPick) -> Unit
 ) {
-    val languageBusy = actionState?.action == LANGUAGE_REGION_ACTION_LANGUAGE && actionState.inProgress
-    val displayBusy = actionState?.action == LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY && actionState.inProgress
-    val busy = languageBusy || displayBusy
-    val currentDisplay = snapshot.translationDisplay.selectedKey
-    val selectedDisplay = displayDraft.ifBlank { currentDisplay }
-    val languageDirty = selectedDisplay != "original" && languageDraft != snapshot.browserLanguage.selectedKey
-    val displayDirty = selectedDisplay != currentDisplay
-    val dirty = languageDirty || displayDirty
-    val canSave =
-        !busy &&
-            dirty &&
-            ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
-    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS)
+    val selectedDisplay =
+        settingsLanguageRegionShownValue(
+            snapshot.translationDisplay.selectedKey,
+            LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY,
+            pick,
+            actionState
+        )
+    val selectedLanguage =
+        settingsLanguageRegionShownValue(snapshot.browserLanguage.selectedKey, LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(Res.string.settings_language_title)) {
         SettingsSegmentedControlField(
             label = stringResource(Res.string.settings_translation_mode),
             detail = stringResource(Res.string.settings_translation_mode_detail),
             selectedValue = selectedDisplay,
             options = snapshot.translationDisplay.toTranslationModeOptions(),
-            onValueSelected = onDisplayDraftChange,
+            onValueSelected = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, it, actionState)) },
             enabled = !busy
         )
         if (!snapshot.translationDisplay.available) {
@@ -178,68 +159,50 @@ private fun SettingsLanguagePreferenceCard(
             SettingsComboboxField(
                 label = stringResource(Res.string.settings_preferred_translation_language_title),
                 description = stringResource(Res.string.settings_preferred_translation_language_detail),
-                value = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
+                value = selectedLanguage,
                 options = snapshot.browserLanguage.toTranslationTargetOptions(),
-                onValueChange = onLanguageDraftChange,
+                onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_LANGUAGE, it, actionState)) },
                 enabled = snapshot.browserLanguage.available && !busy
             )
         }
-        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) && it.errorCode != null } == true) {
+        if (actionState?.let { it.action in LANGUAGE_REGION_LANGUAGE_ACTIONS && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState)
         }
-        SettingsLanguageRegionSaveButton(
-            label = saveLabel,
-            enabled = canSave,
-            onClick = onSubmit
-        )
     }
 }
 
 @Composable
 private fun SettingsDateTimePreferenceCard(
     snapshot: SettingsLanguageRegionSnapshot,
-    timezoneDraft: String,
-    timeFormatDraft: String,
     actionState: SharedSettingsActionState?,
-    onTimezoneDraftChange: (String) -> Unit,
-    onTimeFormatDraftChange: (String) -> Unit,
-    onSubmit: () -> Unit
+    pick: SettingsLanguageRegionPick?,
+    busy: Boolean,
+    onPick: (SettingsLanguageRegionPick) -> Unit
 ) {
-    val timezoneBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIMEZONE && actionState.inProgress
-    val timeFormatBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIME_FORMAT && actionState.inProgress
-    val busy = timezoneBusy || timeFormatBusy
-    val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
-    val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
-    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(Res.string.settings_date_time_title)) {
         SettingsComboboxField(
             label = stringResource(Res.string.settings_timezone),
             description = stringResource(Res.string.settings_timezone_detail),
-            value = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
+            value = settingsLanguageRegionShownValue(snapshot.timezone.selectedKey, LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState),
             options = snapshot.timezone.toComboboxOptions(),
-            onValueChange = onTimezoneDraftChange,
+            onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIMEZONE, it, actionState)) },
             enabled = snapshot.timezone.available && !busy
         )
         SettingsSegmentedControlField(
             label = stringResource(Res.string.settings_time_format),
             detail = stringResource(Res.string.settings_time_format_detail),
-            selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
+            selectedValue = settingsLanguageRegionShownValue(snapshot.timeFormat.selectedKey, LANGUAGE_REGION_ACTION_TIME_FORMAT, pick, actionState),
             options =
                 listOf(
                     SegmentedControlOption("12h", stringResource(Res.string.settings_time_format_12_hour), RaftLucideIconName.Clock3),
                     SegmentedControlOption("24h", stringResource(Res.string.settings_time_format_24_hour), RaftLucideIconName.Clock)
                 ),
-            onValueSelected = onTimeFormatDraftChange,
+            onValueSelected = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIME_FORMAT, it, actionState)) },
             enabled = snapshot.timeFormat.available && !busy
         )
-        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT) && it.errorCode != null } == true) {
+        if (actionState?.let { it.action in LANGUAGE_REGION_TIME_ACTIONS && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState)
         }
-        SettingsLanguageRegionSaveButton(
-            label = saveLabel,
-            enabled = canSave,
-            onClick = onSubmit
-        )
     }
 }
 
@@ -249,18 +212,66 @@ private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
 private val LANGUAGE_REGION_TIME_ACTIONS =
     setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
 
-internal fun resolveSettingsTranslationTargetUpdate(
+/**
+ * A choice picked on Language & Region, applied at once (raft-ui 0.51: a standalone choice has no Save).
+ * [actionStateAtPick] is the store's action state when the pick was made, so a result can be told
+ * apart from whatever was showing before, even an identical earlier failure.
+ */
+internal data class SettingsLanguageRegionPick(
+    val action: String,
+    val value: String,
+    val actionStateAtPick: SharedSettingsActionState?
+)
+
+/**
+ * True once the store has finished with [pick]: the action state has moved on and is no longer this
+ * pick's request in flight. Compared by identity because the store makes a new state for every result.
+ */
+internal fun settingsLanguageRegionPickSettled(pick: SettingsLanguageRegionPick, actionState: SharedSettingsActionState?): Boolean =
+    actionState !== pick.actionStateAtPick &&
+        !(actionState?.action == pick.action && actionState.inProgress)
+
+/**
+ * What a control shows: the picked value until its request settles, then the saved value. On success
+ * the saved value is the pick; on failure the store keeps the old snapshot, so the control reverts.
+ */
+internal fun settingsLanguageRegionShownValue(
+    saved: String,
+    action: String,
+    pick: SettingsLanguageRegionPick?,
+    actionState: SharedSettingsActionState?
+): String =
+    if (pick != null && pick.action == action && !settingsLanguageRegionPickSettled(pick, actionState)) pick.value else saved
+
+/**
+ * Store requests run concurrently and share one action state, so the page takes one pick at a time:
+ * every control waits while a Language & Region request is pending.
+ */
+internal fun settingsLanguageRegionBusy(actionState: SharedSettingsActionState?, pick: SettingsLanguageRegionPick?): Boolean =
+    (actionState?.inProgress == true && actionState.action in LANGUAGE_REGION_ACTIONS) ||
+        (pick != null && !settingsLanguageRegionPickSettled(pick, actionState))
+
+private val LANGUAGE_REGION_ACTIONS = LANGUAGE_REGION_LANGUAGE_ACTIONS + LANGUAGE_REGION_TIME_ACTIONS
+
+/** The request that applies [pick], or null when it changes nothing. */
+internal fun settingsLanguageRegionApplyIntent(
     snapshot: SettingsLanguageRegionSnapshot,
-    languageDraft: String,
-    displayDraft: String
-): String? {
-    val currentDisplay = snapshot.translationDisplay.selectedKey
-    val nextDisplay = displayDraft.ifBlank { currentDisplay }
-    val currentLanguage = snapshot.browserLanguage.selectedKey
-    val nextLanguage = languageDraft.ifBlank { currentLanguage }
-    val languageChanged = nextDisplay != "original" && nextLanguage != currentLanguage
-    if (!languageChanged) return null
-    return nextLanguage
+    pick: SettingsLanguageRegionPick
+): SharedSettingsIntent? {
+    val value = pick.value.takeIf { it.isNotBlank() } ?: return null
+    return when (pick.action) {
+        LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY ->
+            SharedSettingsIntent.SetTranslationMode(value).takeIf { value != snapshot.translationDisplay.selectedKey }
+        LANGUAGE_REGION_ACTION_LANGUAGE ->
+            SharedSettingsIntent.SetTranslationTargetLanguage(value).takeIf { value != snapshot.browserLanguage.selectedKey }
+        LANGUAGE_REGION_ACTION_TIMEZONE ->
+            SharedSettingsIntent.UpdateLanguageRegionPreference(SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = value))
+                .takeIf { value != snapshot.timezone.selectedKey }
+        LANGUAGE_REGION_ACTION_TIME_FORMAT ->
+            SharedSettingsIntent.UpdateLanguageRegionPreference(SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = value))
+                .takeIf { value != snapshot.timeFormat.selectedKey }
+        else -> null
+    }
 }
 
 private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<SegmentedControlOption> =
@@ -276,29 +287,6 @@ private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<Seg
                 }
         )
     }
-
-@Composable
-private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLabel(
-    actions: Set<String>
-): String =
-    when {
-        this == null || action !in actions -> stringResource(Res.string.common_save)
-        inProgress -> stringResource(Res.string.settings_state_saving)
-        errorCode != null -> stringResource(Res.string.common_retry)
-        else -> stringResource(Res.string.settings_state_saved)
-    }
-
-@Composable
-private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-    RaftButton(
-        text = label,
-        onClick = onClick,
-        enabled = enabled,
-        variant = RaftButtonVariant.Primary,
-        size = RaftButtonSize.Md,
-        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Save) }
-    )
-}
 
 private fun SettingsMobileSelectionSnapshot.toComboboxOptions(): List<RaftComboboxOption<String>> {
     val listed = options.map { RaftComboboxOption(it.key, it.label) }
