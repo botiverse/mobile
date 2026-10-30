@@ -39,6 +39,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             )
         }
         RaftIosShellWindowRegistry.register(session: session, context: shellContext)
+        RaftIosTopBandDiagnostics.install()
 
         // With a custom scene delegate the App's WindowGroup is inert; the
         // delegate owns window creation.

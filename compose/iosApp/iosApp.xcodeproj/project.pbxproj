@@ -31,6 +31,7 @@
 		A13000010000000000000002 /* RaftIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */; };
 		A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */; };
 		A53100010000000000000001 /* RaftIosTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000001 /* RaftIosTabBarController.swift */; };
+		A53100010000000000000099 /* RaftIosTopBandDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000099 /* RaftIosTopBandDiagnostics.swift */; };
 		A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */; };
@@ -115,6 +116,7 @@
 		A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
 		A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
 		A53100020000000000000001 /* RaftIosTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarController.swift; sourceTree = "<group>"; };
+		A53100020000000000000099 /* RaftIosTopBandDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTopBandDiagnostics.swift; sourceTree = "<group>"; };
 		A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMapping.swift; sourceTree = "<group>"; };
 		A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMappingTests.swift; sourceTree = "<group>"; };
 		A1D000032C0000000000003 /* RaftIosDuoGeometry.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoGeometry.m; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 				A13700020000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift */,
 				A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */,
 				A53100020000000000000001 /* RaftIosTabBarController.swift */,
+				A53100020000000000000099 /* RaftIosTopBandDiagnostics.swift */,
 				A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
@@ -748,6 +751,7 @@
 				A13700010000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift in Sources */,
 				A13000010000000000000001 /* RaftIosAdaptivePanePublisher.swift in Sources */,
 				A53100010000000000000001 /* RaftIosTabBarController.swift in Sources */,
+				A53100010000000000000099 /* RaftIosTopBandDiagnostics.swift in Sources */,
 				A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */,
 				A1D000012C0000000000001 /* RaftIosDuoGeometry.m in Sources */,
 				A1D000022C0000000000002 /* RaftIosDuoRuntime.m in Sources */,

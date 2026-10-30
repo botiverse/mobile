@@ -337,6 +337,7 @@ extension RaftIosTabBarController: UITabBarControllerDelegate {
         if !bridge.selectTab(key: key) {
             RaftIosDiagnosticsRecord("warn", "RaftIosTabBar", "tab_tap_unhandled key=\(key)")
         }
+        RaftIosTopBandDiagnostics.noteTabSwitch()
     }
 }
 
