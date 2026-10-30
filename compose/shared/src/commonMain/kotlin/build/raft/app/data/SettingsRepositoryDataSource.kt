@@ -2301,7 +2301,67 @@ class RealSettingsRepository(
             }
         )
 
+    /**
+     * The server level is written through the unified `PUT notification-levels` (slock
+     * docs/contracts/notifications.md §2.2); a server without that route (404) still takes the
+     * legacy `PATCH servers/:id/notification-settings`, which writes the same value.
+     */
     private suspend fun settingsUpdateServerNotificationMode(
+        serverId: String,
+        mode: ServerPushMode,
+        canonicalModeSupported: Boolean
+    ): DataResult<SettingsServerNotificationPreferences> {
+        if (canonicalModeSupported) {
+            val level = RaftNotificationLevel.fromWire(mode.wireName)
+            if (level != null) {
+                val unified =
+                    executeTypedSettings(
+                        source = "settings_server_notification_level_update",
+                        contractCode = "settings_server_notification_level_contract_mismatch",
+                        block = {
+                            networkClient.request(
+                                priority = DataRequestPriority.Foreground,
+                                path = "notification-levels",
+                                method = "PUT",
+                                serverIdOverride = ServerId(serverId),
+                                bodyText =
+                                    buildRaftNotificationLevelBody(
+                                        RaftNotificationLevelScope.Server,
+                                        serverId,
+                                        RaftNotificationLevelSetting.of(level)
+                                    )
+                            )
+                        },
+                        mapper = { bodyText ->
+                            val update =
+                                parseRaftNotificationLevelResponse(bodyText)
+                                    ?.takeIf { it.scope == RaftNotificationLevelScope.Server && it.id == serverId }
+                                    ?: settingsContractMismatch("settings_server_notification_level_response_contract_mismatch")
+                            val saved =
+                                ServerPushMode.fromWire(update.level.wireName)
+                                    ?: settingsContractMismatch("settings_server_notification_level_response_contract_mismatch")
+                            RaftNotificationLevel.fromWire(saved.wireName)?.let { savedLevel ->
+                                RaftNotificationLevelStore.applyServerLevel(serverId, savedLevel, update.prefsVersion)
+                            }
+                            SettingsServerNotificationPreferences(
+                                mode = saved,
+                                pushPreviewMode = PushPreviewMode.Full,
+                                legacyMuted = saved == ServerPushMode.None,
+                                canonicalModeSupported = true
+                            )
+                        }
+                    )
+                // Only a bare 404 maps to this code (a server that predates the unified route); a
+                // response that does not parse uses the `_response_` code and is not retried as legacy.
+                val routeMissing =
+                    unified is DataResult.Error && unified.error.code == "settings_server_notification_level_contract_mismatch"
+                if (!routeMissing) return unified
+            }
+        }
+        return settingsUpdateLegacyServerNotificationMode(serverId, mode, canonicalModeSupported)
+    }
+
+    private suspend fun settingsUpdateLegacyServerNotificationMode(
         serverId: String,
         mode: ServerPushMode,
         canonicalModeSupported: Boolean

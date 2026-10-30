@@ -73,6 +73,78 @@ enum RaftIosPushHost {
         )
     }
 
+    /// `aps.category` of every Raft alert push (contract §4.2). No actions yet.
+    static let messageCategoryIdentifier = "RAFT_MESSAGE"
+
+    static func registerNotificationCategories() {
+        let category = UNNotificationCategory(
+            identifier: messageCategoryIdentifier,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// App icon badge (contract §1.4: the cross-server Activity sum). [completion] runs once applied.
+    static func setBadgeCount(_ count: Int, completion: @escaping () -> Void = {}) {
+        let count = max(0, count)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(count) { error in
+                if let error {
+                    RaftIosDiagnosticsRecord(
+                        "warn",
+                        "SlockIosPush",
+                        "badge_set_failed errorType=\(String(describing: type(of: error)))"
+                    )
+                }
+                completion()
+            }
+        } else {
+            runOnMain {
+                UIApplication.shared.applicationIconBadgeNumber = count
+                completion()
+            }
+        }
+    }
+
+    /// APNs background push (`content-available`): `sync` sets the badge, `retract` removes the
+    /// group's delivered notifications and then sets the badge. Alert / unknown types: `.noData`.
+    static func handleBackgroundPush(
+        userInfo: [AnyHashable: Any],
+        completion: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        guard let push = RaftIosNotificationRetraction.parseBackgroundPush(userInfo) else {
+            completion(.noData)
+            return
+        }
+        switch push {
+        case .sync(let badge):
+            guard let badge else {
+                RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_skipped reason=missing_badge")
+                completion(.noData)
+                return
+            }
+            setBadgeCount(badge) {
+                RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_applied badge=\(badge)")
+                completion(.newData)
+            }
+        case .retract(let retract):
+            RaftIosNotificationRetraction.apply(
+                retract,
+                badgeSetter: { badge, done in setBadgeCount(badge, completion: done) }
+            ) { removed in
+                RaftIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "background_retract_applied removed=\(removed) wholeGroup=\(retract.throughSeq == nil) " +
+                        "badgeApplied=\(retract.badge != nil)"
+                )
+                completion(removed > 0 || retract.badge != nil ? .newData : .noData)
+            }
+        }
+    }
+
     private static func setRemoteNotificationsEnabled(_ enabled: Bool) {
         runOnMain {
             desiredRemoteNotificationsEnabled = enabled
@@ -100,6 +172,7 @@ enum RaftIosPushHost {
                 "SlockIosPush",
                 "notification_permission_status status=\(authorizationStatusName(status)) trigger=authenticated_session"
             )
+            reportOsPermission(status)
             guard status == .notDetermined else {
                 registerForRemoteNotificationsIfCurrent(generation: generation)
                 return
@@ -118,6 +191,7 @@ enum RaftIosPushHost {
                         "notification_permission_request_finished granted=\(granted)"
                     )
                 }
+                refreshOsPermission()
                 registerForRemoteNotificationsIfCurrent(generation: generation)
             }
         }
@@ -142,6 +216,30 @@ enum RaftIosPushHost {
                 "SlockIosPush",
                 "remote_notifications_state_applied enabled=true"
             )
+        }
+    }
+
+    /// The registration's `osPermission` (slock docs/contracts/notifications.md §3.1): `denied` makes
+    /// the server send this device only sync / retract pushes. Shared re-registers when it changes.
+    static func reportOsPermission(_ status: UNAuthorizationStatus) {
+        let value: String
+        switch status {
+        case .authorized, .ephemeral:
+            value = "granted"
+        case .denied:
+            value = "denied"
+        case .provisional:
+            value = "provisional"
+        default:
+            value = "unknown"
+        }
+        RaftPushDeviceStateHost.shared.updateOsPermission(value: value)
+    }
+
+    /// Re-reads the permission (app foreground: it may have changed in Settings meanwhile).
+    static func refreshOsPermission() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            reportOsPermission(settings.authorizationStatus)
         }
     }
 
@@ -290,16 +388,63 @@ enum RaftIosPushHost {
             return trimmed.isEmpty ? nil : trimmed
         }
 
+        let supportedKinds: Set<String> = ["channel", "dm", "thread"]
+        // Unified notifications (docs/contracts/notifications.md §4.5): newer servers also send a `route`
+        // object. Legacy fields are derived from it; explicit valid top-level legacy fields still win, so
+        // older servers keep working unchanged.
+        let route = userInfo["route"] as? [AnyHashable: Any]
+        func routeValue(_ key: String) -> String? {
+            guard let value = route?[key] as? String else {
+                return nil
+            }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        var routeKind: String?
+        var routeChannelId: String?
+        var routeThreadId: String?
+        var routeParentChannelId: String?
+        var routeParentMessageId: String?
+        var routeTaskId: String?
+        var routeTaskConversationChannelId: String?
+        var routeTaskMessageId: String?
+        let routeType = routeValue("type")
+        switch routeType {
+        case "channel", "dm":
+            routeKind = routeType
+            routeChannelId = routeValue("channelId")
+        case "thread":
+            routeKind = "thread"
+            routeParentChannelId = routeValue("parentChannelId")
+            routeParentMessageId = routeValue("parentMessageId")
+            routeChannelId = stringValue("conversationId") ?? stringValue("threadId") ?? stringValue("channelId")
+            routeThreadId = routeChannelId
+        case "task":
+            if let parentChannelType = routeValue("parentChannelType"), ["channel", "dm"].contains(parentChannelType) {
+                routeKind = parentChannelType
+            }
+            routeChannelId = routeValue("parentChannelId")
+            routeTaskId = routeValue("taskId")
+            routeTaskConversationChannelId = stringValue("conversationId") ?? stringValue("taskConversationChannelId")
+            routeTaskMessageId = routeValue("messageId") ?? stringValue("taskMessageId")
+        default:
+            // `agent` (and any unknown type): no conversation open target on mobile yet, so nothing is
+            // derived; without legacy fields the payload is rejected below, as before.
+            break
+        }
+        let legacyKind = stringValue("kind").flatMap { supportedKinds.contains($0) ? $0 : nil }
         guard
-            let serverId = stringValue("serverId"),
-            let channelId = stringValue("channelId"),
-            let messageId = stringValue("messageId"),
-            let kind = stringValue("kind"),
-            ["channel", "dm", "thread"].contains(kind)
+            let serverId = stringValue("serverId") ?? routeValue("serverId"),
+            let channelId = stringValue("channelId") ?? routeChannelId,
+            let messageId = routeValue("messageId")
+                ?? stringValue("messageId")
+                ?? (routeType == "task" ? stringValue("taskMessageId") : nil),
+            let kind = legacyKind ?? routeKind,
+            supportedKinds.contains(kind)
         else {
             return nil
         }
-        let threadId = stringValue("threadId") ?? channelId
+        let threadId = stringValue("threadId") ?? routeThreadId ?? channelId
         var payload = [
             "slockNotificationServerId": serverId,
             "slockNotificationThreadId": threadId,
@@ -307,22 +452,25 @@ enum RaftIosPushHost {
             "slockNotificationMessageId": messageId,
             "slockNotificationKind": kind,
         ]
-        if let parentChannelId = stringValue("parentChannelId") {
+        if let parentChannelId = stringValue("parentChannelId") ?? routeParentChannelId {
             payload["slockNotificationParentChannelId"] = parentChannelId
         }
-        if let parentMessageId = stringValue("parentMessageId") {
+        if let parentMessageId = stringValue("parentMessageId") ?? routeParentMessageId {
             payload["slockNotificationParentMessageId"] = parentMessageId
         }
         // Task v2 task-reply push (slock #11445): top-level custom keys next to `channelId`; shared
-        // `parseRaftTaskConversationPushTarget` decides the route.
-        if let taskConversationChannelId = stringValue("taskConversationChannelId") {
+        // `parseRaftTaskConversationPushTarget` decides the route. A `task` route supplies them too.
+        if let taskConversationChannelId = routeTaskConversationChannelId ?? stringValue("taskConversationChannelId") {
             payload["slockNotificationTaskConversationChannelId"] = taskConversationChannelId
-            if let taskId = stringValue("taskId") {
+            if let taskId = stringValue("taskId") ?? routeTaskId {
                 payload["slockNotificationTaskId"] = taskId
             }
-            if let taskMessageId = stringValue("taskMessageId") {
+            if let taskMessageId = routeTaskMessageId ?? stringValue("taskMessageId") {
                 payload["slockNotificationTaskMessageId"] = taskMessageId
             }
+        }
+        if let raftCategory = stringValue("raftCategory") {
+            payload["slockNotificationRaftCategory"] = raftCategory
         }
         let category =
             categoryIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
@@ -514,6 +662,16 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         )
         RaftIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
+        RaftIosPushHost.registerNotificationCategories()
+        // osPermission rides the push registration; a change in Settings re-registers on return.
+        RaftIosPushHost.refreshOsPermission()
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            RaftIosPushHost.refreshOsPermission()
+        }
         RaftIosDesktopShortcutHost.install()
         if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
             RaftIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "cold_launch")
@@ -577,6 +735,14 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         RaftIosPushHost.didFailToRegister(error: error)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        RaftIosPushHost.handleBackgroundPush(userInfo: userInfo, completion: completionHandler)
     }
 
     func userNotificationCenter(

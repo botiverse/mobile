@@ -3940,17 +3940,56 @@ private fun RaftAppShellReadyContent(
                     sharedStores.readReceiptOwner(serverId, accountId)
                 }
             }
-    // Forward the process-owned selected-server Activity projection to the host badge. Source is
-    // diagnostics-only; hosts display count and must not branch on provenance.
-    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary, authoritativeHomeStartAllowed) {
+    val notificationLevelsByServer by build.raft.app.data.RaftNotificationLevelStore.state.collectAsState()
+    // Every server's level (the badge leaves out `none` servers) and the account settings, once per
+    // signed-in account; realtime `notification_prefs:updated` keeps them current afterwards.
+    val notificationAccountUserId = readySession?.user?.id?.takeIf { it.isNotBlank() }
+    LaunchedEffect(notificationAccountUserId) {
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
+            build.raft.app.data.RaftNotificationLevelStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
+        }
+        build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
+    }
+    // The selected server's explicit channel / thread levels, for the sidebar and thread menus' labels.
+    LaunchedEffect(notificationAccountUserId, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        build.raft.app.data.RaftNotificationLevelStore.refresh(serverId, build.raft.app.data.DataRequestPriority.Background)
+    }
+    // Forward the badge to the host: the selected server's live Activity projection plus every other
+    // server's Activity unread, without servers set to `none` (slock docs/contracts/notifications.md
+    // §1.4), the same number the push badge carries. Source is diagnostics-only; hosts display count
+    // and must not branch on provenance.
+    LaunchedEffect(
+        homeState.appBadgeCount,
+        activityUnreadSummary,
+        authoritativeHomeStartAllowed,
+        homeState.serverActivityUnread,
+        notificationLevelsByServer
+    ) {
         val fallback = homeState.appBadgeCount
         val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
-        bridge.appBadge(
-            count = if (useActivityProjection && activityUnreadSummary.hasValue) {
+        val currentServerCount =
+            if (useActivityProjection && activityUnreadSummary.hasValue) {
                 activityUnreadSummary.totalUnreadCount
             } else {
                 fallback.count
-            },
+            }
+        bridge.appBadge(
+            count =
+                build.raft.app.data.raftAppBadgeAcrossServers(
+                    currentServerId = readyServerId,
+                    currentServerCount = currentServerCount,
+                    otherServerCounts = homeState.serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
+                    serverPushMuted = homeState.serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
+                    levels =
+                        notificationLevelsByServer
+                            .filterValues { it.serverLevelKnown }
+                            .mapValues { it.value.server }
+                ),
             source =
                 if (useActivityProjection && activityUnreadSummary.hasValue) {
                     build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
@@ -15984,6 +16023,9 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
         is PerReceiverPinnedChanged -> "pinned_updated"
         is NotificationPushReceived -> "notification_push"
+        is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
+        is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
+        is build.raft.app.model.NotificationRetracted -> "notification_retract"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -16014,8 +16056,11 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged,
         is ServerNotificationPreferencesChanged,
-        is PerReceiverPinnedChanged -> "realtime_content_apply"
-        is NotificationPushReceived -> "realtime_notification_apply"
+        is PerReceiverPinnedChanged,
+        is build.raft.app.model.NotificationLevelChanged,
+        is build.raft.app.model.NotificationAccountSettingsChanged -> "realtime_content_apply"
+        is NotificationPushReceived,
+        is build.raft.app.model.NotificationRetracted -> "realtime_notification_apply"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =

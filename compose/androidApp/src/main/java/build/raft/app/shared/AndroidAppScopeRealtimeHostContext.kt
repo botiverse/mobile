@@ -35,6 +35,8 @@ import build.raft.app.push.RaftPlayServicesAvailability
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.data.RaftNotificationRetract
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
@@ -257,6 +259,25 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         )
     }
 
+    override fun emitPresenceActivity(active: Boolean) {
+        client.emitPresenceActivity(active)
+    }
+
+    /** Another device read the conversation: close what this tray shows of it (contract §5). */
+    override fun onNotificationRetracted(event: NotificationRetracted) {
+        val closed =
+            AndroidUnreadNotificationPoster.retract(
+                appContext,
+                RaftNotificationRetract(
+                    serverId = event.serverId.value,
+                    groupKey = event.groupKey,
+                    conversationId = event.conversationId,
+                    throughSeq = event.throughSeq
+                )
+            )
+        RaftAppLog.i(LOG_TAG, "notification_retract source=socket serverId=${event.serverId.value} closed=$closed")
+    }
+
     override suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
         event: NotificationPushReceived,
@@ -470,21 +491,6 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             )
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
-            runCatching {
-                AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
-                val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
-                val value =
-                    store.decodeString(
-                        AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
-                        null
-                    ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
-                value == "true"
-            }.getOrElse { error ->
-                RaftAppLog.w(
-                    LOG_TAG,
-                    "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
-                )
-                false
-            }
+            RaftNotificationAlertsPreference.isEnabled(context)
     }
 }

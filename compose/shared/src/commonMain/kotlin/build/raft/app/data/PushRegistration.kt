@@ -31,9 +31,11 @@ internal const val PUSH_LOG_TAG = "SlockPushRegistration"
 
 private val pushRegistrationJson = Json {
     encodeDefaults = true
-    // previewMode is always set on a new payload; a payload persisted by an older build has none and
-    // is never sent with an explicit null (the server rejects anything outside its three values).
+    // Unset device-state fields are omitted, never sent as null: the server keeps its stored value for
+    // an omitted field (slock docs/contracts/notifications.md §3.1).
     explicitNulls = false
+    // A payload persisted by an older build still carries previewMode.
+    ignoreUnknownKeys = true
 }
 
 private val pushDeliveryStatusJson = Json {
@@ -50,13 +52,56 @@ internal data class RaftPushRegistrationPayload(
     val env: String,
     val appVersion: String,
     /**
-     * How much message content this device's pushes may carry (`full`, `sender_only`, `hidden`), read
-     * from [PushPreviewModePreferenceStore]. The server redacts per registration from it.
+     * Deprecated by the unified contract (§3.1): the preview choice is account-wide
+     * (`me/notification-settings`). Never set on a new payload; only read back from a payload an
+     * older build persisted, and dropped before that payload is sent again.
      */
-    val previewMode: String? = null
+    val previewMode: String? = null,
+    /**
+     * The device's "receive notifications here" switch (`notifications:enabled`). `false`: the server
+     * sends this device only `sync` / `retract` pushes, so turning it off really stops alerts.
+     */
+    val alertsEnabled: Boolean? = null,
+    /** The OS notification permission: `granted`, `denied`, `provisional` or `unknown`. */
+    val osPermission: String? = null
 ) {
-    /** The registration without its preview choice: what identifies the token binding itself. */
-    fun identity(): RaftPushRegistrationPayload = copy(previewMode = null)
+    /** The registration without its device state: what identifies the token binding itself. */
+    fun identity(): RaftPushRegistrationPayload = copy(previewMode = null, alertsEnabled = null, osPermission = null)
+}
+
+/** What the device reports with its registration (contract §3.1). */
+data class RaftPushDeviceState(val alertsEnabled: Boolean, val osPermission: String)
+
+/** The four `osPermission` wire values. */
+internal val RAFT_PUSH_OS_PERMISSIONS: Set<String> = setOf("granted", "denied", "provisional", "unknown")
+
+/**
+ * The OS notification permission as the platform host last reported it (Android:
+ * `areNotificationsEnabled`, iOS: `authorizationStatus`). A change re-sends the registration so the
+ * server stops alerting a device whose notifications are blocked.
+ */
+object RaftPushDeviceStateHost {
+    @Volatile
+    var osPermission: String = "unknown"
+        private set
+
+    fun updateOsPermission(value: String) {
+        val clean = value.trim().lowercase().takeIf { it in RAFT_PUSH_OS_PERMISSIONS } ?: "unknown"
+        if (clean == osPermission) return
+        osPermission = clean
+        RaftPushRegistrationLifecycle.onDeviceStateChanged()
+    }
+}
+
+/** The registration's device state on both platforms: the shared notifications switch and the host's permission. */
+internal fun raftPushDeviceStateProvider(): () -> RaftPushDeviceState? {
+    val store by lazy { KeyValueNotificationPreferenceStore(raftSharedPreferenceStore()) }
+    return {
+        RaftPushDeviceState(
+            alertsEnabled = store.readNotificationEnabledSync(),
+            osPermission = RaftPushDeviceStateHost.osPermission
+        )
+    }
 }
 
 /**
@@ -110,8 +155,8 @@ private const val FCM_MAX_TOKEN_LENGTH = 4096
  */
 const val PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS: Long = 24L * 60L * 60L * 1000L
 
-/** Backoff between retries of a failed re-upsert after the push preview choice changed. */
-val PUSH_PREVIEW_RETRY_DELAYS_MILLIS: List<Long> = listOf(5_000L, 30_000L, 2L * 60_000L, 10L * 60_000L)
+/** Backoff between retries of a failed re-upsert after the device state (switch, permission) changed. */
+val PUSH_DEVICE_STATE_RETRY_DELAYS_MILLIS: List<Long> = listOf(5_000L, 30_000L, 2L * 60_000L, 10L * 60_000L)
 
 /** A delivery-status answer older than this is unknown: the background path posts locally again. */
 const val PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS: Long = 30L * 60L * 1000L
@@ -215,8 +260,8 @@ internal interface RaftPushRegistrationLifecycleSink {
     fun onSessionInvalidated(reason: AuthSessionClearReason)
     suspend fun unbindBeforeLogout()
 
-    /** The device's push preview choice changed: re-send the registration so the server redacts accordingly. */
-    fun onPreviewModeChanged() {}
+    /** The device state changed (notifications switch, OS permission): re-send the registration. */
+    fun onDeviceStateChanged() {}
 }
 
 internal object RaftPushRegistrationLifecycle {
@@ -256,8 +301,8 @@ internal object RaftPushRegistrationLifecycle {
         sink?.unbindBeforeLogout()
     }
 
-    fun onPreviewModeChanged() {
-        sink?.onPreviewModeChanged()
+    fun onDeviceStateChanged() {
+        sink?.onDeviceStateChanged()
     }
 
     internal fun clearForTests() {
@@ -322,17 +367,16 @@ internal class RaftPushRegistrationCoordinator(
     private val currentEnvironmentId: (() -> String?)? = null,
     private val clockMillis: () -> Long = ::defaultNowMillis,
     /**
-     * The device's push preview choice (a [PushPreviewMode] wire value), read on every upsert so the
-     * registration always carries the current choice, so every request includes previewMode. Same
-     * split as [KeyValuePushPreviewModePreferenceStore]: no value sends [PUSH_PREVIEW_MODE_DEFAULT];
-     * an unrecognized value or a failed read fails closed with [PUSH_PREVIEW_MODE_UNREADABLE].
+     * The device state ([RaftPushDeviceState]) read on every upsert, so each registration carries the
+     * current switch and permission. Null (or a failed read) omits both fields: the server keeps what
+     * it stored.
      */
-    private val previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
+    private val deviceStateProvider: () -> RaftPushDeviceState? = { null },
     /**
-     * Waits before each retry of a failed re-upsert after a preview change. Without them the server
-     * would keep redacting with the old choice until the next trigger (login, token, 24h refresh).
+     * Waits before each retry of a failed re-upsert after a device-state change. Without them the
+     * server would keep alerting a switched-off device until the next trigger (login, token, 24h).
      */
-    private val previewRetryDelaysMillis: List<Long> = PUSH_PREVIEW_RETRY_DELAYS_MILLIS,
+    private val deviceStateRetryDelaysMillis: List<Long> = PUSH_DEVICE_STATE_RETRY_DELAYS_MILLIS,
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : RaftPushRegistrationLifecycleSink {
@@ -402,7 +446,8 @@ internal class RaftPushRegistrationCoordinator(
                 topic = topic.trim(),
                 env = env.trim().lowercase(),
                 appVersion = appVersion.trim(),
-                previewMode = currentPreviewMode()
+                alertsEnabled = currentDeviceState()?.alertsEnabled,
+                osPermission = currentDeviceState()?.osPermission
             )
         if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
@@ -465,56 +510,55 @@ internal class RaftPushRegistrationCoordinator(
         }
     }
 
-    // The retry loop of the latest preview change; a newer change replaces it.
-    private var previewChangeJob: Job? = null
+    // The retry loop of the latest device-state change; a newer change replaces it.
+    private var deviceStateChangeJob: Job? = null
 
-    override fun onPreviewModeChanged() {
+    override fun onDeviceStateChanged() {
         if (unbindInProgress) return
-        previewChangeJob?.cancel()
-        previewChangeJob = scope.launch { syncPreviewModeWithRetry() }
+        deviceStateChangeJob?.cancel()
+        deviceStateChangeJob = scope.launch { syncDeviceStateWithRetry() }
     }
 
     /**
-     * [handlePreviewModeChanged], retried after [previewRetryDelaysMillis] while it fails with a
+     * [handleDeviceStateChanged], retried after [deviceStateRetryDelaysMillis] while it fails with a
      * registration still waiting to be sent (network or server failure). It stops once nothing could
      * be sent anyway: no pending registration, logged out, or no usable provider on this device.
      */
-    internal suspend fun syncPreviewModeWithRetry(): Boolean {
-        if (handlePreviewModeChanged()) return true
-        for ((attempt, waitMillis) in previewRetryDelaysMillis.withIndex()) {
-            if (!previewSyncRetryable()) return false
-            infoLogger("registration_retry trigger=preview_mode_changed attempt=${attempt + 1} delayMs=$waitMillis")
+    internal suspend fun syncDeviceStateWithRetry(): Boolean {
+        if (handleDeviceStateChanged()) return true
+        for ((attempt, waitMillis) in deviceStateRetryDelaysMillis.withIndex()) {
+            if (!deviceStateSyncRetryable()) return false
+            infoLogger("registration_retry trigger=device_state_changed attempt=${attempt + 1} delayMs=$waitMillis")
             delay(waitMillis)
-            if (handlePreviewModeChanged()) return true
+            if (handleDeviceStateChanged()) return true
         }
-        warningLogger("registration_retry_exhausted trigger=preview_mode_changed")
+        warningLogger("registration_retry_exhausted trigger=device_state_changed")
         return false
     }
 
-    private fun previewSyncRetryable(): Boolean =
+    private fun deviceStateSyncRetryable(): Boolean =
         !registrationSuspended &&
             !unbindInProgress &&
             providerUnavailableReason == null &&
             !store.getString(PENDING_REGISTRATION_KEY).isNullOrBlank()
 
     /**
-     * Re-upserts the pending registration with the current preview choice. The flush re-reads
-     * [previewModeProvider], so the dedupe sees a changed payload and the server is updated now
+     * Re-upserts the pending registration with the current device state. The flush re-reads
+     * [deviceStateProvider], so the dedupe sees a changed payload and the server is updated now
      * instead of at the next 24h refresh.
      */
-    internal suspend fun handlePreviewModeChanged(): Boolean =
-        flushPending(reason = "preview_mode_changed")
+    internal suspend fun handleDeviceStateChanged(): Boolean =
+        flushPending(reason = "device_state_changed")
 
-    private fun currentPreviewMode(): String {
-        val raw =
-            try {
-                previewModeProvider() ?: return PUSH_PREVIEW_MODE_DEFAULT
-            } catch (_: Throwable) {
-                warningLogger("preview_mode_read_failed fallback=$PUSH_PREVIEW_MODE_UNREADABLE")
-                return PUSH_PREVIEW_MODE_UNREADABLE
+    private fun currentDeviceState(): RaftPushDeviceState? =
+        try {
+            deviceStateProvider()?.let { state ->
+                state.copy(osPermission = state.osPermission.takeIf { it in RAFT_PUSH_OS_PERMISSIONS } ?: "unknown")
             }
-        return PushPreviewMode.fromWire(raw)?.wireName ?: PUSH_PREVIEW_MODE_UNREADABLE
-    }
+        } catch (_: Throwable) {
+            warningLogger("device_state_read_failed fallback=omit")
+            null
+        }
 
     private fun decodePayloadOrNull(payloadJson: String?): RaftPushRegistrationPayload? =
         payloadJson?.takeIf { it.isNotBlank() }?.let { encoded ->
@@ -527,15 +571,19 @@ internal class RaftPushRegistrationCoordinator(
             }
         }
 
-    /** The stored payload with the current preview choice; unchanged when it already matches. */
-    private fun withCurrentPreviewMode(payloadJson: String): String {
-        val mode = currentPreviewMode()
+    /**
+     * The stored payload with the current device state and without a legacy previewMode; unchanged
+     * when it already matches.
+     */
+    private fun withCurrentDeviceState(payloadJson: String): String {
+        val state = currentDeviceState()
         val payload = decodePayloadOrNull(payloadJson) ?: return payloadJson
-        if (payload.previewMode == mode) return payloadJson
-        return pushRegistrationJson.encodeToString(payload.copy(previewMode = mode))
+        val next = payload.copy(previewMode = null, alertsEnabled = state?.alertsEnabled, osPermission = state?.osPermission)
+        if (next == payload) return payloadJson
+        return pushRegistrationJson.encodeToString(next)
     }
 
-    /** Same token binding (installation, provider, token, topic, env, version), whatever the preview choice. */
+    /** Same token binding (installation, provider, token, topic, env, version), whatever the device state. */
     private fun sameRegistrationIdentity(first: String?, second: String?): Boolean {
         if (first == second) return true
         val a = decodePayloadOrNull(first) ?: return false
@@ -720,7 +768,7 @@ internal class RaftPushRegistrationCoordinator(
                 current != userId ||
                 !registrationSettledFor(userId) ||
                 // A new registration (FID, topic, version) settled meanwhile: this answer predates it.
-                // A preview-only change keeps the binding, and with it the answer.
+                // A device-state-only change keeps the binding, and with it the answer.
                 !sameRegistrationIdentity(store.getString(LAST_REGISTERED_PAYLOAD_KEY), admittedRegistration) ||
                 currentInstallationId() != installationId ||
                 normalizedPushEnvironmentId(environmentProvider()) != environmentId
@@ -822,9 +870,9 @@ internal class RaftPushRegistrationCoordinator(
         }
         if (providerUnavailableReason != null) return false
         val storedPending = payloadJson ?: return false
-        // Every upsert carries the current preview choice; persisting it keeps pending == registered
+        // Every upsert carries the current device state; persisting it keeps pending == registered
         // once it is confirmed, which the delivery-status gate relies on.
-        val pendingPayload = withCurrentPreviewMode(storedPending)
+        val pendingPayload = withCurrentDeviceState(storedPending)
         if (pendingPayload != storedPending) store.putString(PENDING_REGISTRATION_KEY, pendingPayload)
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }
         if (serverId == null) {
@@ -852,15 +900,15 @@ internal class RaftPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
                 return false
             }
-            val previewOnlyChange =
+            val deviceStateOnlyChange =
                 !sameBinding &&
                     sameRegistrationIdentity(pendingPayload, store.getString(LAST_REGISTERED_PAYLOAD_KEY)) &&
                     store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id &&
                     store.getString(LAST_BOUND_ENVIRONMENT_KEY) == environmentId
-            if (!sameBinding && !previewOnlyChange) {
+            if (!sameBinding && !deviceStateOnlyChange) {
                 // New token, topic, user or environment: the stored answer described the previous
                 // registration. A same-binding refresh (confirmation expiry, new session family) or a
-                // preview-only change keeps it: FCM keeps delivering meanwhile, and dropping the answer
+                // device-state-only change keeps it: FCM keeps delivering meanwhile, and dropping the answer
                 // would make the realtime path post the same notification locally as well.
                 clearDeliveryStatus(reason = "registration_changed")
             }
@@ -999,19 +1047,9 @@ object RaftIosPushRegistrationBridge {
                 RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
-            previewModeProvider = raftPushPreviewModeProvider(),
+            deviceStateProvider = raftPushDeviceStateProvider(),
             infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, message) },
             warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, message) }
         )
     }
-}
-
-/**
- * The registration's previewMode source on both platforms: the device-local
- * [PushPreviewModePreferenceStore], the single owner of the choice. Its read always returns one of
- * the three wire values; a store that cannot be opened fails closed in the coordinator.
- */
-internal fun raftPushPreviewModeProvider(): () -> String? {
-    val store by lazy { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
-    return { store.readPushPreviewModeSync() }
 }

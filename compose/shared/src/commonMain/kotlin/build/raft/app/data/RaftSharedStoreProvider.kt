@@ -3944,6 +3944,18 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent is ServerNotificationPreferencesChanged && acceptedEvent.serverId.value == serverId) {
                 serverNotificationPreferencesSink?.invoke(grant.principalId, serverId, acceptedEvent)
             }
+            // Unified notification levels and account settings (slock docs/contracts/notifications.md
+            // §2.3): the process stores the channel / thread menus, the badge and the settings page read.
+            when (acceptedEvent) {
+                is ServerNotificationPreferencesChanged ->
+                    RaftNotificationLevel.fromWire(acceptedEvent.serverPushMode)?.let { level ->
+                        RaftNotificationLevelStore.applyServerLevel(acceptedEvent.serverId.value, level, acceptedEvent.prefsVersion)
+                    }
+                is build.raft.app.model.NotificationLevelChanged -> RaftNotificationLevelStore.applyRealtime(acceptedEvent)
+                is build.raft.app.model.NotificationAccountSettingsChanged ->
+                    RaftNotificationAccountSettingsStore.applyRealtime(acceptedEvent.settings)
+                else -> Unit
+            }
             if (acceptedEvent is AgentActivitySubscribed) {
                 agentActivitySubscribedSink?.invoke(serverId, acceptedEvent)
             }

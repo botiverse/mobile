@@ -23,6 +23,10 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationAccountSettingsChanged
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.data.RAFT_PRESENCE_HEARTBEAT_MILLIS
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
@@ -269,6 +273,43 @@ class SocketIoRealtimeClient(
         }
     }
 
+    /**
+     * `presence:activity` (slock docs/contracts/notifications.md §5): the app is (not) in the
+     * foreground. Sent now when connected, again on every connect, and every
+     * [RAFT_PRESENCE_HEARTBEAT_MILLIS] while connected and active; the server alerts only the
+     * device kinds the user is actively using.
+     */
+    fun emitPresenceActivity(active: Boolean) {
+        transport.linearize {
+            presenceActive = active
+            emitPresenceLocked(reason = if (active) "foreground" else "background")
+        }
+    }
+
+    // Guarded by the transport's linearization. Null until the host reports a visibility.
+    private var presenceActive: Boolean? = null
+    private var lastPresenceSentAtMillis: Long? = null
+
+    private fun emitPresenceLocked(reason: String) {
+        val active = presenceActive ?: return
+        val connected =
+            connectionState == RealtimeConnectionState.Connected ||
+                connectionState == RealtimeConnectionState.RoomsJoined
+        if (!connected) return
+        transport.emit(
+            RealtimeSocketEvents.PresenceActivity,
+            if (active) mapOf("active" to true, "idleSeconds" to 0) else mapOf("active" to false, "idleSeconds" to JSONObject.NULL)
+        )
+        lastPresenceSentAtMillis = clockMillis()
+        logger("presence_activity_emit active=$active reason=$reason")
+    }
+
+    private fun presenceHeartbeatLocked(nowMillis: Long) {
+        if (presenceActive != true) return
+        val last = lastPresenceSentAtMillis ?: return
+        if (nowMillis - last >= RAFT_PRESENCE_HEARTBEAT_MILLIS) emitPresenceLocked(reason = "heartbeat")
+    }
+
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
         transport.linearize { listeners += listener }
         return RealtimeSubscription { transport.linearize { listeners -= listener } }
@@ -328,6 +369,7 @@ class SocketIoRealtimeClient(
             )
             requestStartingHorizon(capturedContext)
             rejoinChannels(reason = "connect")
+            emitPresenceLocked(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { capturedContext, _ ->
             if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.RoomsJoined)) return@on
@@ -394,6 +436,7 @@ class SocketIoRealtimeClient(
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
             reconnectCursor(reason = "transport_reconnect", serverId = capturedContext.serverId)
+            emitPresenceLocked(reason = "reconnect")
             diagnostics?.onConnected(capturedContext.serverId)
             logger(
                 "client_reconnected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
@@ -631,6 +674,7 @@ class SocketIoRealtimeClient(
                 transport.linearize {
                     if (watchdogRegistration?.epoch != epoch) return@linearize
                     checkHeartbeatSilenceLocked(clockMillis())
+                    presenceHeartbeatLocked(clockMillis())
                 }
             }
         watchdogRegistration = WatchdogRegistration(epoch, cancel)
@@ -922,6 +966,9 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
     is PerReceiverPinnedChanged -> "pinned_updated"
     is NotificationPushReceived -> "notification_push"
+    is NotificationLevelChanged -> "notification_level_changed"
+    is NotificationAccountSettingsChanged -> "notification_account_settings_changed"
+    is NotificationRetracted -> "notification_retract"
 }
 
 private val realtimeAuthRefreshExecutor =

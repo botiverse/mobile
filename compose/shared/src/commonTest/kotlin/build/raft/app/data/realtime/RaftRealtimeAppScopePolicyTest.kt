@@ -154,9 +154,10 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun remotePushIsInactiveForAServerMissingFromTheAnswerOrNotFcmActive() {
-        assertFalse(remotePushActive(serverId = ServerId("server-3")), "server missing from the answer")
-        assertFalse(remotePushActive(serverId = ServerId("server-2")), "server-2 is fcmActive=false")
+    fun remotePushNoLongerDependsOnThePerServerRolloutAnswer() {
+        // FCM is fully rolled out: a confirmed registration delivers every server's notifications.
+        assertTrue(remotePushActive(serverId = ServerId("server-3")), "server missing from the answer")
+        assertTrue(remotePushActive(serverId = ServerId("server-2")), "server-2 is fcmActive=false")
         assertFalse(remotePushActive(serverId = ServerId(" ")), "blank server")
     }
 

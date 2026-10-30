@@ -1116,12 +1116,13 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobilePushPreviewModeIntentWritesThePreferenceStoreAndReRegisters() = runBlocking {
+    fun mobilePushPreviewModeIntentSavesTheAccountSettingThenTheDeviceCopy() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
         val preferences = MapSharedPreferenceStore()
         val previewStore = KeyValuePushPreviewModePreferenceStore(preferences)
-        var reRegistrations = 0
+        val accountWrites = mutableListOf<PushPreviewMode>()
+        var accountAccepts = true
         val store =
             SharedSettingsStore(
                 dataSource =
@@ -1132,7 +1133,8 @@ class SharedSettingsStoreTest {
                         localeRepository = FakeLocaleRepository(),
                         chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository(),
                         pushPreviewModePreferenceStore = previewStore,
-                        onPushPreviewModeChanged = { reRegistrations += 1 }
+                        accountPreviewModeWriter = { mode -> accountWrites += mode; accountAccepts },
+                        accountSettingsLoader = {}
                     ),
                 scope = scope
             )
@@ -1153,13 +1155,20 @@ class SharedSettingsStoreTest {
         // The rest of the visible snapshot is kept, and no repository call is involved.
         assertEquals(loaded.copy(pushPreviewMode = mobile.pushPreviewMode), mobile)
         assertTrue(repository.calls.isEmpty())
-        assertEquals(1, reRegistrations)
+        // Account-wide (contract §1.5): saved through me/notification-settings, not the registration.
+        assertEquals(listOf(PushPreviewMode.Hidden), accountWrites)
         assertEquals(MOBILE_ACTION_PUSH_PREVIEW_MODE, store.state.value.actionState?.action)
         assertFalse(store.state.value.actionState?.inProgress == true)
 
         store.accept(SharedSettingsIntent.SetPushPreviewMode("private"))
         assertEquals("hidden", previewStore.readPushPreviewModeSync())
-        assertEquals(1, reRegistrations)
+        assertEquals(listOf(PushPreviewMode.Hidden), accountWrites)
+
+        // The server refuses: the device copy keeps the saved choice.
+        accountAccepts = false
+        store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Full.wireName))
+        assertEquals("hidden", previewStore.readPushPreviewModeSync())
+        assertEquals(listOf(PushPreviewMode.Hidden, PushPreviewMode.Full), accountWrites)
         scope.cancel()
     }
 

@@ -692,12 +692,20 @@ class SharedSettingsDataSource(
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
     /**
-     * The per-device push preview choice. This store is the only place the choice lives: the settings
-     * row reads it, the push registration reads it, and the Android notification poster reads it.
+     * The device's copy of the account-wide preview choice (slock docs/contracts/notifications.md
+     * §1.5): the settings row, the Android notification poster and the in-app banners read it;
+     * [RaftNotificationAccountSettingsStore] keeps it in step with the server.
      */
     private val pushPreviewModePreferenceStore: PushPreviewModePreferenceStore? = null,
-    /** Re-sends the push registration so the server learns the new previewMode. */
-    private val onPushPreviewModeChanged: () -> Unit = { RaftPushRegistrationLifecycle.onPreviewModeChanged() },
+    /**
+     * Writes the preview choice to the account (`PATCH me/notification-settings`). True when saved,
+     * false when the server refused, null when no account API is available (no signed-in runtime).
+     */
+    private val accountPreviewModeWriter: suspend (PushPreviewMode) -> Boolean? = { mode ->
+        RaftNotificationAccountSettingsStore.updateOrNull(RaftNotificationAccountSettingsPatch(previewMode = mode))
+    },
+    /** Reads the account settings (and so the preview choice) before the Notifications page shows. */
+    private val accountSettingsLoader: suspend () -> Unit = { RaftNotificationAccountSettingsStore.load() },
     /**
      * The server accepted a new "Share usage data" choice: the product-events client must ask
      * `/product-events/config` again so turning it off stops sending at once.
@@ -1163,6 +1171,7 @@ class SharedSettingsDataSource(
 
     suspend fun loadMobile(): DataResult<SettingsMobileSnapshot> {
         val systemNotificationPermission = platformCapabilities.loadSystemNotificationPermission()
+        runCatching { accountSettingsLoader() }
         return when (val result = settingsRepository?.getMobileSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
             is DataResult.Content ->
                 DataResult.Content(
@@ -1226,8 +1235,9 @@ class SharedSettingsDataSource(
     }
 
     /**
-     * Writes the per-device preview choice to [pushPreviewModePreferenceStore] and re-sends the push
-     * registration. Returns the row as read back from the store, so the UI shows what was persisted.
+     * Saves the account-wide preview choice on the server, then the device copy in
+     * [pushPreviewModePreferenceStore]. Returns the row as read back from the store, so the UI shows
+     * what was persisted; a refused save keeps the previous choice.
      */
     suspend fun setPushPreviewMode(mode: String): DataResult<SettingsMobileSelectionSnapshot> {
         val selectedMode =
@@ -1236,9 +1246,11 @@ class SharedSettingsDataSource(
         val store =
             pushPreviewModePreferenceStore
                 ?: return DataResult.Error(ScreenError("settings_push_preview_mode_unavailable", retryable = false))
+        if (accountPreviewModeWriter(selectedMode) == false) {
+            return DataResult.Error(ScreenError("settings_push_preview_mode_save_failed", retryable = true))
+        }
         store.savePushPreviewMode(selectedMode.wireName)
         diagnosticsLogger?.invoke("push_preview_mode_user_choice mode=${selectedMode.wireName}")
-        onPushPreviewModeChanged()
         return DataResult.Content(store.pushPreviewModeSnapshot())
     }
 

@@ -30,8 +30,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import build.raft.app.data.RaftNotificationAccountSettings
+import build.raft.app.data.RaftNotificationAccountSettingsPatch
+import build.raft.app.data.RaftNotificationAccountSettingsStore
+import build.raft.app.data.RaftNotificationPauseOption
+import build.raft.app.data.raftCurrentTimeZoneId
+import build.raft.app.data.raftMinuteOfDayLabel
+import build.raft.app.data.raftNowEpochMillis
+import build.raft.app.data.raftPausedUntilLabel
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -150,6 +164,9 @@ internal fun SettingsNotificationsContent(
                         onServerNotificationModeChange = onServerNotificationModeChange
                     )
                 }
+                // Account-wide (slock docs/contracts/notifications.md §1.2 / §1.5): pause, quiet
+                // hours and sound apply on every device; preview privacy below too.
+                item { SettingsNotificationAccountCard() }
                 if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
                     item {
                         SettingsPushPreviewModeCard(
@@ -648,3 +665,196 @@ private fun ServerPushMode.settingsNotificationModeDetail(): String =
         ServerPushMode.Mentions -> stringResource(Res.string.settings_notifications_mode_mentions_detail)
         ServerPushMode.None -> stringResource(Res.string.settings_notifications_mode_none_detail)
     }
+
+/**
+ * Pause, quiet hours and sound: the account-wide settings of `me/notification-settings` (design
+ * §4.3), read from and written through [RaftNotificationAccountSettingsStore], which applies a change
+ * at once and rolls it back when the server refuses.
+ */
+@Composable
+private fun SettingsNotificationAccountCard() {
+    val accountState by RaftNotificationAccountSettingsStore.state.collectAsState()
+    val settings = accountState.settings ?: RaftNotificationAccountSettings()
+    val scope = rememberCoroutineScope()
+    var pauseDialogOpen by remember { mutableStateOf(false) }
+    var quietTimeEditing by remember { mutableStateOf<Boolean?>(null) } // true: start, false: end
+    val busy = accountState.saving || accountState.settings == null
+    fun update(patch: RaftNotificationAccountSettingsPatch) {
+        scope.launch { RaftNotificationAccountSettingsStore.update(patch) }
+    }
+    val now = raftNowEpochMillis()
+    val pausedUntil = settings.pausedUntilEpochMillis()?.takeIf { it > now }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_everywhere))
+        SettingsNotificationPreferenceGroup {
+            SettingsNotificationValueRow(
+                title = stringResource(Res.string.settings_notifications_pause_title),
+                detail = stringResource(Res.string.settings_notifications_pause_detail),
+                value =
+                    pausedUntil?.let { stringResource(Res.string.settings_notifications_paused_until, raftPausedUntilLabel(it, now)) }
+                        ?: stringResource(Res.string.settings_notifications_pause_off),
+                enabled = !busy,
+                onClick = { pauseDialogOpen = true }
+            )
+            SettingsNotificationDivider()
+            SettingsNotificationToggleRow(
+                title = stringResource(Res.string.settings_notifications_quiet_hours_title),
+                detail = stringResource(Res.string.settings_notifications_quiet_hours_detail, settings.quietHours.timeZone),
+                checked = settings.quietHours.enabled,
+                enabled = !busy,
+                onCheckedChange = { enabled ->
+                    // Turning quiet hours on records this device's zone (the server needs an IANA zone).
+                    val zone = if (enabled) raftCurrentTimeZoneId() else settings.quietHours.timeZone
+                    update(RaftNotificationAccountSettingsPatch(quietHours = settings.quietHours.copy(enabled = enabled, timeZone = zone)))
+                }
+            )
+            if (settings.quietHours.enabled) {
+                SettingsNotificationDivider()
+                SettingsNotificationValueRow(
+                    title = stringResource(Res.string.settings_notifications_quiet_hours_start),
+                    detail = "",
+                    value = raftMinuteOfDayLabel(settings.quietHours.startMinute),
+                    enabled = !busy,
+                    onClick = { quietTimeEditing = true }
+                )
+                SettingsNotificationDivider()
+                SettingsNotificationValueRow(
+                    title = stringResource(Res.string.settings_notifications_quiet_hours_end),
+                    detail = "",
+                    value = raftMinuteOfDayLabel(settings.quietHours.endMinute),
+                    enabled = !busy,
+                    onClick = { quietTimeEditing = false }
+                )
+            }
+            SettingsNotificationDivider()
+            SettingsNotificationToggleRow(
+                title = stringResource(Res.string.settings_notifications_sound_title),
+                detail = stringResource(Res.string.settings_notifications_sound_detail),
+                checked = settings.sound,
+                enabled = !busy,
+                onCheckedChange = { sound -> update(RaftNotificationAccountSettingsPatch(sound = sound)) }
+            )
+            if (accountState.errorCode != null && accountState.settings != null) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    SettingsFormErrorText(stringResource(Res.string.settings_notifications_account_save_failed))
+                }
+            }
+        }
+    }
+    if (pauseDialogOpen) {
+        RaftUnifiedDialog(
+            title = stringResource(Res.string.settings_notifications_pause_title),
+            onDismiss = { pauseDialogOpen = false },
+            contentSpacing = 8.dp
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsServerSelectRow(
+                    title =
+                        if (pausedUntil != null) {
+                            stringResource(Res.string.settings_notifications_resume)
+                        } else {
+                            stringResource(Res.string.settings_notifications_pause_off)
+                        },
+                    detail = "",
+                    selected = pausedUntil == null,
+                    enabled = true,
+                    onClick = {
+                        pauseDialogOpen = false
+                        if (pausedUntil != null) update(RaftNotificationAccountSettingsPatch(resume = true))
+                    }
+                )
+                RaftNotificationPauseOption.entries.forEach { option ->
+                    SettingsServerSelectRow(
+                        title = option.localizedPauseLabel(),
+                        detail = "",
+                        selected = false,
+                        enabled = true,
+                        onClick = {
+                            pauseDialogOpen = false
+                            update(RaftNotificationAccountSettingsPatch(pausedUntil = option.pausedUntil(raftNowEpochMillis())))
+                        }
+                    )
+                }
+            }
+        }
+    }
+    quietTimeEditing?.let { editingStart ->
+        val current = if (editingStart) settings.quietHours.startMinute else settings.quietHours.endMinute
+        RaftUnifiedDialog(
+            title =
+                stringResource(
+                    if (editingStart) Res.string.settings_notifications_quiet_hours_start else Res.string.settings_notifications_quiet_hours_end
+                ),
+            onDismiss = { quietTimeEditing = null },
+            contentSpacing = 8.dp
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                (0 until 48).map { it * 30 }.forEach { minute ->
+                    SettingsServerSelectRow(
+                        title = raftMinuteOfDayLabel(minute),
+                        detail = "",
+                        selected = minute == current,
+                        enabled = true,
+                        onClick = {
+                            quietTimeEditing = null
+                            val quiet =
+                                if (editingStart) settings.quietHours.copy(startMinute = minute) else settings.quietHours.copy(endMinute = minute)
+                            update(RaftNotificationAccountSettingsPatch(quietHours = quiet))
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RaftNotificationPauseOption.localizedPauseLabel(): String =
+    when (this) {
+        RaftNotificationPauseOption.Minutes30 -> stringResource(Res.string.settings_notifications_pause_30m)
+        RaftNotificationPauseOption.Hour1 -> stringResource(Res.string.settings_notifications_pause_1h)
+        RaftNotificationPauseOption.Hours2 -> stringResource(Res.string.settings_notifications_pause_2h)
+        RaftNotificationPauseOption.TomorrowMorning -> stringResource(Res.string.settings_notifications_pause_tomorrow)
+    }
+
+/** A row with a value on its trailing side that opens a choice (pause, quiet hours start / end). */
+@Composable
+private fun SettingsNotificationValueRow(
+    title: String,
+    detail: String,
+    value: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = title,
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (detail.isNotBlank()) SettingsFormDetailText(detail)
+        }
+        Text(
+            text = value,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
+    }
+}

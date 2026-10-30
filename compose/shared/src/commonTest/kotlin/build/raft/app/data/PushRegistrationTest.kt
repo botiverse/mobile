@@ -62,7 +62,7 @@ class PushRegistrationTest {
         assertTrue(coordinator.retryPendingRegistration(reason = "login"))
         assertEquals(1, api.calls.size)
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"full"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
             api.calls.single()
         )
 
@@ -326,7 +326,7 @@ class PushRegistrationTest {
             )
         )
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"full"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
             api.calls.single(),
             "an FID is case-sensitive: it is trimmed but never lowercased"
         )
@@ -346,8 +346,9 @@ class PushRegistrationTest {
 
         assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = " https://api.example/ ", now = clock.now))
         assertTrue(coordinator.isRemotePushActiveFor("server-1", environmentId = "https://api.example", now = clock.now))
-        assertFalse(coordinator.isRemotePushActiveFor("server-2", now = clock.now), "fcmActive=false")
-        assertFalse(coordinator.isRemotePushActiveFor("server-3", now = clock.now), "not in the answer")
+        // FCM is fully rolled out: the per-server rollout answer no longer gates the local post.
+        assertTrue(coordinator.isRemotePushActiveFor("server-2", now = clock.now), "fcmActive=false")
+        assertTrue(coordinator.isRemotePushActiveFor("server-3", now = clock.now), "not in the answer")
         assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
         assertEquals(installationId, coordinator.currentInstallationId())
     }
@@ -496,7 +497,8 @@ class PushRegistrationTest {
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to false)
         assertTrue(coordinator.handleSessionSaved())
         assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-1", now = clock.now))
-        assertFalse(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
+        // user-2's own answer confirms the registration; fcmActive=false no longer gates (FCM fully rolled out).
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", userId = "user-2", now = clock.now))
         assertEquals("user-2", coordinator.storedDeliveryStatus()?.userId)
     }
 
@@ -855,54 +857,59 @@ class PushRegistrationTest {
     }
 
     @Test
-    fun registrationBodyCarriesThePreviewModeReadFromTheDeviceStore() = runBlocking {
-        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+    fun registrationBodyCarriesTheDeviceStateAndNoPreviewMode() = runBlocking {
+        // slock docs/contracts/notifications.md §3.1: alertsEnabled + osPermission; previewMode is
+        // account-wide now (me/notification-settings) and new clients omit it.
+        var state = RaftPushDeviceState(alertsEnabled = false, osPermission = "denied")
         val api = RecordingPushRegistrationApi()
         val coordinator =
             coordinator(
                 spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api,
-                previewModeProvider = preferences::readPushPreviewModeSync
+                deviceStateProvider = { state }
             )
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        preferences.savePushPreviewMode("hidden")
 
         assertTrue(coordinator.registerFcm())
 
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"hidden"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","alertsEnabled":false,"osPermission":"denied"}""",
             api.calls.single()
         )
+        state = RaftPushDeviceState(alertsEnabled = true, osPermission = "granted")
+        assertTrue(coordinator.handleDeviceStateChanged())
+        assertTrue(api.calls.last().endsWith(""","alertsEnabled":true,"osPermission":"granted"}"""), api.calls.last())
     }
 
     @Test
-    fun previewModeIsAlwaysSentAndFailsClosedWhenUnreadable() = runBlocking {
+    fun anUnknownPermissionReadsUnknownAndAFailedReadOmitsTheDeviceState() = runBlocking {
         val cases =
-            listOf<Pair<() -> String?, String>>(
-                { null } to "full",
-                { "private" } to "hidden",
-                { error("store unavailable") } to "hidden"
+            listOf<Pair<() -> RaftPushDeviceState?, String>>(
+                { RaftPushDeviceState(alertsEnabled = true, osPermission = "maybe") } to ""","alertsEnabled":true,"osPermission":"unknown"}""",
+                { null } to ""","appVersion":"1.3.0"}""",
+                { error("store unavailable") } to ""","appVersion":"1.3.0"}"""
             )
-        for ((provider, expected) in cases) {
+        for ((provider, expectedEnd) in cases) {
             val api = RecordingPushRegistrationApi()
             val coordinator =
                 coordinator(
                     spec = RaftPushProviderSpec.Fcm,
                     currentSession = { storedSession(userId = "user-1") },
                     api = api,
-                    previewModeProvider = provider
+                    deviceStateProvider = provider
                 )
             coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
             assertTrue(coordinator.registerFcm())
-            assertTrue(api.calls.single().endsWith(""","previewMode":"$expected"}"""), api.calls.single())
+            assertTrue(api.calls.single().endsWith(expectedEnd), api.calls.single())
+            assertFalse(api.calls.single().contains("previewMode"), api.calls.single())
         }
     }
 
     @Test
-    fun changingThePreviewModeReRegistersWithTheNewValueAndKeepsTheDeliveryStatus() = runBlocking {
+    fun turningAlertsOffReRegistersAndKeepsTheDeliveryStatus() = runBlocking {
         val clock = TestClock()
-        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        var alertsEnabled = true
         val api = RecordingPushRegistrationApi()
         api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
         val coordinator =
@@ -910,53 +917,52 @@ class PushRegistrationTest {
                 currentSession = { storedSession("user-1") },
                 api = api,
                 clock = clock,
-                previewModeProvider = preferences::readPushPreviewModeSync
+                deviceStateProvider = { RaftPushDeviceState(alertsEnabled = alertsEnabled, osPermission = "granted") }
             )
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         assertTrue(coordinator.registerFcm())
         val posts = { api.calls.filter { it.startsWith("POST ") } }
         assertEquals(1, posts().size)
-        assertTrue(posts().last().contains(""""previewMode":"full""""))
+        assertTrue(posts().last().contains(""""alertsEnabled":true"""))
         val stored = coordinator.storedDeliveryStatus()
         api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
 
-        preferences.savePushPreviewMode("sender_only")
-        assertTrue(coordinator.handlePreviewModeChanged())
+        alertsEnabled = false
+        assertTrue(coordinator.handleDeviceStateChanged())
 
         assertEquals(2, posts().size, "the change is sent now, not at the next 24h refresh")
-        assertTrue(posts().last().contains(""""previewMode":"sender_only""""), posts().last())
-        assertEquals(stored, coordinator.storedDeliveryStatus(), "a preview-only change keeps the token binding")
-        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+        assertTrue(posts().last().contains(""""alertsEnabled":false"""), posts().last())
+        assertEquals(stored, coordinator.storedDeliveryStatus(), "a device-state-only change keeps the token binding")
 
         // Nothing changed since: the dedupe holds.
-        assertTrue(coordinator.handlePreviewModeChanged())
+        assertTrue(coordinator.handleDeviceStateChanged())
         assertEquals(2, posts().size)
     }
 
     @Test
-    fun aFailedReUpsertAfterAPreviewChangeIsRetriedWithBackoff() = runBlocking {
-        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+    fun aFailedReUpsertAfterADeviceStateChangeIsRetriedWithBackoff() = runBlocking {
+        var alertsEnabled = true
         val api = RecordingPushRegistrationApi()
         val coordinator =
             coordinator(
                 spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api,
-                previewModeProvider = preferences::readPushPreviewModeSync
+                deviceStateProvider = { RaftPushDeviceState(alertsEnabled = alertsEnabled, osPermission = "granted") }
             )
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         assertTrue(coordinator.registerFcm())
-        preferences.savePushPreviewMode("hidden")
+        alertsEnabled = false
         var failuresLeft = 2
         api.upsertResponseFor = { payload ->
             if (failuresLeft-- > 0) HomeNetworkResponse(code = 503, bodyText = null) else confirmedUpsert(payload)
         }
 
-        assertTrue(coordinator.syncPreviewModeWithRetry())
+        assertTrue(coordinator.syncDeviceStateWithRetry())
 
         val posts = api.calls.filter { it.startsWith("POST ") }
         assertEquals(4, posts.size, "initial + two failed + the successful retry")
-        assertTrue(posts.drop(1).all { it.contains(""""previewMode":"hidden"""") })
+        assertTrue(posts.drop(1).all { it.contains(""""alertsEnabled":false""") })
     }
 
     @Test
@@ -967,19 +973,19 @@ class PushRegistrationTest {
                 spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api,
-                previewModeProvider = { "sender_only" }
+                deviceStateProvider = { RaftPushDeviceState(alertsEnabled = false, osPermission = "granted") }
             )
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         api.upsertResponse = HomeNetworkResponse(code = 503, bodyText = null)
         assertFalse(coordinator.registerFcm())
 
-        assertFalse(coordinator.syncPreviewModeWithRetry())
+        assertFalse(coordinator.syncDeviceStateWithRetry())
 
         assertEquals(5, api.calls.count { it.startsWith("POST ") }, "1 + first try + 3 bounded retries")
     }
 
     @Test
-    fun aPreviewChangeWithNothingToSendDoesNotRetry() = runBlocking {
+    fun aDeviceStateChangeWithNothingToSendDoesNotRetry() = runBlocking {
         val api = RecordingPushRegistrationApi()
         val coordinator =
             coordinator(
@@ -989,17 +995,17 @@ class PushRegistrationTest {
             )
         coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-        assertFalse(coordinator.syncPreviewModeWithRetry())
+        assertFalse(coordinator.syncDeviceStateWithRetry())
 
         assertTrue(api.calls.isEmpty())
     }
 
     @Test
-    fun aPendingPayloadFromAnOlderBuildGainsThePreviewModeOnTheNextFlush() = runBlocking {
+    fun aPendingPayloadFromAnOlderBuildDropsItsPreviewModeOnTheNextFlush() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         store.putString(
             "pendingRegistration",
-            """{"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.2.0"}"""
+            """{"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.2.0","previewMode":"hidden"}"""
         )
         store.putString("installationId", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         val api = RecordingPushRegistrationApi()
@@ -1009,16 +1015,19 @@ class PushRegistrationTest {
                 spec = RaftPushProviderSpec.Fcm,
                 currentSession = { storedSession(userId = "user-1") },
                 api = api,
-                previewModeProvider = { "hidden" }
+                deviceStateProvider = { RaftPushDeviceState(alertsEnabled = true, osPermission = "granted") }
             )
 
         assertTrue(coordinator.retryPendingRegistration(reason = "startup"))
 
-        assertTrue(api.calls.single().endsWith(""","previewMode":"hidden"}"""), api.calls.single())
+        assertTrue(
+            api.calls.single().endsWith(""","appVersion":"1.2.0","alertsEnabled":true,"osPermission":"granted"}"""),
+            api.calls.single()
+        )
     }
 
     @Test
-    fun previewModeChangesReachTheInstalledSink() {
+    fun deviceStateChangesReachTheInstalledSink() {
         var changes = 0
         RaftPushRegistrationLifecycle.install(
             object : RaftPushRegistrationLifecycleSink {
@@ -1028,13 +1037,13 @@ class PushRegistrationTest {
 
                 override suspend fun unbindBeforeLogout() = Unit
 
-                override fun onPreviewModeChanged() {
+                override fun onDeviceStateChanged() {
                     changes += 1
                 }
             }
         )
 
-        RaftPushRegistrationLifecycle.onPreviewModeChanged()
+        RaftPushRegistrationLifecycle.onDeviceStateChanged()
 
         assertEquals(1, changes)
     }
@@ -1049,8 +1058,8 @@ class PushRegistrationTest {
         currentEnvironmentId: (() -> String?)? = null,
         clockMillis: () -> Long = { 0L },
         scope: CoroutineScope = CoroutineScope(SupervisorJob()),
-        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
-        previewRetryDelaysMillis: List<Long> = listOf(0L, 0L, 0L)
+        deviceStateProvider: () -> RaftPushDeviceState? = { null },
+        deviceStateRetryDelaysMillis: List<Long> = listOf(0L, 0L, 0L)
     ): RaftPushRegistrationCoordinator =
         RaftPushRegistrationCoordinator(
             store = store,
@@ -1061,8 +1070,8 @@ class PushRegistrationTest {
             remoteNotificationsController = remoteNotificationsController,
             currentEnvironmentId = currentEnvironmentId,
             clockMillis = clockMillis,
-            previewModeProvider = previewModeProvider,
-            previewRetryDelaysMillis = previewRetryDelaysMillis
+            deviceStateProvider = deviceStateProvider,
+            deviceStateRetryDelaysMillis = deviceStateRetryDelaysMillis
         )
 
     private class TestClock(var now: Long = 1_700_000_000_000L) {
@@ -1078,7 +1087,7 @@ class PushRegistrationTest {
         api: RaftPushRegistrationApi,
         clock: TestClock,
         environmentId: () -> String? = { "https://api.example/" },
-        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT }
+        deviceStateProvider: () -> RaftPushDeviceState? = { null }
     ): RaftPushRegistrationCoordinator =
         coordinator(
             store = store,
@@ -1088,7 +1097,7 @@ class PushRegistrationTest {
             currentEnvironmentId = environmentId,
             clockMillis = { clock.now },
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
-            previewModeProvider = previewModeProvider
+            deviceStateProvider = deviceStateProvider
         )
 
     private suspend fun RaftPushRegistrationCoordinator.registerFcm(token: String = "cX9-AbC_dEfGhIjKlMnOpQ"): Boolean =

@@ -4,3 +4,12 @@
 "push.preview.hidden.mention" = "有人提到了你";
 "push.preview.sender_only.message" = "%@ 发来一条消息";
 "push.preview.sender_only.mention" = "%@ 提到了你";
+/* Per-category wording (slock docs/contracts/notifications.md §1.5). */
+"push.preview.sender_only.task" = "%@：任务更新";
+"push.preview.sender_only.agent" = "%@ 需要你处理";
+"push.preview.sender_only.reminder" = "%@：提醒";
+"push.preview.sender_only.notice" = "%@：新通知";
+"push.preview.hidden.task" = "你有一条任务更新";
+"push.preview.hidden.agent" = "有 agent 需要你处理";
+"push.preview.hidden.reminder" = "有一条提醒到期";
+"push.preview.hidden.notice" = "你有一条新通知";

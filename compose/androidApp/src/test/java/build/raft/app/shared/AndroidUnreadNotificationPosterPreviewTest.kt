@@ -163,6 +163,57 @@ class AndroidUnreadNotificationPosterPreviewTest {
     }
 
     @Test
+    fun perCategoryKeysRenderTheirOwnWording() {
+        // slock docs/contracts/notifications.md §1.5: task / agent / reminder / notice keys.
+        val cases =
+            listOf(
+                Triple("task_status", "push.preview.hidden.task", "You have a task update"),
+                Triple("agent_attention", "push.preview.hidden.agent", "An agent needs your attention"),
+                Triple("reminder", "push.preview.hidden.reminder", "A reminder is due"),
+                Triple("system_notice", "push.preview.hidden.notice", "You have a new notice"),
+            )
+        for ((category, key, expected) in cases) {
+            val data =
+                fcmFull().toMutableMap().apply {
+                    put("category", category)
+                    put("previewMode", "hidden")
+                    put("title", "Raft")
+                    put("body", "English fallback")
+                    put("titleKey", "push.preview.hidden.title")
+                    put("bodyKey", key)
+                    put("bodyArgs", "[]")
+                }
+            val shown = render(raftFcmUnreadNotificationRequest(data), PushPreviewMode.Full)
+            assertEquals(category, expected, shown.text)
+            assertEquals(category, expected, shown.publicText)
+        }
+        val senderOnly =
+            fcmFull().toMutableMap().apply {
+                put("category", "agent_attention")
+                put("previewMode", "sender_only")
+                put("body", "$SENDER needs your attention")
+                put("bodyKey", "push.preview.sender_only.agent")
+                put("bodyArgs", """["$SENDER"]""")
+            }
+        assertEquals("$SENDER needs your attention", render(raftFcmUnreadNotificationRequest(senderOnly), PushPreviewMode.Full).text)
+    }
+
+    @Test
+    fun aRawReminderRedactedOnTheDeviceUsesTheReminderWording() {
+        val raw = fcmFull().toMutableMap().apply { put("category", "reminder") }
+        val shown = render(raftFcmUnreadNotificationRequest(raw), PushPreviewMode.Hidden)
+        assertEquals("A reminder is due", shown.text)
+        assertFalse(shown.text.contains(MESSAGE_TEXT))
+    }
+
+    @Test
+    fun aDirectMessageIsNeverMentionedYou() {
+        val raw = fcmFull().toMutableMap().apply { put("category", "dm") }
+        val request = raftFcmUnreadNotificationRequest(raw).put("mentioned", true)
+        assertEquals("You have a new message", render(request, PushPreviewMode.Hidden).text)
+    }
+
+    @Test
     fun theNotificationStaysPrivateWithAPublicVersion() {
         val notification = build(localRequest(false), PushPreviewMode.Full)
         assertEquals(NotificationCompat.VISIBILITY_PRIVATE, notification.visibility)

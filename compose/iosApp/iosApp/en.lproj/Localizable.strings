@@ -6,3 +6,12 @@
 "push.preview.hidden.mention" = "You were mentioned";
 "push.preview.sender_only.message" = "%@ sent a message";
 "push.preview.sender_only.mention" = "%@ mentioned you";
+/* Per-category wording (slock docs/contracts/notifications.md §1.5). */
+"push.preview.sender_only.task" = "%@: task update";
+"push.preview.sender_only.agent" = "%@ needs your attention";
+"push.preview.sender_only.reminder" = "%@: reminder";
+"push.preview.sender_only.notice" = "%@: new notice";
+"push.preview.hidden.task" = "You have a task update";
+"push.preview.hidden.agent" = "An agent needs your attention";
+"push.preview.hidden.reminder" = "A reminder is due";
+"push.preview.hidden.notice" = "You have a new notice";

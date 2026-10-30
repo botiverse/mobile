@@ -40,6 +40,11 @@ internal object AndroidUnreadNotificationGrouping {
     internal const val EXTRA_LINES = "build.raft.app.unread.lines"
     internal const val EXTRA_COUNT = "build.raft.app.unread.count"
     internal const val EXTRA_TITLE = "build.raft.app.unread.title"
+    /** The newest post's `groupKey` (`<serverId>:<conversationId>`), what a retraction names. */
+    internal const val EXTRA_GROUP_KEY = "build.raft.app.unread.groupKey"
+
+    /** The newest post's message `seq`; absent when the push carried none. */
+    internal const val EXTRA_SEQ = "build.raft.app.unread.seq"
 
     /**
      * `<serverId>:<conversation channel id>`. Both entry points name the conversation in `channelId`:
@@ -48,6 +53,9 @@ internal object AndroidUnreadNotificationGrouping {
      * `threadId` and then `messageId` only stand in for an older request without a channelId.
      */
     fun conversationKey(request: JSONObject): String {
+        // The contract's groupKey (`<serverId>:<conversationId>`) names the conversation exactly: a
+        // thread's or task conversation's own channel, where channelId may be the parent's.
+        request.optString("groupKey").trim().takeIf { it.isNotEmpty() && it.contains(':') }?.let { return it }
         val serverId = request.optString("serverId").trim()
         val conversation =
             listOf("channelId", "threadId", "messageId")
@@ -56,6 +64,22 @@ internal object AndroidUnreadNotificationGrouping {
                 ?: request.optString("notificationKey").trim()
         return "$serverId:$conversation"
     }
+
+    /**
+     * The retraction group of a request: its `groupKey`, else its conversation key (the same
+     * `<serverId>:<channel>` shape for a channel, DM or thread).
+     */
+    fun retractionGroupKey(request: JSONObject): String =
+        request.optString("groupKey").trim().takeIf { it.isNotEmpty() } ?: conversationKey(request)
+
+    /** The retraction group of a posted conversation notification. */
+    fun retractionGroupKey(extras: Bundle?): String? =
+        extras?.getString(EXTRA_GROUP_KEY)?.takeIf { it.isNotBlank() }
+            ?: extras?.getString(EXTRA_CONVERSATION_KEY)?.takeIf { it.isNotBlank() }
+
+    /** The newest message seq of a posted conversation notification; null when unknown. */
+    fun retractionSeq(extras: Bundle?): Long? =
+        if (extras?.containsKey(EXTRA_SEQ) == true) extras.getLong(EXTRA_SEQ) else null
 
     /** The `setGroup` key of a server: every conversation notification of that server bundles under it. */
     fun groupKey(serverId: String): String = "raft-unread:${serverId.trim()}"

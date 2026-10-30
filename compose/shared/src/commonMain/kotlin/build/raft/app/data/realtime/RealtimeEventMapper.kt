@@ -50,6 +50,13 @@ import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationAccountSettingsChanged
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.data.RaftNotificationLevelSetting
+import build.raft.app.data.parseRaftNotificationAccountSettingsObject
+import build.raft.app.data.parseRaftNotificationRetractObject
+import build.raft.app.data.parseRaftNotificationRouteObject
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -363,6 +370,15 @@ class RealtimeEventMapper(
                     diagnostics = diagnosticsLogger,
                     canonicalServerModePresent = (element["prefs"] as? JsonObject)?.containsKey("serverPushMode") == true
                 )
+            RealtimeSocketEvents.NotificationRetract ->
+                parseRaftNotificationRetractObject(element)?.let { retract ->
+                    NotificationRetracted(
+                        serverId = ServerId(retract.serverId),
+                        groupKey = retract.groupKey,
+                        conversationId = retract.conversationId,
+                        throughSeq = retract.throughSeq
+                    )
+                }
             RealtimeSocketEvents.PinnedUpdated ->
                 decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
@@ -920,14 +936,30 @@ private data class NotificationPushDto(
     val senderName: String? = null,
     val messagePreview: String? = null,
     val mentioned: Boolean? = null,
+    // Unified notification envelope (slock docs/contracts/notifications.md §4.1).
+    val id: String? = null,
+    val category: String? = null,
+    val seq: Long? = null,
+    val groupKey: String? = null,
+    val conversationId: String? = null,
+    val route: JsonObject? = null,
+    val silent: Boolean? = null,
 )
 
+/**
+ * `notification_prefs:updated`. A channel mute keeps its original shape (`prefs.activityMuted`, no
+ * `type`); the unified contract (§2.3) adds `type: "account" | "server" | "channel" | "thread"`
+ * with `level` (or `settings` for the account). An account update has no scope or prefsVersion.
+ */
 @Serializable
 private data class NotificationPrefsUpdatedDto(
+    val type: String? = null,
     val serverId: String? = null,
-    val scopeId: String,
+    val scopeId: String = "",
     val prefs: NotificationPrefsWireDto = NotificationPrefsWireDto(),
-    val prefsVersion: Long,
+    val prefsVersion: Long? = null,
+    val level: String? = null,
+    val settings: JsonObject? = null,
 )
 
 @Serializable
@@ -1739,7 +1771,26 @@ private fun NotificationPrefsUpdatedDto.toDomain(
     diagnostics: (String) -> Unit,
     canonicalServerModePresent: Boolean
 ): RealtimeEvent? {
+    if (type == "account") {
+        val parsed = settings?.let(::parseRaftNotificationAccountSettingsObject) ?: return null
+        return NotificationAccountSettingsChanged(parsed)
+    }
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    val prefsVersion = prefsVersion ?: return null
+    if ((type == "channel" || type == "thread") && prefs.activityMuted == null) {
+        val cleanServerId = serverId?.takeIf { it.isNotBlank() } ?: return null
+        val setting = RaftNotificationLevelSetting.fromWire(level) ?: run {
+            diagnostics("projection_value_rejected source=realtime_notification_level field=level value=unknown")
+            return null
+        }
+        return NotificationLevelChanged(
+            serverId = ServerId(cleanServerId),
+            scope = type,
+            scopeId = cleanScopeId,
+            level = setting.wireName,
+            prefsVersion = prefsVersion
+        )
+    }
     val serverMode = if (canonicalServerModePresent) {
         ServerPushMode.fromWire(prefs.serverPushMode)
             ?: run {
@@ -1863,7 +1914,14 @@ private fun NotificationPushDto.toDomainOrNull(
         senderKind = senderKind,
         senderName = senderName?.takeIf { it.isNotBlank() },
         messagePreview = messagePreview?.takeIf { it.isNotBlank() },
-        mentioned = mentioned
+        mentioned = mentioned,
+        notificationId = id?.takeIf { it.isNotBlank() },
+        category = category?.takeIf { it.isNotBlank() },
+        seq = seq,
+        groupKey = groupKey?.takeIf { it.isNotBlank() },
+        conversationId = conversationId?.takeIf { it.isNotBlank() },
+        routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
+        silent = silent
     )
 }
 

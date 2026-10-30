@@ -3020,6 +3020,8 @@ internal open class RaftCmpActivity :
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"
         private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
+        /** The unified contract's DM category (slock docs/contracts/notifications.md §1.2). */
+        private const val NOTIFICATION_CATEGORY_DM = "dm"
         private const val ACTION_OPEN_DIAGNOSTICS = "build.raft.app.diagnostics.OPEN"
         internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
@@ -3235,7 +3237,9 @@ internal open class RaftCmpActivity :
             val surfaceKind =
                     when {
                         parentChannelId != null && parentMessageId != null -> THREAD_SURFACE_REPLY_THREAD
-                        request.optString("category") == NOTIFICATION_CATEGORY_DIRECT_MESSAGE -> THREAD_SURFACE_DIRECT_MESSAGE
+                        request.optString("category") == NOTIFICATION_CATEGORY_DIRECT_MESSAGE ||
+                            request.optString("category") == NOTIFICATION_CATEGORY_DM ||
+                            request.optString("kind") == THREAD_SURFACE_DIRECT_MESSAGE -> THREAD_SURFACE_DIRECT_MESSAGE
                         else -> THREAD_SURFACE_CHANNEL
                     }
             val instanceId = "notification-thread-$threadId-$messageId"

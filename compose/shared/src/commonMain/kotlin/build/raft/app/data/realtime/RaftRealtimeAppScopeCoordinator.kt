@@ -9,6 +9,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.optString
@@ -34,6 +35,12 @@ interface RaftRealtimeAppScopeConnection {
      * Never queued for a later socket: shared re-sends its whole set on every (re)connect.
      */
     fun emitAgentActivitySubscription(eventName: String, agentIds: List<String>) = Unit
+
+    /**
+     * `presence:activity` (slock docs/contracts/notifications.md §5): whether the user is using the
+     * app now (foreground). The connection re-sends it on every connect and as a heartbeat.
+     */
+    fun emitPresenceActivity(active: Boolean) = Unit
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
     /**
      * [transportEpoch] (task #168): the epoch of the socket that delivered the frame, bound on the socket
@@ -63,6 +70,9 @@ interface RaftRealtimeAppScopeSink {
         event: NotificationPushReceived,
         isAppInForeground: Boolean
     )
+
+    /** A conversation was read on some device: close the tray notifications it covers. */
+    fun onNotificationRetracted(event: NotificationRetracted) = Unit
 }
 
 interface RaftRealtimeHostContext : RaftRealtimeAppScopeConnection, RaftRealtimeAppScopeSink {
@@ -491,10 +501,12 @@ class RaftRealtimeAppScopeCoordinator(
 
     fun onAppShown() {
         engine.onAppShown()
+        connection.emitPresenceActivity(active = true)
     }
 
     fun onAppHidden() {
         engine.onAppHidden()
+        connection.emitPresenceActivity(active = false)
     }
 
     private fun installEnhancedNotifyBus() {
@@ -627,6 +639,7 @@ class RaftRealtimeAppScopeCoordinator(
                 )
             }
         }
+        if (event is NotificationRetracted) sink.onNotificationRetracted(event)
         val currentServerId = decision.serverId ?: return
         // task #459: the tray posts from the server-qualified stream only —
         // message:new is a data-sync trigger and never reaches the poster.

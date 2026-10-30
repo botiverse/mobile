@@ -211,11 +211,13 @@ object RaftRealtimeAppScopePolicy {
 
     /**
      * Server push already delivers [serverId]'s tray notifications to this device, so the background
-     * realtime path must not post a second copy. True only when the stored delivery-status answer belongs
-     * to the current environment, signed-in user and installation, is at most
-     * [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS] old at [nowMillis], lists [serverId] (the event's server, not
-     * the selected one), and says `fcmActive`. No answer, an old answer, a missing server or any mismatch
-     * reads false (post locally): a possible duplicate beats a missed notification.
+     * realtime path must not post a second copy. True when the stored delivery-status answer belongs to
+     * the current environment, signed-in user and installation and is at most
+     * [PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS] old at [nowMillis]: the server confirmed this installation's
+     * FCM registration (an answer with `fcmRegistered: false` is never stored). FCM is fully rolled out,
+     * so the per-server `fcmActive` (which folded in the retired `mobile_push_fcm_v0` rollout switch) no
+     * longer gates it. No answer, an old answer or any mismatch reads false (post locally): a possible
+     * duplicate beats a missed notification.
      */
     fun isRemotePushActive(
         serverId: ServerId,
@@ -234,7 +236,7 @@ object RaftRealtimeAppScopePolicy {
         if (status.userId.trim() != userId || status.installationId.trim() != installation) return false
         // A clock that moved backwards makes the age negative: that is unknown too.
         if (nowMillis - status.fetchedAtMillis !in 0..PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS) return false
-        return status.fcmActiveByServer[server] == true
+        return server.isNotEmpty()
     }
 
     fun shouldPostBackgroundUnreadNotification(
