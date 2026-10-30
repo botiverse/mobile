@@ -50,9 +50,10 @@ internal val CreateAgentOnboardingRuntimePriority: List<String> = listOf("claude
  * botiverse/slock staging 6d6d78d4c4). [candidates] are the selected computer's runtime-options
  * rows the server lets this person pick here (`canSelectInThisContext`, [createAgentRuntimeCandidates]):
  * installed and allowed, so a "not installed" or "needs a Raft Computer update" runtime is never one.
- * [supported] is the creatable set from the catalog. Onboarding goes by
- * [CreateAgentOnboardingRuntimePriority]; otherwise the [remembered] runtime of the last create
- * while it is still a candidate, else the first candidate. No candidate: "" (nothing selected).
+ * [supported] is the creatable set from the catalog: a runtime this app has a form for. Onboarding
+ * goes by [CreateAgentOnboardingRuntimePriority]; otherwise the [remembered] runtime of the last
+ * create while it is still a candidate, else the first candidate. Unlike the web, a candidate this
+ * app cannot set up is never the default: no usable candidate is "" (nothing selected).
  */
 internal fun pickCreateAgentRuntime(
     candidates: List<String>,
@@ -63,11 +64,31 @@ internal fun pickCreateAgentRuntime(
     if (onboarding) {
         return CreateAgentOnboardingRuntimePriority.firstOrNull { it in candidates && it in supported }
             ?: candidates.firstOrNull { it in supported }
-            ?: candidates.firstOrNull()
             ?: ""
     }
     if (remembered != null && remembered in candidates && remembered in supported) return remembered
-    return candidates.firstOrNull { it in supported } ?: candidates.firstOrNull() ?: ""
+    return candidates.firstOrNull { it in supported } ?: ""
+}
+
+/**
+ * The create dialog's runtime once [options] (runtime-options of a computer) are known for the
+ * selected [machineId]. Options still loading, or answered for another computer, change nothing:
+ * the dialog clears the runtime when the computer changes, so a previous computer's rows never
+ * pick one. Loaded options keep [current] while it is a usable candidate (offered here and in
+ * [supported]); else [pickCreateAgentRuntime]; no usable candidate is "".
+ */
+internal fun createAgentRuntimeForOptions(
+    current: String,
+    machineId: String?,
+    options: SharedCreateAgentRuntimeCatalog?,
+    supported: Set<String>,
+    remembered: String?,
+    onboarding: Boolean = false,
+): String {
+    if (machineId == null || options == null || options.machineId != machineId) return current
+    val usable = createAgentRuntimeCandidates(options).filter { it in supported }
+    if (current in usable) return current
+    return pickCreateAgentRuntime(usable, supported, onboarding, remembered)
 }
 
 /** The runtimes a create may default to: the runtime-options rows with `canSelectInThisContext`. */

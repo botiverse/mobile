@@ -21,8 +21,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
 import build.raft.app.data.BundledRuntimeCatalog
-import build.raft.app.data.createAgentRuntimeCandidates
-import build.raft.app.data.pickCreateAgentRuntime
+import build.raft.app.data.createAgentRuntimeForOptions
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.RaftRuntimeCatalogNames
 import build.raft.app.data.RuntimeCatalogSource
@@ -377,7 +376,7 @@ internal fun SharedCreateAgentDialog(
     }
     var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
     // Nothing until the selected computer's runtime-options land (web: `""` until then); see
-    // [pickCreateAgentRuntime] below.
+    // [createAgentRuntimeForOptions] below.
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.trim()) }
     var advancedOpen by remember(initialAdvancedOpen) { mutableStateOf(initialAdvancedOpen) }
     var selectedMachineId by remember {
@@ -428,7 +427,6 @@ internal fun SharedCreateAgentDialog(
     // The default comes from the computer's runtime-options alone (installed and allowed here); the
     // catalog only names, groups and gives forms. The last create's runtime on this server wins while
     // it is still one of them (web CreateAgentDialog `pickCreateAgentRuntime`).
-    val runtimeCandidates = remember(runtimeCatalog) { createAgentRuntimeCandidates(runtimeCatalog) }
     val rememberedRuntime =
         remember(createAgentFormStore, cleanCreateAgentServerId, external) {
             if (external) null else createAgentFormStore?.rememberedCreateRuntime(cleanCreateAgentServerId)
@@ -483,17 +481,19 @@ internal fun SharedCreateAgentDialog(
     }
 
     // Keeps a choice only while this computer's runtime-options still offer it; otherwise picks the
-    // default. No offered runtime leaves the field empty instead of guessing.
-    LaunchedEffect(availableSelectedMachineId, runtimeCandidates, supportedRuntimeIds, rememberedRuntime, external) {
-        if (external || availableSelectedMachineId == null) return@LaunchedEffect
-        if (runtimeCandidates.isEmpty() || runtime in runtimeCandidates) return@LaunchedEffect
-        runtime =
-            pickCreateAgentRuntime(
-                candidates = runtimeCandidates,
+    // default. No usable runtime leaves the field empty instead of guessing; options still loading
+    // (or another computer's) change nothing.
+    LaunchedEffect(availableSelectedMachineId, runtimeCatalog, supportedRuntimeIds, rememberedRuntime, external) {
+        if (external) return@LaunchedEffect
+        val next =
+            createAgentRuntimeForOptions(
+                current = runtime,
+                machineId = availableSelectedMachineId,
+                options = runtimeCatalog,
                 supported = supportedRuntimeIds,
-                onboarding = false,
                 remembered = rememberedRuntime
             )
+        if (next != runtime) runtime = next
     }
 
     LaunchedEffect(runtimeFormV2, availableSelectedMachineId, runtime, external, v2LoadAttempt, v2Candidate) {

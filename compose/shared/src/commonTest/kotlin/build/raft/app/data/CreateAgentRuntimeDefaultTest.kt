@@ -24,9 +24,11 @@ class CreateAgentRuntimeDefaultTest {
     }
 
     @Test
-    fun withoutAMemoryTheFirstSupportedCandidateElseTheFirstCandidate() {
+    fun withoutAMemoryTheFirstCandidateThisAppCanSetUpElseNothing() {
         assertEquals("codex", pickCreateAgentRuntime(listOf("future", "codex"), supported, onboarding = false, remembered = null))
-        assertEquals("future", pickCreateAgentRuntime(listOf("future"), supported, onboarding = false, remembered = null))
+        // Offered by the computer but no form this app can render: never the default.
+        assertEquals("", pickCreateAgentRuntime(listOf("future"), supported, onboarding = false, remembered = null))
+        assertEquals("", pickCreateAgentRuntime(listOf("future"), supported, onboarding = true, remembered = null))
     }
 
     @Test
@@ -36,6 +38,34 @@ class CreateAgentRuntimeDefaultTest {
         assertEquals("grok", pickCreateAgentRuntime(listOf("builtin", "grok"), supported, onboarding = true, remembered = null))
         assertEquals("builtin", pickCreateAgentRuntime(listOf("cursor", "builtin"), supported, onboarding = true, remembered = null))
         assertEquals("cursor", pickCreateAgentRuntime(listOf("cursor"), supported, onboarding = true, remembered = null))
+    }
+
+    @Test
+    fun switchingToAComputerWithNoUsableRuntimeClearsTheChoice() {
+        val a = SharedCreateAgentRuntimeCatalog("a", listOf(option("codex", "available", canSelect = true)))
+        assertEquals("codex", createAgentRuntimeForOptions("", "a", a, supported, remembered = null))
+        // Computer b: nothing installed, or only a runtime this app cannot set up.
+        val bNothing = SharedCreateAgentRuntimeCatalog("b", listOf(option("codex", "not_installed", canSelect = false)))
+        val bFuture = SharedCreateAgentRuntimeCatalog("b", listOf(option("future", "available", canSelect = true)))
+        assertEquals("", createAgentRuntimeForOptions("codex", "b", bNothing, supported, remembered = "codex"))
+        assertEquals("", createAgentRuntimeForOptions("codex", "b", bFuture, supported, remembered = null))
+        assertEquals("", createAgentRuntimeForOptions("codex", "b", SharedCreateAgentRuntimeCatalog("b", emptyList()), supported, remembered = null))
+        // A choice still offered is kept.
+        assertEquals("codex", createAgentRuntimeForOptions("codex", "a", a, supported, remembered = "claude"))
+    }
+
+    @Test
+    fun whileTheNewComputersOptionsLoadNothingIsPickedFromThePreviousOnes() {
+        val a = SharedCreateAgentRuntimeCatalog("a", listOf(option("codex", "available", canSelect = true)))
+        // The dialog cleared the runtime when b was picked; b's options are not here yet.
+        assertEquals("", createAgentRuntimeForOptions("", "b", null, supported, remembered = "codex"))
+        // A's answer arriving (or still held) for b's selection picks nothing either.
+        assertEquals("", createAgentRuntimeForOptions("", "b", a, supported, remembered = "codex"))
+        // Then b's own options land.
+        val b = SharedCreateAgentRuntimeCatalog("b", listOf(option("claude", "available", canSelect = true)))
+        assertEquals("claude", createAgentRuntimeForOptions("", "b", b, supported, remembered = "codex"))
+        // No computer selected: unchanged.
+        assertEquals("", createAgentRuntimeForOptions("", null, b, supported, remembered = null))
     }
 
     @Test
