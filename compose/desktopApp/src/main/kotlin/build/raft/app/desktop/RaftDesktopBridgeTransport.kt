@@ -16,10 +16,14 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The desktop side of the `HRBridgeModule` wire (what RaftCmpActivity serves on Android). M1
- * covers the methods login, the app shell and a channel need; everything else answers "not
- * implemented" (the Android host's answer for unknown methods) and is logged.
+ * covers the methods login, the app shell and a channel need, plus attaching, compressing and
+ * saving files ([RaftDesktopAttachments]); everything else answers "not implemented" (the Android
+ * host's answer for unknown methods) and is logged.
  */
-class RaftDesktopBridgeTransport(private val onClosePage: () -> Unit) : HostBridgeTransport {
+class RaftDesktopBridgeTransport(
+    private val onClosePage: () -> Unit,
+    private val attachments: RaftDesktopAttachments = sharedAttachments,
+) : HostBridgeTransport {
     override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
         val params = parseRaftJsonObjectOrNull(paramsJson) ?: JsonObject(emptyMap())
         when (method) {
@@ -33,6 +37,11 @@ class RaftDesktopBridgeTransport(private val onClosePage: () -> Unit) : HostBrid
             "log" -> log("page: ${params.string("message")}")
             "reportRealTime" -> RaftDesktopRealtimeHost.report(params)
             "settingsCapability" -> RaftDesktopSettingsCapability.handle(params, callback)
+            "threadAttachmentUpload" -> attachments.threadAttachmentUpload(params, callback)
+            "compressThreadImage" -> attachments.compressThreadImage(params, callback)
+            "cancelCompressThreadImage" -> attachments.cancelCompressThreadImage(params)
+            "saveAttachment" -> attachments.saveAttachment(params, callback)
+            "cancelAttachmentExport" -> attachments.cancelAttachmentExport(params)
             // TODO(desktop): app badge, shortcuts and performance markers have no desktop surface.
             "appBadge", "syncDesktopShortcuts", "performanceScene", "performanceMarker" -> Unit
             else -> {
@@ -64,6 +73,9 @@ class RaftDesktopBridgeTransport(private val onClosePage: () -> Unit) : HostBrid
     }
 
     companion object {
+        /** One per process: the open panel's busy flag and export cancellations span every page. */
+        private val sharedAttachments by lazy { RaftDesktopAttachments() }
+
         private val OPEN_URL_SCHEMES = setOf("http", "https", "mailto")
 
         val NOT_IMPLEMENTED: String =
