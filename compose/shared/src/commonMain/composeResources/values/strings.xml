@@ -3146,8 +3146,8 @@
     <string name="agent_migration_target_search">Search computers</string>
     <string name="agent_migration_target_clear_search">Clear search</string>
     <string name="agent_migration_target_no_matches">No matches</string>
-    <string name="agent_migration_target_memory_free">%1$s RAM free</string>
-    <string name="agent_migration_target_disk_free">%1$s disk free</string>
+    <string name="agent_migration_target_memory_used">RAM %1$s used</string>
+    <string name="agent_migration_target_disk_used">Disk %1$s used</string>
     <string name="agent_migration_target_agents_title">Agents</string>
     <string name="agent_migration_target_agents_none">No agents</string>
     <string name="agent_migration_target_agents_one">%1$s agent</string>
@@ -3155,12 +3155,11 @@
     <string name="agent_migration_target_offline">Offline</string>
     <string name="agent_migration_target_details">Details for %1$s</string>
     <string name="agent_migration_target_memory">Memory</string>
-    <string name="agent_migration_target_memory_detail">%1$s free of %2$s</string>
+    <string name="agent_migration_target_used_detail">%1$s used · %2$s free of %3$s</string>
     <string name="agent_migration_target_memory_unknown">Not reported yet</string>
     <string name="agent_migration_target_memory_offline">Offline, no memory data</string>
     <string name="agent_migration_target_memory_offline_for">Offline for %1$s, no memory data</string>
     <string name="agent_migration_target_disk">Disk</string>
-    <string name="agent_migration_target_disk_detail">%1$s free of %2$s</string>
     <string name="agent_migration_target_disk_unknown">Not reported yet</string>
     <string name="agent_migration_target_disk_offline">Offline, no disk data</string>
     <string name="agent_migration_target_disk_offline_for">Offline for %1$s, no disk data</string>

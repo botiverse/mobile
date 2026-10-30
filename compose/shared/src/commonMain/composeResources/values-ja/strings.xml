@@ -3146,8 +3146,8 @@
     <string name="agent_migration_target_search">コンピューターを検索</string>
     <string name="agent_migration_target_clear_search">検索をクリア</string>
     <string name="agent_migration_target_no_matches">一致する項目がありません</string>
-    <string name="agent_migration_target_memory_free">メモリ空き %1$s</string>
-    <string name="agent_migration_target_disk_free">ディスク空き %1$s</string>
+    <string name="agent_migration_target_memory_used">メモリ使用済み %1$s</string>
+    <string name="agent_migration_target_disk_used">ディスク使用済み %1$s</string>
     <string name="agent_migration_target_agents_title">エージェント</string>
     <string name="agent_migration_target_agents_none">エージェントなし</string>
     <string name="agent_migration_target_agents_one">エージェント %1$s 件</string>
@@ -3155,12 +3155,11 @@
     <string name="agent_migration_target_offline">オフライン</string>
     <string name="agent_migration_target_details">%1$s の詳細</string>
     <string name="agent_migration_target_memory">メモリ</string>
-    <string name="agent_migration_target_memory_detail">空き %1$s / 合計 %2$s</string>
+    <string name="agent_migration_target_used_detail">使用済み %1$s · 空き %2$s / 合計 %3$s</string>
     <string name="agent_migration_target_memory_unknown">まだ報告されていません</string>
     <string name="agent_migration_target_memory_offline">オフライン、メモリ情報なし</string>
     <string name="agent_migration_target_memory_offline_for">%1$sオフライン、メモリ情報なし</string>
     <string name="agent_migration_target_disk">ディスク</string>
-    <string name="agent_migration_target_disk_detail">空き %1$s / 合計 %2$s</string>
     <string name="agent_migration_target_disk_unknown">まだ報告されていません</string>
     <string name="agent_migration_target_disk_offline">オフライン、ディスク情報なし</string>
     <string name="agent_migration_target_disk_offline_for">%1$sオフライン、ディスク情報なし</string>

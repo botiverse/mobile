@@ -62,7 +62,7 @@ class ChoiceListScreenshotTest {
                 descriptions =
                     listOfNotNull(
                         if (index % 3 == 2) null else quota(usedUp = index == 1),
-                        AnnotatedString("${index + 2} agents · 12.0 GB RAM free · 120.0 GB disk free")
+                        AnnotatedString("${index + 2} agents · RAM 63% used · Disk 76% used")
                     ),
                 enabled = index != 2 || count > 3,
             )

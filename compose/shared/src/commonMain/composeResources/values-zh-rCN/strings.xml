@@ -3146,8 +3146,8 @@
     <string name="agent_migration_target_search">搜索计算机</string>
     <string name="agent_migration_target_clear_search">清除搜索</string>
     <string name="agent_migration_target_no_matches">没有匹配项</string>
-    <string name="agent_migration_target_memory_free">内存剩 %1$s</string>
-    <string name="agent_migration_target_disk_free">磁盘剩 %1$s</string>
+    <string name="agent_migration_target_memory_used">内存已用 %1$s</string>
+    <string name="agent_migration_target_disk_used">磁盘已用 %1$s</string>
     <string name="agent_migration_target_agents_title">Agent</string>
     <string name="agent_migration_target_agents_none">没有 Agent</string>
     <string name="agent_migration_target_agents_one">%1$s 个 Agent</string>
@@ -3155,12 +3155,11 @@
     <string name="agent_migration_target_offline">离线</string>
     <string name="agent_migration_target_details">%1$s 的详情</string>
     <string name="agent_migration_target_memory">内存</string>
-    <string name="agent_migration_target_memory_detail">剩 %1$s，共 %2$s</string>
+    <string name="agent_migration_target_used_detail">已用 %1$s · 剩 %2$s，共 %3$s</string>
     <string name="agent_migration_target_memory_unknown">暂未上报</string>
     <string name="agent_migration_target_memory_offline">离线，没有内存数据</string>
     <string name="agent_migration_target_memory_offline_for">离线 %1$s，没有内存数据</string>
     <string name="agent_migration_target_disk">磁盘</string>
-    <string name="agent_migration_target_disk_detail">剩 %1$s，共 %2$s</string>
     <string name="agent_migration_target_disk_unknown">暂未上报</string>
     <string name="agent_migration_target_disk_offline">离线，没有磁盘数据</string>
     <string name="agent_migration_target_disk_offline_for">离线 %1$s，没有磁盘数据</string>

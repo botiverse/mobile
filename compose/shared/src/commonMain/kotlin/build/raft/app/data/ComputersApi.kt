@@ -474,7 +474,8 @@ internal data class ComputerSummary(
 /**
  * slock `packages/shared/src/index.ts` `MachineDiskStatus` (and `MachineMemoryStatus`, the same
  * shape): `{ availableBytes, totalBytes }`. Only a readable report is kept (web
- * `readableDiskStatus`): a positive total and a free size that is not negative.
+ * `readableDiskStatus`): a positive total and a free size within it (not negative, not over the
+ * total, web #11855).
  */
 internal data class ComputerSizeStatus(
     val availableBytes: Double,
@@ -661,7 +662,7 @@ private data class MachineSizeStatusDto(
 ) {
     fun toStatus(): ComputerSizeStatus? {
         val total = totalBytes?.takeIf { it.isFinite() && it > 0.0 } ?: return null
-        val available = availableBytes?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
+        val available = availableBytes?.takeIf { it.isFinite() && it >= 0.0 && it <= total } ?: return null
         return ComputerSizeStatus(availableBytes = available, totalBytes = total)
     }
 }
