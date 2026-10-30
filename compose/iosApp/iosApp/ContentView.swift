@@ -701,6 +701,14 @@ final class RaftNativeNavTitleView: UIStackView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Its own fitting size, so the bar centres it instead of stretching it across the bar.
+    override var intrinsicContentSize: CGSize {
+        // Summed from the arranged views (asking the stack itself would recurse into this).
+        let sizes = arrangedSubviews.map { $0.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize) }
+        let width = sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(0, sizes.count - 1))
+        return CGSize(width: ceil(width), height: ceil(sizes.map(\.height).max() ?? 0))
+    }
+
     private static func color(_ argb: Any?, fallback: UIColor) -> UIColor {
         guard var hex = argb as? String else { return fallback }
         hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))

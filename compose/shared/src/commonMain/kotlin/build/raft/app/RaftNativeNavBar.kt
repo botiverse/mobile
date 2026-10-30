@@ -392,7 +392,17 @@ internal fun Modifier.raftNativeNavBarPrimaryList(state: LazyListState): Modifie
                     val delta = Offset(0f, -dyPt * density)
                     val pre = dispatcher.dispatchPreScroll(delta, NestedScrollSource.UserInput)
                     val left = delta - pre
-                    val listConsumed = -scrollBy(-left.y)
+                    var listConsumed = -scrollBy(-left.y)
+                    if (listConsumed == 0f && left.y != 0f) {
+                        // Capture diagnostics: the scope's scrollBy moved nothing; try the raw path.
+                        listConsumed = -state.dispatchRawDelta(-left.y)
+                    }
+                    println(
+                        "RAFT_PROTO_SCRIPT_SCROLL dy=$dyPt pre=${pre.y} left=${left.y} consumed=$listConsumed " +
+                            "first=${state.firstVisibleItemIndex}/${state.firstVisibleItemScrollOffset} " +
+                            "fwd=${state.canScrollForward} items=${state.layoutInfo.totalItemsCount} " +
+                            "viewport=${state.layoutInfo.viewportSize}"
+                    )
                     dispatcher.dispatchPostScroll(
                         Offset(0f, listConsumed),
                         Offset(0f, left.y - listConsumed),
