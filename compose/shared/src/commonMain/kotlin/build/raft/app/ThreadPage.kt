@@ -1160,6 +1160,38 @@ internal class ThreadComposerImageEventBatchAccumulator(
 }
 
 /**
+ * Desktop paste: each copied image (the host's clipboard PNG) goes through the host image
+ * compressor unless [originalImage] is on, as an editor image does on mobile. Finder files keep
+ * their bytes. A failed compression keeps the pasted PNG (the paste still works); a successful
+ * one retires the PNG it replaced.
+ */
+internal suspend fun threadComposerCompressPastedImages(
+    files: List<PlatformFile>,
+    originalImage: Boolean,
+    compress: suspend (PlatformFile) -> PlatformFile?,
+    retire: (List<String>) -> Unit,
+    log: (String) -> Unit = {},
+): List<PlatformFile> {
+    if (originalImage) return files
+    val replaced = mutableListOf<String>()
+    val prepared =
+        files.map { file ->
+            val sourceRef = file.fileRef?.trim().orEmpty()
+            if (file.source != ThreadComposerClipboardImageSource || sourceRef.isEmpty()) return@map file
+            val compressed = compress(file)?.takeIf { !it.fileRef.isNullOrBlank() && it.fileRef != sourceRef }
+            log("thread_attachment_paste_compress result=${if (compressed == null) "kept_original" else "compressed"}")
+            if (compressed == null) {
+                file
+            } else {
+                replaced += sourceRef
+                compressed
+            }
+        }
+    if (replaced.isNotEmpty()) retire(replaced)
+    return prepared
+}
+
+/**
  * File picks never compress images and never surface the original-image toggle. 1.11 added
  * native JPEG compression on the generic attachFile path; product rolled that back so a File
  * JPEG stays its source bytes and hits the shared size gate. Image/camera picks still skip
@@ -13903,7 +13935,11 @@ private fun SharedThreadRouteContentContent(
                 }
                 ThreadComposerPasteAttachmentsAction -> {
                     // Desktop paste of files / an image: straight into the tray, as the web
-                    // composer's paste does (no annotation editor).
+                    // composer's paste does (no annotation editor). A copied image is compressed
+                    // by the host (2048 px / JPEG 82, as editor output on mobile) unless the
+                    // draft asks for the original; Finder files stay their own bytes, as a File
+                    // pick does on mobile.
+                    val pasteOriginalImage = currentDraftState.originalImage
                     coroutineScope.launch {
                         if (composerSurface.sendChannelId == null) {
                             bridge.toast(attachmentPickerUnavailableLabel)
@@ -13911,7 +13947,30 @@ private fun SharedThreadRouteContentContent(
                         }
                         val files = withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() }
                         bridge.log("thread_attachment_paste files=${files.size}")
-                        if (files.isNotEmpty()) uploadComposerAttachmentFiles(files)
+                        if (files.isEmpty()) return@launch
+                        val prepared =
+                            threadComposerCompressPastedImages(
+                                files = files,
+                                originalImage = pasteOriginalImage,
+                                compress = { file ->
+                                    val response =
+                                        bridge.compressThreadImage(
+                                            fileRef = file.fileRef.orEmpty(),
+                                            fileName = file.fileName.ifBlank { "image.png" },
+                                            mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
+                                        )
+                                    (parseRaftFilePreviewCompressedImageResult(response)
+                                        as? RaftFilePreviewCompressedImageResult.Success)?.file
+                                },
+                                retire = { refs ->
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = "thread-paste-compression-$threadInstanceKey",
+                                        fileRefs = refs
+                                    )
+                                },
+                                log = bridge::log,
+                            )
+                        uploadComposerAttachmentFiles(prepared)
                     }
                 }
                 ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {

@@ -9,11 +9,19 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.net.URLConnection
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 import javax.imageio.ImageIO
 import build.raft.app.ThreadComposerClipboardImageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import build.raft.app.toRaftJsonString
 
 /**
  * Attachment file reads on desktop: a `fileRef` is an absolute local path (a file pasted from
@@ -58,9 +66,10 @@ internal class RaftDesktopPlatformFileResolver : RaftPlatformFileResolver {
             file.inputStream().toChunkSource()
         }
 
+    /** An absolute path, or the `file:` URI the image editor writes its output as. */
     private fun readableFile(fileRef: String): File {
-        val file = File(fileRef)
-        if (!file.isAbsolute || !file.isFile || !file.canRead()) throw IOException("No readable file")
+        val file = raftDesktopLocalFile(fileRef)
+        if (file == null || !file.isFile || !file.canRead()) throw IOException("No readable file")
         return file
     }
 }
@@ -137,7 +146,7 @@ internal object RaftDesktopClipboardAttachments {
             PlatformFile(
                 id = "picked-paste-${System.nanoTime()}-$index",
                 fileName = file.name,
-                mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream",
+                mimeType = raftDesktopMimeType(file.name),
                 sizeBytes = file.length(),
                 fileRef = file.absolutePath,
                 source = PASTED_FILE_SOURCE,
@@ -173,4 +182,154 @@ internal object RaftDesktopClipboardAttachments {
     /** The user's own files (Finder): never retired by the composer. */
     private const val PASTED_FILE_SOURCE = "paste"
     internal const val PASTED_IMAGE_PREFIX = "pasted-"
+}
+
+/** MIME type from a file name: common attachment types first (the JDK table lacks webp, heic, ...). */
+fun raftDesktopMimeType(fileName: String): String {
+    val extension = fileName.substringAfterLast('.', "").lowercase(Locale.US)
+    return DESKTOP_MIME_TYPES[extension]
+        ?: URLConnection.guessContentTypeFromName(fileName)
+        ?: "application/octet-stream"
+}
+
+private val DESKTOP_MIME_TYPES =
+    mapOf(
+        "png" to "image/png",
+        "jpg" to "image/jpeg",
+        "jpeg" to "image/jpeg",
+        "gif" to "image/gif",
+        "bmp" to "image/bmp",
+        "webp" to "image/webp",
+        "heic" to "image/heic",
+        "heif" to "image/heif",
+        "avif" to "image/avif",
+        "svg" to "image/svg+xml",
+        "tif" to "image/tiff",
+        "tiff" to "image/tiff",
+        "mp4" to "video/mp4",
+        "m4v" to "video/x-m4v",
+        "mov" to "video/quicktime",
+        "webm" to "video/webm",
+        "mp3" to "audio/mpeg",
+        "m4a" to "audio/mp4",
+        "wav" to "audio/wav",
+        "pdf" to "application/pdf",
+        "zip" to "application/zip",
+        "json" to "application/json",
+        "md" to "text/markdown",
+        "txt" to "text/plain",
+        "csv" to "text/csv",
+    )
+
+/** One file in a host files envelope (picker result, compressor output). */
+data class RaftDesktopResponseFile(
+    val fileRef: String,
+    val fileName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val source: String,
+    val id: String = "picked-${System.nanoTime()}",
+)
+
+/**
+ * The Android host's files envelope: `code`, the files both top-level and inside `bodyText`, and
+ * for a partial result `skippedCount` with `errorCode`.
+ */
+fun raftDesktopFilesResponse(
+    code: Int,
+    files: List<RaftDesktopResponseFile>,
+    skippedCount: Int = 0,
+    errorCode: String? = null,
+    errorBodyText: String? = null,
+): JsonObject {
+    val filesJson =
+        buildJsonArray {
+            files.forEach { file ->
+                add(
+                    buildJsonObject {
+                        put("id", file.id)
+                        put("fileName", file.fileName)
+                        put("mimeType", file.mimeType)
+                        put("sizeBytes", file.sizeBytes)
+                        put("previewUri", file.fileRef)
+                        put("fileRef", file.fileRef)
+                        put("source", file.source)
+                    }
+                )
+            }
+        }
+    val body =
+        if (files.isEmpty()) {
+            ""
+        } else {
+            buildJsonObject {
+                put("files", filesJson)
+                if (skippedCount > 0) put("skippedCount", skippedCount)
+            }.toRaftJsonString()
+        }
+    return buildJsonObject {
+        put("code", code)
+        put("bodyText", body)
+        if (files.isNotEmpty()) put("files", filesJson)
+        if (skippedCount > 0) put("skippedCount", skippedCount)
+        errorCode?.let { put("errorCode", it) }
+        errorBodyText?.let { put("errorBodyText", it) }
+    }
+}
+
+/**
+ * Files the user picked in the desktop open panel. They are the user's own files, referenced in
+ * place like a Finder paste (no copy, never retired by the composer); the image compressor may
+ * read them, as it reads a picker's cache copy on Android.
+ */
+object RaftDesktopPickedAttachments {
+    /** Not a composer-owned temporary source: the composer never deletes the user's files. */
+    const val SOURCE = "desktop_picker"
+
+    private val picked = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * The `threadAttachmentUpload` answer for the files chosen in the panel (empty: the user
+     * cancelled). Unreadable, empty or non-regular files are skipped and counted.
+     */
+    fun response(chosen: List<File>): JsonObject {
+        if (chosen.isEmpty()) return raftDesktopFilesResponse(code = 204, files = emptyList())
+        val readable = chosen.filter { it.isFile && it.canRead() && it.length() > 0L }
+        val skipped = chosen.size - readable.size
+        if (readable.isEmpty()) {
+            return raftDesktopFilesResponse(
+                code = 400,
+                files = emptyList(),
+                errorCode = "attachment_read_failed",
+                errorBodyText = "No readable attachments",
+            )
+        }
+        val stamp = System.nanoTime()
+        val files =
+            readable.mapIndexed { index, file ->
+                val canonical = runCatching { file.canonicalFile }.getOrDefault(file.absoluteFile)
+                picked += canonical.path
+                RaftDesktopResponseFile(
+                    id = "picked-$stamp-$index",
+                    fileRef = canonical.path,
+                    fileName = canonical.name,
+                    mimeType = raftDesktopMimeType(canonical.name),
+                    sizeBytes = canonical.length(),
+                    source = SOURCE,
+                )
+            }
+        return if (skipped > 0) {
+            raftDesktopFilesResponse(
+                code = 206,
+                files = files,
+                skippedCount = skipped,
+                errorCode = "attachment_read_partial",
+                errorBodyText = "$skipped attachment(s) could not be read",
+            )
+        } else {
+            raftDesktopFilesResponse(code = 200, files = files)
+        }
+    }
+
+    internal fun isUserPicked(canonical: File): Boolean = canonical.path in picked
 }

@@ -39,8 +39,12 @@ sqldelight = "2.4.1"
 # Desktop-only embedded WebView: the OS engine through Wry (macOS WKWebView, Windows WebView2,
 # Linux WebKitGTK). The last Wry release of ComposeNativeWebView (Apache-2.0); see :shared desktopMain.
 # Upstream no longer maintains it (moved to Tao): owned by Lagoon, who forks it if it needs a fix.
-# Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyWryWebviewChecksum): bump both together.
+# Jar SHA-256 pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
 wrywebview = "1.0.0-beta-02"
+# FileKit (MIT): the system open / save panels on desktop (macOS NSOpenPanel / NSSavePanel through
+# JNA). :desktopApp only; built against Kotlin 2.4.21 / coroutines 1.11.0 like the app.
+# Jar SHA-256s pinned in desktopApp/build.gradle.kts (verifyPinnedDesktopJars): bump both together.
+filekit = "0.17.0"
 coil = "3.6.3"
 # net.engawapg.lib:zoomable (usuiat/Zoomable): the desktop / wide image lightbox's zoom and pan
 # (mouse wheel without a modifier key, drag, double click; inside a HorizontalPager). Apache-2.0;
@@ -112,6 +116,7 @@ sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coro
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { group = "app.cash.sqldelight", name = "native-driver", version.ref = "sqldelight" }
 wrywebview = { group = "io.github.kdroidfilter", name = "wrywebview", version.ref = "wrywebview" }
+filekit-dialogs = { group = "io.github.vinceglb", name = "filekit-dialogs", version.ref = "filekit" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }

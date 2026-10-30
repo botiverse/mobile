@@ -33,6 +33,8 @@ dependencies {
     implementation(libs.socket.io.client)
     implementation(libs.gson)
     implementation(libs.okhttp.transport)
+    // System open / save panels (RaftDesktopFileDialogs).
+    implementation(libs.filekit.dialogs)
     testImplementation(kotlin("test"))
 }
 
@@ -42,25 +44,33 @@ tasks.withType<Test>().configureEach {
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
 }
 
-// The embedded WebView's native engine bridge (io.github.kdroidfilter:wrywebview, via :shared
-// desktopMain) is a frozen upstream release carrying native code, maintained by Lagoon (fork it if it
-// needs a fix). This repo has no gradle/verification-metadata.xml, so its jar is pinned here: any
-// other bytes fail the build before the app is run, tested or packaged. Bump together with
-// libs.versions.toml `wrywebview`.
-val wryWebviewSha256 = "513d30357154de4c5494abe4b133729fc1c111331cc18100ec3a9bf338b7947f"
-val verifyWryWebviewChecksum by tasks.registering {
+// Desktop-only third-party jars that drive native code are pinned by SHA-256: this repo has no
+// gradle/verification-metadata.xml, so any other bytes fail the build before the app is run,
+// tested or packaged. Bump each together with its libs.versions.toml version.
+// - io.github.kdroidfilter:wrywebview (via :shared desktopMain): the embedded WebView's native
+//   engine bridge, a frozen upstream release maintained by Lagoon (fork it if it needs a fix).
+// - io.github.vinceglb:filekit-*: the system open / save panels (macOS through JNA).
+val pinnedDesktopJarSha256 =
+    mapOf(
+        "io.github.kdroidfilter:wrywebview" to "513d30357154de4c5494abe4b133729fc1c111331cc18100ec3a9bf338b7947f",
+        "io.github.vinceglb:filekit-dialogs-jvm" to "1c2afa8001a9cc5f136c25a53856573c65334cdd7d2352a6c8da8bd91a983557",
+        "io.github.vinceglb:filekit-core-jvm" to "d35a1c44b47b6566712e8f6e7340778c3bb6f49b61496152d9bc64125387e992",
+    )
+val verifyPinnedDesktopJars by tasks.registering {
     val artifacts = configurations.named("runtimeClasspath").flatMap { it.incoming.artifacts.resolvedArtifacts }
     inputs.files(artifacts.map { all -> all.map { it.file } })
     doLast {
-        val wry = artifacts.get().filter { it.id.componentIdentifier.displayName.startsWith("io.github.kdroidfilter:wrywebview:") }
-        check(wry.size == 1) { "expected one wrywebview artifact, found ${wry.map { it.id.displayName }}" }
-        val bytes = wry.single().file.readBytes()
-        val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        check(sha == wryWebviewSha256) { "wrywebview checksum mismatch: $sha (pinned $wryWebviewSha256)" }
+        pinnedDesktopJarSha256.forEach { (module, pinned) ->
+            val jars = artifacts.get().filter { it.id.componentIdentifier.displayName.startsWith("$module:") }
+            check(jars.size == 1) { "expected one $module artifact, found ${jars.map { it.id.displayName }}" }
+            val bytes = jars.single().file.readBytes()
+            val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            check(sha == pinned) { "$module checksum mismatch: $sha (pinned $pinned)" }
+        }
     }
 }
 tasks.matching { it.name in setOf("test", "run", "createDistributable", "createReleaseDistributable", "packageDmg", "packageReleaseDmg") }
-    .configureEach { dependsOn(verifyWryWebviewChecksum) }
+    .configureEach { dependsOn(verifyPinnedDesktopJars) }
 
 // macOS requires MAJOR.MINOR.PATCH with MAJOR > 0 for the bundle version.
 val raftDesktopVersion = providers.gradleProperty("raft.desktop.version").orElse("1.0.0")
