@@ -526,7 +526,7 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         if let url = launchOptions?[.url] as? URL {
             DispatchQueue.main.async {
-                _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
+                RaftIosOpenURL.accept(url, source: "cold_launch")
             }
         }
         return true

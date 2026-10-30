@@ -228,6 +228,20 @@
                     android:path="/callback"
                     android:scheme="${oauthCallbackScheme}" />
             </intent-filter>
+            <!--
+                Raft Desktop message links: `raft:///s/{slug}/channel/{cid}?msg={mid}` (empty host) and
+                `raft://s/…`. A filter cannot name a path without a host, so this takes the whole app
+                scheme; MainActivity converts only /s/{slug}/… to the Developer environment's web link
+                (RaftMessageLinkIngress) and opens the app as before for anything else.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="${oauthCallbackScheme}" />
+            </intent-filter>
         </activity>
 
         <receiver

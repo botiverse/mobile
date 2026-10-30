@@ -111,6 +111,30 @@ internal fun parseRaftMessageLink(
  * blank or null is production. Null when an id is one the parser would refuse, so a link this
  * builds always parses back to [link] with the same [webUrl].
  */
+/**
+ * The web link a Raft Desktop deep link stands for, or null. Raft Desktop's "Open in Raft Desktop"
+ * and copied links put the web path and query behind the app scheme (slock
+ * `packages/web/src/utils/desktopAppLink.ts`): `raft:///s/{slug}/channel/{cid}?msg={mid}`, and
+ * `raft://s/…` is read the same way (slock `desktopRouteFromDeepLink`). The path and query are put
+ * on [webUrl], the Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule");
+ * blank or null is production. Only `/s/{slug}/…` is converted; [parseRaftMessageLink] then decides
+ * whether the app opens it. `raft` and the per-build `raft-{variant}` callback schemes are accepted.
+ */
+internal fun raftSchemeLinkToWebLink(url: String, webUrl: String?): String? {
+    val raw = url.trim()
+    val schemeEnd = raw.indexOf("://")
+    if (schemeEnd <= 0) return null
+    val scheme = raw.substring(0, schemeEnd).lowercase()
+    if (scheme != "raft" && !scheme.startsWith("raft-")) return null
+    val rest = raw.substring(schemeEnd + 3).substringBefore('#')
+    val pathAndQuery = if (rest.startsWith("/")) rest else "/$rest"
+    val path = pathAndQuery.substringBefore('?')
+    val segments = path.removePrefix("/").split('/')
+    if (segments.size < 2 || segments[0] != "s" || segments[1].isEmpty()) return null
+    if ('\\' in pathAndQuery || '@' in path) return null
+    return sharedSettingsResolvedWebBaseUrl(webUrl) + pathAndQuery
+}
+
 internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): String? {
     val ids = listOfNotNull(link.serverSlug, link.channelId, link.messageId, link.threadParentMessageId)
     if (!ids.all(::isRaftLinkIdentifier)) return null
@@ -276,7 +300,8 @@ internal fun raftMessageLinkShouldTake(pending: RaftPendingMessageLink?, session
     pending != null && sessionReady
 
 /**
- * Platform entry for an external message link (Android MainActivity, iOS scene delegate). Returns
+ * Platform entry for an external message link (Android MainActivity, iOS scene delegate): a web
+ * link, or a Raft Desktop `raft://` link ([raftSchemeLinkToWebLink]). Returns
  * false when the URL is not a Raft message link this app takes; the caller then leaves it to the
  * browser. On true the link waits in [RaftMessageLinkInbox.Process] for the app shell.
  */
@@ -284,7 +309,9 @@ object RaftMessageLinkIngress {
     /** [configuredWebUrl] is the Developer environment's web URL; null reads the app-scope one. */
     fun accept(url: String, source: String, configuredWebUrl: String? = null): Boolean {
         val webUrl = configuredWebUrl ?: appScopeWebUrlOrNull()
-        val link = parseRaftMessageLink(url, webUrl)
+        val link =
+            parseRaftMessageLink(url, webUrl)
+                ?: raftSchemeLinkToWebLink(url, webUrl)?.let { parseRaftMessageLink(it, webUrl) }
         if (link == null) {
             raftLogInfo(RaftMessageLinkLogTag, "message_link_ingress result=not_claimed source=${source.raftLinkLogToken()}")
             return false

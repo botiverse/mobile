@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
             !handleRaftMessageLink(intent) &&
+            !handleUnclaimedAppSchemeLink(intent) &&
             !handleUnsupportedRaftWebLink(intent)
         ) {
             openSharedShell(intent)
@@ -161,6 +162,24 @@ class MainActivity : ComponentActivity() {
         setIntent(Intent(this, MainActivity::class.java))
         val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
         RaftAppLog.d("SlockBoot", "app_message_link_accepted liveShellInTask=$liveShellInTask")
+        if (!liveShellInTask) {
+            RaftCmpActivity.startAppShell(applicationContext, pageData = JSONObject(), clearTask = false)
+        }
+        finish()
+        return true
+    }
+
+    /**
+     * Any other `raft://` link (the manifest takes the whole app scheme for Raft Desktop's message
+     * links): the app comes forward as it is, the way iOS treats it, instead of a fresh shell
+     * clearing the task.
+     */
+    private fun handleUnclaimedAppSchemeLink(intent: Intent?): Boolean {
+        if (intent?.action != Intent.ACTION_VIEW) return false
+        if (!intent.data?.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true)) return false
+        setIntent(Intent(this, MainActivity::class.java))
+        val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        RaftAppLog.d("SlockBoot", "app_scheme_link_not_claimed liveShellInTask=$liveShellInTask")
         if (!liveShellInTask) {
             RaftCmpActivity.startAppShell(applicationContext, pageData = JSONObject(), clearTask = false)
         }

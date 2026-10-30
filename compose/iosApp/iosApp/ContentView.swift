@@ -134,7 +134,7 @@ private struct ShellHostView: View {
             .id("\(effective.revision)|\(shellContext.shellInstanceId)")
             .ignoresSafeArea()
             .onOpenURL { url in
-                _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
+                RaftIosOpenURL.accept(
                     url,
                     shellInstanceId: shellContext.shellInstanceId,
                     source: "swiftui_open_url"
