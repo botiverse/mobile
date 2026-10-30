@@ -149,7 +149,8 @@ private fun assistantDmSession(): StoredAuthSession =
 
 /**
  * The DM's messages on the wire (botiverse/slock `GET /channels/:id/messages`): the assistant's
- * morning brief with a reaction and a reply thread, the owner's answer, and its reply.
+ * morning brief with a reaction and a reply thread (its summary in the response's embedded
+ * `threadSummariesByParentMessageId`, which the reply chip reads), the owner's answer, and its reply.
  */
 private val AssistantDmMessagesBody =
     """
@@ -165,15 +166,20 @@ private val AssistantDmMessagesBody =
       {"id":"assistant-dm-m3","seq":3,"channelId":"$AssistantDmFixtureChannelId",
        "content":"Done. I'll ping you here at 15:00.",
        "createdAt":"2026-10-30T08:11:00Z","senderId":"$AssistantDmFixtureAgentId","senderName":"Otto","senderType":"agent","messageType":"chat"}
-    ]}
+    ],
+    "threadSummariesByParentMessageId":{"assistant-dm-m1":{"threadChannelId":"assistant-dm-fixture-thread","replyCount":2}}}
     """.trimIndent()
 
-private object AssistantDmFixtureNetworkApi : SharedThreadNetworkApi {
+internal object AssistantDmFixtureNetworkApi : SharedThreadNetworkApi {
+    /** The page's first window was answered: the capture waits for it. */
+    @Volatile
+    var latestServed: Boolean = false
+
     override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?): HomeNetworkResponse =
         if (beforeSeq != null || afterSeq != null) {
             HomeNetworkResponse(code = 200, bodyText = "{\"historyLimited\":false,\"messages\":[]}")
         } else {
-            HomeNetworkResponse(code = 200, bodyText = AssistantDmMessagesBody)
+            HomeNetworkResponse(code = 200, bodyText = AssistantDmMessagesBody).also { latestServed = true }
         }
 
     override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =

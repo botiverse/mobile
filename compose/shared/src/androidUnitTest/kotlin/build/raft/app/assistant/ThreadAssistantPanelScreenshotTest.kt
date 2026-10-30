@@ -33,6 +33,12 @@ import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPagerHost
 import kotlinx.serialization.json.JsonObject
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import build.raft.app.LocalThreadReactionAtlasImage
+import build.raft.app.resources.RaftBundledFiles
+import build.raft.app.resources.Res
+import kotlinx.coroutines.runBlocking
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_APP_LOGIN_MMKV_NAMESPACE
@@ -67,6 +73,11 @@ class ThreadAssistantPanelScreenshotTest {
      * Coil's default singleton. Installing it first (and tolerating that) marks it installed, as
      * the other screenshot tests with images do.
      */
+    @org.junit.Before
+    fun resetFixture() {
+        AssistantDmFixtureNetworkApi.latestServed = false
+    }
+
     @org.junit.Before
     fun installImageLoader() {
         runCatching { build.raft.app.image.raftInstallImageLoader() }
@@ -142,6 +153,11 @@ class ThreadAssistantPanelScreenshotTest {
                         panelEmbed = ThreadAssistantPanelEmbed(AssistantDmFixtureAgentId) {},
                     )
                 }
+            val atlas =
+                remember {
+                    val bytes = runBlocking { Res.readBytes(RaftBundledFiles.reactionAtlasV1.path) }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
+                }
             val host =
                 remember {
                     val transport = HostBridgeTransport { _, _, _ -> }
@@ -158,7 +174,12 @@ class ThreadAssistantPanelScreenshotTest {
                     ThreadAssistantPanelSheet(otter) {
                         // As RaftChildPage mounts THREAD_PAGE in production: the page in its own pager.
                         Box(Modifier.weight(1f).fillMaxWidth()) {
-                            RaftPagerHost(factory = { AssistantDmFixturePage() }, args = remember { assistantDmFixturePageArgs() })
+                            // The reaction atlas decoded here, synchronously (as
+                            // ThreadMessageFooterScreenshotTest): the page's provider reuses it
+                            // instead of an async load that may not have finished by the capture.
+                            CompositionLocalProvider(LocalThreadReactionAtlasImage provides atlas) {
+                                RaftPagerHost(factory = { AssistantDmFixturePage() }, args = remember { assistantDmFixturePageArgs() })
+                            }
                         }
                     }
                 }
@@ -170,6 +191,12 @@ class ThreadAssistantPanelScreenshotTest {
      * time as well as the main looper's virtual time before the capture.
      */
     private fun waitForTheDm() {
+        repeat(200) {
+            if (AssistantDmFixtureNetworkApi.latestServed) return@repeat
+            Thread.sleep(25)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50))
+        }
+        // Then the parse (off the main thread) and the list's layout: a fixed number of rounds.
         repeat(40) {
             Thread.sleep(50)
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))

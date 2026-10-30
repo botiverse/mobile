@@ -32470,6 +32470,13 @@ internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
     // task #421: the atlas DrawableResource is null on iOS (asset not bundled),
     // so only load it where available; otherwise provide a null atlas and let
     // reaction rendering fall back to emoji glyphs.
+    // An atlas an ancestor already holds ready (a host that decoded it, or an outer provider) is
+    // reused as is: no second async load that may or may not have finished.
+    val inheritedAtlas = LocalThreadReactionAtlasImage.current
+    if (inheritedAtlas != null) {
+        content()
+        return
+    }
     val atlasDrawable = ThreadReactionSpriteAtlasDrawableResource
     val threadReactionAtlasImage = if (atlasDrawable != null) imageResource(atlasDrawable) else null
     val readyThreadReactionAtlas =
