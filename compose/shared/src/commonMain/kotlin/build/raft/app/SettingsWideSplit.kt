@@ -74,6 +74,7 @@ internal val SettingsWideWebDetailKeys: Set<String> =
     setOf(
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
+        SettingsDestinationImBridges,
         SettingsDestinationConnectedApps,
         SettingsDestinationReleaseNotes,
     )
@@ -124,6 +125,7 @@ internal fun settingsWideDetailPage(
     when (key) {
         SettingsDestinationBilling -> settingsWideWebPage(SettingsWebViewSurface.Billing, storeScope)
         SettingsDestinationAdministration -> settingsWideWebPage(SettingsWebViewSurface.Administration, storeScope)
+        SettingsDestinationImBridges -> settingsWideWebPage(SettingsWebViewSurface.ImBridges, storeScope)
         SettingsDestinationConnectedApps -> settingsWideWebPage(SettingsWebViewSurface.Marketplace, storeScope)
         SettingsDestinationReleaseNotes -> settingsWideWebPage(SettingsWebViewSurface.ReleaseNotes, storeScope)
         SettingsDestinationHandsFeedback ->

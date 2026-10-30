@@ -152,6 +152,7 @@ class RaftProductPageRoutesTest {
             mapOf(
                 SettingsWebViewSurface.Billing to view(RaftPageRoute.Settings, RaftSettingsTab.Billing),
                 SettingsWebViewSurface.Administration to view(RaftPageRoute.Settings, RaftSettingsTab.Administration),
+                SettingsWebViewSurface.ImBridges to view(RaftPageRoute.Settings, RaftSettingsTab.ImBridges),
                 SettingsWebViewSurface.Marketplace to view(RaftPageRoute.Settings, RaftSettingsTab.Integrations),
                 SettingsWebViewSurface.Feedback to view(RaftPageRoute.Settings, RaftSettingsTab.Feedback),
                 SettingsWebViewSurface.Computers to view(RaftPageRoute.Computers),

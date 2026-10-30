@@ -98,8 +98,10 @@ internal fun SettingsAppShellHomeContent(
     moreRoot: SettingsMoreRoot? = null,
     scrollToTopRequest: Int = 0,
     onBack: (() -> Unit)? = null,
+    /** The server's `slack_bridge_v0` flag: the IM Bridges row. */
+    imBridgesEnabled: Boolean = false,
 ) {
-    val payload = appShellSettingsHomePayload(session)
+    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled)
     val membersSubtitle = stringResource(Res.string.more_hub_members_subtitle)
     SettingsHomeContent(
         payload =
@@ -122,11 +124,14 @@ internal fun SettingsAppShellHomeContent(
  * then has the server's Notifications; the app keeps that mute on Notifications); Workspace;
  * Resources. Theme is there only with a current server ([hasThemeServer]), as is the web's group.
  * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
- * of Appearance, the web's home for them, and there is no Mobile row.
+ * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
+ * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
+ * server's `slack_bridge_v0` flag (web `isSlackBridgeSurfaceEnabled`).
  */
 internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
+    imBridges: Boolean = false,
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -139,6 +144,7 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationBilling,
         SettingsDestinationAdministration,
+        SettingsDestinationImBridges.takeIf { imBridges },
         SettingsDestinationConnectedApps,
         SettingsDestinationComputers,
         SettingsNativeDetailPage.About.key,
@@ -157,6 +163,8 @@ internal fun settingsAppPreferencesUnderAppearance(finePointer: Boolean = raftPl
 internal fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
+    /** The server's `slack_bridge_v0` flag: the IM Bridges row ([settingsHomeRowKeys]). */
+    imBridgesEnabled: Boolean = false,
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
@@ -239,6 +247,13 @@ internal fun appShellSettingsHomePayload(
                 section = workspaceSection
             ),
             SettingsHomePageLinkPayload(
+                key = SettingsDestinationImBridges,
+                title = stringResource(Res.string.settings_im_bridges_title),
+                subtitle = stringResource(Res.string.settings_im_bridges_subtitle),
+                iconName = RaftLucideIconName.Network,
+                section = workspaceSection
+            ),
+            SettingsHomePageLinkPayload(
                 key = SettingsDestinationConnectedApps,
                 title = stringResource(Res.string.settings_connected_apps_title),
                 subtitle = stringResource(Res.string.settings_connected_apps_subtitle),
@@ -281,6 +296,7 @@ internal fun appShellSettingsHomePayload(
             settingsHomeRowKeys(
                 hasThemeServer = themeServer != null,
                 appPreferencesUnderAppearance = appPreferencesUnderAppearance,
+                imBridges = imBridgesEnabled,
             ).mapNotNull(rows::get),
     )
 }

@@ -54,10 +54,17 @@ class SettingsWideSplitScreenshotTest {
     @Test
     fun billingInThePaneLight() = capture("settings.wide.billing", RaftAppAppearance.Light) { WideSettings(picked = SettingsDestinationBilling) }
 
+    /** slack_bridge_v0 on: the IM Bridges row after Administration, its web section in the pane. */
+    @Test
+    fun imBridgesInThePaneLight() =
+        capture("settings.wide.im-bridges", RaftAppAppearance.Light) {
+            WideSettings(picked = SettingsDestinationImBridges, imBridgesEnabled = true)
+        }
+
     @Composable
-    private fun WideSettings(picked: String?) {
+    private fun WideSettings(picked: String?, imBridgesEnabled: Boolean = false) {
         SettingsWideListDetail(
-            payload = appShellSettingsHomePayload(session = null),
+            payload = appShellSettingsHomePayload(session = null, imBridgesEnabled = imBridgesEnabled),
             widths = remember { RaftListPaneWidths(store = null) },
             active = true,
             picked = picked,
@@ -74,6 +81,16 @@ class SettingsWideSplitScreenshotTest {
                             surface = SettingsWebViewSurface.Billing,
                             title = "Plans & billing",
                             iconName = RaftLucideIconName.CreditCard,
+                        ) { _, _ ->
+                            Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+                        }
+                    } else if (key == SettingsDestinationImBridges) {
+                        val pager = LocalActivity.current.getPager() as Pager
+                        SettingsWebViewPageScaffold(
+                            pager = pager,
+                            surface = SettingsWebViewSurface.ImBridges,
+                            title = "IM Bridges",
+                            iconName = RaftLucideIconName.Network,
                         ) { _, _ ->
                             Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
                         }

@@ -1548,6 +1548,17 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 15.0 16.0 A 3.0 3.0 0 1 0 21.0 16.0 A 3.0 3.0 0 1 0 15.0 16.0 Z"),
                     ),
                 )
+            RaftLucideIconName.Network ->
+                RaftLucideIconSpec(
+                    "network",
+                    listOf(
+                        RaftLucidePathSpec("M 17.0 16.0 H 21.0 A 1.0 1.0 0 0 1 22.0 17.0 V 21.0 A 1.0 1.0 0 0 1 21.0 22.0 H 17.0 A 1.0 1.0 0 0 1 16.0 21.0 V 17.0 A 1.0 1.0 0 0 1 17.0 16.0 Z"),
+                        RaftLucidePathSpec("M 3.0 16.0 H 7.0 A 1.0 1.0 0 0 1 8.0 17.0 V 21.0 A 1.0 1.0 0 0 1 7.0 22.0 H 3.0 A 1.0 1.0 0 0 1 2.0 21.0 V 17.0 A 1.0 1.0 0 0 1 3.0 16.0 Z"),
+                        RaftLucidePathSpec("M 10.0 2.0 H 14.0 A 1.0 1.0 0 0 1 15.0 3.0 V 7.0 A 1.0 1.0 0 0 1 14.0 8.0 H 10.0 A 1.0 1.0 0 0 1 9.0 7.0 V 3.0 A 1.0 1.0 0 0 1 10.0 2.0 Z"),
+                        RaftLucidePathSpec("M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"),
+                        RaftLucidePathSpec("M12 12V8"),
+                    ),
+                )
             RaftLucideIconName.PackageCheck ->
                 RaftLucideIconSpec(
                     "package-check",

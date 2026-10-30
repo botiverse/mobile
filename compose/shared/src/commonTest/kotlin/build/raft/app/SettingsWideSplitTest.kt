@@ -30,9 +30,11 @@ class SettingsWideSplitTest {
         listOf(
             SettingsDestinationBilling,
             SettingsDestinationAdministration,
+            SettingsDestinationImBridges,
             SettingsDestinationConnectedApps,
             SettingsDestinationReleaseNotes,
         ).forEach { key ->
+            val rows = settingsHomeRowKeys(hasThemeServer = true, imBridges = true)
             assertEquals(SettingsWidePick.Detail(key), settingsWidePick(key), key)
             assertEquals(key, settingsWideDetailKey(key, rows), key)
             assertTrue(settingsWideBackReturnsToDefault(key, rows), key)
@@ -56,6 +58,7 @@ class SettingsWideSplitTest {
         mapOf(
             SettingsDestinationBilling to SettingsWebViewSurface.Billing,
             SettingsDestinationAdministration to SettingsWebViewSurface.Administration,
+            SettingsDestinationImBridges to SettingsWebViewSurface.ImBridges,
             SettingsDestinationConnectedApps to SettingsWebViewSurface.Marketplace,
             SettingsDestinationReleaseNotes to SettingsWebViewSurface.ReleaseNotes,
         ).forEach { (key, surface) ->
@@ -89,6 +92,7 @@ class SettingsWideSplitTest {
             settingsBillingWebViewUrl("https://raft.example", session = null),
             settingsAdministrationWebViewUrl("https://raft.example", session = null),
             settingsMarketplaceWebViewUrl("https://raft.example", session = null),
+            settingsImBridgesWebViewUrl("https://raft.example", session = null),
         ).forEach { url ->
             assertTrue("embed=$SharedSettingsEmbedContract" in url, url)
             assertTrue("shell=$SharedSettingsEmbedHostShell" in url, url)

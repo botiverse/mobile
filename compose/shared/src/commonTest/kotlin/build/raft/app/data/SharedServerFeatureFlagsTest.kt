@@ -178,6 +178,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("sidebar_mark_all_read_v0", SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY)
         // slock staging 2618da4f packages/web/src/store/serverFeatureFlags.ts TASK_V2_CONVERSATIONS_FLAG_KEY.
         assertEquals("task_v2_conversations_v0", TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
+        // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
+        assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
@@ -185,6 +187,7 @@ class SharedServerFeatureFlagsTest {
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
                 TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
+                SLACK_BRIDGE_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

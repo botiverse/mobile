@@ -172,6 +172,7 @@ enum class RaftLucideIconName(val wireName: String) {
     MonitorX("monitor-x"),
     Mosaic("mosaic"),
     Music("music"),
+    Network("network"),
     PackageCheck("package-check"),
     Package("package"),
     Palette("palette"),

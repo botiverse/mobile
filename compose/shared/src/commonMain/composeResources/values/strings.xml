@@ -2486,6 +2486,8 @@
     <string name="settings_server_profile_subtitle">Workspace name, slug, role</string>
     <string name="settings_server_administration_title">Administration</string>
     <string name="settings_server_administration_subtitle">Admins, invites, join links, agreements</string>
+    <string name="settings_im_bridges_title">IM Bridges</string>
+    <string name="settings_im_bridges_subtitle">Manage connections between Raft and external messaging services</string>
     <string name="settings_server_label_name">Name</string>
     <string name="settings_server_label_slug">Slug</string>
     <string name="settings_server_placeholder_name">Workspace name</string>
