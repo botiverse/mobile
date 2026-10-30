@@ -50,7 +50,9 @@ import build.raft.designsystem.components.RaftChoiceListGroup
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMultiChoiceList
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.raftStateOverlay
@@ -266,11 +268,12 @@ private fun ThreadAddMemberAvatar(
 private val ThreadAddMemberAvatarSize = 20.dp
 
 /**
- * The list's footer: the web sidebar Agents "+" menu's two entries, in its order and wording
- * (`layout.sidebar.createAgent` / `createExternalAgent`), as rows: "Create Agent" (managed) and
- * "Create External Agent". Both open their create dialog with this channel preselected; a
- * search that found no one names the new agent in both. Without create permission both rows
- * stay, disabled, with the reason once under them, so the way out is never hidden.
+ * The list's footer: one "Create Agent" row (artin 10-30, option A: two near-identical rows read
+ * as clutter). It opens the web sidebar Agents "+" menu's two entries, in its order and wording
+ * (`layout.sidebar.createAgent` / `createExternalAgent`): "Create Agent" (managed) and "Create
+ * External Agent". Both open their create dialog with this channel preselected; a search that
+ * found no one names the new agent in the row. Without create permission the row stays,
+ * disabled, with the reason under it, so the way out is never hidden.
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRows(
@@ -280,23 +283,39 @@ internal fun ThreadAddMemberCreateAgentRows(
     enabled: Boolean,
     onCreateAgent: (MembersCreateAgentMode) -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        ThreadAddMemberCreateAgentRow(
-            mode = MembersCreateAgentMode.Managed,
-            canCreateAgents = canCreateAgents,
-            createName = createName,
-            channelName = channelName,
-            enabled = enabled,
-            onClick = { onCreateAgent(MembersCreateAgentMode.Managed) },
-        )
-        ThreadAddMemberCreateAgentRow(
-            mode = MembersCreateAgentMode.External,
-            canCreateAgents = canCreateAgents,
-            createName = createName,
-            channelName = channelName,
-            enabled = enabled,
-            onClick = { onCreateAgent(MembersCreateAgentMode.External) },
-        )
+        Box {
+            ThreadAddMemberCreateAgentRow(
+                mode = MembersCreateAgentMode.Managed,
+                canCreateAgents = canCreateAgents,
+                createName = createName,
+                channelName = channelName,
+                enabled = enabled,
+                onClick = { menuOpen = true },
+            )
+            RaftDropdownMenu(
+                expanded = menuOpen && canCreateAgents && enabled,
+                onDismissRequest = { menuOpen = false },
+            ) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.thread_members_create_agent),
+                    leadingIcon = { RaftGlyphIcon(RaftGlyph.Plus, size = 16.dp, color = RaftTheme.colors.foreground) },
+                    onClick = {
+                        menuOpen = false
+                        onCreateAgent(MembersCreateAgentMode.Managed)
+                    },
+                )
+                RaftMenuItem(
+                    text = stringResource(Res.string.agent_create_action_create_external),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plug, size = 16.dp, color = RaftTheme.colors.foreground) },
+                    onClick = {
+                        menuOpen = false
+                        onCreateAgent(MembersCreateAgentMode.External)
+                    },
+                )
+            }
+        }
         if (!canCreateAgents) {
             RaftText(
                 stringResource(Res.string.thread_members_create_no_permission),
