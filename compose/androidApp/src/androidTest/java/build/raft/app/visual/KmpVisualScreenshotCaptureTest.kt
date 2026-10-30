@@ -3380,6 +3380,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeChannelListStatusBarProbe() {
+        captureKmpComponentCase(
+            caseId = "probe.home.status-bar-inset",
+            pageName = "compose_home_channel_list_visual",
+            pageData = JSONObject().put("appearance", "light").put("visualTopSafeAreaDp", 62).put("visualTheme", "boring"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeChannelListDark() {
         captureKmpComponentCase(
             caseId = "screens.home.channel-list.dark",

@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import build.raft.app.base.BasePager
 import build.raft.app.compat.pager.Page
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.tokens.RaftThemeId
 
 /**
  * The whole phone Home root (`screens.home.channel-list` / `.dark`): the production
@@ -33,8 +35,10 @@ internal class ComposeHomeChannelListVisualPage : BasePager() {
         super.willInit()
         val appearance =
             if (pageData.params.optString("appearance") == "dark") RaftAppAppearance.Dark else RaftAppAppearance.Light
+        val topSafeArea = pageData.params.optInt("visualTopSafeAreaDp", -1).takeIf { it >= 0 }?.dp
+        if (pageData.params.optString("visualTheme") == "boring") RaftAppThemeState.setRaftTheme(RaftThemeId.Boring)
         setContent {
-            HomeChannelListVisualAppearance(appearance) { HomeChannelListVisualContent() }
+            HomeChannelListVisualAppearance(appearance) { HomeChannelListVisualContent(topSafeArea = topSafeArea) }
         }
     }
 }
