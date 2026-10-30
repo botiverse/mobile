@@ -36,7 +36,6 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsAppearanceUpdateRequest
-import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsServerProfileUpdateRequest
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedRealtimeDomainEventOwner
@@ -419,10 +418,7 @@ internal fun SettingsNativeDetailPageContent(
     }
 
     var serverProfileName by remember { mutableStateOf("") }
-    var languageRegionLanguageDraft by remember { mutableStateOf("") }
-    var languageRegionDisplayDraft by remember { mutableStateOf("translated") }
-    var languageRegionTimezoneDraft by remember { mutableStateOf("") }
-    var languageRegionTimeFormatDraft by remember { mutableStateOf("") }
+    var languageRegionPick by remember { mutableStateOf<SettingsLanguageRegionPick?>(null) }
     var appearanceMessageFontSizeDraft by remember { mutableStateOf("md") }
     val currentServerSnapshot = settingsState.server.currentContent()
     val currentLanguageRegionSnapshot = settingsState.languageRegion.currentContent()
@@ -431,19 +427,6 @@ internal fun SettingsNativeDetailPageContent(
     val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
     LaunchedEffect(currentServerName) {
         serverProfileName = currentServerName
-    }
-    LaunchedEffect(
-        currentLanguageRegionSnapshot?.browserLanguage?.selectedKey,
-        currentLanguageRegionSnapshot?.translationDisplay?.selectedKey,
-        currentLanguageRegionSnapshot?.timezone?.selectedKey,
-        currentLanguageRegionSnapshot?.timeFormat?.selectedKey
-    ) {
-        currentLanguageRegionSnapshot?.let { snapshot ->
-            languageRegionLanguageDraft = snapshot.browserLanguage.selectedKey
-            languageRegionDisplayDraft = snapshot.translationDisplay.selectedKey
-            languageRegionTimezoneDraft = snapshot.timezone.selectedKey
-            languageRegionTimeFormatDraft = snapshot.timeFormat.selectedKey
-        }
     }
     LaunchedEffect(currentAppearanceSnapshot?.messageBodyFontSize?.selectedKey) {
         currentAppearanceSnapshot?.let { snapshot ->
@@ -542,51 +525,21 @@ internal fun SettingsNativeDetailPageContent(
                     state = settingsState.languageRegion,
                     mobileState = settingsState.mobile,
                     actionState = settingsState.actionState,
-                    languageDraft = languageRegionLanguageDraft,
-                    displayDraft = languageRegionDisplayDraft,
-                    timezoneDraft = languageRegionTimezoneDraft,
-                    timeFormatDraft = languageRegionTimeFormatDraft,
+                    pick = languageRegionPick,
                     bottomContentPadding = bottomContentPadding,
-                    onLanguageDraftChange = { languageRegionLanguageDraft = it },
-                    onDisplayDraftChange = { languageRegionDisplayDraft = it },
-                    onTimezoneDraftChange = { languageRegionTimezoneDraft = it },
-                    onTimeFormatDraftChange = { languageRegionTimeFormatDraft = it },
+                    onPick = { pick ->
+                        currentLanguageRegionSnapshot
+                            ?.let { snapshot -> settingsLanguageRegionApplyIntent(snapshot, pick) }
+                            ?.let { intent ->
+                                languageRegionPick = pick
+                                onSettingsIntent(intent)
+                            }
+                    },
                     onServerTranslationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(enabled))
                     },
                     onLocaleChange = { localeTag ->
                         onSettingsIntent(SharedSettingsIntent.SetLocale(localeTag))
-                    },
-                    onSaveLanguage = {
-                        currentLanguageRegionSnapshot?.let { snapshot ->
-                            val selectedMode = languageRegionDisplayDraft.ifBlank { snapshot.translationDisplay.selectedKey }
-                            if (selectedMode != snapshot.translationDisplay.selectedKey) {
-                                onSettingsIntent(SharedSettingsIntent.SetTranslationMode(selectedMode))
-                            }
-                            resolveSettingsTranslationTargetUpdate(
-                                snapshot = snapshot,
-                                languageDraft = languageRegionLanguageDraft,
-                                displayDraft = languageRegionDisplayDraft
-                            )?.let { language ->
-                                onSettingsIntent(
-                                    SharedSettingsIntent.SetTranslationTargetLanguage(language)
-                                )
-                            }
-                        }
-                    },
-                    onSaveTime = {
-                        val timezone = languageRegionTimezoneDraft.takeIf { it.isNotBlank() }
-                        val timeFormat = languageRegionTimeFormatDraft.takeIf { it.isNotBlank() }
-                        if (timezone != null || timeFormat != null) {
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                    SettingsLanguageRegionPreferenceUpdateRequest(
-                                        preferredTimezone = timezone,
-                                        preferredTimeFormat = timeFormat
-                                    )
-                                )
-                            )
-                        }
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )

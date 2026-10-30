@@ -92,19 +92,11 @@ private fun LanguageRegionFixture() {
         state = ScreenLoadState.Content(languageRegionFixture),
         mobileState = ScreenLoadState.Loading,
         actionState = null,
-        languageDraft = "",
-        displayDraft = "",
-        timezoneDraft = "Asia/Tokyo",
-        timeFormatDraft = "24h",
+        pick = null,
         bottomContentPadding = 16.dp,
-        onLanguageDraftChange = {},
-        onDisplayDraftChange = {},
-        onTimezoneDraftChange = {},
-        onTimeFormatDraftChange = {},
+        onPick = {},
         onServerTranslationChange = {},
         onLocaleChange = {},
-        onSaveLanguage = {},
-        onSaveTime = {},
         onRetry = {},
     )
 }
@@ -189,9 +181,9 @@ private val languageRegionFixture =
             ),
         timezone =
             SettingsMobileSelectionSnapshot(
-                selectedKey = "UTC",
-                selectedLabel = "UTC",
-                statusLabel = "UTC",
+                selectedKey = "Asia/Tokyo",
+                selectedLabel = "Asia/Tokyo (UTC+9)",
+                statusLabel = "Asia/Tokyo (UTC+9)",
                 detail = "",
                 options =
                     listOf(
