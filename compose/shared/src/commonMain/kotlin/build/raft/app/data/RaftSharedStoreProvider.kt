@@ -509,6 +509,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellAgentDetailStores = RaftShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
     private val shellRuntimeAccountUsageStores = RaftShellScopedStoreCache<SharedRuntimeAccountUsageStore>()
+    private val shellMyAssistantStores = RaftShellScopedStoreCache<SharedMyAssistantStore>()
 
     /** Durable machine lists shared by every shell's computers store (data-layer plan step 5). */
     private val computersDurableStore by lazy {
@@ -2082,6 +2083,19 @@ internal class RaftSharedStoreProvider private constructor(
             )
         }
 
+    /**
+     * "My assistant" per server for this shell (web `assistantClient.ts`): one read per person and
+     * server whichever conversation asks, and the composer the assistant's otter lies on.
+     */
+    fun myAssistantStore(scope: RaftShellStoreScope): SharedMyAssistantStore =
+        shellMyAssistantStores.getOrPut(scope) {
+            SharedMyAssistantStore(
+                api = RaftMyAssistantNetworkApi(networkClient(scope)),
+                scope = threadSendScope,
+                logger = sharedInfoLogger("SlockMyAssistant"),
+            )
+        }
+
     fun adaptiveWorkspaceStore(scope: RaftShellStoreScope): SharedAdaptiveWorkspaceStore =
         shellAdaptiveWorkspaceStores.getOrPut(scope) { SharedAdaptiveWorkspaceStore() }
 
@@ -2605,6 +2619,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellRuntimeAccountUsageStores.remove(scope)
+        shellMyAssistantStores.remove(scope)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
         shellAuthLoginGenerationJobs.remove(scope)?.cancel()
         shellAuthLoginGenerations.remove(scope)

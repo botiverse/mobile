@@ -180,6 +180,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("task_v2_conversations_v0", TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
         // slock staging 82ec87f2 packages/shared/src/featureFlags.ts SLACK_BRIDGE_FEATURE_FLAG_KEYS.master.
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
+        // slock staging ee41b3f3 packages/server/src/services/featureFlagService.ts PERSONAL_ASSISTANT_FEATURE_FLAG_KEY.
+        assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
@@ -188,6 +190,7 @@ class SharedServerFeatureFlagsTest {
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
                 TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
+                PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

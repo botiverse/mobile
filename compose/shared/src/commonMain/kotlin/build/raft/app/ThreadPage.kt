@@ -1,5 +1,11 @@
 package build.raft.app
 
+import build.raft.app.assistant.LocalThreadAssistantOtter
+import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
+import build.raft.app.assistant.ThreadAssistantOtterListEnd
+import build.raft.app.assistant.assistantOtterDmOpenRequest
+import build.raft.app.assistant.newAssistantOtterHostId
+import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -11940,6 +11946,47 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
+        // when the assistant is ready with its DM, never on that DM or a thread in it.
+        val assistantOtterHostId = remember { newAssistantOtterHostId() }
+        val assistantOtterInSplitPane = threadInSplitDetailPane()
+        val assistantOtterReplyThread = renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+        val assistantOtterOpenFailedLabel = stringResource(Res.string.thread_error_open_thread)
+        val assistantOtter =
+            rememberThreadAssistantOtter(
+                store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) },
+                featureFlags = sharedStores.serverFeatureFlags,
+                serverMembersStore = serverMembersStore,
+                homeState = sharedHomeState,
+                serverId = currentServerId,
+                userId = currentSession?.user?.id,
+                viewerIsGuest = threadViewerIsGuest,
+                conversationChannelId =
+                    if (assistantOtterReplyThread) renderedThread.parentChannelId else renderedThread.streamChannelId,
+                hostId = assistantOtterHostId,
+                wide = assistantOtterInSplitPane,
+                replyThread = assistantOtterReplyThread,
+                onOpenDm = { serverId, dmChannelId ->
+                    // Step 1 opens the DM; the bottom-sheet panel (RaftOtterTuck.PanelOpen) comes next.
+                    val request = assistantOtterDmOpenRequest(serverId, dmChannelId, conversationIdentityProvider)
+                    val dmPayload =
+                        request?.let {
+                            buildAppShellThreadPayload(
+                                conversation = it.conversationIdentity,
+                                timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
+                                alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                onWarn = bridge::logWarn
+                            )
+                        }
+                    if (dmPayload == null) {
+                        bridge.logWarn("assistant_otter_open_skip reason=unresolved dm=$dmChannelId")
+                        bridge.toast(assistantOtterOpenFailedLabel)
+                    } else {
+                        onOpenThreadPayload(dmPayload)
+                    }
+                },
+            )
         // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
         val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
         val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
@@ -12008,6 +12055,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
+                LocalThreadAssistantOtter provides assistantOtter,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
@@ -18102,6 +18150,17 @@ private fun ThreadComposerRoute(
         }
     val composerUiState = composerState.toThreadComposerUiState()
     val composerAtRest = composerUiState.isThreadComposerAtRest()
+    // The personal assistant's otter on this composer's frame edge, when the conversation has one.
+    val assistantOtter = LocalThreadAssistantOtter.current
+    val frameEdge: (@Composable (Boolean, Boolean) -> Unit)? =
+        remember(assistantOtter) {
+            assistantOtter?.let { otter ->
+                val edge: @Composable (Boolean, Boolean) -> Unit = { composing, focused ->
+                    ThreadAssistantOtterFrameEdge(otter, composing, focused)
+                }
+                edge
+            }
+        }
     Box(
         modifier =
             Modifier.fillMaxWidth().onSizeChangedDp { size ->
@@ -18127,6 +18186,7 @@ private fun ThreadComposerRoute(
         contentPaddingTop = 0.dp,
         contentPaddingBottom = 0.dp,
         adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
+        frameEdge = frameEdge,
     )
     }
 }
@@ -18218,6 +18278,7 @@ private fun ThreadComposerContentWithSuggestions(
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp,
     adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean) -> Unit)? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -18309,6 +18370,7 @@ private fun ThreadComposerContentWithSuggestions(
         onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
         externalNativeEditingStateReader = adaptiveNativeEditingStateReader,
+        frameEdge = frameEdge,
     )
 }
 
@@ -20067,6 +20129,7 @@ private fun ThreadMessagesListContent(
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     val agentTyping = LocalThreadAgentTyping.current
+    val assistantOtter = LocalThreadAssistantOtter.current
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -23375,6 +23438,10 @@ private fun ThreadMessagesListContent(
             }
             threadListSegments += {
             item(key = ThreadBottomScrollPaddingListItemKey) {
+                Column(Modifier.fillMaxWidth()) {
+                // While the otter lies on this conversation's composer, the list ends a band as
+                // tall as the otter higher (web AssistantOtterListEnd), so it never covers a message.
+                ThreadAssistantOtterListEnd(assistantOtter)
                 Spacer(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -23391,6 +23458,7 @@ private fun ThreadMessagesListContent(
                                 (if (inlineSearchVisible) ThreadInlineSearchBarBottomInset else 0.dp)
                         )
                 )
+                }
             }
             }
             // Reversed (bottom-up) layout emits the same rows newest-first: physical item 0 is the
