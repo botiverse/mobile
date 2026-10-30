@@ -415,6 +415,7 @@
     <string name="thread_author_you">You</string>
     <string name="thread_error_open_thread">Unable to open thread</string>
     <string name="thread_external_author_hint">External %1$s user</string>
+    <string name="message_author_external_fallback">External user</string>
     <string name="thread_error_open_profile">Unable to open profile</string>
     <string name="thread_error_comments_unavailable">Comments are unavailable</string>
     <string name="thread_error_send_comment">Unable to send comment</string>

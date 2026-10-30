@@ -417,6 +417,7 @@
     <string name="thread_author_you">あなた</string>
     <string name="thread_error_open_thread">スレッドを開けませんでした</string>
     <string name="thread_external_author_hint">外部 %1$s ユーザー</string>
+    <string name="message_author_external_fallback">外部ユーザー</string>
     <string name="thread_error_open_profile">プロフィールを開けませんでした</string>
     <string name="thread_error_comments_unavailable">コメントは利用できません</string>
     <string name="thread_error_send_comment">コメントを送信できませんでした</string>

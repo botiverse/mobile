@@ -129,6 +129,7 @@ private data class MessagesWireMessage(
     val commentRef: MessagesWireCommentRef? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
+    @Serializable(with = LenientWireExternalAuthorSerializer::class)
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
@@ -461,21 +462,24 @@ private fun MessagesWireMessage.toDomain(
             contract = MemberKindWireContract.MessageSender,
         ) ?: return null
     val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=rest_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
+    // A missing/partial externalAuthor renders with a fallback author, never drops the message.
     val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName.ifBlank { null }) else null
+        if (external) {
+            externalMessageAuthorOrFallback(externalAuthor, senderName.ifBlank { null }, "rest_message_sender", id, diagnostics)
+        } else {
+            null
+        }
+    val authorId =
+        if (resolvedExternalAuthor != null) externalSenderIdOrSyntheticKey(senderId, resolvedExternalAuthor, id) else senderId
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
-        id = MemberId(senderId),
+        id = MemberId(authorId),
         displayName = resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId },
-        handle = senderName.ifBlank { senderId },
+        handle = resolvedExternalAuthor?.let { senderName.ifBlank { it.displayName } } ?: senderName.ifBlank { senderId },
         kind = authorKind,
         // Web parity: the sender subtitle carries the provider label for external
         // senders; senderDescription is a member field and stays member-only.
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
+        description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
         avatarUrl = resolvedExternalAuthor?.avatarUrl,
         presence = Presence.Offline,
     )

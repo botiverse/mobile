@@ -640,20 +640,22 @@ class SharedThreadStoreTest {
         assertEquals(convertedMessage.externalAuthor, roundTripItem.externalAuthor)
     }
     @Test
-    fun externalMessageFailsClosedWhenMissingExternalAuthor() {
-        val invalidSlackItem = externalSlackMessageItem(externalAuthor = null)
+    fun externalMessageMissingExternalAuthorKeepsFallbackAuthor() {
+        val slackItemWithoutAuthor = externalSlackMessageItem(externalAuthor = null)
         val logs = mutableListOf<String>()
 
-        val convertedMessage = invalidSlackItem.toMessage(
+        val convertedMessage = slackItemWithoutAuthor.toMessage(
             threadId = ThreadId("channel-slack"),
             channelId = ChannelId("channel-slack"),
             diagnostics = logs::add
         )
 
-        assertNull(convertedMessage)
+        val message = assertNotNull(convertedMessage)
+        assertEquals(MemberKind.External, message.author.kind)
+        assertEquals("Alice in Slack", message.externalAuthor?.displayName)
         assertTrue(
-            logs.any { it.contains("projection_value_rejected") && it.contains("field=externalAuthor") },
-            "Expected failure diagnostic for missing externalAuthor, got: $logs"
+            logs.any { it.contains("projection_value_defaulted") && it.contains("field=externalAuthor") },
+            "Expected defaulted diagnostic for missing externalAuthor, got: $logs"
         )
     }
     @Test
@@ -699,7 +701,7 @@ class SharedThreadStoreTest {
         assertEquals("slack", cachedMessage.externalAuthor?.provider)
     }
     @Test
-    fun rememberReplyParentCandidateFailsClosedForExternalRootMessageMissingExternalAuthor() = runTest {
+    fun rememberReplyParentCandidateKeepsExternalRootMessageMissingExternalAuthorWithFallbackAuthor() = runTest {
         val messageStore = SharedThreadMessageStore(scope = backgroundScope)
         val environmentId = "https://prod.example.test"
         val dataSource =
@@ -726,13 +728,15 @@ class SharedThreadStoreTest {
             threadChannelId = "thread-slack-root-bad"
         )
 
-        assertFalse(accepted, "rememberReplyParentCandidate must fail-closed if external root message lacks externalAuthor")
-        assertNull(
+        assertTrue(accepted, "an external root message without externalAuthor is kept with a fallback author")
+        val cachedMessage = assertNotNull(
             messageStore.getScoped(
                 requireNotNull(provenance.messageStoreScopeId),
                 ChannelId("channel-slack"),
                 MessageId("slack-root-bad")
             )
         )
+        assertEquals(MemberKind.External, cachedMessage.author.kind)
+        assertEquals("Alice in Slack", cachedMessage.externalAuthor?.displayName)
     }
 }

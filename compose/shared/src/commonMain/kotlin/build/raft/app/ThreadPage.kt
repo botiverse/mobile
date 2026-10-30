@@ -3041,6 +3041,41 @@ private fun RaftThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? 
     )
 }
 
+/** What an author avatar/name tap does. */
+internal sealed interface ThreadAuthorTapAction {
+    data class OpenProfile(val identity: MemberDetailIdentity) : ThreadAuthorTapAction
+    /** External (Slack-bridge) author: toast the external hint; never a profile or navigation. */
+    data object ExternalHint : ThreadAuthorTapAction
+    data object None : ThreadAuthorTapAction
+}
+
+/**
+ * An External author never opens a profile, whatever its (possibly synthetic) [RaftThreadMessageItem.authorId]:
+ * its tap shows the external hint. Other authors open [identity] when they have one.
+ */
+internal fun RaftThreadMessageItem.threadAuthorTapAction(
+    identity: MemberDetailIdentity? = memberDetailIdentity(),
+): ThreadAuthorTapAction =
+    when {
+        externalAuthor != null -> ThreadAuthorTapAction.ExternalHint
+        identity != null -> ThreadAuthorTapAction.OpenProfile(identity)
+        else -> ThreadAuthorTapAction.None
+    }
+
+/**
+ * Toast for an External author's avatar/name tap: "External Slack user" when the provider is
+ * known, else the generic "External user" (the fallback author of a message the bridge sent
+ * without attribution).
+ */
+internal fun externalAuthorHintText(
+    message: RaftThreadMessageItem,
+    providerTemplate: String,
+    genericHint: String,
+): String =
+    message.externalAuthor?.providerLabel()
+        ?.let { providerTemplate.replace(ThreadLocalizedFeedbackPlaceholder, it) }
+        ?: genericHint
+
 internal fun RaftThreadMessageItem.threadAuthorGestureIdentity(): String =
     "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
 
@@ -6349,11 +6384,11 @@ private fun SharedThreadRouteContentContent(
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val externalAuthorHintTemplate =
         stringResource(Res.string.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
+    val externalAuthorGenericHint = stringResource(Res.string.message_author_external_fallback)
     // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
     // tap surfaces a provider identity hint instead of silently doing nothing.
     val onExternalAuthorHint: (RaftThreadMessageItem) -> Unit = { message ->
-        val provider = message.externalAuthor?.providerLabel() ?: "external"
-        bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
+        bridge.toast(externalAuthorHintText(message, externalAuthorHintTemplate, externalAuthorGenericHint))
     }
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
@@ -26733,6 +26768,9 @@ private fun ThreadMessageCardContent(
             // Task #80: a row whose sender no source could name yet (a seeded stand-in) shows the
             // neutral "Unknown", never a raw id, until the canonical load names it.
             message.authorName.isBlank() -> stringResource(Res.string.thread_comments_unknown_author)
+            // An External sender the wire did not name shows the localized "External user".
+            message.externalAuthor?.displayNameIsFallback == true ->
+                stringResource(Res.string.message_author_external_fallback)
             else -> message.authorName
         }
     // task #392 (port of Web PR #7545): agent model label, resolved live from
@@ -26845,11 +26883,11 @@ private fun ThreadMessageCardContent(
                 "authorId=${message.authorId} authorKind=${message.authorKind} " +
                 "targetMemberId=${authorProfileIdentity?.memberId?.value.orEmpty()}"
         )
-        if (authorProfileIdentity == null && message.externalAuthor != null) {
-            onExternalAuthor(message)
-            return
+        when (val action = message.threadAuthorTapAction(authorProfileIdentity)) {
+            ThreadAuthorTapAction.ExternalHint -> onExternalAuthor(message)
+            is ThreadAuthorTapAction.OpenProfile -> onOpenMember(action.identity)
+            ThreadAuthorTapAction.None -> Unit
         }
-        authorProfileIdentity?.let(onOpenMember)
     }
     // The author's profile card under a mouse or trackpad pointer on the avatar (web MessageItem's
     // avatar hover card); View Profile is the avatar's own click.

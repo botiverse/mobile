@@ -236,13 +236,51 @@ class CanonicalMessageRowProjectionTest {
         // An ordinary sender never surfaces an author, even if a row carried one.
         assertNull(assertNotNull(row().copy(externalAuthor = author).toAppMessage()).externalAuthor)
 
-        // An external sender without its author is rejected (web/realtime parity), with a payload-free diagnostic.
+        // An external sender without its author is kept with a fallback author (realtime parity),
+        // with a payload-free diagnostic.
         val diagnostics = mutableListOf<String>()
-        assertNull(row(senderType = "external_projection").toAppMessage(diagnostics = diagnostics::add))
+        val kept = assertNotNull(row(senderType = "external_projection").toAppMessage(diagnostics = diagnostics::add))
+        assertEquals(MemberKind.External, kept.author.kind)
+        assertEquals("Ada", kept.author.displayName)
+        assertEquals("Ada", assertNotNull(kept.externalAuthor).displayName)
         assertEquals(
-            listOf("projection_value_rejected source=canonical_message_sender field=externalAuthor value=missing messageId=m1"),
+            listOf("projection_value_defaulted source=canonical_message_sender field=externalAuthor value=missing messageId=m1"),
             diagnostics,
         )
+    }
+
+    @Test
+    fun externalSenderWithBlankIdAndPartialAuthorKeepsRowWithFallbackAuthor() {
+        // The decoder stores absent author fields blank (revision 0); the projection reads them as absent.
+        val partial = CanonicalExternalAuthorWire(
+            actorKind = "",
+            actorProjectionRevision = 0,
+            appRegistrationId = "",
+            displayName = "",
+            externalActorId = "",
+            externalConversationId = "",
+            externalMessageId = "",
+            installId = "",
+            projectionId = "",
+            provider = "slack",
+            workspaceId = "",
+        )
+        val blankSender = row(senderType = "third_party_app").copy(senderId = "", senderName = "", externalAuthor = partial)
+        val message = assertNotNull(blankSender.toAppMessage(diagnostics = {}))
+        assertEquals(MemberKind.External, message.author.kind)
+        assertEquals("external:message:m1", message.author.id.value)
+        assertEquals("Slack", message.author.description)
+        val author = assertNotNull(message.externalAuthor)
+        assertTrue(author.displayNameIsFallback)
+        assertEquals("slack", author.provider)
+        assertEquals("unknown", author.actorKind)
+        assertNull(author.projectionId)
+        assertNull(author.actorProjectionRevision)
+
+        // A user/agent row is never widened: the blank id stays as-is (no synthetic key, no external author).
+        val user = assertNotNull(row(senderType = "user").copy(senderId = "").toAppMessage(diagnostics = {}))
+        assertEquals("", user.author.id.value)
+        assertNull(user.externalAuthor)
     }
 
     @Test

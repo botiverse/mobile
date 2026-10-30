@@ -120,6 +120,7 @@ internal data class WireMessage(
     val commentRef: WireCommentRef? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
+    @Serializable(with = LenientWireExternalAuthorSerializer::class)
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
@@ -292,12 +293,13 @@ private fun WireMessage.toMessageItem(
             contract = MemberKindWireContract.MessageSender,
         ) ?: return null
     val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=thread_wire_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
+    // A missing/partial externalAuthor renders with a fallback author, never drops the reply.
     val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName) else null
+        if (external) {
+            externalMessageAuthorOrFallback(externalAuthor, senderName, "thread_wire_sender", id, diagnostics)
+        } else {
+            null
+        }
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val hasTaskProjection = taskNumber != null || taskStatus != null
     val resolvedTaskStatus =
@@ -316,11 +318,19 @@ private fun WireMessage.toMessageItem(
     val summary = threadSummary
     return RaftThreadMessageItem(
         id = id,
-        authorId = senderId.ifBlank { "unknown" },
+        authorId =
+            if (resolvedExternalAuthor != null) {
+                externalSenderIdOrSyntheticKey(senderId, resolvedExternalAuthor, id)
+            } else {
+                senderId.ifBlank { "unknown" }
+            },
         authorName = resolvedName,
         authorDescription =
-            resolvedExternalAuthor?.providerLabel()
-                ?: senderDescription?.takeIf { it.isNotBlank() },
+            if (resolvedExternalAuthor != null) {
+                resolvedExternalAuthor.providerLabel()
+            } else {
+                senderDescription?.takeIf { it.isNotBlank() }
+            },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && senderId == currentUserId,
         avatarLabel = resolvedName.toRaftAvatarLabel(),

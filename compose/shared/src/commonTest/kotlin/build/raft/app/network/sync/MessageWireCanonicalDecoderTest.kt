@@ -163,11 +163,59 @@ class MessageWireCanonicalDecoderTest {
         val absent = assertNotNull(decodeCanonicalMessageWire(requiredRow(), ProductionFace.EnrichedUpdated))
         assertFalse(MessageAggregateField.ExternalAuthor in absent.presentAggregates)
 
-        // A required leaf missing or mistyped is not a valid author (same fail-soft rule as the other nested shapes).
+        // A partial author is kept, never nulled: a missing or mistyped leaf is stored blank (revision 0)
+        // and every real field survives, so the message still shows who it came from.
         val missingLeaf = buildJsonObject { author.forEach { (k, v) -> if (k != "installId") put(k, v) } }
+        val keptMissing = assertNotNull(
+            assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to missingLeaf), ProductionFace.EnrichedUpdated)).row.externalAuthor,
+        )
+        assertEquals("", keptMissing.installId)
+        assertEquals("jinlu", keptMissing.displayName)
+        assertEquals("proj-1", keptMissing.projectionId)
         val stringRevision = buildJsonObject { author.forEach { (k, v) -> put(k, v) }; put("actorProjectionRevision", "7") }
-        for (bad in listOf(missingLeaf, stringRevision)) {
-            assertNull(assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to bad), ProductionFace.EnrichedUpdated)).row.externalAuthor)
+        val keptRevision = assertNotNull(
+            assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to stringRevision), ProductionFace.EnrichedUpdated)).row.externalAuthor,
+        )
+        assertEquals(0L, keptRevision.actorProjectionRevision)
+        assertEquals("slack", keptRevision.provider)
+        val onlyName = buildJsonObject { put("displayName", "Bridge Bot") }
+        val keptName = assertNotNull(
+            assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to onlyName), ProductionFace.EnrichedUpdated)).row.externalAuthor,
+        )
+        assertEquals("Bridge Bot", keptName.displayName)
+        assertEquals("", keptName.provider)
+        // A non-object value is still no author (the projection then builds the fallback).
+        assertNull(
+            assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to JsonPrimitive("x")), ProductionFace.EnrichedUpdated)).row.externalAuthor,
+        )
+    }
+
+    @Test
+    fun externalSenderWithoutSenderIdIsKeptButUserAndAgentStillFailClosed() {
+        for (externalType in listOf("external_projection", "third_party_app")) {
+            for (senderId in listOf<kotlinx.serialization.json.JsonElement?>(null, JsonNull)) {
+                val raw = buildJsonObject {
+                    requiredRow("senderType" to JsonPrimitive(externalType)).forEach { (key, value) ->
+                        if (key != "senderId") put(key, value)
+                    }
+                    if (senderId != null) put("senderId", senderId)
+                }
+                val violations = mutableListOf<MessageWireCanonicalViolation>()
+                val decoded = assertNotNull(decodeCanonicalMessageWire(raw, ProductionFace.MessageNew, violations::add))
+                assertEquals("", decoded.row.senderId)
+                assertTrue(violations.isEmpty())
+                assertNotNull(decoded.row.toAppMessage(diagnostics = {}))
+            }
+        }
+        for (memberType in listOf("user", "agent")) {
+            val raw = buildJsonObject {
+                requiredRow("senderType" to JsonPrimitive(memberType)).forEach { (key, value) ->
+                    if (key != "senderId") put(key, value)
+                }
+            }
+            val violations = mutableListOf<MessageWireCanonicalViolation>()
+            assertNull(decodeCanonicalMessageWire(raw, ProductionFace.MessageNew, violations::add))
+            assertEquals(setOf("senderId"), violations.single().missingOrInvalidRequiredFields)
         }
     }
 
