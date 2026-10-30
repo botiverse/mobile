@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -4357,7 +4358,9 @@ private fun RaftThreadTab.toRaftTabSpec(): RaftTabSpec<RaftThreadTab> =
                 RaftThreadTab.Tasks -> stringResource(Res.string.thread_tab_tasks)
                 RaftThreadTab.Files -> stringResource(Res.string.thread_tab_files)
             },
-        iconName = icon
+        iconName = icon,
+        // web ChatPanel tabs: the Chat tab is raft-ui `ChatIcon` (bubble with three dots).
+        glyph = if (this == RaftThreadTab.Chat) RaftConversationKindGlyph.Chat else null
     )
 
 @OptIn(ExperimentalUuidApi::class)

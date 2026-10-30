@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -20,7 +22,9 @@ internal data class RaftTabSpec<T>(
     val label: String,
     val iconName: RaftLucideIconName,
     /** Minimum width. Unused by the RaftTabStrip tabs, which hug their label. */
-    val width: Dp = RaftTopTabBarDefaults.TabWidth
+    val width: Dp = RaftTopTabBarDefaults.TabWidth,
+    /** A raft-ui conversation glyph drawn instead of [iconName] (web Chat tab: `ChatIcon`). */
+    val glyph: RaftConversationKindGlyph? = null
 )
 
 internal data class RaftTopTabBarItem(
@@ -28,7 +32,9 @@ internal data class RaftTopTabBarItem(
     val label: String,
     val iconName: RaftLucideIconName,
     /** Minimum width. Unused by the RaftTabStrip tabs, which hug their label. */
-    val width: Dp = RaftTopTabBarDefaults.TabWidth
+    val width: Dp = RaftTopTabBarDefaults.TabWidth,
+    /** A raft-ui conversation glyph drawn instead of [iconName] (web Chat tab: `ChatIcon`). */
+    val glyph: RaftConversationKindGlyph? = null
 )
 
 internal object RaftTopTabBarDefaults {
@@ -121,7 +127,8 @@ internal fun <T> RaftTabSpec<T>.toTopTabBarItem(): RaftTopTabBarItem =
         key = key.toString(),
         label = label,
         iconName = iconName,
-        width = width
+        width = width,
+        glyph = glyph
     )
 
 @Composable
@@ -151,12 +158,23 @@ internal fun RaftTopTabBar(
                         selected = item.key == selectedKey,
                         onClick = { onSelectedKeyChange(item.key) },
                         icon = {
-                            RaftLucideIcon(
-                                item.iconName,
-                                modifier = Modifier.size(16.dp),
-                                color = raftArgbHex(LocalRaftContentColor.current),
-                                strokeWidth = 2f
-                            )
+                            val glyph = item.glyph
+                            if (glyph != null) {
+                                // raft-ui Tabs: `[&_svg]:size-4 [&_svg]:stroke-2` on the 18-unit glyph.
+                                RaftConversationKindIcon(
+                                    glyph,
+                                    size = 16.dp,
+                                    color = LocalRaftContentColor.current,
+                                    strokeWidth = 2f
+                                )
+                            } else {
+                                RaftLucideIcon(
+                                    item.iconName,
+                                    modifier = Modifier.size(16.dp),
+                                    color = raftArgbHex(LocalRaftContentColor.current),
+                                    strokeWidth = 2f
+                                )
+                            }
                         },
                     )
                 }

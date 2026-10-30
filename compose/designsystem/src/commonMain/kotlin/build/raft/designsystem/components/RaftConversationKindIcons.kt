@@ -19,20 +19,31 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 
 /**
- * raft-ui's two conversation-kind glyphs (`ThreadIcon`, `DirectMessageIcon`), drawn on their
+ * raft-ui's conversation glyphs (`ThreadIcon`, `DirectMessageIcon`, `ChatIcon`), drawn on their
  * 18x18 viewBox at Lucide's 1.5-unit stroke (raft-design #751): a thread is two outlined
  * bubbles, the back one stopping a stroke short of the front one (raft-design #752, as in Lucide's
  * `messages-square`); a direct message is the outline bubble with a person. Inbox and Activity
- * titles lead with them, beside Lucide `hash` for a channel.
+ * titles lead with them, beside Lucide `hash` for a channel. [Chat] is raft-ui `ChatIcon`
+ * (conversation-icons.tsx): the closed bubble with three dots, the Chat tab of a channel or
+ * thread panel.
  */
 enum class RaftConversationKindGlyph {
     Thread,
     DirectMessage,
+    Chat,
 }
 
 private val BubbleOutline by lazy {
     parse("M16.25 5V4.25C16.25 3.15 15.35 2.25 14.25 2.25H3.75C2.65 2.25 1.75 3.15 1.75 4.25V11.25C1.75 12.35 2.65 13.25 3.75 13.25H5.75V16.25L7.5 14.85")
 }
+private val ChatBubble by lazy {
+    parse("M14.25 2.25H3.75C2.65 2.25 1.75 3.15 1.75 4.25V11.25C1.75 12.35 2.65 13.25 3.75 13.25H5.75V16.25L9.5 13.25H14.25C15.35 13.25 16.25 12.35 16.25 11.25V4.25C16.25 3.15 15.35 2.25 14.25 2.25Z")
+}
+
+/** ChatIcon's three filled dots: r 0.75 at (6.5 | 9 | 11.5, 7.75). */
+private val ChatDotCentersX = floatArrayOf(6.5f, 9f, 11.5f)
+private const val ChatDotY = 7.75f
+private const val ChatDotRadius = 0.75f
 private val ThreadBackBubble by lazy {
     parse("M3.5 11.5L1.75 13.25V4.25A2 2 0 0 1 3.75 2.25H11.25")
 }
@@ -79,6 +90,10 @@ fun RaftConversationKindIcon(
                     drawPath(BubbleOutline, ink, style = stroke)
                     drawPath(DirectMessageHead, ink, style = stroke)
                     drawPath(DirectMessageShoulders, ink, style = stroke)
+                }
+                RaftConversationKindGlyph.Chat -> {
+                    drawPath(ChatBubble, ink, style = stroke)
+                    ChatDotCentersX.forEach { x -> drawCircle(ink, radius = ChatDotRadius, center = Offset(x, ChatDotY)) }
                 }
             }
         }
