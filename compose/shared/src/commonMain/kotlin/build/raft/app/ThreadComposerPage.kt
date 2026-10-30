@@ -138,7 +138,9 @@ internal fun threadComposerImageAction(longPress: Boolean): String =
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerHostKeyboardBasePadding = 12.dp
-private val ThreadComposerVisualInputWidth = 321.dp
+// web composer cases: a 342px canvas with the composer 20px in from each side and 8px down.
+private val ThreadComposerVisualInputWidth = 302.dp
+private const val ThreadComposerVisualInputTop = 8f
 // raft-ui `ComposerInput` `min-h-6`.
 private val ThreadComposerTextFieldMinHeight = 24.dp
 private val ThreadComposerTextFieldMaxHeight = 80.dp
@@ -1469,8 +1471,9 @@ internal fun ThreadComposerScreen() {
                 ) {
                     Box(
                         modifier = Modifier
+                            .align(Alignment.TopCenter)
                             .width(ThreadComposerVisualInputWidth)
-                            .offset(x = 0f, y = 14f),
+                            .offset(x = 0f, y = ThreadComposerVisualInputTop),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         ThreadComposerContent(

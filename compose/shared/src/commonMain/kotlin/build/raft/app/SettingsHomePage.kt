@@ -16449,10 +16449,11 @@ internal fun SettingsPageVisualContent() {
     val spec = settingsVisualSpec(variant)
     // React baselines render settings pages flush to the viewport top; no host
     // status-bar spacer or safe-area padding may leak into fixture captures.
+    // web: the SettingsPanel sits in a 390x844 `data-visual-case` box, the full viewport.
     Box(
         modifier =
             Modifier
-                .width(342.dp)
+                .width(390.dp)
                 .background(RaftColor.SurfaceWhite)
     ) {
         SettingsDetailShell(
@@ -16522,10 +16523,12 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                     RaftSettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
                     RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
+            // web react-provider stub: `/auth/identities` = [google <fxOwner.email>], GitHub
+            // offered but not linked (account page and its error state alike).
             else ->
                 listOf(
                     RaftSettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
-                    RaftSettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
+                    RaftSettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
                     RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
         }
@@ -16542,12 +16545,10 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
                         roleLabel = fixture.ownerRoleLabel
                     ),
                 connectedAccounts = connectedAccounts,
-                passwordExpanded = variant == "account-password-expanded" || variant == "account-error",
-                saveErrorCode = "server_unavailable".takeIf { variant == "account-error" },
-                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" },
-                passwordErrorCode = "invalid_current_password".takeIf { variant == "account-error" },
-                providerErrorId = "github".takeIf { variant == "account-error" },
-                providerErrorCode = "oauth_provider_unavailable".takeIf { variant == "account-error" }
+                passwordExpanded = variant == "account-password-expanded",
+                // web components.settings.account.error-state surfaces only the avatar upload
+                // failure (`accountInitialError`); no save, password or provider error.
+                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" }
             ),
         applyTopSafeArea = false,
         onPasswordChange = { _, _ -> },
@@ -16590,28 +16591,18 @@ private fun SettingsServerDangerModalVisualContent() {
     var modalSlug by remember { mutableStateOf("") }
     val serverSlug = snapshot.profile.slug
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(61.dp)
-                        .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+        // web opens the dialog over the real Server Profile tab of SettingsPanel, so the
+        // backdrop is the same production page components.settings.server.profile captures.
+        val spec = settingsVisualSpec("server-profile")
+        Box(modifier = Modifier.width(390.dp).fillMaxHeight().background(RaftColor.SurfaceWhite)) {
+            SettingsDetailShell(
+                title = spec.title,
+                subtitle = settingsVisualHeaderSubtitle(spec.variant),
+                iconName = spec.iconName,
+                applyTopSafeArea = false,
+                onBack = {}
             ) {
-                RaftBackButton(onClick = {}, label = stringResource(Res.string.common_back))
-                Text(
-                    "Server Profile",
-                    style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(RaftColor.BorderBlack))
-            Box(modifier = Modifier.fillMaxSize().padding(start = 20.dp, top = 43.dp, end = 20.dp, bottom = 20.dp)) {
-                SettingsServerProfileBackdropCard(snapshot)
+                SettingsVisualPageBody(spec)
             }
         }
         SettingsServerDeleteConfirmationDialog(
@@ -16628,65 +16619,6 @@ private fun SettingsServerDangerModalVisualContent() {
         )
     }
 }
-
-@Composable
-private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) {
-    Column(
-        modifier =
-            Modifier
-                .width(350.dp)
-                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
-                .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(RaftLucideIconName.Building2, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
-            Text(
-                "PROFILE",
-                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 1.3.sp, color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
-        SettingsServerBackdropField(label = "Name", value = snapshot.profile.name)
-        SettingsServerBackdropField(label = "Slug", value = snapshot.profile.slug)
-    }
-}
-
-@Composable
-private fun SettingsServerBackdropField(
-    label: String,
-    value: String
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            label,
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-        Box(modifier = Modifier.fillMaxWidth().height(39.dp)) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .raftCardSurface()
-                        .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    value,
-                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
 
 @Composable
 private fun SettingsVisualLanguageRegionContent() {

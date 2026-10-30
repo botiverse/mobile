@@ -1031,7 +1031,8 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
-                    .put("visualFixture", "default"),
+                    // The default row plus web THREAD_MESSAGE_FIXTURE's linked task #10.
+                    .put("visualFixture", "message_row"),
             crop = THREAD_MESSAGE_ROW_CROP,
             requireReactionAtlas = true,
             cropOverride = { awaitThreadRowContentCrop("components.thread.message.row", "visual-thread-message-row", widthDp = 374, insetDp = 16) }
@@ -1791,6 +1792,9 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row-deleted-human")
                     .put("visualFixture", "deleted_human"),
             crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP,
+            // The row carries a reaction: wait for the emoji atlas like message.row, so the
+            // capture never races its load (both cases crashed mid-capture without it).
+            requireReactionAtlas = true,
             cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.deleted-human", "visual-thread-message-row-deleted-human", widthDp = 374, insetDp = 16) }
         )
     }
@@ -2418,7 +2422,12 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-rich")
                     .put("visualFixture", "rich_content"),
-            crop = THREAD_MESSAGE_ROW_RICH_CONTENT_CROP
+            crop = THREAD_MESSAGE_ROW_RICH_CONTENT_CROP,
+            // The row carries a reaction: wait for the emoji atlas like message.row, so the
+            // capture never races its load (both cases crashed mid-capture without it).
+            requireReactionAtlas = true,
+            // web crops the 342px row element to its content height (component-bounds).
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.rich-content", "visual-thread-message-row-rich", widthDp = 342) }
         )
     }
 
@@ -6965,12 +6974,12 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 284
             )
-        // The composer sits at 24dp from the screen edge and 14dp from the top; web's
-        // 342x100 canvas puts it 20dp in and 8dp down, so the window starts 4dp / 6dp in.
+        // The host lays the composer out as web's 342x100 canvas does (20dp in, 8dp down),
+        // so the window is that canvas: the 342dp component box, 24dp from the screen edge.
         private val THREAD_COMPOSER_COMPONENT_CROP =
             VisualCrop(
-                leftDp = 4,
-                topDp = 6,
+                leftDp = 24,
+                topDp = 0,
                 widthDp = 342,
                 heightDp = 100
             )
