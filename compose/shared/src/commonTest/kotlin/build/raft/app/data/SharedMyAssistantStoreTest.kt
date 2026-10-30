@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -15,6 +15,12 @@ class SharedMyAssistantStoreTest {
     private val key = MyAssistantKey(serverId = "s1", userId = "u1")
     private val ready = MyAssistantAnswer(true, MyAssistantRecord("a1", "Ada", "a1", "dm1"))
     private val settingUp = MyAssistantAnswer(true, MyAssistantRecord("a1", "Ada", "a1", null))
+
+    /** Runs everything the store queued on backgroundScope, retries included (advanceUntilIdle leaves it alone). */
+    private fun TestScope.settle() {
+        advanceTimeBy(60_000)
+        runCurrent()
+    }
 
     /** Answers in order; the last one repeats. */
     private class ScriptedApi(vararg results: MyAssistantFetchResult) : RaftMyAssistantApi {
@@ -34,9 +40,9 @@ class SharedMyAssistantStoreTest {
             val store = SharedMyAssistantStore(api, scope = backgroundScope)
             store.ensureLoaded(key)
             store.ensureLoaded(key)
-            advanceUntilIdle()
+            settle()
             store.ensureLoaded(key)
-            advanceUntilIdle()
+            settle()
             assertEquals(listOf("s1"), api.asked)
             assertEquals(ready, store.answerFor(key))
         }
@@ -48,7 +54,7 @@ class SharedMyAssistantStoreTest {
             notAvailable.ensureLoaded(key)
             val failed = SharedMyAssistantStore(ScriptedApi(MyAssistantFetchResult.Failed(503)), scope = backgroundScope)
             failed.ensureLoaded(key)
-            advanceUntilIdle()
+            settle()
             assertEquals(MyAssistantAnswer.NotEnabled, notAvailable.answerFor(key))
             assertEquals(MyAssistantAnswer.NotEnabled, failed.answerFor(key))
         }
@@ -73,7 +79,7 @@ class SharedMyAssistantStoreTest {
             advanceTimeBy(5_001)
             assertEquals(3, api.asked.size, "second refetch 5s later")
             assertEquals(ready, store.answerFor(key))
-            advanceUntilIdle()
+            settle()
             assertEquals(3, api.asked.size, "no more once the DM exists")
         }
 
@@ -83,7 +89,7 @@ class SharedMyAssistantStoreTest {
             val api = ScriptedApi(MyAssistantFetchResult.Answer(settingUp))
             val store = SharedMyAssistantStore(api, scope = backgroundScope)
             store.ensureLoaded(key)
-            advanceUntilIdle()
+            settle()
             assertEquals(1 + MyAssistantDmSetupRetryDelaysMillis.size, api.asked.size)
             assertEquals(settingUp, store.answerFor(key))
         }
