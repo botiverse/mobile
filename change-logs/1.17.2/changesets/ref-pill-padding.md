@@ -3,7 +3,7 @@ type: fixed
 area: messages
 platforms:
   - android
-pull_request: TBD
+pull_request: https://github.com/botiverse/mobile/pull/4000
 rollout: full
 ---
 
