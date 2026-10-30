@@ -1,23 +1,13 @@
 package build.raft.app.assistant
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftRobolectricScreenshot
-import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RobolectricComposeActivityRule
-import build.raft.app.ThreadComposerContent
-import build.raft.app.ThreadComposerDock
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -25,8 +15,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
-import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -34,14 +22,27 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
+import org.robolectric.Shadows.shadowOf
+import android.os.Looper
+import java.time.Duration
+import androidx.compose.foundation.layout.Box
+import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.cmp.host.LocalRaftHost
+import build.raft.app.cmp.host.RaftCmpHost
+import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.compat.pager.RaftPagerHost
+import kotlinx.serialization.json.JsonObject
 
 /**
  * The assistant's panel open over a page (web AssistantOtter's phone Drawer with
  * AssistantOtterPanel): the drawer window, 82% of the window tall over the scrim; the panel head
- * (the otter's head, the name, the meta line, collapse) and the DM under it. The DM here is a
- * stand-in for the embedded conversation page (THREAD_PAGE, which needs a live shell): two of
- * the assistant's lines over the real composer. Light, dark, and paused (the chip and the
- * sleeping mood's reading line).
+ * (the otter's head, the name, the meta line, collapse) and the DM under it. The DM is the real
+ * conversation page (SharedThreadRouteContent in its own pager, as RaftChildPage mounts
+ * THREAD_PAGE) fed by the thread visual fixtures' data path ([AssistantDmFixturePage]): a brief
+ * with a reaction and a reply thread, the owner's answer, the assistant's reply, and the
+ * composer. Inside the panel the page has no head and no tabs. Light, dark, and paused (the chip
+ * and the sleeping mood's reading line).
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -66,7 +67,10 @@ class ThreadAssistantPanelScreenshotTest {
             appearance,
             reportDir = "build/reports/home-screenshots",
             activities = activities,
-            root = { dialogFittedToItsWindow() },
+            root = {
+                waitForTheDm()
+                dialogFittedToItsWindow()
+            },
         ) {
             val pager =
                 remember {
@@ -82,41 +86,46 @@ class ThreadAssistantPanelScreenshotTest {
                         endInset = RaftAssistantOtterDefaults.PhoneEndInset,
                         onOpen = {},
                         assistantName = "Otto",
-                        agentId = "agent-otto",
+                        agentId = AssistantDmFixtureAgentId,
                         serverId = "server-1",
-                        dmChannelId = "dm-otto",
+                        dmChannelId = AssistantDmFixtureChannelId,
                         readsDms = true,
                         paused = paused,
                         panelOpen = true,
+                        panelEmbed = ThreadAssistantPanelEmbed(AssistantDmFixtureAgentId) {},
                     )
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val host =
+                remember {
+                    val transport = HostBridgeTransport { _, _, _ -> }
+                    val navigator =
+                        object : RaftCmpNavigator {
+                            override fun openPage(pageName: String, pageData: JsonObject) = Unit
+
+                            override fun closePage() = Unit
+                        }
+                    RaftCmpHost(BridgeWireHostCapabilities(transport), navigator, bridgeTransport = transport)
+                }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftHost provides host) {
                 RaftDesignSystemTheme {
-                    ThreadAssistantPanelSheet(otter) { StandInDm() }
+                    ThreadAssistantPanelSheet(otter) {
+                        // As RaftChildPage mounts THREAD_PAGE in production: the page in its own pager.
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            RaftPagerHost(factory = { AssistantDmFixturePage() }, args = remember { assistantDmFixturePageArgs() })
+                        }
+                    }
                 }
             }
         }
 
-    /** The assistant's DM as the conversation page shows it, reduced to two lines and the composer. */
-    @Composable
-    private fun ColumnScope.StandInDm() {
-        Column(
-            Modifier.weight(1f).fillMaxWidth().background(RaftTheme.colors.layerCanvas).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
-        ) {
-            RaftText("Otto · 9:02", style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
-            RaftText(
-                "Morning brief: 3 threads need you. #proj-mobile-release is waiting on the TestFlight build.",
-                style = RaftTheme.typography.body,
-                color = RaftTheme.colors.foreground,
-            )
-        }
-        ThreadComposerDock {
-            ThreadComposerContent(
-                payload = RaftThreadComposerPayload(instanceId = "assistant-dm", placeholder = "Message Otto"),
-                onEvent = { _, _, _, _ -> },
-                attachmentPreviewEnabled = false,
-            )
+    /**
+     * The page loads its messages off the main thread (the data source's coroutines): give it real
+     * time as well as the main looper's virtual time before the capture.
+     */
+    private fun waitForTheDm() {
+        repeat(40) {
+            Thread.sleep(50)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
         }
     }
 
