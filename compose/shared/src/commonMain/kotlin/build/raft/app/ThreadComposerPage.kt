@@ -1618,9 +1618,9 @@ private fun threadComposerVisualFixture(
     val base =
         RaftThreadComposerPayload(
             instanceId = resolvedInstanceId,
-            // components.thread.composer.states draft — matches the react
-            // render host's rendered draft (latest/react capture, task #370).
-            seedText = "Review the Android composer crop",
+            // components.thread.composer.states draft: web's `fxMessages.composerSeed`
+            // (VisualFixtureData.Messages.COMPOSER_SEED).
+            seedText = "Review the Android composer crop before release.",
             syncNonce = 1,
             focusRequestNonce = 0,
             placeholder = "Message design",
@@ -1663,7 +1663,7 @@ private fun threadComposerVisualFixture(
         )
     return when (fixture) {
         "empty" -> base.copy(seedText = "")
-        "as_task_selected" -> base.copy(seedAsTask = true, seedText = "Review the Android composer crop")
+        "as_task_selected" -> base.copy(seedAsTask = true)
         "pending_mention_actions" ->
             base.copy(
                 seedText = "",
