@@ -21,7 +21,8 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftTasksApi
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SharedTasksDataSource
-import build.raft.app.data.SharedThreadDataSource
+import build.raft.app.SharedThreadDataSource
+import build.raft.app.get
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
