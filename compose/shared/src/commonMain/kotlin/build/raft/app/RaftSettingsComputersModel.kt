@@ -15,8 +15,6 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
-import build.raft.app.data.BundledRuntimeCatalog
-import build.raft.app.data.RaftRuntimeCatalogNames
 import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
@@ -78,11 +76,11 @@ internal data class RaftComputerRuntimeChip(
  * Web MachineDetailPanel "Detected Runtimes": every runtime a computer can run
  * (`getMachineRuntimeDisplayOptions`: supported, not deprecated), in catalog order, each
  * marked detected or why not, so the row shows what is missing as well as what is there.
- * The runtimes are [catalog]'s: the server catalog read last in this process, else the bundled table.
+ * The runtimes are [catalog]'s: the computer's own server's ([rememberServerRuntimeCatalog]).
  */
 internal fun raftComputerRuntimeChips(
     detected: List<String>,
-    catalog: ServerRuntimeCatalog = RaftRuntimeCatalogNames.latest() ?: BundledRuntimeCatalog,
+    catalog: ServerRuntimeCatalog,
 ): List<RaftComputerRuntimeChip> =
     catalog.runtimes.filter { it.supported && !it.deprecated }.map { runtime ->
         RaftComputerRuntimeChip(

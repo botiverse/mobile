@@ -73,6 +73,28 @@ class SharedCreateAgentFormStoreTest {
             servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
         )
 
+    @Test
+    fun aCreateIsRememberedOnlyWithAComputerAndARuntime() = runPortableCoroutineTest {
+        val prefs = mutableMapOf<String, String>()
+        val store = SharedCreateAgentFormStore(
+            RaftComputersApiClient(SequencedFormComputersApi()),
+            this,
+            lastConfigs = CreateAgentLastConfigRepository(
+                object : SharedPreferenceStore {
+                    override fun getString(key: String): String? = prefs[key]
+                    override fun putString(key: String, value: String?) {
+                        if (value == null) prefs.remove(key) else prefs[key] = value
+                    }
+                }
+            )
+        )
+        store.rememberCreatedAgent("server-1", machineId = null, runtime = "codex")
+        assertEquals(null, store.rememberedCreateRuntime("server-1"))
+        store.rememberCreatedAgent("server-1", machineId = "machine-1", runtime = "codex")
+        assertEquals("codex", store.rememberedCreateRuntime("server-1"))
+        assertEquals(null, store.rememberedCreateRuntime("server-2"))
+    }
+
     private class SequencedFormComputersApi(
         var runtimeOptionsBody: String = canonicalRuntimeOptionsBody
     ) : RaftComputersApi {

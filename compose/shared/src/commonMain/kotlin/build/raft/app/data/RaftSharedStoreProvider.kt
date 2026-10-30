@@ -658,6 +658,7 @@ internal class RaftSharedStoreProvider private constructor(
     private fun allComputersStores(): List<SharedComputersStore> =
         shellComputersStores.entries().map { (_, store) -> store }.distinct()
     private val shellCreateAgentFormStores = RaftShellScopedStoreCache<SharedCreateAgentFormStore>()
+    private val shellServerRuntimeCatalogRepositories = RaftShellScopedStoreCache<SharedServerRuntimeCatalogRepository>()
     private val shellCreateAgentFormOwnerJobs = RaftShellScopedStoreCache<Job>()
     private val shellAuthLoginGenerations = RaftShellScopedStoreCache<SharedAuthLoginGeneration>()
     private val shellAuthLoginGenerationJobs = RaftShellScopedStoreCache<Job>()
@@ -1992,6 +1993,29 @@ internal class RaftSharedStoreProvider private constructor(
             )
         }
 
+    /**
+     * The server runtime catalog (`GET servers/:id/runtimes`) of this shell scope: one repository,
+     * so the create dialog, the Members page and the Computers pages share its per-server cache and
+     * in-flight request.
+     */
+    internal fun serverRuntimeCatalogRepository(scope: RaftShellStoreScope): SharedServerRuntimeCatalogRepository =
+        shellServerRuntimeCatalogRepositories.getOrPut(scope) {
+            val shellAuthStore = authStore(scope)
+            SharedServerRuntimeCatalogRepository(
+                api = RaftServerRuntimeCatalogNetworkApi(networkClient(scope)),
+                scope = threadSendScope,
+                cache = ServerRuntimeCatalogCache(sharedPreferenceStore),
+                scopeProvider = {
+                    shellAuthStore.readSession()?.let { session ->
+                        val environment = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                        val account = session.user.id.trim()
+                        if (environment.isBlank() || account.isBlank()) null else "$environment|$account"
+                    }
+                },
+                logger = sharedInfoLogger("SlockRuntimeCatalog", "shared_server_runtime_catalog")
+            )
+        }
+
     fun createAgentFormStore(scope: RaftShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {
             val shellAuthStore = authStore(scope)
@@ -2015,19 +2039,8 @@ internal class RaftSharedStoreProvider private constructor(
                     agents = RaftAgentsNetworkApi(networkClient(scope)),
                     logger = formLogger
                 ),
-                serverRuntimeCatalogs = SharedServerRuntimeCatalogRepository(
-                    api = RaftServerRuntimeCatalogNetworkApi(networkClient(scope)),
-                    scope = threadSendScope,
-                    cache = ServerRuntimeCatalogCache(sharedPreferenceStore),
-                    scopeProvider = {
-                        shellAuthStore.readSession()?.let { session ->
-                            val environment = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
-                            val account = session.user.id.trim()
-                            if (environment.isBlank() || account.isBlank()) null else "$environment|$account"
-                        }
-                    },
-                    logger = formLogger
-                )
+                serverRuntimeCatalogs = serverRuntimeCatalogRepository(scope),
+                lastConfigs = CreateAgentLastConfigRepository(sharedPreferenceStore)
             ).also { store ->
                 (shellAuthStore as? RaftAuthSessionEventSource)?.let { events ->
                     shellCreateAgentFormOwnerJobs.getOrPut(scope) {
@@ -2596,6 +2609,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAuthLoginGenerationJobs.remove(scope)?.cancel()
         shellAuthLoginGenerations.remove(scope)
         shellCreateAgentFormStores.remove(scope)
+        shellServerRuntimeCatalogRepositories.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellConversationForwardHistories.remove(scope)?.release()
         shellForegroundBannerStores.remove(scope)?.clear()

@@ -49,8 +49,24 @@ internal class SharedCreateAgentFormStore(
     },
     private val runtimeFormV2Loader: RuntimeFormV2Loader? = null,
     /** The server runtime catalog (`GET servers/:id/runtimes`); null: the bundled table only. */
-    private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null
+    private val serverRuntimeCatalogs: SharedServerRuntimeCatalogRepository? = null,
+    /** The last create's Computer and runtime per server; null: nothing is remembered. */
+    private val lastConfigs: CreateAgentLastConfigRepository? = null
 ) {
+    /** The runtime of the last agent created on [serverId] from this device, if any. */
+    fun rememberedCreateRuntime(serverId: String?): String? = lastConfigs?.read(serverId)?.runtime
+
+    /**
+     * Remembers a create that succeeded on [serverId] (web writes after the create, not on submit).
+     * An external agent has no Computer or runtime and is not remembered.
+     */
+    fun rememberCreatedAgent(serverId: String?, machineId: String?, runtime: String?) {
+        val machine = machineId?.trim().orEmpty()
+        val runtimeId = runtime?.trim().orEmpty()
+        if (machine.isEmpty() || runtimeId.isEmpty()) return
+        lastConfigs?.write(serverId, CreateAgentLastConfig(machine, runtimeId))
+    }
+
     /**
      * The runtimes [serverId] offers: the server's answer, else its cached answer, else the bundled
      * table. Never fails ([SharedServerRuntimeCatalogRepository]).
