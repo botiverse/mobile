@@ -118,5 +118,5 @@ internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
 
 internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = true
 
-/** Material fade through between the bottom tabs; see expect. */
-internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = true
+/** Bottom tabs switch at once, with no fade through (artin 10-30: "我不是很喜欢 删了吧"); see expect. */
+internal actual fun raftPlatformAppShellTabFadeThrough(): Boolean = false
