@@ -336,6 +336,12 @@ import kotlin.time.TimeSource
  */
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+/**
+ * components.thread.message.row: the default row plus the task its React fixture links
+ * (THREAD_MESSAGE_FIXTURE `linkedTask`, #10 in progress, claimed by Cindy). The menu cases
+ * keep [THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT], whose web fixture links no task.
+ */
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW = "message_row"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO = "new_message_menu_demo"
 /** Leading messages of the new-message-menu fixture that form its compact group. */
 internal const val THREAD_NEW_MESSAGE_MENU_TARGET_GROUP_SIZE = 3
@@ -420,7 +426,9 @@ internal fun threadMessageVisualHostPadding(visualFixture: String): Dp =
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
-        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> 0.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE,
+        // web captures the 342px element itself; its p-4 page is outside the crop.
+        THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> 0.dp
         else -> RaftAppSpacing.Md
     }
 
@@ -455,8 +463,18 @@ internal fun threadMessageVisualWidth(visualFixture: String): Dp =
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> 260.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY -> 260.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 -> 260.dp
+        // web `thread-message-rich`: `style={{ width: 342 }}`.
+        THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> 342.dp
         else -> 390.dp
     }
+/**
+ * `knownMarkdownTaskNumbers` for a row whose React twin knows no task of its conversation:
+ * MessageItem chips `#N` only for a task in the message's channel (its linked task, or a
+ * channel/server task with that channelId), and VisualTestingCases primes #31/#521/#606/#607
+ * with no channel. An empty list would mean "every ref is a task", so name a number no body uses.
+ */
+internal val ThreadVisualNoKnownTaskNumbers: List<Int> = listOf(Int.MAX_VALUE)
+
 internal fun threadVisualFixture(
     fixture: String,
     instanceId: String
@@ -489,6 +507,25 @@ internal fun threadVisualFixture(
                             firstUnreadReplyMessageId = null,
                             threadChannelId = null
                         )
+                    }
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_MESSAGE_ROW -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index == 0) {
+                            message.copy(
+                                taskId = "msg-agent-reply",
+                                taskNumber = 10,
+                                taskStatus = "in_progress",
+                                taskAssigneeId = "agent-cindy",
+                                taskAssigneeName = "Cindy"
+                            )
+                        } else {
+                            message
+                        }
                     }
             )
         }
@@ -559,7 +596,9 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
-                knownMarkdownChannelNames = listOf("product"),
+                // web primes only fixtureData.json's channels (design, android-artifacts), so
+                // the body's #product:f8e569cb thread ref stays plain text there.
+                knownMarkdownChannelNames = listOf("design", "android-artifacts"),
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -577,9 +616,10 @@ internal fun threadVisualFixture(
                             replyCount = 5,
                             unreadReplyCount = 2,
                             firstUnreadReplyMessageId = "reply-agent-visual-2",
+                            // web THREAD_MESSAGE: 👍 x2, one of them the viewer (fxOwner).
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 2, selected = true)
                                 )
                         )
                     ),
@@ -625,36 +665,27 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
+                        // web THREAD_MESSAGE_DELETED_HUMAN: a removed guest with no avatar,
+                        // fxMessages.threadDeletedHuman, 👍 x1 by the viewer, 03:10Z (UTC+8).
                         RaftThreadMessageItem(
                             id = "msg-deleted-human",
-                            authorId = "visual-human-designer",
-                            authorName = "Designer",
-                            authorHandle = "designer",
+                            authorId = "visual-human-deleted",
+                            authorName = "Former Teammate",
+                            authorDescription = "Guest",
                             authorKind = "user",
-                            avatarLabel = "DE",
-                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue,
-                            senderMembershipStatus = "deleted",
-                            timestampLabel = "06/26 17:15",
+                            avatarLabel = "FT",
+                            senderMembershipStatus = "removed",
+                            timestampLabel = "06/22 11:10",
                             messageType = "Chat",
-                            body = "Deleted human author fixture keeps the avatar muted and the sender tag aligned with React.",
+                            body = "Captured the previous visual baseline before leaving the workspace.",
                             threadChannelId = "thread-msg-deleted-human",
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👀", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
                                 )
                         )
                     ),
-                members =
-                    listOf(
-                        RaftThreadMemberItem(
-                            id = "visual-human-designer",
-                            displayName = "Designer",
-                            handle = "designer",
-                            kind = "human",
-                            avatarUrl = AvatarReference.Random("visual-human-designer").wireValue,
-                            avatarLabel = "DE"
-                        )
-                    ),
+                members = emptyList(),
                 showComposer = false,
                 joined = true,
                 composer =
@@ -765,10 +796,12 @@ internal fun threadVisualFixture(
                             taskStatus = "in_progress",
                             taskAssigneeId = "agent-cindy",
                             taskAssigneeName = "Cindy",
+                            // web THREAD_MESSAGE_RICH: the viewer (fxOwner) is a reactor.
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = true)
                                 ),
+                            // Raw bytes as web sends them, so the row formats its own size label.
                             attachments =
                                 listOf(
                                     RaftThreadAttachmentItem(
@@ -776,13 +809,15 @@ internal fun threadVisualFixture(
                                         name = "visual-parity-notes.pdf",
                                         mimeType = "application/pdf",
                                         sizeLabel = "184 KB",
+                                        sizeBytes = 188416L,
                                         commentCount = 3
                                     ),
                                     RaftThreadAttachmentItem(
                                         id = "att-thread-preview",
                                         name = "thread-screen-preview.html",
                                         mimeType = "text/html",
-                                        sizeLabel = "32 KB"
+                                        sizeLabel = "32 KB",
+                                        sizeBytes = 32768L
                                     )
                                 )
                         )
@@ -1116,7 +1151,9 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 knownMarkdownChannelNames = listOf("markdown专修"),
                 knownMarkdownMentionNames = listOf("artin"),
-                knownMarkdownTaskNumbers = listOf(42, 43),
+                // web chips a bare/`task #N` ref only for a task it knows in this channel:
+                // the linked #42 (THREAD_MESSAGE_LONG_INLINE_CODE_TASK), not #43.
+                knownMarkdownTaskNumbers = listOf(42),
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -1126,7 +1163,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/25 05:55",
+                            timestampLabel = "06/25 13:55",
                             messageType = "Chat",
                             body =
                                 "Plain text baseline before bold.\n\n" +
@@ -1139,7 +1176,7 @@ internal fun threadVisualFixture(
                                     "Ordinary mention regression: @KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, `go test ./...`, and `git commit -s`.\n\n" +
                                     "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
-                                    "Command should wrap with the same neutral fill and no frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
+                                    "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
                                     "> Quote block keeps normal markdown flow beside inline `code` and Slock tags.\n\n" +
                                     "- Link: https://raft.build/visual-testing\n" +
                                     "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`\n\n" +
@@ -1160,8 +1197,8 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Cindy",
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false),
-                                    RaftThreadReactionItem(emoji = "✅", count = 1, selected = true)
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = true),
+                                    RaftThreadReactionItem(emoji = "✅", count = 1, selected = false)
                                 ),
                             attachments =
                                 listOf(
@@ -1256,7 +1293,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/25 08:20",
+                            timestampLabel = "07/25 16:20",
                             messageType = "Chat",
                             // The Raft dialect contract this case guards: refs inside a
                             // Markdown link label/destination stay part of that one blue
@@ -1332,17 +1369,20 @@ internal fun threadVisualFixture(
                 // real collaborators, channels, task IDs, or release metadata.
                 knownMarkdownChannelNames = listOf("demo-visual-testing"),
                 knownMarkdownMentionNames = listOf("DemoUser"),
-                knownMarkdownTaskNumbers = listOf(101),
+                // web knows no task in this conversation (no linked task), so task #101 stays plain.
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
+                        // web renders this row with `previewSenderAgent` (visualAgents[0], Cindy),
+                        // whose status is `active` with no activity: the Online dot.
                         RaftThreadMessageItem(
                             id = "msg_md_wrap_slice1_visual",
-                            authorId = "visual-bot",
-                            authorName = "Visual Bot",
-                            authorDescription = "Keeps demo fixtures stable.",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
-                            avatarLabel = "VB",
-                            timestampLabel = "07/13 05:55",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 13:55",
                             messageType = "Chat",
                             body =
                                 "**Synthetic slice is ready** — this message is generated for visual testing only.\n\n" +
@@ -1401,7 +1441,8 @@ internal fun threadVisualFixture(
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
                 knownMarkdownMentionNames = listOf("Android-Developer-4"),
-                knownMarkdownTaskNumbers = listOf(31, 521),
+                // web primes #31/#521 without a channel, so neither is a task of this conversation.
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -1411,7 +1452,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 05:56",
+                            timestampLabel = "07/13 13:56",
                             messageType = "Chat",
                             body =
                                 "另外帮一个澄清避免混淆：#31（read-state→Activity，我的）和 @Android-Developer-4 的 **task #521**（`message:new`→Activity 即时新增，artin 原话\"新消息来了 activity 没刷新\"）是两个不同 gap，不是重复——Codex 早前建议的\"#521 判重关闭\"是把两者混了，AD4 已更正。#31 复用 versioned read-state fact，#521 是 SharedActivityStore 缺 message:new realtime，两条链路各修各的。"
@@ -1452,7 +1493,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 knownMarkdownChannelNames = listOf("对话流专修"),
                 knownMarkdownMentionNames = listOf("artin"),
-                knownMarkdownTaskNumbers = listOf(606),
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -1462,7 +1503,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 11:25",
+                            timestampLabel = "07/13 19:25",
                             messageType = "Chat",
                             body =
                                 "Task #606 新真机基线已就绪：PR #785 exact `0e5a82b02` Alpha 已附在 #对话流专修:661a12bf，SHA-256 `db01c5e5b91f3696bfda64edde2fc31b3a40ffe9b508813d651a6de735e8a85b`。这是 process-owned decoded auth-session snapshot 根修包，不是日志抑制包；`8a5e542f4` 作废。\n\n等待 @artin 验普通导航/滚动及 `#/@` suggestion。若仍卡，以新 Hands 对比 auth durable cold-read 次数和 traversal/layout/draw；task #606 保持 In Progress，PR 不合。"
@@ -1874,6 +1915,8 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
+                // The plain PR reference (#318) is no task web knows.
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -1883,13 +1926,13 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/19 13:03",
+                            timestampLabel = "07/19 21:03",
                             messageType = "Chat",
                             body =
                                 "---\n\n" +
-                                    "更新：发布落地页改为**不需要先创建 share token 的固定最新版本页面**，" +
-                                    "路由 `/apps/<app>/latest` 始终展示当前最新版并提供下载；`/share/<token>` 保持为一次性分享页，不再做 rolling。\n\n" +
-                                    "相关改动见 PR #318，复用现有 share 页的版本信息/下载体验。"
+                                    "明白，是我理解错了。你要的是一个**不需要先创建 share token 的稳定 latest release landing page**，" +
+                                    "类似 `/apps/<app>/latest`，打开永远展示当前最新版并可下载；不是让某条 `/share/<token>` 变成 rolling。\n\n" +
+                                    "我撤掉 PR #318 这套 rolling-share 设计，改做 app latest landing page，并复用现有 share 页的版本信息/下载体验。"
                         )
                     ),
                 members = emptyList(),
@@ -2051,7 +2094,7 @@ internal fun threadVisualFixture(
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
                 knownMarkdownChannelNames = listOf("对话流专修"),
-                knownMarkdownTaskNumbers = listOf(31, 521, 607),
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -2061,7 +2104,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 05:56",
+                            timestampLabel = "07/13 13:56",
                             messageType = "Chat",
                             body =
                                 "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
@@ -2133,7 +2176,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 knownMarkdownChannelNames = listOf("对话流专修"),
                 knownMarkdownMentionNames = listOf("artin", "Android-Developer-2"),
-                knownMarkdownTaskNumbers = listOf(607),
+                knownMarkdownTaskNumbers = ThreadVisualNoKnownTaskNumbers,
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -2143,7 +2186,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 05:57",
+                            timestampLabel = "07/13 13:57",
                             messageType = "Chat",
                             body =
                                 "@artin 建好了：**task #607**（#对话流专修，我已 claim）——slice-1 那个 mapper→network.sync 解耦 follow-up。scope + @Android-Developer-2 的 A/B 设计选择（接受耦合 vs observer-routed 重构）我贴在 task thread 了。AD2 定 A 我 close 成 by-design，定 B 我实现。V2 那条独立、等赵定信封。"
@@ -2609,6 +2652,8 @@ internal fun String.requiresViewerSelfMentionContext(): Boolean =
         this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW

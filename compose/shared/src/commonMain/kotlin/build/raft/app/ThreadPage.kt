@@ -6118,9 +6118,9 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
 
 /**
  * `components.channel.members.add-panel`: the members page in Add Member (web ChannelMembers
- * `presentation="page"` add view) for #design. As the React fixture, the channel roster is
- * empty, so every server agent and person is a candidate (agents Cindy and Product UX Designer,
- * people artin and Designer), nothing is selected yet, and the owner may create agents.
+ * `presentation="page"` add view) for #design. The candidates are what the React capture
+ * lists (see [channelPanelVisualCandidates]), nothing is selected yet, and the owner may
+ * create agents.
  */
 @Composable
 internal fun ChannelAddMemberPanelVisualScreen() {
@@ -6160,48 +6160,80 @@ internal fun ChannelAddMemberPanelVisualScreen() {
     )
 }
 
-// Canonical add-member candidates (task #370): the React case serves an empty
-// channel roster, so every visual agent (Cindy, Product UX Designer) and every
-// server member (artin, Designer) is a candidate; values from fixtureData.json.
+// Add-member candidates: web components.channel.members.add-panel lists the server's
+// fixtureData.json agents that are not in the #design roster (Cindy is), every one
+// wearing `pixel:robot`, and no humans.
 private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
     listOf(
-        RaftThreadMemberItem(
-            id = "agent-cindy",
-            displayName = "Cindy",
-            handle = "Cindy",
-            roleLabel = "",
-            description = "Keeps visual testing release notes aligned.",
-            avatarUrl = "pixel:robot",
-            avatarLabel = "CI",
-            kind = "agent"
-        ),
         RaftThreadMemberItem(
             id = "agent-product-ux",
             displayName = "Product UX Designer",
             handle = "Product-UX-Designer",
             roleLabel = "",
             description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
-            avatarUrl = "pixel:paint",
+            avatarUrl = "pixel:robot",
             avatarLabel = "PU",
             kind = "agent"
         ),
         RaftThreadMemberItem(
-            id = "user_artin",
-            displayName = "artin",
-            handle = "artin",
+            id = "agent-computer-offline",
+            displayName = "Computer Offline Probe",
+            handle = "Computer-Offline-Probe",
             roleLabel = "",
-            description = "Owner",
-            avatarLabel = "AR",
-            kind = "human"
+            description = "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline.",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "CO",
+            kind = "agent"
         ),
         RaftThreadMemberItem(
-            id = "user_designer",
-            displayName = "Designer",
-            handle = "designer",
+            id = "agent-computer-missing",
+            displayName = "Computer Missing Probe",
+            handle = "Computer-Missing-Probe",
             roleLabel = "",
-            description = "Product design",
-            avatarLabel = "DE",
-            kind = "human"
+            description = "machineId points at a computer the store has never seen: web shows No computer assigned, no dot.",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "CM",
+            kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "agent-no-computer",
+            displayName = "No Computer Probe",
+            handle = "No-Computer-Probe",
+            roleLabel = "",
+            description = "No machineId at all: web shows No computer assigned, no dot.",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "NC",
+            kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "agent-long-machine",
+            displayName = "Long Machine Name Probe",
+            handle = "Long-Machine-Name-Probe",
+            roleLabel = "",
+            description = "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable.",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "LM",
+            kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "agent-daemon-only",
+            displayName = "Daemon Only Probe",
+            handle = "Daemon-Only-Probe",
+            roleLabel = "",
+            description = "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version.",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "DO",
+            kind = "agent"
+        ),
+        RaftThreadMemberItem(
+            id = "agent-no-membership",
+            displayName = "No Membership Probe",
+            handle = "No-Membership-Probe",
+            roleLabel = "",
+            description = "Has no server membership row, so the wire omits serverRole (artin 2026-09-03 16:54: hide the role chip).",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "NM",
+            kind = "agent"
         )
     )
 

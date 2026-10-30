@@ -1162,8 +1162,9 @@ class ThreadPayloadTest {
         assertEquals("reply-agent-visual-2", message.firstUnreadReplyMessageId)
         assertEquals(1, message.reactions.size)
         assertEquals("👍", message.reactions.single().emoji)
-        assertEquals(1, message.reactions.single().count)
-        assertFalse(message.reactions.single().selected)
+        // web THREAD_MESSAGE: 👍 x2, one of them the viewer.
+        assertEquals(2, message.reactions.single().count)
+        assertTrue(message.reactions.single().selected)
     }
 
     @Test
@@ -1223,7 +1224,7 @@ class ThreadPayloadTest {
         assertEquals("Cindy", message.authorName)
         assertEquals(listOf("markdown专修"), payload.knownMarkdownChannelNames)
         assertEquals(listOf("artin"), payload.knownMarkdownMentionNames)
-        assertEquals(listOf(42, 43), payload.knownMarkdownTaskNumbers)
+        assertEquals(listOf(42), payload.knownMarkdownTaskNumbers)
         assertFalse(message.body.contains("```"))
         assertEquals(16, message.body.count { it == '`' })
         assertTrue(message.body.contains("`go test ./...`"))

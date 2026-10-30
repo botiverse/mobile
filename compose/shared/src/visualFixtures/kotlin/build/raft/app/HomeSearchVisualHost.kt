@@ -293,6 +293,94 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     nextOffset = 3
 )
 
+/**
+ * components.home.search.results / .channel-dropdown: what the React capture renders after
+ * typing "android" into MessageSearchPage over primeDirectVisualStores — the store channels
+ * design + android-artifacts, no DMs, the visual agents Cindy + Product UX Designer, and the
+ * two /messages/search rows of slock searchResultsFixture.json (hasMore false). Of the
+ * manifest's filter props only the 7-day range and Recent sort show as active on web; From,
+ * Scope and Channel stay unset.
+ */
+private val homeSearchResultsVisualHomeState =
+    homeSearchVisualHomeState.copy(
+        content =
+            (homeSearchVisualHomeState.content as SharedHomeContentState.Content).let { content ->
+                content.copy(snapshot = content.snapshot.copy(directMessages = emptyList()))
+            }
+    )
+
+private val homeSearchResultsVisualSearchState =
+    SharedHomeSearchPanelState(
+        query = "android",
+        searched = true,
+        senderFilters =
+            listOf(
+                SearchSenderFilterItem(
+                    id = "visual-user",
+                    label = "artin",
+                    handle = "artin",
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server_visual"),
+                    isSelf = true
+                ),
+                SearchSenderFilterItem(
+                    id = "agent-cindy",
+                    label = "Cindy",
+                    handle = "Cindy",
+                    kind = MemberKind.Agent,
+                    sourceServerId = ServerId("server_visual"),
+                    avatarWireValue = "pixel:robot"
+                ),
+                SearchSenderFilterItem(
+                    id = "agent-product-ux",
+                    label = "Product UX Designer",
+                    handle = "Product-UX-Designer",
+                    kind = MemberKind.Agent,
+                    sourceServerId = ServerId("server_visual"),
+                    avatarWireValue = "pixel:robot"
+                )
+            ),
+        items =
+            listOf(
+                InboxItem(
+                    key = "msg-visual-search-1",
+                    kind = InboxItemKind.Channel,
+                    channelId = ChannelId("ch_design"),
+                    channelName = "design",
+                    lastMessageId = MessageId("msg-visual-search-1"),
+                    lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                    lastMessageAt = "10:30",
+                    lastMessageSenderName = "Cindy",
+                    latestActivityMessageId = MessageId("msg-visual-search-1"),
+                    latestActivityPreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                    latestActivityAt = "10:30",
+                    latestActivitySenderName = "Cindy"
+                ),
+                InboxItem(
+                    key = "msg-visual-search-2",
+                    kind = InboxItemKind.Thread,
+                    channelId = ChannelId("thread-msg-agent-reply"),
+                    channelName = "design",
+                    lastMessageId = MessageId("msg-visual-search-2"),
+                    lastMessagePreview = "Review the Android composer crop before release.",
+                    lastMessageAt = "10:35",
+                    lastMessageSenderName = "artin",
+                    threadChannelId = ChannelId("thread-msg-agent-reply"),
+                    parentChannelId = ChannelId("ch_design"),
+                    parentChannelName = "design",
+                    parentChannelKind = ConversationKind.Channel,
+                    parentMessageId = MessageId("msg-agent-reply"),
+                    parentMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                    latestActivityMessageId = MessageId("msg-visual-search-2"),
+                    latestActivityPreview = "Review the Android composer crop before release.",
+                    latestActivityAt = "10:35",
+                    latestActivitySenderName = "artin"
+                )
+            ),
+        totalCount = 2,
+        hasMore = false
+    )
+
 private val homeSearchHomeVisualSearchState =
     SharedHomeSearchPanelState(
         personalizationLoaded = true,
@@ -336,10 +424,18 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     // margin painted with the window background (cream), which the react↔android diff
     // flagged as a spurious "empty beige area" drift. White backing keeps any residual gap
     // aligned with the react baseline. (visual case components.home.search.*-dropdown)
+    // results: web shows the 7-day range + Recent sort active; the dropdown cases only type
+    // the query, so no filter is set there.
+    val state =
+        if (openFilterId == null) {
+            homeSearchResultsVisualSearchState.copy(sort = SearchSort.Recent, timeRange = SearchTimeRange.Last7Days)
+        } else {
+            homeSearchResultsVisualSearchState
+        }
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
-            state = homeSearchVisualSearchState,
-            homeState = homeSearchVisualHomeState,
+            state = state,
+            homeState = homeSearchResultsVisualHomeState,
             onIntent = {},
             onClose = {},
             interactiveSearchField = false,
