@@ -41,7 +41,7 @@ class RaftAssistantOtterTest {
     fun pawsFollowTheMood() {
         val both = listOf((-37).dp, 15.dp)
         assertEquals(both, raftOtterPaws(RaftOtterMood.Idle))
-        assertEquals(both, raftOtterPaws(RaftOtterMood.Working))
+        assertEquals(listOf(15.dp), raftOtterPaws(RaftOtterMood.Working))
         assertEquals(both, raftOtterPaws(RaftOtterMood.Confirm))
         assertEquals(listOf(15.dp), raftOtterPaws(RaftOtterMood.New))
         assertEquals(emptyList(), raftOtterPaws(RaftOtterMood.Away))
