@@ -2017,6 +2017,7 @@ internal class RaftSharedStoreProvider private constructor(
                 ),
                 serverRuntimeCatalogs = SharedServerRuntimeCatalogRepository(
                     api = RaftServerRuntimeCatalogNetworkApi(networkClient(scope)),
+                    scope = threadSendScope,
                     cache = ServerRuntimeCatalogCache(sharedPreferenceStore),
                     scopeProvider = {
                         shellAuthStore.readSession()?.let { session ->

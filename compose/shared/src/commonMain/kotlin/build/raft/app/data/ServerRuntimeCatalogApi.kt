@@ -9,7 +9,11 @@ import build.raft.app.model.RuntimeInfo
 import build.raft.app.model.RuntimeModelInfo
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -47,8 +51,9 @@ private val serverRuntimeCatalogJson = Json {
 @Serializable
 private data class ServerRuntimeCatalogWire(
     val catalogVersion: Int = 0,
-    // Rows decode one by one ([decodeServerRuntimeCatalog]): one bad row must not drop the others.
-    val runtimes: List<JsonElement> = emptyList()
+    // Required: any other JSON object a 200 can carry (`{}`, `{"error":…}`, a proxy's page) is not a
+    // catalog. Rows decode one by one ([decodeServerRuntimeCatalog]): one bad row must not drop the others.
+    val runtimes: List<JsonElement>
 )
 
 @Serializable
@@ -122,7 +127,11 @@ internal data class ServerRuntimeCatalog(
     fun entry(runtimeId: String): RuntimeCatalogEntry? = runtimes.firstOrNull { it.id == runtimeId.trim() }
 }
 
-/** The lenient decode of a catalog body, or null when it is not a catalog object at all. */
+/**
+ * The lenient decode of a catalog body, or null when it is not a catalog: not an object, no
+ * `runtimes`, or a `catalogVersion` below 1 (the contract starts at 1). Null is never cached nor
+ * published, so a stray JSON answer cannot empty the runtime list.
+ */
 internal fun decodeServerRuntimeCatalog(body: String, source: RuntimeCatalogSource): ServerRuntimeCatalog? {
     val wire =
         try {
@@ -132,6 +141,7 @@ internal fun decodeServerRuntimeCatalog(body: String, source: RuntimeCatalogSour
         } catch (_: Exception) {
             return null
         }
+    if (wire.catalogVersion < 1) return null
     val runtimes =
         wire.runtimes
             .mapNotNull { element -> element.decodeOrNull(ServerRuntimeCatalogEntryWire.serializer()) }
@@ -347,6 +357,11 @@ internal class ServerRuntimeCatalogCache(private val store: SharedPreferenceStor
  */
 internal class SharedServerRuntimeCatalogRepository(
     private val api: RaftServerRuntimeCatalogApi,
+    /**
+     * Where the request runs: the repository's scope, not the caller's, so a page that closes
+     * mid-request cancels only its own wait, never another page waiting on the same request.
+     */
+    private val scope: CoroutineScope,
     private val cache: ServerRuntimeCatalogCache?,
     /** `environment|account` of the session, or null without one (nothing is cached then). */
     private val scopeProvider: suspend () -> String?,
@@ -354,7 +369,7 @@ internal class SharedServerRuntimeCatalogRepository(
     private val logger: (String) -> Unit = {}
 ) {
     private val mutex = Mutex()
-    private val inFlight = mutableMapOf<String, CompletableDeferred<ServerRuntimeCatalog>>()
+    private val inFlight = mutableMapOf<String, Deferred<ServerRuntimeCatalog>>()
 
     /** The cached catalog of [serverId] (else bundled), without a request. */
     suspend fun cached(serverId: String): ServerRuntimeCatalog {
@@ -364,28 +379,25 @@ internal class SharedServerRuntimeCatalogRepository(
         return catalog
     }
 
+    /**
+     * One request per server in flight; every caller awaits it. A 403/404 or any other failure is
+     * one request answered from the cache or the bundled table, never retried here.
+     */
     suspend fun load(serverId: String, priority: DataRequestPriority): ServerRuntimeCatalog {
         val key = serverId.trim()
         if (key.isBlank()) return BundledRuntimeCatalog
-        var owner = false
-        val deferred =
+        val request =
             mutex.withLock {
-                inFlight[key] ?: CompletableDeferred<ServerRuntimeCatalog>().also {
-                    inFlight[key] = it
-                    owner = true
+                inFlight[key] ?: scope.async(start = CoroutineStart.LAZY) { fetch(key, priority) }.also { started ->
+                    inFlight[key] = started
+                    started.invokeOnCompletion {
+                        // Not suspending: drop the entry if it is still this request's.
+                        scope.launch { mutex.withLock { if (inFlight[key] === started) inFlight.remove(key) } }
+                    }
+                    started.start()
                 }
             }
-        if (!owner) return deferred.await()
-        try {
-            val catalog = fetch(key, priority)
-            deferred.complete(catalog)
-            return catalog
-        } catch (error: Throwable) {
-            deferred.completeExceptionally(error)
-            throw error
-        } finally {
-            mutex.withLock { inFlight.remove(key) }
-        }
+        return request.await()
     }
 
     private suspend fun fetch(serverId: String, priority: DataRequestPriority): ServerRuntimeCatalog {

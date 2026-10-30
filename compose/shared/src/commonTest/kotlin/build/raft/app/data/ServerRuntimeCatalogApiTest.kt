@@ -100,8 +100,13 @@ class ServerRuntimeCatalogApiTest {
     fun aBodyThatIsNotACatalogDecodesToNull() {
         assertNull(decodeServerRuntimeCatalog("[]", RuntimeCatalogSource.Server))
         assertNull(decodeServerRuntimeCatalog("<html>", RuntimeCatalogSource.Server))
-        // Missing fields are defaults, not a failure: an empty catalog.
-        assertEquals(0, decodeServerRuntimeCatalog("{}", RuntimeCatalogSource.Server)!!.runtimes.size)
+        // Any other JSON object a 200 can carry is not a catalog (Otter, #4001): never "0 runtimes".
+        assertNull(decodeServerRuntimeCatalog("{}", RuntimeCatalogSource.Server))
+        assertNull(decodeServerRuntimeCatalog("""{"error":"x"}""", RuntimeCatalogSource.Server))
+        assertNull(decodeServerRuntimeCatalog("""{"catalogVersion":0,"runtimes":[]}""", RuntimeCatalogSource.Server))
+        assertNull(decodeServerRuntimeCatalog("""{"runtimes":[]}""", RuntimeCatalogSource.Server))
+        // A real catalog with no runtimes (every switch off) still reads.
+        assertEquals(0, decodeServerRuntimeCatalog("""{"catalogVersion":1,"runtimes":[]}""", RuntimeCatalogSource.Server)!!.runtimes.size)
     }
 
     @Test
@@ -173,7 +178,7 @@ class ServerRuntimeCatalogApiTest {
             val api = FakeApi()
             val names = RaftRuntimeCatalogNameRegistry()
             val repository =
-                SharedServerRuntimeCatalogRepository(api, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|acct" }, names = names)
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|acct" }, names = names)
 
             // Nothing cached and the server fails: the bundled table.
             api.next = HomeNetworkResponse(code = 503, bodyText = null)
@@ -195,16 +200,27 @@ class ServerRuntimeCatalogApiTest {
             val cached = repository.load("s1", DataRequestPriority.Visible)
             assertEquals(RuntimeCatalogSource.Cache, cached.source)
             assertEquals(fresh.runtimes, cached.runtimes)
+            // A 200 with JSON that is not a catalog neither overwrites the cache nor empties the names.
+            for (body in listOf("{}", """{"error":"x"}""", """{"catalogVersion":0,"runtimes":[]}""")) {
+                api.next = HomeNetworkResponse(code = 200, bodyText = body)
+                val answer = repository.load("s1", DataRequestPriority.Visible)
+                assertEquals(RuntimeCatalogSource.Cache, answer.source, body)
+                assertEquals(fresh.runtimes, answer.runtimes, body)
+                assertEquals("Qwen Code", names.entry("qwen", "s1")?.displayName, body)
+            }
+            val requestsBefore = api.paths.size
             api.next = HomeNetworkResponse(code = 403, bodyText = """{"error":"Forbidden"}""")
             assertEquals(RuntimeCatalogSource.Cache, repository.load("s1", DataRequestPriority.Visible).source)
             api.failWith = IllegalStateException("offline")
             assertEquals(RuntimeCatalogSource.Cache, repository.load("s1", DataRequestPriority.Visible).source)
             assertEquals(RuntimeCatalogSource.Cache, repository.cached("s1").source)
+            // 403/404 are answered once each; the repository never retries on its own.
+            assertEquals(requestsBefore + 2, api.paths.size)
 
             // The cache is per server (and per account): another server falls back to bundled.
             assertEquals(RuntimeCatalogSource.Bundled, repository.load("s2", DataRequestPriority.Visible).source)
             val otherAccount =
-                SharedServerRuntimeCatalogRepository(api, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|other" }, names = names)
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, ServerRuntimeCatalogCache(prefs), scopeProvider = { "env|other" }, names = names)
             assertEquals(RuntimeCatalogSource.Bundled, otherAccount.cached("s1").source)
         }
 
@@ -215,12 +231,35 @@ class ServerRuntimeCatalogApiTest {
             val api = FakeApi(gate = gate)
             api.next = HomeNetworkResponse(code = 200, bodyText = ContractExample)
             val repository =
-                SharedServerRuntimeCatalogRepository(api, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
             val first = async { repository.load("s1", DataRequestPriority.Visible) }
             val second = async { repository.load("s1", DataRequestPriority.Visible) }
             testScheduler.runCurrent()
             gate.complete(Unit)
             assertEquals(first.await(), second.await())
+            assertEquals(1, api.paths.size)
+        }
+
+    @Test
+    fun aCancelledInitiatorDoesNotCancelAnotherWaiter() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val api = FakeApi(gate = gate)
+            api.next = HomeNetworkResponse(code = 200, bodyText = ContractExample)
+            val repository =
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = RaftRuntimeCatalogNameRegistry())
+            val initiator = async { repository.load("s1", DataRequestPriority.Visible) }
+            testScheduler.runCurrent()
+            val waiter = async { repository.load("s1", DataRequestPriority.Visible) }
+            testScheduler.runCurrent()
+            // The page that started the request closes.
+            initiator.cancel()
+            testScheduler.runCurrent()
+            gate.complete(Unit)
+            val catalog = waiter.await()
+            assertEquals(RuntimeCatalogSource.Server, catalog.source)
+            assertEquals(listOf("kimi-sdk"), catalog.runtimes.map { it.id })
+            assertTrue(initiator.isCancelled)
             assertEquals(1, api.paths.size)
         }
 
