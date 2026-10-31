@@ -69,6 +69,7 @@
 		A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */; };
 		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
 		J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */; };
+		DU0R00010000000000000001 /* RaftIosDuoRuntimeTests.m in Sources */ = {isa = PBXBuildFile; fileRef = DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -169,6 +170,7 @@
 		A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftRouterLoginTransitionTests.m; sourceTree = "<group>"; };
 		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosOpenAttachmentTests.m; sourceTree = "<group>"; };
+		DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosDuoRuntimeTests.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -353,6 +355,7 @@
 				A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */,
 				RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */,
 				J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */,
+				DU0R00020000000000000001 /* RaftIosDuoRuntimeTests.m */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -806,6 +809,7 @@
 				A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */,
 				RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */,
 				J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */,
+				DU0R00010000000000000001 /* RaftIosDuoRuntimeTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
