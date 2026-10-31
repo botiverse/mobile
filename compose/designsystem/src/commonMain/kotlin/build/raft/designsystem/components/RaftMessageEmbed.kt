@@ -59,7 +59,9 @@ fun RaftMessageEmbed(
     val shape = RoundedCornerShape(RaftRadius.Container)
     val source = remember { MutableInteractionSource() }
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle, enabled = onClick != null)
-    val focused = onClick != null && raftIsFocused(source)
+    // Read unconditionally: remembered interaction state behind `&&` changes slots when onClick flips.
+    val isFocused = raftIsFocused(source)
+    val focused = onClick != null && isFocused
     Column(
         modifier
             .widthIn(max = maxWidth)
