@@ -1,6 +1,8 @@
 # PROTOTYPE ONLY (agent/lagoon/ios-native-nav-proto, never merged): build the Simulator app with
 # visual fixtures and capture the native-navigation demo (RAFT_PROTO_SCENE) with the prototype
 # off ("now", RAFT_NATIVE_NAV_PROTO=0) and on ("native"), plus a screen recording of each.
+# Phase 2: the four tabs (Home / Activity / Tasks / More), Settings detail, Saved, the conversation,
+# Members, channel settings and an agent profile.
 name: iOS native nav prototype capture
 
 on:
@@ -161,7 +163,7 @@ jobs:
           }
           for mode in now native; do
             flag=0; [ "$mode" = native ] && flag=1
-            for scene in home homecollapsed homehalf thread members midswipe; do
+            for scene in home activity tasks more settings saved thread members channelsettings agent midswipe; do
               capture "$mode" "$scene" "$flag" "RAFT_PROTO_READY scene=$scene"
               xcrun simctl io "$SIM_UDID" screenshot "$out/$mode-$scene.png"
               echo "captured $mode-$scene"
@@ -179,6 +181,8 @@ jobs:
             echo "recorded $mode-video"
           done
           xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+          # The heads each page published (titles, buttons, ⋯ rows, title menus), per scene.
+          grep -h "RAFT_PROTO_HEAD\|RAFT_PROTO_WARN" "$out"/native-*.log > "$out/native-heads.txt" || true
           ls -la "$out"
 
       - name: Upload captures

@@ -157,7 +157,11 @@ private val tasksPanelStatusMenuRecycleTasks: List<TaskSummary> =
         }
 
 @Composable
-internal fun TasksPanelVisualContent(fixture: String = "") {
+internal fun TasksPanelVisualContent(
+    fixture: String = "",
+    // PROTOTYPE (native nav): the whole screen (the host draws the tab bar).
+    protoFullScreen: Boolean = false,
+) {
     val chineseLocalizationFixture = fixture == TasksPanelChineseLocalizationFixture
     val previousLocaleType = remember(chineseLocalizationFixture) { StringDesc.localeType }
     if (chineseLocalizationFixture) {
@@ -178,9 +182,7 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
         }
     Box(
         modifier =
-            Modifier
-                .width(390.dp)
-                .height(844.dp)
+            (if (protoFullScreen) Modifier.fillMaxSize() else Modifier.width(390.dp).height(844.dp))
                 .background(RaftColor.SurfaceWhite)
     ) {
         SharedTasksPanel(
