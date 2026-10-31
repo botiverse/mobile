@@ -10,6 +10,7 @@ import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.SettingsMobileSelectionOptionSnapshot
 import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsIntent
 import kotlin.test.Test
@@ -108,6 +109,63 @@ class SettingsLanguageRegionInstantApplyTest {
 
         assertFalse(settingsLanguageRegionBusy(appLanguage, pick = null))
         assertTrue(settingsLanguageRegionBusy(SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIMEZONE, inProgress = true), pick = null))
+    }
+
+    @Test
+    fun saveStatusIsEmptyWhileThePickIsOnItsWay() {
+        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
+
+        assertEquals(SettingsPickSaveResult.Pending, settingsPickSaveResult(picked, actionState = null))
+        assertEquals(
+            SettingsPickSaveResult.Pending,
+            settingsPickSaveResult(picked, SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT, inProgress = true))
+        )
+    }
+
+    @Test
+    fun saveStatusSaysSavedOnceThePickIsStored() {
+        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
+
+        assertEquals(SettingsPickSaveResult.Saved, settingsPickSaveResult(picked, SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)))
+    }
+
+    @Test
+    fun saveStatusSaysWhatFailedAndTheControlGoesBack() {
+        val picked = pick(LANGUAGE_REGION_ACTION_TIMEZONE, "Asia/Tokyo")
+        val offline = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIMEZONE, errorCode = "network", screenError = ScreenError("network"))
+        val refused =
+            SharedSettingsActionState(
+                LANGUAGE_REGION_ACTION_TIMEZONE,
+                errorCode = "bad_request",
+                screenError = ScreenError("bad_request", serverMessage = "Unknown timezone")
+            )
+
+        // No refusal of its own: the page's message ("Failed to update date and time preferences").
+        assertEquals(SettingsPickSaveResult.Failed(serverMessage = null), settingsPickSaveResult(picked, offline))
+        assertEquals("UTC", settingsLanguageRegionShownValue("UTC", LANGUAGE_REGION_ACTION_TIMEZONE, picked, offline))
+        // The server's refusal, as web `apiErrorText`.
+        assertEquals(SettingsPickSaveResult.Failed("Unknown timezone"), settingsPickSaveResult(picked, refused))
+        assertEquals("UTC", settingsLanguageRegionShownValue("UTC", LANGUAGE_REGION_ACTION_TIMEZONE, picked, refused))
+    }
+
+    @Test
+    fun appLanguagePickReportsItsOwnResult() {
+        val picked = pick(MOBILE_ACTION_LANGUAGE, "ja")
+
+        assertEquals(SettingsPickSaveResult.Pending, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, inProgress = true)))
+        assertEquals(SettingsPickSaveResult.Saved, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)))
+        assertEquals(
+            SettingsPickSaveResult.Failed(null),
+            settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, errorCode = "settings_locale_unavailable"))
+        )
+    }
+
+    @Test
+    fun aPickThatSettlesWithoutItsOwnResultSaysNothing() {
+        val picked = pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h", actionStateAtPick = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIMEZONE))
+
+        assertEquals(SettingsPickSaveResult.Unknown, settingsPickSaveResult(picked, actionState = null))
+        assertEquals(SettingsPickSaveResult.Unknown, settingsPickSaveResult(picked, SharedSettingsActionState(MOBILE_ACTION_LANGUAGE)))
     }
 
     private fun pick(

@@ -263,6 +263,7 @@
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_subtitle">Push status and workspace mute</string>
     <string name="settings_language_title">Language</string>
+    <string name="settings_language_update_failed">Failed to update language preferences</string>
     <string name="settings_app_language_title">App language</string>
     <string name="settings_app_language_detail">Follow the system language or keep Raft in a specific language.</string>
     <string name="settings_app_language_system">System</string>
@@ -283,6 +284,7 @@
     <string name="settings_message_alignment_detail">Choose how your own messages align in conversations.</string>
     <string name="settings_message_font_size_title">Message font size and reading density</string>
     <string name="settings_date_time_title">Date &amp; Time</string>
+    <string name="settings_date_time_update_failed">Failed to update date and time preferences</string>
     <string name="settings_licenses_title">Licenses</string>
     <string name="settings_open_source_licenses_title">Open Source Licenses</string>
     <string name="settings_open_source_licenses_detail_libraries_from">%1$d libraries from %2$s</string>

@@ -16,6 +16,9 @@ import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftSaveStatus
+import build.raft.designsystem.components.RaftSaveStatusDefaults
+import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftSwitchButton
@@ -161,20 +164,25 @@ internal fun SettingsSegmentedControlField(
     label: String? = null,
     detail: String? = null,
     enabled: Boolean = true,
-    fillWidth: Boolean = false
+    fillWidth: Boolean = false,
+    /** A choice that applies at once: its raft-ui SaveStatus line, 4dp under the control, height kept while empty. */
+    saveStatus: RaftSaveStatusState? = null
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         label?.takeIf { it.isNotBlank() }?.let {
             RaftFieldLabel(text = it, size = RaftFieldLabelSize.Sm)
         }
         detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SegmentedControl(
-            selectedValue = selectedValue,
-            options = options,
-            onValueSelected = onValueSelected,
-            enabled = enabled,
-            fillWidth = fillWidth
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(RaftSaveStatusDefaults.Gap)) {
+            SegmentedControl(
+                selectedValue = selectedValue,
+                options = options,
+                onValueSelected = onValueSelected,
+                enabled = enabled,
+                fillWidth = fillWidth
+            )
+            saveStatus?.let { RaftSaveStatus(it) }
+        }
     }
 }
 
@@ -284,9 +292,11 @@ internal fun SettingsComboboxField(
     value: String,
     options: List<RaftComboboxOption<String>>,
     onValueChange: (String) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    /** A choice that applies at once: its raft-ui SaveStatus line, under the control and before [description]. */
+    saveStatus: RaftSaveStatusState? = null
 ) {
-    RaftField(label = label, description = description, enabled = enabled, labelSize = RaftFieldLabelSize.Sm) {
+    RaftField(label = label, description = description, enabled = enabled, labelSize = RaftFieldLabelSize.Sm, saveStatus = saveStatus) {
         val noMatches = stringResource(Res.string.common_no_matches)
         RaftCombobox(
             value = value,

@@ -117,6 +117,7 @@ internal fun raftAppDesignSystemStrings(): RaftStrings =
         cancel = stringResource(Res.string.common_cancel),
         dismiss = stringResource(Res.string.common_dismiss),
         copy = stringResource(Res.string.common_copy),
+        saved = stringResource(Res.string.settings_state_saved),
     )
 
 /** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */

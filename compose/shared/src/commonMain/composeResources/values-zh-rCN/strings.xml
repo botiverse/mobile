@@ -263,6 +263,7 @@
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">推送状态和工作空间静音</string>
     <string name="settings_language_title">语言</string>
+    <string name="settings_language_update_failed">更新语言偏好失败</string>
     <string name="settings_app_language_title">应用语言</string>
     <string name="settings_app_language_detail">跟随系统语言，或让 Raft 始终使用指定语言。</string>
     <string name="settings_app_language_system">系统</string>
@@ -283,6 +284,7 @@
     <string name="settings_message_alignment_detail">选择自己在对话中发送的消息的对齐方式。</string>
     <string name="settings_message_font_size_title">消息字号和阅读密度</string>
     <string name="settings_date_time_title">日期与时间</string>
+    <string name="settings_date_time_update_failed">更新日期与时间偏好失败</string>
     <string name="settings_licenses_title">许可</string>
     <string name="settings_open_source_licenses_title">开源许可</string>
     <string name="settings_open_source_licenses_detail_libraries_from">来自 %2$s 的 %1$d 个库</string>
