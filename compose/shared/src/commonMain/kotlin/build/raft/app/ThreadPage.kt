@@ -17685,23 +17685,64 @@ internal fun ThreadPageHeader(
                     emptyList()
                 },
         )
-    // PROTOTYPE (native nav bar): the conversation's actions as system bar buttons.
+    // PROTOTYPE (native nav bar): the conversation's buttons on the system bar: Members (with its
+    // count) first, then the Duo column's actions (the header's Search / Settings / Open in
+    // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
+    // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
+    val nativeSideActions =
+        if (showActions && LocalRaftNativeNavBar.current != null) {
+            threadHeaderSideColumnActions(
+                payload = payload,
+                surfaceKind = headerDisplay.surfaceKind,
+                taskConversation = taskConversation,
+                onOpenSearch = onOpenSearch,
+                onShowSettings = onShowSettings,
+                onOpenInChannel = onOpenInChannel,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
+                threadFollowed = threadFollowed,
+                onToggleThreadFollow = onToggleThreadFollow,
+                onMarkThreadUnread = onMarkThreadUnread,
+                onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+            )
+        } else {
+            emptyList()
+        }
+    val nativeLevelTarget = notificationLevelTarget.whenLevelsSupported()
+    val nativeLevelLabel = rememberRaftNotificationLevelMenuLabel(nativeLevelTarget)
+    var nativeLevelDialogOpen by remember { mutableStateOf(false) }
+    if (nativeLevelDialogOpen && nativeLevelTarget != null) {
+        RaftNotificationLevelDialog(target = nativeLevelTarget, onDismiss = { nativeLevelDialogOpen = false })
+    }
+    val membersLabel = stringResource(Res.string.settings_members_title)
     val nativeNavBarActions =
         if (!showActions) {
             emptyList()
         } else {
             buildList {
                 if (payload.showMembersAction && headerDisplay.surfaceKind != RaftThreadSurfaceKind.DirectMessage) {
-                    add(RaftNativeNavBarAction("members", "Members", "person.2", onShowMembers, badge = payload.membersCount.takeIf { it > 0 }))
+                    add(
+                        RaftNativeNavBarAction(
+                            "members",
+                            membersLabel,
+                            "person.2",
+                            onShowMembers,
+                            badge = payload.membersCount.takeIf { it > 0 },
+                            priority = Int.MAX_VALUE,
+                        )
+                    )
                 }
-                if (payload.threadHeaderSearchAction() != null) {
-                    add(RaftNativeNavBarAction("search", "Search", "magnifyingglass", onOpenSearch))
-                }
-                if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
-                    add(RaftNativeNavBarAction("settings", "Settings", "gearshape", onShowSettings))
-                }
-                if (payload.threadHeaderOpenInParentActionVisible()) {
-                    add(RaftNativeNavBarAction("open-in-channel", "Open in Channel", "arrow.up.forward.square", onOpenInChannel))
+                addAll(nativeSideActions.toRaftNativeNavBarActions())
+                if (nativeLevelTarget != null) {
+                    add(
+                        RaftNativeNavBarAction(
+                            NOTIFICATION_LEVEL_MENU_ITEM_ID,
+                            nativeLevelLabel,
+                            "bell",
+                            { nativeLevelDialogOpen = true },
+                            placement = RaftNativeNavBarPlacement.Overflow,
+                        )
+                    )
                 }
             }
         }
