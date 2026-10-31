@@ -315,13 +315,18 @@ private fun SettingsAccountScreen() {
             // logout confirmation row can end under three-button navigation.
             bottomContentPadding =
                 settingsAccountStandaloneBottomContentPadding(raftBottomSafeAreaPadding()),
+            // Hidden where the host can't send the ticket (the Compose desktop app).
             accountDeletion =
-                SettingsAccountDeletionUi(
-                    state = accountDeletionState,
-                    onOpen = accountDeletionStore::open,
-                    onConfirm = { accountDeletionStore.request() },
-                    onDismiss = accountDeletionStore::dismiss
-                ),
+                if (raftPlatformSupportsHandsFeedbackSubmit()) {
+                    SettingsAccountDeletionUi(
+                        state = accountDeletionState,
+                        onOpen = accountDeletionStore::open,
+                        onConfirm = { accountDeletionStore.request() },
+                        onDismiss = accountDeletionStore::dismiss
+                    )
+                } else {
+                    null
+                },
             onPasswordChange = { currentPassword, newPassword ->
                 settingsViewModel.dispatch(
                     SharedSettingsIntent.ChangeAccountPassword(
@@ -373,7 +378,10 @@ private fun rememberAccountDeletionRequestStore(environment: StandaloneSettingsE
                     )
                 }
             },
-            submit = { message -> capabilities.submitHandsFeedback(message, attachments = emptyList()) },
+            // A deletion request must not wait on (or fail with) the diagnostics flush.
+            submit = { message ->
+                capabilities.submitHandsFeedback(message, attachments = emptyList(), flushDiagnostics = false)
+            },
             onSubmitted = { capabilities.bridgeToast(requestedMessage) },
             log = capabilities::log
         )

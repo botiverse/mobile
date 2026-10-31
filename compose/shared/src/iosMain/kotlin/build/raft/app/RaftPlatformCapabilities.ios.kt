@@ -131,6 +131,8 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
 // Cross-platform Hands contract: one shared 50MB feedback attachment cap.
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
+internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = true
+
 internal actual fun raftFeedbackWebViewClientKind(): String = "ios"
 
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f

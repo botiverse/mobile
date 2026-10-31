@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.cmp.host.BridgeWireHostCapabilities
+import build.raft.app.cmp.host.HostBridgeTransport
+import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsHandsFeedbackSubmission
@@ -14,6 +17,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsAccountDeletionRequestTest {
@@ -113,6 +119,37 @@ class SettingsAccountDeletionRequestTest {
         advanceUntilIdle()
         assertEquals(0, sends)
         assertEquals(RaftAccountDeletionRequestState.Idle, store.state.value)
+    }
+
+    @Test
+    fun deletionSubmitDoesNotWaitOnAFailedDiagnosticsFlush() = runTest {
+        val sentActions = mutableListOf<String>()
+        val transport =
+            HostBridgeTransport { method, paramsJson, callback ->
+                if (method == "settingsCapability") {
+                    sentActions += Json.parseToJsonElement(paramsJson).jsonObject.getValue("action").jsonPrimitive.content
+                    callback?.invoke("""{"status":"ok","ticketId":"ticket-9","shareText":""}""")
+                }
+            }
+        val capabilities =
+            BridgeSettingsPlatformCapabilities(
+                host = BridgeWireHostCapabilities(transport),
+                copiedMessage = "",
+                diagnosticsFlush = { false },
+            )
+
+        val ordinary = capabilities.submitHandsFeedback("bug report", attachments = emptyList())
+        assertEquals("settings_diagnostics_flush_failed", (ordinary as DataResult.Error).error.code)
+        assertTrue(sentActions.isEmpty(), "ordinary feedback still stops on a failed flush")
+
+        val deletion =
+            capabilities.submitHandsFeedback(
+                buildRaftAccountDeletionRequestMessage(details),
+                attachments = emptyList(),
+                flushDiagnostics = false,
+            )
+        assertEquals("ticket-9", (deletion as DataResult.Content).data.ticketId)
+        assertEquals(listOf("submitFeedback"), sentActions)
     }
 
     private fun store(
