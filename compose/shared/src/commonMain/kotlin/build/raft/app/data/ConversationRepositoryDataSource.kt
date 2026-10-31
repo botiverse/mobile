@@ -22,7 +22,13 @@ import build.raft.app.model.parentMessageIdOrNull
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.network.MultipartFile
+import build.raft.app.model.TaskSummary
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -271,6 +277,9 @@ class RealConversationRepository private constructor(
      * never ran and an anchored channel page showed no reply rows at all. Tests shrink this.
      */
     internal var followedSummariesJoinBudgetMillis: Long = FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS
+
+    private val taskConversationContextFlights =
+        PrioritySingleFlight<TaskConversationContextFlightKey, Pair<ConversationSummary?, TaskSummary?>>()
 
     /** Public compatibility constructor for ordinary selector-backed repositories. */
     constructor(
@@ -862,7 +871,30 @@ class RealConversationRepository private constructor(
         taskConversation: TaskConversationChannelRef,
         priority: DataRequestPriority,
         serverId: ServerId,
-    ): ConversationSummary = coroutineScope {
+    ): ConversationSummary {
+        // Hands 4cf4c781: one open can ask for the same task conversation detail twice at once
+        // (e.g. the Activity prewarm and the visible load). The parent detail + task list pair
+        // is the slow part on a weak link, so overlapping identical loads share one flight.
+        val key =
+            TaskConversationContextFlightKey(
+                principalId = sessionStore.readSession()?.user?.id.orEmpty(),
+                serverId = serverId.value,
+                conversationChannelId = taskConversation.conversationChannelId.value,
+                parentChannelId = taskConversation.parentChannelId.value,
+                taskId = taskConversation.taskId.value,
+            )
+        val (parent, task) =
+            taskConversationContextFlights.run(key, priority) {
+                fetchTaskConversationContext(taskConversation, priority, serverId)
+            }
+        return detail.withTaskConversationContext(parent = parent, task = task)
+    }
+
+    private suspend fun fetchTaskConversationContext(
+        taskConversation: TaskConversationChannelRef,
+        priority: DataRequestPriority,
+        serverId: ServerId,
+    ): Pair<ConversationSummary?, TaskSummary?> = coroutineScope {
         val parentDeferred =
             async {
                 loadConversationDetail(taskConversation.parentChannelId, priority, serverId)
@@ -896,7 +928,7 @@ class RealConversationRepository private constructor(
                 "parentChannelId=${taskConversation.parentChannelId.value} taskId=${taskConversation.taskId.value} " +
                 "parent=${parent != null} task=${task != null}"
         )
-        detail.withTaskConversationContext(parent = parent, task = task)
+        parent to task
     }
 
     override suspend fun loadOlderMessages(
@@ -1796,6 +1828,57 @@ class RealConversationRepository private constructor(
         const val SYNC_PAGE_LIMIT = 200
     }
 }
+
+/**
+ * Coalesces overlapping identical loads. A caller joins an in-flight load only when that load runs
+ * at its own priority or a more urgent one, so a visible open never waits on a Background lane.
+ * Nothing is cached after the flight ends; a cancelled owner lets its joiners load for themselves.
+ */
+private class PrioritySingleFlight<K : Any, V> {
+    private class Flight<V>(val priority: DataRequestPriority, val result: CompletableDeferred<V>)
+
+    private val lock = SynchronizedObject()
+    private val flights = mutableMapOf<K, Flight<V>>()
+
+    suspend fun run(key: K, priority: DataRequestPriority, load: suspend () -> V): V {
+        var owned: Flight<V>? = null
+        val joined =
+            synchronized(lock) {
+                flights[key]?.takeIf { it.priority.ordinal <= priority.ordinal }
+                    ?: Flight<V>(priority, CompletableDeferred()).also { flight ->
+                        flights[key] = flight
+                        owned = flight
+                    }
+            }
+        val flight = owned
+        if (flight == null) {
+            return try {
+                joined.result.await()
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                currentCoroutineContext().ensureActive()
+                load()
+            }
+        }
+        return try {
+            load().also(flight.result::complete)
+        } catch (failure: Throwable) {
+            flight.result.completeExceptionally(failure)
+            throw failure
+        } finally {
+            synchronized(lock) {
+                if (flights[key] === flight) flights.remove(key)
+            }
+        }
+    }
+}
+
+private data class TaskConversationContextFlightKey(
+    val principalId: String,
+    val serverId: String,
+    val conversationChannelId: String,
+    val parentChannelId: String,
+    val taskId: String,
+)
 
 private data class NetworkServerContext(val session: StoredAuthSession, val server: build.raft.app.model.ServerSummary)
 

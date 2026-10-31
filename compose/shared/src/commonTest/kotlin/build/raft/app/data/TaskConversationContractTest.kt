@@ -6,6 +6,10 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -128,6 +132,46 @@ class TaskConversationContractTest {
             assertEquals(expectedWrite, conversation.permissions.canSend, "joined=$parentJoined")
             assertFalse(conversation.permissions.canCreateTask, "joined=$parentJoined")
         }
+    }
+
+    @Test
+    fun overlappingLoadsOfOneTaskConversationShareItsParentAndTaskFetch() = runTest {
+        // Hands 4cf4c781: two loads of the same conversation in flight at once (prewarm + open)
+        // fetched the parent channel and the whole task list twice on a slow link.
+        val taskListStarted = CompletableDeferred<Unit>()
+        val releaseTaskList = CompletableDeferred<Unit>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/conv-1" to """{"historyLimited":false,"messages":[]}""",
+                        "GET channels/conv-1" to taskChannelDetailJson(),
+                        "GET channels/channel-1" to """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
+                        "GET tasks/channel/channel-1" to
+                            """{"tasks":[${taskJson(messageId = "task-1", hostMessageId = null, conversationChannelId = "conv-1", anchored = true)}]}""",
+                    ),
+                requestStarted = mapOf("GET tasks/channel/channel-1" to taskListStarted),
+                requestRelease = mapOf("GET tasks/channel/channel-1" to releaseTaskList),
+            )
+        val repository = RealConversationRepository(conversationRepositoryTestSessionStore(), network)
+
+        val loads = List(2) { async { repository.getThread(ThreadId("conv-1")) } }
+        taskListStarted.await()
+        runCurrent()
+        releaseTaskList.complete(Unit)
+        val conversations = loads.awaitAll().map { assertIs<DataResult.Content<ThreadSnapshot>>(it).data.conversation }
+
+        conversations.forEach { conversation ->
+            assertEquals("#general:#7 Ship the task conversation", conversation.name)
+            assertTrue(conversation.permissions.canSend)
+        }
+        assertEquals(2, network.requests.count { it.path == "channels/conv-1" }, "each load reads its own detail")
+        assertEquals(1, network.requests.count { it.path == "channels/channel-1" }, "parent detail shared")
+        assertEquals(1, network.requests.count { it.path == "tasks/channel/channel-1" }, "task list shared")
+
+        // Once the flight lands nothing is cached: a later load fetches again.
+        repository.getThread(ThreadId("conv-1"))
+        assertEquals(2, network.requests.count { it.path == "tasks/channel/channel-1" })
     }
 
     @Test

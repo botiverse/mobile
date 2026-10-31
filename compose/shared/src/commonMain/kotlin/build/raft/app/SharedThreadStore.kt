@@ -1084,6 +1084,28 @@ internal class SharedThreadPayloadStore(
         replyThreadAccessFlights.clearFailure(key)
     }
 
+    /**
+     * Hands 4cf4c781: conversations whose canonical access this process resolved (owner + server +
+     * thread). A reopen showing the memory frame keeps that resolution instead of hiding the
+     * composer until the refresh lands; the refresh still applies its access result. Dropped with
+     * the conversation, the server, or the session, and on a terminal access result.
+     */
+    private val resolvedAccessKeys = mutableSetOf<SharedThreadOwnedPayloadCacheKey>()
+
+    fun setResolvedAccess(serverId: String, threadId: String, ownerScopeId: String, resolved: Boolean) {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        synchronized(recencyLock) {
+            if (resolved) resolvedAccessKeys += key else resolvedAccessKeys -= key
+        }
+    }
+
+    fun hasResolvedAccess(serverId: String, threadId: String, ownerScopeId: String): Boolean {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return false
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        return synchronized(recencyLock) { key in resolvedAccessKeys }
+    }
+
     fun retireOwner(ownerScopeId: String) {
         val retired = freshnessLedger.retireOwner(ownerScopeId)
         if (retired.isEmpty()) return
@@ -1134,6 +1156,7 @@ internal class SharedThreadPayloadStore(
         synchronized(recencyLock) {
             payloads.update { current -> current.filterKeys { key -> key.payloadKey.serverId != serverId } }
             recency.removeAll { key -> key.payloadKey.serverId == serverId }
+            resolvedAccessKeys.removeAll { key -> key.payloadKey.serverId == serverId }
         }
     }
 
@@ -1148,6 +1171,7 @@ internal class SharedThreadPayloadStore(
             synchronized(recencyLock) {
                 payloads.update { current -> current - key }
                 recency.remove(key)
+                resolvedAccessKeys.remove(key)
             }
         }
     }
@@ -1161,6 +1185,7 @@ internal class SharedThreadPayloadStore(
         synchronized(recencyLock) {
             payloads.value = emptyMap()
             recency.clear()
+            resolvedAccessKeys.clear()
         }
     }
 
@@ -1735,6 +1760,7 @@ internal class SharedThreadPayloadStore(
         synchronized(recencyLock) {
             payloads.value = emptyMap()
             recency.clear()
+            resolvedAccessKeys.clear()
         }
         freshnessLedger.clearForTest()
     }
@@ -2564,6 +2590,27 @@ internal class SharedThreadDataSource(
                 expectedProvenance.principalId,
                 ownerScopeId
             )
+        }
+
+    /** Hands 4cf4c781: records (or drops) that this owner's canonical access to [threadId] resolved. */
+    internal fun rememberResolvedThreadAccess(
+        threadId: String,
+        provenance: ReplyCacheProvenance,
+        resolved: Boolean,
+    ) {
+        val ownerScopeId = provenance.threadPayloadOwnerScopeId ?: return
+        payloadCache.setResolvedAccess(provenance.serverId, threadId, ownerScopeId, resolved)
+    }
+
+    /** Hands 4cf4c781: [rememberResolvedThreadAccess] under the same provenance gate as [cachedPayloadIfCurrent]. */
+    internal fun hasResolvedThreadAccessIfCurrent(
+        threadId: String,
+        expectedProvenance: ReplyCacheProvenance,
+    ): Boolean =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expectedProvenance) return@synchronized false
+            val ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId ?: return@synchronized false
+            payloadCache.hasResolvedAccess(expectedProvenance.serverId, threadId, ownerScopeId)
         }
 
     /** Hands 4b6ccb0d: [SharedThreadPayloadCache.getSuperseded] under the same provenance gate as [cachedPayloadIfCurrent]. */
@@ -8048,6 +8095,21 @@ internal class SharedThreadStore(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
         )
+        // Hands 4cf4c781: a reopen that shows this route's memory frame keeps the access this owner
+        // already resolved for it, so the composer / Join bar stays up while the refresh runs. The
+        // refresh still applies the canonical access it returns (canonicalAccessResolved stays false)
+        // and a terminal NoPermission closes it. Reply threads keep their parent-row lookup.
+        val keptResolvedAccess =
+            rememberedAccessFailure == null &&
+                threadId != null &&
+                (cached ?: current) != null &&
+                routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                producerContext?.provenance?.let { provenance ->
+                    dataSource.hasResolvedThreadAccessIfCurrent(threadId, provenance)
+                } == true
+        if (keptResolvedAccess) {
+            diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
+        }
         initialAccessStateMutex.withLock {
             val admitted =
                 producerContext?.let { context ->
@@ -8058,14 +8120,21 @@ internal class SharedThreadStore(
                                 payload = visiblePayload,
                                 highlightedMentions = emptySet(),
                                 accessResolution =
-                                    if (rememberedAccessFailure == null) {
-                                        ThreadAccessResolution.Loading
-                                    } else {
-                                        ThreadAccessResolution.Error
+                                    when {
+                                        rememberedAccessFailure != null -> ThreadAccessResolution.Error
+                                        keptResolvedAccess -> ThreadAccessResolution.Resolved
+                                        else -> ThreadAccessResolution.Loading
                                     },
                                 canonicalAccessResolved = false,
                                 initialHomeAccessLookupComplete = false,
-                                initialHomeAccessCandidate = null
+                                initialHomeAccessCandidate = null,
+                                writeActionsEnabled =
+                                    keptResolvedAccess &&
+                                        visiblePayload.hasWriteAuthorityForAccess(
+                                            accessResolution = ThreadAccessResolution.Resolved,
+                                            homeLookupComplete = false,
+                                            homeAccessCandidate = null,
+                                        ),
                             )
                         )
                     }
@@ -8116,6 +8185,25 @@ internal class SharedThreadStore(
             return
         }
         refresh(routeContextPayload, staleToken, reusePrewarm = true)
+    }
+
+    /** Hands 4cf4c781: see [SharedThreadPayloadStore.setResolvedAccess]. Reply threads are not kept. */
+    private fun rememberRefreshedAccess(
+        routePayload: RaftThreadScreenPayload,
+        provenance: ReplyCacheProvenance,
+        accessResolution: ThreadAccessResolution,
+        canonicalAccessResolved: Boolean,
+    ) {
+        val routeIdentity = routePayload.resolveThreadRouteIdentity()
+        if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) return
+        val threadId = routeIdentity.timelineKey ?: return
+        when {
+            accessResolution == ThreadAccessResolution.Resolved && canonicalAccessResolved ->
+                dataSource.rememberResolvedThreadAccess(threadId, provenance, resolved = true)
+            accessResolution == ThreadAccessResolution.NoPermission ||
+                accessResolution == ThreadAccessResolution.Error ->
+                dataSource.rememberResolvedThreadAccess(threadId, provenance, resolved = false)
+        }
     }
 
     private fun applyRouteIntent(routePayload: RaftThreadScreenPayload) {
@@ -8595,6 +8683,12 @@ internal class SharedThreadStore(
                             if (didEmit && visiblePayload != null) {
                                 committedPayload = authorityProjectedPayload
                             }
+                            rememberRefreshedAccess(
+                                routePayload = basePayload,
+                                provenance = refreshProvenance,
+                                accessResolution = projectedAccessResolution,
+                                canonicalAccessResolved = canonicalAccessResolved,
+                            )
                             true
                         }
                     }
