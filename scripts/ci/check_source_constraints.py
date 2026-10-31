@@ -5,13 +5,15 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Four constraints remain: check_no_conditional_interaction_state, born from the
+Five constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
 check_no_production_run_blocking (#3823: a main-thread runBlocking on the
 auth-session lock deadlocked the app; a hang no unit test can catch reliably),
-and check_native_safe_test_names (#3845: a comma in a backtick test name broke
-the iOS test compile on main, which PR CI does not build).
+check_native_safe_test_names (#3845: a comma in a backtick test name broke
+the iOS test compile on main, which PR CI does not build), and
+check_no_strong_invocation_object_return (1.17.1: an NSInvocation object return
+read into a strong variable crashed iOS 27.2 at launch; simulators don't crash).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -82,6 +84,54 @@ def _conditional_state_sources(root: Path) -> dict[str, str]:
             sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
     if not any("raftIsPressed(" in text for text in sources.values()):
         raise Violation("conditional composable state: scan never reached raftIsPressed")
+    return sources
+
+
+IOS_OBJC_ROOT = "compose/iosApp"
+INVOCATION_RETURN = re.compile(r"getReturnValue:\s*&\s*(\w+)")
+# Pointers to plain C data are not reference counted.
+C_DATA_POINTER = re.compile(r"\b(void|char|u?int\w*|float|double|CGFloat|NSInteger|NSUInteger|BOOL)\s*\*")
+
+
+def check_no_strong_invocation_object_return(sources: dict[str, str]) -> None:
+    """Incident: 1.17.1 (11701001) crash on launch on iOS 27.2 real devices.
+
+    `RaftIosReservedRegionsForKind` read `-[NSInvocation getReturnValue:]` into a `__strong
+    NSArray *`. getReturnValue: copies the pointer without retaining it, so ARC released an
+    object it never retained and the autorelease pool crashed releasing it again
+    (`objc_release` in `objc_autoreleasePoolPop`, none of our frames on the stack). Read an
+    object return into an `__unsafe_unretained` variable first, then assign it.
+    """
+    for name, text in sources.items():
+        for match in INVOCATION_RETURN.finditer(text):
+            var = match.group(1)
+            declarations = list(
+                re.finditer(rf"^[ \t]*([^;\n]*?)\b{re.escape(var)}\b\s*(=|;)", text[: match.start()], re.M)
+            )
+            if not declarations:
+                continue
+            declared = declarations[-1].group(1)
+            is_object = "*" in declared or re.search(r"\bid\b", declared)
+            if not is_object or "__unsafe_unretained" in declared or C_DATA_POINTER.search(declared):
+                continue
+            line = text.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"strong NSInvocation object return: {name}:{line} reads getReturnValue: into "
+                f"`{declared.strip()} {var}`; read it into an `__unsafe_unretained` variable first"
+            )
+
+
+def _ios_objc_sources(root: Path) -> dict[str, str]:
+    base = root / IOS_OBJC_ROOT
+    if not base.is_dir():
+        raise Violation(f"strong NSInvocation object return: missing source root {IOS_OBJC_ROOT}")
+    sources = {
+        str(path.relative_to(root)): path.read_text(encoding="utf-8")
+        for pattern in ("*.m", "*.mm")
+        for path in sorted(base.rglob(pattern))
+    }
+    if not any("getReturnValue:" in text for text in sources.values()):
+        raise Violation("strong NSInvocation object return: scan never reached getReturnValue:")
     return sources
 
 
@@ -514,6 +564,7 @@ def run(root: Path) -> None:
         return path.read_text(encoding="utf-8").replace("\r\n", "\n")
 
     check_no_conditional_interaction_state(_conditional_state_sources(root))
+    check_no_strong_invocation_object_return(_ios_objc_sources(root))
     check_native_apple_authentication_services(
         host=read(IOS_MOBILE_OAUTH_HOST),
         shared=read(IOS_MOBILE_OAUTH_SHARED),
@@ -735,6 +786,26 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: test-name checker accepted {bad!r}")
 
+    check_no_strong_invocation_object_return(
+        {
+            "f": "NSUInteger raw = 0;\n[i getReturnValue:&raw];\n"
+            "CGRect frame = CGRectNull;\n[i getReturnValue:&frame];\n"
+            "__unsafe_unretained NSArray * _Nullable unretained = nil;\n[i getReturnValue:&unretained];\n"
+            "void *bytes = NULL;\n[i getReturnValue:&bytes];\n"
+        }
+    )
+    for bad in (
+        "NSArray * _Nullable regions = nil;\n[invocation getReturnValue:&regions];",
+        "id result;\n[invocation getReturnValue:&result];",
+        "__strong NSString *s = nil;\n[inv getReturnValue: &s];",
+    ):
+        try:
+            check_no_strong_invocation_object_return({"f": bad})
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: 1.17.1 NSInvocation checker accepted {bad!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -752,7 +823,8 @@ def main(argv: list[str]) -> int:
         return 1
     print(
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
-        "#3823 no production runBlocking, #3845 Native-safe test names)"
+        "#3823 no production runBlocking, #3845 Native-safe test names, "
+        "1.17.1 NSInvocation object return)"
     )
     return 0
 
