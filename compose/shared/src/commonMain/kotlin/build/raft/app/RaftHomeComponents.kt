@@ -2050,7 +2050,9 @@ private fun RaftStructuralHomeShellContent(
     var sectionDeleteConfirmId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var moveToSectionConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     // The conversation whose notification level picker is open (slock docs/contracts/notifications.md §1.1).
-    var notificationLevelTarget by remember(currentServerId) { mutableStateOf<RaftNotificationLevelTarget?>(null) }
+    // The conversation whose Notifications picker is open; its target is rebuilt from the live row so
+    // a mute set from the picker shows at once.
+    var notificationLevelConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     // Web parity: long-pressing a system section header (web right-click)
     // opens that section's menu — sort, display, new section.
     var activeSystemSectionMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
@@ -3285,17 +3287,7 @@ private fun RaftStructuralHomeShellContent(
                     null -> false
                 }
             val activeNotificationTarget =
-                activeConversation?.let { conversation ->
-                    currentServerId.takeIf { it.isNotBlank() }?.let { serverId ->
-                        RaftNotificationLevelTarget(
-                            serverId = serverId,
-                            scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
-                            id = conversation.id,
-                            isDirectMessage = activeIsDirectMessage,
-                            muted = conversation.activityMuted
-                        )
-                    }
-                }.whenLevelsSupported()
+                activeConversation?.let { homeNotificationLevelTarget(currentServerId, it) }.whenLevelsSupported()
             val activeNotificationLevelLabel = rememberRaftNotificationLevelMenuLabel(activeNotificationTarget)
             val pinMenuItems = activeConversation?.let { conversation ->
                 raftHomeConversationMenuItems(
@@ -3335,7 +3327,7 @@ private fun RaftStructuralHomeShellContent(
                             // task #512: opens the move-to-section submenu on the
                             // same anchor (pinMenuAnchor survives menu close).
                             "move-to-section" -> moveToSectionConversationId = activeConversationId
-                            "notification-level" -> notificationLevelTarget = activeNotificationTarget
+                            "notification-level" -> notificationLevelConversationId = activeConversationId
                             "sort-channels" -> {
                                 sortOverlaySection = activeMenuSection
                             }
@@ -3345,8 +3337,17 @@ private fun RaftStructuralHomeShellContent(
                 )
                 }
             }
-            notificationLevelTarget?.let { target ->
-                RaftNotificationLevelDialog(target = target, onDismiss = { notificationLevelTarget = null })
+            val notificationLevelConversation =
+                notificationLevelConversationId?.let { id ->
+                    channels.firstOrNull { it.id == id } ?: directMessages.firstOrNull { it.id == id }
+                }
+            notificationLevelConversation?.let { homeNotificationLevelTarget(currentServerId, it) }?.let { target ->
+                RaftNotificationLevelDialog(
+                    target = target,
+                    onDismiss = { notificationLevelConversationId = null },
+                    // Mute is the picker's third choice; it sets the same mute as Activity's Mute.
+                    onSetMuted = { muted -> onChannelActivityMuteToggle(target.id, muted) },
+                )
             }
             if (activePinnedMemberMenuKey != null) {
                 val resolvedPinAnchor = pinMenuAnchor
@@ -3791,6 +3792,19 @@ private fun RaftHomeSortSection.sidebarSectionOrderId(): String =
         RaftHomeSortSection.DirectMessages -> "system:dms"
     }
 
+/** The Notifications target of a Home row: its channel level, its mute as the picker's third choice. */
+internal fun homeNotificationLevelTarget(serverId: String, conversation: RaftHomeConversationItem): RaftNotificationLevelTarget? =
+    serverId.takeIf { it.isNotBlank() }?.let {
+        RaftNotificationLevelTarget(
+            serverId = it,
+            scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
+            id = conversation.id,
+            isDirectMessage = conversation.isDirectMessageConversation(),
+            muted = conversation.activityMuted,
+            muteSupported = conversation.activityMuteSupported || conversation.activityMuted
+        )
+    }
+
 internal fun raftHomeConversationMenuItems(
     conversation: RaftHomeConversationItem,
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
@@ -3803,7 +3817,7 @@ internal fun raftHomeConversationMenuItems(
     canMoveToSection: Boolean = true,
     /** Both `thread_unread_badge_v0` and `sidebar_mark_all_read_v0` are on for this server. */
     markAllReadEnabled: Boolean = false,
-    /** "Notifications: <level>" (design §4.3, next to mute); null leaves the row out. */
+    /** "Notifications: <choice>" (design §4.3; it stands in for Mute / Unmute); null leaves the row out. */
     notificationLevelLabel: String? = null
 ): List<RaftBaseMenuItem> =
     buildList {
@@ -3850,8 +3864,10 @@ internal fun raftHomeConversationMenuItems(
                 icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
             )
         )
+        // A channel's mute is the third choice of its Notifications row (slock #12231, as in Slack), so
+        // only a row without one (a DM, or a server without the unified API) lists Mute / Unmute.
         // Unmute stays offered while muted even if mute is no longer supported (removed App bot DM).
-        if (conversation.activityMuteSupported || conversation.activityMuted) {
+        if (notificationLevelLabel == null && (conversation.activityMuteSupported || conversation.activityMuted)) {
             add(
                 RaftBaseMenuItem(
                     id = if (conversation.activityMuted) "unmute-channel" else "mute-channel",

@@ -41,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -966,6 +967,39 @@ class RaftHomeComponentsTest {
                 activeCanArchive = false
             ).single { it.id == "unmute-channel" }
         )
+    }
+
+    @Test
+    fun aChannelWithANotificationsRowListsNoSeparateMuteButADmKeepsIt() {
+        // slock #12231: a channel's Mute is the third choice of its Notifications row.
+        for (muted in listOf(false, true)) {
+            val channel = RaftHomeConversationItem(id = "c-1", name = "one", activityMuted = muted, activityMuteSupported = true)
+            val ids =
+                raftHomeConversationMenuItems(
+                    conversation = channel,
+                    pinTargetIsPinned = false,
+                    sortableFromMenu = false,
+                    activeIsDirectMessage = false,
+                    activeCanArchive = false,
+                    notificationLevelLabel = "Notifications: Mute"
+                ).map { it.id }
+            assertEquals(listOf("move-to-section", "mark-unread", "toggle-pin", "notification-level"), ids)
+            val target = assertNotNull(homeNotificationLevelTarget("s1", channel))
+            assertEquals(muted, target.muted)
+            assertTrue(target.hasMuteChoice)
+        }
+        // A DM has no level row (the target is filtered out upstream), so it keeps Mute / Unmute.
+        val dm = RaftHomeConversationItem(id = "dm-1", name = "Cindy", activityMuted = true, activityMuteSupported = true)
+        assertTrue(
+            raftHomeConversationMenuItems(
+                conversation = dm,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = true,
+                activeCanArchive = false
+            ).any { it.id == "unmute-channel" }
+        )
+        assertNull(homeNotificationLevelTarget("", dm))
     }
 
     @Test

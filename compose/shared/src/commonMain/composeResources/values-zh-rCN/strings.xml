@@ -607,7 +607,7 @@
     <string name="thread_settings_edit_channel">编辑频道</string>
     <string name="thread_dm_settings_title">私信设置</string>
     <string name="thread_dm_settings_mute_person">静音</string>
-    <string name="thread_dm_settings_mute_person_detail">关闭此私信的动态提醒</string>
+    <string name="thread_dm_settings_mute_person_detail">这个会话里的任何消息都不会通知你，@你 也不会。只影响你。</string>
     <string name="thread_dm_settings_pin_person">置顶会话</string>
     <string name="thread_dm_settings_pin_person_detail">将此私信保留在“已置顶”分区</string>
     <string name="thread_settings_name">名称</string>
@@ -640,8 +640,8 @@
     <string name="channel_settings_description_empty">添加频道描述</string>
     <string name="channel_settings_members">成员</string>
     <string name="channel_settings_preferences">我的频道偏好</string>
-    <string name="channel_settings_mute">消息免打扰</string>
-    <string name="channel_settings_mute_detail">不再接收这个频道的新消息提醒</string>
+    <string name="channel_settings_mute">静音</string>
+    <string name="channel_settings_mute_detail">这个会话里的任何消息都不会通知你，@你 也不会。只影响你。</string>
     <string name="channel_settings_pin">置顶频道</string>
     <string name="channel_settings_pin_detail">在首页置顶区域优先显示</string>
     <string name="channel_settings_status_joint">联合频道</string>
@@ -3520,13 +3520,13 @@
     <string name="assistant_conversation_missing">没能打开你和 %1$s 的对话，请稍后重试。</string>
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">所有新消息</string>
-    <string name="notification_level_mentions">仅 DM、@我 和关注的线程</string>
-    <string name="notification_level_channel_mentions">仅@我和已关注的消息列</string>
+    <string name="notification_level_mentions">仅与我相关</string>
+    <string name="notification_level_channel_mentions">仅与我相关</string>
     <string name="notification_level_none">不通知</string>
+    <string name="notification_level_mute">静音</string>
     <string name="notification_level_default">默认（%1$s）</string>
     <string name="notification_level_thread_all">所有回复（关注）</string>
-    <string name="notification_level_muted_note">已静音：最多仅提及。</string>
-    <string name="notification_level_muted_dm_note">已静音：此 DM 里只有 @我 的消息会通知。</string>
+    <string name="notification_level_muted_note">已静音：这里的任何消息都不会通知你，@你 也不会。</string>
     <string name="notification_level_dm_note">DM 里的每条消息都是发给你的，所以“所有新消息”和“仅 DM、@我 和关注的线程”效果相同。</string>
     <string name="notification_level_thread_note">关注线程等同于“所有回复”。</string>
     <string name="notification_level_menu_label">通知：%1$s</string>
