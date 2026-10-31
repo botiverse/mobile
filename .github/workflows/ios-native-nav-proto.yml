@@ -140,6 +140,7 @@ jobs:
           echo "app=$app"
           xcrun simctl install "$SIM_UDID" "$app"
           echo "BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")" >> "$GITHUB_ENV"
+          echo "APP_PATH=$app" >> "$GITHUB_ENV"
 
       - name: Capture scenes
         run: |
@@ -165,13 +166,16 @@ jobs:
           real_capture() {
             local mode=$1 flag=$2
             local log="$out/real-$mode.log"
+            # Each mode on a fresh install: both start as a first launch (no cached shell state).
             xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+            xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" || true
+            xcrun simctl install "$SIM_UDID" "$APP_PATH"
             sleep 1
             xcrun simctl io "$SIM_UDID" recordVideo --codec h264 --force "$out/real-$mode.mp4" &
             local rec=$!
             sleep 2
             SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV_PROTO="$flag" \
-              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
+              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" -RaftHideEnvironmentIndicator YES > "$log" 2>&1 &
             local seen=" "
             for _ in $(seq 1 500); do
               for name in $(grep -ao "RAFT_PROTO_SHOT name=[a-z0-9]*" "$log" | cut -d= -f2); do

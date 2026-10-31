@@ -177,6 +177,8 @@ enum RaftIosPushHost {
                 registerForRemoteNotificationsIfCurrent(generation: generation)
                 return
             }
+            // PROTOTYPE capture (fake backend): no permission alert over the scripted frames.
+            if ProcessInfo.processInfo.environment["RAFT_PROTO_FAKE_BACKEND"] == "1" { return }
             notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
                 if let error {
                     RaftIosDiagnosticsRecord(
