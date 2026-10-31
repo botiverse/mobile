@@ -279,6 +279,12 @@ interface ConversationRepository {
      */
     suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> =
         DataResult.Error(ScreenError(code = "task_conversation_ref_unsupported", retryable = false))
+
+    /**
+     * Task v2: a task conversation's header title (`#channel:#7 title`), read after its write
+     * authority so the composer does not wait for the task list. `null` when it cannot be read.
+     */
+    suspend fun loadTaskConversationTitle(conversationChannelId: ChannelId): String? = null
     suspend fun markThreadDone(
         threadChannelId: ChannelId,
         frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy

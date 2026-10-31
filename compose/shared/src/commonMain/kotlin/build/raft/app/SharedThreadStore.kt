@@ -5792,6 +5792,18 @@ internal class SharedThreadDataSource(
         }
     }
 
+    /** Task v2: a task conversation's header title; `null` when it cannot be read. */
+    suspend fun loadTaskConversationTitle(conversationChannelId: ChannelId): String? {
+        val repository = conversationRepository ?: return null
+        return try {
+            repository.loadTaskConversationTitle(conversationChannelId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     /** Task v2: the task and parent channel behind a task conversation channel. */
     suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
         val repository =
@@ -7521,6 +7533,8 @@ internal class SharedThreadStore(
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
     private var homeContextHydrationJob: Job? = null
+    private var taskConversationTitleJob: Job? = null
+    private var taskConversationTitleJobKey: String? = null
     private var backgroundMembersHydrationJob: Job? = null
     private var readInFlightMarker: ThreadVisibleReadMarker? = null
     private var pendingReadMarker: ThreadVisibleReadMarker? = null
@@ -7795,6 +7809,9 @@ internal class SharedThreadStore(
         initialAccessResolutionJob = null
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob = null
+        taskConversationTitleJob?.cancel()
+        taskConversationTitleJob = null
+        taskConversationTitleJobKey = null
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
@@ -8187,6 +8204,49 @@ internal class SharedThreadStore(
         refresh(routeContextPayload, staleToken, reusePrewarm = true)
     }
 
+    /**
+     * Hands 4cf4c781: a task conversation's access resolves with its parent channel detail; its
+     * title (the task row) is read beside the refresh when the conversation's task is already known
+     * (a reopen), else right after the refresh commits, and patched in when it lands. One read per
+     * route at a time; an equal title is a no-op.
+     */
+    private fun launchTaskConversationTitle(
+        shown: RaftThreadScreenPayload,
+        routePayload: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+    ) {
+        if (!shown.isTaskConversationSurface()) return
+        val conversationId = shown.resolveThreadRouteIdentity().timelineChannelId ?: return
+        if (taskConversationTitleJob?.isActive == true && taskConversationTitleJobKey == conversationId) return
+        taskConversationTitleJob?.cancel()
+        taskConversationTitleJobKey = conversationId
+        taskConversationTitleJob =
+            scope.launch {
+                val title =
+                    dataSource.loadTaskConversationTitle(ChannelId(conversationId))
+                        ?.takeIf { it.isNotBlank() }
+                        ?: return@launch
+                initialAccessStateMutex.withLock {
+                    val emitted =
+                        reducePayloadPatch(cachePayload = true) { current ->
+                            if (
+                                !staleTokenStillCurrent(staleToken, "thread_task_title", "apply", routePayload, current) ||
+                                !routeStillCurrent(routePayload, "thread_task_title", "apply", current) ||
+                                current.resolveThreadRouteIdentity().timelineChannelId != conversationId ||
+                                current.title == title
+                            ) {
+                                current
+                            } else {
+                                current.copy(title = title)
+                            }
+                        }
+                    if (emitted) {
+                        diagnosticsLogger?.invoke("thread_task_title_applied threadId=$conversationId")
+                    }
+                }
+            }
+    }
+
     /** Hands 4cf4c781: see [SharedThreadPayloadStore.setResolvedAccess]. Reply threads are not kept. */
     private fun rememberRefreshedAccess(
         routePayload: RaftThreadScreenPayload,
@@ -8405,6 +8465,7 @@ internal class SharedThreadStore(
         if (!routeStillCurrent(basePayload, "thread_refresh", "start", existing)) {
             return
         }
+        launchTaskConversationTitle(existing, basePayload, staleToken)
         val refreshObservedMessageIds = existing.messages.mapTo(mutableSetOf()) { message -> message.id }
         val repliesPageIdentity = captureThreadRepliesPageIdentity(basePayload, refreshProducerContext)
         val repliesRebaselineGeneration =
@@ -8708,6 +8769,8 @@ internal class SharedThreadStore(
             }
             return
         }
+        // The route may only learn it is a task conversation from this commit.
+        launchTaskConversationTitle(_state.value.payload, basePayload, staleToken)
         val currentProvenance =
             dataSource.currentReplyCacheProvenanceForLocalSend(refreshProvenance)
         if (result.isConversationAccessLost()) {
