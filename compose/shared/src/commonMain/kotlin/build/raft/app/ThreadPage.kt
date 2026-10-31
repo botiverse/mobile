@@ -24178,6 +24178,13 @@ private fun ThreadMessagesListContent(
                             }
                         },
                         onCopySelection = onCopySelection,
+                        onDownloadVideo =
+                            threadMessageMenuDownloadVideoAttachmentId(message)?.let { attachmentId ->
+                                {
+                                    closeActionMenu()
+                                    onThreadEvent("downloadAttachment", null, attachmentId, null)
+                                }
+                            },
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
@@ -31696,6 +31703,18 @@ internal fun threadMessageMenuCapabilities(
     )
 }
 
+/**
+ * The video a long press on [message] can download: its one sent video attachment. A message with
+ * several videos (or none) has no menu Download; each video still downloads from its preview.
+ */
+internal fun threadMessageMenuDownloadVideoAttachmentId(message: RaftThreadMessageItem): String? {
+    if (message.hasLocalSendState()) return null
+    return message.attachments
+        .filter { it.id.isNotBlank() && it.isPreviewableVideoAttachment() }
+        .singleOrNull()
+        ?.id
+}
+
 internal fun RaftThreadMessageItem.isThreadTaskDone(): Boolean =
     taskStatus?.trim()?.lowercase() in setOf("done", "closed")
 
@@ -31737,7 +31756,9 @@ internal fun threadMessageMenuActions(
     onDelete: () -> Unit,
     onTranslate: () -> Unit = {},
     onForward: () -> Unit = {},
-    onMarkThreadUnread: () -> Unit = {}
+    onMarkThreadUnread: () -> Unit = {},
+    /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
+    onDownloadVideo: (() -> Unit)? = null
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     buildList {
@@ -31788,6 +31809,17 @@ internal fun threadMessageMenuActions(
         if (showForwardAction) {
             // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
             add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
+        }
+        if (onDownloadVideo != null) {
+            // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
+            add(
+                ThreadMessageMenuAction(
+                    label = Res.string.file_preview_action_download.desc(),
+                    icon = RaftLucideIconName.Download,
+                    group = "message",
+                    onClick = onDownloadVideo
+                )
+            )
         }
         if (showSaveAction) {
             add(
@@ -31929,6 +31961,7 @@ private fun ThreadMessageActionMenu(
     onAddReaction: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: (() -> Unit)? = null,
+    onDownloadVideo: (() -> Unit)? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -31965,7 +31998,8 @@ private fun ThreadMessageActionMenu(
             onTranslate,
             onForward,
             onMarkThreadUnread,
-            onCopySelection
+            onCopySelection,
+            onDownloadVideo
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -31999,7 +32033,8 @@ private fun ThreadMessageActionMenu(
                 onDelete = onDelete,
                 onTranslate = onTranslate,
                 onForward = onForward,
-                onMarkThreadUnread = onMarkThreadUnread
+                onMarkThreadUnread = onMarkThreadUnread,
+                onDownloadVideo = onDownloadVideo
             )
         }
     // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).
