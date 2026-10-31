@@ -161,6 +161,36 @@ jobs:
             done
             if ! grep -q "$marker" "$log"; then echo "::warning::$mode/$scene: marker not seen"; fi
           }
+          # Phase 4: the REAL signed-in app (production shell + tab bar) on fabricated data.
+          real_capture() {
+            local mode=$1 flag=$2
+            local log="$out/real-$mode.log"
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 1
+            xcrun simctl io "$SIM_UDID" recordVideo --codec h264 --force "$out/real-$mode.mp4" &
+            local rec=$!
+            sleep 2
+            SIMCTL_CHILD_RAFT_PROTO_FAKE_BACKEND=1 SIMCTL_CHILD_RAFT_PROTO_REAL_SCENE=walk SIMCTL_CHILD_RAFT_NATIVE_NAV_PROTO="$flag" \
+              xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" > "$log" 2>&1 &
+            local seen=" "
+            for _ in $(seq 1 500); do
+              for name in $(grep -ao "RAFT_PROTO_SHOT name=[a-z0-9]*" "$log" | cut -d= -f2); do
+                case "$seen" in
+                  *" $name "*) ;;
+                  *) xcrun simctl io "$SIM_UDID" screenshot "$out/real-$mode-$name.png" >/dev/null 2>&1; seen="$seen$name "; echo "shot $mode $name";;
+                esac
+              done
+              grep -aq "RAFT_PROTO_DONE scene=real" "$log" && break
+              sleep 0.4
+            done
+            sleep 1
+            kill -INT "$rec" || true
+            wait "$rec" || true
+            grep -aE "RAFT_PROTO_(REAL|WARN|TABS|HEAD)|RAFT_CAPTURE_(HTTP 404|ERROR)|RAFT_PROTO_FAKE_BACKEND" "$log" | sort | uniq -c | sort -rn | head -80 || true
+          }
+          real_capture now 0
+          real_capture native 1
+          if [ "${RAFT_PROTO_DEMO_SCENES:-0}" = 1 ]; then
           for mode in now native; do
             flag=0; [ "$mode" = native ] && flag=1
             for scene in home activity tasks more settings saved thread members channelsettings agent midswipe; do
@@ -180,9 +210,10 @@ jobs:
             wait "$rec" || true
             echo "recorded $mode-video"
           done
+          fi
           xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
           # The heads each page published (titles, buttons, ⋯ rows, title menus), per scene.
-          grep -h "RAFT_PROTO_HEAD\|RAFT_PROTO_WARN" "$out"/native-*.log > "$out/native-heads.txt" || true
+          grep -ah "RAFT_PROTO_HEAD\|RAFT_PROTO_WARN" "$out"/real-native.log > "$out/native-heads.txt" || true
           ls -la "$out"
 
       - name: Upload captures

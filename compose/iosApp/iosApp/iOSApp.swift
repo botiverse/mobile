@@ -772,6 +772,13 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         RaftIosAvatarCacheHost.shared.install()
         RaftIosAppScopeMMKV.install()
+        // PROTOTYPE (agent/lagoon/ios-native-nav-proto): the login-free capture of the real app on
+        // fabricated data. Only a visual-fixture build carries the backend; only the capture's
+        // launch environment asks for it.
+        if ProcessInfo.processInfo.environment["RAFT_PROTO_FAKE_BACKEND"] == "1" {
+            let installed = RaftCaptureBackend.shared.installIfRequested(requested: true)
+            print("RAFT_PROTO_FAKE_BACKEND installed=\(installed)")
+        }
         // The font picker is gone (the design system fixes the faces); drop its stored choice
         // (same as RaftApplication on Android).
         _ = KeyValueStoreKt.raftClearLegacyFontPreference()

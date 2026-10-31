@@ -100,6 +100,13 @@ final class RaftIosTabBarController: UIViewController {
     private var serverAvatarSource: RaftNativeTabBarAvatar?
     private var serverAvatarImage: UIImage?
 
+    /// PROTOTYPE capture script: the live shell bar, and a tab selected as a tap would.
+    static weak var scriptCurrent: RaftIosTabBarController?
+
+    func scriptSelectTab(_ key: String) -> Bool {
+        bridge.selectTab(key: key)
+    }
+
     /// [bridge] must already be registered under [hostId]; this controller unregisters it.
     init(content: UIViewController, bridge: RaftNativeTabBarBridge, hostId: String) {
         self.content = content
@@ -170,6 +177,7 @@ final class RaftIosTabBarController: UIViewController {
 
         // Replays the current shared state.
         bridge.attachListener(listener: stateListener)
+        RaftIosTabBarController.scriptCurrent = self
     }
 
     /// The bar takes the app's theme choice itself. Inherited from the window alone, an app set
@@ -192,6 +200,9 @@ final class RaftIosTabBarController: UIViewController {
     // MARK: - Shared state -> UIKit
 
     fileprivate func apply(_ state: RaftNativeTabBarState) {
+        if RaftNativeNavProto.realScene != nil {
+            print("RAFT_PROTO_TABS keys=\(state.items.map(\.key).joined(separator: ",")) selected=\(state.selectedKey ?? "-")")
+        }
         let shared = state.items.map(RaftIosTabBarItemSpec.init(shared:))
         let displayed = RaftIosTabBarItemMapping.displayItems(shared)
         let specs = displayed

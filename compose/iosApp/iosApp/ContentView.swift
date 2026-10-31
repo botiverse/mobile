@@ -41,6 +41,8 @@ struct ContentView: View {
         } else {
             ShellHostView(oauthRouteStore: oauthRouteStore, shellContext: shellContext)
                 .background(ShellContextResolver(context: $shellContext))
+                // PROTOTYPE: the real-app capture script (RAFT_PROTO_REAL_SCENE only).
+                .onAppear { RaftNativeNavProtoReal.startIfRequested() }
         }
     }
 
@@ -286,9 +288,17 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
 
 
     /// In a capture with the prototype off, the same pages get a script-only bridge so the
-    /// scripted scroll runs in both modes.
+    /// scripted scroll (and the real-app script's head actions) run in both modes.
     static func scriptsPage(pageName: String) -> Bool {
-        demoScene != nil && nativePageNames.contains(pageName)
+        (demoScene != nil || realScene != nil) && nativePageNames.contains(pageName)
+    }
+
+    /// `RAFT_PROTO_REAL_SCENE=<name>`: script the REAL signed-in app (with
+    /// `RAFT_PROTO_FAKE_BACKEND=1`, on fabricated data); see RaftNativeNavProtoReal.
+    static var realScene: String? {
+        let scene = ProcessInfo.processInfo.environment["RAFT_PROTO_REAL_SCENE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return scene.isEmpty ? nil : scene
     }
 
     static var demoScene: String? {
@@ -1099,17 +1109,17 @@ private final class RaftProtoScriptedPan: UIPanGestureRecognizer {
 
 enum RaftNativeNavProtoDemo {
     static func marker(_ text: String) {
-        guard RaftNativeNavProto.demoScene != nil else { return }
+        guard RaftNativeNavProto.demoScene != nil || RaftNativeNavProto.realScene != nil else { return }
         print(text)
         fflush(stdout)
     }
 
-    private static func push(_ pageName: String, on nav: UINavigationController, animated: Bool) {
+    static func push(_ pageName: String, on nav: UINavigationController, animated: Bool) {
         let page = RaftPageControllerFactory.controller(pageName: pageName, pageData: ["pageName": pageName])
         nav.pushViewController(page, animated: animated)
     }
 
-    private static func after(_ seconds: Double, _ work: @escaping () -> Void) {
+    static func after(_ seconds: Double, _ work: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
@@ -1227,7 +1237,7 @@ enum RaftNativeNavProtoDemo {
     }
 
     /// Runs [steps] (delay before each, work) one after the other.
-    private static func sequence(_ steps: [(Double, () -> Void)], done: @escaping () -> Void = {}) {
+    static func sequence(_ steps: [(Double, () -> Void)], done: @escaping () -> Void = {}) {
         guard let first = steps.first else {
             done()
             return
@@ -1329,4 +1339,179 @@ struct RaftNativeNavProtoDemoView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {}
+}
+
+// MARK: - PROTOTYPE: the REAL signed-in app, scripted (capture only)
+
+/// Drives the real app shell (production tab bar, real pages) on the capture's fabricated data
+/// (`RAFT_PROTO_FAKE_BACKEND=1`) the way a person would: the head actions run through the page's
+/// bar bridge (the same handlers the bar buttons / title menu rows run; with the prototype off
+/// the page registers them there without drawing anything), pages open with the pageData the
+/// app's own navigation builds, tabs switch through the production tab bar's own selection path.
+/// Prints `RAFT_PROTO_SHOT name=<n>` when a frame is ready to capture.
+enum RaftNativeNavProtoReal {
+    private static var started = false
+
+    static func startIfRequested() {
+        guard let scene = RaftNativeNavProto.realScene, !started else { return }
+        started = true
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_START scene=\(scene) mode=\(RaftNativeNavProto.enabled ? "native" : "now") real=1")
+        waitForShell(attempt: 0)
+    }
+
+    private static func shot(_ name: String) {
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_SHOT name=\(name)")
+    }
+
+    private static func findNav(_ controller: UIViewController?) -> UINavigationController? {
+        guard let controller else { return nil }
+        if let nav = controller as? UINavigationController,
+           let root = nav.viewControllers.first as? RaftPageViewController, root.raftIsAppShellPage {
+            return nav
+        }
+        for child in controller.children {
+            if let found = findNav(child) { return found }
+        }
+        return findNav(controller.presentedViewController)
+    }
+
+    private static var window: UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow } ?? UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first
+    }
+
+    private static func waitForShell(attempt: Int) {
+        if let nav = findNav(window?.rootViewController), RaftIosTabBarController.scriptCurrent != nil {
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_REAL shell_ready attempt=\(attempt)")
+            RaftNativeNavProtoDemo.after(6) { run(nav) }
+            return
+        }
+        if attempt > 120 {
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN real_shell_missing")
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_DONE scene=real")
+            return
+        }
+        RaftNativeNavProtoDemo.after(0.5) { waitForShell(attempt: attempt + 1) }
+    }
+
+    private static func host(_ controller: UIViewController?) -> RaftNativeNavBarHost? {
+        (controller as? RaftPageViewController)?.raftNativeNavBarHost as? RaftNativeNavBarHost
+    }
+
+    /// Runs a head action of the page on top (the shell page when nothing is pushed).
+    private static func tap(_ nav: UINavigationController, _ id: String) {
+        let ok = host(nav.topViewController)?.bridge.actionTapped(id: id) ?? false
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_REAL tap id=\(id) ok=\(ok)")
+    }
+
+    private static func open(_ nav: UINavigationController, _ target: String, _ pageName: String) {
+        guard let json = RaftCaptureBackend.shared.pageDataJson(target: target),
+              let data = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [AnyHashable: Any],
+              let top = nav.topViewController
+        else {
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN real_open_failed target=\(target)")
+            return
+        }
+        RaftPageRouter().openPage(withName: pageName, pageData: data, controller: top)
+    }
+
+    private static func selectTab(_ key: String) {
+        let ok = RaftIosTabBarController.scriptCurrent?.scriptSelectTab(key) ?? false
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_REAL tab key=\(key) ok=\(ok)")
+    }
+
+    private static func rotate(_ orientation: UIInterfaceOrientationMask) {
+        guard #available(iOS 16.0, *), let scene = window?.windowScene else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation)) { error in
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN rotate_failed \(error.localizedDescription)")
+        }
+        window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
+
+    /// Native bar: opens the title menu the way a tap on the title does (if UIKit lets the
+    /// script); with the prototype off the Compose server switcher opens instead.
+    private static func openServerMenu(_ nav: UINavigationController) {
+        guard RaftNativeNavProto.enabled else {
+            tap(nav, "server-all")
+            return
+        }
+        var opened = false
+        func walk(_ view: UIView) {
+            if opened { return }
+            if let control = view as? UIControl, control.showsMenuAsPrimaryAction, control.contextMenuInteraction != nil {
+                if #available(iOS 17.4, *) {
+                    control.performPrimaryAction()
+                    opened = true
+                    return
+                }
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(nav.navigationBar)
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_REAL title_menu_opened=\(opened)")
+    }
+
+    private static func closeServerMenu(_ nav: UINavigationController) {
+        guard RaftNativeNavProto.enabled else { return }
+        func walk(_ view: UIView) {
+            if let control = view as? UIControl, control.showsMenuAsPrimaryAction {
+                control.contextMenuInteraction?.dismissMenu()
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(nav.navigationBar)
+    }
+
+    private static func run(_ nav: UINavigationController) {
+        let pop: () -> Void = { nav.popViewController(animated: true) }
+        RaftNativeNavProtoDemo.sequence([
+            (0.0, { shot("home") }),
+            (1.0, { openServerMenu(nav) }),
+            (1.5, { shot("servermenu") }),
+            (0.5, { closeServerMenu(nav); tap(nav, "server:\(RaftCaptureFakeServerIds.bots)") }),
+            (3.5, { shot("server2") }),
+            (0.5, { tap(nav, "server:\(RaftCaptureFakeServerIds.design)") }),
+            (3.5, { tap(nav, "home-bell") }),
+            (1.5, { shot("bell") }),
+            (0.5, { tap(nav, "home-bell") }),
+            (1.5, { open(nav, "thread:ch_capture_design", "compose_thread") }),
+            (3.5, { shot("thread") }),
+            (0.5, { tap(nav, "members") }),
+            (3.0, { shot("members") }),
+            (0.5, pop),
+            (2.0, { tap(nav, "thread-settings") }),
+            (3.0, { shot("channelsettings") }),
+            (0.5, pop),
+            (2.0, { RaftNativeNavProtoDemo.scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) }),
+            (2.5, { shot("swipeback") }),
+            (0.5, { open(nav, "thread:ch_capture_long", "compose_thread") }),
+            (3.5, { shot("longname") }),
+            (0.5, { rotate(.landscapeRight) }),
+            (3.0, { shot("rotated") }),
+            (0.5, { rotate(.portrait) }),
+            (3.0, pop),
+            (2.0, { open(nav, "drafts", "compose_home_drafts") }),
+            (3.0, { shot("drafts") }),
+            (0.5, pop),
+            (2.0, { open(nav, "settings-account", "compose_settings_account") }),
+            (3.0, { shot("settings") }),
+            (0.5, pop),
+            (2.0, { selectTab("search") }),
+            (2.5, { shot("search") }),
+            (0.5, { selectTab("home") }),
+            (2.5, { shot("homeagain") }),
+        ]) {
+            RaftNativeNavProtoDemo.after(1.0) { RaftNativeNavProtoDemo.marker("RAFT_PROTO_DONE scene=real") }
+        }
+    }
+}
+
+/// The capture's fabricated server ids (RaftCaptureFakeServer in the fixture build).
+enum RaftCaptureFakeServerIds {
+    static let design = "srv_capture_design"
+    static let bots = "srv_capture_bots"
 }
