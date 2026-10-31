@@ -3977,13 +3977,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                // The PDF viewer replaces the file page, so its Download and Share stay reachable
-                // here (Open with above is "open in another app").
-                if (
-                    payload.kind == RaftFilePreviewPdfKind &&
-                    canOpenWith &&
-                    downloadUiState == RaftFilePreviewDownloadUiState.NotDownloaded
-                ) {
+                // The PDF viewer and the video player replace the file page, so Download stays
+                // reachable here (Open with above is "open in another app").
+                if (raftFilePreviewOverflowShowsDownload(payload.kind, canOpenWith, downloadUiState)) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewDownloadActionId,
                         label = actionTerms.download,
@@ -10023,6 +10019,19 @@ internal fun raftFilePreviewUnsupportedFileMessage(payload: RaftFilePreviewPaylo
         payload.message.isNotBlank() -> payload.message.desc()
         else -> payload.messageDesc ?: Res.string.file_preview_no_preview.desc()
     }
+
+/**
+ * Whether the overflow menu offers Download: for the previews whose viewer takes the place of the
+ * file page and its Download button (PDF, video), until the file is downloaded.
+ */
+internal fun raftFilePreviewOverflowShowsDownload(
+    kind: String,
+    canOpenWith: Boolean,
+    downloadState: RaftFilePreviewDownloadUiState?
+): Boolean =
+    canOpenWith &&
+        downloadState == RaftFilePreviewDownloadUiState.NotDownloaded &&
+        (kind == RaftFilePreviewPdfKind || kind == "video")
 
 internal fun raftFilePreviewOverflowActionLabel(
     payload: RaftFilePreviewPayload,
