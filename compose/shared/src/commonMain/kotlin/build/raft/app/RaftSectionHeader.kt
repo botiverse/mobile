@@ -144,17 +144,32 @@ internal fun RaftTopPageHeader(
     nativeSubtitle: String? = subtitle,
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     nativeTitleExtras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
+    nativeTitleMenu: List<RaftNativeNavBarAction> = emptyList(),
+    nativeOnTitleClick: (() -> Unit)? = null,
+    // PROTOTYPE: the head's Back when it draws it itself (in [titleLeadingContent]).
+    nativeOnBack: (() -> Unit)? = null,
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
     // PROTOTYPE: the host's UINavigationBar draws this head (title, Back, actions). The page's top
     // safe area already includes the bar, so only that space is kept.
-    if (raftNativeNavBarPublish(title, nativeSubtitle, nativeActions, nativeTitleExtras.copy(refreshing = nativeTitleExtras.refreshing || refreshing))) {
+    if (
+        raftNativeNavBarPublish(
+            title = title,
+            subtitle = nativeSubtitle,
+            actions = nativeActions,
+            extras = nativeTitleExtras.copy(refreshing = nativeTitleExtras.refreshing || refreshing),
+            titleMenu = nativeTitleMenu,
+            onBack = onBack ?: nativeOnBack,
+            onTitleClick = onTitleClick ?: nativeOnTitleClick,
+        )
+    ) {
         RaftNativeNavBarHeadSpacer(
             bridge = LocalRaftNativeNavBar.current!!,
             modifier = modifier.fillMaxWidth(),
-            liveTop = raftTopSafeAreaPadding(),
+            // The page's top safe area includes the host bar; a head below the top keeps none.
+            liveTop = topSafeArea,
         )
         if (showBodyTopBanner) {
             RaftAppShellBodyTopBanner()
@@ -259,8 +274,19 @@ internal fun RaftPanelBackHeader(
     topSafeArea: Dp = 0.dp,
     refreshing: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): the head's buttons on the host bar.
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
 ) {
     val safeTop = topSafeArea.coerceAtLeast(0.dp)
+    // PROTOTYPE: the host's UINavigationBar draws this head.
+    if (raftNativeNavBarPublish(title, subtitle, nativeActions, RaftNativeNavBarTitleExtras(refreshing = refreshing), onBack = onBack, onTitleClick = onTitleClick)) {
+        RaftNativeNavBarHeadSpacer(
+            bridge = LocalRaftNativeNavBar.current!!,
+            modifier = modifier.fillMaxWidth(),
+            liveTop = safeTop,
+        )
+        return
+    }
     // iPhone Duo: Back moves to the system's side column (raft-design #859).
     val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
     @Suppress("NAME_SHADOWING")
@@ -401,7 +427,9 @@ internal fun RaftMainTabPageHeader(
     onBack: (() -> Unit)? = null,
     contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftMainTabHeaderStartPadding,
     refreshing: Boolean = false,
-    leadingContent: (@Composable BoxScope.() -> Unit)? = null
+    leadingContent: (@Composable BoxScope.() -> Unit)? = null,
+    // PROTOTYPE (native nav bar): a title tap on the host bar (the head's own modifier click).
+    nativeOnTitleClick: (() -> Unit)? = null,
 ) {
     RaftTopPageHeader(
         title = title,
@@ -412,7 +440,8 @@ internal fun RaftMainTabPageHeader(
         contentStartPadding = contentStartPadding,
         titleStyle = RaftMainTabHeaderTitleStyle,
         refreshing = refreshing,
-        leadingContent = leadingContent
+        leadingContent = leadingContent,
+        nativeOnTitleClick = nativeOnTitleClick,
     )
 }
 

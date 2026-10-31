@@ -32,6 +32,8 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.launch
+import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.designsystem.components.RaftSideAction
 
 /*
  * PROTOTYPE (agent/lagoon/ios-native-nav-proto, not for merge): the page's top bar drawn by the
@@ -60,14 +62,56 @@ import kotlinx.coroutines.launch
 /** pageData key carrying the id of the host's registered [RaftNativeNavBarBridge]. */
 const val RaftNativeNavBarHostIdPageDataKey = "slockNativeNavBarHostId"
 
-/** One trailing bar button: [systemSymbol] is an SF Symbol name; [badge] a count on the button. */
+/** Where a bar button goes. */
+enum class RaftNativeNavBarPlacement { Leading, Trailing, Overflow }
+
+/**
+ * One bar button (or ⋯ / title-menu row): [systemSymbol] is an SF Symbol name (null: a text
+ * button, or a menu row without an image); [badge] a count on the button; [attention] the "new"
+ * dot (the bell); [checked] a menu row's checkmark (the current server); [children] makes it a
+ * submenu (a button whose tap opens the menu).
+ */
 data class RaftNativeNavBarAction(
     val id: String,
     val label: String,
-    val systemSymbol: String,
+    val systemSymbol: String?,
     val onClick: () -> Unit,
     val badge: Int? = null,
+    val attention: Boolean = false,
+    val enabled: Boolean = true,
+    val checked: Boolean = false,
+    val destructive: Boolean = false,
+    val placement: RaftNativeNavBarPlacement = RaftNativeNavBarPlacement.Trailing,
+    val children: List<RaftNativeNavBarAction> = emptyList(),
+    /** Ranks for the trailing buttons: the higher stay out of the ⋯ longer (Duo column rule). */
+    val priority: Int = 0,
 )
+
+/** At most this many trailing buttons beside the ⋯ (the Duo column's two-action rule). */
+internal const val RaftNativeNavBarMaxTrailing = 2
+
+/**
+ * The trailing buttons as the bar shows them: up to [RaftNativeNavBarMaxTrailing] buttons by
+ * [RaftNativeNavBarAction.priority] (ties: the one listed first), the rest in the ⋯, both in listed
+ * order. Leading and explicit ⋯ rows keep their placement.
+ */
+internal fun raftNativeNavBarSplit(actions: List<RaftNativeNavBarAction>): List<RaftNativeNavBarAction> {
+    val trailing = actions.withIndex().filter { it.value.placement == RaftNativeNavBarPlacement.Trailing }
+    val forcedOverflow = actions.any { it.placement == RaftNativeNavBarPlacement.Overflow }
+    val room = if (forcedOverflow || trailing.size > RaftNativeNavBarMaxTrailing) RaftNativeNavBarMaxTrailing else trailing.size
+    val kept =
+        trailing.sortedWith(compareByDescending<IndexedValue<RaftNativeNavBarAction>> { it.value.priority }.thenBy { it.index })
+            .take(room)
+            .map { it.index }
+            .toSet()
+    return actions.mapIndexed { index, action ->
+        if (action.placement == RaftNativeNavBarPlacement.Trailing && index !in kept) {
+            action.copy(placement = RaftNativeNavBarPlacement.Overflow)
+        } else {
+            action
+        }
+    }
+}
 
 /** The leading image of the host's title view. */
 sealed interface RaftNativeNavBarTitleLeading {
@@ -87,14 +131,44 @@ data class RaftNativeNavBarTitleExtras(
     val refreshing: Boolean = false,
 )
 
+/** Everything one head publishes to the host bar. */
+internal data class RaftNativeNavBarHead(
+    val title: String,
+    val subtitle: String?,
+    val actions: List<RaftNativeNavBarAction>,
+    val extras: RaftNativeNavBarTitleExtras,
+    /** The title's menu (Home's server switcher): a chevron beside the title opens it. */
+    val titleMenu: List<RaftNativeNavBarAction> = emptyList(),
+    /** The head's own Back (an in-page sub-view's); null: the stack's Back (or none at its root). */
+    val onBack: (() -> Unit)? = null,
+    /** A tap on the title (scroll to top, the Settings developer unlock). */
+    val onTitleClick: (() -> Unit)? = null,
+)
+
 /** Implemented by the host (Swift). Called on the main thread. */
 interface RaftNativeNavBarListener {
     /**
-     * Show [title] / [subtitle], the trailing buttons of [actionsJson]
-     * (`[{"id":..,"label":..,"systemSymbol":..,"badge":..}]`, in order) and the title view extras of
-     * [extrasJson] (`{"leading":{"kind":"channel"|"avatar",..},"badge":..,"refreshing":..}`).
+     * Show [title] / [subtitle], the bar buttons of [actionsJson] (`[{"id","label","systemSymbol",
+     * "badge","attention","enabled","checked","destructive","placement":"leading"|"trailing"|
+     * "overflow","children":[..]}]`, in order), the title view extras of [extrasJson]
+     * (`{"leading":{"kind":"channel"|"avatar",..},"badge":..,"refreshing":..}`) and the title menu
+     * rows of [titleMenuJson] (same row shape; `[]` for none). [hasBack]: the head has a Back of
+     * its own (`actionTapped("back")`); [nested]: the head is not the page's first (an in-page
+     * sub-view over it). A pushed page pops with the stack's Back unless the head is [nested] with
+     * a Back; at the stack's root the host shows the head's Back as a leading button.
      */
-    fun onNativeNavBarChanged(title: String, subtitle: String?, actionsJson: String, extrasJson: String)
+    fun onNativeNavBarChanged(
+        title: String,
+        subtitle: String?,
+        actionsJson: String,
+        extrasJson: String,
+        titleMenuJson: String,
+        hasBack: Boolean,
+        nested: Boolean,
+    )
+
+    /** No head on screen publishes (a tab with its own Compose head): hide the bar. */
+    fun onNativeNavBarCleared()
 
     /**
      * The primary list scrolled: [offset] points from the expanded top (collapse first, then the
@@ -111,17 +185,22 @@ class RaftNativeNavBarBridge {
      */
     var hostDrawsBar: Boolean = true
 
+    /** One publishing head; the one activated last that is still on screen is the bar's. */
+    internal class Entry {
+        var head: RaftNativeNavBarHead? = null
+    }
+
+    private val entries = mutableListOf<Entry>()
     private var listener: RaftNativeNavBarListener? = null
-    private var title: String? = null
-    private var subtitle: String? = null
-    private var actionsJson: String = "[]"
-    private var extrasJson: String = "{}"
+    private var lastWire: List<Any?>? = null
     private var handlers: Map<String, () -> Unit> = emptyMap()
 
     /** Sets the single host listener and replays what the page published so far. */
     fun attachListener(listener: RaftNativeNavBarListener) {
         this.listener = listener
-        title?.let { listener.onNativeNavBarChanged(it, subtitle, actionsJson, extrasJson) }
+        lastWire = null
+        // Nothing published yet: the host keeps its bar until the page's head arrives.
+        if (entries.any { it.head != null }) send()
         reportScroll()
     }
 
@@ -129,38 +208,67 @@ class RaftNativeNavBarBridge {
         listener = null
     }
 
-    /** Host -> page: the bar button [id] was tapped. False when the page has no such action. */
+    /** Host -> page: the bar button / menu row [id] (or `back`) was tapped. False when there is none. */
     fun actionTapped(id: String): Boolean {
         val handler = handlers[id] ?: return false
         handler()
         return true
     }
 
-    internal fun publish(
-        title: String,
-        subtitle: String?,
-        actions: List<RaftNativeNavBarAction>,
-        extras: RaftNativeNavBarTitleExtras,
-    ) {
-        handlers = actions.associate { it.id to it.onClick }
-        val json =
-            buildJsonArray {
-                actions.forEach { action ->
-                    addJsonObject {
-                        put("id", action.id)
-                        put("label", action.label)
-                        put("systemSymbol", action.systemSymbol)
-                        action.badge?.let { put("badge", it) }
+    internal fun activate(entry: Entry) {
+        entries.remove(entry)
+        entries.add(entry)
+        // A head that has not published yet sends from its first publish.
+        if (entry.head != null) send()
+    }
+
+    internal fun deactivate(entry: Entry) {
+        if (!entries.remove(entry)) return
+        send()
+    }
+
+    internal fun publish(entry: Entry, head: RaftNativeNavBarHead) {
+        entry.head = head
+        if (entry in entries && entries.lastOrNull { it.head != null } === entry) send()
+    }
+
+    private fun send() {
+        val entry = entries.lastOrNull { it.head != null }
+        val head = entry?.head
+        if (head == null) {
+            handlers = emptyMap()
+            if (lastWire != null && lastWire?.isEmpty() == true) return
+            lastWire = emptyList()
+            listener?.onNativeNavBarCleared()
+            return
+        }
+        val actions = raftNativeNavBarSplit(head.actions)
+        val hasBack = head.onBack != null
+        val nested = entries.firstOrNull { it.head != null } !== entry
+        handlers =
+            buildMap {
+                fun addAll(list: List<RaftNativeNavBarAction>) {
+                    list.forEach { action ->
+                        put(action.id, action.onClick)
+                        addAll(action.children)
                     }
                 }
+                addAll(actions)
+                addAll(head.titleMenu)
+                head.onBack?.let { put(RaftNativeNavBarBackId, it) }
+                head.onTitleClick?.let { put(RaftNativeNavBarTitleId, it) }
+            }
+        val actionsJson = actions.toJsonArray().toString()
+        val titleMenuJson = head.titleMenu.toJsonArray().toString()
+        val extrasJson =
+            head.extras.toJson().let { extras ->
+                if (head.onTitleClick == null) extras else JsonObject(extras + ("titleTap" to kotlinx.serialization.json.JsonPrimitive(true)))
             }.toString()
-        val extrasJson = extras.toJson().toString()
-        if (title == this.title && subtitle == this.subtitle && json == actionsJson && extrasJson == this.extrasJson) return
-        this.title = title
-        this.subtitle = subtitle
-        actionsJson = json
-        this.extrasJson = extrasJson
-        listener?.onNativeNavBarChanged(title, subtitle, json, extrasJson)
+        val subtitle = head.subtitle?.takeIf { it.isNotBlank() }
+        val wire = listOf(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested)
+        if (wire == lastWire) return
+        lastWire = wire
+        listener?.onNativeNavBarChanged(head.title, subtitle, actionsJson, extrasJson, titleMenuJson, hasBack, nested)
     }
 
     // --- Large-title collapse -------------------------------------------------------------------
@@ -249,6 +357,30 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
         if (refreshing) put("refreshing", true)
     }
 
+/** The handler id of a head's own Back ([RaftNativeNavBarHead.onBack]). */
+internal const val RaftNativeNavBarBackId = "back"
+
+/** The handler id of a title tap ([RaftNativeNavBarHead.onTitleClick]); extras carry `"titleTap":true`. */
+internal const val RaftNativeNavBarTitleId = "title"
+
+private fun List<RaftNativeNavBarAction>.toJsonArray(): kotlinx.serialization.json.JsonArray =
+    buildJsonArray {
+        forEach { action ->
+            addJsonObject {
+                put("id", action.id)
+                put("label", action.label)
+                action.systemSymbol?.let { put("systemSymbol", it) }
+                action.badge?.let { put("badge", it) }
+                if (action.attention) put("attention", true)
+                if (!action.enabled) put("enabled", false)
+                if (action.checked) put("checked", true)
+                if (action.destructive) put("destructive", true)
+                put("placement", action.placement.name.lowercase())
+                if (action.children.isNotEmpty()) put("children", action.children.toJsonArray())
+            }
+        }
+    }
+
 /** Host-owned bridges by host id. Exported to Swift as `RaftNativeNavBarRegistry.shared`. */
 object RaftNativeNavBarRegistry {
     private val bridges = mutableMapOf<String, RaftNativeNavBarBridge>()
@@ -274,7 +406,9 @@ val LocalRaftNativeNavBarScript = staticCompositionLocalOf<RaftNativeNavBarBridg
 
 /**
  * Publishes the head to the host bar when there is one. True when the host draws it (the caller
- * then draws only [RaftNativeNavBarHeadSpacer]).
+ * then draws only [RaftNativeNavBarHeadSpacer]). Only while the enclosing page is active (a
+ * kept-alive shell tab publishes when it is selected); the head published last that is still on
+ * screen is the bar's, so an in-page sub-view's head covers its page's and gives it back.
  */
 @Composable
 internal fun raftNativeNavBarPublish(
@@ -282,11 +416,53 @@ internal fun raftNativeNavBarPublish(
     subtitle: String?,
     actions: List<RaftNativeNavBarAction>,
     extras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
+    titleMenu: List<RaftNativeNavBarAction> = emptyList(),
+    onBack: (() -> Unit)? = null,
+    onTitleClick: (() -> Unit)? = null,
 ): Boolean {
     val bridge = LocalRaftNativeNavBar.current ?: return false
-    SideEffect { bridge.publish(title, subtitle?.takeIf { it.isNotBlank() }, actions, extras) }
+    val active = LocalRaftPageActive.current
+    val entry = remember(bridge) { RaftNativeNavBarBridge.Entry() }
+    DisposableEffect(bridge, entry, active) {
+        if (active) bridge.activate(entry)
+        onDispose { bridge.deactivate(entry) }
+    }
+    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick)
+    SideEffect { if (active) bridge.publish(entry, head) }
     return true
 }
+
+/**
+ * The Duo side column's actions ([RaftSideAction], the one source of a head's buttons) as bar
+ * buttons: the same ids, labels, enabled / attention states and the same two-visible rule (a
+ * negative [RaftSideAction.priority] goes to the ⋯ first). An action without an SF Symbol gets
+ * the one [raftNativeNavBarSymbolFor] knows for its id, else none (a text button / a plain row).
+ */
+internal fun List<RaftSideAction>.toRaftNativeNavBarActions(): List<RaftNativeNavBarAction> =
+    map { action ->
+        RaftNativeNavBarAction(
+            id = action.id,
+            label = action.label,
+            systemSymbol = action.systemSymbol ?: raftNativeNavBarSymbolFor(action.id),
+            onClick = action.onClick,
+            attention = action.attention,
+            enabled = action.enabled,
+            priority = if (action.keepVisible) Int.MAX_VALUE else action.priority,
+        )
+    }
+
+/** SF Symbols for the side-column action ids whose column draws a Lucide glyph (prototype table). */
+internal fun raftNativeNavBarSymbolFor(id: String): String? =
+    when (id) {
+        "home-bell" -> "bell"
+        "thread-search", SEARCH_IN_TASK_MENU_ITEM_ID -> "magnifyingglass"
+        "thread-settings" -> "gearshape"
+        "thread-open-in-channel", VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> "mappin.and.ellipse"
+        FOCUS_MODE_MENU_ITEM_ID -> "arrow.up.left.and.arrow.down.right"
+        MARK_THREAD_UNREAD_MENU_ITEM_ID -> "message.badge"
+        FOLLOW_THREAD_MENU_ITEM_ID -> "bell.badge"
+        else -> null
+    }
 
 /**
  * The space the host bar takes above the page. With a collapsing large title it is the page's own
