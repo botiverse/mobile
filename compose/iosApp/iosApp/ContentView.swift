@@ -223,17 +223,42 @@ let RaftNativeNavBarHostIdPageDataKeyName = "slockNativeNavBarHostId"
     @objc static let enabled: Bool =
         ProcessInfo.processInfo.environment["RAFT_NATIVE_NAV_PROTO"]?.trimmingCharacters(in: .whitespaces) != "0"
 
-    /// Pages whose head is hooked (shared RaftTopPageHeader / ThreadPageHeader publish to the bar).
+    /// Pages whose heads are mapped (every head they show publishes to the bar, every button of it
+    /// is reachable there). Phase 2: the app shell (its Home / Activity / Tasks / Members / More
+    /// tabs; Search keeps its own search-field head, the bar hides for it) and the pushed pages.
     private static let nativePageNames: Set<String> = [
+        // App
+        "compose_slock_app_shell",
+        "compose_thread",
+        "compose_thread_members",
+        "compose_home_activity",
+        "compose_home_saved",
+        "compose_home_drafts",
+        "compose_channel_settings",
+        "compose_members",
+        "compose_member_detail",
+        "compose_settings_home",
+        "compose_settings_account",
+        "compose_settings_native_detail",
+        "compose_settings_storage",
+        "compose_settings_computers",
+        "compose_settings_hands_feedback",
+        // Login-free demo (visual fixtures)
         "compose_native_nav_proto_home",
         "compose_native_nav_proto_thread",
         "compose_channel_members_parity_visual",
-        "compose_thread",
-        "compose_thread_members",
+        "compose_native_nav_proto_activity",
+        "compose_native_nav_proto_tasks",
+        "compose_native_nav_proto_more",
+        "compose_native_nav_proto_settings_detail",
+        "compose_native_nav_proto_saved",
+        "compose_native_nav_proto_agent",
+        "compose_native_nav_proto_channel_settings",
     ]
 
+    /// iPhone only: the iPad / wide layouts keep their own top bar and panes.
     static func usesNativeNavBar(pageName: String) -> Bool {
-        enabled && nativePageNames.contains(pageName)
+        enabled && UIDevice.current.userInterfaceIdiom == .phone && nativePageNames.contains(pageName)
     }
 
     /// Pages whose title is large and collapses with their primary list (the tab root, lists).
@@ -331,42 +356,89 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     // MARK: Head
 
-    func onNativeNavBarChanged(title: String, subtitle: String?, actionsJson: String, extrasJson: String) {
+    func onNativeNavBarChanged(
+        title: String,
+        subtitle: String?,
+        actionsJson: String,
+        extrasJson: String,
+        titleMenuJson: String,
+        hasBack: Bool,
+        nested: Bool
+    ) {
         lastTitle = title
         lastSubtitle = subtitle
         lastActionsJson = actionsJson
+        lastTitleMenuJson = titleMenuJson
+        lastHasBack = hasBack
+        lastNested = nested
         lastExtras = ((try? JSONSerialization.jsonObject(with: Data(extrasJson.utf8))) as? [String: Any]) ?? [:]
+        clearGeneration += 1
+        setHeadHidden(false)
         applyHead()
     }
 
+    /// No head on screen (a shell tab that draws its own Compose head): hide the bar. Deferred a
+    /// turn, so a tab switch (old head leaves, new head publishes in the same frame) never blinks.
+    func onNativeNavBarCleared() {
+        clearGeneration += 1
+        let generation = clearGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.clearGeneration == generation else { return }
+            self.setHeadHidden(true)
+            RaftNativeNavProtoDemo.marker("RAFT_PROTO_HEAD cleared")
+        }
+    }
+
+    private func setHeadHidden(_ hidden: Bool) {
+        guard let page = controller as? RaftPageViewController, page.raftNativeNavBarHeadHidden != hidden else { return }
+        page.raftNativeNavBarHeadHidden = hidden
+        if let owner, let nav = owner.navigationController, nav.topViewController === owner {
+            nav.setNavigationBarHidden(hidden, animated: false)
+        }
+    }
+
+    private var lastTitleMenuJson = "[]"
+    private var lastHasBack = false
+    private var lastNested = false
+    private var clearGeneration = 0
+
     private func applyHead() {
         guard let controller, let owner else { return }
-        if owner !== controller {
-            // Tab root: the root controller owns the items and the large title; the page names it.
-            if (owner as? UITabBarController)?.selectedViewController === controller {
-                owner.navigationItem.title = lastTitle
-                owner.navigationItem.backButtonTitle = lastTitle
-            }
+        if owner !== controller,
+           let tabs = owner as? UITabBarController,
+           tabs.selectedViewController !== controller {
+            // A demo tab root: only the selected tab names the root.
             return
         }
-        let item = controller.navigationItem
+        let item = owner.navigationItem
+        let isStackRoot = owner.navigationController?.viewControllers.first === owner
         item.title = lastTitle
-        // Experiment (phase 1 goal 2): ask for the previous title on the next page's Back.
+        // Ask for the previous title on the next page's Back.
         item.backButtonTitle = lastTitle
         item.backButtonDisplayMode = .default
         item.largeTitleDisplayMode = largeTitle ? .always : .never
         let refreshing = (lastExtras["refreshing"] as? Bool) ?? false
         let badge = lastExtras["badge"] as? String
         let leading = lastExtras["leading"] as? [String: Any]
+        let titleTap = (lastExtras["titleTap"] as? Bool) ?? false
+        let titleMenu = RaftNativeNavBarHost.parseActions(lastTitleMenuJson)
         var subtitle = lastSubtitle
         if largeTitle {
             // A large title cannot carry a title view: the count goes in the subtitle line.
             item.titleView = nil
             if let badge, subtitle == nil { subtitle = badge }
-        } else if leading != nil || refreshing || badge != nil {
-            item.titleView = RaftNativeNavTitleView(
+        } else if !titleMenu.isEmpty {
+            item.titleView = nil
+        } else if leading != nil || refreshing || badge != nil || titleTap {
+            let view = RaftNativeNavTitleView(
                 title: lastTitle, subtitle: lastSubtitle, leading: leading, badge: badge, refreshing: refreshing
             )
+            if titleTap {
+                view.isUserInteractionEnabled = true
+                view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(titleTapped)))
+                view.accessibilityTraits.insert(.button)
+            }
+            item.titleView = view
         } else {
             item.titleView = nil
         }
@@ -375,65 +447,172 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         if item.responds(to: NSSelectorFromString("setSubtitle:")) {
             item.setValue(item.titleView == nil ? subtitle : nil, forKey: "subtitle")
         }
+
+        // Title menu (Home's server switcher): the system chevron beside the title.
+        var leadingItems: [UIBarButtonItem] = []
+        if #available(iOS 16.0, *) {
+            if titleMenu.isEmpty {
+                item.titleMenuProvider = nil
+            } else {
+                let rows = titleMenu.map { self.menuElement($0) }
+                item.titleMenuProvider = { _ in UIMenu(children: rows) }
+            }
+        } else if !titleMenu.isEmpty {
+            let switcher = UIBarButtonItem(title: lastTitle, image: nil, primaryAction: nil, menu: UIMenu(children: titleMenu.map { menuElement($0) }))
+            leadingItems.append(switcher)
+        }
+
+        // Back: a pushed page pops with the stack's Back; a head over its page (an in-page
+        // sub-view) with a Back of its own runs it instead; at the stack's root the head's Back is
+        // a leading button.
+        var ownBackButton = false
+        if lastHasBack && isStackRoot {
+            let back = UIBarButtonItem(
+                title: nil,
+                image: UIImage(systemName: "chevron.backward"),
+                primaryAction: UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: "back") },
+                menu: nil
+            )
+            back.accessibilityLabel = "Back"
+            leadingItems.insert(back, at: 0)
+            ownBackButton = true
+        }
+        if #available(iOS 16.0, *) {
+            if lastHasBack && lastNested && !isStackRoot {
+                item.backAction = UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: "back") }
+            } else {
+                item.backAction = nil
+            }
+        }
+
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
+        leadingItems.append(contentsOf: actions.filter { $0.placement == "leading" }.map { barItem($0) })
+        item.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
+        item.leftItemsSupplementBackButton = true
+
         var barItems: [UIBarButtonItem] = []
-        if actions.count > 1 {
-            // Everything after the first action lives in the ⋯ menu (rightmost).
-            let menu = UIMenu(children: actions.dropFirst().map { action in
-                UIAction(title: action.label, image: UIImage(systemName: action.symbol)) { [weak self] _ in
-                    _ = self?.bridge.actionTapped(id: action.id)
-                }
-            })
+        let overflow = actions.filter { $0.placement == "overflow" }
+        if !overflow.isEmpty {
+            let menu = UIMenu(children: overflow.map { menuElement($0) })
             let more = UIBarButtonItem(title: nil, image: UIImage(systemName: "ellipsis"), primaryAction: nil, menu: menu)
             more.accessibilityLabel = "More"
             barItems.append(more)
         }
-        if let first = actions.first {
-            let button = UIBarButtonItem(
-                title: nil,
-                image: UIImage(systemName: first.symbol),
-                primaryAction: UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: first.id) },
-                menu: nil
-            )
-            button.accessibilityLabel = first.label
-            if let count = first.badge, count > 0 {
-                if #available(iOS 26.0, *) {
-                    // The bridge always calls on the main thread; the Badge factory is main-actor.
-                    MainActor.assumeIsolated { button.badge = .count(count) }
-                }
-                button.accessibilityValue = "\(count)"
-            }
-            barItems.append(button)
-        }
+        // rightBarButtonItems run from the trailing edge in: the ⋯ outermost, then the buttons
+        // so that they read in listed order.
+        barItems.append(contentsOf: actions.filter { $0.placement == "trailing" }.reversed().map { barItem($0) })
         if largeTitle && refreshing {
             let spinner = UIActivityIndicatorView(style: .medium)
             spinner.startAnimating()
             barItems.append(UIBarButtonItem(customView: spinner))
         }
         item.rightBarButtonItems = barItems
-        var badgeLog = badge ?? "-"
-        if let count = actions.first?.badge { badgeLog = "button:\(count)" }
-        let hasTitleView = item.titleView != nil
+        let trailingIds = actions.filter { $0.placement == "trailing" }.map(\.id).joined(separator: ",")
+        let overflowIds = overflow.map(\.id).joined(separator: ",")
         RaftNativeNavProtoDemo.marker(
-            "RAFT_PROTO_HEAD title=\(lastTitle) large=\(largeTitle) titleView=\(hasTitleView) badge=\(badgeLog) refreshing=\(refreshing)"
+            "RAFT_PROTO_HEAD title=\(lastTitle) large=\(largeTitle) titleView=\(item.titleView != nil) " +
+                "trailing=[\(trailingIds)] overflow=[\(overflowIds)] titleMenu=\(titleMenu.count) " +
+                "ownBack=\(ownBackButton) backAction=\(lastHasBack && lastNested && !isStackRoot) refreshing=\(refreshing)"
         )
+    }
+
+    /// The page became the shown one again (a demo tab selected): apply its last head.
+    func reapply() {
+        if !lastTitle.isEmpty { applyHead() }
+    }
+
+    @objc private func titleTapped() {
+        _ = bridge.actionTapped(id: "title")
     }
 
     private struct Action {
         let id: String
         let label: String
-        let symbol: String
+        let symbol: String?
         let badge: Int?
+        let attention: Bool
+        let enabled: Bool
+        let checked: Bool
+        let destructive: Bool
+        let placement: String
+        let children: [Action]
+    }
+
+    private static func parseAction(_ row: [String: Any]) -> Action? {
+        guard let id = row["id"] as? String else { return nil }
+        let children = (row["children"] as? [[String: Any]])?.compactMap { parseAction($0) } ?? []
+        return Action(
+            id: id,
+            label: row["label"] as? String ?? id,
+            symbol: row["systemSymbol"] as? String,
+            badge: (row["badge"] as? NSNumber)?.intValue,
+            attention: (row["attention"] as? Bool) ?? false,
+            enabled: (row["enabled"] as? Bool) ?? true,
+            checked: (row["checked"] as? Bool) ?? false,
+            destructive: (row["destructive"] as? Bool) ?? false,
+            placement: row["placement"] as? String ?? "trailing",
+            children: children
+        )
     }
 
     private static func parseActions(_ json: String) -> [Action] {
         guard let rows = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]] else {
             return []
         }
-        return rows.compactMap { row in
-            guard let id = row["id"] as? String, let symbol = row["systemSymbol"] as? String else { return nil }
-            return Action(id: id, label: row["label"] as? String ?? id, symbol: symbol, badge: (row["badge"] as? NSNumber)?.intValue)
+        return rows.compactMap { parseAction($0) }
+    }
+
+    /// A ⋯ / title-menu row (a submenu when it has children).
+    private func menuElement(_ action: Action) -> UIMenuElement {
+        let image = action.symbol.flatMap { UIImage(systemName: $0) }
+        if !action.children.isEmpty {
+            return UIMenu(title: action.label, image: image, children: action.children.map { menuElement($0) })
         }
+        let row = UIAction(title: action.label, image: image) { [weak self] _ in
+            _ = self?.bridge.actionTapped(id: action.id)
+        }
+        var attributes: UIMenuElement.Attributes = []
+        if !action.enabled { attributes.insert(.disabled) }
+        if action.destructive { attributes.insert(.destructive) }
+        row.attributes = attributes
+        row.state = action.checked ? .on : .off
+        if let badge = action.badge, badge > 0 {
+            row.subtitle = "\(badge)"
+        } else if action.attention {
+            row.subtitle = "●"
+        }
+        return row
+    }
+
+    /// A bar button: a symbol (else its label as text); a submenu opens on tap; a count badge.
+    private func barItem(_ action: Action) -> UIBarButtonItem {
+        let image = action.symbol.flatMap { UIImage(systemName: $0) }
+        let button: UIBarButtonItem
+        if !action.children.isEmpty {
+            button = UIBarButtonItem(
+                title: image == nil ? action.label : nil,
+                image: image,
+                primaryAction: nil,
+                menu: UIMenu(title: action.label, children: action.children.map { menuElement($0) })
+            )
+        } else {
+            button = UIBarButtonItem(
+                title: image == nil ? action.label : nil,
+                image: image,
+                primaryAction: UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: action.id) },
+                menu: nil
+            )
+        }
+        button.isEnabled = action.enabled
+        button.accessibilityLabel = action.label
+        if let count = action.badge, count > 0 {
+            if #available(iOS 26.0, *) {
+                // The bridge always calls on the main thread; the Badge factory is main-actor.
+                MainActor.assumeIsolated { button.badge = .count(count) }
+            }
+            button.accessibilityValue = "\(count)"
+        }
+        return button
     }
 
     // MARK: Large-title mirror
@@ -793,51 +972,35 @@ final class RaftNativeNavTitleView: UIStackView {
     }
 }
 
-/// The demo's tab root: Home (a CMP page) plus placeholder tabs. With the prototype on, the root
-/// takes the large native title, the server switcher as a leading menu and the bell as a trailing
-/// button; off, the Home page draws its own Compose head (server pill + bell) as today.
+/// The demo's tab root: the Home, Activity, Tasks and More tabs as CMP fixture pages (each
+/// publishes its own head: Home the server title menu and the bell). With the prototype off every
+/// page draws its own Compose head as today.
 final class RaftNativeNavProtoRootController: UITabBarController, UITabBarControllerDelegate {
     private let native: Bool
 
     init(native: Bool) {
         self.native = native
         super.init(nibName: nil, bundle: nil)
-        let home = RaftPageControllerFactory.controller(
-            pageName: "compose_native_nav_proto_home",
-            pageData: ["pageName": "compose_native_nav_proto_home"]
-        )
-        home.tabBarItem = UITabBarItem(title: "Home", image: UIImage(systemName: "house"), selectedImage: UIImage(systemName: "house.fill"))
         viewControllers = [
-            home,
-            Self.placeholder("Activity", "waveform.path.ecg.rectangle"),
-            Self.placeholder("Tasks", "checkmark.square"),
-            Self.placeholder("Members", "person.2"),
+            Self.tab("compose_native_nav_proto_home", "Home", "house"),
+            Self.tab("compose_native_nav_proto_activity", "Activity", "waveform.path.ecg.rectangle"),
+            Self.tab("compose_native_nav_proto_tasks", "Tasks", "checkmark.square"),
+            Self.tab("compose_native_nav_proto_more", "More", "ellipsis.circle"),
         ]
         delegate = self
         // FD's will-appear hook shows / hides the bar by this when the root reappears.
         fd_prefersNavigationBarHidden = !native
         if native {
             navigationItem.title = "Home"
-            navigationItem.backButtonTitle = "Home"
             navigationItem.backButtonDisplayMode = .default
             navigationItem.largeTitleDisplayMode = RaftNativeNavProto.largeTitleMirror ? .always : .never
-            let servers = UIMenu(title: "Servers", children: [
-                UIAction(title: "Raft Design", image: UIImage(systemName: "checkmark")) { _ in },
-                UIAction(title: "Botiverse") { _ in },
-                UIAction(title: "Create Server…", image: UIImage(systemName: "plus")) { _ in },
-            ])
-            let switcher = UIBarButtonItem(title: "Raft Design", image: nil, primaryAction: nil, menu: servers)
-            switcher.accessibilityLabel = "Switch server"
-            navigationItem.leftBarButtonItem = switcher
-            let bell = UIBarButtonItem(
-                title: nil,
-                image: UIImage(systemName: "bell"),
-                primaryAction: UIAction { _ in },
-                menu: nil
-            )
-            bell.accessibilityLabel = "Notifications"
-            navigationItem.rightBarButtonItem = bell
         }
+    }
+
+    private static func tab(_ pageName: String, _ title: String, _ symbol: String) -> UIViewController {
+        let page = RaftPageControllerFactory.controller(pageName: pageName, pageData: ["pageName": pageName])
+        page.tabBarItem = UITabBarItem(title: title, image: UIImage(systemName: symbol), selectedImage: UIImage(systemName: "\(symbol).fill"))
+        return page
     }
 
     @available(*, unavailable)
@@ -851,29 +1014,15 @@ final class RaftNativeNavProtoRootController: UITabBarController, UITabBarContro
     }
 
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-        if native {
-            navigationItem.title = viewController.tabBarItem.title
-        }
+        // The selected tab's head names the root.
+        ((viewController as? RaftPageViewController)?.raftNativeNavBarHost as? RaftNativeNavBarHost)?.reapply()
     }
 
-    private static func placeholder(_ title: String, _ symbol: String) -> UIViewController {
-        let controller = UIViewController()
-        controller.view.backgroundColor = .systemBackground
-        let label = UILabel()
-        label.text = "\(title) (prototype placeholder)"
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        controller.view.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: controller.view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: controller.view.centerYAnchor),
-        ])
-        controller.tabBarItem = UITabBarItem(
-            title: title,
-            image: UIImage(systemName: symbol),
-            selectedImage: UIImage(systemName: "\(symbol).fill")
-        )
-        return controller
+    /// Demo script: select tab [index] as a tap on the bar would.
+    func selectTab(_ index: Int) {
+        guard let controllers = viewControllers, index < controllers.count else { return }
+        selectedIndex = index
+        tabBarController(self, didSelect: controllers[index])
     }
 }
 
@@ -1018,56 +1167,86 @@ enum RaftNativeNavProtoDemo {
         after(1.0 / 60.0) { step(1) }
     }
 
-    /// The video's second half: into the conversation, its members (scroll), and swipe back twice.
-    private static func videoPush(_ nav: UINavigationController) {
-        push("compose_native_nav_proto_thread", on: nav, animated: true)
-        after(3.5) { push("compose_channel_members_parity_visual", on: nav, animated: true) }
-        after(6.5) {
-            scriptedScroll(nav, distance: 120, duration: 1.2) {
-                after(0.8) {
-                    scriptedScroll(nav, distance: -160, duration: 1.2) {
-                        after(1.0) {
-                            scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
-                                after(2) {
-                                    scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) {
-                                        after(2.5) { marker("RAFT_PROTO_DONE scene=video") }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    private static func root(_ nav: UINavigationController) -> RaftNativeNavProtoRootController? {
+        nav.viewControllers.first as? RaftNativeNavProtoRootController
+    }
+
+    private static func pop(_ nav: UINavigationController) {
+        nav.popViewController(animated: true)
+    }
+
+    /// Runs [steps] (delay before each, work) one after the other.
+    private static func sequence(_ steps: [(Double, () -> Void)], done: @escaping () -> Void = {}) {
+        guard let first = steps.first else {
+            done()
+            return
+        }
+        after(first.0) {
+            first.1()
+            sequence(Array(steps.dropFirst()), done: done)
+        }
+    }
+
+    /// Phase 2 video: the four tabs, a Settings page and back, Saved and back, the conversation,
+    /// its members, a swipe back, channel settings and back, an agent profile and back.
+    private static func video(_ nav: UINavigationController) {
+        sequence([
+            (2.5, { root(nav)?.selectTab(1) }),
+            (2.2, { root(nav)?.selectTab(2) }),
+            (2.2, { root(nav)?.selectTab(3) }),
+            (2.2, { push("compose_native_nav_proto_settings_detail", on: nav, animated: true) }),
+            (2.5, { pop(nav) }),
+            (1.6, { root(nav)?.selectTab(0) }),
+            (1.8, { push("compose_native_nav_proto_saved", on: nav, animated: true) }),
+            (2.5, { pop(nav) }),
+            (1.6, { push("compose_native_nav_proto_thread", on: nav, animated: true) }),
+            (3.0, { push("compose_channel_members_parity_visual", on: nav, animated: true) }),
+            (2.8, { scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) }),
+            (2.6, { push("compose_native_nav_proto_channel_settings", on: nav, animated: true) }),
+            (2.5, { pop(nav) }),
+            (1.6, { pop(nav) }),
+            (1.6, { push("compose_native_nav_proto_agent", on: nav, animated: true) }),
+            (3.0, { pop(nav) }),
+        ]) {
+            after(2.0) { marker("RAFT_PROTO_DONE scene=video") }
         }
     }
 
     static func run(scene: String, nav: UINavigationController) {
         let mode = RaftNativeNavProto.enabled ? "native" : "now"
         marker("RAFT_PROTO_START scene=\(scene) mode=\(mode)")
+        func ready(_ seconds: Double) {
+            after(seconds) { marker("RAFT_PROTO_READY scene=\(scene)") }
+        }
         switch scene {
         case "home":
-            after(4) { marker("RAFT_PROTO_READY scene=home") }
-        case "homecollapsed":
-            after(4) {
-                scriptedScroll(nav, distance: 260, duration: 1.0) {
-                    after(1.2) { marker("RAFT_PROTO_READY scene=homecollapsed") }
-                }
-            }
-        case "homehalf":
-            // Mid-collapse, held (no release): the bar and the spacer must agree.
-            after(4) {
-                guard let host = topHost(nav) else { return }
-                for _ in 0..<10 { host.scriptedScroll(dy: 2.6) }
-                after(1.2) { marker("RAFT_PROTO_READY scene=homehalf") }
-            }
+            ready(4)
+        case "activity", "tasks", "more":
+            let index = ["activity": 1, "tasks": 2, "more": 3][scene] ?? 0
+            after(1.5) { root(nav)?.selectTab(index) }
+            ready(5)
+        case "settings":
+            after(1.5) { root(nav)?.selectTab(3) }
+            after(2.5) { push("compose_native_nav_proto_settings_detail", on: nav, animated: false) }
+            ready(6)
+        case "saved":
+            after(1) { push("compose_native_nav_proto_saved", on: nav, animated: false) }
+            ready(5)
+        case "agent":
+            after(1) { push("compose_native_nav_proto_agent", on: nav, animated: false) }
+            ready(5)
         case "thread":
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
-            after(5) { marker("RAFT_PROTO_READY scene=thread") }
+            ready(5)
         case "members":
             // The conversation publishes its title first, so Members' Back can name it.
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
             after(3) { push("compose_channel_members_parity_visual", on: nav, animated: true) }
-            after(7) { marker("RAFT_PROTO_READY scene=members") }
+            ready(7)
+        case "channelsettings":
+            after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
+            after(3) { push("compose_native_nav_proto_channel_settings", on: nav, animated: true) }
+            ready(7)
         case "midswipe":
             after(1) { push("compose_native_nav_proto_thread", on: nav, animated: false) }
             after(5) {
@@ -1076,20 +1255,7 @@ enum RaftNativeNavProtoDemo {
                 }
             }
         case "video":
-            // Home: collapse the large title slowly, keep scrolling, come back to the top (expands).
-            after(3) {
-                scriptedScroll(nav, distance: 140, duration: 1.8) {
-                    after(0.8) {
-                        scriptedScroll(nav, distance: 360, duration: 1.0) {
-                            after(1.0) {
-                                scriptedScroll(nav, distance: -620, duration: 2.0) {
-                                    after(1.2) { videoPush(nav) }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            video(nav)
         default:
             marker("RAFT_PROTO_WARN unknown_scene=\(scene)")
         }

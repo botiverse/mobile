@@ -229,7 +229,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     // composition painted the canvas (RaftCmpIos raftPaintHostCanvas).
     self.view.backgroundColor = self.raftInitialBackgroundColor ?: UIColor.systemBackgroundColor;
     [self raftEmbedContentIfNeeded];
-    [self.navigationController setNavigationBarHidden:!self.raftUsesNativeNavBar animated:NO];
+    [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar] animated:NO];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(raftTabBarDidLayout:)
                                                  name:RaftIosTabBarController.didLayoutNotificationName
@@ -261,8 +261,18 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [super viewWillAppear:animated];
     // PROTOTYPE: a native-bar page shows the real bar (animated with the push / pop); every other
     // page keeps it hidden and draws its own head, as before.
-    [self.navigationController setNavigationBarHidden:!self.raftUsesNativeNavBar
+    [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar]
                                              animated:self.raftUsesNativeNavBar ? animated : NO];
+}
+
+/// PROTOTYPE: the real bar shows for a native-bar page while one of its heads publishes.
+- (BOOL)raftShowsNativeNavBar {
+    return self.raftUsesNativeNavBar && !self.raftNativeNavBarHeadHidden;
+}
+
+- (void)setRaftNativeNavBarHeadHidden:(BOOL)raftNativeNavBarHeadHidden {
+    _raftNativeNavBarHeadHidden = raftNativeNavBarHeadHidden;
+    self.fd_prefersNavigationBarHidden = ![self raftShowsNativeNavBar];
 }
 
 - (void)setRaftUsesNativeNavBar:(BOOL)raftUsesNativeNavBar {
@@ -277,7 +287,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 // (RaftPagerHost), so they are not sent again here.
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.navigationController setNavigationBarHidden:!self.raftUsesNativeNavBar animated:NO];
+    [self.navigationController setNavigationBarHidden:![self raftShowsNativeNavBar] animated:NO];
     // PROTOTYPE: the system edge swipe for native-bar pages (FD's full-page pan stays off for
     // them through fd_interactivePopDisabled); FD keeps the swipe for every other page. Switched
     // only once the page is shown: disabling a recogniser mid-swipe would cancel it.

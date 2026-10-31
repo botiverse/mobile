@@ -34,6 +34,8 @@ NS_ASSUME_NONNULL_BEGIN
  * `RaftPageControllerFactory` before the view loads.
  */
 @property (nonatomic, assign) BOOL raftUsesNativeNavBar;
+/** PROTOTYPE: no head on screen publishes (a shell tab with its own Compose head): bar hidden. */
+@property (nonatomic, assign) BOOL raftNativeNavBarHeadHidden;
 /** PROTOTYPE: keeps the Swift RaftNativeNavBarHost alive with the page. */
 @property (nonatomic, strong, nullable) id raftNativeNavBarHost;
 /** PROTOTYPE: called after layout / appearance (reason), for the large-title scroll mirror. */
