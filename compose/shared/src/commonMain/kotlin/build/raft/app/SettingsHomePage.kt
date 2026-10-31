@@ -10510,7 +10510,6 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
         kind = kind,
         description = profile.string("description") ?: string("description"),
         roleDescription = profile.string("roleDescription", "role") ?: string("roleDescription", "role"),
-        avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = displayName.toRaftAvatarLabel(),
         presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),

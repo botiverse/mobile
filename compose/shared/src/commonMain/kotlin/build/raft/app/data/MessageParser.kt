@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.MessageMention
 
 import build.raft.app.MemberKindWireContract
@@ -480,7 +481,7 @@ private fun MessagesWireMessage.toDomain(
         // Web parity: the sender subtitle carries the provider label for external
         // senders; senderDescription is a member field and stays member-only.
         description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        avatar = resolvedExternalAuthor?.avatarUrl?.let(AvatarReference::fromWireValue),
         presence = Presence.Offline,
     )
     val resolvedThreadId = channelId.takeIf { it.isNotBlank() }?.let(::ThreadId) ?: fallbackThreadId

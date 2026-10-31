@@ -618,7 +618,6 @@ private fun MemberProfile.explicitForegroundBannerAvatarWireValue(): String? =
     avatar
         ?.wireValue
         ?.takeIf { it.isNotBlank() }
-        ?: avatarUrl?.takeIf { it.isNotBlank() }
 
 private fun Message.resolveForegroundBannerOpenRequest(
     serverId: String,

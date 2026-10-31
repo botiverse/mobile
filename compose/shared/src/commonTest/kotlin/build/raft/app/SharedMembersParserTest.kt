@@ -1661,7 +1661,7 @@ class SharedMembersParserTest {
                             name = member.handle,
                             displayName = member.displayName,
                             description = member.description,
-                            avatarUrl = member.avatarUrl
+                            avatarUrl = member.avatar?.wireValue
                         ),
                     directMessages = emptyList(),
                     reminders = emptyList(),

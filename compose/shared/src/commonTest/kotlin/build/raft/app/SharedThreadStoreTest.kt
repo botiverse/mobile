@@ -625,7 +625,7 @@ class SharedThreadStoreTest {
         assertEquals(MemberKind.External, convertedMessage.author.kind)
         assertEquals("Alice in Slack", convertedMessage.author.displayName)
         assertEquals("Slack", convertedMessage.author.description)
-        assertEquals("https://slack.example.com/alice.png", convertedMessage.author.avatarUrl)
+        assertEquals("https://slack.example.com/alice.png", convertedMessage.author.avatar?.wireValue)
         assertNotNull(convertedMessage.externalAuthor)
         assertEquals("slack", convertedMessage.externalAuthor?.provider)
         assertEquals("Alice in Slack", convertedMessage.externalAuthor?.displayName)
@@ -697,7 +697,7 @@ class SharedThreadStoreTest {
         assertEquals(MemberKind.External, cachedMessage.author.kind)
         assertEquals("Alice in Slack", cachedMessage.author.displayName)
         assertEquals("Slack", cachedMessage.author.description)
-        assertEquals("https://slack.example.com/alice.png", cachedMessage.author.avatarUrl)
+        assertEquals("https://slack.example.com/alice.png", cachedMessage.author.avatar?.wireValue)
         assertEquals("slack", cachedMessage.externalAuthor?.provider)
     }
     @Test

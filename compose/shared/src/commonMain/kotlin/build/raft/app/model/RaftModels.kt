@@ -386,7 +386,11 @@ data class MemberProfile(
     val serverRole: String? = null,
     val email: String? = null,
     val gravatarHash: String? = null,
-    val avatarUrl: String? = null,
+    /**
+     * The person's one avatar (uploaded image URL or pixel face). There is deliberately no second
+     * `avatarUrl` field: a URL-only copy was null for pixel avatars, and screens reading it drew
+     * initials. Render through [avatarWireValueForRenderedAvatar] / `RaftMemberAvatar`.
+     */
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val presence: Presence = Presence.Offline,
@@ -513,7 +517,6 @@ data class AgentProfile(
     val handle: String,
     val description: String? = null,
     val roleDescription: String? = null,
-    val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val presence: Presence = Presence.Offline,

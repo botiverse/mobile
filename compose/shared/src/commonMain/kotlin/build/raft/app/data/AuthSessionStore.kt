@@ -551,7 +551,6 @@ data class StoredAuthUser(
             handle = email,
             kind = MemberKind.Human,
             description = description,
-            avatarUrl = avatarUrl,
             avatar = avatarUrl?.let(AvatarReference::fromWireValue),
             avatarLabel = bestDisplayName.toRaftAvatarLabel(),
             presence = Presence.Active

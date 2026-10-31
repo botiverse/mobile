@@ -177,7 +177,7 @@ class HomeParserTest {
         assertEquals(2, dm.unreadCount)
         val peerProfile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
         assertEquals("agent-1", peerProfile.id.value)
-        assertNull(peerProfile.avatarUrl)
+        assertNull(peerProfile.avatar?.wireValue)
         assertEquals("pixel:robot", peerProfile.avatarWireValueForRenderedAvatar())
         assertEquals(6, snapshot.unreadTotal)
     }
@@ -444,7 +444,7 @@ class HomeParserTest {
         )
         val profile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
         assertEquals("agent-1", profile.id.value)
-        assertEquals("https://cdn.slock.ai/a.png", profile.avatarUrl)
+        assertEquals("https://cdn.slock.ai/a.png", profile.avatar?.wireValue)
     }
 
     @Test
@@ -516,7 +516,7 @@ class HomeParserTest {
             )
 
         assertTrue(result is DataResult.Content)
-        assertNull(payload.directMessagePeerProfiles(ServerId("server-1")).single().avatarUrl)
+        assertNull(payload.directMessagePeerProfiles(ServerId("server-1")).single().avatar?.wireValue)
         assertTrue(warnings.any { it.contains("dm_avatar_missing") && it.contains("peerId=agent-1") })
     }
 

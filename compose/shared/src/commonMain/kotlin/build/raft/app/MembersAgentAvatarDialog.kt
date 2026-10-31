@@ -108,9 +108,9 @@ private val MembersAgentAvatarTileGap = 8.dp
 /** Avatars per row: one series per row of 8; narrower than 8 tiles, two rows of 4. */
 internal fun membersAgentAvatarGridColumns(width: Dp): Int = if (width >= MembersAgentAvatarEightColumnMinWidth) 8 else 4
 
-/** The agent's avatar as the server stores it (`avatarUrl`: `pixel:<key>` or an image URL). */
+/** The agent's avatar as the server stores it (`pixel:<key>` or an image URL). */
 private fun MemberProfile.membersAgentAvatarWire(): String? =
-    (avatarUrl ?: avatar?.wireValue)?.trim()?.takeIf { it.isNotBlank() }
+    avatar?.wireValue?.trim()?.takeIf { it.isNotBlank() }
 
 /** True when the agent's avatar is an uploaded image (web `isCustomAvatar`: set and not `pixel:`). */
 internal fun MemberProfile.membersAgentHasCustomAvatar(): Boolean =

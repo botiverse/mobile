@@ -196,7 +196,6 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         kind = MemberKind.Agent,
         description = description,
         roleDescription = roleDescription,
-        avatarUrl = avatarUrl,
         avatar = avatar,
         avatarLabel = avatarLabel,
         presence = presence,
@@ -222,7 +221,6 @@ fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl,
         gravatarHash = gravatarHash
     )
 
@@ -234,7 +232,6 @@ fun MemberProfile.avatarWireValueForRenderedAvatar(): String? =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl,
         gravatarHash = gravatarHash
     )
 
@@ -379,22 +376,6 @@ fun String.appAvatarApiFallbackUrl(apiBaseUrl: String?): String? {
 
 private val AppAvatarCdnPath =
     Regex("^/avatars/([A-Za-z0-9_-]+)/([0-9A-Fa-f]{32,64}\\.webp)$")
-
-/**
- * Prefers a concrete remote avatar URL over a pixel/random [AvatarReference]. A seeded or
- * projected profile can carry `avatar = Pixel(...)` (custom or default fallback) while the
- * wire `avatarUrl` still holds the canonical CDN address; treating the pixel wire value as
- * the winner renders a fallback without ever fetching the real avatar.
- */
-fun preferredAvatarWireValue(avatar: AvatarReference?, avatarUrl: String?): String? {
-    val urlValue = avatarUrl?.takeIf { it.isNotBlank() }
-    return when (avatar) {
-        is AvatarReference.Url -> avatar.url.takeIf { it.isNotBlank() } ?: urlValue
-        is AvatarReference.Pixel,
-        is AvatarReference.Random -> urlValue ?: avatar.wireValue
-        null -> urlValue
-    }
-}
 
 fun String.isAgentFallbackAvatarWireValue(): Boolean =
     equals(agentAvatarFallbackWireValue(""), ignoreCase = true) ||

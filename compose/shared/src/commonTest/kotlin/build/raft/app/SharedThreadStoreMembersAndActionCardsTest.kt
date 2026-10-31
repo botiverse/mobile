@@ -198,7 +198,7 @@ class SharedThreadStoreMembersAndActionCardsTest {
         val uploadedAvatar = "https://cdn.slock.ai/avatars/users/stdrc.webp"
         val memberRepository =
             FakeMemberRepository(
-                serverMembers = listOf(member("u1", "Artin").copy(avatarUrl = uploadedAvatar)),
+                serverMembers = listOf(member("u1", "Artin").copy(avatar = AvatarReference.fromWireValue(uploadedAvatar))),
                 channelMembers = listOf(member("u1", "Artin"))
             )
         val dataSource =
@@ -261,8 +261,7 @@ class SharedThreadStoreMembersAndActionCardsTest {
                         author =
                             member("agent-1", "Argus").copy(
                                 kind = MemberKind.Agent,
-                                avatar = AvatarReference.fromWireValue(uploadedAvatar),
-                                avatarUrl = uploadedAvatar
+                                avatar = AvatarReference.fromWireValue(uploadedAvatar)
                             ),
                         timestampLabel = "2026-08-02T00:00:00Z",
                         body = "realtime"
@@ -1202,7 +1201,7 @@ class SharedThreadStoreMembersAndActionCardsTest {
                 serverId = ServerId("server-2"),
                 serverName = "Remote Lab",
                 serverSlug = "remote-lab",
-                avatarUrl = "https://example.com/remote.png"
+                avatar = AvatarReference.fromWireValue("https://example.com/remote.png")
             )
         val memberRepository =
             FakeMemberRepository(

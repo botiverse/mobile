@@ -180,7 +180,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
-import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerId
@@ -975,7 +974,7 @@ internal fun membersRemoteAgentProfileSnapshot(
                     name = name,
                     displayName = profile.displayName.ifBlank { name },
                     description = profile.description?.takeIf { it.isNotBlank() },
-                    avatarUrl = preferredAvatarWireValue(profile.avatar, profile.avatarUrl)
+                    avatarUrl = profile.avatar?.wireValue
                 )
             }
             ?: jointActor
@@ -7556,7 +7555,7 @@ private fun MembersRaftAvatar(
     modifier: Modifier = Modifier
 ) {
     val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
-    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+    val fallbackAvatarWireValue = remember(member.avatar, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
@@ -8437,7 +8436,7 @@ private fun MembersStickerAvatar(
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
     val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
-    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+    val fallbackAvatarWireValue = remember(member.avatar, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     RaftAvatar(
@@ -13496,7 +13495,7 @@ private fun MembersAvatar(
     modifier: Modifier = Modifier
 ) {
     val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
-    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+    val fallbackAvatarWireValue = remember(member.avatar, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
@@ -13742,7 +13741,6 @@ internal fun AgentCreatorSummary.toStrictMemberProfile(
         displayName = display,
         handle = name,
         kind = kind,
-        avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = display.toRaftAvatarLabel()
     )
@@ -13762,7 +13760,6 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         displayName = display,
         handle = name.takeIf { it.isNotBlank() } ?: id,
         kind = MemberKind.Agent,
-        avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = (displayName?.takeIf { it.isNotBlank() } ?: name).toRaftAvatarLabel(),
         roleDescription = runtime,
@@ -13889,7 +13886,6 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         description = summary?.description?.takeIf { it.isNotBlank() },
         roleDescription = summary?.runtime?.takeIf { it.isNotBlank() },
         serverRole = summary?.serverRole?.takeIf { it.isNotBlank() },
-        avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
@@ -13915,7 +13911,7 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = preferredAvatarWireValue(member.avatar, member.avatarUrl) ?: summary?.avatarUrl
+            avatarUrl = member.avatar?.wireValue ?: summary?.avatarUrl
         )
     return copy(summary = nextSummary)
 }
@@ -14192,7 +14188,6 @@ internal fun createdAgentMemberProfile(
         kind = MemberKind.Agent,
         description = agent.description,
         roleDescription = agent.model,
-        avatarUrl = agent.avatarUrl,
         avatar = AvatarReference.fromWireValue(agent.avatarUrl),
         presence = Presence.Offline,
         permissionBadges = listOfNotNull(

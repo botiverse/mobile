@@ -534,7 +534,6 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(
         handle = peerName.takeIf { it.isNotBlank() } ?: displayName,
         kind = memberKind,
         description = peerDescription?.takeIf { it.isNotBlank() },
-        avatarUrl = directAvatarUrl,
         avatar = directAvatarUrl?.let { AvatarReference.fromWireValue(it) },
         avatarLabel = displayName.toRaftAvatarLabel(),
         serverId = serverId

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.AvatarReference
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -281,7 +282,7 @@ private fun pickerAgent(id: String, name: String, installId: String?, appName: S
         displayName = name,
         handle = name.lowercase().replace(' ', '-'),
         kind = MemberKind.Agent,
-        avatarUrl = "pixel:robot",
+        avatar = AvatarReference.fromWireValue("pixel:robot"),
         agentStatus = AgentStatus.Offline,
         managedByAppInstallId = installId,
         managedByAppName = appName,

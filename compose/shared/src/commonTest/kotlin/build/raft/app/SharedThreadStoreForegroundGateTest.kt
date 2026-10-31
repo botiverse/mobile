@@ -831,7 +831,7 @@ class SharedThreadStoreForegroundGateTest {
                                                     displayName = "Product UX",
                                                     handle = "product-ux",
                                                     kind = MemberKind.Agent,
-                                                    avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                                                    avatar = AvatarReference.fromWireValue("https://www.gravatar.com/avatar/agent-hash?s=52&d=404"),
                                                 )
                                         )
                                 )

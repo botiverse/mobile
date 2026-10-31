@@ -27,15 +27,13 @@ internal fun RaftThreadMessageItem.toThreadAuthorProfileCandidate(
     // display value (explicit avatar, or a real gravatar hash projection). The
     // pixel fallback is a render-time default, not member data — seeding it
     // would let `avatar ?: seed.avatar` fill a cached profile's empty avatar
-    // slot with `pixel:robot` and then outrank its real `avatarUrl` (Agent
-    // `explicitAvatarWireValue` prefers `avatar.wireValue` over `avatarUrl`).
+    // slot with `pixel:robot` and then outrank a real avatar learned later.
     val avatarCandidate = threadAuthorSeedAvatarWireValue()
     return MemberProfile(
         id = MemberId(memberId),
         displayName = displayName,
         handle = authorHandle.trim().takeIf { it.isNotBlank() } ?: displayName.removePrefix("@"),
         kind = kind,
-        avatarUrl = avatarCandidate?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
         avatar = AvatarReference.fromWireValue(avatarCandidate),
         avatarLabel = avatarLabel.ifBlank { displayName.toRaftAvatarLabel() },
         serverId = serverId,
@@ -63,7 +61,7 @@ internal fun SharedServerMembersStore.seedThreadAuthorProfiles(
     diagnosticsLogger(
         "thread_avatar_member_seed source=$source serverHash=${serverId.value.raftAvatarDiagnosticsHash()} " +
             "candidates=${profiles.size} authors=${profiles.map { it.id.value }.distinct().size} " +
-            "urlCandidates=${profiles.count { profile -> profile.avatarUrl != null }}"
+            "urlCandidates=${profiles.count { profile -> profile.avatar is AvatarReference.Url }}"
     )
 }
 
@@ -81,7 +79,7 @@ internal fun SharedServerMembersStore.seedAcceptedThreadReplyAuthorProfile(
     seedProfileCandidates(serverId = serverId, profiles = listOf(profile))
     diagnosticsLogger(
         "thread_avatar_member_seed source=$source serverHash=${serverId.value.raftAvatarDiagnosticsHash()} " +
-            "candidates=1 authors=1 urlCandidates=${if (profile.avatarUrl != null) 1 else 0}"
+            "candidates=1 authors=1 urlCandidates=${if (profile.avatar is AvatarReference.Url) 1 else 0}"
     )
 }
 

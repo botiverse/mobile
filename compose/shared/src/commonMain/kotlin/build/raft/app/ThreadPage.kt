@@ -287,7 +287,6 @@ import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
-import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
@@ -3030,7 +3029,7 @@ private fun RaftThreadMemberItem.toMemberProfile(): MemberProfile? {
         handle = handle.ifBlank { displayName.ifBlank { id } },
         kind = identity.kind,
         description = roleLabel.takeIf { it.isNotBlank() },
-        avatarUrl = avatarUrl,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = avatarLabel.ifBlank { displayName.ifBlank { handle }.toRaftAvatarLabel() },
         serverId = identity.sourceServerId,
         serverName = sourceServerLabel?.takeIf { it.isNotBlank() }
@@ -3126,7 +3125,7 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     if (kind != MemberKind.Agent) return null
     val name = handle.ifBlank { displayName.ifBlank { id.value } }
     val label = displayName.ifBlank { name }
-    val avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl)
+    val avatarWireValue = avatar?.wireValue
     return AgentDetailSnapshot(
         agentId = id,
         summary =

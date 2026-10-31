@@ -63,7 +63,6 @@ class MembersAgentAvatarDialogScreenshotTest {
             displayName = "Ada",
             handle = "ada",
             kind = MemberKind.Agent,
-            avatarUrl = "pixel:cat",
             avatar = AvatarReference.Pixel("cat")
         )
 
