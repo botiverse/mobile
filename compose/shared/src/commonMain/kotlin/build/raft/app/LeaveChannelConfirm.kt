@@ -105,7 +105,7 @@ internal fun LeaveChannelConfirmDialog(
             title = title,
             description = description,
             size = RaftDialogSize.Sm,
-            dismissOnClickOutside = !busy,
+            dismissOnClickOutside = false,
             closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(

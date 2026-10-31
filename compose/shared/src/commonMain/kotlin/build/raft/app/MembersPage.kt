@@ -7198,6 +7198,7 @@ private fun MembersDetailContent(
             RaftUnifiedDialog(
                 title = membersLifecycleConfirmTitle(action, member.displayName).raftDisplayUppercase(),
                 dismissEnabled = lifecycleInFlight != action.actionKey,
+                dismissOnOutsideTap = false,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
                 titleFontSize = 18,
@@ -7945,6 +7946,7 @@ private fun MembersAgentArchiveSection(
         RaftUnifiedDialog(
             title = stringResource(Res.string.member_archive_action_delete_workspace),
             dismissEnabled = !deleting,
+            dismissOnOutsideTap = false,
             contentPadding = 24.dp,
             onDismiss = { confirmDelete = false }
         ) {
@@ -8038,6 +8040,7 @@ internal fun MembersRestartResetDialog(
         title = stringResource(Res.string.member_dialog_restart_title).replace("%1\$s", agentName),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
+        dismissOnOutsideTap = false,
         maxWidth = 520.dp,
         // Web ResetAgentDialog is a ConfirmDialog: 18px title, text-sm option
         // labels, text-xs descriptions. Match the sibling lifecycle confirm dialog.

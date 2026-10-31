@@ -1927,6 +1927,7 @@ private fun TasksCreateDialog(
         title = stringResource(Res.string.tasks_label_new_tasks),
         onDismiss = onDismiss,
         dismissEnabled = !loading,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         minWidth = 280.dp,
         maxWidth = 360.dp,

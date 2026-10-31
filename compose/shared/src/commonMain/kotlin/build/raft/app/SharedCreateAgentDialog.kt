@@ -552,6 +552,7 @@ internal fun SharedCreateAgentDialog(
                 stringResource(Res.string.agent_create_title)
             },
         dismissEnabled = !submitting,
+        dismissOnOutsideTap = false,
         onDismiss = onDismiss,
         keyboardAvoidanceEnabled = true,
         hostRoute = SharedCreateAgentDialogHostRoute

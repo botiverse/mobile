@@ -390,6 +390,7 @@ private fun MembersAgentAvatarDiscardDialog(onKeepEditing: () -> Unit, onDiscard
         onDismissRequest = onKeepEditing,
         title = stringResource(Res.string.member_avatar_unsaved_title),
         description = stringResource(Res.string.member_avatar_discard_body),
+        dismissOnClickOutside = false,
         showClose = false,
         footer = {
             RaftButton(

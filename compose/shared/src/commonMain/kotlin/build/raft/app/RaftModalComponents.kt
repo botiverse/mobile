@@ -348,6 +348,11 @@ internal fun RaftUnifiedDialog(
     overline: String? = null,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
+    // Web ConfirmDialog / FormDialog: false for destructive confirms and dialogs with typed
+    // input, so a stray tap on the scrim can't close them. Only the scrim tap is disabled:
+    // Back, the header close and the dialog's own Cancel still call onDismiss (gated, as
+    // always, by dismissEnabled).
+    dismissOnOutsideTap: Boolean = true,
     overlayAlpha: Float = 0.60f,
     minWidth: Dp = 312.dp,
     maxWidth: Dp = 408.dp,
@@ -397,6 +402,7 @@ internal fun RaftUnifiedDialog(
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
+                    dismissOnOutsideTap = dismissOnOutsideTap,
                     overlayAlpha = overlayAlpha,
                     minWidth = minWidth,
                     maxWidth = maxWidth,
@@ -435,6 +441,7 @@ internal fun RaftUnifiedDialog(
                         onDismiss = onDismiss,
                         modifier = modifier,
                         dismissEnabled = dismissEnabled,
+                        dismissOnOutsideTap = dismissOnOutsideTap,
                         overlayAlpha = overlayAlpha,
                         minWidth = minWidth,
                         maxWidth = maxWidth,
@@ -500,6 +507,7 @@ private fun RaftUnifiedDialogSurface(
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
+    dismissOnOutsideTap: Boolean,
     overlayAlpha: Float,
     minWidth: Dp,
     maxWidth: Dp,
@@ -547,7 +555,7 @@ private fun RaftUnifiedDialogSurface(
         RaftModalDismissBarrier(
             overlayAlpha = overlayAlpha,
             onDismiss = onDismiss,
-            dismissEnabled = dismissEnabled
+            dismissEnabled = dismissEnabled && dismissOnOutsideTap
         )
         Box(
             modifier =

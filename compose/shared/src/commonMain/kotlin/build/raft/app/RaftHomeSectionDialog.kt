@@ -87,6 +87,7 @@ internal fun RaftHomeSectionDialog(
     RaftUnifiedDialog(
         title = title,
         onDismiss = onDismiss,
+        dismissOnOutsideTap = false,
         maxWidth = 384.dp
     ) {
         RaftField(label = nameLabel) {
