@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.gesture.raftKeepsEdgeTouches
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftThemeDecorSlot
@@ -250,7 +251,7 @@ fun RaftAppRail(
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
     val metrics = raftAppRailMetrics(compact ?: raftAppRailCompact(windowHeight))
     val hasFooter = footer != null || footerItems.isNotEmpty()
-    Row(modifier.fillMaxHeight()) {
+    Row(modifier.fillMaxHeight().raftKeepsEdgeTouches()) {
         Column(
             Modifier
                 .fillMaxHeight()
