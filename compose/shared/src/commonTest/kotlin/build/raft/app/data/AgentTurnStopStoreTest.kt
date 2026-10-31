@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.MEMBERS_STOP_TURN_MENU_ID
 import build.raft.app.MembersAgentLifecycleAction
 import build.raft.app.buildMembersManagementMenuItems
+import build.raft.app.membersRouteCanManageAgent
 import build.raft.app.model.MemberId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
@@ -118,6 +119,46 @@ class AgentTurnStopStoreTest {
         assertFalse(canStopAgentTurn("owner", isCreator = false, isExternalAgent = false, deleted = false, online = false))
         assertFalse(canStopAgentTurn("owner", isCreator = false, isExternalAgent = true, deleted = false, online = true))
         assertFalse(canStopAgentTurn("owner", isCreator = false, isExternalAgent = false, deleted = true, online = true))
+    }
+
+    // slock #12029: Stop Agent needs `stopAgents` (owner/admin) or creator; members keep
+    // Stop Current Turn on any agent (asserted above) but never get Stop Agent on someone else's.
+    @Test
+    fun stopAgentIsOwnerAdminOrCreatorWhileMembersKeepStopTurn() {
+        assertTrue(serverRoleCanStopAgents("owner"))
+        assertTrue(serverRoleCanStopAgents("admin"))
+        assertFalse(serverRoleCanStopAgents("member"))
+        assertFalse(serverRoleCanStopAgents("guest"))
+        assertFalse(serverRoleCanStopAgents(null))
+
+        fun detail(creatorId: String) =
+            AgentDetailSnapshot(
+                agentId = agentId,
+                summary = AgentDetailSummary(id = agentId.value, name = "Agent", creatorId = creatorId),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList()
+            )
+        fun memberCanManage(creatorId: String) =
+            membersRouteCanManageAgent(
+                allowsPrivateAgentSurfaces = true,
+                canManageSettings = serverRoleCanStopAgents("member"),
+                currentUserId = "member-1",
+                detail = detail(creatorId)
+            )
+        fun menu(canManage: Boolean) =
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = canManage,
+                deleted = false,
+                inProgress = false,
+                canStopTurn = canStopAgentTurn("member", isCreator = false, isExternalAgent = false, deleted = false, online = true)
+            )
+
+        // Someone else's agent: only Stop Current Turn.
+        assertEquals(listOf(MEMBERS_STOP_TURN_MENU_ID), menu(memberCanManage("owner-1")).map { it.id })
+        // Their own agent: Stop Agent is back.
+        assertEquals(MembersAgentLifecycleAction.Stop.actionKey, menu(memberCanManage("member-1")).first().id)
     }
 
     @Test

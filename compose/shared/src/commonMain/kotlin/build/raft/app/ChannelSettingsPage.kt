@@ -51,7 +51,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.ChannelSosStore
 import build.raft.app.data.RaftAgentControlsApi
-import build.raft.app.data.serverRoleCanControlAgentRuntime
+import build.raft.app.data.serverRoleCanStopAgents
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -133,12 +133,12 @@ internal fun channelSettingsSectionKeys(canManage: Boolean): List<String> =
         if (canManage) add("management")
     }
 
-/** Web ChatPanel `joined && capabilities.controlAgentRuntime`; channels only (a DM has no SOS). */
+/** Web ChatPanel `joined && capabilities.stopAgents` (owner/admin, slock #12029); channels only (a DM has no SOS). */
 internal fun channelSettingsCanStopAllAgents(channel: HomeChannelRow, serverRole: String?): Boolean =
     channel.joined &&
         !channel.archived &&
         channel.kind != ConversationKind.DirectMessage &&
-        serverRoleCanControlAgentRuntime(serverRole)
+        serverRoleCanStopAgents(serverRole)
 
 internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
     newDesignSettingsEnabled
