@@ -2363,6 +2363,10 @@ private fun RaftStructuralHomeShellContent(
             resolvedTopSafeArea = resolvedTopSafeArea,
             topSafeAreaOverride = topSafeAreaOverride,
         )
+    // PROTOTYPE (native nav bar): the host bar is the head; the top safe area already includes it,
+    // so the overlays placed under the 56dp head (bell popover, server list) sit a head higher.
+    val nativeHomeHead = LocalRaftNativeNavBar.current != null && !serverSwitcherInTopBar
+    val overlayTopSafeArea = if (nativeHomeHead) (topSafeArea - RaftAppSize.PageHeaderHeight).coerceAtLeast(0.dp) else topSafeArea
     val bottomSafeArea = if (showBottomBar) raftBottomSafeAreaPadding() else 0.dp
     val effectiveBottomContentPadding =
         if (showBottomBar) {
@@ -2435,7 +2439,25 @@ private fun RaftStructuralHomeShellContent(
         Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                if (!serverSwitcherInTopBar) traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
+                if (!serverSwitcherInTopBar && nativeHomeHead) {
+                    // PROTOTYPE (native nav bar): the server switcher is the bar's title menu and
+                    // the bell its button; only the bar's space is kept here.
+                    HomeNativeNavBarHead(
+                        serverName = currentServerName,
+                        servers = servers,
+                        currentServerId = currentServerId,
+                        notifications = visibleNotifications,
+                        refreshing = headerRefreshing,
+                        topSafeArea = topSafeArea,
+                        onServerSelected = { id ->
+                            dismissNotificationCenterForFocusLoss()
+                            onServerSelected(id)
+                        },
+                        onAllServers = onServerBadgeClickWithDismiss,
+                        onInviteHumanClick = onInviteHumanClick,
+                        onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded },
+                    )
+                } else if (!serverSwitcherInTopBar) traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
                     HomeTitlebar(
                         serverName = currentServerName,
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
@@ -3172,7 +3194,7 @@ private fun RaftStructuralHomeShellContent(
                             modifier =
                                 Modifier
                                     .padding(
-                                        top = homeServerSwitcherPanelTopOffset(topSafeArea, bellInColumn),
+                                        top = homeServerSwitcherPanelTopOffset(overlayTopSafeArea, bellInColumn),
                                         start = RaftAppSpacing.Lg
                                     )
                                     .clickable(onClick = {})
@@ -3204,7 +3226,7 @@ private fun RaftStructuralHomeShellContent(
                             } else {
                                 Modifier
                                     .align(Alignment.TopEnd)
-                                    .padding(top = homeNotificationPopoverTopOffset(topSafeArea))
+                                    .padding(top = homeNotificationPopoverTopOffset(overlayTopSafeArea))
                                     .homeNotificationPopoverPhoneWidth()
                                     .raftFloatingContentClickTarget()
                             },
@@ -4899,6 +4921,69 @@ private fun List<RaftHomePinnedRow>.sortedPinnedRows(mode: RaftSidebarSortMode):
         RaftSidebarSortMode.Az ->
             sortedWith(compareBy<RaftHomePinnedRow> { it.sortLabel.trim().lowercase() }.thenBy { it.key })
     }
+/**
+ * PROTOTYPE (native nav bar): Home's head on the host bar. The title is the server's name with a
+ * title menu: every server (the current one checked, unread as the row's subtitle), Invite Human,
+ * and "Switch or create server", which opens the full switcher (order, create, communities). The
+ * bell is the trailing button with the notification count; it toggles the same popover.
+ */
+@Composable
+private fun HomeNativeNavBarHead(
+    serverName: String,
+    servers: List<RaftServerSwitcherItem>,
+    currentServerId: String?,
+    notifications: List<RaftHomeNotificationItem>,
+    refreshing: Boolean,
+    topSafeArea: Dp,
+    onServerSelected: (String) -> Unit,
+    onAllServers: () -> Unit,
+    onInviteHumanClick: (() -> Unit)?,
+    onNotificationToggle: () -> Unit,
+) {
+    val visible = remember(notifications) { notifications.visibleHomeNotifications() }
+    val bellLabel = stringResource(Res.string.home_notification_center_title)
+    val allServersLabel = stringResource(Res.string.home_server_switcher_switch_or_create)
+    val inviteLabel = stringResource(Res.string.home_server_switcher_invite_human)
+    val titleMenu =
+        buildList {
+            servers.forEach { server ->
+                val unread = server.activityUnreadCount ?: server.broaderUnreadCount.toLong()
+                add(
+                    RaftNativeNavBarAction(
+                        id = "server:${server.id}",
+                        label = server.name,
+                        systemSymbol = null,
+                        onClick = { if (server.id != currentServerId) onServerSelected(server.id) },
+                        checked = server.id == currentServerId,
+                        badge = unread.takeIf { it > 0 && server.id != currentServerId }?.toInt(),
+                        placement = RaftNativeNavBarPlacement.Overflow,
+                    )
+                )
+            }
+            if (onInviteHumanClick != null) {
+                add(RaftNativeNavBarAction("server-invite", inviteLabel, "person.badge.plus", onInviteHumanClick, placement = RaftNativeNavBarPlacement.Overflow))
+            }
+            add(RaftNativeNavBarAction("server-all", allServersLabel, "square.stack", onAllServers, placement = RaftNativeNavBarPlacement.Overflow))
+        }
+    val bell =
+        RaftNativeNavBarAction(
+            id = "home-bell",
+            label = bellLabel,
+            systemSymbol = if (visible.isEmpty()) "bell" else "bell.badge",
+            onClick = onNotificationToggle,
+            badge = visible.size.takeIf { it > 0 },
+        )
+    val bridge = LocalRaftNativeNavBar.current ?: return
+    raftNativeNavBarPublish(
+        title = serverName,
+        subtitle = null,
+        actions = listOf(bell),
+        extras = RaftNativeNavBarTitleExtras(refreshing = refreshing),
+        titleMenu = titleMenu,
+    )
+    RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea)
+}
+
 @Composable
 private fun HomeTitlebar(
     serverName: String,
