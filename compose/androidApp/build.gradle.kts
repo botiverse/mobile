@@ -97,6 +97,18 @@ val raftJniUseLegacyPackaging =
                     "raftJniUseLegacyPackaging must be exactly true or false: $value"
                 )
         }
+// Opt-in non-debuggable, R8-minified `alpha` (same package, signer and Alpha flags) for
+// judging real performance. Default stays debuggable: QA bootstrap (run-as, FLAG_DEBUGGABLE
+// gates in QaSessionBootstrapActivity / QaCaptureBoundaryReceiver) needs it.
+val raftAlphaOptimized =
+    providers.gradleProperty("raftAlphaOptimized")
+        .map { value ->
+            value.toBooleanStrictOrNull()
+                ?: throw GradleException(
+                    "raftAlphaOptimized must be exactly true or false: $value"
+                )
+        }
+        .getOrElse(false)
 
 if (handsAlphaDeltaMetadata["schemaVersion"]?.toString() != "1") {
     throw GradleException("Unsupported Hands Alpha delta metadata schema")
@@ -651,6 +663,16 @@ android {
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
             buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
             buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
+            if (raftAlphaOptimized) {
+                // Same R8 setup as `release`; signingConfig stays the debug one from initWith.
+                isDebuggable = false
+                isMinifyEnabled = true
+                isShrinkResources = true
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
+            }
             matchingFallbacks += listOf("debug")
         }
         create("connectedTest") {

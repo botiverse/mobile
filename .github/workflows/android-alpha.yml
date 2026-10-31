@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "1"
+      optimized:
+        description: "Non-debuggable R8 build for real-performance testing (QA run-as bootstrap will not work)"
+        required: false
+        type: boolean
+        default: false
   pull_request:
     types: [labeled, synchronize]
 
@@ -102,6 +107,7 @@ jobs:
           SLOCK_HANDS_CHANNEL: debug
           ALPHA_VERSION_PATCH: ${{ github.event_name == 'workflow_dispatch' && inputs.version_patch || '0' }}
           ALPHA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
+          ALPHA_OPTIMIZED: ${{ github.event_name == 'workflow_dispatch' && inputs.optimized && 'true' || 'false' }}
         shell: bash
         run: |
           if ! [[ "${ALPHA_VERSION_PATCH}" =~ ^[0-9]{1,2}$ ]]; then
@@ -112,6 +118,10 @@ jobs:
             echo "version_build must be an integer from 0 to 999" >&2
             exit 1
           fi
+          OPTIMIZED_ARGS=()
+          if [ "${ALPHA_OPTIMIZED}" = "true" ]; then
+            OPTIMIZED_ARGS=(-PraftAlphaOptimized=true)
+          fi
           ./gradlew \
             :shared:generateSqlDelightInterface \
             :androidApp:assembleAlpha \
@@ -120,6 +130,7 @@ jobs:
             "-PversionBuild=${ALPHA_VERSION_BUILD}" \
             "-PversionCode=$(scripts/ci/version_code.sh 1 0 "${ALPHA_VERSION_PATCH}" "${ALPHA_VERSION_BUILD}")" \
             -PversionSuffix=alpha \
+            "${OPTIMIZED_ARGS[@]}" \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain --stacktrace
 
       - name: Locate alpha APK
@@ -184,6 +195,8 @@ jobs:
 
       - name: Verify alpha package
         id: verify
+        env:
+          ALPHA_OPTIMIZED: ${{ github.event_name == 'workflow_dispatch' && inputs.optimized && 'true' || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -225,6 +238,17 @@ jobs:
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "legacy_signer_sha256=${LEGACY_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
           echo "rotated_signer_sha256=${ROTATED_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
+          # Default Alpha must stay debuggable (QA run-as bootstrap); optimized must not be.
+          if grep -q "^application-debuggable" aapt-badging.log; then
+            DEBUGGABLE=true
+          else
+            DEBUGGABLE=false
+          fi
+          if [ "${ALPHA_OPTIMIZED}" = "${DEBUGGABLE}" ]; then
+            echo "Alpha debuggable=${DEBUGGABLE} does not match optimized=${ALPHA_OPTIMIZED}" >&2
+            exit 1
+          fi
+          echo "debuggable=${DEBUGGABLE}" >> "$GITHUB_OUTPUT"
 
       - name: Verify exact Hands native symbols
         id: native-symbols
@@ -260,6 +284,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload R8 mapping
+        if: github.event_name == 'workflow_dispatch' && inputs.optimized
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-alpha-mapping-${{ github.run_number }}-${{ steps.source.outputs.sha }}
+          path: compose/androidApp/build/outputs/mapping/alpha/mapping.txt
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload exact Hands native symbols
         uses: actions/upload-artifact@v7
         with:
@@ -276,6 +309,11 @@ jobs:
             echo "- Ref: \`${{ steps.source.outputs.sha }}\`"
             echo "- Package: \`build.raft.app.alpha\`"
             echo "- Version: \`${{ steps.verify.outputs.version_name }} (${{ steps.verify.outputs.version_code }})\`"
+            if [ "${{ github.event_name == 'workflow_dispatch' && inputs.optimized && 'true' || 'false' }}" = "true" ]; then
+              echo "- Optimized: yes (R8, debuggable=${{ steps.verify.outputs.debuggable }}; QA run-as bootstrap unavailable)"
+            else
+              echo "- Optimized: no (debuggable=${{ steps.verify.outputs.debuggable }})"
+            fi
             echo "- Minimum Android: 10 (API 29)"
             echo "- API 29-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
             echo "- API 33+ signer SHA-256: \`${{ steps.verify.outputs.rotated_signer_sha256 }}\`"
