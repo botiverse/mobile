@@ -576,10 +576,12 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         if action.destructive { attributes.insert(.destructive) }
         row.attributes = attributes
         row.state = action.checked ? .on : .off
-        if let badge = action.badge, badge > 0 {
-            row.subtitle = "\(badge)"
-        } else if action.attention {
-            row.subtitle = "●"
+        if #available(iOS 16.0, *) {
+            if let badge = action.badge, badge > 0 {
+                row.subtitle = "\(badge)"
+            } else if action.attention {
+                row.subtitle = "●"
+            }
         }
         return row
     }
