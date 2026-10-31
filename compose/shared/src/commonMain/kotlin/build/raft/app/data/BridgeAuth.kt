@@ -62,7 +62,8 @@ internal class BridgeSettingsPlatformCapabilities(
     private val copiedMessage: String,
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
     private val feedbackVisualSubmission: SettingsHandsFeedbackSubmission? = null,
-    private val openUrlHandler: ((String) -> Unit)? = null
+    private val openUrlHandler: ((String) -> Unit)? = null,
+    private val diagnosticsFlush: suspend () -> Boolean = { flushRaftPlatformDiagnosticsDownstream() }
 ) : SharedSettingsPlatformCapabilities {
     override val supportsConversationForwardGesture: Boolean
         get() = raftPlatformSupportsConversationForwardGesture()
@@ -502,9 +503,15 @@ internal class BridgeSettingsPlatformCapabilities(
         return response?.optString("status") == "ok"
     }
 
+    /**
+     * [flushDiagnostics] false (the account deletion request) sends the message without first
+     * flushing the platform logs, so a flush failure can't block it. The host still decides
+     * whether it attaches its diagnostics export; no bridge parameter turns that off.
+     */
     suspend fun submitHandsFeedback(
         message: String,
-        attachments: List<PlatformFile>
+        attachments: List<PlatformFile>,
+        flushDiagnostics: Boolean = true
     ): DataResult<SettingsHandsFeedbackSubmission> {
         logBridge(
             "settings_hands_feedback_submit_start messageLength=${message.length} " +
@@ -517,10 +524,12 @@ internal class BridgeSettingsPlatformCapabilities(
             )
             return DataResult.Content(submission)
         }
-        logBridge("settings_hands_feedback_bridge_request_prepared")
-        flushRaftPlatformLogs()
-        if (!flushRaftPlatformDiagnosticsDownstream()) {
-            return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
+        logBridge("settings_hands_feedback_bridge_request_prepared flushDiagnostics=$flushDiagnostics")
+        if (flushDiagnostics) {
+            flushRaftPlatformLogs()
+            if (!diagnosticsFlush()) {
+                return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
+            }
         }
         val response =
             settingsCapability(

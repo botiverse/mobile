@@ -95,6 +95,9 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
 
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
+// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` yet.
+internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = false
+
 internal actual fun raftFeedbackWebViewClientKind(): String = "desktop"
 
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
