@@ -68,7 +68,7 @@ internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
 
     override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse = error("unused")
 
-    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse = error("unused")
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): HomeNetworkResponse = error("unused")
 
     override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse = error("unused")
 

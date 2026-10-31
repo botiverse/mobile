@@ -1074,7 +1074,7 @@ class SharedThreadReplyCacheProvenanceTest {
                 override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()
                 override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()
                 override suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage> = unused()
-                override suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit> = unused()
+                override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): ThreadApiResult<Unit> = unused()
                 override suspend fun markChannelReadToSeq(channelId: String, seq: Long): ThreadApiResult<Unit> = unused()
                 override suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit> = unused()
                 override suspend fun saveMessage(messageId: String): ThreadApiResult<Unit> = unused()

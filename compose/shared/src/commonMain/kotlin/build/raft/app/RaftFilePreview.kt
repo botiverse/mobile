@@ -56,6 +56,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.ThreadAttachmentCommentItem
+import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadApiResult
 import kotlin.time.Clock
 import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
@@ -1849,6 +1850,10 @@ private fun RaftFilePreviewStandalonePageContent() {
     var attachmentCommentsState by remember(payload.attachmentId) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
+    // The latest comment-chip jump into the open video (web registerVideoTimestampJumpHandler).
+    var videoCommentJump by remember(payload.attachmentId) {
+        mutableStateOf<RaftFilePreviewVideoSeekRequest?>(null)
+    }
     var imageGalleryResolutionState by remember(launchPayloadTrace.payload.imageGallery) {
         mutableStateOf(RaftFilePreviewImageGalleryResolutionState())
     }
@@ -2166,7 +2171,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                 operationScope.runThreadApi(
                     diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
                 ) { threadApi ->
-                    threadApi.sendAttachmentComment(current.attachment.id, body)
+                    // The anchor is read from the state at send time: a timestamp attached just
+                    // before the tap rides along (web #3960).
+                    threadApi.sendAttachmentComment(current.attachment.id, body, current.pendingAnchor)
                 }
             when (val result = (authorityResult as? DataResult.Content)?.data) {
                 is ThreadApiResult.Success -> {
@@ -2175,7 +2182,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                             status = "loading",
                             sending = false,
                             pendingQuoteLabel = null
-                        ).clearAttachmentCommentsError()
+                        ).afterAnchoredCommentAccepted().clearAttachmentCommentsError()
                     attachmentCommentsState = loading
                     loadAttachmentComments(loading)
                 }
@@ -4073,6 +4080,20 @@ private fun RaftFilePreviewStandalonePageContent() {
                     payload = payload,
                     onOpenUrl = {},
                     htmlDesktopMode = htmlDesktopMode,
+                    videoComments =
+                        if (payload.supportsAttachmentComments() && payload.supportsVideoTimestampComments()) {
+                            val commentsState = attachmentCommentsState
+                            RaftFilePreviewVideoComments(
+                                commentMode = commentsState != null && commentsState.page?.viewer?.canComment != false,
+                                hasTimestampAnchor = commentsState?.hasVideoTimestampAnchor == true,
+                                jumpRequest = videoCommentJump,
+                                onAttachTimestamp = { timeSeconds ->
+                                    attachmentCommentsState = attachmentCommentsState?.withPendingVideoTimestamp(timeSeconds)
+                                }
+                            )
+                        } else {
+                            null
+                        },
                     onExternalBrowserOpen =
                         if (
                             payload.source == RaftFilePreviewSourceThreadAttachment &&
@@ -4161,8 +4182,14 @@ private fun RaftFilePreviewStandalonePageContent() {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.copy(pendingAnchorLabel = null, pendingQuoteLabel = null)
-                }
+                            ?.withoutPendingAnchor()
+                },
+                onAnchorJump =
+                    if (payload.supportsVideoTimestampComments()) {
+                        { anchor -> videoCommentJump = videoCommentJump.nextVideoTimestampJump(anchor) ?: videoCommentJump }
+                    } else {
+                        null
+                    }
             )
         }
     }
@@ -4180,6 +4207,7 @@ internal fun RaftFilePreviewAttachmentCommentsPanel(
     onRetry: () -> Unit,
     onSend: () -> Unit,
     onClearAnchor: () -> Unit,
+    onAnchorJump: ((ThreadAttachmentCommentAnchor) -> Unit)? = null,
     modifier: Modifier = Modifier.fillMaxWidth().fillMaxHeight(RaftFilePreviewCommentsSheetHeightFraction)
 ) {
     RaftAttachmentCommentsPanel(
@@ -4189,6 +4217,7 @@ internal fun RaftFilePreviewAttachmentCommentsPanel(
         onSend = onSend,
         onClose = onClose,
         onClearAnchor = onClearAnchor,
+        onAnchorJump = onAnchorJump,
         modifier = modifier
     )
 }
@@ -6978,9 +7007,11 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload(
     commentsEnabled: Boolean
 ): RaftFilePreviewPayload? {
     if (!commentsEnabled) return null
-    if (!raftFilePreviewAttachmentSupportsViewerComments(fileName = name, mimeType = mimeType)) return null
+    val video = raftFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
+    if (!video && !raftFilePreviewAttachmentSupportsViewerComments(fileName = name, mimeType = mimeType)) return null
     val kind =
         when {
+            video -> "video"
             isMarkdownAttachment() -> "markdown"
             isTextLikeAttachment() || isHtmlAttachment() -> "text"
             else -> "file"
@@ -6995,13 +7026,26 @@ internal fun RaftFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == RaftFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        raftFilePreviewAttachmentSupportsViewerComments(externalFileName, externalMimeType)
+        (
+            raftFilePreviewAttachmentSupportsViewerComments(externalFileName, externalMimeType) ||
+                supportsVideoTimestampComments()
+        )
+
+/** Video previews comment beside the player with timestamp anchors (web VideoPreviewBody); audio has none. */
+internal fun RaftFilePreviewPayload.supportsVideoTimestampComments(): Boolean =
+    !audioOnly &&
+        requestedKind != "audio" &&
+        (
+            kind == "video" ||
+                requestedKind == "video" ||
+                raftFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType)
+        )
 
 /**
  * Attachment types whose comments open inside the file viewer, as on web: Markdown, text/code and CSV
  * (margin comments there), XLSX and HTML (side panel there). Web gives no comments to images
- * (descoped), PDFs, audio, or files it cannot preview. Video has timestamp comments on web, which the
- * viewer here does not have, so it is not listed.
+ * (descoped), PDFs, audio, or files it cannot preview. Video comments open beside the player
+ * ([supportsVideoTimestampComments]), so they are not listed here.
  */
 internal fun raftFilePreviewAttachmentSupportsViewerComments(fileName: String, mimeType: String): Boolean =
     !raftFilePreviewIsPdfAttachment(fileName, mimeType) &&
@@ -7977,6 +8021,8 @@ internal fun RaftFilePreviewPayloadContent(
     onOpenUrl: (String) -> Unit,
     /** task #188: HTML attachments render as the desktop layout when true. */
     htmlDesktopMode: Boolean = false,
+    /** Video timestamp comments for the open video; null when the video has no comments here. */
+    videoComments: RaftFilePreviewVideoComments? = null,
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
@@ -8274,6 +8320,7 @@ internal fun RaftFilePreviewPayloadContent(
                     meta = payload.meta,
                     fallbackMessage = payload.localizedMessage(),
                     audioOnly = payload.audioOnly,
+                    videoComments = videoComments,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -8558,6 +8605,7 @@ private fun RaftFilePreviewVideoPanel(
     meta: String,
     fallbackMessage: String,
     audioOnly: Boolean = false,
+    videoComments: RaftFilePreviewVideoComments? = null,
     modifier: Modifier = Modifier
 ) {
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
@@ -8574,6 +8622,20 @@ private fun RaftFilePreviewVideoPanel(
             platformNativeController = raftPlatformUsesNativeVideoController(),
             platformPlaysAudioOnly = raftPlatformPlaysAudioOnlyMedia()
         )
+    if (videoComments != null) {
+        RaftFilePreviewVideoCommentEffects(
+            videoComments = videoComments,
+            source = source,
+            playState = playState,
+            currentTimeMs = currentTimeMs,
+            onJump = { timeMs ->
+                // web seek coalescer: pause, then seek; a jump never starts playback.
+                playControl = VideoPlayControl.PAUSE
+                currentTimeMs = timeMs
+                seekRequest = seekRequest.nextVideoSeekRequest(timeMs)
+            }
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -8598,7 +8660,15 @@ private fun RaftFilePreviewVideoPanel(
                         source = source,
                         playControl = playControl,
                         seekRequest = seekRequest,
-                        onPlayStateChanged = { playState = it },
+                        onPlayStateChanged = { state ->
+                            playState = state
+                            // The native controller plays and pauses without going through
+                            // playControl; mirror it so a comment jump's PAUSE is always a change
+                            // the player applies.
+                            if (videoComments != null && nativeController) {
+                                playControl = raftVideoCommentMirroredPlayControl(playControl, state)
+                            }
+                        },
                         onPlayTimeChanged = { current, total ->
                             val (safeCurrent, safeTotal) =
                                 raftVideoProgressForUi(
@@ -8664,6 +8734,21 @@ private fun RaftFilePreviewVideoPanel(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+        }
+        if (
+            videoComments != null &&
+            raftVideoCommentCanAddPausedTimestamp(
+                commentMode = videoComments.commentMode,
+                playState = playState,
+                currentTimeMs = currentTimeMs,
+                hasTimestampAnchor = videoComments.hasTimestampAnchor
+            )
+        ) {
+            RaftFilePreviewVideoAddTimestampButton(
+                currentTimeMs = currentTimeMs,
+                onClick = { raftVideoCommentAnchorSeconds(currentTimeMs)?.let(videoComments.onAttachTimestamp) },
+                modifier = Modifier.padding(top = RaftAppSpacing.Md)
+            )
         }
     }
 }

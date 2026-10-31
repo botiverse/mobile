@@ -905,6 +905,8 @@
     <string name="thread_comments_unknown_author">不明</string>
     <string name="thread_comments_anchor">アンカー: %1$s</string>
     <string name="thread_comments_quote">引用: %1$s</string>
+    <string name="thread_comments_add_timestamp">タイムスタンプ %1$s を追加</string>
+    <string name="thread_comments_jump_to_location">該当箇所へ移動</string>
     <string name="thread_comments_resolved">解決済み</string>
     <string name="thread_comments_resolving">解決中</string>
     <string name="thread_comments_resolve">解決</string>

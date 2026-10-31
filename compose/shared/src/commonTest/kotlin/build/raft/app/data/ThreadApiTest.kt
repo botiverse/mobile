@@ -197,6 +197,89 @@ class ThreadApiTest {
     }
 
     @Test
+    fun attachmentCommentVideoTimestampAnchorParsesCanonicalPayload() = runBlocking {
+        // Canonical wire shape: server attachmentCommentService normalizes
+        // {type:"video-timestamp", data:{time}} (finite, >= 0, rounded to ms); web CommentAnchor.
+        val api =
+            RaftThreadApiClient(
+                FakeThreadNetworkApi(
+                    attachmentCommentsBody =
+                        """
+                        {
+                          "threadChannelId": "thread-comments",
+                          "viewer": {"canComment": true, "reason": "ok"},
+                          "comments": [
+                            {"id": "c1", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "video-timestamp", "data": {"time": 83.456}}},
+                            {"id": "c2", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "video-timestamp", "data": {"time": 3725}}},
+                            {"id": "c3", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "video-timestamp", "data": {"time": "12"}}},
+                            {"id": "c4", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "lines", "data": {"start": 3, "end": 7}}},
+                            {"id": "c5", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [], "anchor": null}
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val page = assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1")).data
+
+        assertEquals(
+            listOf(
+                ThreadAttachmentCommentAnchor.VideoTimestamp(83.456),
+                ThreadAttachmentCommentAnchor.VideoTimestamp(3725.0),
+                null,
+                null,
+                null
+            ),
+            page.comments.map { it.anchor }
+        )
+        assertEquals(listOf("1:23", "1:02:05", null, "L3–7", null), page.comments.map { it.anchorLabel })
+    }
+
+    @Test
+    fun attachmentCommentBodyCarriesVideoTimestampAnchorAndOmitsMissingOne() = runBlocking {
+        assertEquals(
+            """{"content":"cut here","anchor":{"type":"video-timestamp","data":{"time":83.456}}}""",
+            buildSharedAttachmentCommentBody("cut here", ThreadAttachmentCommentAnchor.VideoTimestamp(83.456))
+        )
+        assertEquals("""{"content":"whole file"}""", buildSharedAttachmentCommentBody("whole file", null))
+
+        val networkClient = RecordingThreadNetworkClient()
+        val api = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
+        assertIs<ThreadApiResult.Success<Unit>>(
+            api.sendAttachmentComment("att-1", "cut here", ThreadAttachmentCommentAnchor.VideoTimestamp(12.0))
+        )
+        assertEquals(
+            listOf(
+                """POST attachments/att-1/comments priority=Foreground query= server= body={"content":"cut here","anchor":{"type":"video-timestamp","data":{"time":12.0}}}"""
+            ),
+            networkClient.calls
+        )
+    }
+
+    @Test
+    fun videoTimestampLabelMatchesWebAndServerFormat() {
+        // web anchorLabel / server attachmentCommentAnchorLabel: M:SS, H:MM:SS from an hour on.
+        assertEquals("0:00", raftVideoTimestampLabel(0.0))
+        assertEquals("0:05", raftVideoTimestampLabel(5.999))
+        assertEquals("0:59", raftVideoTimestampLabel(59.5))
+        assertEquals("1:00", raftVideoTimestampLabel(60.0))
+        assertEquals("12:34", raftVideoTimestampLabel(754.2))
+        assertEquals("59:59", raftVideoTimestampLabel(3599.999))
+        assertEquals("1:00:00", raftVideoTimestampLabel(3600.0))
+        assertEquals("1:02:05", raftVideoTimestampLabel(3725.0))
+        assertEquals("10:00:09", raftVideoTimestampLabel(36009.0))
+    }
+
+    @Test
     fun syncRequiresCanonicalRootArray() = runBlocking {
         val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""))
 
@@ -589,7 +672,7 @@ class ThreadApiTest {
         override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentCommentsBody)
 
-        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
 
         override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse {

@@ -84,6 +84,7 @@ import build.raft.app.data.isGenericInlineCommitAction
 import build.raft.app.data.installSetBound
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.ThreadAttachmentCommentsPage
+import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
@@ -5603,7 +5604,11 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun sendAttachmentComment(attachmentId: String, body: String): DataResult<Unit> {
+    suspend fun sendAttachmentComment(
+        attachmentId: String,
+        body: String,
+        anchor: ThreadAttachmentCommentAnchor? = null
+    ): DataResult<Unit> {
         val cleanAttachmentId = attachmentId.trim()
         val cleanBody = body.trim()
         if (cleanAttachmentId.isBlank() || cleanBody.isBlank()) {
@@ -5611,7 +5616,7 @@ internal class SharedThreadDataSource(
         }
         val response =
             try {
-                api.sendAttachmentComment(cleanAttachmentId, cleanBody)
+                api.sendAttachmentComment(cleanAttachmentId, cleanBody, anchor)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {

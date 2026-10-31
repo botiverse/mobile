@@ -1237,7 +1237,7 @@ private class ActualHostThreadApi(
     override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"comments":[],"threadChannelId":"host-comments"}""")
 
-    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse = okResponse()
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): HomeNetworkResponse = okResponse()
     override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse = okResponse()
     override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse = okResponse()
     override suspend fun saveMessage(messageId: String): HomeNetworkResponse = okResponse()

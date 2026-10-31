@@ -85,6 +85,7 @@ new product concept gets a Japanese rendering.
 | Permission | 権限 | "No permission" = 権限がありません |
 | Session | セッション | |
 | Public / Private | 公開 / 非公開 | Channel visibility |
+| Timestamp (video comment) | タイムスタンプ | Video comment anchor `M:SS`; copied from the web ja catalog (`message.messageItem.addTimestamp`) |
 
 Brand names stay in Latin script: **Raft**, **Hands**, **Claude Code**,
 **Kuikly**, **Markdown**, **OAuth**, **API**.
