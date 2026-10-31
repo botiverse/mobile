@@ -38,7 +38,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import build.raft.app.data.RaftNotificationAccountSettingsPatch
+import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.RaftNotificationAccountSettingsStore
+import build.raft.app.data.RaftNotificationMobileDelay
 import build.raft.app.data.RaftNotificationPauseOption
 import build.raft.app.data.raftCurrentTimeZoneId
 import build.raft.app.data.raftMinuteOfDayLabel
@@ -666,7 +668,7 @@ private fun ServerPushMode.settingsNotificationModeDetail(): String =
     }
 
 /**
- * Pause, quiet hours and sound: the account-wide settings of `me/notification-settings` (design
+ * Pause, quiet hours, sound and the phone push delay: the account-wide settings of `me/notification-settings` (design
  * §4.3), read from and written through [RaftNotificationAccountSettingsStore], which applies a change
  * at once and rolls it back when the server refuses.
  */
@@ -679,6 +681,9 @@ private fun SettingsNotificationAccountCard() {
     val scope = rememberCoroutineScope()
     var pauseDialogOpen by remember { mutableStateOf(false) }
     var quietTimeEditing by remember { mutableStateOf<Boolean?>(null) } // true: start, false: end
+    var mobileDelayDialogOpen by remember { mutableStateOf(false) }
+    // Null on a server without `mobileDelay`: no row, so the field is never sent to it.
+    val mobileDelay = settings.mobileDelaySetting
     val busy = accountState.saving
     fun update(patch: RaftNotificationAccountSettingsPatch) {
         scope.launch { RaftNotificationAccountSettingsStore.update(patch) }
@@ -735,6 +740,16 @@ private fun SettingsNotificationAccountCard() {
                 enabled = !busy,
                 onCheckedChange = { sound -> update(RaftNotificationAccountSettingsPatch(sound = sound)) }
             )
+            if (mobileDelay != null) {
+                SettingsNotificationDivider()
+                SettingsNotificationValueRow(
+                    title = stringResource(Res.string.settings_notifications_mobile_delay_title),
+                    detail = mobileDelay.localizedMobileDelayLabel(),
+                    value = "",
+                    enabled = !busy,
+                    onClick = { mobileDelayDialogOpen = true }
+                )
+            }
             if (accountState.errorCode != null && accountState.settings != null) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
                     SettingsFormErrorText(stringResource(Res.string.settings_notifications_account_save_failed))
@@ -773,6 +788,33 @@ private fun SettingsNotificationAccountCard() {
                         onClick = {
                             pauseDialogOpen = false
                             update(RaftNotificationAccountSettingsPatch(pausedUntil = option.pausedUntil(raftNowEpochMillis())))
+                        }
+                    )
+                }
+            }
+        }
+    }
+    if (mobileDelayDialogOpen && mobileDelay != null) {
+        RaftUnifiedDialog(
+            title = stringResource(Res.string.settings_notifications_mobile_delay_title),
+            onDismiss = { mobileDelayDialogOpen = false },
+            contentSpacing = 8.dp
+        ) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftNotificationMobileDelay.entries.forEach { option ->
+                    SettingsServerSelectRow(
+                        title = option.localizedMobileDelayLabel(),
+                        detail =
+                            if (option == RaftNotificationMobileDelay.Always) {
+                                stringResource(Res.string.settings_notifications_mobile_delay_always_detail)
+                            } else {
+                                ""
+                            },
+                        selected = option == mobileDelay,
+                        enabled = true,
+                        onClick = {
+                            mobileDelayDialogOpen = false
+                            settingsMobileDelayPatch(settings, option)?.let(::update)
                         }
                     )
                 }
@@ -826,6 +868,29 @@ private fun RaftNotificationPauseOption.localizedPauseLabel(): String =
         RaftNotificationPauseOption.Hour1 -> stringResource(Res.string.settings_notifications_pause_1h)
         RaftNotificationPauseOption.Hours2 -> stringResource(Res.string.settings_notifications_pause_2h)
         RaftNotificationPauseOption.TomorrowMorning -> stringResource(Res.string.settings_notifications_pause_tomorrow)
+    }
+
+/**
+ * The PATCH for picking [option], or null when it is already the stored wire value. An unknown
+ * stored value shows as Inactive, so picking Inactive still writes it.
+ */
+internal fun settingsMobileDelayPatch(
+    settings: RaftNotificationAccountSettings,
+    option: RaftNotificationMobileDelay
+): RaftNotificationAccountSettingsPatch? =
+    if (settings.mobileDelay == null || settings.mobileDelay == option.wireName) {
+        null
+    } else {
+        RaftNotificationAccountSettingsPatch(mobileDelay = option)
+    }
+
+@Composable
+private fun RaftNotificationMobileDelay.localizedMobileDelayLabel(): String =
+    when (this) {
+        RaftNotificationMobileDelay.Always -> stringResource(Res.string.settings_notifications_mobile_delay_always)
+        RaftNotificationMobileDelay.Inactive -> stringResource(Res.string.settings_notifications_mobile_delay_inactive)
+        RaftNotificationMobileDelay.Minutes1 -> stringResource(Res.string.settings_notifications_mobile_delay_minute_1)
+        else -> stringResource(Res.string.settings_notifications_mobile_delay_minutes, minutes ?: 0)
     }
 
 /** A row with a value on its trailing side that opens a choice (pause, quiet hours start / end). */

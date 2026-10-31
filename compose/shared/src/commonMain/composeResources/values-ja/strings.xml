@@ -3550,4 +3550,10 @@
     <string name="settings_notifications_sound_title">サウンド</string>
     <string name="settings_notifications_sound_detail">すべてのデバイスで新しい通知の音を鳴らします。</string>
     <string name="settings_notifications_account_save_failed">設定を保存できませんでした。もう一度お試しください。</string>
+    <string name="settings_notifications_mobile_delay_title">パソコンの使用中、スマートフォンへの通知</string>
+    <string name="settings_notifications_mobile_delay_always">すぐに通知（パソコンの使用中も）</string>
+    <string name="settings_notifications_mobile_delay_always_detail">パソコンを使っている間もスマートフォンが鳴ります。</string>
+    <string name="settings_notifications_mobile_delay_inactive">パソコンで操作していないときに通知</string>
+    <string name="settings_notifications_mobile_delay_minute_1">パソコンの操作が 1 分止まったら通知</string>
+    <string name="settings_notifications_mobile_delay_minutes">パソコンの操作が %1$d 分止まったら通知</string>
 </resources>

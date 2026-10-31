@@ -5,6 +5,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.RaftNotificationAccountSettings
+import build.raft.app.data.RaftNotificationAccountSettingsPatch
+import build.raft.app.data.RaftNotificationMobileDelay
+import kotlin.test.assertNull
 
 class SettingsNotificationsUiContractTest {
     @Test
@@ -81,6 +85,28 @@ class SettingsNotificationsUiContractTest {
         assertEquals(
             PushPreviewMode.entries.size,
             PushPreviewMode.entries.map { it.settingsPreviewModeLabel() }.toSet().size
+        )
+    }
+
+    @Test
+    fun mobileDelayRowIsHiddenWithoutTheServerFieldAndPicksWriteOnlyChanges() {
+        // The row reads mobileDelaySetting: null (no row) when an older server sent no field.
+        assertNull(RaftNotificationAccountSettings().mobileDelaySetting)
+        assertNull(settingsMobileDelayPatch(RaftNotificationAccountSettings(), RaftNotificationMobileDelay.Always), "never sent to an older server")
+
+        val inactive = RaftNotificationAccountSettings(mobileDelay = "inactive")
+        assertEquals(RaftNotificationMobileDelay.Inactive, inactive.mobileDelaySetting)
+        assertNull(settingsMobileDelayPatch(inactive, RaftNotificationMobileDelay.Inactive), "the held value is a no-op")
+        assertEquals(
+            RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Minutes5),
+            settingsMobileDelayPatch(inactive, RaftNotificationMobileDelay.Minutes5)
+        )
+        // An unknown value shows as Inactive; picking Inactive replaces it.
+        val unknown = RaftNotificationAccountSettings(mobileDelay = "30m")
+        assertEquals(RaftNotificationMobileDelay.Inactive, unknown.mobileDelaySetting)
+        assertEquals(
+            RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Inactive),
+            settingsMobileDelayPatch(unknown, RaftNotificationMobileDelay.Inactive)
         )
     }
 }

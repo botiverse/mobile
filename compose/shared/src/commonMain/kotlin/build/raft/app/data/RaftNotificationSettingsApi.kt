@@ -35,8 +35,11 @@ import kotlinx.serialization.json.put
  *  - `GET me/notification-settings` → `{settings, servers: [{serverId, level}]}`; no stored row
  *    reads as the defaults (`version: 0`).
  *  - `PATCH me/notification-settings` with any subset of `pausedUntil` (ISO, or null to resume),
- *    `quietHours` (all four fields), `previewMode`, `sound`, `version` → `{settings}`; a stale
- *    `version` → `409 {"error": "version_conflict", "settings": <current>}`.
+ *    `quietHours` (all four fields), `previewMode`, `sound`, `mobileDelay`, `version` → `{settings}`;
+ *    a stale `version` → `409 {"error": "version_conflict", "settings": <current>}`.
+ *  - `settings.mobileDelay` (phone push delay while the user is on a computer, Wug, #proj-raft-ui
+ *    #186): `always` | `inactive` (default, the behaviour before the field) | `1m` | `2m` | `5m` |
+ *    `10m`. An older server does not send it; the app then never shows or PATCHes it.
  *  - `PUT notification-levels` `{scope, id, level}` → `{scope, id, serverId, level, effective,
  *    muted, prefsVersion}`; `server` rejects `default`.
  *  - `GET notification-levels` (server header) → `{serverId, server, channels: [{id, level}],
@@ -67,16 +70,55 @@ data class RaftNotificationAccountSettings(
     val quietHours: RaftNotificationQuietHours = RaftNotificationQuietHours(),
     val previewMode: String = PUSH_PREVIEW_MODE_DEFAULT,
     val sound: Boolean = true,
+    /**
+     * The wire `mobileDelay` as sent, or null when the server did not send the field (an older
+     * server). Kept raw so an unknown future value is never rewritten unless the user picks one.
+     */
+    val mobileDelay: String? = null,
     val version: Int = 0
 ) {
     /** The preview mode; an unknown value fails closed to hidden. */
     val preview: PushPreviewMode
         get() = PushPreviewMode.fromWire(previewMode) ?: PushPreviewMode.Hidden
 
+    /**
+     * The phone push delay to show, or null when the server does not have the setting (the row is
+     * then hidden). An unknown value reads as [RaftNotificationMobileDelay.Inactive], the default.
+     */
+    val mobileDelaySetting: RaftNotificationMobileDelay?
+        get() = mobileDelay?.let { RaftNotificationMobileDelay.fromWire(it) ?: RaftNotificationMobileDelay.Inactive }
+
     fun pausedUntilEpochMillis(): Long? =
         pausedUntil?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
 
     fun isPaused(nowEpochMillis: Long): Boolean = (pausedUntilEpochMillis() ?: return false) > nowEpochMillis
+}
+
+/** `settings.mobileDelay`: when a phone is notified while the user is on a computer. */
+enum class RaftNotificationMobileDelay(val wireName: String) {
+    /** Right away, even while the user is on a computer. */
+    Always("always"),
+    /** Once the user is not active on a computer (the default; what servers did before the field). */
+    Inactive("inactive"),
+    Minutes1("1m"),
+    Minutes2("2m"),
+    Minutes5("5m"),
+    Minutes10("10m");
+
+    /** The minutes of a timed delay, or null for [Always] / [Inactive]. */
+    val minutes: Int?
+        get() =
+            when (this) {
+                Always, Inactive -> null
+                Minutes1 -> 1
+                Minutes2 -> 2
+                Minutes5 -> 5
+                Minutes10 -> 10
+            }
+
+    companion object {
+        fun fromWire(value: String?): RaftNotificationMobileDelay? = entries.firstOrNull { it.wireName == value }
+    }
 }
 
 @Serializable
@@ -125,7 +167,9 @@ data class RaftNotificationAccountSettingsPatch(
     val resume: Boolean = false,
     val quietHours: RaftNotificationQuietHours? = null,
     val previewMode: PushPreviewMode? = null,
-    val sound: Boolean? = null
+    val sound: Boolean? = null,
+    /** Only sent when the user picks a delay; the row exists only when the server sent the field. */
+    val mobileDelay: RaftNotificationMobileDelay? = null
 ) {
     /** The settings as they read once this patch applied, for an optimistic update. */
     fun appliedTo(settings: RaftNotificationAccountSettings): RaftNotificationAccountSettings =
@@ -133,7 +177,8 @@ data class RaftNotificationAccountSettingsPatch(
             pausedUntil = if (resume) null else pausedUntil ?: settings.pausedUntil,
             quietHours = quietHours ?: settings.quietHours,
             previewMode = previewMode?.wireName ?: settings.previewMode,
-            sound = sound ?: settings.sound
+            sound = sound ?: settings.sound,
+            mobileDelay = mobileDelay?.wireName ?: settings.mobileDelay
         )
 }
 
@@ -148,6 +193,7 @@ fun buildRaftNotificationAccountSettingsPatchBody(patch: RaftNotificationAccount
         }
         patch.previewMode?.let { put("previewMode", it.wireName) }
         patch.sound?.let { put("sound", it) }
+        patch.mobileDelay?.let { put("mobileDelay", it.wireName) }
         version?.let { put("version", it) }
     }.toString()
 

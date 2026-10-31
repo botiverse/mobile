@@ -3550,4 +3550,10 @@
     <string name="settings_notifications_sound_title">Sound</string>
     <string name="settings_notifications_sound_detail">Play a sound for new notifications on every device.</string>
     <string name="settings_notifications_account_save_failed">The setting could not be saved. Try again.</string>
+    <string name="settings_notifications_mobile_delay_title">While I'm on a computer, notify my phone</string>
+    <string name="settings_notifications_mobile_delay_always">Right away, even while I'm on a computer</string>
+    <string name="settings_notifications_mobile_delay_always_detail">Your phone will ring even while you're on a computer.</string>
+    <string name="settings_notifications_mobile_delay_inactive">Once I'm not active on a computer</string>
+    <string name="settings_notifications_mobile_delay_minute_1">After 1 minute away from a computer</string>
+    <string name="settings_notifications_mobile_delay_minutes">After %1$d minutes away from a computer</string>
 </resources>
