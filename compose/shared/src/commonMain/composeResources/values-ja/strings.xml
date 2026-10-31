@@ -331,6 +331,7 @@
     <string name="thread_action_open_with">アプリで開く…</string>
     <string name="thread_action_select_message">メッセージを選択</string>
     <string name="thread_action_search">検索</string>
+    <string name="thread_action_search_in_thread">スレッド内を検索</string>
     <string name="thread_action_quote">引用</string>
     <string name="thread_action_translate">翻訳</string>
     <string name="thread_action_copy_link">リンクをコピー</string>
