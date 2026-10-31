@@ -241,6 +241,9 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftRefreshNavigationGeometry];
     [self raftPublishAdaptivePaneForCurrentBounds:@"layout"];
     [self raftPublishWindowInsets];
+    // iOS 26+: no system scroll edge effect (Reduce Transparency keyline under the status bar)
+    // on Compose's internal scroll views.
+    [RaftIosComposeScrollEdgeEffects hideInView:self.view];
 }
 
 /// The native tab bar laid out: it decides how much of the iPhone Duo side column it takes, so
@@ -268,6 +271,7 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     _raftAdaptivePanePublishingActive = YES;
     [self raftPublishAdaptivePaneForCurrentBounds:@"appear"];
     [self raftPublishWindowInsets];
+    [RaftIosComposeScrollEdgeEffects hideInView:self.view];
     [RaftIosTopBandDiagnostics notePageAppear];
 }
 
