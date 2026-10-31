@@ -22,7 +22,13 @@ import build.raft.app.model.parentMessageIdOrNull
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.network.MultipartFile
+import build.raft.app.model.TaskSummary
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -34,6 +40,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.JsonElement
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private val conversationRepositoryJson = Json {
@@ -271,6 +278,21 @@ class RealConversationRepository private constructor(
      * never ran and an anchored channel page showed no reply rows at all. Tests shrink this.
      */
     internal var followedSummariesJoinBudgetMillis: Long = FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS
+
+    private val taskConversationParentFlights =
+        PrioritySingleFlight<TaskConversationContextFlightKey, ConversationSummary?>()
+    private val taskConversationTaskFlights =
+        PrioritySingleFlight<TaskConversationContextFlightKey, TaskSummary?>()
+
+    /**
+     * Hands 4cf4c781: the last ref / parent / task seen per task conversation (insertion-ordered,
+     * bounded). The ref never changes; the parent here only names the title (write authority is
+     * always read fresh); the task is reused for [taskConversationTaskReuseMillis].
+     */
+    private val recentTaskConversationsLock = SynchronizedObject()
+    private val recentTaskConversations = LinkedHashMap<TaskConversationContextFlightKey, RecentTaskConversation>()
+    internal var taskConversationTaskReuseMillis: Long = TASK_CONVERSATION_TASK_REUSE_MILLIS
+    internal var taskConversationTimeSource: TimeSource = TimeSource.Monotonic
 
     /** Public compatibility constructor for ordinary selector-backed repositories. */
     constructor(
@@ -862,41 +884,155 @@ class RealConversationRepository private constructor(
         taskConversation: TaskConversationChannelRef,
         priority: DataRequestPriority,
         serverId: ServerId,
-    ): ConversationSummary = coroutineScope {
-        val parentDeferred =
-            async {
+    ): ConversationSummary {
+        // Hands 4cf4c781: write authority is the parent channel's alone, so the load waits only for
+        // the parent detail. The task (title only) is used when a recent fetch has it; otherwise the
+        // title is left pending (blank) and [loadTaskConversationTitle] fills it in.
+        val key = taskConversationContextKey(serverId, taskConversation)
+        val parent =
+            taskConversationParentFlights.run(key, priority) {
                 loadConversationDetail(taskConversation.parentChannelId, priority, serverId)
                     ?.takeUnless { it.kind == ConversationKind.Task }
             }
-        val taskDeferred =
-            async {
-                val response =
-                    try {
-                        networkClient.request(
-                            priority = priority,
-                            path = "tasks/channel/${taskConversation.parentChannelId.value}",
-                            serverIdOverride = serverId,
-                        )
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (exception: Exception) {
-                        null
-                    }
-                response
-                    ?.takeIf { it.isSuccessful }
-                    ?.bodyText
-                    ?.let { body -> parseSharedServerTasksPayload(body, warningLogger) }
-                    ?.tasks
-                    ?.firstOrNull { it.id == taskConversation.taskId }
-            }
-        val parent = parentDeferred.await()
-        val task = taskDeferred.await()
+        recordRecentTaskConversation(key, taskConversation, parent)
+        val task = recentTaskConversationTask(key)
         warningLogger(
             "task_conversation_detail channelId=${taskConversation.conversationChannelId.value} " +
                 "parentChannelId=${taskConversation.parentChannelId.value} taskId=${taskConversation.taskId.value} " +
-                "parent=${parent != null} task=${task != null}"
+                "parent=${parent != null} task=${if (task != null) "recent" else "pending"}"
         )
-        detail.withTaskConversationContext(parent = parent, task = task)
+        return detail.withTaskConversationContext(parent = parent, task = task, taskPending = task == null)
+    }
+
+    /**
+     * Task v2: the header title of a task conversation (`#channel:#7 title`), from the task row in
+     * `GET /api/tasks/channel/:parentChannelId`. A result fetched within
+     * [taskConversationTaskReuseMillis] is reused, and overlapping calls share one request.
+     * `null` when the task cannot be read or no load of this conversation has named its task yet.
+     */
+    override suspend fun loadTaskConversationTitle(conversationChannelId: ChannelId): String? {
+        val context = currentContext() ?: return null
+        val serverId = context.server.id
+        // Only a ref a load of this conversation already read: fetching it here would race the
+        // load's own `GET /channels/:id`. The store asks again once the load commits.
+        val ref = recentTaskConversationRef(serverId, conversationChannelId) ?: return null
+        val key = taskConversationContextKey(serverId, ref)
+        val priority = DataRequestPriority.Visible
+        val task =
+            recentTaskConversationTask(key)
+                ?: taskConversationTaskFlights.run(key, priority) {
+                    fetchTaskConversationTask(ref, priority, serverId)
+                }?.also { fetched -> recordRecentTaskConversationTask(key, ref, fetched) }
+                ?: return null
+        val parent =
+            recentTaskConversationParent(key)
+                ?: taskConversationParentFlights.run(key, priority) {
+                    loadConversationDetail(ref.parentChannelId, priority, serverId)
+                        ?.takeUnless { it.kind == ConversationKind.Task }
+                }
+        return taskConversationDisplayTitle(parent = parent, task = task)
+    }
+
+    private suspend fun fetchTaskConversationTask(
+        taskConversation: TaskConversationChannelRef,
+        priority: DataRequestPriority,
+        serverId: ServerId,
+    ): TaskSummary? {
+        val response =
+            try {
+                networkClient.request(
+                    priority = priority,
+                    path = "tasks/channel/${taskConversation.parentChannelId.value}",
+                    serverIdOverride = serverId,
+                )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                null
+            }
+        val task =
+            response
+                ?.takeIf { it.isSuccessful }
+                ?.bodyText
+                ?.let { body -> parseSharedServerTasksPayload(body, warningLogger) }
+                ?.tasks
+                ?.firstOrNull { it.id == taskConversation.taskId }
+        warningLogger(
+            "task_conversation_task channelId=${taskConversation.conversationChannelId.value} " +
+                "taskId=${taskConversation.taskId.value} task=${task != null}"
+        )
+        return task
+    }
+
+    private suspend fun taskConversationContextKey(
+        serverId: ServerId,
+        taskConversation: TaskConversationChannelRef,
+    ): TaskConversationContextFlightKey =
+        TaskConversationContextFlightKey(
+            principalId = sessionStore.readSession()?.user?.id.orEmpty(),
+            serverId = serverId.value,
+            conversationChannelId = taskConversation.conversationChannelId.value,
+            parentChannelId = taskConversation.parentChannelId.value,
+            taskId = taskConversation.taskId.value,
+        )
+
+    private suspend fun recentTaskConversationRef(
+        serverId: ServerId,
+        conversationChannelId: ChannelId,
+    ): TaskConversationChannelRef? {
+        val principalId = sessionStore.readSession()?.user?.id.orEmpty()
+        return synchronized(recentTaskConversationsLock) {
+            recentTaskConversations.entries
+                .firstOrNull { (key, _) ->
+                    key.principalId == principalId &&
+                        key.serverId == serverId.value &&
+                        key.conversationChannelId == conversationChannelId.value
+                }
+                ?.value
+                ?.ref
+        }
+    }
+
+    private fun recentTaskConversationParent(key: TaskConversationContextFlightKey): ConversationSummary? =
+        synchronized(recentTaskConversationsLock) { recentTaskConversations[key]?.parent }
+
+    private fun recentTaskConversationTask(key: TaskConversationContextFlightKey): TaskSummary? =
+        synchronized(recentTaskConversationsLock) {
+            val recent = recentTaskConversations[key] ?: return@synchronized null
+            val fetchedAt = recent.taskFetchedAt ?: return@synchronized null
+            recent.task.takeIf { fetchedAt.elapsedNow().inWholeMilliseconds < taskConversationTaskReuseMillis }
+        }
+
+    private fun recordRecentTaskConversation(
+        key: TaskConversationContextFlightKey,
+        ref: TaskConversationChannelRef,
+        parent: ConversationSummary?,
+    ) {
+        updateRecentTaskConversation(key, ref) { it.copy(parent = parent ?: it.parent) }
+    }
+
+    private fun recordRecentTaskConversationTask(
+        key: TaskConversationContextFlightKey,
+        ref: TaskConversationChannelRef,
+        task: TaskSummary,
+    ) {
+        updateRecentTaskConversation(key, ref) {
+            it.copy(task = task, taskFetchedAt = taskConversationTimeSource.markNow())
+        }
+    }
+
+    private fun updateRecentTaskConversation(
+        key: TaskConversationContextFlightKey,
+        ref: TaskConversationChannelRef,
+        update: (RecentTaskConversation) -> RecentTaskConversation,
+    ) {
+        synchronized(recentTaskConversationsLock) {
+            val previous = recentTaskConversations.remove(key) ?: RecentTaskConversation(ref)
+            recentTaskConversations[key] = update(previous)
+            while (recentTaskConversations.size > RECENT_TASK_CONVERSATIONS_LIMIT) {
+                recentTaskConversations.remove(recentTaskConversations.keys.first())
+            }
+        }
     }
 
     override suspend fun loadOlderMessages(
@@ -1110,6 +1246,8 @@ class RealConversationRepository private constructor(
 
     override suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> {
         val context = currentContext() ?: return authRequired()
+        // A task conversation's parent channel and task never change; reuse a ref this process read.
+        recentTaskConversationRef(context.server.id, conversationChannelId)?.let { return DataResult.Content(it) }
         val response =
             try {
                 networkClient.request(
@@ -1132,6 +1270,7 @@ class RealConversationRepository private constructor(
             "task_conversation_ref channelId=${conversationChannelId.value} " +
                 "resolved=${ref != null}"
         )
+        ref?.let { updateRecentTaskConversation(taskConversationContextKey(context.server.id, it), it) { recent -> recent } }
         return ref?.let { DataResult.Content(it) } ?: DataResult.Empty(EmptyReason.NoMessages)
     }
 
@@ -1793,9 +1932,69 @@ class RealConversationRepository private constructor(
     private companion object {
         const val MESSAGE_PAGE_LIMIT = 50
         const val FOLLOWED_SUMMARIES_JOIN_BUDGET_MILLIS = 1_500L
+        const val TASK_CONVERSATION_TASK_REUSE_MILLIS = 30_000L
+        const val RECENT_TASK_CONVERSATIONS_LIMIT = 32
         const val SYNC_PAGE_LIMIT = 200
     }
 }
+
+/**
+ * Coalesces overlapping identical loads. A caller joins an in-flight load only when that load runs
+ * at its own priority or a more urgent one, so a visible open never waits on a Background lane.
+ * Nothing is cached after the flight ends; a cancelled owner lets its joiners load for themselves.
+ */
+private class PrioritySingleFlight<K : Any, V> {
+    private class Flight<V>(val priority: DataRequestPriority, val result: CompletableDeferred<V>)
+
+    private val lock = SynchronizedObject()
+    private val flights = mutableMapOf<K, Flight<V>>()
+
+    suspend fun run(key: K, priority: DataRequestPriority, load: suspend () -> V): V {
+        var owned: Flight<V>? = null
+        val joined =
+            synchronized(lock) {
+                flights[key]?.takeIf { it.priority.ordinal <= priority.ordinal }
+                    ?: Flight<V>(priority, CompletableDeferred()).also { flight ->
+                        flights[key] = flight
+                        owned = flight
+                    }
+            }
+        val flight = owned
+        if (flight == null) {
+            return try {
+                joined.result.await()
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                currentCoroutineContext().ensureActive()
+                load()
+            }
+        }
+        return try {
+            load().also(flight.result::complete)
+        } catch (failure: Throwable) {
+            flight.result.completeExceptionally(failure)
+            throw failure
+        } finally {
+            synchronized(lock) {
+                if (flights[key] === flight) flights.remove(key)
+            }
+        }
+    }
+}
+
+private data class RecentTaskConversation(
+    val ref: TaskConversationChannelRef,
+    val parent: ConversationSummary? = null,
+    val task: TaskSummary? = null,
+    val taskFetchedAt: TimeMark? = null,
+)
+
+private data class TaskConversationContextFlightKey(
+    val principalId: String,
+    val serverId: String,
+    val conversationChannelId: String,
+    val parentChannelId: String,
+    val taskId: String,
+)
 
 private data class NetworkServerContext(val session: StoredAuthSession, val server: build.raft.app.model.ServerSummary)
 
