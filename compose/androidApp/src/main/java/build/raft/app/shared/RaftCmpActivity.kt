@@ -129,6 +129,7 @@ import build.raft.app.core.data.diagnostics.RaftAuthCriticalJournal
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftPerformanceDiagnostics
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
+import build.raft.app.core.data.diagnostics.RaftScrollFrameProbe
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
 import build.raft.app.core.data.storage.StorageManagementSnapshot
@@ -1509,6 +1510,7 @@ internal open class RaftCmpActivity :
 
     override fun onPause() {
         RaftResumeFrameProbe.onActivityPaused(this)
+        RaftScrollFrameProbe.onActivityPaused(this)
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Hidden, "activity_on_pause")
         }
@@ -1527,6 +1529,7 @@ internal open class RaftCmpActivity :
         RaftNotificationPermissionReporter.report(applicationContext)
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         RaftResumeFrameProbe.onActivityResumed(this, pageName)
+        RaftScrollFrameProbe.onActivityResumed(this, pageName)
         suppressVisualKeyboard()
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")

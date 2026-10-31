@@ -1491,6 +1491,7 @@ private fun SharedActivityList(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling -> if (scrolling) viewportRecoveryArmed = false }
     }
+    RaftScrollFrameSignalEffect(list = "inbox") { active && listState.isScrollInProgress }
     LaunchedEffect(listState, active) {
         if (!active) return@LaunchedEffect
         entryTopAnchorOwner.fenceUserScroll(snapshotFlow { listState.isScrollInProgress })
