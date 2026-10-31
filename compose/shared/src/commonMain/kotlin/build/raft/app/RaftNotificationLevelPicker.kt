@@ -89,7 +89,12 @@ internal fun RaftNotificationLevelSetting.localizedNotificationLevelSettingLabel
             } else {
                 stringResource(Res.string.notification_level_all)
             }
-        RaftNotificationLevelSetting.Mentions -> stringResource(Res.string.notification_level_mentions)
+        RaftNotificationLevelSetting.Mentions ->
+            if (scope == RaftNotificationLevelScope.Channel) {
+                stringResource(Res.string.notification_level_channel_mentions)
+            } else {
+                stringResource(Res.string.notification_level_mentions)
+            }
         RaftNotificationLevelSetting.None -> stringResource(Res.string.notification_level_none)
     }
 
@@ -103,19 +108,59 @@ internal fun rememberRaftNotificationLevelsSupported(serverId: String?): Boolean
     return serverId != null && supported[serverId] == true
 }
 
-/** [target] when its server runs the unified API, else null. */
+/**
+ * [target] when its server runs the unified API and its scope still has an entry, else null.
+ *
+ * Threads and DMs have no level (stdrc + Wug, #proj-raft-ui:f603e418, web slock #12214, after
+ * Slack): a thread is only followed or not, a DM is only muted or not. Channels keep Default / All /
+ * Mentions & followed threads / Nothing, with no "Default" (the inherited level shows as
+ * selected); the server default lives in Settings › Notifications. Every entry point goes through here.
+ */
 @Composable
 internal fun RaftNotificationLevelTarget?.whenLevelsSupported(): RaftNotificationLevelTarget? {
     val supported = rememberRaftNotificationLevelsSupported(this?.serverId)
-    return this?.takeIf { supported }
+    return this?.takeIf { supported && raftNotificationLevelEntryShown(it.scope, it.isDirectMessage) }
 }
 
+/**
+ * Threads have no level entry (follow / unfollow is their only switch) and DMs have none either
+ * (only mute): web slock #12214.
+ */
+internal fun raftNotificationLevelEntryShown(scope: RaftNotificationLevelScope, isDirectMessage: Boolean = false): Boolean =
+    scope != RaftNotificationLevelScope.Thread && !isDirectMessage
+
+/**
+ * The choices a picker offers. A channel lists only concrete levels, All / Mentions & followed
+ * threads / Nothing (stdrc + Wug, #proj-raft-ui:f603e418: a channel has no "Default"); the server
+ * keeps every value.
+ */
+internal fun raftNotificationLevelChoices(scope: RaftNotificationLevelScope): List<RaftNotificationLevelSetting> =
+    when (scope) {
+        RaftNotificationLevelScope.Server -> RaftNotificationLevelSetting.entries
+        else -> RaftNotificationLevelSetting.entries.filter { it != RaftNotificationLevelSetting.Default }
+    }
+
+/** The concrete choice a channel shows as selected: its own level, else the one it inherits. */
+internal fun raftChannelLevelShown(
+    setting: RaftNotificationLevelSetting,
+    inherited: RaftNotificationLevel
+): RaftNotificationLevelSetting = RaftNotificationLevelSetting.of(setting.explicitLevel ?: inherited)
+
+/** What picking [choice] writes for a channel: the server's own level means following the server again. */
+internal fun raftChannelLevelWrite(
+    choice: RaftNotificationLevelSetting,
+    serverLevel: RaftNotificationLevel
+): RaftNotificationLevelSetting =
+    if (choice.explicitLevel == serverLevel) RaftNotificationLevelSetting.Default else choice
 /** The current setting's label ("Default (All new messages)", "Nothing", ...), from the process level store. */
 @Composable
 internal fun rememberRaftNotificationLevelCurrentLabel(target: RaftNotificationLevelTarget): String {
     val all by RaftNotificationLevelStore.state.collectAsState()
     val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
-    return target.setting(levels).localizedNotificationLevelSettingLabel(target.inherited(levels), target.scope)
+    val inherited = target.inherited(levels)
+    val shown =
+        if (target.scope == RaftNotificationLevelScope.Channel) raftChannelLevelShown(target.setting(levels), inherited) else target.setting(levels)
+    return shown.localizedNotificationLevelSettingLabel(inherited, target.scope)
 }
 
 /** "Notifications: <current>" for a menu row. */
@@ -126,8 +171,8 @@ internal fun rememberRaftNotificationLevelMenuLabel(target: RaftNotificationLeve
 }
 
 /**
- * The level picker of a channel, DM or thread, the same four choices as web (design §4.3): Default
- * (<inherited>), All, Mentions, Nothing. Writes through `PUT notification-levels`; the store applies
+ * The level picker of a channel: All, Mentions & followed threads, Nothing
+ * ([raftNotificationLevelChoices]); the selected one is the level in effect, inherited or chosen. Writes through `PUT notification-levels`; the store applies
  * it at once and rolls back when the server refuses.
  */
 @Composable
@@ -141,15 +186,16 @@ internal fun RaftNotificationLevelDialog(
     var saving by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     LaunchedEffect(target.serverId) { RaftNotificationLevelStore.refresh(target.serverId) }
-    val selected = target.setting(levels)
     val inherited = target.inherited(levels)
+    val channel = target.scope == RaftNotificationLevelScope.Channel
+    val selected = if (channel) raftChannelLevelShown(target.setting(levels), inherited) else target.setting(levels)
     RaftUnifiedDialog(
         title = stringResource(Res.string.notification_level_title),
         onDismiss = onDismiss,
         contentSpacing = 8.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RaftNotificationLevelSetting.entries.forEach { option ->
+            raftNotificationLevelChoices(target.scope).forEach { option ->
                 SettingsServerSelectRow(
                     title = option.localizedNotificationLevelSettingLabel(inherited, target.scope),
                     detail = "",
@@ -160,7 +206,8 @@ internal fun RaftNotificationLevelDialog(
                         saving = true
                         failed = false
                         scope.launch {
-                            val result = RaftNotificationLevelStore.setLevel(target.serverId, target.scope, target.id, option)
+                            val write = if (channel) raftChannelLevelWrite(option, levels.server) else option
+                            val result = RaftNotificationLevelStore.setLevel(target.serverId, target.scope, target.id, write)
                             saving = false
                             failed = result !is DataResult.Content
                         }

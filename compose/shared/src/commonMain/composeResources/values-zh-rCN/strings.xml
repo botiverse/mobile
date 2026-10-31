@@ -3494,6 +3494,7 @@
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">所有新消息</string>
     <string name="notification_level_mentions">仅 DM、@我 和关注的线程</string>
+    <string name="notification_level_channel_mentions">仅@我和已关注的消息列</string>
     <string name="notification_level_none">不通知</string>
     <string name="notification_level_default">默认（%1$s）</string>
     <string name="notification_level_thread_all">所有回复（关注）</string>
