@@ -178,12 +178,15 @@ jobs:
               xcrun simctl launch --console-pty "$SIM_UDID" "$BUNDLE_ID" -RaftHideEnvironmentIndicator YES > "$log" 2>&1 &
             local seen=" "
             for _ in $(seq 1 500); do
-              for name in $(grep -ao "RAFT_PROTO_SHOT name=[a-z0-9]*" "$log" | cut -d= -f2); do
+              # Handshake: the app waits at each RAFT_PROTO_SHOT until its done file exists.
+              while read -r name dir; do
                 case "$seen" in
                   *" $name "*) ;;
-                  *) xcrun simctl io "$SIM_UDID" screenshot "$out/real-$mode-$name.png" >/dev/null 2>&1; seen="$seen$name "; echo "shot $mode $name";;
+                  *) xcrun simctl io "$SIM_UDID" screenshot "$out/real-$mode-$name.png" >/dev/null 2>&1
+                     touch "${dir}raft-shot-$name.done"
+                     seen="$seen$name "; echo "shot $mode $name";;
                 esac
-              done
+              done < <(grep -ao "RAFT_PROTO_SHOT name=[a-z0-9]* dir=[^ ]*" "$log" | tr -d '\r' | sed -E 's/RAFT_PROTO_SHOT name=([a-z0-9]*) dir=(.*)/\1 \2/')
               grep -aq "RAFT_PROTO_DONE scene=real" "$log" && break
               sleep 0.4
             done

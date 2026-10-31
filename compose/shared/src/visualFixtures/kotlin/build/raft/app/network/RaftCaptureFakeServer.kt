@@ -92,6 +92,7 @@ internal object RaftCaptureFakeRoutes {
                 data.channels.firstOrNull { it.id == id }?.let { ok(json.encodeToString(build.raft.app.data.HomeChannelWireDto.serializer(), it)) }
                     ?: data.directMessages.firstOrNull { it.id == id }?.let { ok(json.encodeToString(build.raft.app.data.HomeDirectMessageWireDto.serializer(), it)) }
             }
+            method == "GET" && path.matches(Regex("/servers/[^/]+/sidebar-order")) -> ok("{}")
             method == "GET" && path == "/channels/dm" ->
                 ok(json.encodeToString(kotlinx.serialization.builtins.ListSerializer(build.raft.app.data.HomeDirectMessageWireDto.serializer()), data.directMessages))
             method == "GET" && path == "/auth/me" -> ok(json.encodeToString(StoredAuthUser.serializer(), session.user))

@@ -1359,8 +1359,40 @@ enum RaftNativeNavProtoReal {
         waitForShell(attempt: 0)
     }
 
+    /// Shots the workflow has taken (it drops `raft-shot-<name>.done` into the app's tmp dir).
+    private static func shotTaken(_ name: String) -> Bool {
+        FileManager.default.fileExists(atPath: NSTemporaryDirectory() + "raft-shot-\(name).done")
+    }
+
     private static func shot(_ name: String) {
-        RaftNativeNavProtoDemo.marker("RAFT_PROTO_SHOT name=\(name)")
+        RaftNativeNavProtoDemo.marker("RAFT_PROTO_SHOT name=\(name) dir=\(NSTemporaryDirectory())")
+    }
+
+    /// Like [RaftNativeNavProtoDemo.sequence], but a step whose delay is negative is a shot: the
+    /// script waits (up to 15 s) until the workflow has taken it, so no frame is ever early or late.
+    private static func steps(_ list: [(Double, () -> Void)], shots: [Int: String], index: Int = 0, done: @escaping () -> Void) {
+        guard index < list.count else {
+            done()
+            return
+        }
+        let (delay, work) = list[index]
+        RaftNativeNavProtoDemo.after(delay) {
+            work()
+            if let name = shots[index] {
+                waitShot(name, attempt: 0) { steps(list, shots: shots, index: index + 1, done: done) }
+            } else {
+                steps(list, shots: shots, index: index + 1, done: done)
+            }
+        }
+    }
+
+    private static func waitShot(_ name: String, attempt: Int, then: @escaping () -> Void) {
+        if shotTaken(name) || attempt >= 75 {
+            if attempt >= 75 { RaftNativeNavProtoDemo.marker("RAFT_PROTO_WARN shot_timeout name=\(name)") }
+            RaftNativeNavProtoDemo.after(0.3, then)
+            return
+        }
+        RaftNativeNavProtoDemo.after(0.2) { waitShot(name, attempt: attempt + 1, then: then) }
     }
 
     private static func findNav(_ controller: UIViewController?) -> UINavigationController? {
@@ -1468,43 +1500,44 @@ enum RaftNativeNavProtoReal {
 
     private static func run(_ nav: UINavigationController) {
         let pop: () -> Void = { nav.popViewController(animated: true) }
-        RaftNativeNavProtoDemo.sequence([
+        let list: [(Double, () -> Void)] = [
             (0.0, { shot("home") }),
-            (3.0, { openServerMenu(nav) }),
+            (1.5, { openServerMenu(nav) }),
             (1.5, { shot("servermenu") }),
-            (3.0, { closeServerMenu(nav); tap(nav, "server:\(RaftCaptureFakeServerIds.bots)") }),
+            (1.5, { closeServerMenu(nav); tap(nav, "server:\(RaftCaptureFakeServerIds.bots)") }),
             (3.5, { shot("server2") }),
-            (3.0, { tap(nav, "server:\(RaftCaptureFakeServerIds.design)") }),
+            (1.5, { tap(nav, "server:\(RaftCaptureFakeServerIds.design)") }),
             (3.5, { tap(nav, "home-bell") }),
             (1.5, { shot("bell") }),
-            (3.0, { tap(nav, "home-bell") }),
+            (1.5, { tap(nav, "home-bell") }),
             (1.5, { open(nav, "thread:ch_capture_design", "compose_thread") }),
             (3.5, { shot("thread") }),
-            (3.0, { tap(nav, "members") }),
+            (1.5, { tap(nav, "members") }),
             (3.0, { shot("members") }),
-            (3.0, pop),
+            (1.5, pop),
             (2.0, { tap(nav, "thread-settings") }),
             (3.0, { shot("channelsettings") }),
-            (3.0, pop),
+            (1.5, pop),
             (2.0, { RaftNativeNavProtoDemo.scriptedSwipeBack(nav, progress: 0.75, duration: 1.1, finish: true) }),
             (2.5, { shot("swipeback") }),
-            (3.0, { open(nav, "thread:ch_capture_long", "compose_thread") }),
+            (1.5, { open(nav, "thread:ch_capture_long", "compose_thread") }),
             (3.5, { shot("longname") }),
-            (3.0, { rotate(.landscapeRight) }),
+            (1.5, { rotate(.landscapeRight) }),
             (3.0, { shot("rotated") }),
-            (3.0, { rotate(.portrait) }),
+            (1.5, { rotate(.portrait) }),
             (3.0, pop),
             (2.0, { open(nav, "drafts", "compose_home_drafts") }),
             (3.0, { shot("drafts") }),
-            (3.0, pop),
+            (1.5, pop),
             (2.0, { open(nav, "settings-account", "compose_settings_account") }),
             (3.0, { shot("settings") }),
-            (3.0, pop),
+            (1.5, pop),
             (2.0, { selectTab("search") }),
             (2.5, { shot("search") }),
-            (3.0, { selectTab("home") }),
+            (1.5, { selectTab("home") }),
             (2.5, { shot("homeagain") }),
-        ]) {
+        ]
+        steps(list, shots: [0: "home", 2: "servermenu", 4: "server2", 7: "bell", 10: "thread", 12: "members", 15: "channelsettings", 18: "swipeback", 20: "longname", 22: "rotated", 26: "drafts", 29: "settings", 32: "search", 34: "homeagain"]) {
             RaftNativeNavProtoDemo.after(1.0) { RaftNativeNavProtoDemo.marker("RAFT_PROTO_DONE scene=real") }
         }
     }
