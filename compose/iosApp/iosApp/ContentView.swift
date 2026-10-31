@@ -452,8 +452,11 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         } else if !titleMenu.isEmpty && editorStyle {
             item.titleView = nil
         } else if titleMenu.isEmpty && (leading != nil || refreshing || badge != nil || titleTap || !editorStyle) {
+            // A compact-height bar (landscape iPhone) has room for one line only.
+            let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
             let view = RaftNativeNavTitleView(
-                title: lastTitle, subtitle: lastSubtitle, leading: leading, badge: badge, refreshing: refreshing
+                title: lastTitle, subtitle: compact ? nil : lastSubtitle, leading: leading, badge: badge, refreshing: refreshing,
+                compact: compact
             )
             if titleTap {
                 view.isUserInteractionEnabled = true
@@ -874,12 +877,15 @@ final class RaftScrollMirror: UIScrollView {
 /// The conversation's title: channel glyph tile / DM avatar, title over subtitle, the refresh
 /// spinner, and a count badge (what the Compose head carried beside its title).
 final class RaftNativeNavTitleView: UIStackView {
-    init(title: String, subtitle: String?, leading: [String: Any]?, badge: String?, refreshing: Bool) {
+    private let compact: Bool
+
+    init(title: String, subtitle: String?, leading: [String: Any]?, badge: String?, refreshing: Bool, compact: Bool = false) {
+        self.compact = compact
         super.init(frame: .zero)
         axis = .horizontal
         alignment = .center
         spacing = 8
-        if let leading, let view = Self.leadingView(leading) {
+        if let leading, let view = Self.leadingView(leading, size: compact ? 22 : 28) {
             addArrangedSubview(view)
         }
         let text = UIStackView()
@@ -930,11 +936,23 @@ final class RaftNativeNavTitleView: UIStackView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// The most it may take in the bar (set by the host); the title truncates inside it.
+    private var widthConstraint: NSLayoutConstraint?
+    private var heightConstraint: NSLayoutConstraint?
+
+    /// The most it may take in the bar (set by the host); the title truncates inside it. Pinned by
+    /// constraints: a bar item wider than its room makes UIKit drop the title and other buttons.
     var maxWidth: CGFloat = .greatestFiniteMagnitude {
         didSet {
             invalidateIntrinsicContentSize()
-            frame.size = intrinsicContentSize
+            let size = intrinsicContentSize
+            translatesAutoresizingMaskIntoConstraints = false
+            widthConstraint?.isActive = false
+            heightConstraint?.isActive = false
+            widthConstraint = widthAnchor.constraint(equalToConstant: size.width)
+            heightConstraint = heightAnchor.constraint(equalToConstant: min(size.height, compact ? 30 : 40))
+            widthConstraint?.isActive = true
+            heightConstraint?.isActive = true
+            frame.size = CGSize(width: size.width, height: min(size.height, compact ? 30 : 40))
         }
     }
 
@@ -958,8 +976,7 @@ final class RaftNativeNavTitleView: UIStackView {
         )
     }
 
-    private static func leadingView(_ leading: [String: Any]) -> UIView? {
-        let size: CGFloat = 28
+    private static func leadingView(_ leading: [String: Any], size: CGFloat) -> UIView? {
         switch leading["kind"] as? String {
         case "channel":
             let tile = UIView()
