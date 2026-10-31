@@ -344,7 +344,8 @@ internal fun SettingsHomeContent(
                 subtitle = null,
                 modifier = headerModifier,
                 applyTopSafeArea = applyTopSafeArea,
-                onBack = onBack
+                onBack = onBack,
+                nativeOnTitleClick = onHeaderClick,
             )
         }
         LazyColumn(

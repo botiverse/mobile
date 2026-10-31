@@ -5156,7 +5156,10 @@ private fun MemberDetailRoutePageShell(
 }
 
 @Composable
-internal fun MembersAgentDetailVisualContent() {
+internal fun MembersAgentDetailVisualContent(
+    // PROTOTYPE (native nav): a pushed page with a working Back.
+    protoOnBack: (() -> Unit)? = null,
+) {
     val pager = LocalActivity.current.getPager() as Pager
     val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
     MembersDetailContent(
@@ -5180,7 +5183,7 @@ internal fun MembersAgentDetailVisualContent() {
             ),
         machineStatusRow = membersVisualFixtureMachineStatusRow,
         actions = MembersDetailActions(
-            onBack = {},
+            onBack = protoOnBack ?: {},
             onOpenDirectMessage = {},
             onCopyMemberId = {},
             onOpenUrl = {},
@@ -7355,6 +7358,15 @@ private fun MembersHumanDetailHeader(
     val messageLabel = stringResource(Res.string.member_label_message)
     RaftTopPageHeader(
         title = member.displayName,
+        // PROTOTYPE (native nav bar): the @handle under the name, Message as the bar button.
+        nativeSubtitle = member.detailHandle,
+        nativeActions =
+            if (canMessage) {
+                listOf(RaftNativeNavBarAction("member-message", messageLabel, "message", onOpenDirectMessage))
+            } else {
+                emptyList()
+            },
+        nativeOnBack = onBack,
         backgroundColor = RaftColor.Canvas,
         contentStartPadding = MembersHumanHeaderEdgeInset,
         contentEndPadding = if (canMessage) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
@@ -7449,6 +7461,48 @@ private fun MembersDetailHeader(
     val topSafeArea = raftTopSafeAreaPadding()
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    // PROTOTYPE (native nav bar): name and meta on the host bar, Message and the management ⋯ as
+    // its buttons. The ⋯ opens the same management menu, anchored under the bar's trailing edge.
+    val nativeMessageLabel = stringResource(Res.string.member_label_message)
+    val nativeMoreLabel = stringResource(Res.string.tab_more)
+    val nativeBar = LocalRaftNativeNavBar.current
+    if (
+        nativeBar != null &&
+        raftNativeNavBarPublish(
+            title = member.displayName,
+            subtitle = headerMetaLabel,
+            actions =
+                buildList {
+                    if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
+                        add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage))
+                    }
+                    if (member.kind == MemberKind.Agent) {
+                        add(
+                            RaftNativeNavBarAction(
+                                "member-manage",
+                                nativeMoreLabel,
+                                "ellipsis",
+                                { onRequestManagementMenu(threeDotButtonAnchorResolver.resolve()) },
+                            )
+                        )
+                    }
+                },
+            onBack = onBack,
+        )
+    ) {
+        Box(Modifier.fillMaxWidth().height(topSafeArea)) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp)
+                    .size(1.dp)
+                    .raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                        currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                    }
+            )
+        }
+        return
+    }
     // raft-ui ProfilePanelHeader on a phone: a 56dp head on `layer-canvas` with a `line-seam`
     // under it; Back, the 35dp avatar, the title (`text-headline` bold) over one line of
     // meta (`text-caption`, `foreground-hint`), then 44dp ghost PanelActions 2dp apart.

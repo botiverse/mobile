@@ -398,6 +398,38 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             } else {
                 null
             },
+        // PROTOTYPE (native nav bar): the List / Cards toggle as a bar button with a checked menu.
+        nativeActions =
+            if (model is RaftComputersListModel.Content) {
+                val choose: (ComputersRackView) -> Unit = { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                listOf(
+                    RaftNativeNavBarAction(
+                        id = "computers-rack-view",
+                        label = stringResource(Res.string.settings_computers_rack_view_label),
+                        systemSymbol = if (rackView == ComputersRackView.List) "list.bullet" else "square.grid.2x2",
+                        onClick = {},
+                        children =
+                            listOf(
+                                RaftNativeNavBarAction(
+                                    "computers-rack-view-list",
+                                    stringResource(Res.string.settings_computers_rack_view_list),
+                                    "list.bullet",
+                                    { choose(ComputersRackView.List) },
+                                    checked = rackView == ComputersRackView.List,
+                                ),
+                                RaftNativeNavBarAction(
+                                    "computers-rack-view-cards",
+                                    stringResource(Res.string.settings_computers_rack_view_cards),
+                                    "square.grid.2x2",
+                                    { choose(ComputersRackView.Cards) },
+                                    checked = rackView == ComputersRackView.Cards,
+                                ),
+                            ),
+                    )
+                )
+            } else {
+                emptyList()
+            },
     ) {
         // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
         RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {

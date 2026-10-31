@@ -26,6 +26,8 @@ internal fun SettingsDetailShell(
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
+    // PROTOTYPE (native nav bar): [trailingContent] as bar buttons.
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable () -> Unit
 ) {
     // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
@@ -44,7 +46,8 @@ internal fun SettingsDetailShell(
                 { trailingContent() }
             } else {
                 null
-            }
+            },
+            nativeActions = nativeActions,
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
