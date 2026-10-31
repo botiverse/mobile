@@ -3550,4 +3550,10 @@
     <string name="settings_notifications_sound_title">声音</string>
     <string name="settings_notifications_sound_detail">在所有设备上为新通知播放声音。</string>
     <string name="settings_notifications_account_save_failed">设置未能保存，请重试。</string>
+    <string name="settings_notifications_mobile_delay_title">电脑上在用时，手机</string>
+    <string name="settings_notifications_mobile_delay_always">立即通知，即使我在用电脑</string>
+    <string name="settings_notifications_mobile_delay_always_detail">在用电脑时，手机也会响。</string>
+    <string name="settings_notifications_mobile_delay_inactive">电脑上不活跃时再通知</string>
+    <string name="settings_notifications_mobile_delay_minute_1">电脑上停手 1 分钟后</string>
+    <string name="settings_notifications_mobile_delay_minutes">电脑上停手 %1$d 分钟后</string>
 </resources>

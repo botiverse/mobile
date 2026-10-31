@@ -45,6 +45,7 @@ new product concept gets a Japanese rendering.
 | Filter (a list control) | 絞り込み | Clear = 絞り込みを解除; copied from the web ja catalog (botiverse/slock #11383). 「フィルター」 stays in body copy that names a filter combination |
 | Read (receipt: someone else has read it) | 既読 | Not read yet = 未読 (web read_receipts_v0) |
 | Notification | 通知 | |
+| Computer (the one you use Raft on, vs. a phone) / Phone | パソコン / スマートフォン | Phone push delay setting (`settings_notifications_mobile_delay_*`); not an agent Computer (コンピューター). zh-CN uses 电脑 / 手机 the same way |
 | Join / Leave (channel, server) | 参加 / 退出 | |
 | Sign in / Sign out | ログイン / ログアウト | One pair everywhere; never サインイン |
 | Connected accounts | 連携アカウント | |
