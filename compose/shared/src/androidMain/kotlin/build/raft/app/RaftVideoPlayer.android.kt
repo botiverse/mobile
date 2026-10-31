@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.Looper
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
@@ -31,6 +32,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import build.raft.app.shared.R
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 
@@ -155,7 +157,7 @@ internal class RaftAndroidVideoView(
             }
 
     private val playerView: PlayerView =
-        PlayerView(context).also { view ->
+        (LayoutInflater.from(context).inflate(R.layout.raft_video_player_view, this, false) as PlayerView).also { view ->
             view.useController = true
             view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             // Single media item: prev/next would only ever be disabled chrome.
