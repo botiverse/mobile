@@ -420,7 +420,10 @@ internal fun raftNativeNavBarPublish(
     onBack: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
 ): Boolean {
-    val bridge = LocalRaftNativeNavBar.current ?: return false
+    val drawn = LocalRaftNativeNavBar.current
+    // Capture only: with the prototype off the page still registers its actions in the script
+    // bridge (nothing is drawn by the host), so one capture script drives both modes alike.
+    val bridge = drawn ?: LocalRaftNativeNavBarScript.current ?: return false
     val active = LocalRaftPageActive.current
     val entry = remember(bridge) { RaftNativeNavBarBridge.Entry() }
     DisposableEffect(bridge, entry, active) {
@@ -429,7 +432,7 @@ internal fun raftNativeNavBarPublish(
     }
     val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick)
     SideEffect { if (active) bridge.publish(entry, head) }
-    return true
+    return drawn != null
 }
 
 /**

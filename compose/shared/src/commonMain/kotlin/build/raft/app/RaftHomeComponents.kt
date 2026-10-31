@@ -2458,6 +2458,25 @@ private fun RaftStructuralHomeShellContent(
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded },
                     )
                 } else if (!serverSwitcherInTopBar) traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
+                    // Capture only (prototype off): the same title menu / bell actions in the
+                    // script bridge, so the capture script drives Home alike in both modes.
+                    if (LocalRaftNativeNavBarScript.current != null) {
+                        HomeNativeNavBarHead(
+                            serverName = currentServerName,
+                            servers = servers,
+                            currentServerId = currentServerId,
+                            notifications = visibleNotifications,
+                            refreshing = headerRefreshing,
+                            topSafeArea = topSafeArea,
+                            onServerSelected = { id ->
+                                dismissNotificationCenterForFocusLoss()
+                                onServerSelected(id)
+                            },
+                            onAllServers = onServerBadgeClickWithDismiss,
+                            onInviteHumanClick = onInviteHumanClick,
+                            onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded },
+                        )
+                    }
                     HomeTitlebar(
                         serverName = currentServerName,
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
@@ -4973,15 +4992,18 @@ private fun HomeNativeNavBarHead(
             onClick = onNotificationToggle,
             badge = visible.size.takeIf { it > 0 },
         )
-    val bridge = LocalRaftNativeNavBar.current ?: return
-    raftNativeNavBarPublish(
-        title = serverName,
-        subtitle = null,
-        actions = listOf(bell),
-        extras = RaftNativeNavBarTitleExtras(refreshing = refreshing),
-        titleMenu = titleMenu,
-    )
-    RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea)
+    val drawn =
+        raftNativeNavBarPublish(
+            title = serverName,
+            subtitle = null,
+            actions = listOf(bell),
+            extras = RaftNativeNavBarTitleExtras(refreshing = refreshing),
+            titleMenu = titleMenu,
+        )
+    val bridge = LocalRaftNativeNavBar.current
+    if (drawn && bridge != null) {
+        RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea)
+    }
 }
 
 @Composable

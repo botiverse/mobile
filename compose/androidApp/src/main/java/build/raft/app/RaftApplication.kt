@@ -71,6 +71,11 @@ class RaftApplication : Application() {
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
+        // PROTOTYPE (agent/lagoon/ios-native-nav-proto): the login-free capture backend, only in a
+        // debug visual-fixture build and only when the capture created this flag file.
+        build.raft.app.network.RaftCaptureBackend.installIfRequested(
+            BuildConfig.DEBUG && java.io.File(filesDir, "raft_capture_fake_backend").exists()
+        )
         // Settings > Appearance > Theme, applied before any page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(resources.configuration.uiMode))
         RaftAppAppearanceRuntime.ensureLoaded()

@@ -10,7 +10,9 @@ import kotlin.random.Random
  */
 internal fun createPlatformRaftHttpExecutor(
     warningLogger: (String) -> Unit
-): RaftHttpExecutor = KtorRaftHttpExecutor(warningLogger)
+): RaftHttpExecutor =
+    // PROTOTYPE: the login-free capture's in-process fake server (fixture builds only).
+    RaftCaptureBackend.executorFactory?.invoke() ?: KtorRaftHttpExecutor(warningLogger)
 
 /**
  * task #783 (human ruling in `#proj-chat:8b673a88`): streaming fileRef

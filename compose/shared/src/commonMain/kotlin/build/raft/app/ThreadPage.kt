@@ -17690,7 +17690,7 @@ internal fun ThreadPageHeader(
     // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
     // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
     val nativeSideActions =
-        if (showActions && LocalRaftNativeNavBar.current != null) {
+        if (showActions && LocalRaftNativeNavBarScript.current != null) {
             threadHeaderSideColumnActions(
                 payload = payload,
                 surfaceKind = headerDisplay.surfaceKind,
