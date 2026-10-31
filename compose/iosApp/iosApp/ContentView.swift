@@ -398,6 +398,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     }
 
     private var lastTitleMenuJson = "[]"
+    private var lastBarWidth: CGFloat = 0
     private var lastHasBack = false
     private var lastNested = false
     private var clearGeneration = 0
@@ -423,13 +424,24 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         let titleTap = (lastExtras["titleTap"] as? Bool) ?? false
         let titleMenu = RaftNativeNavBarHost.parseActions(lastTitleMenuJson)
         var subtitle = lastSubtitle
+        // Left-aligned titles (artin, phase 2 review: the centred title reads wrong for Raft).
+        // iOS 16+: the editor style puts the title (and its title menu chevron) right after Back,
+        // with the system's own truncation. A head with extras (channel tile / avatar, count,
+        // spinner, a title tap) draws them in a leading title view instead (a custom-view bar
+        // item without the iOS 26 glass capsule), and the centred title is suppressed.
+        var editorStyle = false
+        if #available(iOS 16.0, *) {
+            item.style = .editor
+            editorStyle = true
+        }
+        var leadingTitleView: RaftNativeNavTitleView?
         if largeTitle {
             // A large title cannot carry a title view: the count goes in the subtitle line.
             item.titleView = nil
             if let badge, subtitle == nil { subtitle = badge }
-        } else if !titleMenu.isEmpty {
+        } else if !titleMenu.isEmpty && editorStyle {
             item.titleView = nil
-        } else if leading != nil || refreshing || badge != nil || titleTap {
+        } else if titleMenu.isEmpty && (leading != nil || refreshing || badge != nil || titleTap || !editorStyle) {
             let view = RaftNativeNavTitleView(
                 title: lastTitle, subtitle: lastSubtitle, leading: leading, badge: badge, refreshing: refreshing
             )
@@ -438,7 +450,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
                 view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(titleTapped)))
                 view.accessibilityTraits.insert(.button)
             }
-            item.titleView = view
+            leadingTitleView = view
+            // An empty title view keeps UIKit from drawing the title a second time in the middle.
+            item.titleView = UIView(frame: .zero)
         } else {
             item.titleView = nil
         }
@@ -486,6 +500,23 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
 
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
+        if let leadingTitleView {
+            // Room left for it: the bar minus Back, the trailing buttons and the margins; it
+            // truncates its title inside that (recomputed when the bar's width changes).
+            let barWidth = owner.navigationController?.navigationBar.bounds.width ?? owner.view.bounds.width
+            lastBarWidth = barWidth
+            let trailingCount = actions.filter { $0.placement == "trailing" }.count
+                + (actions.contains { $0.placement == "overflow" } ? 1 : 0)
+            var room = barWidth - 32 - CGFloat(trailingCount) * 48
+            if !isStackRoot { room -= 56 }
+            if ownBackButton { room -= 48 }
+            leadingTitleView.maxWidth = max(80, room)
+            let titleItem = UIBarButtonItem(customView: leadingTitleView)
+            if #available(iOS 26.0, *) {
+                titleItem.hidesSharedBackground = true
+            }
+            leadingItems.append(titleItem)
+        }
         leadingItems.append(contentsOf: actions.filter { $0.placement == "leading" }.map { barItem($0) })
         item.leftBarButtonItems = leadingItems.isEmpty ? nil : leadingItems
         item.leftItemsSupplementBackButton = true
@@ -670,6 +701,11 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
 
     /// RaftPageViewController laid out / appeared.
     private func pageDidLayout(reason: String) {
+        // Rotation / a new bar width: re-measure the leading title's room.
+        if let bar = owner?.navigationController?.navigationBar, !lastTitle.isEmpty,
+           abs(bar.bounds.width - lastBarWidth) > 1 {
+            applyHead()
+        }
         guard largeTitle, let controller else { return }
         ensureMirror()
         guard let mirror else { return }
@@ -882,12 +918,20 @@ final class RaftNativeNavTitleView: UIStackView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// Its own fitting size, so the bar centres it instead of stretching it across the bar.
+    /// The most it may take in the bar (set by the host); the title truncates inside it.
+    var maxWidth: CGFloat = .greatestFiniteMagnitude {
+        didSet {
+            invalidateIntrinsicContentSize()
+            frame.size = intrinsicContentSize
+        }
+    }
+
+    /// Its own fitting size up to [maxWidth], so the bar keeps it at the leading edge.
     override var intrinsicContentSize: CGSize {
         // Summed from the arranged views (asking the stack itself would recurse into this).
         let sizes = arrangedSubviews.map { $0.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize) }
         let width = sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(max(0, sizes.count - 1))
-        return CGSize(width: ceil(width), height: ceil(sizes.map(\.height).max() ?? 0))
+        return CGSize(width: min(ceil(width), maxWidth), height: ceil(sizes.map(\.height).max() ?? 0))
     }
 
     private static func color(_ argb: Any?, fallback: UIColor) -> UIColor {
@@ -974,6 +1018,9 @@ final class RaftNativeNavTitleView: UIStackView {
     }
 }
 
+/// DEMO SHELL, not the production one: the real app's tab bar is RaftIosTabBarController over the
+/// signed-in app shell page (5 tabs with Search and the server tab), which needs a session and is
+/// untouched by the prototype. This login-free stand-in only hosts the fixture pages.
 /// The demo's tab root: the Home, Activity, Tasks and More tabs as CMP fixture pages (each
 /// publishes its own head: Home the server title menu and the bell). With the prototype off every
 /// page draws its own Compose head as today.
