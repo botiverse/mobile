@@ -36,6 +36,7 @@ import build.raft.app.data.typingAgentIds
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.designsystem.theme.RaftTheme
 
 /**
@@ -82,27 +83,32 @@ internal fun RaftThreadScreenPayload.agentTypingConversation(): Pair<String, Str
 /**
  * Names the typing agents. Only agents: an id the directory knows as anyone else is dropped. An id
  * it doesn't know yet still shows, as [fallbackName] (web `activity.live.agentFallback`).
+ *
+ * Faces resolve like message rows ([raftMemberAvatarResolver]): a server member's rendered avatar
+ * (its `avatar` slot holds a pixel face, which `avatarUrl` never does), else [durableAvatar], the
+ * last avatar persisted for the id while the directory has none.
  */
 internal fun resolveThreadTypingAgents(
     agentIds: List<String>,
     serverMembers: List<MemberProfile>,
     channelMembers: List<RaftThreadMemberItem>,
     fallbackName: String,
+    durableAvatar: (String) -> String? = { null },
 ): List<ThreadTypingAgent> =
     agentIds.mapNotNull { id ->
         val server = serverMembers.firstOrNull { it.id.value == id }
         if (server != null) {
             if (server.kind != MemberKind.Agent) return@mapNotNull null
             val name = server.displayName.ifBlank { server.handle }.ifBlank { fallbackName }
-            return@mapNotNull ThreadTypingAgent(id, name, server.avatarUrl)
+            return@mapNotNull ThreadTypingAgent(id, name, server.avatarWireValueForRenderedAvatar() ?: durableAvatar(id))
         }
         val channel = channelMembers.firstOrNull { it.id == id }
         if (channel != null) {
             if (!channel.kind.equals("agent", ignoreCase = true)) return@mapNotNull null
             val name = channel.displayName.ifBlank { channel.handle }.ifBlank { fallbackName }
-            return@mapNotNull ThreadTypingAgent(id, name, channel.avatarUrl)
+            return@mapNotNull ThreadTypingAgent(id, name, channel.avatarUrl?.takeIf { it.isNotBlank() } ?: durableAvatar(id))
         }
-        ThreadTypingAgent(id, fallbackName, null)
+        ThreadTypingAgent(id, fallbackName, durableAvatar(id))
     }
 
 /**
@@ -134,7 +140,9 @@ internal fun rememberThreadAgentTyping(
     val fallbackName = stringResource(Res.string.thread_agent_typing_agent_fallback)
     val agents =
         remember(agentIds, serverMembers, payload.members, payload.memberCandidates, fallbackName) {
-            resolveThreadTypingAgents(agentIds, serverMembers, payload.members + payload.memberCandidates, fallbackName)
+            resolveThreadTypingAgents(agentIds, serverMembers, payload.members + payload.memberCandidates, fallbackName) { id ->
+                serverMembersStore?.durableMemberAvatarWireValue(ServerId(server), id)
+            }
         }
     if (agents.isEmpty()) return null
     return remember(server, agents) { ThreadAgentTypingUi(server, agents) }
@@ -216,6 +224,7 @@ internal fun ThreadAgentTypingLine(typing: ThreadAgentTypingUi, modifier: Modifi
                         avatarWireValue = agent.avatarUrl,
                         label = agent.name.toRaftAvatarLabel(),
                         avatarSize = 19.dp,
+                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.agentId),
                         cacheServerId = typing.serverId,
                         fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
                     )

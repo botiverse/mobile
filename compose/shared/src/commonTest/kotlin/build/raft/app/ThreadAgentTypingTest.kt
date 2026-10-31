@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -58,6 +59,37 @@ class ThreadAgentTypingTest {
                 ThreadTypingAgent("niko", "Niko", "/niko.webp"),
                 ThreadTypingAgent("kirby", "Kirby", null),
                 ThreadTypingAgent("ghost", "Agent", null),
+            ),
+            agents,
+        )
+    }
+
+    @Test fun facesResolveLikeMessageRowsNotFromAvatarUrlAlone() {
+        // The members store keeps an agent's pixel face in `avatar` and clears `avatarUrl`
+        // (SharedServerMembersStore mergeAuthoritativeProfile): reading `avatarUrl` alone drew initials.
+        val serverMembers =
+            listOf(
+                MemberProfile(
+                    MemberId("niko"), displayName = "Niko", handle = "niko", kind = MemberKind.Agent,
+                    avatarUrl = null, avatar = AvatarReference.Pixel("antenna"),
+                ),
+                MemberProfile(MemberId("plain"), displayName = "Plain", handle = "plain", kind = MemberKind.Agent),
+            )
+        val agents =
+            resolveThreadTypingAgents(
+                agentIds = listOf("niko", "plain", "ghost"),
+                serverMembers = serverMembers,
+                channelMembers = emptyList(),
+                fallbackName = "Agent",
+                durableAvatar = { id -> if (id == "ghost") "pixel:pencil" else null },
+            )
+        assertEquals(
+            listOf(
+                ThreadTypingAgent("niko", "Niko", "pixel:antenna"),
+                // An agent with no avatar of its own wears the default face, as on its messages.
+                ThreadTypingAgent("plain", "Plain", "pixel:robot"),
+                // Not in the directory yet: the last persisted avatar for the id.
+                ThreadTypingAgent("ghost", "Agent", "pixel:pencil"),
             ),
             agents,
         )
