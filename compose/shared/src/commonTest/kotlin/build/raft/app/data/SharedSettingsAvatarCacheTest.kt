@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -157,7 +158,7 @@ class SharedSettingsAvatarCacheTest {
             settingsMember("agent-1", "Agent").copy(
                 kind = MemberKind.Agent,
                 serverId = ServerId("server-1"),
-                avatarUrl = avatarUrl
+                avatar = AvatarReference.fromWireValue(avatarUrl)
             )
         val store =
             SharedServerMembersStore(
@@ -182,7 +183,7 @@ class SharedSettingsAvatarCacheTest {
                 )
             )
 
-        assertEquals(avatarUrl, result.data.avatarUrl)
+        assertEquals(avatarUrl, result.data.avatar?.wireValue)
         val expectedSubject: RaftAvatarCacheSubject =
             RaftAvatarCacheSubject.Member(MemberKind.Agent, "agent-1")
         assertEquals(
@@ -198,7 +199,7 @@ class SharedSettingsAvatarCacheTest {
             settingsMember("agent-2", "Other Agent").copy(
                 kind = MemberKind.Agent,
                 serverId = ServerId("server-1"),
-                avatarUrl = "https://avatars.example.test/agents/agent-2.webp"
+                avatar = AvatarReference.fromWireValue("https://avatars.example.test/agents/agent-2.webp")
             )
         val store =
             SharedServerMembersStore(

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.RaftThreadMessageItem
 import build.raft.app.seedThreadAuthorProfiles
 import build.raft.app.raftScopedAgentStatusResolver
@@ -142,7 +143,6 @@ class SharedServerMembersStoreTest {
                 handle = "argus",
                 kind = MemberKind.Agent,
                 avatar = AvatarReference.fromWireValue(currentAvatar),
-                avatarUrl = currentAvatar,
                 serverId = serverId
             )
         val store = SharedServerMembersStore(FakeMemberRepository())
@@ -206,7 +206,6 @@ class SharedServerMembersStoreTest {
                     member("agent-1", "Cindy").copy(
                         kind = MemberKind.Agent,
                         avatar = AvatarReference.fromWireValue("pixel:bell"),
-                        avatarUrl = "pixel:bell",
                         serverId = serverId
                     )
                 )
@@ -225,7 +224,6 @@ class SharedServerMembersStoreTest {
                 member("agent-1", "Cindy").copy(
                     kind = MemberKind.Agent,
                     avatar = AvatarReference.fromWireValue(uploadedAvatar),
-                    avatarUrl = uploadedAvatar,
                     serverId = serverId
                 )
             )
@@ -244,14 +242,13 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seedProfiles(
             serverId,
-            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Url(concreteUrl), avatarUrl = concreteUrl))
+            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Url(concreteUrl)))
         )
         store.seedProfiles(
             serverId,
-            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Pixel("robot"), avatarUrl = "pixel:robot"))
+            listOf(member("agent-1", "Agent").copy(avatar = AvatarReference.Pixel("robot")))
         )
         assertEquals(concreteUrl, store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue)
-        assertEquals(concreteUrl, store.memberProfileFlow(serverId, "agent-1").first()?.avatarUrl)
     }
 
     @Test
@@ -262,11 +259,11 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seedProfiles(
             serverId,
-            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("antenna"), avatarUrl = "pixel:antenna"))
+            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("antenna")))
         )
         store.seedProfiles(
             serverId,
-            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("pencil"), avatarUrl = "pixel:pencil"))
+            listOf(member("agent-1", "Edgar").copy(kind = MemberKind.Agent, avatar = AvatarReference.Pixel("pencil")))
         )
         assertEquals("pixel:pencil", store.memberProfileFlow(serverId, "agent-1").first()?.avatar?.wireValue)
         assertEquals("pixel:pencil", store.memberProfileFlow(serverId, "agent-1").first()?.avatarWireValueForRenderedAvatar())
@@ -381,7 +378,6 @@ class SharedServerMembersStoreTest {
                     handle = "argus",
                     kind = MemberKind.Agent,
                     avatar = AvatarReference.fromWireValue(currentAvatar),
-                    avatarUrl = currentAvatar,
                     serverId = serverId
                 )
             )
@@ -423,8 +419,7 @@ class SharedServerMembersStoreTest {
                     roleDescription = "directory role",
                     serverRole = "member",
                     email = "directory@example.test",
-                    avatar = null,
-                    avatarUrl = null
+                    avatar = null
                 )
             )
         val store = SharedServerMembersStore(repository)
@@ -441,7 +436,6 @@ class SharedServerMembersStoreTest {
                     serverRole = "stale",
                     email = "stale@example.test",
                     avatar = AvatarReference.fromWireValue(candidateAvatar),
-                    avatarUrl = candidateAvatar,
                     serverId = serverId
                 )
             )
@@ -462,8 +456,7 @@ class SharedServerMembersStoreTest {
         repository.membersByServer[serverId.value] =
             listOf(
                 sparsePublished.copy(
-                    avatar = AvatarReference.fromWireValue(authoritativeAvatar),
-                    avatarUrl = authoritativeAvatar
+                    avatar = AvatarReference.fromWireValue(authoritativeAvatar)
                 )
             )
         assertIs<DataResult.Content<Unit>>(store.refreshMembers(serverId, force = true))
@@ -490,8 +483,7 @@ class SharedServerMembersStoreTest {
                     roleDescription = "channel role",
                     serverRole = "guest",
                     email = "channel@example.test",
-                    avatar = null,
-                    avatarUrl = null
+                    avatar = null
                 )
             )
         val store = SharedServerMembersStore(repository)
@@ -508,7 +500,6 @@ class SharedServerMembersStoreTest {
                     serverRole = "stale",
                     email = "stale@example.test",
                     avatar = AvatarReference.fromWireValue(candidateAvatar),
-                    avatarUrl = candidateAvatar,
                     serverId = serverId
                 )
             )
@@ -531,8 +522,7 @@ class SharedServerMembersStoreTest {
         repository.channelMembersByChannel[channelId.value] =
             listOf(
                 sparsePublished.copy(
-                    avatar = AvatarReference.fromWireValue(authoritativeAvatar),
-                    avatarUrl = authoritativeAvatar
+                    avatar = AvatarReference.fromWireValue(authoritativeAvatar)
                 )
             )
         assertIs<DataResult.Content<ChannelMemberSnapshot>>(
@@ -1025,7 +1015,7 @@ class SharedServerMembersStoreTest {
                 listOf(
                     member("agent-1", "Build Agent").copy(
                         kind = MemberKind.Agent,
-                        avatarUrl = "https://cdn.slock.ai/agent.png",
+                        avatar = AvatarReference.fromWireValue("https://cdn.slock.ai/agent.png"),
                     )
                 )
         )
@@ -1035,7 +1025,7 @@ class SharedServerMembersStoreTest {
         assertEquals(emptyList(), entry?.members)
         val member = store.state.value.memberProfile(ServerId("server-1"), "agent-1")
         assertEquals("agent-1", member?.id?.value)
-        assertEquals("https://cdn.slock.ai/agent.png", member?.avatarUrl)
+        assertEquals("https://cdn.slock.ai/agent.png", member?.avatar?.wireValue)
         assertEquals(0, repository.getMembersCalls)
     }
 

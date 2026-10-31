@@ -69,7 +69,6 @@ private fun ThreadMessageSourceTaskAssignee(
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val name = if (task.assigneeIsViewer) stringResource(Res.string.thread_author_you) else task.assigneeName.orEmpty()
-    val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, task.assigneeId)
     val agentStatus =
         if (task.assigneeKind == MemberKind.Agent) {
             rememberRaftAgentStatusIndicatorState(agentStatusResolver, task.assigneeId)
@@ -87,12 +86,11 @@ private fun ThreadMessageSourceTaskAssignee(
                 statusPulsing = agentStatus?.pulsing == true,
                 cutoutColor = RaftTheme.colors.layerCard,
             ) {
-                RaftAppAvatar(
-                    avatarWireValue = avatarWireValue,
+                RaftMemberAvatar(
+                    identity = RaftMemberAvatarIdentity(task.assigneeKind, task.assigneeId, serverId = null),
                     label = task.assigneeName.orEmpty(),
                     avatarSize = avatarSize,
-                    cacheSubject = raftMemberAvatarCacheSubject(task.assigneeKind, task.assigneeId),
-                    fallbackFill = raftAvatarFallbackFill(task.assigneeKind),
+                    resolver = memberAvatarResolver,
                 )
             }
         },

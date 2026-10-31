@@ -225,7 +225,7 @@ class SharedThreadStoreFetchAndSummaryTest {
                                     displayName = "Product UX",
                                     handle = "product-ux",
                                     kind = MemberKind.Agent,
-                                    avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                                    avatar = AvatarReference.fromWireValue("https://www.gravatar.com/avatar/agent-hash?s=52&d=404"),
                                 ),
                             timestampLabel = "2026-06-21T15:32:00Z",
                             body = "cached agent dm body"
@@ -424,7 +424,6 @@ class SharedThreadStoreFetchAndSummaryTest {
                             displayName = "Product UX",
                             handle = "product-ux",
                             kind = MemberKind.Agent,
-                            avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
                             avatar = AvatarReference.Pixel("tree")
                         )
                     )
@@ -493,7 +492,7 @@ class SharedThreadStoreFetchAndSummaryTest {
                             displayName = "Product UX",
                             handle = "product-ux",
                             kind = MemberKind.Agent,
-                            avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                            avatar = AvatarReference.fromWireValue("https://www.gravatar.com/avatar/agent-hash?s=52&d=404"),
                         )
                 )
         val repository =

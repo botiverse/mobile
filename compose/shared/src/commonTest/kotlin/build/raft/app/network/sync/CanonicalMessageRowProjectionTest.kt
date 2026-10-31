@@ -227,7 +227,7 @@ class CanonicalMessageRowProjectionTest {
         assertEquals(MemberKind.External, message.author.kind)
         assertEquals("jinlu", message.author.displayName)
         assertEquals("Slack", message.author.description)
-        assertEquals("https://avatars.slack-edge.com/u123.png", message.author.avatarUrl)
+        assertEquals("https://avatars.slack-edge.com/u123.png", message.author.avatar?.wireValue)
         val projected = assertNotNull(message.externalAuthor)
         assertEquals("slack", projected.provider)
         assertEquals("U123", projected.externalActorId)

@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.canonical.message.CanonicalAttachmentWire
@@ -96,7 +97,7 @@ fun CanonicalMessageRow.toAppMessage(
         handle = resolvedExternalAuthor?.let { senderName.ifBlank { it.displayName } } ?: senderName.ifBlank { senderId },
         kind = authorKind,
         description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        avatar = resolvedExternalAuthor?.avatarUrl?.let(AvatarReference::fromWireValue),
         avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId }).toRaftAvatarLabel(),
         presence = Presence.Offline,
     )

@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
@@ -1010,7 +1011,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         handle = senderName ?: resolvedExternalAuthor?.displayName ?: authorId,
         kind = authorKind,
         description = if (resolvedExternalAuthor != null) resolvedExternalAuthor.providerLabel() else senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        avatar = resolvedExternalAuthor?.avatarUrl?.let(AvatarReference::fromWireValue),
         avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).toRaftAvatarLabel(),
         presence = Presence.Offline,
     )

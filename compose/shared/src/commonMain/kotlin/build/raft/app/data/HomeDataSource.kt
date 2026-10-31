@@ -952,12 +952,12 @@ private fun List<MemberProfile>.homeDirectMessageAvatarSeedDiagnostics(
     storeAvailable: Boolean
 ): String {
     val withAvatar = count { profile ->
-        !profile.avatar?.wireValue.isNullOrBlank() || !profile.avatarUrl.isNullOrBlank()
+        !profile.avatar?.wireValue.isNullOrBlank()
     }
     val sample =
         take(6)
             .joinToString(separator = ";") { profile ->
-                val avatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
+                val avatarWireValue = profile.avatar?.wireValue
                 "member=${profile.id.value.take(64)}:" +
                     "avatar=${avatarWireValue.raftAvatarDiagnosticsSource()}"
             }

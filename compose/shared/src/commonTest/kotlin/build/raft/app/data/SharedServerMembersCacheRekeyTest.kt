@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -100,7 +101,7 @@ class SharedServerMembersCacheRekeyTest {
         assertEquals(listOf("Ada", "Atlas"), seeded.members.map { it.displayName })
         assertTrue(seeded.seededFromDurable)
         assertEquals(SharedServerMembersLoadStatus.Loaded, seeded.status)
-        assertEquals("https://cdn.example/ada.png", store.currentMemberProfile(ServerId(SERVER_A), "a1")?.avatarUrl)
+        assertEquals("https://cdn.example/ada.png", store.currentMemberProfile(ServerId(SERVER_A), "a1")?.avatar?.wireValue)
         assertEquals(Presence.Offline, seeded.members.first().presence, "presence is never persisted")
         assertEquals(AgentStatus.Working, store.currentMemberStatus(ServerId(SERVER_A), "a2")?.status)
         assertEquals(1, secondProcess.calls(SERVER_A), "the durable seed does not satisfy the load")
@@ -400,7 +401,7 @@ class SharedServerMembersCacheRekeyTest {
                 displayName = name,
                 handle = name.lowercase().replace(' ', '-'),
                 kind = MemberKind.Human,
-                avatarUrl = avatarUrl
+                avatar = AvatarReference.fromWireValue(avatarUrl)
             )
 
         fun agent(id: String, name: String, status: AgentStatus): MemberProfile =

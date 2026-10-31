@@ -79,7 +79,7 @@ class ExternalMessageAuthorParseTest {
         assertEquals(MemberKind.External, message.author.kind)
         assertEquals("jinlu", message.author.displayName)
         assertEquals("Slack", message.author.description)
-        assertEquals("https://avatars.slack-edge.com/u123.png", message.author.avatarUrl)
+        assertEquals("https://avatars.slack-edge.com/u123.png", message.author.avatar?.wireValue)
     }
 
     @Test
@@ -191,7 +191,7 @@ class ExternalMessageAuthorParseTest {
         assertTrue(author.displayNameIsFallback)
         assertEquals("slack", author.provider)
         assertEquals("B42", author.externalActorId)
-        assertEquals("https://avatars.slack-edge.com/anon.png", message.author.avatarUrl)
+        assertEquals("https://avatars.slack-edge.com/anon.png", message.author.avatar?.wireValue)
         assertEquals("Slack", message.author.description)
     }
 
@@ -260,7 +260,7 @@ class ExternalMessageAuthorParseTest {
         assertEquals("slack", external.provider)
         assertEquals(MemberKind.External, messageNew.message.author.kind)
         assertEquals("Slack", messageNew.message.author.description)
-        assertEquals("https://avatars.slack-edge.com/u123.png", messageNew.message.author.avatarUrl)
+        assertEquals("https://avatars.slack-edge.com/u123.png", messageNew.message.author.avatar?.wireValue)
     }
 
     @Test

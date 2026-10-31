@@ -38,7 +38,7 @@ class SharedDirectMessagePreviewPrefetchCoordinatorTest {
                 displayName = authorName,
                 handle = "alice",
                 kind = MemberKind.Human,
-                avatarUrl = null,
+                avatar = null,
             )
         )
 

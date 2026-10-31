@@ -1207,7 +1207,7 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderName = message.shownAuthorName(),
                 latestActivitySenderId = message.author.id.value,
                 latestActivitySenderKind = message.author.kind,
-                latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
+                latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue,
                 // Web inboxStore receiveThreadReply: `latestDelegatedBy` follows the new message.
                 latestDelegatedBy = message.delegatedBy,
                 replyCount = existing.replyCount + 1,
@@ -1258,7 +1258,7 @@ class SharedActivityStore internal constructor(
                 lastMessageSenderName = message.shownAuthorName(),
                 lastMessageSenderId = message.author.id.value,
                 lastMessageSenderKind = message.author.kind,
-                lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
+                lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue,
                 latestDelegatedBy = message.delegatedBy,
                 latestActivitySeq = incomingSeq
             )

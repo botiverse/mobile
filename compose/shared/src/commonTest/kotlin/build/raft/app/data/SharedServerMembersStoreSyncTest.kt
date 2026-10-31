@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
 import build.raft.app.currentMemberAvatarWireValue
 import build.raft.app.model.MemberId
@@ -103,11 +104,11 @@ class SharedServerMembersStoreSyncTest {
     @Test
     fun `an agents refresh brings an avatar changed on the web into the roster`() = runTest {
         // Edgar (10-29): set to the Desk `pencil` on the web; agent:updated -> refreshAgents.
-        val before = agent("a-1", "Edgar").copy(avatarUrl = "pixel:antenna")
+        val before = agent("a-1", "Edgar").copy(avatar = AvatarReference.fromWireValue("pixel:antenna"))
         val repository =
             SyncRosterRepository(
                 members = listOf(human("u-1", "Ann"), before),
-                agents = listOf(before.copy(avatarUrl = "pixel:pencil")),
+                agents = listOf(before.copy(avatar = AvatarReference.fromWireValue("pixel:pencil"))),
             )
         val store = syncStore(repository)
         store.refreshMembers(serverId, force = true)

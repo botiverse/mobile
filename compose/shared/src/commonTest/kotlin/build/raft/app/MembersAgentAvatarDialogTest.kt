@@ -28,7 +28,6 @@ class MembersAgentAvatarDialogTest {
             displayName = "Ada",
             handle = "ada",
             kind = MemberKind.Agent,
-            avatarUrl = avatarUrl,
             avatar = AvatarReference.fromWireValue(avatarUrl)
         )
 

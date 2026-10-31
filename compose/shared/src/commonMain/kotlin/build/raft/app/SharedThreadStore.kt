@@ -15719,20 +15719,17 @@ private fun RaftThreadMessageItem.toMemberProfile(kind: MemberKind): MemberProfi
         } else {
             authorDescription
         }
-    val effectiveAvatarUrl =
-        if (kind == MemberKind.External) {
-            externalAuthor?.avatarUrl ?: avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-        } else {
-            avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-        }
+    // The row's own avatar first; an external author falls back to the avatar its provider sent.
+    val effectiveAvatar =
+        AvatarReference.fromWireValue(avatarWireValue)
+            ?: externalAuthor?.avatarUrl?.takeIf { kind == MemberKind.External }?.let(AvatarReference::fromWireValue)
     return MemberProfile(
         id = MemberId(authorId),
         displayName = authorName,
         handle = authorName.removePrefix("@"),
         kind = kind,
         description = effectiveDescription,
-        avatarUrl = effectiveAvatarUrl,
-        avatar = AvatarReference.fromWireValue(avatarWireValue),
+        avatar = effectiveAvatar,
         avatarLabel = avatarLabel.ifBlank { authorName.toRaftAvatarLabel() },
         presence = Presence.Offline,
         membershipStatus = cleanMembershipStatus,
@@ -15790,8 +15787,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         resolveAvatarSlot(
             kind = author.kind,
             id = author.id.value,
-            avatarWireValue = author.avatar?.wireValue,
-            avatarUrl = author.avatarUrl
+            avatarWireValue = author.avatar?.wireValue
         )
     return RaftThreadMessageItem(
         id = id.value,

@@ -868,7 +868,6 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",
         avatarWireValue =
             peer?.avatar?.wireValue
-                ?: peer?.avatarUrl
                 ?: directMessagePeerAvatarWireValue?.takeIf { it.isNotBlank() },
         avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.toRaftAvatarLabel(),
         channelId = channelId,

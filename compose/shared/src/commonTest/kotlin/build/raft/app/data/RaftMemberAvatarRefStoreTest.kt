@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.raftMemberAvatarResolver
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -104,10 +105,10 @@ class RaftMemberAvatarRefStoreTest {
     private fun server(): ServerSummary = ServerSummary(id = ServerId(ServerKey), name = "Raft")
 
     private fun agent(id: String, avatarUrl: String): MemberProfile =
-        MemberProfile(id = MemberId(id), displayName = id, handle = id, kind = MemberKind.Agent, avatarUrl = avatarUrl)
+        MemberProfile(id = MemberId(id), displayName = id, handle = id, kind = MemberKind.Agent, avatar = AvatarReference.fromWireValue(avatarUrl))
 
     private fun human(id: String, avatarUrl: String): MemberProfile =
-        MemberProfile(id = MemberId(id), displayName = id, handle = id, kind = MemberKind.Human, avatarUrl = avatarUrl)
+        MemberProfile(id = MemberId(id), displayName = id, handle = id, kind = MemberKind.Human, avatar = AvatarReference.fromWireValue(avatarUrl))
 
     private companion object {
         const val ServerKey = "server-1"

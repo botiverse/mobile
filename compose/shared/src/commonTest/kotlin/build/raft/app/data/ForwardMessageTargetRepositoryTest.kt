@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -175,7 +176,7 @@ class ForwardMessageTargetRepositoryTest {
                             displayName = "Ada",
                             handle = "ada",
                             kind = MemberKind.Human,
-                            avatarUrl = "pixel:user",
+                            avatar = AvatarReference.fromWireValue("pixel:user"),
                             avatarLabel = "AD"
                         ),
                         MemberProfile(
@@ -645,7 +646,7 @@ class ForwardMessageTargetRepositoryTest {
                             displayName = "Cindy",
                             handle = "cindy",
                             kind = MemberKind.Human,
-                            avatarUrl = "pixel:cindy-roster",
+                            avatar = AvatarReference.fromWireValue("pixel:cindy-roster"),
                             avatarLabel = "CR"
                         ),
                         MemberProfile(

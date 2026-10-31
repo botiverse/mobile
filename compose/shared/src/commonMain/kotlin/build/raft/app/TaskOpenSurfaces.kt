@@ -345,6 +345,7 @@ internal fun TaskOpenSurfaceHost(
                     onJoin = { onJoin(task) },
                     onUpdateStatus = { status -> edits?.updateStatus(task, status) },
                     onAssign = { member -> edits?.assign(task, member) },
+                    serverId = serverId,
                 )
             }
         }
@@ -454,6 +455,8 @@ internal fun TaskPendingConversationPage(
     onAssign: (MemberProfile?) -> Unit,
     modifier: Modifier = Modifier,
     headScrollState: TaskHeadScrollState = remember(task.id) { TaskHeadScrollState() },
+    /** The task's server: the head's faces read its member directory. */
+    serverId: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -466,6 +469,7 @@ internal fun TaskPendingConversationPage(
             onToggleHeadFloat = { headScrollState.toggleFloat() },
             onViewInChannel = {},
             onToggleFollow = {},
+            serverId = serverId,
         )
     val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     // Back puts the pulled-down head back up before it leaves the page.
@@ -505,6 +509,7 @@ internal fun TaskPendingConversationPage(
                 keyboardUp = keyboardUp,
                 onRetryHistory = details.retryHistory,
                 editable = editable,
+                serverId = serverId,
             )
             // Where the messages go: the empty state, and a refused send's words.
             Column(
@@ -549,6 +554,7 @@ internal fun TaskPendingConversationPage(
                 onRetryHistory = details.retryHistory,
                 editable = editable,
                 floating = true,
+                serverId = serverId,
             )
         }
         if (joined == false) {

@@ -1423,17 +1423,12 @@ class SharedServerMembersStore internal constructor(
         merged: MemberProfile,
         source: String
     ) {
-        val hadConcrete =
-            !existing.avatarUrl.isNullOrBlank() ||
-                (existing.avatar as? AvatarReference.Url) != null
-        val lostConcrete =
-            merged.avatarUrl.isNullOrBlank() &&
-                (merged.avatar as? AvatarReference.Url) == null
+        val hadConcrete = (existing.avatar as? AvatarReference.Url) != null
+        val lostConcrete = (merged.avatar as? AvatarReference.Url) == null
         if (!hadConcrete || !lostConcrete) return
         val incomingAvatarKind =
             when {
-                incoming.avatar is AvatarReference.Url ||
-                    incoming.avatarUrl?.startsWith("http") == true -> "url"
+                incoming.avatar is AvatarReference.Url -> "url"
                 incoming.avatar != null -> "pixel"
                 else -> "none"
             }
@@ -4145,8 +4140,8 @@ private fun List<MemberProfile>.removeServerMember(memberId: String, memberKind:
 }
 
 private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
-    val currentAvatarWireValue = avatar?.wireValue ?: avatarUrl
-    val seedAvatarWireValue = seed.avatar?.wireValue ?: seed.avatarUrl
+    val currentAvatarWireValue = avatar?.wireValue
+    val seedAvatarWireValue = seed.avatar?.wireValue
     val preferSeedAvatar =
         currentAvatarWireValue?.isAgentFallbackAvatarWireValue() == true &&
             !seedAvatarWireValue.isNullOrBlank() &&
@@ -4158,7 +4153,6 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         roleDescription = roleDescription ?: seed.roleDescription,
         serverRole = serverRole ?: seed.serverRole,
         email = email ?: seed.email,
-        avatarUrl = if (preferSeedAvatar) seed.avatarUrl else avatarUrl ?: seed.avatarUrl,
         avatar = if (preferSeedAvatar) seed.avatar else avatar ?: seed.avatar,
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
@@ -4205,8 +4199,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
         } else {
             merged
         }
-    val incomingAvatarWireValue = incoming.avatar?.wireValue ?: incoming.avatarUrl
-    val incomingAvatar = AvatarReference.fromWireValue(incomingAvatarWireValue) ?: return statusMerged
+    val incomingAvatar = AvatarReference.fromWireValue(incoming.avatar?.wireValue) ?: return statusMerged
     if (
         incoming.kind == MemberKind.Agent &&
         incomingAvatar.wireValue.isAgentFallbackAvatarWireValue()
@@ -4218,21 +4211,10 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
     // pixel avatar is not a concrete URL: the agent's new pixel avatar replaces it (an agent set
     // from `pixel:antenna` to `pixel:pencil` on the web kept the antenna, even across restarts,
     // as the durable roster re-seeded it — Edgar, artin 10-29).
-    if (incomingAvatar !is AvatarReference.Url &&
-        (
-            (this.avatar as? AvatarReference.Url) != null ||
-                (!this.avatarUrl.isNullOrBlank() && !this.avatarUrl.trim().startsWith("pixel:"))
-            )
-    ) {
-        return statusMerged.copy(
-            avatarUrl = this.avatarUrl,
-            avatar = this.avatar
-        )
+    if (incomingAvatar !is AvatarReference.Url && this.avatar is AvatarReference.Url) {
+        return statusMerged.copy(avatar = this.avatar)
     }
-    return statusMerged.copy(
-        avatarUrl = (incomingAvatar as? AvatarReference.Url)?.url,
-        avatar = incomingAvatar
-    )
+    return statusMerged.copy(avatar = incomingAvatar)
 }
 
 /**
@@ -4243,10 +4225,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
  */
 private fun MemberProfile.withCachedAvatarCandidate(candidate: MemberProfile): MemberProfile {
     val avatarResolution = candidate.mergeAuthoritativeProfile(this)
-    return copy(
-        avatarUrl = avatarResolution.avatarUrl,
-        avatar = avatarResolution.avatar
-    )
+    return copy(avatar = avatarResolution.avatar)
 }
 
 private fun List<MemberProfile>.toServerMembersMemberSuggestions(

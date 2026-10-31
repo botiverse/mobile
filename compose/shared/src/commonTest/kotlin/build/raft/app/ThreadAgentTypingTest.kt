@@ -39,7 +39,7 @@ class ThreadAgentTypingTest {
     @Test fun onlyAgentsAreNamedAndUnknownIdsUseTheFallback() {
         val serverMembers =
             listOf(
-                MemberProfile(MemberId("niko"), displayName = "Niko", handle = "niko", kind = MemberKind.Agent, avatarUrl = "/niko.webp"),
+                MemberProfile(MemberId("niko"), displayName = "Niko", handle = "niko", kind = MemberKind.Agent, avatar = AvatarReference.Url("https://cdn.raft.build/niko.webp")),
                 MemberProfile(MemberId("artin"), displayName = "Artin", handle = "artin", kind = MemberKind.Human),
             )
         val channelMembers =
@@ -56,7 +56,7 @@ class ThreadAgentTypingTest {
             )
         assertEquals(
             listOf(
-                ThreadTypingAgent("niko", "Niko", "/niko.webp"),
+                ThreadTypingAgent("niko", "Niko", "https://cdn.raft.build/niko.webp"),
                 ThreadTypingAgent("kirby", "Kirby", null),
                 ThreadTypingAgent("ghost", "Agent", null),
             ),
@@ -65,13 +65,12 @@ class ThreadAgentTypingTest {
     }
 
     @Test fun facesResolveLikeMessageRowsNotFromAvatarUrlAlone() {
-        // The members store keeps an agent's pixel face in `avatar` and clears `avatarUrl`
-        // (SharedServerMembersStore mergeAuthoritativeProfile): reading `avatarUrl` alone drew initials.
+        // An agent's pixel face lives in its one `avatar` field; the old URL-only copy drew initials.
         val serverMembers =
             listOf(
                 MemberProfile(
                     MemberId("niko"), displayName = "Niko", handle = "niko", kind = MemberKind.Agent,
-                    avatarUrl = null, avatar = AvatarReference.Pixel("antenna"),
+                    avatar = AvatarReference.Pixel("antenna"),
                 ),
                 MemberProfile(MemberId("plain"), displayName = "Plain", handle = "plain", kind = MemberKind.Agent),
             )
