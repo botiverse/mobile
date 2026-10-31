@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.raftNotificationTitleWithoutSubtitle
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
@@ -894,7 +895,7 @@ internal fun raftNotificationPushBannerOrNull(
         openRequest =
             openRequest,
         title = event.foregroundBannerTitle(),
-        context = "",
+        context = event.subtitle.orEmpty(),
         threadContext = null,
         body = event.foregroundBannerBody(),
         iconKind = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconKind(conversation),
@@ -960,7 +961,18 @@ internal fun RaftForegroundMessageBanner.redactedForPushPreview(
             )
     }
 
-private fun NotificationPushReceived.foregroundBannerTitle(): String {
+/**
+ * Banner copy (slock contract §1.5): the payload's title (where a tap lands) with the context line
+ * shown as [RaftForegroundMessageBanner.context] instead of joined into it, and the payload's body
+ * (`Sender: text`). A payload without a title or body (an older server) falls back to the typed
+ * fields.
+ */
+private fun NotificationPushReceived.foregroundBannerTitle(): String =
+    raftNotificationTitleWithoutSubtitle(title.trim(), subtitle).ifBlank { legacyForegroundBannerTitle() }
+
+private fun NotificationPushReceived.foregroundBannerBody(): String = body.ifBlank { legacyForegroundBannerBody() }
+
+private fun NotificationPushReceived.legacyForegroundBannerTitle(): String {
     val serverLabel = serverName?.trim()?.takeIf { it.isNotBlank() }
         ?: return title.ifBlank { "New message" }
     val conversationLabel = channelName?.trim()?.takeIf { it.isNotBlank() }
@@ -980,7 +992,7 @@ private fun NotificationPushReceived.foregroundBannerTitle(): String {
     } ?: title.ifBlank { "New message" }
 }
 
-private fun NotificationPushReceived.foregroundBannerBody(): String {
+private fun NotificationPushReceived.legacyForegroundBannerBody(): String {
     val senderLabel = senderName?.trim()?.takeIf { it.isNotBlank() }
     val preview = messagePreview?.trim()?.takeIf { it.isNotBlank() }
     if (senderLabel == null || preview == null) return body.ifBlank { "Sent a new message." }

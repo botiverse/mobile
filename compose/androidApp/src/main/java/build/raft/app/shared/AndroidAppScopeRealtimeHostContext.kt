@@ -319,6 +319,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 .put("messageId", event.notificationId ?: event.groupKey)
                 .put("silent", event.silent == true)
                 .put("route", event.routeJson.orEmpty())
+                .put("subtitle", event.subtitle.orEmpty())
+                .let { with(AndroidUnreadNotificationPoster) { it.putRaftNotificationLocalization(event.localization) } }
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
         RaftAppLog.w(
             LOG_TAG,

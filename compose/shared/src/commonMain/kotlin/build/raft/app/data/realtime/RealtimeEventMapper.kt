@@ -59,6 +59,7 @@ import build.raft.app.data.RaftNotificationLevelSetting
 import build.raft.app.data.parseRaftNotificationAccountSettingsObject
 import build.raft.app.data.parseRaftNotificationRetractObject
 import build.raft.app.data.parseRaftNotificationRouteObject
+import build.raft.app.data.parseRaftNotificationLocalizationObject
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -949,6 +950,9 @@ private data class NotificationPushDto(
     val conversationId: String? = null,
     val route: JsonObject? = null,
     val silent: Boolean? = null,
+    // Banner copy (contract §1.5): the context line and the localization keys (slock mobileSocket.ts).
+    val subtitle: String? = null,
+    val localization: JsonElement? = null,
 )
 
 /**
@@ -1926,7 +1930,9 @@ private fun NotificationPushDto.toDomainOrNull(
         groupKey = groupKey?.takeIf { it.isNotBlank() },
         conversationId = conversationId?.takeIf { it.isNotBlank() },
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
-        silent = silent
+        silent = silent,
+        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
     )
 }
 
@@ -1947,7 +1953,9 @@ private fun NotificationPushDto.toNoticeOrNull(): NotificationNoticeReceived? {
         title = title,
         body = body,
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
-        silent = silent
+        silent = silent,
+        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
     )
 }
 

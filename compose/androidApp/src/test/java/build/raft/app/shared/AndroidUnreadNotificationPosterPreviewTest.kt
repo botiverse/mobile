@@ -143,7 +143,7 @@ class AndroidUnreadNotificationPosterPreviewTest {
         for ((shape, request) in listOf("fcm" to raftFcmUnreadNotificationRequest(fcm), "local" to localRequest(false))) {
             val shown = render(request, PushPreviewMode.Full)
             assertEquals(shape, request.getString("title"), shown.title)
-            assertEquals(shape, request.getString("body"), shown.text)
+            // One MessagingStyle line with its sender; the collapsed text is the message itself.
             assertEquals(shape, request.getString("body"), shown.bigText)
             assertTrue(shape, shown.text.contains(MESSAGE_TEXT))
         }
@@ -185,7 +185,9 @@ class AndroidUnreadNotificationPosterPreviewTest {
                 }
             val shown = render(raftFcmUnreadNotificationRequest(data), PushPreviewMode.Full)
             assertEquals(category, expected, shown.text)
-            assertEquals(category, expected, shown.publicText)
+            // The lock screen: "Raft · 1 new message", whatever the category.
+            assertEquals(category, "Raft", shown.publicTitle)
+            assertEquals(category, "1 new message", shown.publicText)
         }
         val senderOnly =
             fcmFull().toMutableMap().apply {
@@ -244,10 +246,18 @@ class AndroidUnreadNotificationPosterPreviewTest {
     private fun render(request: JSONObject, mode: PushPreviewMode): Shown {
         val notification = build(request, mode)
         val publicVersion = notification.publicVersion ?: error("no public version")
+        // A conversation with a known sender is a MessagingStyle: its title is the conversation (a
+        // DM's: the sender), its expanded text the message lines "Sender: text".
+        val messaging = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
         return Shown(
-            title = notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString(),
-            text = notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString(),
-            bigText = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString(),
+            title =
+                messaging?.let { it.conversationTitle ?: it.messages.last().person?.name }?.toString()
+                    ?: notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString(),
+            text = notification.extras.getCharSequence(NotificationCompat.EXTRA_TEXT).toString(),
+            bigText =
+                messaging?.messages?.joinToString("\n") { message ->
+                    if (messaging.isGroupConversation) "${message.person?.name}: ${message.text}" else message.text.toString()
+                } ?: notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString(),
             publicTitle = publicVersion.extras.getCharSequence(Notification.EXTRA_TITLE).toString(),
             publicText = publicVersion.extras.getCharSequence(Notification.EXTRA_TEXT).toString()
         )

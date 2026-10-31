@@ -314,6 +314,10 @@ jobs:
         shell: bash
         run: scripts/check_search_snippet_vector.sh
 
+      - name: Guard server/Android notification copy keys
+        shell: bash
+        run: scripts/check_notification_copy_vector.sh
+
       - name: Guard Web/mobile action-card.v1 vector
         shell: bash
         run: scripts/check_action_card_v1_vector.sh

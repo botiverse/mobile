@@ -2971,9 +2971,12 @@ class RaftAppShellTest {
                         parentChannelId = ChannelId("parent-channel"),
                         parentMessageId = MessageId("parent-message"),
                         messageId = MessageId("reply-1"),
-                        title = "Legacy notification title",
-                        body = "Legacy notification body",
+                        // The socket still joins the context into the title (slock #12277); the
+                        // banner shows it on its own (contract §1.5).
+                        title = "Thread in #home-fixes · Other Server",
+                        body = "Cindy: hello",
                         tag = "message:reply-1",
+                        subtitle = "Other Server",
                         serverName = "Raft",
                         channelName = "home-fixes",
                         parentChannelKind = ConversationKind.Channel,
@@ -2997,9 +3000,9 @@ class RaftAppShellTest {
         assertEquals(RaftThreadSurfaceKind.Channel, resolved.conversation.thread?.parentSurfaceKind)
         assertEquals("reply-1", resolved.openRequest.anchorMessageId)
         assertEquals("agent-cindy", resolved.senderMemberId)
-        assertEquals("Thread in #home-fixes · Raft", resolved.title)
-        assertEquals("", resolved.context)
-        assertEquals("", resolved.inlineContextLabel())
+        assertEquals("Thread in #home-fixes", resolved.title)
+        assertEquals("Other Server", resolved.context)
+        assertEquals("Other Server", resolved.inlineContextLabel())
         assertEquals("Cindy: hello", resolved.body)
     }
 

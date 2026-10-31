@@ -31,7 +31,7 @@ internal object AndroidUnreadNotificationGrouping {
     /** Tag of the per-server group summaries; ids are per server within it. */
     const val SUMMARY_TAG = "raft-unread-summary"
 
-    /** At most this many recent messages are listed in an expanded conversation (InboxStyle shows ~6). */
+    /** At most this many recent messages are listed in an expanded conversation (MessagingStyle history). */
     const val MAX_LINES = 6
 
     internal const val EXTRA_SERVER_ID = "build.raft.app.unread.serverId"
@@ -39,6 +39,8 @@ internal object AndroidUnreadNotificationGrouping {
     internal const val EXTRA_MESSAGE_IDS = "build.raft.app.unread.messageIds"
     internal const val EXTRA_LINES = "build.raft.app.unread.lines"
     internal const val EXTRA_COUNT = "build.raft.app.unread.count"
+    internal const val EXTRA_SENDERS = "build.raft.app.unread.senders"
+    internal const val EXTRA_TIMES = "build.raft.app.unread.times"
     internal const val EXTRA_TITLE = "build.raft.app.unread.title"
     /** The newest post's `groupKey` (`<serverId>:<conversationId>`), what a retraction names. */
     internal const val EXTRA_GROUP_KEY = "build.raft.app.unread.groupKey"
@@ -101,7 +103,9 @@ internal object AndroidUnreadNotificationGrouping {
 /**
  * The messages one conversation notification stands for: [count] unread messages, of which the most
  * recent [lines] (oldest first, at most [AndroidUnreadNotificationGrouping.MAX_LINES]) are listed, each
- * with its message id in [messageIds] at the same index.
+ * with its message id in [messageIds], its sender in [senders] (empty: unknown or redacted) and its
+ * post time in [times] at the same index. The MessagingStyle of the notification draws one line per
+ * entry with its sender.
  *
  * The same message can arrive twice, through FCM and through the local realtime path, so a message id
  * already listed replaces its line instead of counting again. A request without a message id always
@@ -110,39 +114,62 @@ internal object AndroidUnreadNotificationGrouping {
 internal data class UnreadConversationHistory(
     val messageIds: List<String>,
     val lines: List<String>,
-    val count: Int
+    val count: Int,
+    val senders: List<String> = List(lines.size) { "" },
+    val times: List<Long> = List(lines.size) { 0L }
 ) {
-    fun appended(messageId: String, line: String): UnreadConversationHistory {
+    fun appended(messageId: String, line: String, sender: String? = null, atMillis: Long = 0L): UnreadConversationHistory {
         val id = messageId.trim()
+        val who = sender?.trim().orEmpty()
         val existing = if (id.isEmpty()) -1 else messageIds.indexOf(id)
         if (existing >= 0) {
-            return copy(lines = lines.toMutableList().also { it[existing] = line })
+            return copy(
+                lines = lines.toMutableList().also { it[existing] = line },
+                senders = senders.toMutableList().also { it[existing] = who }
+            )
         }
         val keep = AndroidUnreadNotificationGrouping.MAX_LINES - 1
         return UnreadConversationHistory(
             messageIds = messageIds.takeLast(keep) + id,
             lines = lines.takeLast(keep) + line,
-            count = count + 1
+            count = count + 1,
+            senders = senders.takeLast(keep) + who,
+            times = times.takeLast(keep) + atMillis
         )
     }
 
     fun writeTo(extras: Bundle) {
         extras.putStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_MESSAGE_IDS, ArrayList(messageIds))
         extras.putStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_LINES, ArrayList(lines))
+        extras.putStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_SENDERS, ArrayList(senders))
+        extras.putLongArray(AndroidUnreadNotificationGrouping.EXTRA_TIMES, times.toLongArray())
         extras.putInt(AndroidUnreadNotificationGrouping.EXTRA_COUNT, count)
     }
 
     companion object {
         val EMPTY = UnreadConversationHistory(emptyList(), emptyList(), 0)
 
-        /** The history a posted conversation notification carries; [EMPTY] for anything else. */
+        /**
+         * The history a posted conversation notification carries; [EMPTY] for anything else. One
+         * posted by an older build has no senders or times: unknown senders, time 0 (the caller
+         * draws those at the newest post's time).
+         */
         fun readFrom(extras: Bundle?): UnreadConversationHistory {
             extras ?: return EMPTY
             val lines = extras.getStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_LINES) ?: return EMPTY
             val ids = extras.getStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_MESSAGE_IDS).orEmpty()
             if (ids.size != lines.size) return EMPTY
+            val senders =
+                extras.getStringArrayList(AndroidUnreadNotificationGrouping.EXTRA_SENDERS)
+                    ?.takeIf { it.size == lines.size }
+                    ?: List(lines.size) { "" }
+            val times =
+                extras.getLongArray(AndroidUnreadNotificationGrouping.EXTRA_TIMES)
+                    ?.takeIf { it.size == lines.size }
+                    ?.toList()
+                    ?: List(lines.size) { 0L }
             val count = extras.getInt(AndroidUnreadNotificationGrouping.EXTRA_COUNT, lines.size)
-            return UnreadConversationHistory(ids, lines, count.coerceAtLeast(lines.size))
+            return UnreadConversationHistory(ids, lines, count.coerceAtLeast(lines.size), senders, times)
         }
     }
 }
