@@ -475,6 +475,11 @@ internal fun raftNativeNavBarSymbolFor(id: String): String? =
  */
 @Composable
 internal fun RaftNativeNavBarHeadSpacer(bridge: RaftNativeNavBarBridge, modifier: Modifier = Modifier, liveTop: Dp) {
+    // A head at the top (liveTop > 0) keeps the host bar's real height, also when the status bar
+    // is hidden (landscape iPhone), where the page's own top padding is a fixed 12dp.
+    val hostTop = raftNativeNavBarLiveTop()
+    @Suppress("NAME_SHADOWING")
+    val liveTop = if (liveTop > 0.dp && hostTop != null) hostTop else liveTop
     androidx.compose.foundation.layout.Box(
         modifier =
             modifier.layout { measurable, constraints ->

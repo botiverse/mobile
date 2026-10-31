@@ -524,6 +524,9 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             // the system drops a trailing button that does not fit (run 41186095424 lost Search).
             var room = barWidth - 40 - CGFloat(trailingCount) * 52 - (trailingCount > 0 ? 16 : 0)
             if !isStackRoot { room -= 64 }
+            // Landscape: the bar's content stays inside the side safe areas (the sensor housing).
+            let sideInsets = owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right
+            room -= sideInsets
             if ownBackButton { room -= 60 }
             leadingTitleView.maxWidth = max(80, room)
             let titleItem = UIBarButtonItem(customView: leadingTitleView)

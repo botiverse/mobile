@@ -223,6 +223,17 @@ private fun raftHostWindowIdEnsuringObserver(): String {
     return windowId
 }
 
+/**
+ * PROTOTYPE (native nav bar): the host's live top inset even while the status bar is hidden
+ * (landscape iPhone), where it is the host bar's height; null without a live host snapshot.
+ */
+@Composable
+internal fun raftNativeNavBarLiveTop(): Dp? {
+    val windowId = raftHostWindowIdEnsuringObserver()
+    val live = RaftHostWindowInsets.current(windowId) ?: return null
+    return resolveRaftLiveTopSafeArea(live, LocalDensity.current.density)
+}
+
 @Composable
 internal fun raftTopSafeAreaPadding(): Dp {
     val windowId = raftHostWindowIdEnsuringObserver()
