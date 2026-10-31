@@ -534,3 +534,62 @@ class RaftRetractWatermarks(
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Banner copy: title / subtitle / body and their localization keys (contract §1.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Keys of the fixed phrases in one notification's title / subtitle / body (slock
+ * `packages/shared/src/notificationCopy.ts` `NotificationLocalization`; mobile socket
+ * `localization`, FCM data `titleKey` / `titleArgs` / ...). Args are positional names and counts.
+ * A part without a key is plain text; a client that does not know a key shows the English text.
+ */
+@kotlinx.serialization.Serializable
+data class RaftNotificationLocalization(
+    val titleKey: String? = null,
+    val titleArgs: List<String> = emptyList(),
+    val subtitleKey: String? = null,
+    val subtitleArgs: List<String> = emptyList(),
+    val bodyKey: String? = null,
+    val bodyArgs: List<String> = emptyList()
+)
+
+/**
+ * Reads a `localization` object the way the server's `parseNotificationLocalization` does: a part
+ * whose key is not a non-empty string is dropped, args that are not all strings become empty; null
+ * when no part is left.
+ */
+fun parseRaftNotificationLocalizationObject(value: JsonObject?): RaftNotificationLocalization? {
+    value ?: return null
+    fun key(part: String): String? =
+        (value["${part}Key"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
+    fun args(part: String): List<String> {
+        val array = value["${part}Args"] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+        val items = array.map { (it as? JsonPrimitive)?.takeIf { primitive -> primitive.isString }?.content }
+        return if (items.all { it != null }) items.filterNotNull() else emptyList()
+    }
+    val titleKey = key("title")
+    val subtitleKey = key("subtitle")
+    val bodyKey = key("body")
+    if (titleKey == null && subtitleKey == null && bodyKey == null) return null
+    return RaftNotificationLocalization(
+        titleKey = titleKey,
+        titleArgs = if (titleKey != null) args("title") else emptyList(),
+        subtitleKey = subtitleKey,
+        subtitleArgs = if (subtitleKey != null) args("subtitle") else emptyList(),
+        bodyKey = bodyKey,
+        bodyArgs = if (bodyKey != null) args("body") else emptyList()
+    )
+}
+
+/**
+ * The title without its context: the mobile socket (and FCM to an app before key set 3) sends
+ * `title · subtitle` (`formatPushSurfaceTitle`), and an app that shows [subtitle] on its own line
+ * takes the part before ` · <subtitle>` (contract §1.5). Anything else is returned as is.
+ */
+fun raftNotificationTitleWithoutSubtitle(title: String, subtitle: String?): String {
+    if (subtitle.isNullOrBlank()) return title
+    val suffix = " · $subtitle"
+    return if (title.length > suffix.length && title.endsWith(suffix)) title.dropLast(suffix.length) else title
+}

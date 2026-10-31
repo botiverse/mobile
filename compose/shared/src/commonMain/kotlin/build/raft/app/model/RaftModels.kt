@@ -1263,7 +1263,14 @@ data class NotificationPushReceived(
     val groupKey: String? = null,
     val conversationId: String? = null,
     val routeJson: String? = null,
-    val silent: Boolean? = null
+    val silent: Boolean? = null,
+    /**
+     * Banner copy (contract §1.5, slock #12277 / #12279): [subtitle] is the context line (the server
+     * label for a receiver of 2+ servers), still joined into [title] as `title · subtitle` on the
+     * socket; [localization] keys the fixed phrases of title / subtitle / body.
+     */
+    val subtitle: String? = null,
+    val localization: build.raft.app.data.RaftNotificationLocalization? = null
 ) : RealtimeEvent
 
 /**
@@ -1280,7 +1287,10 @@ data class NotificationNoticeReceived(
     val title: String,
     val body: String,
     val routeJson: String? = null,
-    val silent: Boolean? = null
+    val silent: Boolean? = null,
+    /** As [NotificationPushReceived.subtitle] / [NotificationPushReceived.localization]. */
+    val subtitle: String? = null,
+    val localization: build.raft.app.data.RaftNotificationLocalization? = null
 ) : RealtimeEvent
 
 /**

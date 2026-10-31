@@ -75,8 +75,20 @@ internal data class RaftPushRegistrationPayload(
         copy(previewMode = null, alertsEnabled = null, osPermission = null, previewKeySet = null)
 }
 
-/** The preview key set of this build: all keys of slock docs/contracts/notifications.md §1.5. */
+/**
+ * The preview key set (slock docs/contracts/notifications.md §3.1) the iOS app ships: 2 = every
+ * redacted-preview key (`push.preview.*`). Its Localizable.strings has no banner keys yet, and iOS
+ * without a service extension shows an unknown `loc-key` verbatim, so it stays at 2.
+ */
 internal const val RAFT_PUSH_PREVIEW_KEY_SET = 2
+
+/**
+ * The preview key set the Android app ships: 3 = set 2 plus every banner key (`push.title.*`,
+ * `push.subtitle.*`, `push.body.*`), all in its string resources (AndroidPushCopyKeys,
+ * pinned to the slock catalogue by AndroidNotificationCopyVectorTest). FCM then sends the plain
+ * title with the subtitle on its own.
+ */
+const val RAFT_ANDROID_PUSH_PREVIEW_KEY_SET = 3
 
 /**
  * What the device reports with its registration (contract §3.1). [legacyPreviewMode] is set only
@@ -139,6 +151,14 @@ internal enum class RaftPushProviderSpec(val provider: String, val platform: Str
      * FCM has no sandbox.
      */
     Fcm(provider = "fcm", platform = "android");
+
+    /** The newest localization key set this platform's app ships (contract §3.1). */
+    val previewKeySet: Int
+        get() =
+            when (this) {
+                Apns -> RAFT_PUSH_PREVIEW_KEY_SET
+                Fcm -> RAFT_ANDROID_PUSH_PREVIEW_KEY_SET
+            }
 
     fun normalizeToken(raw: String): String =
         when (this) {
@@ -474,7 +494,7 @@ internal class RaftPushRegistrationCoordinator(
                 alertsEnabled = currentDeviceState()?.alertsEnabled,
                 osPermission = currentDeviceState()?.osPermission,
                 previewMode = currentDeviceState()?.legacyPreviewMode,
-                previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET
+                previewKeySet = spec.previewKeySet
             )
         if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
@@ -613,7 +633,7 @@ internal class RaftPushRegistrationCoordinator(
                 previewMode = state?.legacyPreviewMode,
                 alertsEnabled = state?.alertsEnabled,
                 osPermission = state?.osPermission,
-                previewKeySet = RAFT_PUSH_PREVIEW_KEY_SET
+                previewKeySet = spec.previewKeySet
             )
         if (next == payload) return payloadJson
         return pushRegistrationJson.encodeToString(next)

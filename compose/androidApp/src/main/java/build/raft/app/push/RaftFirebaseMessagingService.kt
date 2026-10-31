@@ -142,7 +142,9 @@ internal fun raftFcmMessageDecision(data: Map<String, String>, alertsEnabled: ()
 
 /**
  * The poster request for one FCM data message. `previewMode` / `titleKey` / `bodyKey` / `bodyArgs`
- * are present when the server redacted the push for the account's preview choice.
+ * are present when the server redacted the push for the account's preview choice; for a registration
+ * of key set 3 the title / subtitle / body keys of the banner copy too, and `subtitle` is the context
+ * line (the plain `title` then carries no ` · subtitle`).
  */
 internal fun raftFcmUnreadNotificationRequest(data: Map<String, String>): JSONObject =
     JSONObject().apply {
@@ -170,6 +172,11 @@ private val FCM_UNREAD_NOTIFICATION_KEYS =
         "titleKey",
         "bodyKey",
         "bodyArgs",
+        // Banner copy (contract §1.5, key set 3): the context line and the other parts' keys.
+        "subtitle",
+        "titleArgs",
+        "subtitleKey",
+        "subtitleArgs",
         // Task v2 task-reply pushes (slock #11445): open the task conversation on tap.
         "taskId",
         "taskConversationChannelId",

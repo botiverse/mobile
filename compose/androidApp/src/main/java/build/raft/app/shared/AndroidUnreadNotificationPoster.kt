@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import android.net.Uri
 import android.os.Bundle
@@ -22,6 +23,7 @@ import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.PUSH_PREVIEW_MODE_UNREADABLE
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftAndroidNotificationChannelKind
+import build.raft.app.data.RaftNotificationLocalization
 import build.raft.app.data.RaftNotificationRetract
 import build.raft.app.data.RaftRetractWatermarks
 import build.raft.app.data.parseRaftPushBadge
@@ -37,6 +39,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal object AndroidUnreadNotificationPoster {
@@ -562,10 +565,11 @@ internal object AndroidUnreadNotificationPoster {
      * [KeyValuePushPreviewModePreferenceStore]; the title, the collapsed text and every listed message
      * use resolved text, and the lock screen gets a content-free public version.
      *
-     * [previous] is what the conversation's notification already shows. With one message the
-     * expanded view is that message's big text; with more it lists the recent ones (InboxStyle), the
-     * collapsed text stays the newest, and the count is the notification number and the summary line.
-     * The history rides in the extras for the next message ([UnreadConversationHistory]).
+     * [previous] is what the conversation's notification already shows. The expanded view lists the
+     * recent messages, one line each with its sender ([unreadMessagingStyle]), never a bare "N new
+     * messages"; the collapsed text is the newest, the count is the notification number, and the
+     * subtitle is the header's sub text. The history rides in the extras for the next message
+     * ([UnreadConversationHistory]).
      */
     internal fun buildUnreadNotification(
         context: Context,
@@ -587,21 +591,31 @@ internal object AndroidUnreadNotificationPoster {
                 defaultTitle = appContext.getString(R.string.app_name),
                 defaultBody = appContext.getString(R.string.notification_unread_default_text)
             )
-        val history = previous.appended(request.optString("messageId"), text.body)
+        val history = previous.appended(request.optString("messageId"), text.body, text.sender, whenMillis)
         val countText =
             appContext.resources.getQuantityString(R.plurals.notification_unread_message_count, history.count, history.count)
         val serverId = request.optString("serverId").trim()
+        // Lock screen: "Raft · 1 new message", nothing about the conversation (contract §1.5 Android row).
         val publicVersion =
             NotificationCompat.Builder(appContext, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(text.publicTitle)
-                .setContentText(if (history.count > 1) countText else text.publicBody)
+                .setContentText(countText)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setWhen(whenMillis)
                 .setShowWhen(true)
                 .build()
-        val style =
-            if (history.count > 1) {
+        val style: NotificationCompat.Style =
+            if (history.senders.any { it.isNotBlank() }) {
+                unreadMessagingStyle(
+                    selfName = appContext.getString(R.string.app_name),
+                    conversationTitle = text.title,
+                    directMessage = isDirectMessage(request, request.optString("category").trim()),
+                    history = history,
+                    fallbackMillis = whenMillis
+                )
+            } else if (history.count > 1) {
+                // No sender to draw (a notice, a redacted preview): the recent lines as they are.
                 NotificationCompat.InboxStyle()
                     .setSummaryText(countText)
                     .also { inbox -> history.lines.forEach { inbox.addLine(it) } }
@@ -623,6 +637,8 @@ internal object AndroidUnreadNotificationPoster {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(text.title)
             .setContentText(text.body)
+            // The context line (server label for a receiver of 2+ servers), in the header.
+            .setSubText(text.subtitle)
             .setStyle(style)
             .setNumber(history.count)
             // Launchers that badge show a dot or this count (contract §1.4 "where supported").
@@ -643,6 +659,53 @@ internal object AndroidUnreadNotificationPoster {
             .setAutoCancel(true)
             .addExtras(extras)
             .build()
+    }
+
+    /**
+     * One line per listed message with its sender (contract §1.5 Android row), for a conversation
+     * with at least one known sender: the conversation is the title, a message whose sender is
+     * unknown (an older build's line) is drawn under the conversation's name, and a sender's
+     * `Sender: ` prefix is not repeated in its line. A DM is a one-to-one conversation: its sender
+     * is the title, so it has no conversation title of its own.
+     */
+    internal fun unreadMessagingStyle(
+        selfName: String,
+        conversationTitle: String,
+        directMessage: Boolean,
+        history: UnreadConversationHistory,
+        fallbackMillis: Long
+    ): NotificationCompat.MessagingStyle {
+        val self = Person.Builder().setName(selfName.ifBlank { "Raft" }).setKey("raft-self").build()
+        val people = mutableMapOf<String, Person>()
+        fun personFor(name: String): Person =
+            people.getOrPut(name) { Person.Builder().setName(name).setKey("raft-sender:$name").build() }
+        val style =
+            NotificationCompat.MessagingStyle(self)
+                .setConversationTitle(conversationTitle.takeUnless { directMessage })
+                .setGroupConversation(!directMessage)
+        val fallbackName = conversationTitle.ifBlank { selfName.ifBlank { "Raft" } }
+        history.lines.forEachIndexed { index, line ->
+            val sender = history.senders.getOrNull(index).orEmpty()
+            val time = history.times.getOrNull(index)?.takeIf { it > 0L } ?: fallbackMillis
+            style.addMessage(
+                NotificationCompat.MessagingStyle.Message(
+                    unreadMessageLineText(line, sender),
+                    time,
+                    personFor(sender.ifBlank { fallbackName })
+                )
+            )
+        }
+        return style
+    }
+
+    /** [line] without its sender's `Sender: ` prefix (`Sender：` in the zh / ja templates). */
+    internal fun unreadMessageLineText(line: String, sender: String): String {
+        if (sender.isBlank()) return line
+        for (separator in listOf(": ", "：", ":")) {
+            val prefix = sender + separator
+            if (line.length > prefix.length && line.startsWith(prefix)) return line.substring(prefix.length).trimStart()
+        }
+        return line
     }
 
     /**
@@ -925,4 +988,23 @@ internal object AndroidUnreadNotificationPoster {
             .put("seq", seq?.toString().orEmpty())
             .put("silent", silent)
             .put("route", routeJson.orEmpty())
+            .put("subtitle", subtitle.orEmpty())
+            .putRaftNotificationLocalization(localization)
+
+    /**
+     * The socket's `localization` object in the FCM data shape (`titleKey`, `titleArgs` as a JSON
+     * array string, ...), so both entry points render through [resolveUnreadNotificationText].
+     */
+    internal fun JSONObject.putRaftNotificationLocalization(localization: RaftNotificationLocalization?): JSONObject {
+        localization ?: return this
+        fun part(name: String, key: String?, args: List<String>) {
+            key?.takeIf { it.isNotBlank() } ?: return
+            put("${name}Key", key)
+            put("${name}Args", JSONArray(args).toString())
+        }
+        part("title", localization.titleKey, localization.titleArgs)
+        part("subtitle", localization.subtitleKey, localization.subtitleArgs)
+        part("body", localization.bodyKey, localization.bodyArgs)
+        return this
+    }
 }

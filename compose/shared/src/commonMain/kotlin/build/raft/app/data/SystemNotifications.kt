@@ -163,7 +163,13 @@ data class SystemUnreadNotificationRequest(
     val groupKey: String? = null,
     val seq: Long? = null,
     val silent: Boolean = false,
-    val routeJson: String? = null
+    val routeJson: String? = null,
+    /**
+     * Banner copy (contract §1.5): the context line, still joined into [title] by the socket (the
+     * poster strips it), and the localization keys of title / subtitle / body.
+     */
+    val subtitle: String? = null,
+    val localization: RaftNotificationLocalization? = null
 )
 
 data class SystemUnreadNotificationServerGateResult(
@@ -327,7 +333,9 @@ fun buildSystemUnreadNotificationRequestFromPush(
         groupKey = push.groupKey ?: push.conversationId?.let { raftNotificationGroupKey(push.serverId.value, it) },
         seq = push.seq,
         silent = push.silent == true,
-        routeJson = push.routeJson
+        routeJson = push.routeJson,
+        subtitle = push.subtitle,
+        localization = push.localization
     )
 }
 

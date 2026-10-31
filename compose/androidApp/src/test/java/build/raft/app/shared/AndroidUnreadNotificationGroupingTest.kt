@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
+import androidx.core.app.NotificationCompat
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.RaftConversationReadHost
 import build.raft.app.push.raftFcmUnreadNotificationRequest
@@ -124,14 +125,14 @@ class AndroidUnreadNotificationGroupingTest {
         assertEquals(1, conversations.size)
         val notification = conversations.single().notification
         assertEquals(3, notification.number)
-        assertEquals("#general", notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
-        // Collapsed: the newest message. Expanded: every message, oldest first, and the count.
-        assertEquals("Alice: third", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
-        assertEquals(
-            listOf("Alice: first", "Bob: second", "Alice: third"),
-            notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)!!.map { it.toString() }
-        )
-        assertEquals("3 new messages", notification.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT).toString())
+        assertEquals("#general", titleOf(notification))
+        // Expanded: every message, oldest first, each with its sender (MessagingStyle), not "3 new messages".
+        assertEquals(listOf("Alice: first", "Bob: second", "Alice: third"), linesOf(notification))
+        val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)!!
+        assertTrue(style.isGroupConversation)
+        assertEquals(listOf("first", "second", "third"), style.messages.map { it.text.toString() })
+        // The lock screen: "Raft · 3 new messages".
+        assertEquals("Raft", notification.publicVersion!!.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertEquals("3 new messages", notification.publicVersion!!.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
         assertEquals("raft-unread:server-1", notification.group)
         assertEquals(Notification.GROUP_ALERT_CHILDREN, notification.groupAlertBehavior)
@@ -144,9 +145,8 @@ class AndroidUnreadNotificationGroupingTest {
 
         val notification = conversations().single().notification
         assertEquals(1, notification.number)
-        // Still a single message: the big-text shape, no count line.
-        assertEquals("Alice: first", notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
-        assertNull(notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES))
+        // Still a single message line.
+        assertEquals(listOf("Alice: first"), linesOf(notification))
     }
 
     @Test
@@ -181,7 +181,7 @@ class AndroidUnreadNotificationGroupingTest {
         assertEquals(2, summaryOf("server-1")!!.notification.number)
 
         // The user swipes one conversation away: its delete intent names it.
-        val (dismissed, kept) = conversations().partition { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString() == "Bob" }
+        val (dismissed, kept) = conversations().partition { titleOf(it.notification) == "Bob" }
         manager.cancel(dismissed.single().tag, dismissed.single().id)
         AndroidUnreadNotificationPoster.onConversationDismissed(context, dismissed.single().id)
         assertEquals(1, summaryOf("server-1")!!.notification.number)
@@ -210,15 +210,14 @@ class AndroidUnreadNotificationGroupingTest {
 
         // #general read in the app (opened from the channel list, not from the notification).
         AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "channel-1")
-        assertEquals(listOf("Bob"), conversations().map { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString() })
+        assertEquals(listOf("Bob"), conversations().map { titleOf(it.notification) })
         assertEquals(1, summaryOf("server-1")!!.notification.number)
 
         // The 4th push is one new message, not "4 new messages" listing the read ones.
         post(fcm(channelId = "channel-1", messageId = "m-4", body = "Alice: four"))
-        val general = conversations().single { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString() == "#general" }
+        val general = conversations().single { titleOf(it.notification) == "#general" }
         assertEquals(1, general.notification.number)
-        assertEquals("Alice: four", general.notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString())
-        assertNull(general.notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES))
+        assertEquals(listOf("Alice: four"), linesOf(general.notification))
         assertEquals(2, summaryOf("server-1")!!.notification.number)
 
         // Reading a conversation without a notification (another server's, too) changes nothing.
@@ -389,7 +388,7 @@ class AndroidUnreadNotificationGroupingTest {
         // The ordering is per conversation: #general is still cleared, the DM stays, the summary counts it.
         assertEquals(
             listOf("Bob"),
-            conversations().map { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString() }
+            conversations().map { titleOf(it.notification) }
         )
         assertEquals(1, summaryOf("server-1")!!.notification.number)
     }
@@ -451,6 +450,21 @@ class AndroidUnreadNotificationGroupingTest {
         summaries().singleOrNull { it.id == AndroidUnreadNotificationGrouping.summaryNotificationId(serverId) }
 
     /** The FCM data message shape of slock's `fcmMessageForMobilePush`. */
+    /** The title Android shows: a MessagingStyle's conversation (a DM's: its sender), else the content title. */
+    private fun titleOf(notification: Notification): String =
+        NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
+            ?.let { it.conversationTitle ?: it.messages.last().person?.name }
+            ?.toString()
+            ?: notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString()
+
+    /** The listed messages as "Sender: text" (MessagingStyle), or the big text / inbox lines. */
+    private fun linesOf(notification: Notification): List<String> {
+        val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
+        if (style != null) return style.messages.map { "${it.person?.name}: ${it.text}" }
+        notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.let { lines -> return lines.map { it.toString() } }
+        return listOfNotNull(notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString())
+    }
+
     private fun fcm(
         serverId: String = "server-1",
         channelId: String,
