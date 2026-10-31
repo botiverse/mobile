@@ -2,10 +2,10 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.52.4/dist/styles.css sha256=1dfba2b73642ba49
-//   npm:@botiverse/raft-ui@0.52.4/dist/foundation.css sha256=b298725e92892e88
-//   npm:@botiverse/raft-ui@0.52.4/dist/themes.css sha256=d676bb4b3ad783cf
-//   botiverse/slock@f3c28feb24278de08022027c467cf0fc41e9231c:packages/web/src/index.css sha256=c9b192deb9f391fb
+//   npm:@botiverse/raft-ui@0.54.0/dist/styles.css sha256=1dfba2b73642ba49
+//   npm:@botiverse/raft-ui@0.54.0/dist/foundation.css sha256=b298725e92892e88
+//   npm:@botiverse/raft-ui@0.54.0/dist/themes.css sha256=d676bb4b3ad783cf
+//   botiverse/slock@dc7aa1fddc4543d60993311949ee86ca1f7166e0:packages/web/src/index.css sha256=ef85016bf7575075
 
 package build.raft.app.designtokens
 
