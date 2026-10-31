@@ -191,7 +191,8 @@ class RaftFilePreviewCommentsTest {
     }
 
     @Test
-    fun inlineVideoKeepsConversationCommentExperience() {
+    fun videoCommentsOpenBesideThePlayer() {
+        // Web comments on a video beside its player with timestamp anchors (VideoPreviewBody).
         listOf(
             "demo.mp4" to "video/mp4",
             "DEMO.MP4" to "application/octet-stream"
@@ -203,7 +204,10 @@ class RaftFilePreviewCommentsTest {
                     mimeType = mimeType
                 ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true)
 
-            assertNull(payload, "inline preview must keep comments outside the file viewer for $name")
+            assertNotNull(payload, "video comments open in the file viewer for $name")
+            assertEquals("video", payload.requestedKind)
+            assertTrue(payload.commentsInitiallyOpen)
+            assertTrue(payload.supportsAttachmentComments())
         }
     }
 

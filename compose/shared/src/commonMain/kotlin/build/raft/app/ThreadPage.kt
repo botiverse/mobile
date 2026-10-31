@@ -3434,6 +3434,8 @@ internal data class ThreadAttachmentCommentsDialogState(
     val resolvingCommentIds: Set<String> = emptySet(),
     val pendingAnchorLabel: String? = null,
     val pendingQuoteLabel: String? = null,
+    /** The structural anchor the next comment is sent with (a video timestamp); its chip is [pendingAnchorLabel]. */
+    val pendingAnchor: build.raft.app.data.ThreadAttachmentCommentAnchor? = null,
     val errorCode: String? = null,
     val errorServerMessage: String? = null
 )
@@ -34252,8 +34254,8 @@ internal fun ThreadAttachmentCommentItem.isThreadAttachmentCommentResolved(): Bo
 /**
  * Which attachments get a comment entry point, matching web (`MessageItem.handleOpenAttachmentCard`
  * and `attachmentPreviewSurfaces`): Markdown, text/code, CSV, XLSX and HTML open their comments, and
- * video keeps its comments dialog. Images (web: "image comments descoped"), PDFs, audio and files
- * without a preview have none.
+ * video opens its timestamp comments beside the player. Images (web: "image comments descoped"),
+ * PDFs, audio and files without a preview have none.
  */
 internal fun RaftThreadAttachmentItem.supportsThreadAttachmentComments(): Boolean =
     isPreviewableVideoAttachment() ||

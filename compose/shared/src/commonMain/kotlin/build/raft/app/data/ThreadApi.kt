@@ -8,6 +8,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -15,6 +17,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.TimeSource
 
@@ -73,7 +76,11 @@ internal interface RaftThreadApi {
     ): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
-    suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
+    suspend fun sendAttachmentComment(
+        attachmentId: String,
+        body: String,
+        anchor: ThreadAttachmentCommentAnchor? = null
+    ): ThreadApiResult<Unit>
     suspend fun markChannelReadToSeq(channelId: String, seq: Long): ThreadApiResult<Unit>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
     suspend fun saveMessage(messageId: String): ThreadApiResult<Unit>
@@ -234,8 +241,12 @@ internal class RaftThreadApiClient(
                 )
             }
 
-    override suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit> =
-        transport.sendAttachmentComment(attachmentId, body).mapThreadUnit()
+    override suspend fun sendAttachmentComment(
+        attachmentId: String,
+        body: String,
+        anchor: ThreadAttachmentCommentAnchor?
+    ): ThreadApiResult<Unit> =
+        transport.sendAttachmentComment(attachmentId, body, anchor).mapThreadUnit()
 
     override suspend fun markChannelReadToSeq(channelId: String, seq: Long): ThreadApiResult<Unit> =
         transport.markChannelReadToSeq(channelId, seq).mapThreadUnit()
@@ -382,12 +393,16 @@ internal class NetworkRaftThreadApi(
             path = "attachments/${attachmentId.trim()}/comments"
         )
 
-    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
+    override suspend fun sendAttachmentComment(
+        attachmentId: String,
+        body: String,
+        anchor: ThreadAttachmentCommentAnchor?
+    ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "attachments/${attachmentId.trim()}/comments",
             method = "POST",
-            bodyText = threadApiJson.encodeToString(AttachmentCommentRequestBody(body))
+            bodyText = buildSharedAttachmentCommentBody(body, anchor)
         )
 
     override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse =
@@ -529,8 +544,45 @@ internal data class ThreadAttachmentCommentItem(
     val content: String,
     val createdAt: String,
     val reactions: List<ThreadAttachmentCommentReaction>,
-    val anchorLabel: String? = null
+    val anchorLabel: String? = null,
+    /** The anchor the viewer can jump to; null for anchors it only labels (sections, lines, regions). */
+    val anchor: ThreadAttachmentCommentAnchor? = null
 )
+
+/**
+ * The structural anchors the mobile viewer creates and jumps to, from web `CommentAnchor`
+ * (attachmentCommentAnchors.ts). Wire shape `{type, data}`; the server validates the vocabulary.
+ */
+internal sealed interface ThreadAttachmentCommentAnchor {
+    /** `{"type":"video-timestamp","data":{"time":<seconds>}}`; the server rounds time to the millisecond. */
+    data class VideoTimestamp(val timeSeconds: Double) : ThreadAttachmentCommentAnchor
+}
+
+/**
+ * The anchor chip label of a video timestamp, web `anchorLabel` / server
+ * `attachmentCommentAnchorLabel`: `M:SS`, or `H:MM:SS` from an hour on.
+ */
+internal fun raftVideoTimestampLabel(timeSeconds: Double): String {
+    val total = timeSeconds.coerceAtLeast(0.0)
+    val h = (total / 3600).toLong()
+    val m = ((total % 3600) / 60).toLong()
+    val s = (total % 60).toLong()
+    val ss = s.toString().padStart(2, '0')
+    return if (h > 0) "$h:${m.toString().padStart(2, '0')}:$ss" else "$m:$ss"
+}
+
+internal val ThreadAttachmentCommentAnchor.label: String
+    get() =
+        when (this) {
+            is ThreadAttachmentCommentAnchor.VideoTimestamp -> raftVideoTimestampLabel(timeSeconds)
+        }
+
+/** POST /attachments/:id/comments body: `{content, anchor?}`, anchor omitted when there is none (web). */
+internal fun buildSharedAttachmentCommentBody(content: String, anchor: ThreadAttachmentCommentAnchor?): String =
+    threadApiJson.encodeToString(
+        AttachmentCommentRequestBody.serializer(),
+        AttachmentCommentRequestBody(content = content, anchor = anchor?.toRequestDto())
+    )
 
 internal data class ThreadAttachmentCommentReaction(
     val emoji: String,
@@ -772,8 +824,32 @@ private data class PendingMentionActionExecuteResultDto(
 
 // ── Request bodies ──
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-private data class AttachmentCommentRequestBody(val content: String)
+private data class AttachmentCommentRequestBody(
+    val content: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val anchor: AttachmentCommentAnchorRequestDto? = null
+)
+
+@Serializable
+private data class AttachmentCommentAnchorRequestDto(
+    val type: String,
+    val data: kotlinx.serialization.json.JsonObject
+)
+
+private fun ThreadAttachmentCommentAnchor.toRequestDto(): AttachmentCommentAnchorRequestDto =
+    when (this) {
+        is ThreadAttachmentCommentAnchor.VideoTimestamp ->
+            AttachmentCommentAnchorRequestDto(
+                type = VideoTimestampAnchorType,
+                data = kotlinx.serialization.json.buildJsonObject {
+                    put("time", kotlinx.serialization.json.JsonPrimitive(timeSeconds))
+                }
+            )
+    }
+
+private const val VideoTimestampAnchorType = "video-timestamp"
 
 private fun AttachmentCommentDto.toThreadAttachmentCommentItem(): ThreadAttachmentCommentItem? {
     val cleanId = id.takeIf { it.isNotBlank() } ?: return null
@@ -786,7 +862,8 @@ private fun AttachmentCommentDto.toThreadAttachmentCommentItem(): ThreadAttachme
         content = content,
         createdAt = createdAt,
         reactions = reactions.map { it.toThreadAttachmentCommentReaction() },
-        anchorLabel = anchor?.toAnchorLabel()
+        anchorLabel = anchor?.toAnchorLabel(),
+        anchor = anchor?.toThreadAttachmentCommentAnchor()
     )
 }
 
@@ -800,9 +877,17 @@ private fun AttachmentCommentReactionDto.toThreadAttachmentCommentReaction(): Th
 private fun AttachmentCommentViewerDto.toThreadAttachmentCommentViewer(): ThreadAttachmentCommentViewer =
     ThreadAttachmentCommentViewer(canComment = canComment, reason = reason)
 
+private fun AttachmentCommentAnchorDto.toThreadAttachmentCommentAnchor(): ThreadAttachmentCommentAnchor? {
+    if (type != VideoTimestampAnchorType) return null
+    val time = data?.get("time")?.jsonPrimitive?.takeUnless { it.isString }?.doubleOrNull ?: return null
+    if (!time.isFinite() || time < 0.0) return null
+    return ThreadAttachmentCommentAnchor.VideoTimestamp(time)
+}
+
 // web `anchorLabel` (attachmentCommentAnchors.ts): a section is `§ <heading>`, a line range
 // `L<start>–<end>`; other anchors keep their own label or quote.
 private fun AttachmentCommentAnchorDto.toAnchorLabel(): String? {
+    toThreadAttachmentCommentAnchor()?.let { return it.label }
     val json = data ?: return null
     when (type) {
         "md-section" -> {

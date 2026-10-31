@@ -209,7 +209,7 @@ internal object AssistantDmFixtureNetworkApi : SharedThreadNetworkApi {
 
     override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
-    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse = ok()
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): HomeNetworkResponse = ok()
 
     override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse = ok()
 

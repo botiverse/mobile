@@ -154,7 +154,7 @@ class SharedThreadJumpToLatestTest {
         override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?) = unused()
         override suspend fun attachmentHtmlPreviewUrl(attachmentId: String) = unused()
         override suspend fun attachmentComments(attachmentId: String) = unused()
-        override suspend fun sendAttachmentComment(attachmentId: String, body: String) = unused()
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?) = unused()
         override suspend fun markChannelReadToSeq(channelId: String, seq: Long) = unused()
         override suspend fun markChannelReadAll(channelId: String) = unused()
         override suspend fun saveMessage(messageId: String) = unused()

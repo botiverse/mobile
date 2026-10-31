@@ -171,7 +171,7 @@ class SharedThreadStoreTest {
         override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"comments":[],"threadChannelId":"comments-$attachmentId"}""")
 
-        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse {
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String, anchor: build.raft.app.data.ThreadAttachmentCommentAnchor?): HomeNetworkResponse {
             sentAttachmentComments += attachmentId to body
             return HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
         }

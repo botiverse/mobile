@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.formatRaftTimestampLabel
@@ -95,13 +97,15 @@ internal fun RaftAttachmentCommentsPanel(
     modifier: Modifier = Modifier,
     onClose: (() -> Unit)? = null,
     onClearAnchor: (() -> Unit)? = null,
+    /** A comment's anchor chip was tapped: jump the open preview there (a video seeks to its timestamp). */
+    onAnchorJump: ((ThreadAttachmentCommentAnchor) -> Unit)? = null,
 ) {
     RaftDesignSystemTheme {
         val colors = RaftTheme.colors
         Column(modifier = modifier.background(colors.layerCanvas)) {
             AttachmentCommentsHeader(filename = state.attachment.name, onClose = onClose)
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                AttachmentCommentsList(state = state, onRetry = onRetry)
+                AttachmentCommentsList(state = state, onRetry = onRetry, onAnchorJump = onAnchorJump)
             }
             AttachmentCommentsDock(
                 state = state,
@@ -157,10 +161,11 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
 @Composable
 private fun AttachmentCommentsList(
     state: ThreadAttachmentCommentsDialogState,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onAnchorJump: ((ThreadAttachmentCommentAnchor) -> Unit)?
 ) {
     val colors = RaftTheme.colors
-    val comments = state.page?.comments.orEmpty()
+    val comments = state.page?.comments.orEmpty().inAttachmentCommentAnchorOrder()
     when {
         state.status == "loading" ->
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -210,14 +215,22 @@ private fun AttachmentCommentsList(
                 verticalArrangement = Arrangement.spacedBy(CommentsCardGap)
             ) {
                 items(comments.size, key = { comments[it].id }) { index ->
-                    AttachmentCommentCard(comment = comments[index], filename = state.attachment.name)
+                    AttachmentCommentCard(
+                        comment = comments[index],
+                        filename = state.attachment.name,
+                        onAnchorJump = onAnchorJump
+                    )
                 }
             }
     }
 }
 
 @Composable
-private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename: String) {
+private fun AttachmentCommentCard(
+    comment: ThreadAttachmentCommentItem,
+    filename: String,
+    onAnchorJump: ((ThreadAttachmentCommentAnchor) -> Unit)?
+) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Container)
     Column(
@@ -276,9 +289,12 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
                 )
             }
         }
+        val jumpAnchor = comment.anchor?.takeIf { onAnchorJump != null }
         AttachmentCommentChip(
             icon = if (comment.anchorLabel.isNullOrBlank()) RaftLucideIconName.FileText else RaftLucideIconName.MapPin,
-            label = comment.anchorLabel?.takeIf { it.isNotBlank() } ?: filename
+            label = comment.anchorLabel?.takeIf { it.isNotBlank() } ?: filename,
+            onClick = jumpAnchor?.let { anchor -> { onAnchorJump?.invoke(anchor) } },
+            onClickLabel = stringResource(Res.string.thread_comments_jump_to_location)
         )
         RaftMarkdownBody(
             body = comment.content,
@@ -300,6 +316,8 @@ private fun AttachmentCommentChip(
     icon: RaftLucideIconName,
     label: String,
     onRemove: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
 ) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Chip)
@@ -307,6 +325,13 @@ private fun AttachmentCommentChip(
         modifier =
             Modifier
                 .clip(shape)
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+                    } else {
+                        Modifier
+                    }
+                )
                 .background(colors.fillMuted, shape)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -472,3 +497,15 @@ private fun AttachmentCommentComposer(
         }
     }
 }
+
+/**
+ * web panel order (`anchorOrderKey`): comments without a position on top, then by position in the
+ * file; mobile places video timestamps (by time). Stable, so equal keys keep the server order.
+ */
+internal fun List<ThreadAttachmentCommentItem>.inAttachmentCommentAnchorOrder(): List<ThreadAttachmentCommentItem> =
+    sortedBy { comment ->
+        when (val anchor = comment.anchor) {
+            is ThreadAttachmentCommentAnchor.VideoTimestamp -> anchor.timeSeconds
+            null -> Double.NEGATIVE_INFINITY
+        }
+    }
