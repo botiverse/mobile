@@ -23581,6 +23581,7 @@ private fun ThreadMessagesListContent(
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
+        RaftScrollFrameSignalEffect(list = "thread") { listState.isScrollInProgress }
         // One line whenever an input of the "Back to bottom" pill changes (not on every scroll frame),
         // with the raw list position at that moment: reversed lists left the pill on after a local send
         // (HuaTuo, #raft-mobile-reconcile:6dbbf8b9) and the pill's inputs were not logged anywhere.

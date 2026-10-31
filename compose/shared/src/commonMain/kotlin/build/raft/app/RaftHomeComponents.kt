@@ -2286,6 +2286,7 @@ private fun RaftStructuralHomeShellContent(
     var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
     var listPremeasureLimit by remember { mutableStateOf(homeListInitialBeyondBoundsItemCount()) }
     val homeUserScrollGeneration = remember { HomeUserScrollGeneration() }
+    RaftScrollFrameSignalEffect(list = "home") { listState.isScrollInProgress }
     val listPositionRestoreStartUserScrollGeneration =
         remember(
             listPositionServerId,
