@@ -114,6 +114,13 @@ class RaftIosPage internal constructor(
         backSwipeRegions.contentConsumesBackSwipeAtPoint(x, y)
 
     /**
+     * Main thread. True when a touch starting at ([x], [y]) (points in [viewController]'s view) is
+     * on content no edge back gesture may hold (the app rail, `raftKeepsEdgeTouches`).
+     */
+    fun keepsEdgeTouches(x: Double, y: Double): Boolean =
+        backSwipeRegions.keepsEdgeTouchesAtPoint(x, y)
+
+    /**
      * Delivers [event] with [dataJson] (a JSON object as text; blank or malformed -> `{}`) to the
      * page as a pager event. Safe from any thread: delivery always happens on the main thread.
      */

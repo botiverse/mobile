@@ -116,4 +116,20 @@ class RaftBackSwipeTest {
         registry.unregister(overlay)
         assertEquals(0, registry.regionCount)
     }
+
+    @Test
+    fun onlyTheRailKeepsItsTouchesFromTheEdgeBackGesture() {
+        val registry = RaftBackSwipeRegions()
+        registry.density = 3f
+        // The app rail on the leading edge (72 pt), and a horizontal strip that keeps back drags.
+        val rail = registry.register(bounds = { Rect(0f, 0f, 216f, 2400f) }, consumesBackSwipe = { true }, keepsTouches = true)
+        registry.register(bounds = { Rect(216f, 300f, 1206f, 600f) }, consumesBackSwipe = { true })
+        assertTrue(registry.keepsEdgeTouchesAtPoint(10.0, 400.0), "a touch on the rail")
+        assertFalse(registry.keepsEdgeTouchesAtPoint(100.0, 150.0), "the strip keeps back drags, not touches")
+        assertFalse(registry.keepsEdgeTouchesAtPoint(100.0, 700.0), "beside the rail the edge gesture still gets it")
+        registry.unregister(rail)
+        assertFalse(registry.keepsEdgeTouchesAtPoint(10.0, 400.0), "with no rail (a pushed page) the edge is the gesture's")
+        registry.registerWholePage()
+        assertFalse(registry.keepsEdgeTouchesAtPoint(10.0, 400.0), "an open overlay keeps back drags, not touches")
+    }
 }
