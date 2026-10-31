@@ -3401,8 +3401,13 @@ internal fun RaftPendingMentionActionItem.targetLabel(): String {
 // (never "?" or the target type).
 private fun RaftPendingMentionActionItem.targetAvatarName(): String = targetHandle.trim()
 
-private fun RaftPendingMentionActionItem.targetAvatarFill(suggestion: RaftComposerMemberItem?): Color =
-    raftAvatarFallbackFill(suggestion?.kind ?: if (targetType == "agent") MemberKind.Agent else MemberKind.Human)
+/** The mention target's face: the matching suggestion's member when there is one, else just its kind. */
+private fun RaftPendingMentionActionItem.targetAvatarIdentity(suggestion: RaftComposerMemberItem?): RaftMemberAvatarIdentity =
+    RaftMemberAvatarIdentity(
+        kind = suggestion?.kind ?: if (targetType == "agent") MemberKind.Agent else MemberKind.Human,
+        memberId = suggestion?.memberId,
+        serverId = suggestion?.sourceServerId,
+    )
 
 internal fun RaftPendingMentionActionItem.targetAvatarWireValue(): String? =
     targetAvatarUrl?.takeIf { it.isNotBlank() }
@@ -3786,13 +3791,11 @@ internal fun ComposerMemberSuggestionRow(
                 statusSize = ComposerMemberSuggestionStatusSize,
                 statusPulsing = agentStatus?.pulsing == true
             ) {
-                RaftAppAvatar(
-                    avatarWireValue = member.avatarWireValue,
+                RaftMemberAvatar(
+                    identity = RaftMemberAvatarIdentity(member.kind, member.memberId, member.sourceServerId),
                     label = member.displayName.ifBlank { member.avatarLabel },
                     avatarSize = ComposerMemberSuggestionAvatarSize,
-                    fallbackFill = raftAvatarFallbackFill(member.kind),
-                    cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
-                    cacheServerId = member.sourceServerId
+                    carriedAvatarWireValue = member.avatarWireValue,
                 )
             }
         }
@@ -4134,14 +4137,14 @@ private fun PendingMentionActionAvatarStack(
     ) {
         actions.take(2).forEach { action ->
             val suggestion = action.matchingTargetSuggestion(memberSuggestions)
-            RaftAppAvatar(
-                avatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
+            RaftMemberAvatar(
+                identity = action.targetAvatarIdentity(suggestion),
                 label =
                     suggestion?.displayName?.takeIf(String::isNotBlank)
                         ?: suggestion?.avatarLabel?.takeIf(String::isNotBlank)
                         ?: action.targetAvatarName(),
                 avatarSize = 24.dp,
-                fallbackFill = action.targetAvatarFill(suggestion),
+                carriedAvatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
             )
         }
         val overflowCount = (actions.size - 2).coerceAtLeast(0)
@@ -4269,11 +4272,11 @@ private fun PendingMentionActionCompactRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftAppAvatar(
-            avatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
+        RaftMemberAvatar(
+            identity = action.targetAvatarIdentity(targetSuggestion),
             label = targetAvatarLabel,
             avatarSize = 28.dp,
-            fallbackFill = action.targetAvatarFill(targetSuggestion),
+            carriedAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
@@ -4401,11 +4404,11 @@ private fun PendingMentionActionRow(
                     color = if (removing) "#777777" else RaftColor.TextMutedGrayArgb
                 )
             }
-            RaftAppAvatar(
-                avatarWireValue = targetAvatarWireValue,
+            RaftMemberAvatar(
+                identity = action.targetAvatarIdentity(targetSuggestion),
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                fallbackFill = action.targetAvatarFill(targetSuggestion),
+                carriedAvatarWireValue = targetAvatarWireValue,
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

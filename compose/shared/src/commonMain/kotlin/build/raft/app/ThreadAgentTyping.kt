@@ -51,7 +51,8 @@ import build.raft.designsystem.theme.RaftTheme
 internal data class ThreadTypingAgent(
     val agentId: String,
     val name: String,
-    val avatarUrl: String?,
+    /** The face the page already knows for the agent; [RaftMemberAvatar] still reads the directory first. */
+    val avatarWireValue: String?,
 )
 
 /** The page's typing line: who, in the order they started (never empty). */
@@ -85,8 +86,8 @@ internal fun RaftThreadScreenPayload.agentTypingConversation(): Pair<String, Str
  * it doesn't know yet still shows, as [fallbackName] (web `activity.live.agentFallback`).
  *
  * Faces resolve like message rows ([raftMemberAvatarResolver]): a server member's rendered avatar
- * (its `avatar` slot holds a pixel face, which `avatarUrl` never does), else [durableAvatar], the
- * last avatar persisted for the id while the directory has none.
+ * (pixel face or image), else [durableAvatar], the last avatar persisted for the id while the
+ * directory has none.
  */
 internal fun resolveThreadTypingAgents(
     agentIds: List<String>,
@@ -220,13 +221,11 @@ internal fun ThreadAgentTypingLine(typing: ThreadAgentTypingUi, modifier: Modifi
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy((-5).dp), verticalAlignment = Alignment.CenterVertically) {
                 typing.agents.take(ThreadAgentTypingMaxFaces).forEach { agent ->
-                    RaftAppAvatar(
-                        avatarWireValue = agent.avatarUrl,
+                    RaftMemberAvatar(
+                        identity = RaftMemberAvatarIdentity(MemberKind.Agent, agent.agentId, typing.serverId),
                         label = agent.name.toRaftAvatarLabel(),
                         avatarSize = 19.dp,
-                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.agentId),
-                        cacheServerId = typing.serverId,
-                        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
+                        carriedAvatarWireValue = agent.avatarWireValue,
                     )
                 }
             }

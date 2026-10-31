@@ -250,13 +250,11 @@ internal fun <T> RaftForwardPickerTargetRow(
                             }
                         }
                     )
-                } else RaftAppAvatar(
-                    avatarWireValue = target.avatarWireValue,
+                } else RaftMemberAvatar(
+                    identity = RaftMemberAvatarIdentity(target.cacheMemberKind, target.cacheMemberId, target.cacheServerId),
                     label = target.title.ifBlank { target.avatarLabel },
                     avatarSize = ForwardPickerAvatarSize,
-                    cacheSubject = raftMemberAvatarCacheSubject(target.cacheMemberKind, target.cacheMemberId),
-                    cacheServerId = target.cacheServerId,
-                    fallbackFill = raftAvatarFallbackFill(target.cacheMemberKind)
+                    carriedAvatarWireValue = target.avatarWireValue,
                 )
             RaftForwardTargetVisualKind.PublicChannel,
             RaftForwardTargetVisualKind.PrivateChannel,

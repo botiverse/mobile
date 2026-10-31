@@ -978,13 +978,11 @@ internal fun channelSettingsMemberCountLabel(
 @Composable
 private fun ChannelSettingsMemberAvatar(member: MemberProfile, agentStatusResolver: RaftAgentStatusResolver) {
     val avatar: @Composable () -> Unit = {
-        RaftAppAvatar(
-            avatarWireValue = member.avatarWireValueForAvatarSlot(),
+        RaftMemberAvatar(
+            identity = RaftMemberAvatarIdentity(member.kind, member.id.value, member.serverId?.value),
             label = member.raftAvatarName(),
             avatarSize = ChannelSettingsStripTile,
-            cacheSubject = member.raftAvatarCacheSubject(),
-            cacheServerId = member.serverId?.value,
-            fallbackFill = raftAvatarFallbackFill(member.kind)
+            carriedAvatarWireValue = member.avatarWireValueForAvatarSlot(),
         )
     }
     if (member.kind != MemberKind.Agent) {

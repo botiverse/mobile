@@ -356,12 +356,11 @@ private fun FollowersPopover(
                                     statusPulsing = indicator?.pulsing == true,
                                     cutoutColor = theme.surface,
                                 ) {
-                                    RaftAppAvatar(
-                                        avatarWireValue = agent.avatarUrl,
+                                    RaftMemberAvatar(
+                                        identity = agent.avatarIdentity(),
                                         label = agent.label,
                                         avatarSize = RaftAvatarSize.Md.edge,
-                                        cacheServerId = agent.serverId,
-                                        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
+                                        carriedAvatarWireValue = agent.avatarUrl,
                                     )
                                 }
                             },
@@ -409,10 +408,17 @@ internal fun threadFollowerRemoveEnabled(agent: ThreadAgentFollower, state: Thre
 
 @Composable
 private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
-    RaftAppAvatar(avatarWireValue = agent.avatarUrl, label = agent.label,
-        avatarSize = if (compact) 20.dp else 28.dp, cacheServerId = agent.serverId,
-        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent))
+    RaftMemberAvatar(
+        identity = agent.avatarIdentity(),
+        label = agent.label,
+        avatarSize = if (compact) 20.dp else 28.dp,
+        carriedAvatarWireValue = agent.avatarUrl,
+    )
 }
+
+/** A follower's face is the agent's, read from its own server's directory. */
+private fun ThreadAgentFollower.avatarIdentity(): RaftMemberAvatarIdentity =
+    RaftMemberAvatarIdentity(kind = MemberKind.Agent, memberId = id, serverId = serverId)
 
 /**
  * Task #20: the followers endpoint's `status` is the agent's DB lifecycle column (active /
