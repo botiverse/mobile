@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Alpha build: the strings Android shows outside the app (launcher, recents, notifications,
+    notification settings, widget picker, toasts) name the app "Raft Alpha", so an Alpha
+    notification never reads as production's. Each entry is the main string with "Raft" ->
+    "Raft Alpha"; AlphaAppNameResourcesTest keeps the en/zh-CN/ja lists in step with main.
+-->
+<resources>
+    <string name="app_name">Raft Alpha</string>
+    <string name="raft_background_connection_notification_title">Raft Alpha がメッセージを受信中</string>
+    <string name="raft_background_connection_channel_description">Google Play 開発者サービスのないデバイスで、Raft Alpha がメッセージ通知のためにバックグラウンドで接続を維持している間に表示されます。</string>
+    <string name="settings_notification_test_title">Raft Alpha 通知テスト</string>
+    <string name="notification_unread_general_channel_description">Raft Alpha の一般的な未読メッセージ通知。</string>
+    <string name="inbox_notification_channel_description">Raft Alpha からの未読アクティビティ更新。</string>
+    <string name="slock_activity_widget_name">Raft Alpha アクティビティ</string>
+    <string name="slock_agent_status_widget_name">Raft Alpha ライブエージェント</string>
+    <string name="raft_download_notification_tap_retry">Raft Alpha を開いてもう一度お試しください</string>
+    <string name="external_share_import_failed_toast">この共有コンテンツを Raft Alpha に取り込めませんでした</string>
+    <string name="attachment_save_as_failed_toast">Raft Alpha でこのファイルを保存できませんでした。もう一度お試しください。</string>
+</resources>

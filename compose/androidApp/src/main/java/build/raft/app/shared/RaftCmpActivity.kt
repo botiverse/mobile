@@ -5828,7 +5828,8 @@ internal class RaftBridgeModule(
         val key = response.handsDownloadKey(arch)
         val title =
                 buildString {
-                    append("Raft")
+                    // The launcher label ("Raft Alpha" on the alpha build), as the system download row shows it.
+                    append(appContext.getString(R.string.app_name))
                     latest.version.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
                 }
         val request =
