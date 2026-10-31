@@ -1170,6 +1170,7 @@ jobs:
           # reports success when a selector matches nothing.
           python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" \
             RaftRouterLoginTransitionTests \
+            RaftIosComposeScrollEdgeEffectsTests \
             RaftCmpBridgeSelectorTests \
             RaftIosTabBarItemMappingTests \
             RaftInteractivePopGestureTests \
