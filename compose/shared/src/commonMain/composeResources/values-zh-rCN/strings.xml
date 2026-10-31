@@ -169,6 +169,15 @@
     <string name="settings_account_logout_action">退出登录</string>
     <string name="settings_account_logout_detail">退出此设备上的登录。你的账户和数据会保留，之后可随时重新登录。</string>
     <string name="settings_account_logout_confirm">要退出此设备上的登录吗？你的账户和数据会保留，之后可随时重新登录。</string>
+    <string name="settings_account_delete">删除账户</string>
+    <string name="settings_account_delete_detail">申请永久删除你的 Raft 账户和个人数据。</string>
+    <string name="settings_account_delete_action">删除账户</string>
+    <string name="settings_account_delete_title">要删除你的账户吗？</string>
+    <string name="settings_account_delete_message">我们会在 %1$d 天内删除你的账户和个人数据（个人资料、邮箱、头像和登录方式）。你在共享频道中发送的消息会保留，并显示为“已删除用户”。完成后我们会发邮件通知你。</string>
+    <string name="settings_account_delete_confirm">申请删除</string>
+    <string name="settings_account_delete_requesting">正在申请…</string>
+    <string name="settings_account_delete_requested">已提交删除申请。我们会在 %1$d 天内发邮件通知你。</string>
+    <string name="settings_account_delete_failed">删除申请未能发送，请重试。</string>
     <string name="settings_usage_data_title">共享使用数据</string>
     <string name="settings_usage_data_description">帮助我们改进 Raft：记录你使用了哪些页面和功能，不包含消息或其他内容。</string>
     <string name="settings_usage_data_learn_more">了解更多</string>

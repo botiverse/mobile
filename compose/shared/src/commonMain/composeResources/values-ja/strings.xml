@@ -169,6 +169,15 @@
     <string name="settings_account_logout_action">ログアウト</string>
     <string name="settings_account_logout_detail">このデバイスからログアウトします。アカウントとデータは保持され、いつでも再ログインできます。</string>
     <string name="settings_account_logout_confirm">このデバイスからログアウトしますか？アカウントとデータは保持され、いつでも再ログインできます。</string>
+    <string name="settings_account_delete">アカウントを削除</string>
+    <string name="settings_account_delete_detail">Raft アカウントと個人データの完全な削除を依頼します。</string>
+    <string name="settings_account_delete_action">アカウントを削除</string>
+    <string name="settings_account_delete_title">アカウントを削除しますか？</string>
+    <string name="settings_account_delete_message">%1$d 日以内にアカウントと個人データ（プロフィール、メールアドレス、アバター、ログイン方法）を削除します。共有チャンネルで送信したメッセージは残り、「削除済みユーザー」と表示されます。完了したらメールでお知らせします。</string>
+    <string name="settings_account_delete_confirm">削除を依頼</string>
+    <string name="settings_account_delete_requesting">依頼中…</string>
+    <string name="settings_account_delete_requested">削除を依頼しました。%1$d 日以内にメールでお知らせします。</string>
+    <string name="settings_account_delete_failed">削除の依頼を送信できませんでした。もう一度お試しください。</string>
     <string name="settings_usage_data_title">使用状況データを共有</string>
     <string name="settings_usage_data_description">使用しているページや機能の情報を共有して、Raft の改善にご協力ください。メッセージやその他のコンテンツは含まれません。</string>
     <string name="settings_usage_data_learn_more">詳細を見る</string>

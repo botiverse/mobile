@@ -216,6 +216,13 @@ internal expect fun raftSlugSlashCenteringOffsetDp(): Float
 // every target is capped at 50MB.
 internal expect fun raftFeedbackAttachmentMaxBytes(): Long
 
+/**
+ * Whether the host can submit a Hands feedback ticket from shared code (`settingsCapability`
+ * `submitFeedback`). The Android and iOS hosts do; the Compose desktop host does not implement it
+ * yet, so Settings › Account hides Delete account there (its request is such a ticket).
+ */
+internal expect fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean
+
 /** Stable host identity injected into the standalone feedback WebView session metadata. */
 internal expect fun raftFeedbackWebViewClientKind(): String
 

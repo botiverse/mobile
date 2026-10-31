@@ -48,6 +48,7 @@ new product concept gets a Japanese rendering.
 | Join / Leave (channel, server) | 参加 / 退出 | |
 | Sign in / Sign out | ログイン / ログアウト | One pair everywhere; never サインイン |
 | Connected accounts | 連携アカウント | |
+| Delete account / Deleted user | アカウントを削除 / 削除済みユーザー | Settings › Account deletion request; "Request deletion" = 「削除を依頼」. zh-CN 删除账户 / 已删除用户 |
 | Assistant (personal) | アシスタント | Web `assistant.*` catalog term |
 | Sent by (assistant, on the owner's behalf) | 〜が代理送信 | "sent by Friday" = 「Friday が代理送信」; deleted = 「削除済みのアシスタントが代理送信」 (RFC 077) |
 | Otter (the assistant's entry on the composer) | カワウソ | Web `assistant.otter.*`: "Collapse to otter" = 「カワウソにしまう」 |
