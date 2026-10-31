@@ -30,6 +30,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.time.Clock
 
 internal data class SharedThreadComposerDraftState(
     val instanceId: String = "",
@@ -125,6 +126,14 @@ internal data class SharedThreadComposerDraftRecord(
             parent != null && parent == otherParent && mention != null && mention == otherMention
         }
 }
+
+/** One active draft as the Drafts list reads it: where it was typed, its text and its last edit. */
+internal data class SharedThreadComposerDraftListing(
+    val record: SharedThreadComposerDraftRecord,
+    val text: String,
+    /** Null for a draft saved before edit times were kept. */
+    val editedAtEpochMillis: Long?
+)
 
 /** Exact key/value image used to undo a multi-key draft transition. */
 internal data class SharedThreadComposerDraftStorageSnapshot(
@@ -409,7 +418,9 @@ internal class SharedThreadComposerDraftPersistence(
             ThreadComposerTemporaryFileRetirement.retire(sessionId, refs)
         },
     /** Test seam for the write→retirement race; production leaves it null. */
-    private val beforeTemporaryFileRefsRetirementFence: (() -> Unit)? = null
+    private val beforeTemporaryFileRefsRetirementFence: (() -> Unit)? = null,
+    /** When a draft's text was last edited ([EditedAtSuffix]); tests pass a fixed clock. */
+    private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() }
 ) {
     /** Shared with every facade which wraps the same [store]. */
     private val lockEntry = SharedThreadComposerDraftStoreLockRegistry.entryFor(store)
@@ -689,7 +700,7 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     internal fun storageKeysForDraft(key: String): Set<String> =
-        setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key))
+        setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key), editedAtKey(key))
 
     fun read(key: String): SharedThreadComposerPersistedDraft? = lock.withLock {
         val text = store.getString(textKey(key)) ?: return@withLock null
@@ -856,6 +867,17 @@ internal class SharedThreadComposerDraftPersistence(
                 sourcesKey(key),
                 persistedSources.takeIf { it.isNotEmpty() }
                     ?.let { sources -> ComposerDraftJson.encodeToString(sources) }
+            )
+            // Drafts (drafts_section_v0): the text's last edit, beside the draft's other rows. A save
+            // that leaves the text as it was (a flush, an attachment change) keeps the old time; a
+            // draft saved before this row existed has none until its text changes.
+            store.putString(
+                editedAtKey(key),
+                if (previous != null && previous.text == text) {
+                    store.getString(editedAtKey(key))
+                } else {
+                    nowEpochMillis().toString()
+                }
             )
             addActiveKey(key)
         } catch (error: Throwable) {
@@ -1185,6 +1207,18 @@ internal class SharedThreadComposerDraftPersistence(
         activeDraftRecordsUnlocked()
     }
 
+    /** Every active draft with its text and last edit, for the Drafts list. */
+    fun draftListings(): List<SharedThreadComposerDraftListing> = lock.withLock {
+        activeDraftRecordsUnlocked().mapNotNull { record ->
+            val text = store.getString(textKey(record.key)) ?: return@mapNotNull null
+            SharedThreadComposerDraftListing(
+                record = record,
+                text = text,
+                editedAtEpochMillis = store.getString(editedAtKey(record.key))?.toLongOrNull()
+            )
+        }
+    }
+
     internal fun recordForKey(key: String): SharedThreadComposerDraftRecord? =
         key.toSharedThreadComposerDraftRecord()
 
@@ -1211,6 +1245,7 @@ internal class SharedThreadComposerDraftPersistence(
             store.putString(asTaskKey(key), null)
             store.putString(attachmentsKey(key), null)
             store.putString(sourcesKey(key), null)
+            store.putString(editedAtKey(key), null)
             removeActiveKey(key)
         } catch (error: Throwable) {
             runCatching { restoreTransitionSnapshotUnlocked(before) }
@@ -1258,6 +1293,7 @@ internal class SharedThreadComposerDraftPersistence(
     private fun asTaskKey(key: String): String = "$DraftStoragePrefix$key$AsTaskSuffix"
     private fun attachmentsKey(key: String): String = "$DraftStoragePrefix$key$AttachmentsSuffix"
     private fun sourcesKey(key: String): String = "$DraftStoragePrefix$key$SourcesSuffix"
+    private fun editedAtKey(key: String): String = "$DraftStoragePrefix$key$EditedAtSuffix"
 
     private fun readExternalShareSources(key: String): List<SharedThreadComposerExternalShareSource> =
         store.getString(sourcesKey(key))
@@ -1355,11 +1391,13 @@ internal class SharedThreadComposerDraftPersistence(
         const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
         const val SourcesSuffix = ":externalShareSources"
+        /** Epoch millis of the text's last edit (Drafts); absent on drafts saved before it existed. */
+        const val EditedAtSuffix = ":editedAt"
         private val ComposerDraftJson = Json { ignoreUnknownKeys = true }
 
         /** Every row one draft key owns (the active index aside). */
         fun draftRowKeys(key: String): List<String> =
-            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix)
+            listOf(TextSuffix, AsTaskSuffix, AttachmentsSuffix, SourcesSuffix, EditedAtSuffix)
                 .map { suffix -> "$DraftStoragePrefix$key$suffix" }
     }
 }
@@ -1417,6 +1455,9 @@ internal class SharedThreadComposerDraftPersistSlice(
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
+
+    /** The durable drafts with their text and last edit (the Drafts list); see [SharedThreadComposerDraftPersistence.draftListings]. */
+    fun draftListings(): List<SharedThreadComposerDraftListing> = persistence.draftListings()
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
     private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()

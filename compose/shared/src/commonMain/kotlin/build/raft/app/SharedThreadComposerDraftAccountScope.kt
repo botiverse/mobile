@@ -257,6 +257,8 @@ internal class SharedThreadComposerDraftAccounts(
         slice: SharedThreadComposerDraftPersistSlice
     ) {
         val previous = synchronized(lock) { lastBound.also { lastBound = account } }
+        // Drafts' GET /channels/:id answers are this account's too: another account (or none) starts empty.
+        SharedRaftDraftPlaceLookups.bindAccount(account?.storageToken)
         if (previous != null && previous != account) {
             slice.retireAccountSession { store.rebind(account) }
         } else {

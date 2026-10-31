@@ -146,6 +146,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeParentThreadUnread
 import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
@@ -478,6 +479,7 @@ const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val HOME_SEARCH_PAGE = "compose_home_search"
 internal const val HOME_SAVED_PAGE = "compose_home_saved"
+internal const val HOME_DRAFTS_PAGE = "compose_home_drafts"
 internal const val HOME_ACTIVITY_PAGE = "compose_home_activity"
 const val HOME_SEARCH_SELECTED_CHANNEL_ID = "selectedChannelId"
 const val HOME_SEARCH_INITIAL_OPEN_FILTER_ID = "initialOpenFilterId"
@@ -1005,6 +1007,7 @@ internal const val AppShellRailSearchKey = "rail_search"
 
 /** Saved opened from the Home sidebar in desktop mode: an inline list pane, like rail Search. */
 internal const val AppShellRailSavedKey = "rail_saved"
+internal const val AppShellRailDraftsKey = "rail_drafts"
 
 /**
  * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
@@ -6166,7 +6169,7 @@ private fun RaftAppShellReadyContent(
     /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
     fun restoreWideNavEntry(entry: RaftWideNavEntry) {
         serverMenuState.dismiss()
-        if (entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey) {
+        if (entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey) {
             railInlineSecondaryDestination = entry.surface
         } else {
             railInlineSecondaryDestination = null
@@ -7782,6 +7785,22 @@ private fun RaftAppShellReadyContent(
                                         SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
                                     )
                             }
+                        // drafts_section_v0 (web DRAFTS_SECTION_FLAG_KEY): the Drafts row under Saved.
+                        val homeDraftsSource =
+                            remember(homeListServerId, homeFeatureFlagRevision, appShellNetworkClient) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                if (
+                                    flagServerId != null &&
+                                        sharedStores.serverFeatureFlags.isEnabled(
+                                            ServerId(flagServerId),
+                                            DRAFTS_SECTION_FEATURE_FLAG_KEY
+                                        )
+                                ) {
+                                    RaftDraftsSource(appShellNetworkClient, sharedStores.tasksDataStore)
+                                } else {
+                                    null
+                                }
+                            }
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
@@ -7898,6 +7917,16 @@ private fun RaftAppShellReadyContent(
                                         bridge.log("app_shell_rail_secondary_open destination=saved")
                                     } else {
                                         openHomeSecondaryDestination(HomeDestinationSaved)
+                                    }
+                                },
+                                draftsSource = homeDraftsSource,
+                                onOpenDrafts = {
+                                    if (desktopModeOnLargeScreen) {
+                                        // As Saved: the wide rail opens Drafts as the list pane.
+                                        railInlineSecondaryDestination = AppShellRailDraftsKey
+                                        bridge.log("app_shell_rail_secondary_open destination=drafts")
+                                    } else {
+                                        pager.openHomeDraftsPage(threadTimeContext, navigationStoreScope)
                                     }
                                 },
                                 onOpenComputers = {
@@ -8322,6 +8351,7 @@ private fun RaftAppShellReadyContent(
                         when (railInlineSecondaryDestination) {
                             AppShellRailSearchKey -> HomeDestinationSearch
                             AppShellRailSavedKey -> HomeDestinationSaved
+                            AppShellRailDraftsKey -> HomeDestinationDrafts
                             else -> null
                         }
                     if (railInlineDestination != null) {
@@ -10671,6 +10701,9 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
+    /** Server flag `drafts_section_v0` on: what the Drafts row's count reads; null hides the row. */
+    draftsSource: RaftDraftsSource? = null,
+    onOpenDrafts: () -> Unit = {},
     onOpenComputers: () -> Unit = {},
     onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
@@ -10936,6 +10969,15 @@ private fun SharedHomeScreen(
                         SharedThreadComposerDraftProjection.Empty
                     }
                 }
+            // Drafts (drafts_section_v0): the row's count is the Drafts list's length, placed the same way.
+            val draftDirectory = rememberRaftDraftDirectory(draftsSource, snapshot)
+            val draftListing =
+                rememberRaftDraftListing(
+                    directory = draftDirectory,
+                    draftPersistSlice = draftPersistSlice,
+                    networkClient = draftsSource?.networkClient,
+                    refreshTick = if (active) 1 else 0,
+                )
             val conversationDirectoryIds =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).map { it.threadId.value }
@@ -11067,6 +11109,7 @@ private fun SharedHomeScreen(
                     activityTotalCount = activityTotalCount
                 ),
                 savedCount = savedCount,
+                draftsCount = draftListing.count.takeIf { draftDirectory != null },
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
@@ -11078,6 +11121,7 @@ private fun SharedHomeScreen(
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
+                draftsSelected = state.selectedTopAction == SharedHomeTopAction.Drafts,
                 notifications = notificationItems,
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
                 unreadStale = state.unreadStale,
@@ -11133,6 +11177,10 @@ private fun SharedHomeScreen(
                 onSavedClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Saved))
                     onOpenSaved()
+                },
+                onDraftsClick = {
+                    onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Drafts))
+                    onOpenDrafts()
                 },
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
@@ -15725,6 +15773,27 @@ private fun Pager.openStandaloneThreadLaunchPayload(
     openRaftPage(
         pageName = THREAD_PAGE,
         pageData = threadLaunchPageData(launchPayload).withRaftOpenAnimation(animated),
+        storeScopeOverride = storeScope
+    )
+}
+
+/** The phone's Drafts page (drafts_section_v0), pushed like Saved. */
+internal fun Pager.openHomeDraftsPage(
+    timeContext: AppShellThreadTimeContext?,
+    storeScope: RaftShellStoreScope
+) {
+    val pageData =
+        JSONObject().apply {
+            put("pageName", HOME_DRAFTS_PAGE)
+            put("destination", HomeDestinationDrafts)
+            put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
+            timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
+            timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
+            put("timeFormat", timeContext?.timeFormat ?: RaftTimeFormat24Hour)
+        }
+    openRaftPage(
+        pageName = HOME_DRAFTS_PAGE,
+        pageData = pageData,
         storeScopeOverride = storeScope
     )
 }

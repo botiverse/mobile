@@ -125,6 +125,8 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ChannelSettings,
         AuthenticatedProductRoute.JointChannelConnections,
         AuthenticatedProductRoute.ThreadForwardBundle,
+        // No `drafts` route in the shared page_viewed registry yet.
+        AuthenticatedProductRoute.HomeDrafts,
         AuthenticatedProductRoute.FilePreview,
         AuthenticatedProductRoute.ArtifactViewer -> null
     }

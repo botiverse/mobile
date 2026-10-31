@@ -16,6 +16,8 @@ class AuthenticatedProductRouteTest {
                 THREAD_FORWARD_BUNDLE_PAGE,
                 HOME_SEARCH_PAGE,
                 HOME_SAVED_PAGE,
+                // Drafts (drafts_section_v0): the phone's pushed Drafts page.
+                HOME_DRAFTS_PAGE,
                 HOME_ACTIVITY_PAGE,
                 MEMBERS_PAGE,
                 MEMBER_DETAIL_PAGE,

@@ -19,6 +19,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     ThreadForwardBundle(THREAD_FORWARD_BUNDLE_PAGE),
     HomeSearch(HOME_SEARCH_PAGE),
     HomeSaved(HOME_SAVED_PAGE),
+    HomeDrafts(HOME_DRAFTS_PAGE),
     HomeActivity(HOME_ACTIVITY_PAGE),
     Members(MEMBERS_PAGE),
     MemberDetail(MEMBER_DETAIL_PAGE),

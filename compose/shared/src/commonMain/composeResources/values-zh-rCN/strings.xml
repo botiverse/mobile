@@ -2035,6 +2035,16 @@
     <string name="saved_title">已保存</string>
     <string name="saved_count">%1$d 项</string>
     <string name="saved_count_one">%1$d 项</string>
+    <string name="home_nav_drafts">草稿</string>
+    <string name="drafts_title">草稿</string>
+    <string name="drafts_count">%1$d 条</string>
+    <string name="drafts_count_one">%1$d 条</string>
+    <string name="drafts_row_thread_in">%1$s 中的消息列</string>
+    <string name="drafts_row_task_untitled">任务</string>
+    <string name="drafts_row_unknown_conversation">某个会话</string>
+    <string name="drafts_row_draft_label">草稿：</string>
+    <string name="drafts_empty_title">没有草稿</string>
+    <string name="drafts_empty_detail">在任何会话里写了但没发出去的消息，都会留在这里。</string>
     <string name="saved_action_load_more">加载更多</string>
     <string name="saved_action_copy_link">复制链接</string>
     <string name="saved_action_copy_markdown">复制 Markdown</string>

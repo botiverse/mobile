@@ -889,7 +889,7 @@ internal fun ActivityConversationListRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ActivityConversationLeading(model, item, agentStatusResolver)
+                ActivityConversationLeading(model, item.channelName, agentStatusResolver)
                 Column(modifier = Modifier.weight(1f)) {
                     // Line 1: title (+ task badge) and, at its end, the time (raft-ui InboxItem: the
                     // timestamp sits beside the title only, so it never narrows the excerpt below).
@@ -1053,10 +1053,14 @@ internal fun activityConversationBodyText(
 internal fun activityConversationAccessibilityBody(channelLabel: String?, sender: String?, preview: String): String =
     activityConversationBodyText(sender = sender, preview = AnnotatedString(preview), channelLabel = channelLabel).text
 
+/**
+ * The row's leading tile (web `ConversationAvatar`), shared with Drafts (RaftDraftRow).
+ * [fallbackLabel]: the DM peer's name when the peer has no display name.
+ */
 @Composable
-private fun ActivityConversationLeading(
+internal fun ActivityConversationLeading(
     model: ActivityConversationRowModel,
-    item: InboxItem,
+    fallbackLabel: String,
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val colors = RaftTheme.colors
@@ -1093,7 +1097,7 @@ private fun ActivityConversationLeading(
     RaftInboxItemLeading(badge = threadBadge) {
         val peer = model.dmPeer
         if (peer != null) {
-            val label = peer.displayName ?: item.channelName
+            val label = peer.displayName ?: fallbackLabel
             val avatarKind = if (peer.peerIsAgent) MemberKind.Agent else MemberKind.Human
             // An agent's DM row carries its status light, as on its sidebar row; people do not, and a
             // DM thread's corner is the thread badge's.

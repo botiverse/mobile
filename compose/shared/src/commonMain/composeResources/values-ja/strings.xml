@@ -2037,6 +2037,16 @@
     <string name="saved_title">保存済み</string>
     <string name="saved_count">%1$d 件</string>
     <string name="saved_count_one">%1$d 件</string>
+    <string name="home_nav_drafts">下書き</string>
+    <string name="drafts_title">下書き</string>
+    <string name="drafts_count">%1$d 件</string>
+    <string name="drafts_count_one">%1$d 件</string>
+    <string name="drafts_row_thread_in">%1$s のスレッド</string>
+    <string name="drafts_row_task_untitled">タスク</string>
+    <string name="drafts_row_unknown_conversation">会話</string>
+    <string name="drafts_row_draft_label">下書き：</string>
+    <string name="drafts_empty_title">下書きはありません</string>
+    <string name="drafts_empty_detail">どの会話でも、書きかけで送っていないメッセージはここに残ります。</string>
     <string name="saved_action_load_more">さらに読み込む</string>
     <string name="saved_action_copy_link">リンクをコピー</string>
     <string name="saved_action_copy_markdown">Markdown をコピー</string>
