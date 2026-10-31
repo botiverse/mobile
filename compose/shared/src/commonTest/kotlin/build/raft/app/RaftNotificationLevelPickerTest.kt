@@ -51,4 +51,42 @@ class RaftNotificationLevelPickerTest {
             raftNotificationLevelNotes(channel.copy(scope = RaftNotificationLevelScope.Thread))
         )
     }
+
+    @Test
+    fun threadsHaveNoLevelAndChannelsOfferDefaultAllMentions() {
+        // stdrc + Wug (#proj-raft-ui:f603e418): threads only follow / unfollow; channels and DMs
+        // keep Default / All / Mentions, as Slack.
+        assertEquals(false, raftNotificationLevelEntryShown(RaftNotificationLevelScope.Thread))
+        assertEquals(true, raftNotificationLevelEntryShown(RaftNotificationLevelScope.Channel))
+        assertEquals(true, raftNotificationLevelEntryShown(RaftNotificationLevelScope.Server))
+        // A DM is only muted or not (web slock #12214).
+        assertEquals(false, raftNotificationLevelEntryShown(RaftNotificationLevelScope.Channel, isDirectMessage = true))
+        // A channel lists concrete levels only; no "Default" (stdrc, #proj-raft-ui:f603e418).
+        assertEquals(
+            listOf(RaftNotificationLevelSetting.All, RaftNotificationLevelSetting.Mentions, RaftNotificationLevelSetting.None),
+            raftNotificationLevelChoices(RaftNotificationLevelScope.Channel),
+        )
+    }
+
+    @Test
+    fun aChannelShowsItsEffectiveLevelAndPickingTheServersLevelFollowsTheServerAgain() {
+        // Nothing stored: the inherited level shows as selected.
+        assertEquals(
+            RaftNotificationLevelSetting.Mentions,
+            raftChannelLevelShown(RaftNotificationLevelSetting.Default, RaftNotificationLevel.Mentions),
+        )
+        assertEquals(
+            RaftNotificationLevelSetting.None,
+            raftChannelLevelShown(RaftNotificationLevelSetting.None, RaftNotificationLevel.All),
+        )
+        // Picking the server's level writes default (follow the server); another level is stored.
+        assertEquals(
+            RaftNotificationLevelSetting.Default,
+            raftChannelLevelWrite(RaftNotificationLevelSetting.All, RaftNotificationLevel.All),
+        )
+        assertEquals(
+            RaftNotificationLevelSetting.Mentions,
+            raftChannelLevelWrite(RaftNotificationLevelSetting.Mentions, RaftNotificationLevel.All),
+        )
+    }
 }

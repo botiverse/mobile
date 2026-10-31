@@ -3494,6 +3494,7 @@
     <string name="notification_level_title">Notifications</string>
     <string name="notification_level_all">All new messages</string>
     <string name="notification_level_mentions">Direct messages, mentions &amp; followed threads</string>
+    <string name="notification_level_channel_mentions">Mentions &amp; followed threads</string>
     <string name="notification_level_none">Nothing</string>
     <string name="notification_level_default">Default (%1$s)</string>
     <string name="notification_level_thread_all">All replies (follow)</string>

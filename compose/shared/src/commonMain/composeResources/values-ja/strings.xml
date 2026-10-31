@@ -3494,6 +3494,7 @@
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">すべての新着メッセージ</string>
     <string name="notification_level_mentions">DM・メンション・フォロー中のスレッド</string>
+    <string name="notification_level_channel_mentions">@メンション・フォロー中のスレッドのみ</string>
     <string name="notification_level_none">通知しない</string>
     <string name="notification_level_default">デフォルト（%1$s）</string>
     <string name="notification_level_thread_all">すべての返信（フォロー）</string>
