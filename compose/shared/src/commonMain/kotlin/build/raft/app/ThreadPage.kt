@@ -17801,18 +17801,25 @@ internal fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
                 ) {
                     agentFollowersHeader()
-                    if (!taskConversation && payload.threadHeaderSearchAction() != null) {
+                    // Web ThreadPanel: a reply thread's Search in Thread and View in Channel live in
+                    // its ⋯ menu ("thread commands live in the menu"), not as header buttons.
+                    val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+                    if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
                     }
-                    if (payload.threadHeaderOpenInParentActionVisible()) {
+                    if (!replyThreadMenu && payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
+                    val replyThreadSearch = onOpenSearch.takeIf { replyThreadMenu && payload.threadHeaderSearchAction() != null }
+                    val replyThreadViewInChannel =
+                        onOpenInChannel.takeIf { replyThreadMenu && payload.threadHeaderOpenInParentActionVisible() }
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
-                        toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation
+                        toggleFocus != null || onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
+                            replyThreadSearch != null || replyThreadViewInChannel != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             focused = focusModeActive,
@@ -17821,8 +17828,8 @@ internal fun ThreadPageHeader(
                             onToggleFollow = onToggleThreadFollow,
                             onMarkUnread = onMarkThreadUnread,
                             focusEnabled = focusModeActive || toggleFocus != null,
-                            onSearchInTask = onOpenSearch.takeIf { taskConversation },
-                            onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation },
+                            onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
+                            onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
                             taskFollowLabels = taskConversation,
                             drawLocally = toggleFocus == null,
                             notificationLevelTargetInput = notificationLevelTarget,
@@ -18538,9 +18545,9 @@ private fun ThreadHeaderFocusModeMenu(
      */
     onMarkUnread: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
-    /** Task v2 (web ThreadOverflowMenu `subject="task"`): Search in Task, after Focus mode. */
+    /** Web ThreadOverflowMenu: Search in Task (a task) or Search in Thread (a reply thread), after Focus mode. */
     onSearchInTask: (() -> Unit)? = null,
-    /** Task v2: View in Channel (the task's message in its channel, or the channel). */
+    /** View in Channel: a task's message in its channel, or a reply thread's parent message. */
     onViewInChannel: (() -> Unit)? = null,
     /** Task v2: the follow row reads Follow / Unfollow Task. */
     taskFollowLabels: Boolean = false,
@@ -18582,7 +18589,7 @@ private fun ThreadHeaderFocusModeMenu(
                 add(
                     RaftBrutalDropdownMenuItem(
                         id = SEARCH_IN_TASK_MENU_ITEM_ID,
-                        label = stringResource(Res.string.task_conversation_search),
+                        label = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
                         icon = RaftLucideIconName.Search,
                         enabled = true
                     )

@@ -329,6 +329,7 @@
     <string name="thread_action_open_with">打开方式…</string>
     <string name="thread_action_select_message">选择消息</string>
     <string name="thread_action_search">搜索</string>
+    <string name="thread_action_search_in_thread">搜索消息列</string>
     <string name="thread_action_quote">引用</string>
     <string name="thread_action_translate">翻译</string>
     <string name="thread_action_copy_link">复制链接</string>
