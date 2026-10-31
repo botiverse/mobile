@@ -29,7 +29,9 @@ import org.jetbrains.compose.resources.StringResource
  * What a level picker is about (slock docs/contracts/notifications.md §1.1): a channel or DM
  * ([RaftNotificationLevelScope.Channel], [id] = its channel id) or a thread / task conversation
  * ([RaftNotificationLevelScope.Thread], [id] = its own channel id, [parentChannelId] = the channel it
- * belongs to). [muted]: the channel (or DM) is muted in Activity, which caps the level at mentions.
+ * belongs to). [muted]: the channel (or DM) is muted, which silences it entirely (slock #12231, as in
+ * Slack). [muteSupported]: the person can mute / unmute it here, so a channel's picker offers Mute as
+ * its third choice.
  */
 data class RaftNotificationLevelTarget(
     val serverId: String,
@@ -37,7 +39,8 @@ data class RaftNotificationLevelTarget(
     val id: String,
     val parentChannelId: String? = null,
     val isDirectMessage: Boolean = false,
-    val muted: Boolean = false
+    val muted: Boolean = false,
+    val muteSupported: Boolean = false
 ) {
     /** The stored setting of this target in [levels]; `default` when none is stored. */
     fun setting(levels: RaftServerNotificationLevels): RaftNotificationLevelSetting =
@@ -55,15 +58,30 @@ data class RaftNotificationLevelTarget(
     fun inherited(levels: RaftServerNotificationLevels): RaftNotificationLevel =
         inheritedNotificationLevel(scope = scope, server = levels.server, channel = parentSetting(levels))
 
-    /** The level that applies (most specific explicit wins, then the mute cap). */
+    /** The level that applies: the most specific explicit setting; a muted channel pushes nothing. */
     fun effective(levels: RaftServerNotificationLevels): RaftNotificationLevel =
         when (scope) {
             RaftNotificationLevelScope.Thread ->
-                resolveEffectiveNotificationLevel(levels.server, parentSetting(levels), setting(levels), muted)
+                if (muted) RaftNotificationLevel.None
+                else resolveEffectiveNotificationLevel(levels.server, parentSetting(levels), setting(levels), false)
             RaftNotificationLevelScope.Channel ->
-                resolveEffectiveNotificationLevel(levels.server, setting(levels), null, muted)
+                if (muted) RaftNotificationLevel.None
+                else resolveEffectiveNotificationLevel(levels.server, setting(levels), null, false)
             RaftNotificationLevelScope.Server -> levels.server
         }
+
+    /** A channel whose picker shows Mute as a choice (web `NotificationLevelTarget.mute`). */
+    val hasMuteChoice: Boolean
+        get() = scope == RaftNotificationLevelScope.Channel && (muteSupported || muted)
+}
+
+/**
+ * One row of a channel's Notifications choice (slock #12231): a level, or Mute. A muted channel shows
+ * Mute; picking Mute sets the conversation's mute (the same state as Activity's Mute), not a level.
+ */
+sealed interface RaftNotificationChoice {
+    data class Level(val setting: RaftNotificationLevelSetting) : RaftNotificationChoice
+    data object Mute : RaftNotificationChoice
 }
 
 @Composable
@@ -113,7 +131,7 @@ internal fun rememberRaftNotificationLevelsSupported(serverId: String?): Boolean
  *
  * Threads and DMs have no level (stdrc + Wug, #proj-raft-ui:f603e418, web slock #12214, after
  * Slack): a thread is only followed or not, a DM is only muted or not. Channels keep Default / All /
- * Mentions & followed threads / Nothing, with no "Default" (the inherited level shows as
+ * Only what involves me / Nothing, with no "Default" (the inherited level shows as
  * selected); the server default lives in Settings › Notifications. Every entry point goes through here.
  */
 @Composable
@@ -130,9 +148,9 @@ internal fun raftNotificationLevelEntryShown(scope: RaftNotificationLevelScope, 
     scope != RaftNotificationLevelScope.Thread && !isDirectMessage
 
 /**
- * The choices a picker offers. A channel lists only concrete levels, All / Mentions & followed
- * threads / Nothing (stdrc + Wug, #proj-raft-ui:f603e418: a channel has no "Default"); the server
- * keeps every value.
+ * The level choices of a scope with no Mute: a channel lists only concrete levels, All / Only what
+ * involves me / Nothing (stdrc + Wug, #proj-raft-ui:f603e418: a channel has no "Default"); the
+ * server keeps every value.
  */
 internal fun raftNotificationLevelChoices(scope: RaftNotificationLevelScope): List<RaftNotificationLevelSetting> =
     when (scope) {
@@ -140,11 +158,46 @@ internal fun raftNotificationLevelChoices(scope: RaftNotificationLevelScope): Li
         else -> RaftNotificationLevelSetting.entries.filter { it != RaftNotificationLevelSetting.Default }
     }
 
-/** The concrete choice a channel shows as selected: its own level, else the one it inherits. */
+/**
+ * What a picker offers (web `useNotificationLevelModel` options, slock #12231). A channel with a mute
+ * control: All / Only what involves me / Mute, loud to quiet; a channel set to Nothing before
+ * Mute took its place keeps showing Nothing (before Mute) until it changes. Without a mute control
+ * the plain levels of [raftNotificationLevelChoices].
+ */
+internal fun raftNotificationChoices(
+    scope: RaftNotificationLevelScope,
+    hasMuteChoice: Boolean,
+    shownLevel: RaftNotificationLevelSetting,
+    muted: Boolean
+): List<RaftNotificationChoice> {
+    if (!hasMuteChoice) return raftNotificationLevelChoices(scope).map(RaftNotificationChoice::Level)
+    return buildList {
+        add(RaftNotificationChoice.Level(RaftNotificationLevelSetting.All))
+        add(RaftNotificationChoice.Level(RaftNotificationLevelSetting.Mentions))
+        if (shownLevel == RaftNotificationLevelSetting.None && !muted) {
+            add(RaftNotificationChoice.Level(RaftNotificationLevelSetting.None))
+        }
+        add(RaftNotificationChoice.Mute)
+    }
+}
+
+/** The concrete level a channel shows: its own level, else the one it inherits. */
 internal fun raftChannelLevelShown(
     setting: RaftNotificationLevelSetting,
     inherited: RaftNotificationLevel
 ): RaftNotificationLevelSetting = RaftNotificationLevelSetting.of(setting.explicitLevel ?: inherited)
+
+/** The choice a picker shows as selected: Mute while muted (channels), else the level shown. */
+internal fun raftNotificationChoiceShown(
+    target: RaftNotificationLevelTarget,
+    levels: RaftServerNotificationLevels
+): RaftNotificationChoice {
+    if (target.hasMuteChoice && target.muted) return RaftNotificationChoice.Mute
+    val inherited = target.inherited(levels)
+    val level =
+        if (target.scope == RaftNotificationLevelScope.Channel) raftChannelLevelShown(target.setting(levels), inherited) else target.setting(levels)
+    return RaftNotificationChoice.Level(level)
+}
 
 /** What picking [choice] writes for a channel: the server's own level means following the server again. */
 internal fun raftChannelLevelWrite(
@@ -152,15 +205,53 @@ internal fun raftChannelLevelWrite(
     serverLevel: RaftNotificationLevel
 ): RaftNotificationLevelSetting =
     if (choice.explicitLevel == serverLevel) RaftNotificationLevelSetting.Default else choice
-/** The current setting's label ("Default (All new messages)", "Nothing", ...), from the process level store. */
+
+/**
+ * What picking a choice does (web `useNotificationLevelModel.set`, slock #12231). [setMuted]: the
+ * mute to set first, if any; [writeLevel]: the level to store after, if any.
+ */
+internal data class RaftNotificationChoicePlan(
+    val setMuted: Boolean? = null,
+    val writeLevel: RaftNotificationLevelSetting? = null
+)
+
+/**
+ * Mute only mutes (the level stays as it is). A level on a muted channel unmutes first, and stores the
+ * level only when it differs from the one shown (so picking the shown level while muted only unmutes).
+ */
+internal fun raftNotificationChoicePlan(
+    choice: RaftNotificationChoice,
+    target: RaftNotificationLevelTarget,
+    levels: RaftServerNotificationLevels
+): RaftNotificationChoicePlan {
+    if (choice == RaftNotificationChoice.Mute) return RaftNotificationChoicePlan(setMuted = true)
+    val setting = (choice as RaftNotificationChoice.Level).setting
+    val unmute = if (target.hasMuteChoice && target.muted) false else null
+    val channel = target.scope == RaftNotificationLevelScope.Channel
+    val current =
+        if (channel) raftChannelLevelShown(target.setting(levels), target.inherited(levels)) else target.setting(levels)
+    val write =
+        when {
+            setting == current -> null
+            channel -> raftChannelLevelWrite(setting, levels.server)
+            else -> setting
+        }
+    return RaftNotificationChoicePlan(setMuted = unmute, writeLevel = write)
+}
+
+@Composable
+private fun RaftNotificationChoice.localizedLabel(target: RaftNotificationLevelTarget, inherited: RaftNotificationLevel): String =
+    when (this) {
+        RaftNotificationChoice.Mute -> stringResource(Res.string.notification_level_mute)
+        is RaftNotificationChoice.Level -> setting.localizedNotificationLevelSettingLabel(inherited, target.scope)
+    }
+
+/** The current choice's label ("Mute", "Nothing", "Default (All new messages)", ...), from the process level store. */
 @Composable
 internal fun rememberRaftNotificationLevelCurrentLabel(target: RaftNotificationLevelTarget): String {
     val all by RaftNotificationLevelStore.state.collectAsState()
     val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
-    val inherited = target.inherited(levels)
-    val shown =
-        if (target.scope == RaftNotificationLevelScope.Channel) raftChannelLevelShown(target.setting(levels), inherited) else target.setting(levels)
-    return shown.localizedNotificationLevelSettingLabel(inherited, target.scope)
+    return raftNotificationChoiceShown(target, levels).localizedLabel(target, target.inherited(levels))
 }
 
 /** "Notifications: <current>" for a menu row. */
@@ -171,14 +262,17 @@ internal fun rememberRaftNotificationLevelMenuLabel(target: RaftNotificationLeve
 }
 
 /**
- * The level picker of a channel: All, Mentions & followed threads, Nothing
- * ([raftNotificationLevelChoices]); the selected one is the level in effect, inherited or chosen. Writes through `PUT notification-levels`; the store applies
- * it at once and rolls back when the server refuses.
+ * The Notifications picker of a channel (slock #12231, as in Slack): All new messages, Only what
+ * involves me, Mute ([raftNotificationChoices]); the selected one is Mute while muted, else the
+ * level in effect, inherited or chosen. Levels write through `PUT notification-levels` (the store
+ * applies it at once and rolls back when the server refuses); Mute goes through [onSetMuted], the
+ * conversation's existing mute, which reports its own failure.
  */
 @Composable
 internal fun RaftNotificationLevelDialog(
     target: RaftNotificationLevelTarget,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSetMuted: ((Boolean) -> Unit)? = null
 ) {
     val all by RaftNotificationLevelStore.state.collectAsState()
     val levels = all[target.serverId] ?: RaftServerNotificationLevels(target.serverId)
@@ -187,26 +281,30 @@ internal fun RaftNotificationLevelDialog(
     var failed by remember { mutableStateOf(false) }
     LaunchedEffect(target.serverId) { RaftNotificationLevelStore.refresh(target.serverId) }
     val inherited = target.inherited(levels)
-    val channel = target.scope == RaftNotificationLevelScope.Channel
-    val selected = if (channel) raftChannelLevelShown(target.setting(levels), inherited) else target.setting(levels)
+    // Mute is offered only where something can set it.
+    val shownTarget = if (onSetMuted == null) target.copy(muteSupported = false, muted = false) else target
+    val selected = raftNotificationChoiceShown(shownTarget, levels)
+    val shownLevel = (raftNotificationChoiceShown(shownTarget.copy(muted = false), levels) as RaftNotificationChoice.Level).setting
     RaftUnifiedDialog(
         title = stringResource(Res.string.notification_level_title),
         onDismiss = onDismiss,
         contentSpacing = 8.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            raftNotificationLevelChoices(target.scope).forEach { option ->
+            raftNotificationChoices(shownTarget.scope, shownTarget.hasMuteChoice, shownLevel, shownTarget.muted).forEach { option ->
                 SettingsServerSelectRow(
-                    title = option.localizedNotificationLevelSettingLabel(inherited, target.scope),
+                    title = option.localizedLabel(target, inherited),
                     detail = "",
                     selected = option == selected,
                     enabled = !saving,
                     onClick = {
                         if (option == selected || saving) return@SettingsServerSelectRow
+                        val plan = raftNotificationChoicePlan(option, shownTarget, levels)
+                        plan.setMuted?.let { muted -> onSetMuted?.invoke(muted) }
+                        val write = plan.writeLevel ?: return@SettingsServerSelectRow
                         saving = true
                         failed = false
                         scope.launch {
-                            val write = if (channel) raftChannelLevelWrite(option, levels.server) else option
                             val result = RaftNotificationLevelStore.setLevel(target.serverId, target.scope, target.id, write)
                             saving = false
                             failed = result !is DataResult.Content
@@ -214,21 +312,19 @@ internal fun RaftNotificationLevelDialog(
                     }
                 )
             }
-            raftNotificationLevelNotes(target).forEach { note -> SettingsFormDetailText(stringResource(note)) }
+            raftNotificationLevelNotes(shownTarget).forEach { note -> SettingsFormDetailText(stringResource(note)) }
             if (failed) SettingsFormErrorText(stringResource(Res.string.notification_level_save_failed))
         }
     }
 }
 
 /**
- * The notes under the choices: a mute caps the level at mentions, and inside a muted DM only an
- * actual @mention notifies (contract §1.1); in a DM All and Mentions behave the same; a thread's All
- * is following it.
+ * The notes under the choices: what Mute means while it is the choice (nothing notifies, not even
+ * @mentions: slock #12231); in a DM All and Mentions behave the same; a thread's All is following it.
  */
 internal fun raftNotificationLevelNotes(target: RaftNotificationLevelTarget): List<StringResource> =
     buildList {
         when {
-            target.muted && target.isDirectMessage -> add(Res.string.notification_level_muted_dm_note)
             target.muted -> add(Res.string.notification_level_muted_note)
             target.isDirectMessage -> add(Res.string.notification_level_dm_note)
         }

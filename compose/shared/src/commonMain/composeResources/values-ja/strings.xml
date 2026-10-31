@@ -609,7 +609,7 @@
     <string name="thread_settings_edit_channel">チャンネルを編集</string>
     <string name="thread_dm_settings_title">DM設定</string>
     <string name="thread_dm_settings_mute_person">ミュート</string>
-    <string name="thread_dm_settings_mute_person_detail">このダイレクトメッセージのアクティビティ通知をオフにします</string>
+    <string name="thread_dm_settings_mute_person_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
     <string name="thread_dm_settings_pin_person">会話をピン留め</string>
     <string name="thread_dm_settings_pin_person_detail">このダイレクトメッセージを「ピン留め」セクションに表示します</string>
     <string name="thread_settings_name">名前</string>
@@ -642,8 +642,8 @@
     <string name="channel_settings_description_empty">チャンネルの説明を追加</string>
     <string name="channel_settings_members">メンバー</string>
     <string name="channel_settings_preferences">チャンネルの個人設定</string>
-    <string name="channel_settings_mute">通知をミュート</string>
-    <string name="channel_settings_mute_detail">このチャンネルの新着メッセージ通知を受け取りません</string>
+    <string name="channel_settings_mute">ミュート</string>
+    <string name="channel_settings_mute_detail">@メンションも含め、この会話からは何も通知されません。あなただけに適用されます。</string>
     <string name="channel_settings_pin">チャンネルをピン留め</string>
     <string name="channel_settings_pin_detail">ホームのピン留め欄で優先表示します</string>
     <string name="channel_settings_status_joint">共同チャンネル</string>
@@ -3520,13 +3520,13 @@
     <string name="assistant_conversation_missing">%1$s との会話を開けませんでした。しばらくしてからもう一度お試しください。</string>
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">すべての新着メッセージ</string>
-    <string name="notification_level_mentions">DM・メンション・フォロー中のスレッド</string>
-    <string name="notification_level_channel_mentions">@メンション・フォロー中のスレッドのみ</string>
+    <string name="notification_level_mentions">自分に関係するものだけ</string>
+    <string name="notification_level_channel_mentions">自分に関係するものだけ</string>
     <string name="notification_level_none">通知しない</string>
+    <string name="notification_level_mute">ミュート</string>
     <string name="notification_level_default">デフォルト（%1$s）</string>
     <string name="notification_level_thread_all">すべての返信（フォロー）</string>
-    <string name="notification_level_muted_note">ミュート中：通知はメンションまでです。</string>
-    <string name="notification_level_muted_dm_note">ミュート中：この DM では @メンションだけが通知されます。</string>
+    <string name="notification_level_muted_note">ミュート中：@メンションも含め、ここからの通知は届きません。</string>
     <string name="notification_level_dm_note">DM のメッセージはすべてあなた宛てなので、「すべての新着メッセージ」と「DM・メンション・フォロー中のスレッド」は同じ動作になります。</string>
     <string name="notification_level_thread_note">スレッドのフォローは「すべての返信」と同じです。</string>
     <string name="notification_level_menu_label">通知：%1$s</string>

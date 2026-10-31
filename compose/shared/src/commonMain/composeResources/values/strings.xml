@@ -607,7 +607,7 @@
     <string name="thread_settings_edit_channel">Edit Channel</string>
     <string name="thread_dm_settings_title">DM Settings</string>
     <string name="thread_dm_settings_mute_person">Mute</string>
-    <string name="thread_dm_settings_mute_person_detail">Turn off activity notifications for this direct message</string>
+    <string name="thread_dm_settings_mute_person_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
     <string name="thread_dm_settings_pin_person">Pin conversation</string>
     <string name="thread_dm_settings_pin_person_detail">Keep this direct message in the Pinned section</string>
     <string name="thread_settings_name">Name</string>
@@ -640,8 +640,8 @@
     <string name="channel_settings_description_empty">Add a channel description</string>
     <string name="channel_settings_members">Members</string>
     <string name="channel_settings_preferences">My Channel Preferences</string>
-    <string name="channel_settings_mute">Mute Notifications</string>
-    <string name="channel_settings_mute_detail">Stop receiving new-message notifications from this channel</string>
+    <string name="channel_settings_mute">Mute</string>
+    <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions. Only affects you.</string>
     <string name="channel_settings_pin">Pin Channel</string>
     <string name="channel_settings_pin_detail">Show this channel first in Home’s Pinned section</string>
     <string name="channel_settings_status_joint">Joint Channel</string>
@@ -3520,13 +3520,13 @@
     <string name="assistant_conversation_missing">Couldn't open your conversation with %1$s. Try again later.</string>
     <string name="notification_level_title">Notifications</string>
     <string name="notification_level_all">All new messages</string>
-    <string name="notification_level_mentions">Direct messages, mentions &amp; followed threads</string>
-    <string name="notification_level_channel_mentions">Mentions &amp; followed threads</string>
+    <string name="notification_level_mentions">Only what involves me</string>
+    <string name="notification_level_channel_mentions">Only what involves me</string>
     <string name="notification_level_none">Nothing</string>
+    <string name="notification_level_mute">Mute</string>
     <string name="notification_level_default">Default (%1$s)</string>
     <string name="notification_level_thread_all">All replies (follow)</string>
-    <string name="notification_level_muted_note">Muted: at most mentions.</string>
-    <string name="notification_level_muted_dm_note">Muted: only an @mention in this direct message notifies.</string>
+    <string name="notification_level_muted_note">Muted: nothing here notifies you, not even @mentions.</string>
     <string name="notification_level_dm_note">Every message in a direct message is for you, so All and Mentions behave the same.</string>
     <string name="notification_level_thread_note">Following a thread is the same as All replies.</string>
     <string name="notification_level_menu_label">Notifications: %1$s</string>

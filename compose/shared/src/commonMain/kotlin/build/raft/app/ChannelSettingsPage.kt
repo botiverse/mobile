@@ -465,7 +465,9 @@ private fun ChannelSettingsPageScreen() {
                                 scope = build.raft.app.data.RaftNotificationLevelScope.Channel,
                                 id = route.channelId.value,
                                 isDirectMessage = channel.kind == ConversationKind.DirectMessage,
-                                muted = muted
+                                muted = muted,
+                                // A muted conversation keeps its Unmute even where mute is no longer offered.
+                                muteSupported = channel.activityMuteSupported || muted
                             ),
                         callbacks =
                             ChannelSettingsCallbacks(
@@ -1241,7 +1243,12 @@ private fun ChannelGuestAccessSection(
     }
 }
 
-/** Web ChannelPreferencesSection: Pin, Mute, Collapse long messages — switches that apply at once. */
+/**
+ * Web ChannelPreferencesSection: Pin, Notifications (or Mute), Collapse long messages. A channel's
+ * level and its mute are one Notifications choice, All / Only what involves me / Mute (slock
+ * #12231, as in Slack), so it has no Mute switch; a DM, and a server without the unified API, keep
+ * the switch.
+ */
 @Composable
 private fun ChannelPreferencesSection(
     muteSupported: Boolean,
@@ -1257,7 +1264,11 @@ private fun ChannelPreferencesSection(
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     if (notificationLevelDialogOpen && notificationLevelTarget != null) {
-        RaftNotificationLevelDialog(target = notificationLevelTarget, onDismiss = { notificationLevelDialogOpen = false })
+        RaftNotificationLevelDialog(
+            target = notificationLevelTarget,
+            onDismiss = { notificationLevelDialogOpen = false },
+            onSetMuted = { next -> if (next != muted && muteSupported && enabled) onToggleMute() },
+        )
     }
     RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
@@ -1269,15 +1280,16 @@ private fun ChannelPreferencesSection(
                 divider = false,
                 onToggle = onTogglePin
             )
-            ChannelPreferenceRow(
-                title = stringResource(Res.string.channel_settings_mute),
-                detail = stringResource(Res.string.channel_settings_mute_detail),
-                checked = muted,
-                enabled = muteSupported && enabled,
-                divider = true,
-                onToggle = onToggleMute
-            )
-            if (notificationLevelTarget != null) {
+            if (notificationLevelTarget == null) {
+                ChannelPreferenceRow(
+                    title = stringResource(Res.string.channel_settings_mute),
+                    detail = stringResource(Res.string.channel_settings_mute_detail),
+                    checked = muted,
+                    enabled = muteSupported && enabled,
+                    divider = true,
+                    onToggle = onToggleMute
+                )
+            } else {
                 RaftListRow(
                     title = stringResource(Res.string.notification_level_title),
                     variant = RaftListRowVariant.Plain,
