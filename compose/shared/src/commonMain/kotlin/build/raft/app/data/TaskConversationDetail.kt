@@ -70,25 +70,20 @@ internal fun formatTaskConversationTitle(ref: String, title: String?): String =
  * The conversation summary of a task conversation. A task conversation has no member rows of its
  * own (slock `taskConversationService.ts` writes only follows), so its write authority is the task's
  * channel: [parent]'s `joined` / permissions (no "as task" sends). Without the parent the page fails
- * closed (read-only). The title is the task address `#channel:#7 title` when [task] is known.
+ * closed (read-only). The title is the task address `#channel:#7 title` when [task] is known; with
+ * [taskPending] (the task is still being read) the name is blank so the page keeps its title.
  */
 internal fun ConversationSummary.withTaskConversationContext(
     parent: ConversationSummary?,
     task: TaskSummary?,
+    taskPending: Boolean = false,
 ): ConversationSummary {
-    val taskNumber = task?.taskNumber
-    val title =
-        taskNumber?.let { number ->
-            formatTaskConversationTitle(
-                ref = formatTaskConversationRef(number, parent?.name ?: task.channelName, parent?.kind),
-                title = task.title,
-            )
-        } ?: task?.title?.takeIf { it.isNotBlank() }
+    val title = task?.let { taskConversationDisplayTitle(parent, it) }
     val joined = parent?.joined ?: false
     return copy(
         kind = ConversationKind.Task,
         channelType = RaftTaskConversationChannelKind,
-        name = title ?: name,
+        name = title ?: if (taskPending) "" else name,
         joined = joined,
         permissions =
             (parent?.permissions ?: permissions).copy(
@@ -98,3 +93,12 @@ internal fun ConversationSummary.withTaskConversationContext(
             ),
     )
 }
+
+/** `#channel:#7 title` (or the bare task title without a number) for a task conversation header. */
+internal fun taskConversationDisplayTitle(parent: ConversationSummary?, task: TaskSummary): String? =
+    task.taskNumber?.let { number ->
+        formatTaskConversationTitle(
+            ref = formatTaskConversationRef(number, parent?.name ?: task.channelName, parent?.kind),
+            title = task.title,
+        )
+    } ?: task.title.takeIf { it.isNotBlank() }
