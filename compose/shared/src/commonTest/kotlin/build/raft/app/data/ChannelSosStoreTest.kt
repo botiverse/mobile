@@ -138,9 +138,12 @@ class ChannelSosStoreTest {
     }
 
     @Test
-    fun entryFollowsJoinAndControlAgentRuntime() {
+    fun entryFollowsJoinAndStopAgents() {
         val channel = HomeChannelRow(threadId = ThreadId("t1"), channelId = channelId, name = "design")
-        assertTrue(channelSettingsCanStopAllAgents(channel, "member"))
+        // slock #12029: Stop all is shown only with `stopAgents` (owner/admin).
+        assertTrue(channelSettingsCanStopAllAgents(channel, "owner"))
+        assertTrue(channelSettingsCanStopAllAgents(channel, "admin"))
+        assertFalse(channelSettingsCanStopAllAgents(channel, "member"))
         assertFalse(channelSettingsCanStopAllAgents(channel, "guest"))
         assertFalse(channelSettingsCanStopAllAgents(channel.copy(joined = false), "owner"))
         assertFalse(channelSettingsCanStopAllAgents(channel.copy(kind = ConversationKind.DirectMessage), "owner"))

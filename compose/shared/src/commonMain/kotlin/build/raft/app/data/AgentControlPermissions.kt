@@ -3,11 +3,16 @@ package build.raft.app.data
 // Server capability matrix (botiverse/slock 7d349b509d6511eb922f7870099017fdda0d3f61
 // packages/shared/src/serverPermissions.ts): `controlAgentRuntime` is granted to
 // owner/admin/member (not guest); `migrateAgents` and `editAgents` to owner/admin.
+// `stopAgents` (slock #12029) is owner/admin only: members keep start, restart,
+// reset session and Stop Current Turn, but may stop only agents they created.
 // Agent-scoped routes also accept the agent's human creator
 // (`currentUserCanActOnAgent` / web `canViewAgentPrivateSurfaces`).
 
 internal fun serverRoleCanControlAgentRuntime(role: String?): Boolean =
     role == "owner" || role == "admin" || role == "member"
+
+internal fun serverRoleCanStopAgents(role: String?): Boolean =
+    role == "owner" || role == "admin"
 
 internal fun serverRoleCanMigrateAgents(role: String?): Boolean =
     role == "owner" || role == "admin"
