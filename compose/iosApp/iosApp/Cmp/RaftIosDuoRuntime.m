@@ -91,8 +91,12 @@ NSArray *RaftIosReservedRegionsForKind(UIView * _Nullable view, id _Nullable kin
     NSUInteger options = 0;
     [invocation setArgument:&options atIndex:3];
     [invocation invoke];
-    NSArray * _Nullable regions = nil;
-    [invocation getReturnValue:&regions];
+    // getReturnValue: copies the raw pointer without retaining it. Reading it into a __strong
+    // variable makes ARC release an object it never retained, and the autorelease pool later
+    // releases it again: an EXC_BAD_ACCESS on iOS 27.2, where this selector exists (1.17.1).
+    __unsafe_unretained NSArray * _Nullable unretained = nil;
+    [invocation getReturnValue:&unretained];
+    NSArray * _Nullable regions = unretained;
     return regions ?: @[];
 }
 
