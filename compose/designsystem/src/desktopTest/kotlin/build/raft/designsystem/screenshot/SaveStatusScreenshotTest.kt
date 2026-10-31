@@ -30,7 +30,7 @@ class SaveStatusScreenshotTest {
         listOf(
             "Idle" to RaftSaveStatusState.Idle,
             "Saved" to RaftSaveStatusState.Saved,
-            "Failed" to RaftSaveStatusState.Failed("Couldn't mute this server. Try again."),
+            "Failed" to null,
         )
 
     @Test
@@ -38,10 +38,14 @@ class SaveStatusScreenshotTest {
         appearances.forEach { appearance ->
             RaftScreenshot.capture("save_status_${appearance.name.lowercase()}", appearance) {
                 Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    states.forEach { (name, state) ->
+                    states.forEach { (name, idleOrSaved) ->
                         Caption("$name: field with a select")
                         Surface {
-                            RaftField(label = "Time zone", description = "Used for times in messages.", saveStatus = state) {
+                            RaftField(
+                                label = "Time zone",
+                                description = "Used for times in messages.",
+                                saveStatus = idleOrSaved ?: RaftSaveStatusState.Failed("Couldn't change the time zone. Try again."),
+                            ) {
                                 RaftSelectTrigger(value = "Asia/Shanghai", onClick = {})
                             }
                         }
@@ -51,7 +55,7 @@ class SaveStatusScreenshotTest {
                                 title = "Mute this server",
                                 variant = RaftListRowVariant.Plain,
                                 description = "No notifications from its channels.",
-                                saveStatus = state,
+                                saveStatus = idleOrSaved ?: RaftSaveStatusState.Failed("Couldn't mute this server. Try again."),
                                 trailing = { RaftSwitch(checked = true, onCheckedChange = {}) },
                             )
                         }
