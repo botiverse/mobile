@@ -12192,6 +12192,7 @@ private fun SharedThreadRouteContentContent(
                         openTaskInChannel(taskConversationTask, taskConversationTask.taskViewInChannelAnchor(), "view_in_channel")
                     },
                     onToggleFollow = { followed -> taskConversationHeaderViewModel?.toggleFollow(followed) },
+                    serverId = currentServerId,
                 )
             } else {
                 null
@@ -12239,6 +12240,7 @@ private fun SharedThreadRouteContentContent(
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
                         floating = floating,
+                        serverId = currentServerId,
                     )
                 }
             } else {

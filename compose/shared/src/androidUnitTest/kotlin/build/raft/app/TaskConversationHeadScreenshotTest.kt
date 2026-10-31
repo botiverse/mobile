@@ -102,6 +102,19 @@ class TaskConversationHeadScreenshotTest {
     @Test
     fun shortConversation() = capture("task.conversation.head.short", RaftAppAppearance.Light) { ShortTaskPage() }
 
+    /**
+     * Source and Created by draw their faces through RaftMemberAvatar: an agent's pixel avatar (no
+     * URL) on Source, and an agent with no avatar of its own wearing the robot on Created by (both
+     * drew initials, or nothing, before).
+     */
+    @Test
+    fun factFaces() =
+        capture("task.conversation.head.faces", RaftAppAppearance.Light) {
+            Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+                TaskHeadContent(model = FacesHeadModel)
+            }
+        }
+
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             CompositionLocalProvider(
@@ -338,6 +351,24 @@ private fun TaskHeader(chrome: TaskConversationHeaderChrome) {
     )
 }
 
+private val FacesHeadModel
+    get() =
+        HeadModel.copy(
+            description = null,
+            source =
+                TaskHeadSource(
+                    authorName = "Niko",
+                    authorKind = MemberKind.Agent,
+                    authorAvatarWireValue = "pixel:antenna",
+                    preview = "Avatars render as initials on the task page",
+                    time = "09:12",
+                    authorId = "agent-niko",
+                ),
+            createdBy = "Kirby",
+            creator = TaskHeadPerson(MemberKind.Agent, "agent-kirby"),
+            history = TaskHeadHistory.Rows(emptyList()),
+        )
+
 private fun follower(id: String, name: String) =
     ThreadAgentFollower(id = id, name = name, status = "active", serverId = "server-1", isCurrentServer = true, canRemove = true)
 
@@ -365,8 +396,11 @@ private val HeadModel =
                 authorAvatarWireValue = null,
                 preview = "The app's task detail lacks a lot compared with web",
                 time = "09:12",
+                authorId = "user-artin",
             ),
         createdBy = "artin",
+        creator = TaskHeadPerson(MemberKind.Human, "user-artin"),
+        avatarServerId = "server-1",
         createdAt = TaskHeadDateTime(2026, 10, 28, 9, 14),
         earlierDiscussion = TaskHeadEarlierDiscussion(replyCount = 4),
         history =

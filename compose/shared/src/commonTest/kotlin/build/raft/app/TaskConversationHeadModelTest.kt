@@ -55,8 +55,14 @@ class TaskConversationHeadModelTest {
                 sourceMessageId = MessageId("source-1"),
                 source = TaskDetailLoad.Loaded(TaskSourceMessagePreview(MessageId("source-1"), members[0], "first line", null)),
             )
-        val model = task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, "member", false, members, null)
+        val model =
+            task.taskConversationHeadModel(TaskConversationHeaderState(ChannelId("conv-1")), details, "member", false, members, null, serverId = "server-1")
         assertEquals("Ship the bar", model.title)
+        // Source and Created by name who they are, so their faces resolve from the server's directory
+        // (RaftMemberAvatar) rather than from the sparse task / message payload.
+        assertEquals("user-1", model.source?.authorId)
+        assertEquals(TaskHeadPerson(MemberKind.Human, "user-1"), model.creator)
+        assertEquals("server-1", model.avatarServerId)
         assertEquals("Wire the bar", model.description)
         // Created by: the channel member's display name (web `displayNameFor`), not the DTO handle.
         assertEquals("Artin Display", model.createdBy)

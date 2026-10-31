@@ -143,10 +143,16 @@ import build.raft.designsystem.tokens.RaftRadius
 internal data class TaskHeadSource(
     val authorName: String?,
     val authorKind: MemberKind?,
+    /** The avatar the source message carried; the face resolves by [authorId] first ([RaftMemberAvatar]). */
     val authorAvatarWireValue: String?,
     val preview: String?,
     val time: String?,
+    val authorId: String? = null,
 )
+
+/** Created by: the creator's name, and who they are so the row can show their face. */
+@Immutable
+internal data class TaskHeadPerson(val kind: MemberKind, val id: String, val avatarWireValue: String? = null)
 
 /** One History row as shown: [time] formatted, an assignee resolved to a display name. */
 @Immutable
@@ -183,6 +189,10 @@ internal data class TaskConversationHeadModel(
     /** Null: no Source row (no source message, or a pre-v2 task's host, led to by Earlier discussion). */
     val source: TaskHeadSource?,
     val createdBy: String?,
+    /** Null: no face beside [createdBy] (no creator on the task). */
+    val creator: TaskHeadPerson? = null,
+    /** The server the people in the head belong to: their faces read its member directory. */
+    val avatarServerId: String? = null,
     /** Web `formatMediumDateTime24`: shown as "Oct 28, 2026, 09:14" (localized). */
     val createdAt: TaskHeadDateTime?,
     /** Null: no Earlier discussion row; [Int] the reply count, null inside = not known yet ("View"). */
@@ -206,6 +216,8 @@ internal fun TaskSummary.taskConversationHeadModel(
     timeContext: RaftTimeContext?,
     /** False: no store to write to here (or it holds the offline stand-in): status and assignee are plain facts. */
     editable: Boolean = true,
+    /** The task's server, whose member directory the head's faces read. */
+    serverId: String? = null,
 ): TaskConversationHeadModel {
     val sourceId = taskHeadSourceMessageId()
     val sourcePreview = details.source.valueOrNull?.takeIf { it.messageId == sourceId }
@@ -247,9 +259,17 @@ internal fun TaskSummary.taskConversationHeadModel(
                     authorAvatarWireValue = author?.avatarWireValueForRenderedAvatar(),
                     preview = sourcePreview?.firstLine,
                     time = sourcePreview?.createdAt?.let { formatRaftTimestampLabel(it, timeContext).takeIf(String::isNotBlank) },
+                    authorId = author?.id?.value,
                 )
             },
         createdBy = creatorName,
+        creator =
+            creator?.let { member ->
+                member.id.value.trim().takeIf { it.isNotEmpty() }?.let { id ->
+                    TaskHeadPerson(member.kind, id, member.avatarWireValueForRenderedAvatar())
+                }
+            },
+        avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
         createdAt = taskHeadDateTime(createdAt, timeContext),
         earlierDiscussion = earlier,
         history = history,
@@ -709,10 +729,12 @@ private fun TaskHeadFacts(
         }
         model.source?.let { source ->
             Item(stringResource(Res.string.task_head_source)) {
-                TaskHeadSourceValue(source, onOpenSource)
+                TaskHeadSourceValue(source, model.avatarServerId, onOpenSource)
             }
         }
-        Item(stringResource(Res.string.task_head_created_by), model.createdBy ?: unknown, copyable = false)
+        Item(stringResource(Res.string.task_head_created_by)) {
+            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId)
+        }
         model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
         model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
@@ -777,16 +799,16 @@ private fun TaskHeadLinkValue(
 }
 
 @Composable
-private fun TaskHeadSourceValue(source: TaskHeadSource, onOpenSource: (() -> Unit)?) {
+private fun TaskHeadSourceValue(source: TaskHeadSource, serverId: String?, onOpenSource: (() -> Unit)?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     TaskHeadLinkValue(contentDescription = stringResource(Res.string.task_head_source_open), onClick = onOpenSource) {
         if (source.preview != null) {
-            RaftAppAvatar(
-                avatarWireValue = source.authorAvatarWireValue,
+            RaftMemberAvatar(
+                identity = RaftMemberAvatarIdentity(source.authorKind, source.authorId, serverId),
                 label = source.authorName.orEmpty(),
-                avatarSize = 18.dp,
-                fallbackFill = raftAvatarFallbackFill(source.authorKind),
+                avatarSize = TaskHeadFactAvatarSize,
+                carriedAvatarWireValue = source.authorAvatarWireValue,
             )
         }
         source.authorName?.let {
@@ -801,6 +823,27 @@ private fun TaskHeadSourceValue(source: TaskHeadSource, onOpenSource: (() -> Uni
             overflow = TextOverflow.Ellipsis,
         )
         source.time?.let { RaftText(it, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1) }
+    }
+}
+
+/** The faces in the facts (Source, Created by): web `AvatarSlot` `compact-list`. */
+private val TaskHeadFactAvatarSize = 18.dp
+
+/** Created by: the creator's face (as on the Source row) and name; just the name without a creator. */
+@Composable
+private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?) {
+    if (creator == null) {
+        RaftDescriptionValue(name, copyable = false)
+        return
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        RaftMemberAvatar(
+            identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
+            label = name.removePrefix("@"),
+            avatarSize = TaskHeadFactAvatarSize,
+            carriedAvatarWireValue = creator.avatarWireValue,
+        )
+        RaftDescriptionValue(name, Modifier.weight(1f, fill = false), copyable = false, maxLines = 1)
     }
 }
 
@@ -971,10 +1014,12 @@ internal fun TaskConversationHeadRoute(
     editable: Boolean = true,
     /** The head pulled down from the top bar over the messages ([TaskHeadFloat]), not the one in the conversation. */
     floating: Boolean = false,
+    /** The task's server: the head's faces read its member directory. */
+    serverId: String? = null,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable)
+    val model = task.taskConversationHeadModel(state, details, serverRole, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
     val onOpenAssignee = {
         if (model.bar.assigneeEditable) {
             assigneeQuery = ""
@@ -1126,6 +1171,9 @@ internal data class TaskConversationHeaderChrome(
     val assigneeName: String?,
     val assigneeKind: MemberKind? = null,
     val assigneeAvatarWireValue: String? = null,
+    val assigneeId: String? = null,
+    /** The task's server: the assignee's face reads its member directory. */
+    val avatarServerId: String? = null,
     val summarized: Boolean,
     val headFloatOpen: Boolean = false,
     /** Null: not known yet (no Follow row). */
@@ -1142,6 +1190,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
     onToggleHeadFloat: () -> Unit,
     onViewInChannel: () -> Unit,
     onToggleFollow: (currentlyFollowed: Boolean) -> Unit,
+    serverId: String? = null,
 ): TaskConversationHeaderChrome {
     val followed = state.followed(conversationFollowed)
     return TaskConversationHeaderChrome(
@@ -1151,6 +1200,8 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         assigneeName = assignee?.displayName?.trim()?.takeIf { it.isNotBlank() },
         assigneeKind = assignee?.kind,
         assigneeAvatarWireValue = assignee?.avatarWireValueForRenderedAvatar(),
+        assigneeId = assignee?.id?.value,
+        avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
         summarized = summarized,
         headFloatOpen = headFloatOpen && summarized,
         followed = followed,
@@ -1199,12 +1250,12 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                 RaftTaskStatusBadge(chrome.status.raftTaskStatus(), chrome.status.localizedLabel(), size = RaftTaskStatusBadgeSize.Sm)
                 // The face only (Kirby: a cut name says less than the face), named for screen readers.
                 chrome.assigneeName?.let { name ->
-                    RaftAppAvatar(
-                        avatarWireValue = chrome.assigneeAvatarWireValue,
+                    RaftMemberAvatar(
+                        identity = RaftMemberAvatarIdentity(chrome.assigneeKind, chrome.assigneeId, chrome.avatarServerId),
                         label = name,
                         modifier = Modifier.semantics { contentDescription = name },
                         avatarSize = RaftAvatarSize.Xs.edge,
-                        fallbackFill = raftAvatarFallbackFill(chrome.assigneeKind),
+                        carriedAvatarWireValue = chrome.assigneeAvatarWireValue,
                     )
                 }
                 TaskBarChevron(open = chrome.headFloatOpen)
