@@ -24,6 +24,7 @@ import build.raft.app.data.AppLinkConsentAnswer
 import build.raft.app.data.AppLinkConsentStatus
 import build.raft.app.data.AppLinkPromptApp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.SharedArtifactSummaryStore
@@ -94,24 +95,50 @@ internal data class ThreadArtifactLinks(
 }
 
 /**
+ * One message's Artifact references (web core `useMessageLinkCards`: its bare links on the app
+ * hosts, in message order, each reference once, at most [build.raft.app.data.MESSAGE_OBJECT_LINK_LIMIT])
+ * and their answers so far, by [build.raft.app.data.ArtifactLinkTarget.key]; a target with no
+ * answer is still loading.
+ */
+@Immutable
+internal data class ThreadArtifactLinkAnswers(
+    val targets: List<ArtifactLinkTarget>,
+    val answers: Map<String, ArtifactSummaryAnswer>,
+    val appHosts: List<String>,
+) {
+    companion object {
+        val None = ThreadArtifactLinkAnswers(emptyList(), emptyMap(), emptyList())
+    }
+}
+
+/**
  * The message's Artifact links (workspace_artifacts_v0, latched for this composition: a flag that
- * turns off leaves what is shown until the next entry): split on the app hosts, read in the
- * message's batch, and only those answered `ok`.
+ * turns off leaves what is shown until the next entry): split on the app hosts and read in the
+ * message's batch (the store's one request per window; a reference already asked is not asked
+ * again, so the chips in the text and the cards under it share one read).
  */
 @Composable
-internal fun rememberThreadArtifactLinks(host: ThreadArtifactLinkHost?, serverId: String, body: String): ThreadArtifactLinks {
-    if (host == null) return ThreadArtifactLinks.None
+internal fun rememberThreadArtifactLinkAnswers(host: ThreadArtifactLinkHost?, serverId: String, body: String): ThreadArtifactLinkAnswers {
+    if (host == null) return ThreadArtifactLinkAnswers.None
     val enabled = rememberServerFeatureLatched(host.featureFlags, ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
     val appHosts by host.appHosts.collectAsState()
     val targets = remember(enabled, appHosts, body) { if (enabled) artifactMessageLinkTargets(body, appHosts) else emptyList() }
-    if (targets.isEmpty()) return ThreadArtifactLinks.None
+    if (targets.isEmpty()) return ThreadArtifactLinkAnswers.None
     val answersFlow = remember(host.summaries, serverId, targets) { host.summaries.answersFlow(serverId, targets) }
     val answers by answersFlow.collectAsState(initial = host.summaries.state.value.answersFor(serverId, targets))
     LaunchedEffect(host.summaries, serverId, targets) { host.summaries.request(serverId, targets) }
-    return remember(answers, appHosts) {
+    return remember(targets, answers, appHosts) { ThreadArtifactLinkAnswers(targets, answers, appHosts) }
+}
+
+/** The message's Artifact links answered `ok` ([rememberThreadArtifactLinkAnswers]): the chips in its text. */
+@Composable
+internal fun rememberThreadArtifactLinks(host: ThreadArtifactLinkHost?, serverId: String, body: String): ThreadArtifactLinks {
+    val links = rememberThreadArtifactLinkAnswers(host, serverId, body)
+    if (links.targets.isEmpty()) return ThreadArtifactLinks.None
+    return remember(links) {
         ThreadArtifactLinks(
-            summaries = answers.mapNotNull { (key, answer) -> (answer as? ArtifactSummaryAnswer.Ok)?.let { key to it.summary } }.toMap(),
-            appHosts = appHosts,
+            summaries = links.answers.mapNotNull { (key, answer) -> (answer as? ArtifactSummaryAnswer.Ok)?.let { key to it.summary } }.toMap(),
+            appHosts = links.appHosts,
         )
     }
 }
@@ -184,7 +211,7 @@ internal fun ThreadAppLinkPreviewScope(
 }
 
 /** Raft message ids are UUIDs; a message still being sent has a local id the server doesn't know. */
-private fun String.isAppLinkMessageId(): Boolean =
+internal fun String.isAppLinkMessageId(): Boolean =
     length == 36 && withIndex().all { (index, char) ->
         if (index == 8 || index == 13 || index == 18 || index == 23) char == '-' else char.isLetterOrDigit()
     }

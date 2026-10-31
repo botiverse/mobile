@@ -27869,6 +27869,17 @@ private fun ThreadMessageCardContent(
                                         messageBodyBlock()
                                     }
                                 }
+                                // web MessageItem `ArtifactMessageRefs`: the cards for the Artifacts
+                                // the text links to, right under the body (web `mt-2`: 8dp, the
+                                // column adds 4); viewer-only, so a share image has none.
+                                if (richContentEnabled) {
+                                    ThreadArtifactMessageRefs(
+                                        messageId = message.id,
+                                        body = message.body,
+                                        enabled = message.pendingSendContext == null,
+                                        modifier = Modifier.padding(top = RaftAppSpacing.Xs)
+                                    )
+                                }
                                 // A share image is public: the quoted message is viewer-only, so
                                 // capture mode drops the whole preview (and its margin); the link
                                 // stays in the body above.

@@ -15,9 +15,12 @@ import kotlinx.serialization.json.booleanOrNull
  *
  * - Request (X-Server-Id: the reader's server): `{ kind: "artifact", refs: [{ id, version? }] }`, 1 to
  *   [OBJECT_SUMMARIES_MAX_REFS] refs, `version` a whole number from 1.
- * - Answer: `{ kind, summaries: [{ ref, ok: true, summary } | { ref, ok: false, reason: "unavailable" }] }`,
- *   one per reference in order, echoing it. `unavailable` covers every reason (no access, missing,
- *   the app off for either server). Per viewer: `Cache-Control: private, no-store`.
+ * - Answer: `{ kind, summaries: [{ ref, ok: true, summary } | { ref, ok: false, reason: "unavailable" }
+ *   | { ref, ok: false, reason: "deleted", deleted }] }`, one per reference in order, echoing it.
+ *   `unavailable` covers every reason (no access, missing, the app off for either server);
+ *   `deleted` (additive, slock staging 84e41d9be `webObjectsContract.ts` `ObjectSummaryAnswer`) is
+ *   an `ArtifactDeletedReference` (`title`, `deletedBy`, `deletedAt`), sent only to a reader who
+ *   could see the Artifact before it was deleted. Per viewer: `Cache-Control: private, no-store`.
  * - 400 INVALID_REQUEST / UNKNOWN_OBJECT_KIND, 429 RATE_LIMITED (300 a minute per user).
  */
 @Serializable
@@ -54,11 +57,28 @@ data class ArtifactHomeConversationWireDto(
     val id: String? = null,
     val name: String,
     val type: String,
+    /** A DM's peer by display name, as the reader's sidebar shows it (absent for other types). */
+    val peerDisplayName: String? = null,
+)
+
+/** `ArtifactFacts`: raw counts for a card's fact line (web `artifactFacts.ts` formats them). */
+@Serializable
+data class ArtifactFactsWireDto(
+    val sizeBytes: Long = 0,
+    val fileCount: Int = 0,
+    val pages: Int? = null,
+    val rows: Int? = null,
+    val columns: Int? = null,
+    val columnNames: List<String>? = null,
+    val lines: Int? = null,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 /**
- * `ArtifactCard`: what a card shows wherever it is drawn. `facts` and `preview` are not read by
- * this client yet (its item card shows the type, version and home, then the description).
+ * `ArtifactCard`: what a card shows wherever it is drawn. Of `preview`, only the excerpt's text is
+ * read (a publisher cover is a file of the Artifact, fetched with the viewer's credentials: not
+ * read by this client yet).
  */
 @Serializable
 data class ArtifactCardWireDto(
@@ -76,6 +96,7 @@ data class ArtifactCardWireDto(
     val commentCount: Int,
     val home: ArtifactHomeWireDto,
     val preview: ArtifactPreviewWireDto? = null,
+    val facts: ArtifactFactsWireDto? = null,
 )
 
 /** `ArtifactPreview`: only the excerpt's text is read (the description's fallback). */
@@ -109,28 +130,77 @@ enum class ArtifactKind(val wire: String) {
 
 /** Where an Artifact lives, as its card names it. */
 sealed interface ArtifactHome {
-    /** A channel (`channel`, `private`, `joint`) or a DM ([dm]); [name] empty for a deleted one. */
-    data class Conversation(val name: String, val dm: Boolean) : ArtifactHome
+    /**
+     * A channel (`channel`, `private` ([private]), `joint`) or a DM ([dm], its peer
+     * [peerDisplayName] when sent); [name] empty for a deleted one.
+     */
+    data class Conversation(
+        val name: String,
+        val dm: Boolean,
+        val private: Boolean = false,
+        val peerDisplayName: String? = null,
+    ) : ArtifactHome
     data object Server : ArtifactHome
     data object Public : ArtifactHome
 }
+
+/** `ArtifactFacts` as this client reads them (web `formatArtifactFacts`). */
+data class ArtifactFacts(
+    val sizeBytes: Long = 0,
+    val pages: Int? = null,
+    val rows: Int? = null,
+    val columns: Int? = null,
+    val columnNames: List<String> = emptyList(),
+    val lines: Int? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+)
 
 /** One Artifact's card, as this client shows it. */
 data class ArtifactSummary(
     val id: String,
     val title: String,
+    /** The card's description, else the start of its text (the excerpt; [descriptionIsExcerpt]). */
     val description: String?,
     val kind: ArtifactKind,
     val version: Int,
     val pinned: Boolean,
     val latestVersion: Int,
     val home: ArtifactHome,
+    /** [description] is the excerpt (no description of its own): the card clamps it at 2 lines. */
+    val descriptionIsExcerpt: Boolean = false,
+    /** `author.displayName`: a pinned card's version's publisher, else the Artifact's author. */
+    val authorName: String = "",
+    /** ISO 8601: a pinned card's version's publish time, else the Artifact's last update. */
+    val updatedAt: String? = null,
+    val commentCount: Int = 0,
+    val facts: ArtifactFacts = ArtifactFacts(),
+)
+
+/**
+ * A deleted Artifact as its card shows it (web `artifactFacts.ts` `ArtifactDeletedShown`): the
+ * title, who deleted it (display name, else handle; null when the answer names no one) and when
+ * (ISO 8601, null when missing).
+ */
+data class ArtifactDeletedShown(
+    val title: String,
+    val deletedBy: String?,
+    val deletedAt: String?,
 )
 
 /** One reference's answer. */
 sealed interface ArtifactSummaryAnswer {
     data class Ok(val summary: ArtifactSummary) : ArtifactSummaryAnswer
     data object Unavailable : ArtifactSummaryAnswer
+
+    /** Deleted, to a reader who could see it before (web `artifactDeletedOf`: only with a title). */
+    data class Deleted(val deleted: ArtifactDeletedShown) : ArtifactSummaryAnswer
+
+    /**
+     * The last request for it failed and nothing is kept (web loader `error`): never stored, only
+     * reported by [SharedArtifactSummaryState.answersFor] until it is asked again.
+     */
+    data object Failed : ArtifactSummaryAnswer
 }
 
 private val artifactSummariesJson = Json {
@@ -172,13 +242,31 @@ fun parseArtifactSummariesAnswer(bodyText: String?): Map<String, ArtifactSummary
         val key = ArtifactLinkTarget(ref.id, ref.version).key
         val ok = (entry["ok"] as? JsonPrimitive)?.booleanOrNull
         answers[key] =
-            if (ok == true) {
-                entry["summary"]?.toArtifactSummaryOrNull()?.let(ArtifactSummaryAnswer::Ok) ?: ArtifactSummaryAnswer.Unavailable
-            } else {
-                ArtifactSummaryAnswer.Unavailable
+            when {
+                ok == true -> entry["summary"]?.toArtifactSummaryOrNull()?.let(ArtifactSummaryAnswer::Ok) ?: ArtifactSummaryAnswer.Unavailable
+                (entry["reason"] as? JsonPrimitive)?.content == "deleted" ->
+                    artifactDeletedShownOrNull(entry["deleted"])?.let(ArtifactSummaryAnswer::Deleted) ?: ArtifactSummaryAnswer.Unavailable
+                // Any other reason, including one this client doesn't know.
+                else -> ArtifactSummaryAnswer.Unavailable
             }
     }
     return answers
+}
+
+/**
+ * web `artifactDeletedOf`: a deleted answer read into what its card shows; null without a title
+ * (then drawn as unavailable). Who and when may be missing: the card then says less.
+ */
+internal fun artifactDeletedShownOrNull(answer: JsonElement?): ArtifactDeletedShown? {
+    val deleted = answer as? JsonObject ?: return null
+    val title = (deleted["title"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    if (title.isBlank()) return null
+    val actor = deleted["deletedBy"] as? JsonObject
+    val deletedBy =
+        listOf("displayName", "name")
+            .firstNotNullOfOrNull { field -> (actor?.get(field) as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() } }
+    val deletedAt = (deleted["deletedAt"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    return ArtifactDeletedShown(title = title, deletedBy = deletedBy, deletedAt = deletedAt)
 }
 
 private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? =
@@ -189,21 +277,46 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
     val card = this
     val home =
         when (card.home.kind) {
-            "conversation" -> card.home.conversation?.let { ArtifactHome.Conversation(it.name, dm = it.type == "dm") } ?: return null
+            "conversation" ->
+                card.home.conversation?.let {
+                    ArtifactHome.Conversation(
+                        it.name,
+                        dm = it.type == "dm",
+                        private = it.type == "private",
+                        peerDisplayName = it.peerDisplayName?.takeIf { peer -> peer.isNotBlank() },
+                    )
+                } ?: return null
             "server" -> ArtifactHome.Server
             "public" -> ArtifactHome.Public
             else -> return null
         }
-    val excerpt = card.preview?.takeIf { it.kind == "excerpt" }?.text
+    val excerpt = card.preview?.takeIf { it.kind == "excerpt" }?.text?.takeIf { it.isNotBlank() }
+    val description = card.description?.takeIf { it.isNotBlank() }
+    val facts = card.facts
     return ArtifactSummary(
         id = card.id,
         title = card.title,
-        description = card.description?.takeIf { it.isNotBlank() } ?: excerpt?.takeIf { it.isNotBlank() },
+        description = description ?: excerpt,
         kind = ArtifactKind.fromWire(card.kind),
         version = card.version,
         pinned = card.pinned,
         latestVersion = card.latestVersion,
         home = home,
+        descriptionIsExcerpt = description == null && excerpt != null,
+        authorName = card.author.displayName,
+        updatedAt = card.updatedAt,
+        commentCount = card.commentCount,
+        facts =
+            ArtifactFacts(
+                sizeBytes = facts?.sizeBytes ?: 0,
+                pages = facts?.pages,
+                rows = facts?.rows,
+                columns = facts?.columns,
+                columnNames = facts?.columnNames.orEmpty(),
+                lines = facts?.lines,
+                width = facts?.width,
+                height = facts?.height,
+            ),
     )
 }
 

@@ -31,15 +31,29 @@ data class SharedArtifactSummaryState(
     val entries: Map<String, ArtifactSummaryEntry> = emptyMap(),
     /** Moves on [SharedArtifactSummaryStore.clearAll]: an answer asked for before it is not kept. */
     val generation: Int = 0,
+    /**
+     * By [artifactSummaryKey]: references whose last request failed (web loader `error`), until
+     * they are asked again. Nothing is kept for them: [answersFor] reports
+     * [ArtifactSummaryAnswer.Failed] where no answer is kept, so a card isn't left loading.
+     */
+    val failed: Set<String> = emptySet(),
 )
 
 internal fun artifactSummaryKey(serverId: String, target: ArtifactLinkTarget): String = "$serverId\u0000${target.key}"
 
-/** The answers kept for [targets] in [serverId] (expired ones included until a new answer replaces them). */
+/**
+ * The answers kept for [targets] in [serverId] (expired ones included until a new answer replaces
+ * them); with none kept, [ArtifactSummaryAnswer.Failed] when its last request failed. A target
+ * missing from the map is still loading (or not asked yet).
+ */
 fun SharedArtifactSummaryState.answersFor(serverId: String, targets: List<ArtifactLinkTarget>): Map<String, ArtifactSummaryAnswer> =
     buildMap {
         val kept = this@answersFor.entries
-        for (target in targets) kept[artifactSummaryKey(serverId, target)]?.let { put(target.key, it.answer) }
+        for (target in targets) {
+            val key = artifactSummaryKey(serverId, target)
+            val answer = kept[key]?.answer ?: ArtifactSummaryAnswer.Failed.takeIf { key in failed }
+            answer?.let { put(target.key, it) }
+        }
     }
 
 /**
@@ -103,6 +117,9 @@ class SharedArtifactSummaryStore internal constructor(
                     false
                 }
             }
+        // Asked again: no longer failed (loading until its answer lands).
+        val asked = targets.map { artifactSummaryKey(serverId, it) }
+        if (mutableState.value.failed.any { it in asked }) mutableState.update { it.copy(failed = it.failed - asked.toSet()) }
         if (!schedule) return
         scope.launch {
             delay(batchWindowMillis)
@@ -177,6 +194,9 @@ class SharedArtifactSummaryStore internal constructor(
         release(serverId, targets)
         if (answers == null) {
             diagnosticsLogger("artifact_summaries_failed refs=${targets.size} code=${response?.code ?: -1}")
+            mutableState.update { state ->
+                if (state.generation != generation) state else state.copy(failed = state.failed + targets.map { artifactSummaryKey(serverId, it) })
+            }
             return
         }
         val now = nowMillis()
@@ -192,7 +212,8 @@ class SharedArtifactSummaryStore internal constructor(
                 entries[key] = ArtifactSummaryEntry(answer, now + ttl)
             }
             while (entries.size > maxEntries) entries.remove(entries.keys.first())
-            state.copy(entries = entries)
+            val answered = targets.map { artifactSummaryKey(serverId, it) }.toSet()
+            state.copy(entries = entries, failed = if (state.failed.isEmpty()) state.failed else state.failed - answered)
         }
     }
 
