@@ -1,4 +1,5 @@
-@import "@botiverse/raft-ui/fonts.css";
+/* Raft's fonts, served from this origin (see fonts.css). */
+@import "./fonts.css";
 
 @import "tailwindcss";
 @import "@botiverse/raft-ui/styles.css";
@@ -6,30 +7,6 @@
 @import "./components/mermaid/mermaid.css";
 @import "./components/topbar/titleBar.css";
 
-
-/* Typography follows raft-ui/fonts.css contract */
-
-/*
- * Space Grotesk keeps Raft's established typography, but its straight double
- * quote is visually too close to the closing curly quote. This face reuses
- * Hanken Grotesk only for the neutral straight-quote code point. Curly quotes
- * remain owned by Space Grotesk. The browser
- * selects it per glyph through unicode-range; DOM text, copy/paste, search,
- * wrapping ownership, and accessibility content remain unchanged.
- *
- * #7347 dropped this block while switching the file's top to
- * `@import "@botiverse/raft-ui/fonts.css"`; the visual suite caught it — its font
- * contract requires this woff2 to be requested, and `Raft Quote Glyphs` is
- * probed by name. Restored verbatim from 7a1558117:packages/web/src/index.css.
- */
-@font-face {
-  font-family: 'Raft Quote Glyphs';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59CxCis4.woff2') format('woff2');
-  unicode-range: U+0022;
-}
 
 /*
  * Tailwind v4 source scanning. These directives travel WITH this CSS

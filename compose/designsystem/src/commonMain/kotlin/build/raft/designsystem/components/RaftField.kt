@@ -89,6 +89,9 @@ val LocalRaftFieldState = compositionLocalOf { RaftFieldState() }
  *   from the label: a [RaftSwitch] that turns the field on, or a [RaftTextLink] ("Clear",
  *   "Reset"). The row takes the field's full width; the label ellipsizes, never the slot.
  *   It is not part of the label: give it its own name.
+ * - [saveStatus]: a setting that applies at once (a select, a segmented control) gets its
+ *   [RaftSaveStatus] line 4dp under the control, before the description (raft-ui 0.54.0).
+ *   Pass [RaftSaveStatusState.Idle] while nothing has happened so the line keeps its place.
  *
  * ```
  * RaftField(label = "Agent name", description = "Shown in chat and on tasks.") {
@@ -107,6 +110,7 @@ fun RaftField(
     required: Boolean = false,
     labelSize: RaftFieldLabelSize = RaftFieldLabelSize.Md,
     labelTrailing: (@Composable () -> Unit)? = null,
+    saveStatus: RaftSaveStatusState? = null,
     content: @Composable () -> Unit,
 ) {
     val invalid = error != null
@@ -130,7 +134,15 @@ fun RaftField(
         CompositionLocalProvider(
             LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled, label = label, error = error, inField = true),
         ) {
-            content()
+            if (saveStatus == null) {
+                content()
+            } else {
+                // SaveStatus sits 4dp under the control, inside the field's 6dp gaps.
+                Column(verticalArrangement = Arrangement.spacedBy(RaftSaveStatusDefaults.Gap)) {
+                    content()
+                    RaftSaveStatus(saveStatus)
+                }
+            }
         }
         if (error != null) {
             RaftFieldError(error, enabled = enabled)

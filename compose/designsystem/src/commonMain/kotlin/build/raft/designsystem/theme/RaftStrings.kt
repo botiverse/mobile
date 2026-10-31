@@ -41,6 +41,8 @@ data class RaftStrings(
     val copy: String = "Copy",
     /** The ⋯ that holds the actions a side column has no room for ([build.raft.designsystem.components.RaftSideActionColumn]). */
     val moreActions: String = "More Actions",
+    /** A setting's result once it is stored ([build.raft.designsystem.components.RaftSaveStatus]). */
+    val saved: String = "Saved",
 )
 
 /** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */

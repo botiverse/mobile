@@ -166,6 +166,9 @@ fun RaftListRowGroup(
  *   [badge] at the end of that line.
  * - [trailing]: a value and chevron ([RaftListRowValue], [RaftListRowChevron]), a switch,
  *   or a 32dp button, centred, 6dp apart.
+ * - [saveStatus]: a settings row whose switch applies at once gets its [RaftSaveStatus] line
+ *   4dp under the description (raft-ui 0.54.0). Pass [RaftSaveStatusState.Idle] while nothing
+ *   has happened: the line is always reserved, so the row and its switch never move.
  * - [divider] draws the hairline above the row, from where the text starts (63dp) in the
  *   default variant and from the edge (16dp) in [RaftListRowVariant.Plain]; entry rows
  *   never have one.
@@ -211,6 +214,7 @@ fun RaftListRow(
     titleCopyText: String? = null,
     subtitleCopyText: String? = null,
     titleTrailing: (@Composable () -> Unit)? = null,
+    saveStatus: RaftSaveStatusState? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -331,6 +335,11 @@ fun RaftListRow(
                         }
                         if (showBadge) badge?.invoke()
                     }
+                }
+                if (saveStatus != null) {
+                    // 4dp under the description: the body's gap plus what it lacks.
+                    val bodyGap = if (alignTop) 4.dp else 2.dp
+                    RaftSaveStatus(saveStatus, Modifier.padding(top = RaftSaveStatusDefaults.Gap - bodyGap))
                 }
             }
             if (trailing != null) {
