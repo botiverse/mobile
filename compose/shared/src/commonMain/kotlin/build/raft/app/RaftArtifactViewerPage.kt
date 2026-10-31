@@ -302,8 +302,9 @@ private fun RaftArtifactViewerScreen() {
                 latestVersion = answer.summary.latestVersion.takeIf { it > 0 }
                 RaftArtifactViewerMemory.cache.remember(scope, fresh)
             }
-            ArtifactSummaryAnswer.Unavailable -> bodyState = RaftArtifactViewerBodyState.Unavailable
-            null -> Unit
+            // A deleted Artifact opens nothing (web: its card has no viewer): the one "can't open" state.
+            ArtifactSummaryAnswer.Unavailable, is ArtifactSummaryAnswer.Deleted -> bodyState = RaftArtifactViewerBodyState.Unavailable
+            ArtifactSummaryAnswer.Failed, null -> Unit
         }
     }
     LaunchedEffect(bodyState) {

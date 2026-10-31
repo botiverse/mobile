@@ -179,6 +179,64 @@ class SharedArtifactSummaryStoreTest {
     }
 
     @Test
+    fun aDeletedAnswerWithItsTitleIsDeletedElseUnavailable() {
+        // slock staging 84e41d9be webObjectsContract.ts ObjectSummaryAnswer `reason: "deleted"`,
+        // workspaceArtifacts.ts ArtifactDeletedReference; web artifactFacts.ts artifactDeletedOf.
+        val answers =
+            parseArtifactSummariesAnswer(
+                """
+                {"kind":"artifact","summaries":[
+                  {"ref":{"id":"pt_a"},"ok":false,"reason":"deleted","deleted":{"status":"deleted","title":"Old plan",
+                    "deletedBy":{"type":"user","id":"u1","name":"martin","displayName":"Martin","avatarUrl":null},"deletedAt":"2026-10-30T10:00:00.000Z"}},
+                  {"ref":{"id":"pt_b"},"ok":false,"reason":"deleted","deleted":{"status":"deleted","title":"Handle only",
+                    "deletedBy":{"type":"agent","name":"lagoon","displayName":" "}}},
+                  {"ref":{"id":"pt_c"},"ok":false,"reason":"deleted","deleted":{"status":"deleted","title":" "}},
+                  {"ref":{"id":"pt_d"},"ok":false,"reason":"deleted"},
+                  {"ref":{"id":"pt_e"},"ok":false,"reason":"revoked_by_a_newer_server"}
+                ]}
+                """.trimIndent(),
+            )!!
+        assertEquals(
+            ArtifactSummaryAnswer.Deleted(ArtifactDeletedShown("Old plan", "Martin", "2026-10-30T10:00:00.000Z")),
+            answers["pt_a"],
+        )
+        assertEquals(ArtifactSummaryAnswer.Deleted(ArtifactDeletedShown("Handle only", "lagoon", null)), answers["pt_b"])
+        assertEquals(ArtifactSummaryAnswer.Unavailable, answers["pt_c"], "no title: unavailable")
+        assertEquals(ArtifactSummaryAnswer.Unavailable, answers["pt_d"], "no payload: unavailable")
+        assertEquals(ArtifactSummaryAnswer.Unavailable, answers["pt_e"], "an unknown reason: unavailable")
+    }
+
+    @Test
+    fun theCardFieldsAreRead() {
+        val answers = parseArtifactSummariesAnswer("""{"kind":"artifact","summaries":[{"ref":{"id":"pt_a"},"ok":true,"summary":${card("pt_a")}}]}""")!!
+        val summary = assertIs<ArtifactSummaryAnswer.Ok>(answers["pt_a"]).summary
+        assertEquals("Lagoon", summary.authorName)
+        assertEquals("2026-10-21T10:00:00.000Z", summary.updatedAt)
+        assertEquals(2, summary.commentCount)
+        assertEquals(ArtifactFacts(sizeBytes = 2048, pages = 2), summary.facts)
+        assertTrue(summary.descriptionIsExcerpt, "no description of its own: the excerpt")
+    }
+
+    @Test
+    fun aFailedReadIsFailedUntilAskedAgainAndAnAnswerClearsIt() = runTest {
+        var fail = true
+        val api = FakeApi { if (fail) HomeNetworkResponse(500, null) else okAnswer(it) }
+        val store = store(api)
+        val target = listOf(ArtifactLinkTarget("pt_a"))
+        store.request(server, target)
+        assertEquals(emptyMap(), store.state.value.answersFor(server, target), "loading: no answer yet")
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertEquals(ArtifactSummaryAnswer.Failed, store.state.value.answersFor(server, target)["pt_a"])
+        assertTrue(store.state.value.entries.isEmpty(), "a failure keeps nothing")
+        fail = false
+        store.request(server, target)
+        assertEquals(emptyMap(), store.state.value.answersFor(server, target), "asked again: loading")
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertIs<ArtifactSummaryAnswer.Ok>(store.state.value.answersFor(server, target)["pt_a"])
+        assertTrue(store.state.value.failed.isEmpty())
+    }
+
+    @Test
     fun clearAllDropsAnswersAndOneOnItsWayIsNotKept() = runTest {
         val api = FakeApi { okAnswer(it) }
         val store = store(api)
