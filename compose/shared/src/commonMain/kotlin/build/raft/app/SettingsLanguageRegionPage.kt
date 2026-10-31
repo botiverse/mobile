@@ -18,7 +18,15 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.TranslationTargetLanguages
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import build.raft.designsystem.components.RaftSaveStatusState
+import build.raft.designsystem.components.rememberRaftSaveStatus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
@@ -143,6 +151,9 @@ private fun SettingsLanguagePreferenceCard(
         )
     val selectedLanguage =
         settingsLanguageRegionShownValue(snapshot.browserLanguage.selectedKey, LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState)
+    val languageFailure = stringResource(Res.string.settings_language_update_failed)
+    val displayStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, pick, actionState, languageFailure)
+    val languageStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState, languageFailure)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(Res.string.settings_language_title)) {
         SettingsSegmentedControlField(
             label = stringResource(Res.string.settings_translation_mode),
@@ -150,7 +161,8 @@ private fun SettingsLanguagePreferenceCard(
             selectedValue = selectedDisplay,
             options = snapshot.translationDisplay.toTranslationModeOptions(),
             onValueSelected = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, it, actionState)) },
-            enabled = !busy
+            enabled = !busy,
+            saveStatus = displayStatus
         )
         if (!snapshot.translationDisplay.available) {
             SettingsFormDetailText(snapshot.translationDisplay.detail)
@@ -162,11 +174,9 @@ private fun SettingsLanguagePreferenceCard(
                 value = selectedLanguage,
                 options = snapshot.browserLanguage.toTranslationTargetOptions(),
                 onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_LANGUAGE, it, actionState)) },
-                enabled = snapshot.browserLanguage.available && !busy
+                enabled = snapshot.browserLanguage.available && !busy,
+                saveStatus = languageStatus
             )
-        }
-        if (actionState?.let { it.action in LANGUAGE_REGION_LANGUAGE_ACTIONS && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState)
         }
     }
 }
@@ -179,6 +189,9 @@ private fun SettingsDateTimePreferenceCard(
     busy: Boolean,
     onPick: (SettingsLanguageRegionPick) -> Unit
 ) {
+    val dateTimeFailure = stringResource(Res.string.settings_date_time_update_failed)
+    val timezoneStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState, dateTimeFailure)
+    val timeFormatStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TIME_FORMAT, pick, actionState, dateTimeFailure)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(Res.string.settings_date_time_title)) {
         SettingsComboboxField(
             label = stringResource(Res.string.settings_timezone),
@@ -186,7 +199,8 @@ private fun SettingsDateTimePreferenceCard(
             value = settingsLanguageRegionShownValue(snapshot.timezone.selectedKey, LANGUAGE_REGION_ACTION_TIMEZONE, pick, actionState),
             options = snapshot.timezone.toComboboxOptions(),
             onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIMEZONE, it, actionState)) },
-            enabled = snapshot.timezone.available && !busy
+            enabled = snapshot.timezone.available && !busy,
+            saveStatus = timezoneStatus
         )
         SettingsSegmentedControlField(
             label = stringResource(Res.string.settings_time_format),
@@ -198,11 +212,9 @@ private fun SettingsDateTimePreferenceCard(
                     SegmentedControlOption("24h", stringResource(Res.string.settings_time_format_24_hour), RaftLucideIconName.Clock)
                 ),
             onValueSelected = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TIME_FORMAT, it, actionState)) },
-            enabled = snapshot.timeFormat.available && !busy
+            enabled = snapshot.timeFormat.available && !busy,
+            saveStatus = timeFormatStatus
         )
-        if (actionState?.let { it.action in LANGUAGE_REGION_TIME_ACTIONS && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState)
-        }
     }
 }
 
@@ -242,6 +254,71 @@ internal fun settingsLanguageRegionShownValue(
     actionState: SharedSettingsActionState?
 ): String =
     if (pick != null && pick.action == action && !settingsLanguageRegionPickSettled(pick, actionState)) pick.value else saved
+
+/** What a pick's request came to, for its control's SaveStatus line. */
+internal sealed interface SettingsPickSaveResult {
+    /** Still on its way: the line stays empty (the control already shows the pick). */
+    data object Pending : SettingsPickSaveResult
+
+    data object Saved : SettingsPickSaveResult
+
+    /** The control is back on the stored value; [serverMessage] is the server's own refusal, if it sent one. */
+    data class Failed(val serverMessage: String?) : SettingsPickSaveResult
+
+    /** Settled without a result of its own (the action state was cleared or replaced): say nothing. */
+    data object Unknown : SettingsPickSaveResult
+}
+
+/**
+ * The result of [pick] for its SaveStatus (web `useImmediateSave`, slock #11858/#12162): saved when
+ * the store finished its action cleanly, failed when it finished with an error. The control has
+ * already gone back to the stored value then ([settingsLanguageRegionShownValue]).
+ */
+internal fun settingsPickSaveResult(pick: SettingsLanguageRegionPick, actionState: SharedSettingsActionState?): SettingsPickSaveResult =
+    when {
+        !settingsLanguageRegionPickSettled(pick, actionState) -> SettingsPickSaveResult.Pending
+        actionState == null || actionState.action != pick.action -> SettingsPickSaveResult.Unknown
+        actionState.hasUserFacingError() ->
+            SettingsPickSaveResult.Failed(actionState.screenError?.serverMessage?.takeIf { it.isNotBlank() })
+        else -> SettingsPickSaveResult.Saved
+    }
+
+/**
+ * The SaveStatus line of the control for [action]: empty while [pick] for it is on its way, "Saved"
+ * for two seconds once it is stored, or what failed (the server's refusal, else [failureMessage],
+ * as web `apiErrorText`) until the next pick. Each pick reports once.
+ */
+@Composable
+internal fun rememberSettingsPickSaveStatus(
+    action: String,
+    pick: SettingsLanguageRegionPick?,
+    actionState: SharedSettingsActionState?,
+    failureMessage: String
+): RaftSaveStatusState {
+    val status = rememberRaftSaveStatus()
+    // By identity: a new pick of the same value is a new save.
+    var reported by remember { mutableStateOf<SettingsLanguageRegionPick?>(null, referentialEqualityPolicy()) }
+    val current = pick?.takeIf { it.action == action }
+    SideEffect {
+        if (current == null || current === reported) return@SideEffect
+        when (val result = settingsPickSaveResult(current, actionState)) {
+            SettingsPickSaveResult.Pending -> status.saving()
+            SettingsPickSaveResult.Saved -> {
+                reported = current
+                status.saved()
+            }
+            is SettingsPickSaveResult.Failed -> {
+                reported = current
+                status.failed(result.serverMessage ?: failureMessage)
+            }
+            SettingsPickSaveResult.Unknown -> {
+                reported = current
+                status.saving()
+            }
+        }
+    }
+    return status.state
+}
 
 /**
  * Store requests run concurrently and share one action state, so the page takes one pick at a time:

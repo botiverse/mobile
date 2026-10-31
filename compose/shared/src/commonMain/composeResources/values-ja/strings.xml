@@ -265,6 +265,7 @@
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">プッシュ通知の状態とワークスペースのミュート</string>
     <string name="settings_language_title">言語</string>
+    <string name="settings_language_update_failed">言語設定を更新できませんでした</string>
     <string name="settings_app_language_title">アプリの言語</string>
     <string name="settings_app_language_detail">システムの言語に従うか、Raft を特定の言語で表示します。</string>
     <string name="settings_app_language_system">システム</string>
@@ -285,6 +286,7 @@
     <string name="settings_message_alignment_detail">会話内での自分のメッセージの配置を選択します。</string>
     <string name="settings_message_font_size_title">メッセージのフォントサイズと表示密度</string>
     <string name="settings_date_time_title">日付と時刻</string>
+    <string name="settings_date_time_update_failed">日付と時刻の設定を更新できませんでした</string>
     <string name="settings_licenses_title">ライセンス</string>
     <string name="settings_open_source_licenses_title">オープンソースライセンス</string>
     <string name="settings_open_source_licenses_detail_libraries_from">%2$s のライブラリ %1$d 件</string>

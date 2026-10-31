@@ -26,6 +26,11 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -488,13 +493,19 @@ internal fun SettingsAppLanguageCard(
 ) {
     val preference = snapshot.localePreference
     val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
+    // The app language applies when picked (web display language, slock #11858): its SaveStatus
+    // line says "Saved", or what failed while the control stays on the stored language.
+    val selectedLocale = preference.selectedKey.ifBlank { AppLocale.System.languageTag }
+    var pick by remember { mutableStateOf<SettingsLanguageRegionPick?>(null, referentialEqualityPolicy()) }
+    val saveStatus =
+        rememberSettingsPickSaveStatus(MOBILE_ACTION_LANGUAGE, pick, actionState, stringResource(Res.string.settings_language_update_failed))
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Languages,
         title = stringResource(Res.string.settings_app_language_title)
     ) {
         SettingsSegmentedControlField(
             detail = stringResource(Res.string.settings_app_language_detail),
-            selectedValue = preference.selectedKey.ifBlank { AppLocale.System.languageTag },
+            selectedValue = selectedLocale,
             options =
                 listOf(
                     SegmentedControlOption(
@@ -514,12 +525,15 @@ internal fun SettingsAppLanguageCard(
                         stringResource(Res.string.settings_app_language_japanese)
                     )
                 ),
-            onValueSelected = { selected -> selected?.let(onLocaleChange) },
-            enabled = preference.available && !busy
+            onValueSelected = { selected ->
+                selected?.takeIf { it != selectedLocale }?.let {
+                    pick = SettingsLanguageRegionPick(MOBILE_ACTION_LANGUAGE, it, actionState)
+                    onLocaleChange(it)
+                }
+            },
+            enabled = preference.available && !busy,
+            saveStatus = saveStatus
         )
-        if (actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
     }
 }
 
