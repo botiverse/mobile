@@ -5007,12 +5007,16 @@ private fun HomeServerIdentityCluster(
                 ),
         contentAlignment = Alignment.CenterStart
     ) {
+    // The alpha build's "Alpha" badge follows the server name (raftIsAlphaBuild; none elsewhere).
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier.offset(x = -RaftWorkspaceButtonDefaults.ContentInset),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
     // raft-ui WorkspaceButton: the avatar sits on the header's content line and the press
     // fill reaches past it by the button's inset.
     RaftWorkspaceButton(
         name = server.name,
         onClick = onClick,
-        modifier = Modifier.offset(x = -RaftWorkspaceButtonDefaults.ContentInset),
         // Web: the button keeps its press fill while the server list is open.
         open = open,
         avatar = {
@@ -5039,6 +5043,8 @@ private fun HomeServerIdentityCluster(
                 null
             },
     )
+    RaftAlphaBuildBadge()
+    }
     }
 }
 

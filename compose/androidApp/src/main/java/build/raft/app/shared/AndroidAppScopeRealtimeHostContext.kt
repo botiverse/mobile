@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Context
+import build.raft.app.R
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
@@ -312,7 +313,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 .put("serverId", event.serverId.value)
                 .put("groupKey", event.groupKey)
                 .put("category", event.category)
-                .put("title", event.title.ifBlank { "Raft" })
+                .put("title", event.title.ifBlank { appContext.getString(R.string.app_name) })
                 .put("body", event.body)
                 .put("notificationKey", event.notificationId ?: event.groupKey)
                 .put("messageId", event.notificationId ?: event.groupKey)

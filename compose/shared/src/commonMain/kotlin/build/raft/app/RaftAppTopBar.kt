@@ -109,6 +109,8 @@ internal fun RaftAppShellTopBar(
                                 null
                             },
                     )
+                    // The alpha build's "Alpha" badge follows the server name (none on any other build).
+                    RaftAlphaBuildBadge()
                     val entries =
                         remember(servers) {
                             servers.map { server ->
