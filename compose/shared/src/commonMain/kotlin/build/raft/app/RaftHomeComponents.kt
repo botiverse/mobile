@@ -559,7 +559,8 @@ enum class RaftHomeConversationSection {
 enum class RaftHomeSidebarTopSelection {
     Search,
     Activity,
-    Saved
+    Saved,
+    Drafts
 }
 
 @Serializable
@@ -580,6 +581,7 @@ data class RaftHomeShellLabels(
     val inbox: String = "Activity",
     val followedThreads: String = "Followed threads",
     val saved: String = "Saved",
+    val drafts: String = "Drafts",
     val channels: String = "Channels",
     val jointChannels: String = "Joint Channels",
     val directMessages: String = "Direct Messages",
@@ -634,6 +636,7 @@ data class RaftHomeShellLabels(
             inbox = stringResource(Res.string.home_nav_activity),
             followedThreads = stringResource(Res.string.home_nav_followed_threads),
             saved = stringResource(Res.string.home_nav_saved),
+            drafts = stringResource(Res.string.home_nav_drafts),
             channels = stringResource(Res.string.home_section_channels),
             jointChannels = stringResource(Res.string.home_section_joint_channels),
             directMessages = stringResource(Res.string.home_section_direct_messages),
@@ -1490,6 +1493,8 @@ internal data class RaftStructuralHomeShellData(
     val inboxUnreadCount: Int = 0,
     val inboxTotalCount: Int = 0,
     val savedCount: Int = 0,
+    /** Server flag `drafts_section_v0`: the Drafts row's count; null hides the row. */
+    val draftsCount: Int? = null,
     val notifications: List<RaftHomeNotificationItem> = emptyList(),
     val inlineError: RaftHomeInlineError? = null,
     /** Task #164: the unread counts may be old (read warehouse behind); shows the stale notice. */
@@ -1509,6 +1514,7 @@ internal data class RaftStructuralHomeShellData(
     val activitySelected: Boolean = false,
     val searchSelected: Boolean = false,
     val savedSelected: Boolean = false,
+    val draftsSelected: Boolean = false,
     val channelOrder: List<String> = emptyList(),
     val channelSortMode: String = "manual",
     val jointChannelSortMode: String = "manual",
@@ -1564,6 +1570,7 @@ internal class RaftStructuralHomeShellCallbacks(
     val onInboxClick: () -> Unit = {},
     val onFollowedThreadsClick: () -> Unit = {},
     val onSavedClick: () -> Unit = {},
+    val onDraftsClick: () -> Unit = {},
     val onSearchClick: () -> Unit = {},
     val onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     val onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
@@ -1619,6 +1626,8 @@ internal fun RaftStructuralHomeShell(
     inboxUnreadCount: Int = 0,
     inboxTotalCount: Int = 0,
     savedCount: Int = 0,
+    /** Server flag `drafts_section_v0`: the Drafts row's count; null hides the row. */
+    draftsCount: Int? = null,
     notifications: List<RaftHomeNotificationItem> = emptyList(),
     inlineError: RaftHomeInlineError? = null,
     unreadStale: Boolean = false,
@@ -1641,6 +1650,7 @@ internal fun RaftStructuralHomeShell(
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
     savedSelected: Boolean = false,
+    draftsSelected: Boolean = false,
     channelOrder: List<String> = emptyList(),
     channelSortMode: String = "manual",
     jointChannelSortMode: String = "manual",
@@ -1683,6 +1693,7 @@ internal fun RaftStructuralHomeShell(
     onInboxClick: () -> Unit = {},
     onFollowedThreadsClick: () -> Unit = {},
     onSavedClick: () -> Unit = {},
+    onDraftsClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
@@ -1743,6 +1754,7 @@ internal fun RaftStructuralHomeShell(
                 inboxUnreadCount = inboxUnreadCount,
                 inboxTotalCount = inboxTotalCount,
                 savedCount = savedCount,
+                draftsCount = draftsCount,
                 notifications = notifications,
                 inlineError = inlineError,
                 unreadStale = unreadStale,
@@ -1760,6 +1772,7 @@ internal fun RaftStructuralHomeShell(
                 activitySelected = activitySelected,
                 searchSelected = searchSelected,
                 savedSelected = savedSelected,
+                draftsSelected = draftsSelected,
                 channelOrder = channelOrder,
                 channelSortMode = channelSortMode,
                 jointChannelSortMode = jointChannelSortMode,
@@ -1802,6 +1815,7 @@ internal fun RaftStructuralHomeShell(
                 onInboxClick = onInboxClick,
                 onFollowedThreadsClick = onFollowedThreadsClick,
                 onSavedClick = onSavedClick,
+                onDraftsClick = onDraftsClick,
                 onSearchClick = onSearchClick,
                 onNotificationView = onNotificationView,
                 onNotificationDismiss = onNotificationDismiss,
@@ -1860,6 +1874,7 @@ private fun RaftStructuralHomeShellContent(
     val inboxUnreadCount = data.inboxUnreadCount
     val inboxTotalCount = data.inboxTotalCount
     val savedCount = data.savedCount
+    val draftsCount = data.draftsCount
     val notifications = data.notifications
     val inlineError = data.inlineError
     val unreadStale = data.unreadStale
@@ -1877,6 +1892,7 @@ private fun RaftStructuralHomeShellContent(
     val activitySelected = data.activitySelected
     val searchSelected = data.searchSelected
     val savedSelected = data.savedSelected
+    val draftsSelected = data.draftsSelected
     val channelOrder = data.channelOrder
     val channelSortMode = data.channelSortMode
     val jointChannelSortMode = data.jointChannelSortMode
@@ -1919,6 +1935,7 @@ private fun RaftStructuralHomeShellContent(
     val onInboxClick = callbacks.onInboxClick
     val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
     val onSavedClick = callbacks.onSavedClick
+    val onDraftsClick = callbacks.onDraftsClick
     val onSearchClick = callbacks.onSearchClick
     val onNotificationView = callbacks.onNotificationView
     val onNotificationDismiss = callbacks.onNotificationDismiss
@@ -2202,6 +2219,7 @@ private fun RaftStructuralHomeShellContent(
             searchSelected = searchSelected,
             activitySelected = activitySelected,
             savedSelected = savedSelected,
+            draftsSelected = draftsSelected,
             pinnedChannelIds = pinnedIdSet
         )
     // #211 React parity (revised by @artin 23:38): pinned row and
@@ -2387,6 +2405,10 @@ private fun RaftStructuralHomeShellContent(
     val onSavedClickWithDismiss: () -> Unit = {
         dismissNotificationCenterForFocusLoss()
         onSavedClick()
+    }
+    val onDraftsClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onDraftsClick()
     }
     val onChannelClickWithDismiss: (String) -> Unit = { conversationId ->
         dismissNotificationCenterForFocusLoss()
@@ -2589,6 +2611,11 @@ private fun RaftStructuralHomeShellContent(
                                     }
                                 }
                                 item { HomeSidebarEntryRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(savedCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
+                                // Drafts (drafts_section_v0, botiverse/slock #12159): under Saved, the same kind of
+                                // row with its gray count (hidden at 0). Null: the flag is off, no row.
+                                if (draftsCount != null) {
+                                    item { HomeSidebarEntryRow(RaftLucideIconName.Pencil, labels.drafts, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Drafts, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(draftsCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onDraftsClickWithDismiss else null) }
+                                }
                                 inlineError?.let { error ->
                                     item {
                                         HomeInlineErrorCard(
@@ -4221,12 +4248,14 @@ internal fun homeSidebarSelection(
     searchSelected: Boolean,
     activitySelected: Boolean,
     savedSelected: Boolean,
+    draftsSelected: Boolean = false,
     pinnedChannelIds: Set<String> = emptySet()
 ): RaftHomeSidebarSelection =
     when {
         searchSelected -> RaftHomeSidebarSelection(topAction = RaftHomeSidebarTopSelection.Search)
         activitySelected -> RaftHomeSidebarSelection(topAction = RaftHomeSidebarTopSelection.Activity)
         savedSelected -> RaftHomeSidebarSelection(topAction = RaftHomeSidebarTopSelection.Saved)
+        draftsSelected -> RaftHomeSidebarSelection(topAction = RaftHomeSidebarTopSelection.Drafts)
         selectedChannelId != null -> {
             val section =
                 selectedConversationSection

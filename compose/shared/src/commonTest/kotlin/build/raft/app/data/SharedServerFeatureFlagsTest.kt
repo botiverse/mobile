@@ -182,6 +182,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("slack_bridge_v0", SLACK_BRIDGE_FEATURE_FLAG_KEY)
         // slock staging ee41b3f3 packages/server/src/services/featureFlagService.ts PERSONAL_ASSISTANT_FEATURE_FLAG_KEY.
         assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
+        // botiverse/slock #12159 packages/web/src/store/serverFeatureFlags.ts DRAFTS_SECTION_FLAG_KEY (default off).
+        assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
@@ -191,6 +193,7 @@ class SharedServerFeatureFlagsTest {
                 TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
+                DRAFTS_SECTION_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

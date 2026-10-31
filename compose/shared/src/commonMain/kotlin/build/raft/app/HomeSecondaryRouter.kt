@@ -52,6 +52,7 @@ import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.SharedHomeViewModel
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.RaftNetworkClient
@@ -89,8 +90,10 @@ import kotlinx.coroutines.launch
 internal const val HomeDestinationSearch = SharedHomeShellDestinationSearch
 internal const val HomeDestinationActivity = SharedHomeShellDestinationActivity
 internal const val HomeDestinationSaved = SharedHomeShellDestinationSaved
+/** Drafts (drafts_section_v0): a router destination only; the Home shell store has no state for it. */
+internal const val HomeDestinationDrafts = "drafts"
 internal val homeSecondaryDestinationKeys =
-    listOf(HomeDestinationSearch, HomeDestinationActivity, HomeDestinationSaved)
+    listOf(HomeDestinationSearch, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationDrafts)
 
 private data class HomeSecondaryRouteEnvironment(
     val pager: Pager,
@@ -100,6 +103,7 @@ private data class HomeSecondaryRouteEnvironment(
     val serverMembersStore: SharedServerMembersStore,
     val computersStore: SharedComputersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val tasksDataStore: SharedTasksDataStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContextProvider: RaftTimeContextProvider,
@@ -239,6 +243,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             serverMembersStore = serverMembersStore,
             computersStore = computersStore,
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
+            tasksDataStore = sharedStores.tasksDataStore,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContextProvider = timeContextProvider,
@@ -322,6 +327,7 @@ internal fun HomeSecondaryRouterContent(
                     inlineListSelection = inlineListSelection,
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick, inlineListSelection)
+            HomeDestinationDrafts -> HomeDraftsRouterContent(environment, routeVisibleTick, inlineListSelection)
             else -> RaftCenteredLoading(message = stringResource(Res.string.auth_state_opening_server))
         }
     }
@@ -1244,6 +1250,99 @@ private fun HomeSavedRouterContent(
         },
         inlineListSelection = inlineListSelection,
     )
+}
+
+/**
+ * Drafts (drafts_section_v0, web DraftsPanel): this server's unsent drafts, placed from Home and the
+ * task store (and `GET /channels/:id` for what only the server knows), opened where they were typed:
+ * inline in the shared detail pane on the wide rail, as a pushed page on a phone.
+ */
+@Composable
+private fun HomeDraftsRouterContent(
+    environment: HomeSecondaryRouteEnvironment,
+    routeVisibleTick: Int = 0,
+    inlineListSelection: RaftInlineListSelection? = null,
+) {
+    val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
+    val homeStateFlow = remember(environment.sharedHomeStore) { environment.sharedHomeStore?.state ?: flowOf(null) }
+    val homeState by homeStateFlow.collectAsState(environment.sharedHomeStore?.state?.value)
+    val snapshot = (homeState?.content as? SharedHomeContentState.Content)?.snapshot
+    val serverId = snapshot?.server?.id?.value
+    val source = remember(environment.networkClient, environment.tasksDataStore) {
+        RaftDraftsSource(environment.networkClient, environment.tasksDataStore)
+    }
+    val directory = rememberRaftDraftDirectory(source, snapshot)
+    val listing =
+        rememberRaftDraftListing(
+            directory = directory,
+            draftPersistSlice = environment.composerDraftPersistSlice,
+            networkClient = environment.networkClient,
+            refreshTick = routeVisibleTick,
+        )
+    val labels = rememberRaftDraftRowLabels()
+    val rows =
+        remember(listing, directory, labels) {
+            directory?.let { dir -> listing.entries.map { entry -> entry.toRaftDraftRowModel(dir, labels) } }.orEmpty()
+        }
+    val conversationDirectoryFlow =
+        remember(environment.conversationIdentityProvider, serverId) {
+            serverId?.takeIf { it.isNotBlank() }
+                ?.let { id -> environment.conversationIdentityProvider?.observeServer(ServerId(id)) }
+                ?: flowOf(SharedConversationDirectoryState())
+        }
+    val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val avatarSource =
+        remember(environment.serverMembersStore, serverId) {
+            ActivityAvatarSource(raftMemberAvatarResolver(environment.serverMembersStore, serverId), cacheServerId = serverId)
+        }
+    val agentStatusResolver =
+        remember(environment.serverMembersStore, serverId) {
+            raftScopedAgentStatusResolver(environment.serverMembersStore, serverId.orEmpty())
+        }
+    val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
+    CompositionLocalProvider(LocalActivityAvatarSource provides avatarSource) {
+        RaftDraftsPanel(
+            rows = rows,
+            onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
+            onOpen = { key ->
+                val entry = listing.entries.firstOrNull { it.key == key } ?: return@RaftDraftsPanel
+                val dir = directory ?: return@RaftDraftsPanel
+                val request = entry.toHomeMessageOpenRequest(dir.serverId, dir, conversationDirectory)
+                if (request == null) {
+                    environment.bridge.logWarn("drafts_open_request_pending key=$key")
+                    environment.bridge.toast(conversationNotReadyMessage)
+                    return@RaftDraftsPanel
+                }
+                environment.inlineOpenRequest?.let { open ->
+                    open(request, "home_drafts")
+                } ?: run {
+                    parkStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = environment.sharedWorkspaceStore,
+                        request = request,
+                        serverId = dir.serverId,
+                    )
+                    environment.pager.openStandaloneHomeMessageRequest(
+                        bridge = environment.bridge,
+                        request = request,
+                        source = "home_drafts",
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                        storeScope = environment.storeScope
+                    )
+                }
+            },
+            bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+            timeContext = environment.timeContext,
+            agentStatusResolver = agentStatusResolver,
+            topSafeAreaPadding = environment.shellScope.topInset(true),
+            listState = listState,
+            onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } },
+            inlineListSelection = inlineListSelection,
+        )
+    }
 }
 
 @Composable

@@ -5628,7 +5628,8 @@ data class HomeServerActivityUnreadProjection(
 enum class SharedHomeTopAction {
     Search,
     Activity,
-    Saved
+    Saved,
+    Drafts
 }
 
 sealed interface SharedHomeIntent {

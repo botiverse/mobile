@@ -21,6 +21,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_file_preview" to { build.raft.app.ComposeRaftFilePreviewPage() },
         "compose_home" to { build.raft.app.ComposeRaftHomePage() },
         "compose_home_activity" to { build.raft.app.ComposeHomeActivityPage() },
+        "compose_home_drafts" to { build.raft.app.ComposeHomeDraftsPage() },
         "compose_home_saved" to { build.raft.app.ComposeHomeSavedPage() },
         "compose_home_search" to { build.raft.app.ComposeHomeSearchPage() },
         "compose_icon_gallery" to { build.raft.app.RaftLucideIconGalleryPage() },
