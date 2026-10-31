@@ -357,7 +357,8 @@ internal fun SettingsServerDeleteConfirmationDialog(
             RaftModalDismissBarrier(
                 overlayAlpha = 0.58f,
                 onDismiss = onDismiss,
-                dismissEnabled = !deleteBusy
+                // Destructive confirm (web ConfirmDialog): no scrim dismiss; Back, × and Cancel close it.
+                dismissEnabled = false
             )
             Box(
                 modifier =

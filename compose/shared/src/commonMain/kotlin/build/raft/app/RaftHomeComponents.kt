@@ -3469,6 +3469,7 @@ private fun RaftStructuralHomeShellContent(
                 RaftUnifiedDialog(
                     title = labels.deleteSection,
                     onDismiss = { sectionDeleteConfirmId = null },
+                    dismissOnOutsideTap = false,
                     maxWidth = 384.dp
                 ) {
                     Text(

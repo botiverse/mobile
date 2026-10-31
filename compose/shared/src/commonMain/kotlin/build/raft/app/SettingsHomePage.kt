@@ -11364,6 +11364,7 @@ private fun SharedCreateChannelDialog(
     RaftUnifiedDialog(
         title = stringResource(Res.string.channel_create_title),
         dismissEnabled = !submitting,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {

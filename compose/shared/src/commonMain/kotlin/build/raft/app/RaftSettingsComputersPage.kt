@@ -1618,6 +1618,7 @@ private fun RaftComputerDetailBody(
             onDismissRequest = { confirmDelete = false },
             title = stringResource(Res.string.settings_computers_delete_title),
             description = stringResource(Res.string.settings_computers_delete_detail),
+            dismissOnClickOutside = false,
             closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(

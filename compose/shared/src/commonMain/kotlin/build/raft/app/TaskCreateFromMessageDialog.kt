@@ -80,6 +80,7 @@ internal fun TaskCreateFromMessageDialog(
             ),
         onDismiss = { if (!submitting) onDismiss() },
         dismissEnabled = !submitting,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         contentPadding = RaftAppSpacing.Md,
         contentSpacing = RaftAppSpacing.Md,

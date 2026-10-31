@@ -92,6 +92,7 @@ internal fun MembersAgentIssueReportDialog(
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_report_issue_title),
         dismissEnabled = !busy,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
         contentPadding = 24.dp,

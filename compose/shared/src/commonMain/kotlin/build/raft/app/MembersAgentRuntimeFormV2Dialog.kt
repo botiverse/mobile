@@ -123,6 +123,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     RaftUnifiedDialog(
         title = stringResource(Res.string.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {

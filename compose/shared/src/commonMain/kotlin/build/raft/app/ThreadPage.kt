@@ -35610,6 +35610,7 @@ internal fun ThreadForwardNoteDialog(
         uppercaseTitle = false,
         onDismiss = onDismiss,
         dismissEnabled = !sending,
+        dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
         minWidth = 320.dp,
         maxWidth = 430.dp
@@ -35940,6 +35941,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
         title = stringResource(Res.string.thread_members_remove_confirm_title),
         onDismiss = onDismiss,
         dismissEnabled = !removing,
+        dismissOnOutsideTap = false,
         minWidth = 320.dp,
         maxWidth = 384.dp,
         titleFontSize = 18,
@@ -36553,6 +36555,7 @@ internal fun ThreadSettingsModal(
     RaftUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(Res.string.thread_settings_edit_channel),
         keyboardAvoidanceEnabled = true,
+        dismissOnOutsideTap = false,
         onDismiss = onDismiss
     ) {
         if (activeDanger == null) {

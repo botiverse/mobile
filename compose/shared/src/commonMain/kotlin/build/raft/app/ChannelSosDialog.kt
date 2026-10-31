@@ -54,7 +54,7 @@ internal fun ChannelSosDialog(
                 if (state.phase == ChannelSosPhase.Confirm) Res.string.channel_sos_stop_all_agents else Res.string.channel_sos_agents_stopped
             ),
         size = RaftDialogSize.Sm,
-        dismissOnClickOutside = !busy,
+        dismissOnClickOutside = false,
         closeLabel = stringResource(Res.string.common_close),
         footer = { ChannelSosDialogFooter(state, busy, store, onClose) },
     ) {

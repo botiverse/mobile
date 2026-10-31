@@ -394,6 +394,7 @@ internal fun SharedServerInviteHumanDialogHost(
                 title = stringResource(Res.string.invite_human_revoke_confirm_title),
                 description = stringResource(Res.string.invite_human_revoke_confirm_message),
                 size = RaftDialogSize.Sm,
+                dismissOnClickOutside = false,
                 closeLabel = stringResource(Res.string.common_close),
                 footer = {
                     RaftButton(
