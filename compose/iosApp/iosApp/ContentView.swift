@@ -507,9 +507,11 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             lastBarWidth = barWidth
             let trailingCount = actions.filter { $0.placement == "trailing" }.count
                 + (actions.contains { $0.placement == "overflow" } ? 1 : 0)
-            var room = barWidth - 32 - CGFloat(trailingCount) * 48
-            if !isStackRoot { room -= 56 }
-            if ownBackButton { room -= 48 }
+            // iOS 26 glass: each button is ~52pt in its group, a group adds ~16pt of padding, and
+            // the system drops a trailing button that does not fit (run 41186095424 lost Search).
+            var room = barWidth - 40 - CGFloat(trailingCount) * 52 - (trailingCount > 0 ? 16 : 0)
+            if !isStackRoot { room -= 64 }
+            if ownBackButton { room -= 60 }
             leadingTitleView.maxWidth = max(80, room)
             let titleItem = UIBarButtonItem(customView: leadingTitleView)
             if #available(iOS 26.0, *) {
