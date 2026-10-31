@@ -79,10 +79,11 @@ class RaftBackSwipeRegions {
         internal val bounds: () -> Rect?,
         internal val consumesBackSwipe: () -> Boolean,
         internal val wholePage: Boolean,
+        internal val keepsTouches: Boolean = false,
     )
 
-    fun register(bounds: () -> Rect?, consumesBackSwipe: () -> Boolean): Region =
-        Region(bounds, consumesBackSwipe, wholePage = false).also { regions += it }
+    fun register(bounds: () -> Rect?, consumesBackSwipe: () -> Boolean, keepsTouches: Boolean = false): Region =
+        Region(bounds, consumesBackSwipe, wholePage = false, keepsTouches = keepsTouches).also { regions += it }
 
     /** A region covering the whole page that keeps every back drag (an open overlay). */
     fun registerWholePage(): Region = Region({ null }, { true }, wholePage = true).also { regions += it }
@@ -107,6 +108,15 @@ class RaftBackSwipeRegions {
     /** [contentConsumesBackSwipeAt] for a point in host points (iOS `CGPoint` in the page view). */
     fun contentConsumesBackSwipeAtPoint(xPt: Double, yPt: Double): Boolean =
         contentConsumesBackSwipeAt((xPt * density).toFloat(), (yPt * density).toFloat())
+
+    /**
+     * True when a touch starting at ([xPt], [yPt]) (host points in the page) is on
+     * [raftKeepsEdgeTouches] content, which no edge back gesture may hold.
+     */
+    fun keepsEdgeTouchesAtPoint(xPt: Double, yPt: Double): Boolean {
+        val point = Offset((xPt * density).toFloat(), (yPt * density).toFloat())
+        return regions.any { it.keepsTouches && it.consumesBackSwipe() && it.bounds()?.contains(point) == true }
+    }
 }
 
 /** The page's back-swipe regions, or null when the host has no full-page back swipe. */
@@ -406,13 +416,23 @@ internal fun raftTrimLeadingEdge(bounds: Rect, edgePx: Float, isLtr: Boolean): R
 fun Modifier.raftKeepsBackSwipe(enabled: Boolean = true): Modifier =
     if (enabled) raftBackSwipeRegion(RaftAlwaysConsumes) else this
 
+/**
+ * The element this modifier is on keeps its touches from every edge back gesture: the leading-edge
+ * app rail. Compose's own iOS edge back gesture holds a touch near the edge while back handlers
+ * are enabled, and Compose then cancels the tap if the finger moved at all, so rail taps died.
+ */
+fun Modifier.raftKeepsEdgeTouches(): Modifier =
+    this then RaftBackSwipeRegionElement(RaftAlwaysConsumes, keepsTouches = true)
+
 private val RaftAlwaysConsumes: () -> Boolean = { true }
 
 private data class RaftBackSwipeRegionElement(
     val consumesBackSwipe: () -> Boolean,
     val leadingEdgeExclusion: Dp = 0.dp,
+    val keepsTouches: Boolean = false,
 ) : ModifierNodeElement<RaftBackSwipeRegionNode>() {
-    override fun create(): RaftBackSwipeRegionNode = RaftBackSwipeRegionNode(consumesBackSwipe, leadingEdgeExclusion)
+    override fun create(): RaftBackSwipeRegionNode =
+        RaftBackSwipeRegionNode(consumesBackSwipe, leadingEdgeExclusion, keepsTouches)
 
     override fun update(node: RaftBackSwipeRegionNode) {
         node.consumesBackSwipe = consumesBackSwipe
@@ -427,6 +447,7 @@ private data class RaftBackSwipeRegionElement(
 private class RaftBackSwipeRegionNode(
     var consumesBackSwipe: () -> Boolean,
     var leadingEdgeExclusion: Dp,
+    private val keepsTouches: Boolean,
 ) : Modifier.Node(), GlobalPositionAwareModifierNode, CompositionLocalConsumerModifierNode {
     private var coordinates: LayoutCoordinates? = null
     private var registry: RaftBackSwipeRegions? = null
@@ -435,7 +456,11 @@ private class RaftBackSwipeRegionNode(
     override fun onAttach() {
         val regions = currentValueOf(LocalRaftBackSwipeRegions) ?: return
         registry = regions
-        region = regions.register(bounds = ::currentBounds, consumesBackSwipe = ::currentlyConsumes)
+        region = regions.register(
+            bounds = ::currentBounds,
+            consumesBackSwipe = ::currentlyConsumes,
+            keepsTouches = keepsTouches,
+        )
     }
 
     override fun onDetach() {

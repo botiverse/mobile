@@ -66,7 +66,8 @@ import shared
             content = RaftIosTabBarController(
                 content: page.viewController,
                 bridge: nativeTabBar.bridge,
-                hostId: nativeTabBar.hostId
+                hostId: nativeTabBar.hostId,
+                keepsEdgeTouches: { point in page.keepsEdgeTouches(x: Double(point.x), y: Double(point.y)) }
             )
         } else {
             content = page.viewController

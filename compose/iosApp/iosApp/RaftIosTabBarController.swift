@@ -99,12 +99,21 @@ final class RaftIosTabBarController: UIViewController {
     private var systemTabs: AnyObject?
     private var serverAvatarSource: RaftNativeTabBarAvatar?
     private var serverAvatarImage: UIImage?
+    /// Whether a touch at a point in [content]'s view is on content that keeps its touches from
+    /// edge back gestures (the app rail; Kotlin `RaftIosPage.keepsEdgeTouches`).
+    private let keepsEdgeTouches: (CGPoint) -> Bool
 
     /// [bridge] must already be registered under [hostId]; this controller unregisters it.
-    init(content: UIViewController, bridge: RaftNativeTabBarBridge, hostId: String) {
+    init(
+        content: UIViewController,
+        bridge: RaftNativeTabBarBridge,
+        hostId: String,
+        keepsEdgeTouches: @escaping (CGPoint) -> Bool
+    ) {
         self.content = content
         self.bridge = bridge
         self.hostId = hostId
+        self.keepsEdgeTouches = keepsEdgeTouches
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -187,6 +196,19 @@ final class RaftIosTabBarController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         reportBand()
+        keepRailTouches()
+    }
+
+    /// Compose's own edge back gesture (CMP `UIKitBackGestureRecognizer`, added to the window's
+    /// top view while a back handler is enabled) holds every touch that starts near the leading
+    /// edge, and Compose cancels a tap that moved at all while it does: the app rail's taps died.
+    /// This controller becomes its delegate and keeps it off touches that start on the rail.
+    private func keepRailTouches() {
+        guard let window = view.window else { return }
+        for recognizer in window.subviews.flatMap({ $0.gestureRecognizers ?? [] })
+        where recognizer.delegate == nil && String(describing: type(of: recognizer)).contains("BackGestureRecognizer") {
+            recognizer.delegate = self
+        }
     }
 
     // MARK: - Shared state -> UIKit
@@ -480,5 +502,12 @@ private final class RaftIosTabSlotViewController: UIViewController {
             }
         }
         return nil
+    }
+}
+
+extension RaftIosTabBarController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let page = content.view, touch.view?.isDescendant(of: page) == true else { return true }
+        return !keepsEdgeTouches(touch.location(in: page))
     }
 }
