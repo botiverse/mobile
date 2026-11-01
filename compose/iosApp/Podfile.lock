@@ -1,5 +1,5 @@
 PODS:
-  - Hands (0.2.1)
+  - Hands (0.2.2)
   - MMKV (2.4.0):
     - MMKVCore (~> 2.4.0)
   - MMKVCore (2.4.0)
@@ -14,7 +14,7 @@ PODS:
   - Starscream (4.0.8)
 
 DEPENDENCIES:
-  - Hands (from `https://github.com/oranix-io/hands.git`, tag `ios-v0.2.1`)
+  - Hands (from `https://github.com/oranix-io/hands.git`, tag `ios-v0.2.2`)
   - MMKV (~> 2.4.0)
   - SDWebImage
   - SDWebImageSVGCoder
@@ -33,14 +33,14 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Hands:
     :git: https://github.com/oranix-io/hands.git
-    :tag: ios-v0.2.1
+    :tag: ios-v0.2.2
   shared:
     :path: "../shared"
 
 CHECKOUT OPTIONS:
   Hands:
     :git: https://github.com/oranix-io/hands.git
-    :tag: ios-v0.2.1
+    :tag: ios-v0.2.2
 
 SPEC CHECKSUMS:
   Hands: 1f35d80a99c9b752f816ed1100a7c4410281134d
