@@ -307,6 +307,24 @@ internal fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBindin
                 expectedAuthority = expectedAuthority
             ) ?: authorityBindingUnsupportedResponse()
 
+        // An absolute URL (a signed attachment URL) carries no session token, so there is no
+        // authority to bind. Without this the interface default answered 501 before any I/O and
+        // File Preview's raw text fallback always failed (Hands f1e17cd5, a `.tsv`).
+        override suspend fun requestRawAbsoluteUrl(
+            priority: DataRequestPriority,
+            url: String,
+            method: String,
+            headers: Map<String, String>,
+            bodyText: String?
+        ): HomeNetworkResponse =
+            this@boundTo.requestRawAbsoluteUrl(
+                priority = priority,
+                url = url,
+                method = method,
+                headers = headers,
+                bodyText = bodyText
+            )
+
         override suspend fun uploadAttachments(
             priority: DataRequestPriority,
             channelId: ChannelId,
