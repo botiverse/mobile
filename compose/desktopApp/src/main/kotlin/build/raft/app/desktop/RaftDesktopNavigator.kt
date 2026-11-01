@@ -18,7 +18,7 @@ typealias RaftDesktopPage = RaftStackPage
  * carry the host time context ([withRaftDesktopHostTimeContext]).
  */
 class RaftDesktopNavigator {
-    val stack = RaftPageStack(hostPageData = { it.withRaftDesktopHostTimeContext() }, log = ::log)
+    val stack = RaftPageStack(hostPageData = { _, data -> data.withRaftDesktopHostTimeContext() }, log = ::log)
 
     /** The back stack, bottom first; the last entry is the page on screen. */
     val pages: SnapshotStateList<RaftDesktopPage> get() = stack.pages

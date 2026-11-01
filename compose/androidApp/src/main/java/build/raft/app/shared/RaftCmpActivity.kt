@@ -93,6 +93,11 @@ import build.raft.app.cmp.host.RaftHostEvents
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.nav.RaftPageStack
+import build.raft.app.nav.RaftPageStackSavedState
+import build.raft.app.nav.RaftStackOpenRoute
+import build.raft.app.nav.RaftStackPage
+import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
 import androidx.compose.runtime.CompositionLocalProvider
@@ -730,6 +735,9 @@ private fun PendingAndroidAttachmentSaveAs.ownerOperationIsCurrent(): Boolean =
  *   heights in pageData and as `slockWindowInsetsChanged` host events (Kuikly host contract).
  * - Back: Compose `BackHandler`s registered by the page run first; this host's fallback callback
  *   moves the app shell task to the back or finishes the page.
+ * - Navigation 3 (`mobile_nav3_stack_v1`, off by default): the app shell draws the shared page
+ *   stack and opens the allowlisted pages on it ([RaftAndroidNav3StackContent], rules in
+ *   RaftAndroidNav3Stack.kt). Off, nothing here changes.
  * - Native capabilities: [RaftBridgeModule] behind [RaftCmpHost.bridgeTransport]
  *   (sync and async), host-bound ones through [RaftHostActivity].
  */
@@ -759,6 +767,12 @@ internal open class RaftCmpActivity :
     @Volatile private var renderReadinessTopPageLoad: RaftLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, RaftLoadReadiness>()
     private var pageSpec: RaftPageSpec? = null
+    // Navigation 3 page stack of the app shell window; null with the switch off or on any other page.
+    private var nav3Stack: RaftPageStack? = null
+    // The page keys saved before this instance was recreated (process death, recreation).
+    private var nav3SavedKeysText: String? = null
+    // onNewIntent resets the window to the shell: the recreation must not bring the stack back.
+    private var nav3DropStackOnSave = false
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
     private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
@@ -879,6 +893,7 @@ internal open class RaftCmpActivity :
         requestHighestSupportedDisplayMode()
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
+        nav3SavedKeysText = savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
         pendingAttachmentSaveAs =
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
@@ -1032,16 +1047,33 @@ internal open class RaftCmpActivity :
                 events = hostEvents,
                 childPageLoads = RaftChildPageLoadListener(::onCmpChildPageLoadComplete),
             )
+        val stack = createNav3StackIfEnabled(spec.pageName)
+        nav3Stack = stack
         val composeView =
             ComposeView(this).apply {
                 setContent {
                     CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
-                        RaftCmpRoot(
-                            args,
-                            host,
-                            onSystemBarsResolved = ::applySystemBarAppearance,
-                            onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                        )
+                        if (stack == null) {
+                            RaftCmpRoot(
+                                args,
+                                host,
+                                onSystemBarsResolved = ::applySystemBarAppearance,
+                                onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                            )
+                        } else {
+                            RaftAndroidNav3StackContent(
+                                stack = stack,
+                                onSystemBars = ::applySystemBarAppearance,
+                                onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
+                                shell = { onBars, onCanvas ->
+                                    RaftCmpRoot(args, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                },
+                                page = { page, onBars, onCanvas ->
+                                    val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
+                                    RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -1058,6 +1090,53 @@ internal open class RaftCmpActivity :
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
         }
         RaftAndroidLocalDiagnostics.reportAppFullLaunch()
+    }
+
+    /**
+     * The shell window's Navigation 3 page stack when the switch is on for this process
+     * ([raftAndroidNav3StackEnabled]), with the pages saved before a recreation put back over the
+     * shell (unusable saved keys: the shell alone).
+     */
+    private fun createNav3StackIfEnabled(pageName: String): RaftPageStack? {
+        if (!raftAndroidNav3StackEnabled(pageName, ::raftSharedPreferenceStore)) return null
+        val stack =
+            RaftPageStack(
+                hostPageData = { name, data -> nav3StackPageData(name, data) },
+                log = { line -> RaftAppLog.record(TAG, "nav3_stack $line") },
+            )
+        val savedText = nav3SavedKeysText
+        nav3SavedKeysText = null
+        if (savedText != null) {
+            val keys = raftAndroidNav3RestoredKeys(savedText)
+            val restored = keys != null && stack.restore(keys)
+            RaftAppLog.record(TAG, "nav3_stack_restore restored=$restored pages=${keys?.size ?: 0} chars=${savedText.length}")
+        }
+        RaftAppLog.record(TAG, "nav3_stack_on pages=${stack.pages.size}")
+        return stack
+    }
+
+    /** A stack page's args: its key pageData plus what [start] adds to an Activity's (host facts, insets). */
+    private fun nav3StackPageData(pageName: String, pageData: JsonObject): JsonObject {
+        val hostData = JSONObject(pageData.toRaftJsonString()).withAndroidHostPageData(pageName)
+        val withInsets = RaftPageData.fromJson(hostData).withAndroidRuntimeWindowInsets()
+        return parseRaftJsonObjectOrNull(withInsets.text) ?: pageData
+    }
+
+    /** The host of one stack page: the Activity's bridge, its own navigator and events. */
+    private fun nav3PageHost(stack: RaftPageStack, page: RaftStackPage, activityTransport: HostBridgeTransport): RaftCmpHost {
+        val transport = RaftStackPageBridgeTransport(activityTransport, onClosePage = { stack.close(page) })
+        return RaftCmpHost(
+            capabilities = BridgeWireHostCapabilities(transport),
+            navigator =
+                object : RaftCmpNavigator {
+                    override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(page, pageName, pageData)
+
+                    override fun closePage() = stack.close(page)
+                },
+            bridgeTransport = transport,
+            events = page.events,
+            childPageLoads = RaftChildPageLoadListener(::onCmpChildPageLoadComplete),
+        )
     }
 
     /** Child page load: render readiness for the embedded page (see [renderReadinessSnapshot]). */
@@ -1145,10 +1224,15 @@ internal open class RaftCmpActivity :
     /** Kuikly `sendEvent`: delivered to the hosted page(s) as a pager event, on the main thread. */
     private fun sendHostEvent(event: String, data: Map<String, Any?>) {
         val payload = parseRaftJsonObjectOrNull(JSONObject(data).toString()) ?: JsonObject(emptyMap())
-        if (Looper.myLooper() == Looper.getMainLooper()) {
+        val send = {
             hostEvents.send(event, payload)
+            // Stack pages get the window's events too (each Activity had its own).
+            nav3Stack?.pages?.drop(1)?.forEach { page -> page.events.send(event, payload) }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            send()
         } else {
-            runOnUiThread { hostEvents.send(event, payload) }
+            runOnUiThread { send() }
         }
     }
 
@@ -1269,6 +1353,9 @@ internal open class RaftCmpActivity :
         androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
         registerAndroidShellWindow(intent)
+        // As today: a new intent resets the window to the shell (singleTask cleared the Activities
+        // above it); pages on the stack are not brought back by the recreation.
+        nav3DropStackOnSave = true
         RaftAppLog.record(
                 "SlockKuiklyActivity",
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
@@ -1332,6 +1419,14 @@ internal open class RaftCmpActivity :
         }
         pendingThreadCameraCapture?.let { pending ->
             outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)
+        }
+        nav3Stack?.takeUnless { nav3DropStackOnSave }?.savedKeys()?.takeIf { it.isNotEmpty() }?.let { keys ->
+            val text = RaftPageStackSavedState.encode(keys)
+            if (text != null) {
+                outState.putString(RAFT_NAV3_STACK_STATE_KEY, text)
+            } else {
+                RaftAppLog.record(TAG, "nav3_stack_save_skipped pages=${keys.size} reason=size_guard")
+            }
         }
         super.onSaveInstanceState(outState)
     }
@@ -1634,7 +1729,19 @@ internal open class RaftCmpActivity :
      * Kuikly `RouterModule.openPage` (formerly the Kuikly router adapter): login replacement,
      * post-authentication hand-off, the app shell launch path and `slockReplaceCurrentPage`.
      */
-    override fun openPage(pageName: String, pageData: JsonObject) {
+    override fun openPage(pageName: String, pageData: JsonObject) = openPageFrom(null, pageName, pageData)
+
+    /**
+     * An open from the shell (or this page, [from] null) or from a stack page ([from]): onto the
+     * stack for an allowlisted page with the stack on ([raftAndroidNav3OpenRoute]), else the Activity
+     * path, where `slockReplaceCurrentPage` from a stack page closes that page instead of the window.
+     */
+    private fun openPageFrom(from: RaftStackPage?, pageName: String, pageData: JsonObject) {
+        val stack = nav3Stack
+        if (stack != null && raftAndroidNav3OpenRoute(stack, pageName, pageData, from) == RaftStackOpenRoute.Stack) {
+            stack.open(pageName, pageData, from = from ?: stack.pages.first())
+            return
+        }
         val data = JSONObject(pageData.toRaftJsonString())
         val replaceCurrent = shouldReplaceCurrentPage(data)
         if (pageName == RaftPages.LOGIN && replaceCurrent) {
@@ -1648,7 +1755,7 @@ internal open class RaftCmpActivity :
                 start(this, pageName, data, animated = !shouldOpenWithoutAnimation(data))
             }
         }
-        if (AndroidLoginTransitionRouting.isPostAuthReplacement(
+        if (from == null && AndroidLoginTransitionRouting.isPostAuthReplacement(
                 intent?.getStringExtra(KEY_PAGE_NAME), pageName, replaceCurrent,
             )) {
             if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
@@ -1658,7 +1765,7 @@ internal open class RaftCmpActivity :
             startDestination()
         }
         if (replaceCurrent) {
-            finish()
+            if (from != null && stack != null) stack.close(from) else finish()
         }
     }
 

@@ -157,6 +157,16 @@ const val PERSONAL_ASSISTANT_FEATURE_FLAG_KEY: String = "personal_assistant"
  */
 const val DRAFTS_SECTION_FEATURE_FLAG_KEY: String = "drafts_section_v0"
 
+/**
+ * Navigation 3 page stack on Android (plan step 1): the app shell window draws the shared page stack
+ * and opens the allowlisted pages on it instead of in Activities of their own. Mobile-only key,
+ * default OFF (server-unresolved evaluates false). Unlike the other flags it is not read per
+ * server at use: the last evaluation is kept on the device ([build.raft.app.nav.RaftNav3StackFlag])
+ * and the app reads it once at launch, so a change takes effect on the next app start. Local test
+ * switch: Settings > Developer > "Navigation 3 page stack".
+ */
+const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -179,6 +189,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
+    MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
 )

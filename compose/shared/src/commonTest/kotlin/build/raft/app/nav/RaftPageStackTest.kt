@@ -94,7 +94,7 @@ class RaftPageStackTest {
     }
 
     @Test fun `keys hold identity only and args add the host facts`() {
-        val hosted = RaftPageStack(hostPageData = { JsonObject(it + ("localOffsetMinutes" to JsonPrimitive(480))) })
+        val hosted = RaftPageStack(hostPageData = { _, data -> JsonObject(data + ("localOffsetMinutes" to JsonPrimitive(480))) })
         val opened = JsonObject(mapOf("channelId" to JsonPrimitive("c1"), "messages" to JsonArray(emptyList())))
         hosted.open("thread", opened, from = null)
         val page = hosted.pages.last()

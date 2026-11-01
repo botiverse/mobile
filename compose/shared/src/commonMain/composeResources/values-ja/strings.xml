@@ -2703,6 +2703,8 @@
     <string name="settings_developer_route_launcher_detail">Kuikly ルートランチャーとアイコン比較を開きます。</string>
     <string name="settings_developer_text_input_trace">テキスト入力トレース</string>
     <string name="settings_developer_text_input_trace_detail">テキストフィールドのキーボード編集とテキスト同期をすべてアプリログに記録します（長さのみで、内容は記録しません）。入力メソッドの不具合報告用です。</string>
+    <string name="settings_developer_nav3_stack">Navigation 3 ページスタック</string>
+    <string name="settings_developer_nav3_stack_detail">移行済みのページをアプリのウィンドウ内で開きます（Android）。次回のアプリ起動時に反映されます。</string>
     <string name="settings_developer_presets">プリセット</string>
     <string name="settings_developer_presets_detail">プリセットを選択して環境フォームに反映し、保存して適用します。</string>
     <string name="settings_developer_presets_empty">このホストから利用できるプリセットはありません。</string>

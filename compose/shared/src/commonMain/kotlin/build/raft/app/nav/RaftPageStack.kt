@@ -36,11 +36,15 @@ class RaftStackPage internal constructor(
  * open over it (Tenny; artin's Esc in a chat quit the desktop app). Shared pages reach it through
  * [navigatorFor] (the unchanged [RaftCmpNavigator] `openPage` / `closePage`).
  *
- * [hostPageData] adds the host's facts (time context, ...) to each page's args; [log] gets one line
- * per open / close.
+ * [hostPageData] adds the host's facts (time context, insets, ...) to each page's args (page name,
+ * key pageData); [log] gets one line per open / close.
+ *
+ * Saving: a host keeps [savedKeys] (identity only, the pages over the root) and hands them back to
+ * [restore] in a new stack; the id serial restarts above the highest restored id, so a page opened
+ * after a restore never reuses a restored page's content key (its saved UI state).
  */
 class RaftPageStack(
-    private val hostPageData: (JsonObject) -> JsonObject = { it },
+    private val hostPageData: (pageName: String, pageData: JsonObject) -> JsonObject = { _, data -> data },
     private val log: (String) -> Unit = {},
 ) {
     private var nextId = 0L
@@ -57,7 +61,7 @@ class RaftPageStack(
 
     fun open(pageName: String, pageData: JsonObject, from: RaftStackPage?) {
         log("open page=$pageName from=${from?.args?.pageName} data=${pageData.toString().take(200)}")
-        val replace = (pageData[REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
+        val replace = (pageData[RAFT_REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
         val next = page(pageName, pageData)
         when {
             pageName == RAFT_APP_SHELL_PAGE -> {
@@ -87,15 +91,33 @@ class RaftPageStack(
         return true
     }
 
+    /** The keys of the pages over the root page, bottom first: what a host saves. */
+    fun savedKeys(): List<RaftPageKey> = pages.drop(1).map { it.key }
+
+    /**
+     * Puts [keys] (a [savedKeys] list) back over the root page. Only a stack with nothing open over
+     * its root accepts them; keys that repeat a content key, or reuse the root's, are refused whole
+     * (false, nothing changed). The id serial continues above the highest restored id.
+     */
+    fun restore(keys: List<RaftPageKey>): Boolean {
+        if (keys.isEmpty()) return true
+        val root = pages.firstOrNull() ?: return false
+        val contentKeys = keys.map { it.contentKey }
+        if (pages.size != 1 || contentKeys.toSet().size != keys.size || root.contentKey in contentKeys) {
+            log("restore refused pages=${pages.size} keys=$contentKeys")
+            return false
+        }
+        pages.addAll(keys.map { key -> RaftStackPage(key, RaftCmpPageArgs(key.pageName, hostPageData(key.pageName, key.pageData))) })
+        nextId = maxOf(nextId, keys.maxOf { it.id } + 1)
+        log("restore pages=$contentKeys nextId=$nextId")
+        return true
+    }
+
     private fun page(pageName: String, pageData: JsonObject): RaftStackPage {
         val key =
             RaftPageKey.create(pageName, pageData, nextId++) { field ->
                 log("open page=$pageName dropped non-identity pageData key=$field")
             }
-        return RaftStackPage(key, RaftCmpPageArgs(pageName, hostPageData(key.pageData)))
-    }
-
-    private companion object {
-        const val REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+        return RaftStackPage(key, RaftCmpPageArgs(pageName, hostPageData(pageName, key.pageData)))
     }
 }
