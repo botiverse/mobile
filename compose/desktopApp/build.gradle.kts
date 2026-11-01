@@ -27,7 +27,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.cmp.lifecycle.viewmodel.compose)
     implementation(libs.cmp.lifecycle.runtime.compose)
-    // The page back stack (NavDisplay + a scene strategy). Desktop only: Android and iOS keep their
+    // NavDisplay over :shared's page stack (build.raft.app.nav). Android and iOS keep their
     // Activity / view-controller hosts until they move to the same back stack.
     implementation(libs.cmp.navigation3.ui)
     implementation(libs.kotlinx.coroutines.core)
