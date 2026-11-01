@@ -388,6 +388,10 @@
     <string name="thread_tab_chat">Chat</string>
     <string name="thread_tab_tasks">Tasks</string>
     <string name="thread_tab_files">Files</string>
+    <string name="thread_side_card_tasks_open">Open Tasks</string>
+    <string name="thread_side_card_tasks_close">Close Tasks</string>
+    <string name="thread_side_card_files_open">Open Files</string>
+    <string name="thread_side_card_files_close">Close Files</string>
     <string name="thread_state_loading">Loading…</string>
     <string name="thread_error_load">Failed to load thread</string>
     <string name="thread_error_access_resolution">Could not verify access to this thread or its parent message. Check your connection and try again.</string>
