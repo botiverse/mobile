@@ -5,6 +5,8 @@ import build.raft.app.model.MessageId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 
 class IntegrationsActionsPushApiTest {
@@ -221,6 +223,46 @@ class IntegrationsActionsPushApiTest {
         }
     }
 
+    /**
+     * POST /integrations/requests/:requestId/approve at botiverse/slock staging
+     * 0dd599ab68 (#12297): routes/integrations.ts calls `refuseUnverifiedApprover` with
+     * "...before approving this app's access."; routes/secondFactorStepUp.api.test.ts asserts the
+     * body `{ error, code: "second_factor_step_up_required", methods }` (here with a passkey too,
+     * which the app does not offer). The card execute shares the parser (not gated server-side yet).
+     */
+    @Test
+    fun approveRefusedForAStepUpCarriesTheChallenge() = runBlocking {
+        val refusal =
+            HomeNetworkResponse(
+                code = 403,
+                bodyText = null,
+                errorBodyText =
+                    """{"error":"Confirm it's you with your second step before approving this app's access.","code":"second_factor_step_up_required","methods":["totp","passkey","backup_code"]}"""
+            )
+        val client =
+            RaftIntegrationsActionsPushApiClient(
+                RecordingIntegrationsActionsPushApi(approveResponse = refusal, actionResponse = refusal)
+            )
+
+        for (result in listOf(
+            client.approveIntegrationRequest("request-1", buildApproveIntegrationRequestBody(remember = true)),
+            client.executeAction(MessageId("message-1"), """{"expectedState":"prepared"}"""),
+        )) {
+            val challenge = assertNotNull(result.secondFactorStepUpChallengeOrNull())
+            assertEquals(listOf("totp", "passkey", "backup_code"), challenge.methods)
+            assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), challenge.usableMethods)
+        }
+        // Any other 403 is no step-up.
+        val forbidden =
+            RaftIntegrationsActionsPushApiClient(
+                RecordingIntegrationsActionsPushApi(
+                    approveResponse =
+                        HomeNetworkResponse(code = 403, bodyText = null, errorBodyText = """{"error":"Only server owners and admins can manage integrations"}""")
+                )
+            )
+        assertNull(forbidden.approveIntegrationRequest("request-1", """{"remember":true}""").secondFactorStepUpChallengeOrNull())
+    }
+
     @Test
     fun agentIntegrationsKeepsForbiddenClassification() = runBlocking {
         val client =
@@ -277,7 +319,10 @@ class IntegrationsActionsPushApiTest {
         private val actionEventBody: String = "",
         private val vapidBody: String = """{"publicKey":"vapid-public-key"}""",
         private val pushCommandBody: String = """{"ok":true}""",
-        private val pushTestBody: String = """{"ok":true,"attempted":1,"delivered":1,"failed":0,"stale":0}"""
+        private val pushTestBody: String = """{"ok":true,"attempted":1,"delivered":1,"failed":0,"stale":0}""",
+        /** Replaces every approve / execute answer when set (a refusal). */
+        private val approveResponse: HomeNetworkResponse? = null,
+        private val actionResponse: HomeNetworkResponse? = null,
     ) : RaftIntegrationsActionsPushApi {
         val calls = mutableListOf<String>()
 
@@ -298,7 +343,7 @@ class IntegrationsActionsPushApiTest {
 
         override suspend fun approveIntegrationRequest(requestId: String, body: String): HomeNetworkResponse {
             calls += "POST integrations/requests/$requestId/approve body=$body"
-            return ok(approveBody)
+            return approveResponse ?: ok(approveBody)
         }
 
         override suspend fun denyIntegrationRequest(requestId: String): HomeNetworkResponse {
@@ -326,7 +371,7 @@ class IntegrationsActionsPushApiTest {
 
         override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse {
             calls += "POST actions/${messageId.value}/execute body=$body"
-            return ok(actionBody)
+            return actionResponse ?: ok(actionBody)
         }
 
         override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse {

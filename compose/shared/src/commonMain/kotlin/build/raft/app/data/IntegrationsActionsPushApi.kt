@@ -37,6 +37,15 @@ private val integrationsActionsPushJson = Json {
  *
  * Field names are exact camelCase. No snake_case fallbacks, no speculative
  * aliases like `secret`/`key`/`state`.
+ *
+ * Step-up: approving an access request (`POST /integrations/requests/:requestId/approve`, slock
+ * staging 0dd599ab68 #12297, routes/integrations.ts `refuseUnverifiedApprover`) answers
+ * `403 { error: "Confirm it's you with your second step before approving this app's access.",
+ * code: "second_factor_step_up_required", methods }` for a person with two-step verification on
+ * whose sign-in has not passed it. An `integration:approve_agent_login` card's
+ * `POST /actions/:messageId/execute` is not gated at that SHA (pending contract verification);
+ * its error carries the same challenge if it comes. Both as [ScreenError.secondFactorStepUp].
+ * Deny is not gated.
  */
 internal interface RaftIntegrationsActionsPushApi {
     suspend fun integrationsOverview(): HomeNetworkResponse
@@ -292,7 +301,14 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
-        return DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+        return DataResult.Error(
+            ScreenError(
+                code = contractCode,
+                retryable = code >= 500,
+                // Approving an access request with two-step verification on (SecondFactorStepUpApi.kt).
+                secondFactorStepUp = secondFactorStepUpChallengeOrNull(),
+            )
+        )
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
@@ -332,6 +348,9 @@ private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<
                         // An install refused for a newer prompt-text revision (web appTextChangedCurrent).
                         envelope?.currentTextRevisionId?.takeIf { it.isNotBlank() }?.let { put("current_text_revision_id", it) }
                     },
+                // An Approve Login card's execute with two-step verification on: the caller steps
+                // up and runs it once more (SecondFactorStepUpCoordinator).
+                secondFactorStepUp = secondFactorStepUpChallengeOrNull(),
             )
         )
     }

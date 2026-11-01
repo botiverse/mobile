@@ -181,6 +181,10 @@ import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpIntent
+import build.raft.app.data.SecondFactorStepUpOutcome
+import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
@@ -8850,6 +8854,14 @@ private fun SharedThreadRouteContentContent(
             )
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
+    // An Approve Login card refused for a fresh second step (two-step verification on): "Verify
+    // it's you", then the card runs once more (SharedThreadDataSource.commitThreadActionCard).
+    val actionCardStepUp =
+        remember(sharedStores, storeScope, threadInstanceKey) {
+            val repository = SecondFactorStepUpRepository(sharedStores.networkClient(storeScope))
+            SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
+        }
+    val actionCardStepUpState by actionCardStepUp.state.collectAsState()
 
     val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
@@ -13001,7 +13013,10 @@ private fun SharedThreadRouteContentContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
+                            val outcome = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp)
+                            // "Verify it's you" closed: the card stays as it was, nothing is shown.
+                            val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
+                            when (result) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(itemId, result.data)
@@ -14397,6 +14412,16 @@ private fun SharedThreadRouteContentContent(
         }
         installAppDialogState?.let { dialogState ->
             ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
+        }
+        actionCardStepUpState?.let { dialogState ->
+            SecondFactorStepUpDialog(
+                state = dialogState,
+                onIntent = { intent ->
+                    coroutineScope.launch { actionCardStepUp.accept(intent) }
+                    if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
+                },
+                description = stringResource(Res.string.settings_step_up_generic_description),
+            )
         }
         // A4: a spec card's confirm / form follows the live card (its confirmation version, done elsewhere).
         val actionCardSpecDialogMessageId = actionCardSpecState.confirm?.messageId ?: actionCardSpecState.form?.messageId

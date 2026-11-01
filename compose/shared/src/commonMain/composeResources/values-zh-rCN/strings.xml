@@ -175,6 +175,7 @@
     <string name="settings_account_delete_title">要删除你的账户吗？</string>
     <string name="settings_step_up_title">确认是你本人</string>
     <string name="settings_step_up_description">更改登录方式前需要重新验证一次，10 分钟内有效。</string>
+    <string name="settings_step_up_generic_description">这个操作需要重新验证一次，10 分钟内有效。</string>
     <string name="settings_step_up_code_label">验证器验证码</string>
     <string name="settings_step_up_backup_code_label">备用码</string>
     <string name="settings_step_up_backup_code_hint">每个备用码只能用一次。大小写和连字符都可以不管。</string>
