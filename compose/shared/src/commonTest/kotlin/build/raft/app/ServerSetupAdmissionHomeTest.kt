@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftFeatureFlagsApi
+import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RaftServerSetupProjectionApi
 import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.model.ServerId
@@ -54,6 +57,58 @@ class ServerSetupAdmissionHomeTest {
         assertFalse(serverSetupAllowsHome(loading))
         assertFalse(serverSetupBlocksHome(loading))
         assertFalse(serverSetupAdmissionResolved(null))
+    }
+
+    /** Flag off, missing, not evaluated yet or failed: Home, and no setup-projection request at all. */
+    @Test
+    fun setupGateOffSendsNoProjectionRequestAndKeepsHome() = runTest {
+        val flagResponses = listOf(
+            null, // not evaluated yet
+            HomeNetworkResponse(code = 200, bodyText = """{"evaluations":[]}"""),
+            HomeNetworkResponse(code = 200, bodyText = flagBody(enabled = false)),
+            HomeNetworkResponse(code = 503, bodyText = null),
+            HomeNetworkResponse(code = 200, bodyText = flagBody(enabled = true)),
+        )
+        for ((index, flagResponse) in flagResponses.withIndex()) {
+            ServerSetupAdmissionMemory.clearForTest()
+            val flags = SharedServerFeatureFlags(
+                object : RaftFeatureFlagsApi {
+                    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                        requireNotNull(flagResponse)
+                }
+            )
+            if (flagResponse != null) flags.prefetch(ServerId("server"))
+            val gateOn = serverSetupGateEnabled(flags, "server")
+            var requests = 0
+            val controller = controller {
+                requests += 1
+                projectionResponse(blocksChat = true, gateReason = "setup_required")
+            }
+            var state: ServerSetupAdmissionState? = null
+
+            runServerSetupCheck(controller, identity(index), memoryKey, setupShowing = false, gateEnabled = gateOn) { state = it }
+
+            val flagOn = index == flagResponses.lastIndex
+            assertEquals(flagOn, gateOn, "case $index")
+            assertEquals(if (flagOn) 1 else 0, requests, "case $index")
+            assertEquals(!flagOn, serverSetupHostAllowsHome(gateOn, state, previouslyAllowed = false, homeShownBeforeGate = false), "case $index")
+        }
+    }
+
+    /** The flag landed ON after Home was shown: Home stays while checking; only blocksChat takes over. */
+    @Test
+    fun lateGateOnKeepsHomeUntilAPositiveBlocksChat() {
+        val identity = identity(5)
+        assertTrue(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = true))
+        assertFalse(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = false))
+        assertFalse(
+            serverSetupHostAllowsHome(
+                true,
+                ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)),
+                false,
+                homeShownBeforeGate = true,
+            )
+        )
     }
 
     @Test
@@ -140,6 +195,9 @@ class ServerSetupAdmissionHomeTest {
                 }
             )
         )
+
+    private fun flagBody(enabled: Boolean) =
+        """{"evaluations":[{"key":"$MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY","enabled":$enabled}]}"""
 
     private fun projectionResponse(blocksChat: Boolean, gateReason: String) = HomeNetworkResponse(
         code = 200,

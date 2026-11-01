@@ -18,6 +18,9 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.model.ServerId
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,11 +38,35 @@ internal data class ServerSetupAdmissionHost(
     val content: @Composable () -> Unit,
     /** This server already passed the check earlier in this process (see [ServerSetupAdmissionMemory]). */
     val previouslyAllowed: Boolean = false,
+    /** [serverSetupGateEnabled]: off means no setup check at all and Home as before. */
+    val gateEnabled: Boolean = true,
+    /**
+     * The gate was off when this server mounted (flag still loading) and Home was already shown, so
+     * a late ON keeps Home while the check runs; only a positive blocksChat then takes the screen.
+     */
+    val homeShownBeforeGate: Boolean = false,
 ) {
     val allowsHome: Boolean
-        get() = serverSetupAllowsHome(state) ||
-            serverSetupStillAllowsHome(previouslyAllowed, state)
+        get() = serverSetupHostAllowsHome(gateEnabled, state, previouslyAllowed, homeShownBeforeGate)
 }
+
+internal fun serverSetupHostAllowsHome(
+    gateEnabled: Boolean,
+    state: ServerSetupAdmissionState?,
+    previouslyAllowed: Boolean,
+    homeShownBeforeGate: Boolean,
+): Boolean =
+    !gateEnabled ||
+        serverSetupAllowsHome(state) ||
+        serverSetupStillAllowsHome(previouslyAllowed || homeShownBeforeGate, state)
+
+/**
+ * App switch for server setup ([MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY]). Off, missing, not yet
+ * evaluated or failed to evaluate all read as off (the shared flag default; last-known values apply
+ * like any other flag): setup is skipped and no setup-projection request is sent.
+ */
+internal fun serverSetupGateEnabled(featureFlags: SharedServerFeatureFlags, serverId: String): Boolean =
+    serverId.isNotBlank() && featureFlags.isEnabled(ServerId(serverId), MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
 
 /**
  * A server admitted earlier in this process keeps Home: its check is not run again (see
@@ -106,17 +133,19 @@ internal fun serverSetupWebViewTopInset(statusBarTop: Dp, hostPadsWebView: Boole
     if (hostPadsWebView) statusBarTop.coerceAtLeast(0.dp) else 0.dp
 
 /**
- * One setup check for [identity]. A server admitted earlier in this process sends no request (also
- * on return to foreground); otherwise publishes Loading, then the result.
+ * One setup check for [identity]. With the gate off, or for a server admitted earlier in this
+ * process (also on return to foreground), no request is sent; otherwise publishes Loading, then
+ * the result.
  */
 internal suspend fun runServerSetupCheck(
     controller: ServerSetupAdmissionController,
     identity: ServerSetupAdmissionIdentity,
     memoryKey: String,
     setupShowing: Boolean,
+    gateEnabled: Boolean = true,
     publish: (ServerSetupAdmissionState) -> Unit,
 ) {
-    if (ServerSetupAdmissionMemory.contains(memoryKey)) return
+    if (!gateEnabled || ServerSetupAdmissionMemory.contains(memoryKey)) return
     publish(controller.begin(identity))
     val loaded = controller.load(identity) ?: return
     val result =
@@ -138,6 +167,7 @@ internal fun rememberServerSetupAdmissionHost(
     bridge: BridgeModule,
     openExternalUrl: (String) -> Unit,
     refreshSignal: Int,
+    gateEnabled: Boolean,
 ): ServerSetupAdmissionHost {
     val scope = rememberCoroutineScope()
     val controller = rememberRaftWebViewController()
@@ -160,8 +190,10 @@ internal fun rememberServerSetupAdmissionHost(
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
     val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
     var setupShown by remember(identity) { mutableStateOf(false) }
-    LaunchedEffect(repository, identity, refreshEpoch, refreshSignal) {
-        runServerSetupCheck(controllerState, identity, memoryKey, setupShowing = setupShown) {
+    val homeShownBeforeGate = remember(identity) { !gateEnabled }
+    LaunchedEffect(repository, identity, refreshEpoch, refreshSignal, gateEnabled) {
+        if (!gateEnabled) state = null
+        runServerSetupCheck(controllerState, identity, memoryKey, setupShowing = setupShown, gateEnabled = gateEnabled) {
             if (it is ServerSetupAdmissionState.Blocked) setupShown = true
             state = it
         }
@@ -174,6 +206,8 @@ internal fun rememberServerSetupAdmissionHost(
     return ServerSetupAdmissionHost(
         state = state,
         previouslyAllowed = previouslyAllowed,
+        gateEnabled = gateEnabled,
+        homeShownBeforeGate = homeShownBeforeGate,
         retry = retry,
         content = {
             when (state) {

@@ -184,8 +184,12 @@ class SharedServerFeatureFlagsTest {
         assertEquals("personal_assistant", PERSONAL_ASSISTANT_FEATURE_FLAG_KEY)
         // botiverse/slock #12159 packages/web/src/store/serverFeatureFlags.ts DRAFTS_SECTION_FLAG_KEY (default off).
         assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
+        // New mobile switch for server setup; the old enable_webview_onboarding_v0 is no longer read.
+        assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
+        assertFalse("enable_webview_onboarding_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         for (
             key in listOf(
+                MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
                 ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
