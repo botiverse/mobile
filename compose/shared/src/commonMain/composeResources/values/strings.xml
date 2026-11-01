@@ -1900,6 +1900,15 @@
     <string name="home_notification_center_item_count_all_clear">all clear</string>
     <string name="home_notification_center_empty_title">No notifications right now</string>
     <string name="home_notification_center_empty_body">You'll see things here that need your attention.</string>
+    <string name="home_notification_center_security_alert">Notification center (%1$d active), security alert</string>
+    <string name="home_second_factor_recovery_waiting_title">Reset requested</string>
+    <string name="home_second_factor_recovery_waiting_body">Someone asked to reset two-step verification on your account. Signing in to Raft on the web can finish it after %1$s. Not you? Cancel the reset.</string>
+    <string name="home_second_factor_recovery_ready_title">Reset ready</string>
+    <string name="home_second_factor_recovery_ready_body">Someone asked to reset two-step verification on your account, and signing in to Raft on the web can now finish it without the second step, until %1$s. Not you? Cancel the reset and change your password.</string>
+    <string name="home_second_factor_recovery_set_password">This account has no password yet: set one with Forgot Password on the sign-in page, then sign in to finish it.</string>
+    <string name="home_second_factor_recovery_cancel">Cancel Reset</string>
+    <string name="home_second_factor_recovery_cancelled">Reset cancelled. Two-step verification stays on, and we emailed you.</string>
+    <string name="home_second_factor_recovery_cancel_failed">The reset wasn't cancelled. Try again.</string>
     <string name="home_notification_app_update_title">App update available</string>
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>
     <string name="app_update_view">View</string>

@@ -2747,6 +2747,14 @@ private fun RaftAppShellReadyContent(
                 scope = jointInviteScope,
             )
         }
+    // A pending two-step verification reset, first in the Home notification center (web #12295).
+    val secondFactorRecoveryStore =
+        remember(appShellNetworkClient, jointInviteScope) {
+            build.raft.app.data.SharedSecondFactorRecoveryStore(
+                dataSource = build.raft.app.data.NetworkSecondFactorRecoveryDataSource(appShellNetworkClient),
+                scope = jointInviteScope,
+            )
+        }
     val homeReadReceiptRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealReadReceiptRepository(
@@ -5826,6 +5834,10 @@ private fun RaftAppShellReadyContent(
                                 event == RaftRealtimeNotifyContract.LifecycleVisibleShow
                         if (visibleLifecycleEvent) {
                             foregroundEpoch?.let(visibleRefreshGate::observeLifecycleForegroundEpoch)
+                            // Web: the reset notice is read again whenever the window comes back.
+                            if (latestReadySession != null) {
+                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.Refresh)
+                            }
                         }
                         if (visibleLifecycleEvent && !latestPageVisible) {
                             bridge.log(
@@ -7950,6 +7962,7 @@ private fun RaftAppShellReadyContent(
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
                                 jointInviteStore = jointInviteStore,
+                                secondFactorRecoveryStore = secondFactorRecoveryStore,
                                 topSafeAreaOverride = shellScope.topSafeArea,
                                 bottomContentPadding = appShellBottomContentInset,
                                 listPositionServerId = homeListPositionServerId,
@@ -10715,6 +10728,7 @@ private fun SharedHomeScreen(
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
     jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
+    secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore? = null,
     topSafeAreaOverride: Dp? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     listPositionServerId: String? = null,
@@ -10754,6 +10768,7 @@ private fun SharedHomeScreen(
             onIntent = onIntent,
             onOpenConversation = onOpenConversation,
         )
+    val secondFactorRecovery = rememberHomeSecondFactorRecovery(bridge, secondFactorRecoveryStore, active)
     LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
         bridge.log(
             "shared_home_screen_enter active=$active sessionReady=$sessionReady " +
@@ -11059,7 +11074,9 @@ private fun SharedHomeScreen(
                         "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
                 )
             }
-            val notificationItems = jointInvites.items + state.notifications.map { it.toHomeNotificationItem() }
+            // Account security first (web useSystemNotifications), then joint invites (web "0a").
+            val notificationItems =
+                listOfNotNull(secondFactorRecovery.item) + jointInvites.items + state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -11184,6 +11201,8 @@ private fun SharedHomeScreen(
                 onNotificationView = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
                     when {
+                        notification.id == SECOND_FACTOR_RECOVERY_HOME_NOTIFICATION_ID ->
+                            secondFactorRecovery.cancel()
                         jointInviteId != null ->
                             jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
@@ -11199,15 +11218,19 @@ private fun SharedHomeScreen(
                 },
                 onNotificationDismiss = { notification ->
                     val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
-                    if (jointInviteId != null) {
+                    if (notification.security) {
+                        // Not dismissible (no Dismiss is drawn): it goes only when the reset does.
+                    } else if (jointInviteId != null) {
                         jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Dismiss(jointInviteId))
                     } else {
                         onNotificationDismiss(notification.id)
                     }
                 },
+                onNotificationCenterOpened = secondFactorRecovery.refresh,
                 onRefresh = {
                     onIntent(SharedHomeIntent.Refresh)
                     jointInvites.refresh()
+                    secondFactorRecovery.refresh()
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]

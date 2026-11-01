@@ -1902,6 +1902,15 @@
     <string name="home_notification_center_item_count_all_clear">すべて処理済み</string>
     <string name="home_notification_center_empty_title">現在の通知はありません</string>
     <string name="home_notification_center_empty_body">あなたの対応が必要な事項がここに表示されます。</string>
+    <string name="home_notification_center_security_alert">通知センター（%1$d 件）、セキュリティ警告</string>
+    <string name="home_second_factor_recovery_waiting_title">リセットが申請されました</string>
+    <string name="home_second_factor_recovery_waiting_body">あなたのアカウントの 2 段階認証のリセットが申請されました。%1$s 以降、Web 版の Raft にログインするとリセットを完了できます。心当たりがない場合は、リセットをキャンセルしてください。</string>
+    <string name="home_second_factor_recovery_ready_title">リセットを完了できます</string>
+    <string name="home_second_factor_recovery_ready_body">あなたのアカウントの 2 段階認証のリセットが申請されました。%1$s まで、Web 版の Raft にログインすると 2 段階認証なしでリセットを完了できます。心当たりがない場合は、リセットをキャンセルしてパスワードを変更してください。</string>
+    <string name="home_second_factor_recovery_set_password">このアカウントにはまだパスワードがありません。ログイン画面の「パスワードを忘れた場合」で設定してから、ログインして完了してください。</string>
+    <string name="home_second_factor_recovery_cancel">リセットをキャンセル</string>
+    <string name="home_second_factor_recovery_cancelled">リセットをキャンセルしました。2 段階認証はオンのままです。確認のメールをお送りしました。</string>
+    <string name="home_second_factor_recovery_cancel_failed">リセットをキャンセルできませんでした。もう一度お試しください。</string>
     <string name="home_notification_app_update_title">アプリのアップデートがあります</string>
     <string name="home_notification_app_update_body">現在のバージョン %1$s。最新バージョン %2$s。</string>
     <string name="app_update_view">表示</string>

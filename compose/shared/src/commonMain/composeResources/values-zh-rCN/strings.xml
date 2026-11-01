@@ -1900,6 +1900,15 @@
     <string name="home_notification_center_item_count_all_clear">全部已处理</string>
     <string name="home_notification_center_empty_title">暂无通知</string>
     <string name="home_notification_center_empty_body">需要你关注的事项会显示在这里。</string>
+    <string name="home_notification_center_security_alert">通知中心（%1$d 条待处理），有安全警报</string>
+    <string name="home_second_factor_recovery_waiting_title">已申请重置</string>
+    <string name="home_second_factor_recovery_waiting_body">有人申请重置你账户的两步验证。%1$s 之后，在网页版 Raft 登录时可以完成重置。不是你本人？请取消重置。</string>
+    <string name="home_second_factor_recovery_ready_title">重置可以完成了</string>
+    <string name="home_second_factor_recovery_ready_body">有人申请重置你账户的两步验证，现在在网页版 Raft 登录时可以不经第二步完成重置，截止到 %1$s。不是你本人？请取消重置并修改密码。</string>
+    <string name="home_second_factor_recovery_set_password">这个账户还没有密码：请先在登录页用“忘记密码”设置一个，再登录完成重置。</string>
+    <string name="home_second_factor_recovery_cancel">取消重置</string>
+    <string name="home_second_factor_recovery_cancelled">已取消重置。两步验证保持开启，我们已发邮件通知你。</string>
+    <string name="home_second_factor_recovery_cancel_failed">重置没有取消，请再试一次。</string>
     <string name="home_notification_app_update_title">有可用的应用更新</string>
     <string name="home_notification_app_update_body">当前版本：%1$s；最新版本：%2$s。</string>
     <string name="app_update_view">查看</string>
