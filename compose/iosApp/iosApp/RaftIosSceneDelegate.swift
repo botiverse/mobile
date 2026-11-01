@@ -134,14 +134,32 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         RaftIosDiagnosticsRecord("info", "RaftMessageLink", "universal_link_not_claimed source=\(source)")
         guard url.scheme == "https" else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let root = self?.window?.rootViewController else { return }
-            var presenter = root
-            while let presented = presenter.presentedViewController {
-                presenter = presented
+        // The sign-up email of an account created in the app's web sign-in: reopen it in a new web
+        // sign-in sheet (replacing the one left on "check your email"). It shares that sheet's
+        // browser session, so the web verifies, finishes the pending sign-in and calls back here;
+        // the default browser would have no session and ask to sign in again.
+        if RaftMessageLinkIngress.shared.isAppLoginVerificationLink(url: url.absoluteString, configuredWebUrl: nil) {
+            DispatchQueue.main.async { [weak self] in
+                RaftIosMobileOAuthHost.shared.openAppLogin(url: url.absoluteString, presentingWindow: self?.window) { result in
+                    let started = (result["status"] as? String) == "started"
+                    RaftIosDiagnosticsRecord("info", "SlockIosAppLogin", "verification_link_resume source=\(source) started=\(started)")
+                    if !started { self?.presentInAppSafari(url) }
+                }
             }
-            presenter.present(SFSafariViewController(url: url), animated: true)
+            return
         }
+        DispatchQueue.main.async { [weak self] in
+            self?.presentInAppSafari(url)
+        }
+    }
+
+    private func presentInAppSafari(_ url: URL) {
+        guard let root = window?.rootViewController else { return }
+        var presenter = root
+        while let presented = presenter.presentedViewController {
+            presenter = presented
+        }
+        presenter.present(SFSafariViewController(url: url), animated: true)
     }
 
     func windowScene(

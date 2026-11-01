@@ -153,6 +153,31 @@ internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): Strin
     return if (query.isEmpty()) path else "$path?$query"
 }
 
+/**
+ * The sign-up email's link when the account was created from the app's browser sign-in:
+ * `/?verify={token}&returnTo=/login/app?requestId={id}` (slock `verificationEmailUrl`; the web's
+ * register page sends the page it was on as `returnTo`). True only for that shape, on the hosts
+ * [parseRaftMessageLink] accepts. iOS reopens it in the web sign-in sheet, which shares the sign-up's
+ * browser session: the web verifies, lands on `returnTo` and calls back to the app as a normal
+ * browser login. Any other `?verify=` link (signed up on the web) is not an app sign-in to resume.
+ */
+internal fun isRaftAppLoginVerificationLink(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean {
+    val parsed = url.toRaftLinkUrl() ?: return false
+    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return false
+    if (parsed.path != "" && parsed.path != "/") return false
+    val query = parsed.queryParameters() ?: return false
+    if (query["verify"].isNullOrBlank()) return false
+    val returnTo = query["returnTo"] ?: return false
+    if (returnTo.substringBefore('?') != "/login/app") return false
+    val requestId = RaftLinkUrl("https", parsed.host, null, "", returnTo.substringAfter('?', "")).queryParameters()
+        ?.get("requestId")
+    return !requestId.isNullOrBlank()
+}
+
 private fun isRaftLinkIdentifier(value: String): Boolean =
     value.length in 1..128 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
 
@@ -328,6 +353,10 @@ object RaftMessageLinkIngress {
     /** Whether [url] is a message link the app takes, without queueing it. */
     fun isMessageLink(url: String, configuredWebUrl: String? = null): Boolean =
         parseRaftMessageLink(url, configuredWebUrl ?: appScopeWebUrlOrNull()) != null
+
+    /** [isRaftAppLoginVerificationLink]; [configuredWebUrl] as in [accept]. */
+    fun isAppLoginVerificationLink(url: String, configuredWebUrl: String? = null): Boolean =
+        isRaftAppLoginVerificationLink(url, configuredWebUrl ?: appScopeWebUrlOrNull())
 
     private fun appScopeWebUrlOrNull(): String? =
         runCatching {
