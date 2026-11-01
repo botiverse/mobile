@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 
@@ -17,20 +18,30 @@ import kotlinx.serialization.Serializable
  * Previews are message content, so this lives under its own key family, keyed by user and server:
  * sign-out keeps them for the same user, and losing access to a server drops that server's copies
  * ([AccountLocalData]).
+ *
+ * Persistence audit item 6 (read state offline while `sync_core_read_state_v1` is off): the record
+ * also carries the row's @ mark, the cross-server switcher badges and the followed-thread marks.
+ * All three are last-known candidates: they only fill gaps on a cold start and the first network
+ * Home (or unread summary) replaces them.
  */
 @Serializable
 data class HomeRowRestoredHint(
     val unreadCount: Int = 0,
     val lastMessagePreview: String? = null,
     val lastMessageAt: String? = null,
-    val lastMessageSenderName: String? = null
+    val lastMessageSenderName: String? = null,
+    val mentionCount: Int = 0
 )
 
 @Serializable
 internal data class HomeRowHintsSnapshot(
     val serverId: String,
     val memberId: String,
-    val hints: Map<String, HomeRowRestoredHint> = emptyMap()
+    val hints: Map<String, HomeRowRestoredHint> = emptyMap(),
+    /** [SharedHomeState.serverUnreadCounts] (server switcher badges), by server id. */
+    val serverUnreadCounts: Map<String, Int> = emptyMap(),
+    /** [HomeSnapshot.followedThreadUnread], by thread channel id. */
+    val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap()
 )
 
 /** Bounds what a single row can add to the durable preference store. */
@@ -94,8 +105,32 @@ private object SharedHomeRowHintPersistSpec :
         }
         val rowIds = base.homeRowIds()
         val hints = snapshot.hints.filterKeys { it in rowIds }
-        if (hints.isEmpty()) return reduced
-        return reduced.copy(content = content.copy(restoredRowHints = hints))
+        // Only servers this session still belongs to; a badge the state already holds is newer.
+        val serverIds = content.session.servers.mapTo(HashSet()) { it.id }
+        val serverUnread =
+            snapshot.serverUnreadCounts.filterKeys { it in serverIds && it !in reduced.serverUnreadCounts }
+        // Only threads under a channel this Home still lists, and only while Home has no marks of its own.
+        val threads =
+            if (base.followedThreadUnread.isNotEmpty()) {
+                emptyMap()
+            } else {
+                snapshot.followedThreadUnread.filterValues { it.parentChannelId.value in rowIds && it.unreadCount > 0 }
+            }
+        if (hints.isEmpty() && serverUnread.isEmpty() && threads.isEmpty()) return reduced
+        val restoredContent =
+            if (threads.isEmpty()) {
+                content.copy(restoredRowHints = hints)
+            } else {
+                content.copy(
+                    snapshot = content.snapshot.copy(followedThreadUnread = threads),
+                    baseSnapshot = base.copy(followedThreadUnread = threads),
+                    restoredRowHints = hints
+                )
+            }
+        return reduced.copy(
+            content = restoredContent,
+            serverUnreadCounts = reduced.serverUnreadCounts + serverUnread
+        )
     }
 
     override fun shouldPersist(previous: SharedHomeState, intent: SharedHomeIntent, next: SharedHomeState): Boolean =
@@ -109,7 +144,11 @@ private object SharedHomeRowHintPersistSpec :
                     intent is SharedHomeIntent.ArchiveChannel ||
                     intent is SharedHomeIntent.LeaveChannel ||
                     // Reading a conversation must not resurrect its old count on the next cold start.
-                    intent is SharedHomeIntent.ApplyReadReceiptPrediction
+                    intent is SharedHomeIntent.ApplyReadReceiptPrediction ||
+                    // A read fact: its version and cursor are written to [PerReceiverStateVersionStore]
+                    // in this reduction, so the marks it lowered (followed threads) are written with
+                    // them (audit addendum 2 item 4). Row counts follow its reconcile refresh.
+                    (intent is SharedHomeIntent.ApplyRealtimeEvent && intent.event is PerReceiverReadStateChanged)
                 )
 
     override fun shouldRemove(previous: SharedHomeState, intent: SharedHomeIntent, next: SharedHomeState): Boolean =
@@ -118,17 +157,25 @@ private object SharedHomeRowHintPersistSpec :
 
     override fun partialize(state: SharedHomeState): HomeRowHintsSnapshot? {
         val content = state.content as? SharedHomeContentState.Content ?: return null
-        return content.toRowHintsSnapshot()
+        return content.toRowHintsSnapshot(serverUnreadCounts = state.serverUnreadCounts)
     }
 }
 
-internal fun SharedHomeContentState.Content.toRowHintsSnapshot(): HomeRowHintsSnapshot {
+internal fun SharedHomeContentState.Content.toRowHintsSnapshot(
+    serverUnreadCounts: Map<String, Int> = emptyMap()
+): HomeRowHintsSnapshot {
     val base = baseSnapshot
     val hints =
         (base.channels + base.directMessages).mapNotNull { row ->
             val id = row.threadId.value
             val prior = restoredRowHints[id]
             val unread = if (row.unreadCountKnown) row.unreadCount.coerceAtLeast(0) else prior?.unreadCount ?: 0
+            val mentions =
+                when {
+                    unread <= 0 -> 0
+                    row.unreadCountKnown || row.mentionCountKnown -> row.mentionCount.coerceAtLeast(0)
+                    else -> prior?.mentionCount ?: 0
+                }
             val rowHasPreview = !row.lastMessagePreview.isNullOrBlank()
             val preview = (if (rowHasPreview) row.lastMessagePreview else prior?.lastMessagePreview)
                 ?.take(HomeRowHintPreviewMaxChars)
@@ -139,13 +186,16 @@ internal fun SharedHomeContentState.Content.toRowHintsSnapshot(): HomeRowHintsSn
                     lastMessagePreview = preview,
                     lastMessageAt = if (rowHasPreview) row.lastMessageAt else prior?.lastMessageAt ?: row.lastMessageAt,
                     lastMessageSenderName =
-                        if (rowHasPreview) row.lastMessageSenderName else prior?.lastMessageSenderName
+                        if (rowHasPreview) row.lastMessageSenderName else prior?.lastMessageSenderName,
+                    mentionCount = mentions
                 )
         }.toMap()
     return HomeRowHintsSnapshot(
         serverId = base.server.id.value,
         memberId = base.currentMember.id.value,
-        hints = hints
+        hints = hints,
+        serverUnreadCounts = serverUnreadCounts.filterValues { it > 0 },
+        followedThreadUnread = base.followedThreadUnread.filterValues { it.unreadCount > 0 }
     )
 }
 

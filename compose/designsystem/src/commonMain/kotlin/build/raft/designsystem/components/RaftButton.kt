@@ -41,6 +41,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -618,6 +620,63 @@ fun RaftIconButton(
         longClickLabel = longClickLabel,
         icon = icon,
     )
+}
+
+/**
+ * raft-ui `PanelToggleAction`: an icon button that switches something on and off, such as the
+ * Tasks and Files panels in a conversation's top bar (raft-design `panel.md`, `channel.md`
+ * "Tasks and files"). Off it is a ghost icon button; on ([checked]) it is a yellow sticker
+ * (`selected` fill, a 1.5dp `sticker-ink` edge and a `sticker-edge` ring) that marks the panel
+ * as open, with the sticker press overlay.
+ *
+ * [tooltip] names what a tap does now, so it changes with [checked] ("Tasks" / "Close Tasks"),
+ * and is also its screen-reader name; the on/off state is announced as a toggle. It shows no
+ * count. `Lg` (44dp) is the phone top bar size, the tap target raft-ui keeps there.
+ */
+@Composable
+fun RaftIconToggleButton(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    tooltip: String,
+    modifier: Modifier = Modifier,
+    size: RaftIconButtonSize = RaftIconButtonSize.Lg,
+    enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
+    icon: @Composable () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val look =
+        if (checked && enabled) {
+            RaftButtonLook(
+                fill = RaftUiPalette.selected,
+                ink = RaftUiPalette.stickerInk,
+                edge = RaftUiPalette.stickerInk,
+                outerRing = colors.stickerEdge,
+                pressOverlay = raftPressOverlayColor(RaftPressSurface.Sticker, colors),
+            )
+        } else {
+            raftButtonLook(RaftButtonVariant.Ghost, enabled, frameless = true, colors = colors)
+        }
+    val button: @Composable (Modifier) -> Unit = { outer ->
+        RaftButtonBox(
+            look = look,
+            onClick = { onCheckedChange(!checked) },
+            modifier =
+                outer
+                    .size(size.box)
+                    .semantics {
+                        contentDescription = tooltip
+                        toggleableState = ToggleableState(checked)
+                    },
+            enabled = enabled,
+            loading = false,
+            loadingLabel = "",
+            interactionSource = interactionSource,
+        ) {
+            Box(Modifier.size(size.glyph), contentAlignment = Alignment.Center) { icon() }
+        }
+    }
+    RaftTooltip(text = tooltip, modifier = modifier) { button(Modifier) }
 }
 
 /**

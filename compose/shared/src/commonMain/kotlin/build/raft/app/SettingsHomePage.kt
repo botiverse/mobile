@@ -15268,8 +15268,11 @@ internal fun HomeServerDrawerState.toRaftHomeServerDrawerHostedSections(
 internal fun SharedHomeConversationRowSeed.withRestoredHint(hint: HomeRowRestoredHint?): SharedHomeConversationRowSeed {
     if (hint == null) return this
     val usePreview = lastMessagePreview.isNullOrBlank() && !hint.lastMessagePreview.isNullOrBlank()
+    val restoredUnread = if (unreadCount > 0) unreadCount else hint.unreadCount.coerceAtLeast(0)
     return copy(
-        unreadCount = if (unreadCount > 0) unreadCount else hint.unreadCount.coerceAtLeast(0),
+        unreadCount = restoredUnread,
+        // The last-known @ mark rides with the last-known count it belongs to.
+        mentioned = mentioned || (restoredUnread > 0 && hint.mentionCount > 0),
         lastMessagePreview = if (usePreview) hint.lastMessagePreview else lastMessagePreview,
         lastMessageAt = if (usePreview) hint.lastMessageAt ?: lastMessageAt else lastMessageAt,
         lastMessageSenderName = if (usePreview) hint.lastMessageSenderName else lastMessageSenderName

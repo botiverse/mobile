@@ -55,6 +55,7 @@ fun RaftWindowDialog(
 ) {
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
+    RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
@@ -88,15 +89,33 @@ internal expect fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
 
 /**
+ * Composed just before the platform `Dialog`: on Android the dialog builds its window while it
+ * composes and shows it right after, before its content (and so [RaftDialogWindowPolicy]) runs.
+ * The window must already ask for the host's bar icons then, or the focused dialog draws a frame
+ * of the default (white) icons, as Material3's edge-to-edge dialog sets them before `show()`.
+ * Elsewhere a dialog is a layer in the host's window: nothing to do.
+ */
+@Composable
+internal expect fun RaftPrepareDialogWindow(isDark: Boolean)
+
+/**
  * Called from inside a focusable popup's content (a [RaftDropdownMenu]): on Android a focusable
  * popup is its own window, and while it holds focus the system draws the status and navigation
  * bar icons from THAT window's appearance, white by default, so the icons flipped to white on the
  * yellow frame whenever a menu opened (artin 2026-10-28, Activity filter). The popup copies the
  * host activity's bar appearance, whatever the page set it to. Elsewhere a popup is a layer in
  * the host's window: nothing to do.
+ *
+ * The window is added before its content composes, so on Android it opens unfocused
+ * ([RaftPopupDefersFocus]) and [onReady] runs once the copy is in: only then does the caller make
+ * it focusable. A focused window with the default appearance drew one frame of white icons
+ * (artin 2026-11-01, Artifact ⋯ menu).
  */
 @Composable
-internal expect fun RaftPopupWindowPolicy()
+internal expect fun RaftPopupWindowPolicy(onReady: () -> Unit)
+
+/** Whether a focusable popup must open unfocused until [RaftPopupWindowPolicy] is ready. */
+internal expect val RaftPopupDefersFocus: Boolean
 
 /**
  * A popup is a window of its own that clips what it draws outside its bounds (Android), so a

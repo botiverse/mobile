@@ -118,7 +118,8 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
         unreadTotal = 0,
         unreadSource = AppBadgeSource.UNKNOWN,
         serverUnreadCounts = emptyMap(),
-        // Unread-bearing like the row counts: the identity cache never restores a thread mark.
+        // Unread-bearing like the row counts: the identity cache never restores a thread mark or a
+        // switcher badge. Their last-known copies live in the row hints ([HomeRowHintsSnapshot]).
         followedThreadUnread = emptyMap(),
         markedUnreadIds = emptySet()
     )
@@ -131,6 +132,9 @@ private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =
         mentionCountKnown = false,
         lastMessageId = null,
         firstUnreadMessageId = null,
+        // The accepted read cursor lives with its version in PerReceiverStateVersionStore; a copy here
+        // is not rewritten by realtime read facts and would sit older than that version on disk.
+        readStateMaxReadSeq = null,
         lastMessagePreview = null,
         lastMessageAt = null,
         lastMessageSenderName = null,
@@ -152,6 +156,9 @@ private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessag
         mentionCountKnown = false,
         lastMessageId = null,
         firstUnreadMessageId = null,
+        // The accepted read cursor lives with its version in PerReceiverStateVersionStore; a copy here
+        // is not rewritten by realtime read facts and would sit older than that version on disk.
+        readStateMaxReadSeq = null,
         lastMessagePreview = null,
         lastMessageAt = null,
         lastMessageSenderName = null,

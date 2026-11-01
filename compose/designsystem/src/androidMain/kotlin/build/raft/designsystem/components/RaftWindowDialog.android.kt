@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import build.raft.designsystem.R
 
 internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDialogProperties): DialogProperties =
     DialogProperties(
@@ -56,12 +57,40 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
 }
 
 @Composable
-internal actual fun RaftPopupWindowPolicy() {
-    val popupView = LocalView.current
-    val hostWindow = LocalContext.current.raftActivity()?.window ?: return
-    // Every recomposition re-copies it: cheap, and it follows a host change while the menu is open.
-    SideEffect { popupView.rootView.copyRaftSystemBarsAppearanceFrom(hostWindow) }
+internal actual fun RaftPrepareDialogWindow(isDark: Boolean) {
+    val context = LocalView.current.context
+    val appearance =
+        context.raftActivity()?.window?.raftSystemBarsAppearance()
+            ?: RaftSystemBarsAppearance(lightStatusBars = !isDark, lightNavigationBars = !isDark)
+    // In composition, ahead of the Dialog: its window wraps this context's theme
+    // (ContextThemeWrapper) and reads windowLightStatusBar / windowLightNavigationBar into the
+    // window's appearance when it is created, before it is shown. Re-applying is idempotent.
+    // This mutates the theme itself (usually the Activity's), not a copy: the RaftDialogBars_*
+    // styles may only hold attributes read when a window is created, never anything the host's
+    // own views read later.
+    context.theme.applyStyle(appearance.raftDialogBarsStyle(), true)
 }
+
+private fun RaftSystemBarsAppearance.raftDialogBarsStyle(): Int =
+    when {
+        lightStatusBars && lightNavigationBars -> R.style.RaftDialogBars_LightStatus_LightNav
+        lightStatusBars -> R.style.RaftDialogBars_LightStatus_DarkNav
+        lightNavigationBars -> R.style.RaftDialogBars_DarkStatus_LightNav
+        else -> R.style.RaftDialogBars_DarkStatus_DarkNav
+    }
+
+@Composable
+internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) {
+    val popupView = LocalView.current
+    val hostWindow = LocalContext.current.raftActivity()?.window
+    // Every recomposition re-copies it: cheap, and it follows a host change while the menu is open.
+    SideEffect {
+        hostWindow?.let { popupView.rootView.copyRaftSystemBarsAppearanceFrom(it) }
+        onReady()
+    }
+}
+
+internal actual val RaftPopupDefersFocus: Boolean = true
 
 private fun Context.raftActivity(): Activity? {
     var context: Context? = this
