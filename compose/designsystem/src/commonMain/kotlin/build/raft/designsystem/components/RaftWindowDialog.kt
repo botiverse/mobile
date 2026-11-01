@@ -94,9 +94,17 @@ internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
  * yellow frame whenever a menu opened (artin 2026-10-28, Activity filter). The popup copies the
  * host activity's bar appearance, whatever the page set it to. Elsewhere a popup is a layer in
  * the host's window: nothing to do.
+ *
+ * The window is added before its content composes, so on Android it opens unfocused
+ * ([RaftPopupDefersFocus]) and [onReady] runs once the copy is in: only then does the caller make
+ * it focusable. A focused window with the default appearance drew one frame of white icons
+ * (artin 2026-11-01, Artifact ⋯ menu).
  */
 @Composable
-internal expect fun RaftPopupWindowPolicy()
+internal expect fun RaftPopupWindowPolicy(onReady: () -> Unit)
+
+/** Whether a focusable popup must open unfocused until [RaftPopupWindowPolicy] is ready. */
+internal expect val RaftPopupDefersFocus: Boolean
 
 /**
  * A popup is a window of its own that clips what it draws outside its bounds (Android), so a
