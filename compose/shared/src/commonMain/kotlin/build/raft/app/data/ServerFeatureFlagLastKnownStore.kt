@@ -12,11 +12,11 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
 
 /**
  * Flags whose last server evaluation is kept on disk so a cold start WITHOUT network still gates the
- * same way the last online session did (task #1133). Empty today: the DoH fallback (Ktor 3 switch) and
- * `sync_core_messages_v1` (always on) were the last members and are no longer read. Every flag keeps the
- * defaults-off-until-evaluated contract; the store stays so a future key can opt in.
+ * same way the last online session did (task #1133). `mobile_server_setup_v1` is the one member: a cold
+ * start reads its last value until the evaluation lands (offline, the setup check then fails open to
+ * Home). Every other flag keeps the defaults-off-until-evaluated contract.
  */
-val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> = emptySet()
+val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> = setOf(MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
 
 /** The auth binding a last-known value belongs to. Token rotation does not change it. */
 data class ServerFeatureFlagLastKnownBinding(

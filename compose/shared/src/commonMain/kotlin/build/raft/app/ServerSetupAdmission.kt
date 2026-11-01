@@ -34,6 +34,11 @@ internal sealed interface ServerSetupAdmissionState {
     data class Failed(
         val identity: ServerSetupAdmissionIdentity,
         val error: ScreenError,
+        /**
+         * The check failed while setup was already on screen for this server. Only then does a
+         * failure keep the screen (with Retry); any other failure lets Home through.
+         */
+        val duringSetup: Boolean = false,
     ) : ServerSetupAdmissionState
 }
 

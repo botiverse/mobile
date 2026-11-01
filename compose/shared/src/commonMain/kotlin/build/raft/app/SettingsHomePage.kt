@@ -1745,9 +1745,8 @@ internal fun appShellHomeConversationOpenAllowed(
 internal fun appShellCanRenderCachedHomePreview(
     readySession: StoredAuthSession?,
     readyPhase: SharedAuthReadyPhase?,
-    featureDecision: ServerSetupFeatureDecision,
-    setupAdmissionAllowsHome: Boolean,
     setupAdmissionState: ServerSetupAdmissionState? = null,
+    serverSetupGateEnabled: Boolean = true,
     readyServerId: String?,
     selectedTab: String = "home",
     selectedHomeDestination: String? = null,
@@ -1760,20 +1759,16 @@ internal fun appShellCanRenderCachedHomePreview(
     val session = readySession ?: return false
     val phase = readyPhase ?: return false
     if (phase == SharedAuthReadyPhase.Confirmed) return false
+    // The cached Home stays while the server setup check is still running; once it answers (or
+    // with the setup gate off, when there is no check), Home hands over to the authoritative Home
+    // and setup takes the screen only on a positive blocksChat.
     if (
         phase == SharedAuthReadyPhase.CachedRestoreCompleted &&
-        featureDecision != ServerSetupFeatureDecision.Checking
+        (!serverSetupGateEnabled || serverSetupAdmissionResolved(setupAdmissionState))
     ) {
         return false
     }
-    if (setupAdmissionState is ServerSetupAdmissionState.Blocked || setupAdmissionState is ServerSetupAdmissionState.Failed) {
-        return false
-    }
-    if (
-        !setupAdmissionAllowsHome &&
-        featureDecision != ServerSetupFeatureDecision.Checking &&
-        featureDecision != ServerSetupFeatureDecision.Bypassed
-    ) {
+    if (serverSetupBlocksHome(setupAdmissionState)) {
         return false
     }
     val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
@@ -3329,6 +3324,12 @@ private fun RaftAppShellReadyContent(
             raftScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
     val appShellEnvironment = sharedStores.apiEnvironmentStore.current()
+    val serverSetupFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val serverSetupGateServerId = readyServerId?.takeIf(String::isNotBlank) ?: homePreviewServerId
+    val serverSetupGateOn =
+        remember(serverSetupFlagRevision, serverSetupGateServerId) {
+            serverSetupGateEnabled(sharedStores.serverFeatureFlags, serverSetupGateServerId.orEmpty())
+        }
     val setupAdmissionHost =
         if (readySession != null && !readyServerId.isNullOrBlank()) {
             rememberServerSetupAdmissionHost(
@@ -3345,26 +3346,16 @@ private fun RaftAppShellReadyContent(
                 networkClient = appShellNetworkClient,
                 shellAuthStore = shellAuthStore,
                 authEvents = sharedStores.authStore,
-                featureFlags = sharedStores.serverFeatureFlags,
                 authDataSource = authDataSource,
                 bridge = bridge,
                 openExternalUrl = linkNavigator::open,
                 refreshSignal = pageVisibleTick,
+                gateEnabled = serverSetupGateOn,
             )
         } else {
             null
         }
     val setupAdmissionAllowsHome = setupAdmissionHost?.allowsHome == true
-    val setupAdmissionFeatureDecision =
-        setupAdmissionHost?.featureDecision
-            ?: homePreviewServerId
-                ?.takeIf { it.isNotBlank() }
-                ?.let { serverId ->
-                    serverSetupFeatureDecision(
-                        sharedStores.serverFeatureFlags.snapshotFor(ServerId(serverId))
-                    )
-                }
-            ?: ServerSetupFeatureDecision.Checking
     val authoritativeHomeStartAllowed =
         appShellAuthoritativeHomeStartAllowed(
             authGateState = authGateState,
@@ -3387,9 +3378,8 @@ private fun RaftAppShellReadyContent(
         appShellCanRenderCachedHomePreview(
             readySession = homePreviewSession,
             readyPhase = readyAuthPhase,
-            featureDecision = setupAdmissionFeatureDecision,
-            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
             setupAdmissionState = setupAdmissionHost?.state,
+            serverSetupGateEnabled = serverSetupGateOn,
             readyServerId = homePreviewServerId,
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
@@ -3404,9 +3394,8 @@ private fun RaftAppShellReadyContent(
         appShellCanRenderCachedHomePreview(
             readySession = homePreviewSession,
             readyPhase = readyAuthPhase,
-            featureDecision = setupAdmissionFeatureDecision,
-            setupAdmissionAllowsHome = setupAdmissionAllowsHome,
             setupAdmissionState = setupAdmissionHost?.state,
+            serverSetupGateEnabled = serverSetupGateOn,
             readyServerId = homePreviewServerId,
             state = homeState
         )
