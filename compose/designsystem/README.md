@@ -79,9 +79,31 @@ text is `body`, 16/24, as on the web; there are no mobile-only roles.
 | `monoCode` | `text-mono-code` | 13 / 20 | 400 (Space Mono) | 0 | Code and commands |
 | `field` | `--field-*` | 16 / 24 | 400 | 0 | Input, textarea, menu search row, a field Select's trigger and options |
 | `cardTitle` | `--card-title-*` | 16 / 24 | 600 | 0 | Card titles |
+| `control` | `text-control` | 13 / 18 | 400 | 0 | 32dp controls: Button `md` (700), picker trigger and combobox clear (600) |
 
 Pick other weights by purpose with `.copy(fontWeight = ...)` (page "Weights by use").
 `RaftText` defaults to `body`.
+
+#### Desktop scale
+
+raft-ui 0.54 switches the type and control metrics under `@media (width >= 48rem) and
+(pointer: fine)` (styles.css "Desktop type", foundation.css "Desktop"). `RaftScale.Desktop`
+is that block: `headline` 16/24; `body`, `subhead`, `callout`, `control`, `field`,
+`cardTitle` 14/22; `footnote`, `caption`, `monoMeta` 12/18; `monoCode` 13/20; hero, display,
+title and label unchanged. `RaftControlMetrics` (`RaftTheme.controls`) carries
+`--control-height` 44 → 32, `--control-height-cta` 52 → 40, `--control-icon-size` 22 → 18,
+`--control-hit-inset` 0 → 6 and `--control-embedded-size` 32 → 20.
+
+`RaftTheme(scale = null)` inherits the enclosing theme's scale; the outermost one picks
+Desktop when `raftPlatformPointerIsFine()` (the desktop app; false on Android, iOS and a
+headless JVM) and the window (`LocalWindowInfo.containerSize`) is at least 768dp wide.
+Following it: Button `md` text (`text-control`), `lg` height (`h-control`), `xl` height
+(`h-control-cta`); `RaftIconButtonSize.Lg` and `RaftIconToggleButton` (`size-control`,
+`size-control-icon`); `RaftTextField` height and `RaftTextFieldAction` (`size-control-embedded`);
+`RaftSelectTrigger`; the combobox trigger, chips, chip remove and clear;
+`RaftPickerTriggerButton` text. `RaftBackButton` and `RaftSideActionColumn` keep 44 / 22 (their
+placement constants assume it). Screenshot tests pin `RaftScale.Mobile` (`RaftScreenshot.capture`)
+except `desktop-scale_{light,dark}`.
 
 ## Theme
 

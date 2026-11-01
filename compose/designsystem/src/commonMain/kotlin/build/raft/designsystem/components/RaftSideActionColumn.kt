@@ -288,11 +288,14 @@ private fun RaftSideButton(
     icon: @Composable () -> Unit,
 ) {
     Box(modifier, contentAlignment = Alignment.TopCenter) {
-        RaftIconButton(
+        // Fixed at 44dp / 22dp, not `--control-height`: the column's slots are [ItemSize] at
+        // every scale.
+        RaftSizedIconButton(
             onClick = onClick,
             tooltip = label,
+            box = RaftSideActionColumnDefaults.ItemSize,
+            glyph = RaftSideActionColumnDefaults.IconSize,
             variant = RaftButtonVariant.Ghost,
-            size = RaftIconButtonSize.Lg,
             enabled = enabled,
             contentDescription = if (attention && attentionDescription != null) "$label, $attentionDescription" else label,
         ) {
@@ -324,11 +327,12 @@ private fun RaftSideActionOverflow(actions: List<RaftSideAction>, label: String,
     val attention = actions.firstOrNull { it.attention }
     Box(modifier, contentAlignment = Alignment.TopCenter) {
         Box {
-            RaftIconButton(
+            RaftSizedIconButton(
                 onClick = { open = true },
                 tooltip = label,
+                box = RaftSideActionColumnDefaults.ItemSize,
+                glyph = RaftSideActionColumnDefaults.IconSize,
                 variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
                 contentDescription = attention?.attentionDescription?.let { "$label, $it" } ?: label,
             ) {
                 RaftSideActionIcon(RaftSideActionColumnDefaults.IconSize, attention != null) {

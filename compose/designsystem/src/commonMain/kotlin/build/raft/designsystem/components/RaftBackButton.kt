@@ -42,12 +42,15 @@ fun RaftBackButton(
     color: Color = Color.Unspecified,
     enabled: Boolean = true,
 ) {
-    RaftIconButton(
+    // Fixed at 44dp / 22dp, not `--control-height`: [RaftBackButtonDefaults.EdgeInset] is
+    // worked out from this geometry, and callers place the button by it.
+    RaftSizedIconButton(
         onClick = onClick,
         tooltip = label,
+        box = RaftBackButtonDefaults.Size,
+        glyph = RaftBackButtonDefaults.IconSize,
         modifier = modifier,
         variant = RaftButtonVariant.Ghost,
-        size = RaftIconButtonSize.Lg,
         enabled = enabled,
     ) {
         RaftGlyphIcon(glyph, size = RaftBackButtonDefaults.IconSize, color = color)

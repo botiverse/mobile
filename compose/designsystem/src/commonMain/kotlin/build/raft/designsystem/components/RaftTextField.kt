@@ -53,7 +53,11 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 
 /** raft-ui Input / InputGroup / Textarea box metrics. */
 object RaftTextFieldDefaults {
-    /** `h-11`: an input (and an input group) is 44dp tall. */
+    /**
+     * `h-control`: an input (and an input group) is 44dp tall on a phone. On a desktop
+     * ([build.raft.designsystem.theme.RaftScale.Desktop]) it is 32dp: the field reads
+     * [RaftTheme.controls]`.height`; this is the mobile value.
+     */
     val Height: Dp = 44.dp
 
     /** `min-h-24`: a textarea is never shorter than 96dp. */
@@ -64,7 +68,9 @@ object RaftTextFieldDefaults {
 
     /**
      * `--control-embedded-size`: a chip or a button embedded in a field, the field's height
-     * less [EmbeddedInset] above and below, so the field keeps its height.
+     * less [EmbeddedInset] above and below, so the field keeps its height. 32dp on a phone,
+     * 20dp on a desktop: the components read [RaftTheme.controls]`.embeddedSize`; this is the
+     * mobile value.
      */
     val EmbeddedControlSize: Dp = 32.dp
 
@@ -546,7 +552,7 @@ private fun RaftInputBox(
         Modifier
             .fillMaxWidth()
             // A minimum, so text at a large font scale grows the box instead of clipping.
-            .heightIn(min = RaftTextFieldDefaults.Height)
+            .heightIn(min = RaftTheme.controls.height)
             .raftFieldChrome(look, focused),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -651,7 +657,7 @@ fun RaftTextFieldAction(
         }
     Box(
         modifier
-            .size(RaftTextFieldDefaults.EmbeddedControlSize)
+            .size(RaftTheme.controls.embeddedSize)
             .raftFocusRing(focused, RaftRadius.Chip, colors)
             .raftPressOverlay(active, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Chip)
             // 32dp drawn, 44dp to the touch (raft-design Spacing: draw small, hit 44).

@@ -123,11 +123,15 @@ fun RaftSelectTrigger(
     val field = LocalRaftFieldState.current
     val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
     val shown = value ?: placeholder
+    // `h-control`: 44dp, 32dp on a desktop. The 6dp above and below the 24dp line leaves room for
+    // a large font scale on a phone; on a desktop the 22dp line keeps 5dp so the trigger stays 32.
+    val controlHeight = RaftTheme.controls.height
+    val padY = ((controlHeight - 22.dp) / 2).coerceAtMost(6.dp)
     Row(
         modifier
             .fillMaxWidth()
             // A minimum, so a large font scale grows the trigger instead of clipping its text.
-            .heightIn(min = 44.dp)
+            .heightIn(min = controlHeight)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(look.fill, shape)
             .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
@@ -143,7 +147,7 @@ fun RaftSelectTrigger(
                 }
                 if (invalid && enabled) error(field.error ?: RaftInvalidValueMessage)
             }
-            .padding(start = 14.dp + RaftStroke.Field, end = 12.dp + RaftStroke.Field, top = 6.dp, bottom = 6.dp),
+            .padding(start = 14.dp + RaftStroke.Field, end = 12.dp + RaftStroke.Field, top = padY, bottom = padY),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -345,7 +349,8 @@ fun RaftPickerTriggerButton(
                         if (size == RaftPickerTriggerSize.Chip) {
                             RaftTheme.typography.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
                         } else {
-                            RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold)
+                            // picker-trigger-button.tsx `text-control`: footnote's 13/18 on a phone, 14/22 on a desktop.
+                            RaftTheme.typography.control.copy(fontWeight = FontWeight.SemiBold)
                         },
                     color = look.ink,
                     maxLines = 1,
