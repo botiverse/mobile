@@ -229,6 +229,8 @@ LUCIDE_ICONS = [
     "palette",
     "paperclip",
     "panel-bottom-open",
+    "panel-left-close",
+    "panel-left-open",
     "pause",
     "pencil",
     "pin",

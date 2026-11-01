@@ -69,6 +69,9 @@ internal fun rememberRaftListPaneWidths(store: KeyValueChatLayoutPreferenceStore
  *   minimum, a 1dp seam and the drag handle on top.
  * - [fillListWhenNothingPicked] with no [hasSelection] (web Search before a result is picked):
  *   the list takes the whole row and there is no empty detail beside it.
+ * - [collapsed] (the rail's Collapse Sidebar, [RaftSidebarCollapseState]): the detail takes the
+ *   whole row at once, with no seam or handle; the list leaves composition until it is expanded
+ *   (web: the collapsed sidebar is inert).
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
 @Composable
@@ -82,6 +85,7 @@ internal fun RaftAdaptiveListDetailSplit(
     listPane: @Composable (Boolean) -> Unit,
     detailPane: @Composable (Modifier) -> Unit,
     fillListWhenNothingPicked: Boolean = false,
+    collapsed: Boolean = false,
     onResizingChange: (Boolean) -> Unit = {},
     log: (String) -> Unit = {},
 ) {
@@ -89,7 +93,8 @@ internal fun RaftAdaptiveListDetailSplit(
     var rowWidthDp by remember { mutableStateOf<Float?>(null) }
     val listWidthDp = widths.renderedDp(kind, rowWidthDp)
     val listFillsRow = dualPane && fillListWhenNothingPicked && !hasSelection
-    val split = dualPane && !listFillsRow
+    val listCollapsed = dualPane && !listFillsRow && collapsed
+    val split = dualPane && !listFillsRow && !listCollapsed
     Box(
         modifier =
             Modifier
@@ -111,7 +116,7 @@ internal fun RaftAdaptiveListDetailSplit(
                         // pad no horizontal safe area there (the detail pane's start likewise).
                         .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.End) else Modifier),
             ) {
-                if (dualPane) listPane(active)
+                if (dualPane && !listCollapsed) listPane(active)
             }
             Spacer(
                 modifier =
@@ -126,7 +131,7 @@ internal fun RaftAdaptiveListDetailSplit(
                         .fillMaxHeight()
                         .then(if (split) Modifier.raftConsumeSafeAreaHorizontal(WindowInsetsSides.Start) else Modifier)
             ) {
-                if (split || hasSelection) {
+                if (split || listCollapsed || hasSelection) {
                     detailPane(Modifier.fillMaxSize().padding(bottom = detailBottomInset))
                 } else if (!dualPane) {
                     listPane(active)

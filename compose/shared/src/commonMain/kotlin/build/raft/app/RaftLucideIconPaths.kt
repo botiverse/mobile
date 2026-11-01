@@ -1658,6 +1658,24 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m9 10 3-3 3 3"),
                     ),
                 )
+            RaftLucideIconName.PanelLeftClose ->
+                RaftLucideIconSpec(
+                    "panel-left-close",
+                    listOf(
+                        RaftLucidePathSpec("M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z"),
+                        RaftLucidePathSpec("M9 3v18"),
+                        RaftLucidePathSpec("m16 15-3-3 3-3"),
+                    ),
+                )
+            RaftLucideIconName.PanelLeftOpen ->
+                RaftLucideIconSpec(
+                    "panel-left-open",
+                    listOf(
+                        RaftLucidePathSpec("M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z"),
+                        RaftLucidePathSpec("M9 3v18"),
+                        RaftLucidePathSpec("m14 9 3 3-3 3"),
+                    ),
+                )
             RaftLucideIconName.Pause ->
                 RaftLucideIconSpec(
                     "pause",

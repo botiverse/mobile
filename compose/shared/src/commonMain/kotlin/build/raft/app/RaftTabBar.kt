@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -516,6 +517,8 @@ internal fun resolveRaftAppTabBarRenderer(
  * ([RaftAppShellTopBar], artin task #8), so the rail has no header. Without the top bar (iPhone
  * Duo's inner screen, raft-design #859) the rail takes the server tile in its [header] and the
  * bell in [footerTools], before [bottomItems] (raft-ui AppRail without the top bar).
+ * [sidebarToggle], where a list column sits beside the main area, heads the footer (web
+ * SidebarToggleRailItem).
  */
 @Composable
 internal fun RaftNavigationRailTabBar(
@@ -528,23 +531,26 @@ internal fun RaftNavigationRailTabBar(
     bottomSafeArea: Dp = 0.dp,
     header: (@Composable () -> Unit)? = null,
     footerTools: (@Composable () -> Unit)? = null,
+    sidebarToggle: RaftRailSidebarToggle? = null,
 ) {
     // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
-    // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer's
-    // destinations (Help, Settings) are its footer `Action`s, after [footerTools] (the bell). No
-    // collapse `Toggle`: the app's wide layout has no collapsible sidebar (web
-    // SidebarToggleRailItem), so it is left out.
+    // both ends (48dp / 36dp in a short window), the selected sticker on the frame. The footer in
+    // web LeftRail's order: the collapse `Toggle` ([sidebarToggle]), [footerTools] (the bell),
+    // then the destinations (Help, Settings) as `Action`s.
     val select = onBottomItemSelect ?: onSelect
     val attentionDescriptions = raftNavRailAttentionDescriptions()
+    val toggleItem = sidebarToggle?.let { raftRailSidebarToggleItem(it) }
     RaftDesignSystemTheme {
         RaftAppRail(
             modifier = modifier,
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
             header = header,
-            footer = if (footerTools != null) { { footerTools() } } else null,
             footerItems =
-                bottomItems.map { item ->
+                listOfNotNull(
+                    toggleItem,
+                    footerTools?.let { tools -> RaftAppRailFooterItem.Custom(key = "rail-footer-tools", content = tools) },
+                ) + bottomItems.map { item ->
                     val glyph = raftNavGlyph(RaftNavPresentation.Rail, item.key)
                     RaftAppRailFooterItem.Action(
                         key = item.key,
@@ -566,6 +572,38 @@ internal fun RaftNavigationRailTabBar(
         }
     }
 }
+
+/**
+ * The rail's Collapse / Expand Sidebar toggle: [hidden] is the column's remembered state,
+ * [onHiddenChange] hides or shows it. [shortcutLabel] (⌘\ / Ctrl+\) follows the name in the tooltip.
+ */
+@Immutable
+internal data class RaftRailSidebarToggle(
+    val hidden: Boolean,
+    val onHiddenChange: (Boolean) -> Unit,
+    val shortcutLabel: String? = null,
+)
+
+/**
+ * web SidebarToggleRailItem: the name follows the state (Collapse Sidebar while the column
+ * shows, Expand Sidebar while it is hidden), as does the icon (PanelLeftClose / PanelLeftOpen).
+ */
+@Composable
+private fun raftRailSidebarToggleItem(toggle: RaftRailSidebarToggle): RaftAppRailFooterItem.Toggle =
+    RaftAppRailFooterItem.Toggle(
+        key = "rail-sidebar-toggle",
+        label = stringResource(if (toggle.hidden) Res.string.rail_expand_sidebar else Res.string.rail_collapse_sidebar),
+        checked = !toggle.hidden,
+        onCheckedChange = { shown -> toggle.onHiddenChange(!shown) },
+        icon = { ink, shown ->
+            RaftLucideIcon(
+                name = if (shown) RaftLucideIconName.PanelLeftClose else RaftLucideIconName.PanelLeftOpen,
+                color = raftArgbHex(ink),
+                modifier = Modifier.size(RaftAppRailDefaults.IconSize),
+            )
+        },
+        shortcutLabel = toggle.shortcutLabel,
+    )
 
 /** The screen-reader words for a rail item's dot, by its destination's badge source. */
 @Composable

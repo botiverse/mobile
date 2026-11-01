@@ -40,6 +40,16 @@ import build.raft.app.data.visibleSideThread
 import build.raft.app.data.AdaptiveSideThread
 import build.raft.app.data.RAFT_SIDE_THREAD_COLUMN_DP
 import build.raft.app.data.RaftListPaneKind
+import build.raft.app.data.RaftCollapsibleColumn
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import build.raft.app.data.RAFT_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
@@ -3473,6 +3483,8 @@ private fun RaftAppShellReadyContent(
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
     val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
     val adaptiveListPaneWidths = rememberRaftListPaneWidths(listPanePreferenceStore)
+    // The rail's Collapse / Expand Sidebar: each list column's hidden state, saved per device.
+    val sidebarCollapse = rememberRaftSidebarCollapseState(listPanePreferenceStore)
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     // artin 2026-10-29: the section the wide Settings detail shows (null: the default, Account).
     var settingsWidePicked by remember { mutableStateOf<String?>(null) }
@@ -6952,6 +6964,17 @@ private fun RaftAppShellReadyContent(
     // Starts with this layout's value, so the first frame's panes are right; later changes (the
     // posture arriving, the window turning) land after composition (sindresorhus, #3906).
     val appShellTopBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    // web SidebarToggleRailItem: the column the rail's toggle and ⌘\ / Ctrl+\ collapse here, if any.
+    val collapsibleColumn =
+        appShellCollapsibleColumn(
+            navRailActive = navRailActive,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            railInlineSecondaryDestination = railInlineSecondaryDestination,
+        )
+    val shortcutsUseCommand = remember { raftPlatformShortcutsUseCommand() }
+    // Held down, the key repeats: one press toggles once.
+    var sidebarShortcutHeld by remember { mutableStateOf(false) }
     SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
     LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
     val mainRouteSurface: @Composable () -> Unit = {
@@ -6959,6 +6982,30 @@ private fun RaftAppShellReadyContent(
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
+            // web MainLayout: ⌘\ / Ctrl+\ anywhere in the app, a text field included, while a
+            // column can collapse.
+            modifier =
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.key == Key.Backslash && event.type == KeyEventType.KeyUp) sidebarShortcutHeld = false
+                    val column = collapsibleColumn ?: return@onPreviewKeyEvent false
+                    val shortcut =
+                        raftSidebarToggleShortcut(
+                            keyDown = event.type == KeyEventType.KeyDown,
+                            key = event.key,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            alt = event.isAltPressed,
+                            shift = event.isShiftPressed,
+                            apple = shortcutsUseCommand,
+                        )
+                    if (!shortcut) return@onPreviewKeyEvent false
+                    if (!sidebarShortcutHeld) {
+                        sidebarShortcutHeld = true
+                        sidebarCollapse.toggle(column)
+                        bridge.log("app_shell_sidebar_toggle column=$column hidden=${sidebarCollapse.isHidden(column)} from=shortcut")
+                    }
+                    true
+                },
             bottomServerTab =
                 serverMenuModel?.let { model ->
                     { tabModifier ->
@@ -7109,6 +7156,17 @@ private fun RaftAppShellReadyContent(
                                 )
                                 onAppShellTabSelected(key)
                             },
+                            sidebarToggle =
+                                collapsibleColumn?.let { column ->
+                                    RaftRailSidebarToggle(
+                                        hidden = sidebarCollapse.isHidden(column),
+                                        onHiddenChange = { hidden ->
+                                            sidebarCollapse.setHidden(column, hidden)
+                                            bridge.log("app_shell_sidebar_toggle column=$column hidden=$hidden from=rail")
+                                        },
+                                        shortcutLabel = raftSidebarToggleShortcutLabel(shortcutsUseCommand),
+                                    )
+                                },
                             // The top bar above the rail clears the status bar; without it the rail does.
                             topSafeArea = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             bottomSafeArea = shellScope.bottomSafeArea,
@@ -7735,7 +7793,8 @@ private fun RaftAppShellReadyContent(
                             detailAccepted: Boolean,
                             listKind: RaftListPaneKind,
                             fillListWhenNothingPicked: Boolean,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked ->
+                            collapseColumn: RaftCollapsibleColumn?,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked, collapseColumn ->
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection?.takeIf { detailAccepted }
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
@@ -7754,6 +7813,7 @@ private fun RaftAppShellReadyContent(
                                 listPane = listPane,
                                 detailPane = detailPane,
                                 fillListWhenNothingPicked = fillListWhenNothingPicked,
+                                collapsed = collapseColumn != null && sidebarCollapse.isHidden(collapseColumn),
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
                             )
@@ -7999,6 +8059,7 @@ private fun RaftAppShellReadyContent(
                             true,
                             RaftListPaneKind.Sidebar,
                             false,
+                            RaftCollapsibleColumn.Sidebar,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -8056,6 +8117,8 @@ private fun RaftAppShellReadyContent(
                             // Web Activity is two columns at every desktop width (slock #10842).
                             RaftListPaneKind.List,
                             false,
+                            // Collapsible like the sidebar, remembered on its own (web activityList).
+                            RaftCollapsibleColumn.ActivityList,
                         )
                     }
                     // Members and Settings are server pages pushed from the server panel on the phone
@@ -8204,6 +8267,7 @@ private fun RaftAppShellReadyContent(
                                 },
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                                 bottomContentPadding = appShellBottomContentInset,
+                                collapsed = sidebarCollapse.isHidden(RaftCollapsibleColumn.Sidebar),
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 detailPane = { key, modifier ->
                                     val detailPage =
@@ -8439,6 +8503,8 @@ private fun RaftAppShellReadyContent(
                             // Web Search fills the width until a result is picked (searchMasterDetail).
                             RaftListPaneKind.List,
                             true,
+                            // Its list stays put (web: Search does not collapse).
+                            null,
                         )
                     } else {
                     AppShellTabPager(

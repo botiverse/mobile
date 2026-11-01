@@ -37,6 +37,8 @@
     <string name="tab_more">その他</string>
     <string name="tab_activity_unread_dot">未読のアクティビティ</string>
     <string name="tab_more_attention_dot">その他に新着があります</string>
+    <string name="rail_collapse_sidebar">サイドバーを折りたたむ</string>
+    <string name="rail_expand_sidebar">サイドバーを展開</string>
     <string name="tab_chat">チャット</string>
     <string name="tab_computers">コンピューター</string>
     <string name="tab_apps">アプリ</string>

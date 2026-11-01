@@ -37,6 +37,8 @@
     <string name="tab_more">更多</string>
     <string name="tab_activity_unread_dot">未读动态</string>
     <string name="tab_more_attention_dot">更多中有新内容</string>
+    <string name="rail_collapse_sidebar">收起侧栏</string>
+    <string name="rail_expand_sidebar">展开侧栏</string>
     <string name="tab_chat">聊天</string>
     <string name="tab_computers">计算机</string>
     <string name="tab_apps">应用</string>
