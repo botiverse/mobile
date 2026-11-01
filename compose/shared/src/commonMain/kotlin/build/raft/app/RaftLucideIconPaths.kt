@@ -72,6 +72,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M10 12h4"),
                     ),
                 )
+            RaftLucideIconName.ArrowDownUp ->
+                RaftLucideIconSpec(
+                    "arrow-down-up",
+                    listOf(
+                        RaftLucidePathSpec("m3 16 4 4 4-4"),
+                        RaftLucidePathSpec("M7 20V4"),
+                        RaftLucidePathSpec("m21 8-4-4-4 4"),
+                        RaftLucidePathSpec("M17 4v16"),
+                    ),
+                )
             RaftLucideIconName.ArrowLeft ->
                 RaftLucideIconSpec(
                     "arrow-left",

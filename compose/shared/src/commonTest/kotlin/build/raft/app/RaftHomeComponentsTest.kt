@@ -1571,7 +1571,7 @@ class RaftHomeComponentsTest {
                 RaftBaseMenuItem(
                     id = "sort-channels",
                     label = "Sort",
-                    icon = RaftLucideIconName.ArrowUpDown
+                    icon = RaftLucideIconName.ArrowDownUp
                 )
             ),
             raftHomePinnedMemberMenuItems()
