@@ -134,11 +134,13 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         RaftIosDiagnosticsRecord("info", "RaftMessageLink", "universal_link_not_claimed source=\(source)")
         guard url.scheme == "https" else { return }
-        // The sign-up email of an account created in the app's web sign-in: reopen it in a new web
-        // sign-in sheet (replacing the one left on "check your email"). It shares that sheet's
+        // The sign-up email of an account created in this app's web sign-in, naming the request
+        // the app is still waiting for: reopen it in a new web sign-in sheet (replacing the one
+        // left on "check your email"; the pending request survives). It shares that sheet's
         // browser session, so the web verifies, finishes the pending sign-in and calls back here;
-        // the default browser would have no session and ask to sign in again.
-        if RaftMessageLinkIngress.shared.isAppLoginVerificationLink(url: url.absoluteString, configuredWebUrl: nil) {
+        // the default browser would have no session and ask to sign in again. Any other request
+        // (a Raft Desktop sign-up, an expired one) goes to in-app Safari below.
+        if RaftMessageLinkIngress.shared.resumesPendingAppLogin(url: url.absoluteString, configuredWebUrl: nil) {
             DispatchQueue.main.async { [weak self] in
                 RaftIosMobileOAuthHost.shared.openAppLogin(url: url.absoluteString, presentingWindow: self?.window) { result in
                     let started = (result["status"] as? String) == "started"
