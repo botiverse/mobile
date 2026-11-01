@@ -186,7 +186,6 @@ class SharedServerFeatureFlagsTest {
         assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
         for (
             key in listOf(
-                WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
                 ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
@@ -301,7 +300,7 @@ class SharedServerFeatureFlagsTest {
                     started.complete(Unit)
                     release.await()
                     return ok(
-                        """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                        """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}"""
                     )
                 }
             }
@@ -320,7 +319,7 @@ class SharedServerFeatureFlagsTest {
         assertTrue(first.await().resolved)
         assertTrue(second.await().resolved)
         assertEquals(1, calls)
-        assertFalse(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -372,13 +371,13 @@ class SharedServerFeatureFlagsTest {
                             withContext(NonCancellable) { releaseFirst.await() }
                             firstReturned.complete(Unit)
                             return ok(
-                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":false}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}"""
                             )
                         }
                         else -> {
                             secondStarted.complete(Unit)
                             return ok(
-                                """{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""
+                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true}]}"""
                             )
                         }
                     }
@@ -386,7 +385,7 @@ class SharedServerFeatureFlagsTest {
             }
         val flags =
             SharedServerFeatureFlags(api) { _, key, enabled, _, _, _, _ ->
-                if (key == WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY) {
+                if (key == DRAFTS_SECTION_FEATURE_FLAG_KEY) {
                     observed += enabled
                 }
             }
@@ -401,12 +400,12 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         val fresh = async { flags.prefetch(server) }
         secondStarted.await()
-        assertTrue(fresh.await().isEnabled(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertTrue(fresh.await().isEnabled(DRAFTS_SECTION_FEATURE_FLAG_KEY))
         firstReturned.await()
 
         assertEquals(2, calls)
         assertEquals(listOf(true), observed)
-        assertTrue(flags.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test

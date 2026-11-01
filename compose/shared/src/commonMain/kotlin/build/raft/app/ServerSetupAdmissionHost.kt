@@ -17,20 +17,14 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.ServerFeatureFlagSnapshot
-import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
-import build.raft.app.model.ServerId
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 internal data class ServerSetupAdmissionHost(
-    val featureDecision: ServerSetupFeatureDecision,
     val state: ServerSetupAdmissionState?,
     val retry: () -> Unit,
     val content: @Composable () -> Unit,
@@ -38,24 +32,25 @@ internal data class ServerSetupAdmissionHost(
     val previouslyAllowed: Boolean = false,
 ) {
     val allowsHome: Boolean
-        get() = serverSetupAllowsHome(featureDecision, state) ||
+        get() = serverSetupAllowsHome(state) ||
             serverSetupStillAllowsHome(previouslyAllowed, state)
 }
 
 /**
- * A server that passed the check before keeps Home while its check re-runs (a server switch
- * restarts it): the shell no longer blanks to the loading cover for a round trip on every switch.
- * Only a fresh Blocked or Failed result takes the screen.
+ * A server admitted earlier in this process keeps Home: its check is not run again (see
+ * [runServerSetupCheck]), and a server switch no longer blanks to the loading cover.
  */
 internal fun serverSetupStillAllowsHome(
     previouslyAllowed: Boolean,
     state: ServerSetupAdmissionState?,
 ): Boolean =
-    previouslyAllowed && state !is ServerSetupAdmissionState.Blocked && state !is ServerSetupAdmissionState.Failed
+    previouslyAllowed && !serverSetupBlocksHome(state)
 
 /**
- * Process-wide record of the servers whose setup check allowed Home (Admitted or Bypassed), per
- * environment and account. Main thread only. A Blocked or Failed result forgets the server.
+ * Process-wide record of the servers whose setup projection said Admitted (`blocksChat` false),
+ * per environment and account. Setup cannot become blocking again once complete, so an admitted
+ * server is never re-checked in this process. A Blocked result forgets the server; a failed check
+ * records nothing, so the next mount or foreground tries again. Main thread only.
  */
 internal object ServerSetupAdmissionMemory {
     private val allowed = mutableSetOf<String>()
@@ -65,45 +60,56 @@ internal object ServerSetupAdmissionMemory {
 
     fun contains(key: String): Boolean = key in allowed
 
-    fun record(key: String, allowsHome: Boolean, state: ServerSetupAdmissionState?) {
-        when {
-            allowsHome -> allowed += key
-            state is ServerSetupAdmissionState.Blocked || state is ServerSetupAdmissionState.Failed -> allowed -= key
+    fun record(key: String, state: ServerSetupAdmissionState?) {
+        when (state) {
+            is ServerSetupAdmissionState.Admitted -> allowed += key
+            is ServerSetupAdmissionState.Blocked -> allowed -= key
+            else -> Unit
         }
     }
 
     internal fun clearForTest() = allowed.clear()
 }
 
-internal enum class ServerSetupFeatureDecision { Checking, Bypassed, Enabled }
+/**
+ * The server decides who sees setup (`GET servers/:id/setup-projection` -> `blocksChat`), as on
+ * Web; the app adds no flag of its own. Only a positive `blocksChat` shows setup: a failed check
+ * (error, empty/bad body, timeout, offline) lets Home through unless setup was already showing.
+ */
+internal fun serverSetupAllowsHome(state: ServerSetupAdmissionState?): Boolean =
+    state is ServerSetupAdmissionState.Admitted ||
+        (state is ServerSetupAdmissionState.Failed && !state.duringSetup)
 
-internal fun serverSetupFeatureDecision(snapshot: ServerFeatureFlagSnapshot): ServerSetupFeatureDecision =
-    when {
-        !snapshot.resolved -> ServerSetupFeatureDecision.Checking
-        snapshot.isEnabled(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY) -> ServerSetupFeatureDecision.Enabled
-        else -> ServerSetupFeatureDecision.Bypassed
-    }
+/** Setup (or its Retry screen, once setup was showing) takes the screen over Home. */
+internal fun serverSetupBlocksHome(state: ServerSetupAdmissionState?): Boolean =
+    state is ServerSetupAdmissionState.Blocked ||
+        (state is ServerSetupAdmissionState.Failed && state.duringSetup)
 
-internal fun serverSetupAllowsHome(
-    featureDecision: ServerSetupFeatureDecision,
-    state: ServerSetupAdmissionState?,
-): Boolean =
-    featureDecision == ServerSetupFeatureDecision.Bypassed ||
-        (featureDecision == ServerSetupFeatureDecision.Enabled && state is ServerSetupAdmissionState.Admitted)
+/** The setup check has an answer for this server (Admitted, Blocked or Failed). */
+internal fun serverSetupAdmissionResolved(state: ServerSetupAdmissionState?): Boolean =
+    state is ServerSetupAdmissionState.Admitted ||
+        state is ServerSetupAdmissionState.Blocked ||
+        state is ServerSetupAdmissionState.Failed
 
-internal suspend fun resolveServerSetupFeatureDecision(
-    featureFlags: SharedServerFeatureFlags,
-    serverId: ServerId,
-    evaluationContext: String? = null,
-): ServerSetupFeatureDecision =
-    try {
-        serverSetupFeatureDecision(featureFlags.prefetch(serverId, evaluationContext = evaluationContext))
-            .let { if (it == ServerSetupFeatureDecision.Checking) ServerSetupFeatureDecision.Bypassed else it }
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (_: Throwable) {
-        ServerSetupFeatureDecision.Bypassed
-    }
+/**
+ * One setup check for [identity]. A server admitted earlier in this process sends no request (also
+ * on return to foreground); otherwise publishes Loading, then the result.
+ */
+internal suspend fun runServerSetupCheck(
+    controller: ServerSetupAdmissionController,
+    identity: ServerSetupAdmissionIdentity,
+    memoryKey: String,
+    setupShowing: Boolean,
+    publish: (ServerSetupAdmissionState) -> Unit,
+) {
+    if (ServerSetupAdmissionMemory.contains(memoryKey)) return
+    publish(controller.begin(identity))
+    val loaded = controller.load(identity) ?: return
+    val result =
+        if (loaded is ServerSetupAdmissionState.Failed && setupShowing) loaded.copy(duringSetup = true) else loaded
+    ServerSetupAdmissionMemory.record(memoryKey, result)
+    publish(result)
+}
 
 @Composable
 internal fun rememberServerSetupAdmissionHost(
@@ -114,7 +120,6 @@ internal fun rememberServerSetupAdmissionHost(
     networkClient: RaftNetworkClient,
     shellAuthStore: RaftAuthSessionStore,
     authEvents: RaftAuthSessionEventSource,
-    featureFlags: SharedServerFeatureFlags,
     authDataSource: SharedAuthDataSource,
     bridge: BridgeModule,
     openExternalUrl: (String) -> Unit,
@@ -137,166 +142,147 @@ internal fun rememberServerSetupAdmissionHost(
         RaftServerSetupProjectionRepository(NetworkRaftServerSetupProjectionApi(networkClient))
     }
     val controllerState = remember(repository) { ServerSetupAdmissionController(repository) }
-    var featureDecision by remember(identity) {
-        mutableStateOf(serverSetupFeatureDecision(featureFlags.snapshotFor(ServerId(serverId))))
-    }
     var refreshEpoch by remember(identity) { mutableStateOf(0) }
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
-    LaunchedEffect(featureFlags, identity) {
-        if (featureDecision == ServerSetupFeatureDecision.Checking) {
-            featureDecision =
-                resolveServerSetupFeatureDecision(
-                    featureFlags = featureFlags,
-                    serverId = ServerId(serverId),
-                    evaluationContext = environmentId,
-                )
+    val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
+    var setupShown by remember(identity) { mutableStateOf(false) }
+    LaunchedEffect(repository, identity, refreshEpoch, refreshSignal) {
+        runServerSetupCheck(controllerState, identity, memoryKey, setupShowing = setupShown) {
+            if (it is ServerSetupAdmissionState.Blocked) setupShown = true
+            state = it
         }
-    }
-    LaunchedEffect(repository, identity, featureDecision, refreshEpoch, refreshSignal) {
-        if (featureDecision != ServerSetupFeatureDecision.Enabled) {
-            state = null
-            return@LaunchedEffect
-        }
-        state = controllerState.begin(identity)
-        controllerState.load(identity)?.let { state = it }
     }
 
     val retry = { refreshEpoch += 1 }
-    val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
     // Read on every composition, not remembered: after a Blocked result forgets the server, a
     // retry's Loading must not show Home again.
     val previouslyAllowed = ServerSetupAdmissionMemory.contains(memoryKey)
-    LaunchedEffect(memoryKey, featureDecision, state) {
-        ServerSetupAdmissionMemory.record(memoryKey, serverSetupAllowsHome(featureDecision, state), state)
-    }
     return ServerSetupAdmissionHost(
-        featureDecision = featureDecision,
         state = state,
         previouslyAllowed = previouslyAllowed,
         retry = retry,
         content = {
-            when {
-                featureDecision == ServerSetupFeatureDecision.Checking -> SettingsWebViewLoadingCover()
-                featureDecision == ServerSetupFeatureDecision.Bypassed -> Unit
-                else ->
-                    when (state) {
-                        null -> SettingsWebViewLoadingCover()
-                        is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
-                        is ServerSetupAdmissionState.Failed -> SettingsWebViewErrorContent(
+            when (state) {
+                null -> SettingsWebViewLoadingCover()
+                is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
+                is ServerSetupAdmissionState.Failed ->
+                    if ((state as ServerSetupAdmissionState.Failed).duringSetup) {
+                        SettingsWebViewErrorContent(
                             actionLabel = stringResource(Res.string.common_retry),
                             actionIcon = RaftLucideIconName.RefreshCw,
                             onAction = retry,
                         )
-                        is ServerSetupAdmissionState.Admitted -> Unit
-                        is ServerSetupAdmissionState.Blocked -> {
-                            RaftBackHandler(enabled = true, label = "server_setup_onboarding") { }
-                            val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
-                            val url = remember(webBaseUrl, serverSlug, generation) {
-                                serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation)
-                            }
-                            if (
-                                binding == null ||
-                                binding.accountId != accountId ||
-                                binding.serverId != serverId ||
-                                url == null
-                            ) {
-                                SettingsWebViewLoadingCover()
-                            } else {
-                                var documentReady by remember(identity) { mutableStateOf(false) }
-                                var currentDocumentUrl by remember(identity) { mutableStateOf(url) }
-                                val injectedJavaScript = remember(session, binding) {
-                                    """
-                                        (function() {
-                                          try {
-                                            ${settingsWebViewAuthStorageJavaScript(session, binding)};
-                                            ${serverSetupHostBridgeJavaScript(identity)}
-                                          } catch (_) {}
-                                        })();
-                                    """.trimIndent()
-                                }
-                                Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
-                                    SettingsWebViewContent(
-                                        url = url,
-                                        allowNavigation = false,
-                                        allowedNavigationSchemes = setOf("http", "https"),
-                                        injectedJavaScript = injectedJavaScript,
-                                        controller = controller,
-                                        generationKey = generation,
-                                        onNavigationBlocked = { blockedUrl ->
-                                            val event = decodeServerSetupHostBridgeNavigation(blockedUrl, bridge::urlDecode)
+                    }
+                is ServerSetupAdmissionState.Admitted -> Unit
+                is ServerSetupAdmissionState.Blocked -> {
+                    RaftBackHandler(enabled = true, label = "server_setup_onboarding") { }
+                    val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+                    val url = remember(webBaseUrl, serverSlug, generation) {
+                        serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation)
+                    }
+                    if (
+                        binding == null ||
+                        binding.accountId != accountId ||
+                        binding.serverId != serverId ||
+                        url == null
+                    ) {
+                        SettingsWebViewLoadingCover()
+                    } else {
+                        var documentReady by remember(identity) { mutableStateOf(false) }
+                        var currentDocumentUrl by remember(identity) { mutableStateOf(url) }
+                        val injectedJavaScript = remember(session, binding) {
+                            """
+                                (function() {
+                                  try {
+                                    ${settingsWebViewAuthStorageJavaScript(session, binding)};
+                                    ${serverSetupHostBridgeJavaScript(identity)}
+                                  } catch (_) {}
+                                })();
+                            """.trimIndent()
+                        }
+                        Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+                            SettingsWebViewContent(
+                                url = url,
+                                allowNavigation = false,
+                                allowedNavigationSchemes = setOf("http", "https"),
+                                injectedJavaScript = injectedJavaScript,
+                                controller = controller,
+                                generationKey = generation,
+                                onNavigationBlocked = { blockedUrl ->
+                                    val event = decodeServerSetupHostBridgeNavigation(blockedUrl, bridge::urlDecode)
+                                    bridge.log(
+                                        "server_setup_navigation_blocked scheme=${blockedUrl.substringBefore(':')} " +
+                                            "event=${when (event) {
+                                                is ServerSetupHostEvent.StateMayHaveChanged -> "completion"
+                                                is ServerSetupHostEvent.SwitchServer -> "server_switch"
+                                                null -> "unknown"
+                                            }}"
+                                    )
+                                    when (event) {
+                                        is ServerSetupHostEvent.StateMayHaveChanged -> {
+                                            val controlledDocument =
+                                                serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)
+                                            val wakeMatches = event.wake.matches(identity, serverSlug)
+                                            val accepted = controlledDocument && wakeMatches && controllerState.acceptsWake(identity)
                                             bridge.log(
-                                                "server_setup_navigation_blocked scheme=${blockedUrl.substringBefore(':')} " +
-                                                    "event=${when (event) {
-                                                        is ServerSetupHostEvent.StateMayHaveChanged -> "completion"
-                                                        is ServerSetupHostEvent.SwitchServer -> "server_switch"
-                                                        null -> "unknown"
-                                                    }}"
+                                                "server_setup_completion_wake accepted=$accepted " +
+                                                    "controlledDocument=$controlledDocument wakeMatches=$wakeMatches"
                                             )
-                                            when (event) {
-                                                is ServerSetupHostEvent.StateMayHaveChanged -> {
-                                                    val controlledDocument =
-                                                        serverSetupControlledDocumentMatchesOrigin(currentDocumentUrl, webBaseUrl)
-                                                    val wakeMatches = event.wake.matches(identity, serverSlug)
-                                                    val accepted = controlledDocument && wakeMatches && controllerState.acceptsWake(identity)
-                                                    bridge.log(
-                                                        "server_setup_completion_wake accepted=$accepted " +
-                                                            "controlledDocument=$controlledDocument wakeMatches=$wakeMatches"
-                                                    )
-                                                    if (accepted) refreshEpoch += 1
-                                                }
-                                                is ServerSetupHostEvent.SwitchServer -> {
-                                                    val targetId = serverSetupSwitchTargetId(
-                                                        session = session,
-                                                        identity = identity,
-                                                        intent = event.intent,
-                                                        activeOwner = controllerState.acceptsWake(identity),
-                                                        controlledDocument = serverSetupControlledDocumentMatchesOrigin(
-                                                            currentDocumentUrl,
-                                                            webBaseUrl,
-                                                        ),
-                                                    )
-                                                    if (targetId != null && controllerState.claimSwitch(identity)) {
-                                                        state = ServerSetupAdmissionState.Loading(identity)
-                                                        scope.launch {
-                                                            when (
-                                                                authDataSource.selectServer(
-                                                                    serverId = targetId,
-                                                                    expectedSelectedServerId = serverId,
-                                                                )
-                                                            ) {
-                                                                is SharedAuthResult.Success<*> -> Unit
-                                                                else -> state = controllerState.begin(identity).let {
-                                                                    ServerSetupAdmissionState.Failed(
-                                                                        identity,
-                                                                        build.raft.app.data.ScreenError(
-                                                                            code = "server_setup_switch_failed",
-                                                                            retryable = true,
-                                                                        ),
-                                                                    )
-                                                                }
-                                                            }
+                                            if (accepted) refreshEpoch += 1
+                                        }
+                                        is ServerSetupHostEvent.SwitchServer -> {
+                                            val targetId = serverSetupSwitchTargetId(
+                                                session = session,
+                                                identity = identity,
+                                                intent = event.intent,
+                                                activeOwner = controllerState.acceptsWake(identity),
+                                                controlledDocument = serverSetupControlledDocumentMatchesOrigin(
+                                                    currentDocumentUrl,
+                                                    webBaseUrl,
+                                                ),
+                                            )
+                                            if (targetId != null && controllerState.claimSwitch(identity)) {
+                                                state = ServerSetupAdmissionState.Loading(identity)
+                                                scope.launch {
+                                                    when (
+                                                        authDataSource.selectServer(
+                                                            serverId = targetId,
+                                                            expectedSelectedServerId = serverId,
+                                                        )
+                                                    ) {
+                                                        is SharedAuthResult.Success<*> -> Unit
+                                                        else -> state = controllerState.begin(identity).let {
+                                                            ServerSetupAdmissionState.Failed(
+                                                                identity,
+                                                                build.raft.app.data.ScreenError(
+                                                                    code = "server_setup_switch_failed",
+                                                                    retryable = true,
+                                                                ),
+                                                                duringSetup = true,
+                                                            )
                                                         }
                                                     }
                                                 }
-                                                null -> if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
-                                                    openExternalUrl(blockedUrl)
-                                                }
                                             }
-                                        },
-                                        onUrlChange = { currentDocumentUrl = it },
-                                        onDocumentReadyChange = { documentReady = it },
-                                    )
-                                    SettingsWebViewAccessTokenSyncEffect(
-                                        snapshot = authSnapshot,
-                                        documentReady = documentReady,
-                                        controller = controller,
-                                        binding = binding,
-                                        surface = SettingsWebViewSurface.Onboarding,
-                                    )
-                                }
-                            }
+                                        }
+                                        null -> if (!blockedUrl.startsWith("$SERVER_SETUP_BRIDGE_SCHEME:")) {
+                                            openExternalUrl(blockedUrl)
+                                        }
+                                    }
+                                },
+                                onUrlChange = { currentDocumentUrl = it },
+                                onDocumentReadyChange = { documentReady = it },
+                            )
+                            SettingsWebViewAccessTokenSyncEffect(
+                                snapshot = authSnapshot,
+                                documentReady = documentReady,
+                                controller = controller,
+                                binding = binding,
+                                surface = SettingsWebViewSurface.Onboarding,
+                            )
                         }
                     }
+                }
             }
         },
     )

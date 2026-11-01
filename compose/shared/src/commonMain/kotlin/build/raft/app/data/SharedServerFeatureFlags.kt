@@ -39,7 +39,6 @@ const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_sta
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
-const val WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY: String = "enable_webview_onboarding_v0"
 const val PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY: String = "product_feedback_multi_app"
 /**
  * #367 Thread first-frame render: single-paragraph light markdown path.
@@ -164,7 +163,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     READ_RECEIPTS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
-    WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
