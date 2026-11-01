@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardInstallText
@@ -127,6 +129,12 @@ internal class ThreadInstallAppActionDialogStore(
     private val onInstalled: (messageId: String, card: ThreadActionCard) -> Unit = { _, _ -> },
     /** A NoPermission the route handles (session expired); true closes the dialog. */
     private val onNoPermission: (DataResult.NoPermission) -> Boolean = { false },
+    /**
+     * "Verify it's you" for an install refused with 403 `second_factor_step_up_required` (the
+     * install card is approver-class): verified, the install runs once more; closed, the
+     * confirmation stays open with no error.
+     */
+    private val stepUp: SecondFactorStepUpCoordinator? = null,
 ) {
     private val _state = MutableStateFlow<ThreadInstallAppActionDialogState?>(null)
     val state: StateFlow<ThreadInstallAppActionDialogState?> = _state.asStateFlow()
@@ -159,11 +167,21 @@ internal class ThreadInstallAppActionDialogStore(
         val token = ++requestToken
         _state.value = current.copy(submitting = true, failed = false, staleCode = null, errorServerMessage = null)
         scope.launch {
-            val result = install(current.messageId, current.card)
+            val outcome =
+                stepUp?.run { install(current.messageId, current.card) }
+                    ?: SecondFactorStepUpOutcome.Completed(install(current.messageId, current.card))
             val latest = _state.value
             // Closed, or replaced by another card's dialog: drop the answer.
             if (token != requestToken || latest == null || latest.messageId != current.messageId) return@launch
             val settled = latest.copy(submitting = false)
+            val result =
+                when (outcome) {
+                    is SecondFactorStepUpOutcome.Completed -> outcome.result
+                    SecondFactorStepUpOutcome.Cancelled -> {
+                        _state.value = settled
+                        return@launch
+                    }
+                }
             when (result) {
                 is DataResult.Content -> {
                     _state.value = null
@@ -209,6 +227,7 @@ internal fun threadInstallAppActionDialogStore(
     applyCard: (messageId: String, card: ThreadActionCard) -> Unit,
     toastInstalled: () -> Unit,
     routeAuthRequired: (DataResult.NoPermission) -> Boolean,
+    stepUp: SecondFactorStepUpCoordinator? = null,
 ): ThreadInstallAppActionDialogStore =
     ThreadInstallAppActionDialogStore(
         scope = scope,
@@ -218,6 +237,7 @@ internal fun threadInstallAppActionDialogStore(
             toastInstalled()
         },
         onNoPermission = routeAuthRequired,
+        stepUp = stepUp,
     )
 
 /** The confirmation as a raft-ui phone sheet (web `NarrowDialogContent narrow="sheet"`). */

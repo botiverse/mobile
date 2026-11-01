@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ActionCardFormIssue
 import build.raft.app.data.ActionCardFormValue
@@ -471,6 +473,12 @@ internal class ThreadActionCardSpecStore(
     private val loadWebUrl: suspend () -> String? = { null },
     /** HostLinkCapability.openUrlInBrowser: the browser, never Raft through App Links. */
     private val openInBrowser: (url: String) -> Unit = {},
+    /**
+     * "Verify it's you" for an execute refused with 403 `second_factor_step_up_required` (an
+     * approver-class card with two-step verification on): verified, the execute runs once more;
+     * closed, nothing more runs and nothing is shown.
+     */
+    private val stepUp: SecondFactorStepUpCoordinator? = null,
 ) {
     private val _state = MutableStateFlow(ThreadActionCardSpecState())
     val state: StateFlow<ThreadActionCardSpecState> = _state.asStateFlow()
@@ -559,11 +567,25 @@ internal class ThreadActionCardSpecStore(
         }
     }
 
+    /** [execute] behind [stepUp]; null when "Verify it's you" was closed. */
+    private suspend fun executeSteppingUp(
+        messageId: String,
+        card: ThreadActionCard,
+        form: ExecuteActionFormBody?,
+    ): DataResult<ActionCardExecuteOutcome>? {
+        val coordinator = stepUp ?: return execute(messageId, card, form)
+        return when (val outcome = coordinator.run { execute(messageId, card, form) }) {
+            is SecondFactorStepUpOutcome.Completed -> outcome.result
+            SecondFactorStepUpOutcome.Cancelled -> null
+        }
+    }
+
     private fun runExecute(messageId: String, elementId: String, card: ThreadActionCard) {
         update { it.copy(busy = it.busy + (messageId to elementId), errors = it.errors - messageId) }
         scope.launch {
-            val result = execute(messageId, card, null)
+            val result = executeSteppingUp(messageId, card, null)
             update { it.copy(busy = it.busy - messageId) }
+            if (result == null) return@launch
             val error: ThreadActionCardSpecError? =
                 when (result) {
                     is DataResult.Content ->
@@ -594,9 +616,14 @@ internal class ThreadActionCardSpecStore(
         val token = ++dialogToken
         update { it.copy(confirm = confirm.copy(submitting = true, error = null)) }
         scope.launch {
-            val result = execute(confirm.messageId, confirm.card, null)
+            val result = executeSteppingUp(confirm.messageId, confirm.card, null)
             // Closed meanwhile, or another dialog opened: the card still takes the answer.
             val open = _state.value.confirm?.takeIf { token == dialogToken && it.messageId == confirm.messageId }
+            if (result == null) {
+                // "Verify it's you" closed: the confirm stays open for another try, with no error.
+                if (open != null) update { it.copy(confirm = open.copy(submitting = false)) }
+                return@launch
+            }
             when (val settled = settle(confirm.messageId, result)) {
                 null -> if (open != null) update { it.copy(confirm = null) }
                 else -> if (open != null) update { it.copy(confirm = open.copy(submitting = false, error = settled)) }
@@ -610,8 +637,12 @@ internal class ThreadActionCardSpecStore(
         val token = ++dialogToken
         update { it.copy(form = form.copy(values = values, submitting = true, error = null)) }
         scope.launch {
-            val result = execute(form.messageId, form.card, ExecuteActionFormBody(id = form.formId, values = values))
+            val result = executeSteppingUp(form.messageId, form.card, ExecuteActionFormBody(id = form.formId, values = values))
             val open = _state.value.form?.takeIf { token == dialogToken && it.messageId == form.messageId }
+            if (result == null) {
+                if (open != null) update { it.copy(form = open.copy(submitting = false)) }
+                return@launch
+            }
             if (result is DataResult.Content && result.data is ActionCardExecuteOutcome.FormInvalid) {
                 val invalid = result.data as ActionCardExecuteOutcome.FormInvalid
                 if (open != null) update { it.copy(form = open.copy(submitting = false, issues = invalid.issues, error = null)) }

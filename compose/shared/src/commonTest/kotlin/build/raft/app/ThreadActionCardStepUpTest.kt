@@ -121,6 +121,68 @@ class ThreadActionCardStepUpTest {
         assertNull(harness.stepUp.state.value)
     }
 
+    private val installCard =
+        ThreadActionCard(
+            type = "integration:install_marketplace_app",
+            clientName = "Linear",
+            agentName = "lumen",
+            scopes = listOf("openid"),
+            installScopes = listOf("openid", "profile"),
+            installGroups = listOf("agent"),
+            confirmationVersion = 2,
+        )
+
+    private fun Harness.installStore(scope: TestScope, installed: MutableList<String>) =
+        ThreadInstallAppActionDialogStore(
+            scope = scope.backgroundScope,
+            install = { messageId, card -> dataSource.confirmInstallMarketplaceAppActionCard(messageId, card) },
+            onInstalled = { messageId, _ -> installed += messageId },
+            stepUp = stepUp,
+        )
+
+    @Test
+    fun aRefusedInstallVerifiesThenInstallsOnceMore() = runTest {
+        val harness = Harness(this, listOf(refusal))
+        val installed = mutableListOf<String>()
+        val store = harness.installStore(this, installed)
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-card", installCard))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+
+        assertNotNull(harness.stepUp.state.value, "the refusal opens Verify it's you over the confirmation")
+        assertEquals(true, store.state.value?.submitting)
+        harness.stepUp.accept(SecondFactorStepUpIntent.InputChanged("123456"))
+        harness.stepUp.accept(SecondFactorStepUpIntent.Submit)
+        runCurrent()
+
+        val installExecute = """POST actions/m-card/execute body={"expectedState":"prepared","expectedConfirmationVersion":2}"""
+        assertEquals(listOf(installExecute, installExecute), harness.actionCardsApi.calls)
+        assertEquals(listOf("m-card"), installed)
+        assertNull(store.state.value)
+        assertNull(harness.stepUp.state.value)
+    }
+
+    @Test
+    fun closingVerifyItsYouLeavesTheInstallConfirmationOpenAndQuiet() = runTest {
+        val harness = Harness(this, listOf(refusal))
+        val installed = mutableListOf<String>()
+        val store = harness.installStore(this, installed)
+        store.dispatch(ThreadInstallAppActionIntent.Open("m-card", installCard))
+        store.dispatch(ThreadInstallAppActionIntent.Confirm)
+        runCurrent()
+
+        harness.stepUp.accept(SecondFactorStepUpIntent.Cancel)
+        runCurrent()
+
+        assertEquals(1, harness.actionCardsApi.calls.size)
+        assertEquals(emptyList(), installed)
+        val dialog = assertNotNull(store.state.value)
+        assertEquals(false, dialog.submitting)
+        assertEquals(false, dialog.failed)
+        assertNull(dialog.errorServerMessage)
+        assertEquals(emptyList(), harness.answers)
+    }
+
     @Test
     fun anApproveWithoutRefusalNeverOpensTheDialog() = runTest {
         val harness = Harness(this, emptyList())

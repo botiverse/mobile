@@ -8841,6 +8841,15 @@ private fun SharedThreadRouteContentContent(
             false
         }
 
+    // A card execute refused for a fresh second step (two-step verification on; approver-class
+    // cards: Approve Login, Install App, and their spec-card forms): "Verify it's you", then the
+    // card runs once more. One dialog for the typed commit, the install confirmation and spec cards.
+    val actionCardStepUp =
+        remember(sharedStores, storeScope, threadInstanceKey) {
+            val repository = SecondFactorStepUpRepository(sharedStores.networkClient(storeScope))
+            SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
+        }
+    val actionCardStepUpState by actionCardStepUp.state.collectAsState()
     // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
     val installAppDialogStore =
         remember(threadInstanceKey) {
@@ -8851,17 +8860,10 @@ private fun SharedThreadRouteContentContent(
                 // The card's done line names what was installed.
                 toastInstalled = { bridge.toast(genericActionCardSuccessLabel) },
                 routeAuthRequired = { result -> routeAuthRequired(result) },
+                stepUp = actionCardStepUp,
             )
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
-    // An Approve Login card refused for a fresh second step (two-step verification on): "Verify
-    // it's you", then the card runs once more (SharedThreadDataSource.commitThreadActionCard).
-    val actionCardStepUp =
-        remember(sharedStores, storeScope, threadInstanceKey) {
-            val repository = SecondFactorStepUpRepository(sharedStores.networkClient(storeScope))
-            SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
-        }
-    val actionCardStepUpState by actionCardStepUp.state.collectAsState()
 
     val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
@@ -8872,6 +8874,7 @@ private fun SharedThreadRouteContentContent(
             ThreadActionCardSpecStore(
                 scope = coroutineScope,
                 execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
+                stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
                 loadWebUrl = {
@@ -14413,16 +14416,6 @@ private fun SharedThreadRouteContentContent(
         installAppDialogState?.let { dialogState ->
             ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
         }
-        actionCardStepUpState?.let { dialogState ->
-            SecondFactorStepUpDialog(
-                state = dialogState,
-                onIntent = { intent ->
-                    coroutineScope.launch { actionCardStepUp.accept(intent) }
-                    if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
-                },
-                description = stringResource(Res.string.settings_step_up_generic_description),
-            )
-        }
         // A4: a spec card's confirm / form follows the live card (its confirmation version, done elsewhere).
         val actionCardSpecDialogMessageId = actionCardSpecState.confirm?.messageId ?: actionCardSpecState.form?.messageId
         val liveActionCardSpecCard =
@@ -14469,6 +14462,17 @@ private fun SharedThreadRouteContentContent(
                 onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
                 candidates = candidates,
                 formError = threadActionCardSpecErrorText(formState.error),
+            )
+        }
+        // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.
+        actionCardStepUpState?.let { dialogState ->
+            SecondFactorStepUpDialog(
+                state = dialogState,
+                onIntent = { intent ->
+                    coroutineScope.launch { actionCardStepUp.accept(intent) }
+                    if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
+                },
+                description = stringResource(Res.string.settings_step_up_generic_description),
             )
         }
         createAgentDialogState?.let { dialogState ->
