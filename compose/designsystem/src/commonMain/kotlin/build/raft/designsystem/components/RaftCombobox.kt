@@ -573,8 +573,9 @@ fun RaftComboboxChipsTrigger(
     Row(
         modifier
             .fillMaxWidth()
-            // A minimum: more chips wrap onto more lines and a large font scale grows it.
-            .heightIn(min = 44.dp)
+            // A minimum (`min-h-control`: 44dp, 32dp on a desktop): more chips wrap onto more
+            // lines and a large font scale grows it.
+            .heightIn(min = RaftTheme.controls.height)
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(look.fill, shape)
             .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
@@ -629,13 +630,13 @@ fun RaftComboboxChipsTrigger(
     }
 }
 
-/** combobox.tsx `chip`: 32dp (`--control-embedded-size`), chip radius, `fill-muted`, footnote semibold, 8dp in, the remove button 2dp from the end. */
+/** combobox.tsx `chip`: 32dp (`--control-embedded-size`, 20dp on a desktop), chip radius, `fill-muted`, footnote semibold, 8dp in, the remove button 2dp from the end. */
 @Composable
 private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Unit)?, removeLabel: String) {
     val colors = RaftTheme.colors
     Row(
         Modifier
-            .heightIn(min = RaftTextFieldDefaults.EmbeddedControlSize)
+            .heightIn(min = RaftTheme.controls.embeddedSize)
             .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Chip))
             .padding(start = 8.dp, end = if (onRemove != null) 2.dp else 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -664,7 +665,8 @@ private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Un
 internal fun RaftComboboxChipRemove(
     label: String,
     onClick: () -> Unit,
-    size: Dp = RaftTextFieldDefaults.EmbeddedControlSize - 4.dp,
+    // `calc(var(--control-embedded-size) - 4px)`: 28dp, 16dp on a desktop.
+    size: Dp = RaftTheme.controls.embeddedSize - 4.dp,
     widenTouchTarget: Boolean = false,
 ) {
     val colors = RaftTheme.colors
@@ -714,7 +716,8 @@ private fun RaftComboboxClear(text: String, onClick: () -> Unit) {
     ) {
         RaftText(
             text,
-            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            // combobox.tsx `text-control`: footnote's 13/18 on a phone, 14/22 on a desktop.
+            style = RaftTheme.typography.control.copy(fontWeight = FontWeight.SemiBold),
             color = if (pressed) colors.foreground else colors.foregroundMuted,
             maxLines = 1,
         )

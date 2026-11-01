@@ -1,5 +1,7 @@
 package build.raft.app.components
 
+import build.raft.app.RaftAppTypeScale
+
 import build.raft.app.resources.*
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftUiTextLocaleState
@@ -68,6 +70,11 @@ internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -
         raftTheme = RaftAppThemeState.raftTheme,
         decor = RaftAppThemeState.decor,
     ) {
+        // The app's own RaftType roles follow the scale this theme resolved (desktop from 768dp
+        // with a mouse or trackpad). Written in composition, ahead of the content that reads it,
+        // so the first frame already has the right sizes; only on a change.
+        val scale = RaftTheme.scale
+        if (RaftAppTypeScale.scale != scale) RaftAppTypeScale.scale = scale
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
             LocalRaftStrings provides strings,

@@ -174,6 +174,12 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
  * characters take that language's forms. Null (the default) sets none and leaves the
  * device locale in charge. A span's own `localeList` (a user's name) still wins.
  *
+ * [scale] picks the type scale and control metrics ([RaftScale]). Null (the default) inherits
+ * the enclosing [RaftTheme]'s; the outermost one runs the web's query: [RaftScale.Desktop]
+ * with a mouse or trackpad ([raftPlatformPointerIsFine], the desktop app) in a window at least
+ * [RaftScale.MinWidth] wide, else [RaftScale.Mobile]. It follows the window as it is resized.
+ * Pass one to pin it for the subtree (tests, previews).
+ *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.
  */
 @Composable
@@ -182,6 +188,7 @@ fun RaftTheme(
     systemDark: Boolean = isSystemInDarkTheme(),
     fonts: RaftFonts? = null,
     localeList: LocaleList? = null,
+    scale: RaftScale? = null,
     content: @Composable () -> Unit,
 ) {
     SideEffect { state.onSystemDarkChanged(systemDark) }
@@ -191,10 +198,13 @@ fun RaftTheme(
     // A host with its own faces (the app's Settings > Appearance face) passes them in, so the
     // bundled Space Grotesk / Space Mono are never loaded just to be replaced.
     val resolvedFonts = fonts ?: rememberRaftFonts()
-    val typography = remember(resolvedFonts, localeList) { RaftTypography.from(resolvedFonts, localeList) }
+    val resolvedScale = scale ?: LocalRaftScale.current ?: raftAutoScale()
+    val typography = remember(resolvedFonts, localeList, resolvedScale) { RaftTypography.from(resolvedFonts, localeList, resolvedScale) }
     CompositionLocalProvider(
         LocalRaftColors provides colors,
         LocalRaftTypography provides typography,
+        LocalRaftScale provides resolvedScale,
+        LocalRaftControls provides resolvedScale.controls,
         LocalRaftShapes provides RaftShapes(),
         LocalRaftIsDark provides dark,
         LocalRaftThemeId provides raftTheme,
@@ -213,7 +223,9 @@ fun RaftTheme(
  * Pins an [appearance] for a subtree (previews, fixtures, screenshot tests, an app screen
  * hosting designsystem components). [fonts] replaces the bundled faces when given;
  * [localeList] is the UI language of the type styles, as in the state overload.
- * [raftTheme] and [decor] pin the raft-ui theme ([RaftThemeId.Raft], no decor, by default).
+ * [raftTheme] and [decor] pin the raft-ui theme ([RaftThemeId.Raft], no decor, by default);
+ * [scale] the type scale and control metrics (null: inherited or the web's query, as in the
+ * state overload).
  */
 @Composable
 fun RaftTheme(
@@ -223,10 +235,11 @@ fun RaftTheme(
     localeList: LocaleList? = null,
     raftTheme: RaftThemeId = RaftThemeId.Raft,
     decor: Boolean = false,
+    scale: RaftScale? = null,
     content: @Composable () -> Unit,
 ) {
     val state = remember(appearance, raftTheme, decor) { RaftThemeState(appearance, raftTheme, decor) }
-    RaftTheme(state = state, systemDark = systemDark, fonts = fonts, localeList = localeList, content = content)
+    RaftTheme(state = state, systemDark = systemDark, fonts = fonts, localeList = localeList, scale = scale, content = content)
 }
 
 /** Read access to the enclosing [RaftTheme]. */
@@ -246,6 +259,16 @@ object RaftTheme {
     val isDark: Boolean
         @Composable @ReadOnlyComposable
         get() = LocalRaftIsDark.current
+
+    /** The type scale and control metrics in effect ([RaftScale]); [RaftScale.Mobile] outside any theme. */
+    val scale: RaftScale
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftScale.current ?: RaftScale.Mobile
+
+    /** The control metrics of [scale] (`--control-height`, `--control-icon-size`, ...). */
+    val controls: RaftControlMetrics
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftControls.current
 
     /** [LocalRaftThemeId]: the raft-ui theme the colours come from. */
     val themeId: RaftThemeId

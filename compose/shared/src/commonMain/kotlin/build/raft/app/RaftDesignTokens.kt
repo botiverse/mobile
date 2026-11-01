@@ -12,6 +12,10 @@ import build.raft.app.compat.ui.KuiklyFont
 import androidx.compose.ui.unit.TextUnit
 import build.raft.designsystem.theme.RaftFonts
 import build.raft.designsystem.theme.RaftTypography
+import build.raft.designsystem.theme.RaftScale as DesignSystemScale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -378,8 +382,24 @@ private fun TextStyle.resolveRaftFontFamily(): TextStyle {
  * The family comes from the per-weight Space Grotesk faces above, so the families passed in are
  * placeholders.
  */
-private val RaftScale: RaftTypography =
+private val RaftScaleMobile: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
+
+private val RaftScaleDesktop: RaftTypography =
+    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Desktop)
+
+/**
+ * The scale the app's [build.raft.app.components.RaftDesignSystemTheme] resolved
+ * ([build.raft.designsystem.theme.RaftTheme.scale]: desktop with a mouse or trackpad from 768dp,
+ * as raft-ui). Snapshot state, so text styled through [RaftType] recomposes when a window
+ * crosses 768.
+ */
+internal object RaftAppTypeScale {
+    var scale by mutableStateOf(DesignSystemScale.Mobile)
+}
+
+private val RaftScale: RaftTypography
+    get() = if (RaftAppTypeScale.scale == DesignSystemScale.Desktop) RaftScaleDesktop else RaftScaleMobile
 
 private fun raftTextStyle(token: TextStyle, fontWeight: FontWeight = token.fontWeight ?: FontWeight.Normal): TextStyle =
     raftTextStyle(fontWeight, token.fontSize, token.lineHeight, token.letterSpacing)

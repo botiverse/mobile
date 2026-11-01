@@ -62,6 +62,12 @@ fun rememberRaftFonts(): RaftFonts {
  * Every style centres the line box the way CSS half-leading does
  * ([LineHeightStyle.Alignment.Center], no trim), so a 24sp line box puts the glyphs
  * where the web puts them.
+ *
+ * The sizes below are the default (mobile) scale. Under [RaftScale.Desktop] (raft-ui 0.54
+ * styles.css "Desktop type", foundation.css "Desktop": a mouse or trackpad, from 768 wide)
+ * headline is 16/24; body, subhead, callout, control, field and card title 14/22; footnote,
+ * caption and mono-meta 12/18; mono-code stays 13/20. Hero, display, title and label do
+ * not change. Weights and tracking are the same in both.
  */
 @Immutable
 data class RaftTypography(
@@ -93,6 +99,12 @@ data class RaftTypography(
     val field: TextStyle,
     /** `--card-title-*` 16/24 600: CardTitle. */
     val cardTitle: TextStyle,
+    /**
+     * `text-control` 13/18 (14/22 on a desktop): the label of a 32dp control, a Button at
+     * `md`, a picker trigger, a combobox's clear. Its own style because on a desktop it is
+     * 14 where [footnote] drops to 12. Bold on a button: `.copy(fontWeight = …)`.
+     */
+    val control: TextStyle,
 ) {
     companion object {
         /** CSS half-leading: extra line height split above and below, nothing trimmed. */
@@ -106,14 +118,37 @@ data class RaftTypography(
          * The scale in [fonts]. [localeList] goes on every style (null: none, the platform
          * uses the device locale): it picks the CJK fallback glyphs, so a Japanese,
          * Korean or Traditional Chinese UI passes its language and Han characters take
-         * that language's forms.
+         * that language's forms. [scale] picks the default (mobile) or the desktop sizes.
          */
-        fun from(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography {
+        fun from(
+            fonts: RaftFonts,
+            localeList: LocaleList? = null,
+            scale: RaftScale = RaftScale.Mobile,
+        ): RaftTypography {
             fun sans(size: Int, lineHeight: Int, weight: FontWeight, tracking: TextUnit = 0.sp) =
                 style(fonts.sans, size, lineHeight, weight, tracking, localeList)
 
             fun mono(size: Int, lineHeight: Int) = style(fonts.mono, size, lineHeight, FontWeight.Normal, 0.sp, localeList)
 
+            if (scale == RaftScale.Desktop) {
+                return RaftTypography(
+                    hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
+                    display = sans(34, 40, FontWeight.Bold, (-0.02).em),
+                    title = sans(22, 28, FontWeight.Bold, (-0.01).em),
+                    headline = sans(16, 24, FontWeight.Bold),
+                    body = sans(14, 22, FontWeight.Normal),
+                    subhead = sans(14, 22, FontWeight.Normal),
+                    callout = sans(14, 22, FontWeight.Normal),
+                    footnote = sans(12, 18, FontWeight.Normal),
+                    caption = sans(12, 18, FontWeight.Medium),
+                    label = sans(11, 13, FontWeight.SemiBold),
+                    monoMeta = mono(12, 18),
+                    monoCode = mono(13, 20),
+                    field = sans(14, 22, FontWeight.Normal),
+                    cardTitle = sans(14, 22, FontWeight.SemiBold),
+                    control = sans(14, 22, FontWeight.Normal),
+                )
+            }
             return RaftTypography(
                 hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
                 display = sans(34, 40, FontWeight.Bold, (-0.02).em),
@@ -129,8 +164,12 @@ data class RaftTypography(
                 monoCode = mono(13, 20),
                 field = sans(16, 24, FontWeight.Normal),
                 cardTitle = sans(16, 24, FontWeight.SemiBold),
+                control = sans(13, 18, FontWeight.Normal),
             )
         }
+
+        /** [from] at [RaftScale.Desktop]: the scale raft-ui switches to with a mouse or trackpad from 768 wide. */
+        fun desktop(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography = from(fonts, localeList, RaftScale.Desktop)
 
         private fun style(
             family: FontFamily,
