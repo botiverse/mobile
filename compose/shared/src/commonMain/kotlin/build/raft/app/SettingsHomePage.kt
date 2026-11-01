@@ -7231,7 +7231,7 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 bridge.log("app_shell_rail_help_pick item=feedback")
                                 // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                if (settingsFeedbackUsesWebPage(sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY))) {
                                     pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
                                     pager.openSettingsHandsFeedbackPage(storeScope)
@@ -8150,7 +8150,7 @@ private fun RaftAppShellReadyContent(
                             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
                             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
                             SettingsDestinationHandsFeedback ->
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                if (settingsFeedbackUsesWebPage(sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY))) {
                                     pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
                                     pager.openSettingsHandsFeedbackPage(storeScope)
@@ -8175,9 +8175,11 @@ private fun RaftAppShellReadyContent(
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt).
-                            // Feedback is the web page (and opens in the pane) behind this flag.
+                            // Feedback is the web page (and opens in the pane) behind this flag, and always on desktop.
                             val feedbackWeb =
-                                sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                                settingsFeedbackUsesWebPage(
+                                    sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                                )
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,

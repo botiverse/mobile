@@ -53,6 +53,31 @@ class SettingsWideSplitTest {
     }
 
     @Test
+    fun feedbackIsTheWebPageOnAHostWithoutNativeHandsSubmit() {
+        // Compose desktop (artin 11-01): the native page cannot send there, so Feedback is the web
+        // page, in the pane, whatever the server flag says. Phones keep the flag's choice.
+        assertTrue(settingsFeedbackUsesWebPage(productFeedbackMultiApp = false, nativeSubmit = false))
+        assertTrue(settingsFeedbackUsesWebPage(productFeedbackMultiApp = true, nativeSubmit = false))
+        assertFalse(settingsFeedbackUsesWebPage(productFeedbackMultiApp = false, nativeSubmit = true))
+        assertTrue(settingsFeedbackUsesWebPage(productFeedbackMultiApp = true, nativeSubmit = true))
+        assertEquals(
+            SettingsWidePick.Detail(SettingsDestinationHandsFeedback),
+            settingsWidePick(SettingsDestinationHandsFeedback, settingsFeedbackUsesWebPage(false, nativeSubmit = false)),
+        )
+    }
+
+    @Test
+    fun releaseNotesRowOnlyWhereThePlatformHasAHandsApp() {
+        assertTrue(settingsReleaseNotesAvailable("raft-android"))
+        assertFalse(settingsReleaseNotesAvailable(""))
+        assertFalse(SettingsDestinationReleaseNotes in settingsHomeRowKeys(hasThemeServer = true, releaseNotes = false))
+        assertEquals(
+            settingsHomeRowKeys(hasThemeServer = true, releaseNotes = true) - SettingsDestinationReleaseNotes,
+            settingsHomeRowKeys(hasThemeServer = true, releaseNotes = false),
+        )
+    }
+
+    @Test
     fun webSectionsInThePaneAreTheSettingsWebPage() {
         val scope = RaftShellStoreScope.create("shell-wide-settings")
         mapOf(
