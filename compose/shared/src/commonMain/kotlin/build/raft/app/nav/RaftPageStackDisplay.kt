@@ -41,7 +41,7 @@ fun RaftPageStackDisplay(
 
 /** The page's own ViewModel store (an Activity's / view controller's), cleared when it leaves. */
 @Composable
-private fun RaftStackPageViewModels(content: @Composable () -> Unit) {
+internal fun RaftStackPageViewModels(content: @Composable () -> Unit) {
     val owner = remember { RaftStackPageViewModelStoreOwner() }
     DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
     CompositionLocalProvider(LocalViewModelStoreOwner provides owner, content = content)

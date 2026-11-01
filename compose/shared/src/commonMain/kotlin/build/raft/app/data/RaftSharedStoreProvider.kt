@@ -3036,6 +3036,10 @@ internal class RaftSharedStoreProvider private constructor(
                     api = RaftFeatureFlagsNetworkApi(networkClient),
                     diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
                     lastKnown = serverFeatureFlagLastKnown,
+                    // The Navigation 3 stack switch is read once at app launch: keep its last value.
+                    onEvaluation = { _, key, enabled, _, _, _, _ ->
+                        build.raft.app.nav.RaftNav3StackFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
+                    },
                 )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
             val canonicalMessageV2Store =

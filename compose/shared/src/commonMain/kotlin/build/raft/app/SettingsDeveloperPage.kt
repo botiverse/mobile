@@ -18,6 +18,7 @@ import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
+import build.raft.app.nav.RaftNav3StackFlag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -58,13 +59,16 @@ internal fun SharedSettingsDeveloperContent(
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val preferences = remember { build.raft.app.data.raftSharedPreferenceStore() }
+    var nav3StackLocalEnabled by remember { mutableStateOf(RaftNav3StackFlag.localOverride(preferences)) }
     val payload =
         snapshot.toDeveloperPayload(
             state = state,
             actionState = actionState,
             errorStrings = localizedErrorPresentationStrings(),
             copy = settingsDeveloperPayloadCopy(),
-            textInputTraceEnabled = RaftTextInputDiagnostics.enabled
+            textInputTraceEnabled = RaftTextInputDiagnostics.enabled,
+            nav3StackLocalEnabled = nav3StackLocalEnabled
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
@@ -72,6 +76,11 @@ internal fun SharedSettingsDeveloperContent(
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
             DEVELOPER_ACTION_TEXT_INPUT_TRACE -> RaftTextInputDiagnostics.setEnabled(value == "true")
+            DEVELOPER_ACTION_NAV3_STACK -> {
+                // Read once at app launch: the switch takes effect on the next start.
+                RaftNav3StackFlag.setLocalOverride(preferences, value == "true")
+                nav3StackLocalEnabled = RaftNav3StackFlag.localOverride(preferences)
+            }
         }
     }
 }
@@ -347,6 +356,7 @@ internal fun SharedSettingsLocalFeatureOverrideDetailContent(
 }
 
 internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
+internal const val DEVELOPER_ACTION_NAV3_STACK = "nav3Stack"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -413,6 +423,8 @@ internal data class SettingsDeveloperPayloadCopy(
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare.",
     val textInputTrace: String = "Text input trace",
     val textInputTraceDetail: String = "Log every keyboard edit and text sync in text fields to the app logs.",
+    val nav3Stack: String = "Navigation 3 page stack",
+    val nav3StackDetail: String = "Open the pages moved so far inside the app window (Android). Takes effect on the next app start.",
     val on: String = "On",
     val off: String = "Off"
 )
@@ -440,6 +452,8 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         routeLauncherDetail = stringResource(Res.string.settings_developer_route_launcher_detail),
         textInputTrace = stringResource(Res.string.settings_developer_text_input_trace),
         textInputTraceDetail = stringResource(Res.string.settings_developer_text_input_trace_detail),
+        nav3Stack = stringResource(Res.string.settings_developer_nav3_stack),
+        nav3StackDetail = stringResource(Res.string.settings_developer_nav3_stack_detail),
         on = stringResource(Res.string.settings_state_on),
         off = stringResource(Res.string.settings_state_off)
     )
@@ -537,7 +551,8 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
-    textInputTraceEnabled: Boolean = false
+    textInputTraceEnabled: Boolean = false,
+    nav3StackLocalEnabled: Boolean = false
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -607,6 +622,16 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 status = if (textInputTraceEnabled) copy.on else copy.off,
                                 enabled = true,
                                 toggleValue = textInputTraceEnabled
+                            ),
+                            RaftSharedSettingsRow(
+                                key = DEVELOPER_ACTION_NAV3_STACK,
+                                iconName = RaftLucideIconName.Route,
+                                title = copy.nav3Stack,
+                                detail = copy.nav3StackDetail,
+                                value = (!nav3StackLocalEnabled).toString(),
+                                status = if (nav3StackLocalEnabled) copy.on else copy.off,
+                                enabled = true,
+                                toggleValue = nav3StackLocalEnabled
                             )
                         )
                 )

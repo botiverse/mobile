@@ -392,7 +392,7 @@ class SettingsHomePageDiagnosticsTest {
         val rows = payload.sections.first { it.title == "Diagnostics" }.rows
 
         assertEquals(listOf("API Server", "Diagnostics"), payload.sections.map { it.title })
-        assertEquals(listOf("diagnostics", "router", DEVELOPER_ACTION_TEXT_INPUT_TRACE), rows.map { it.key })
+        assertEquals(listOf("diagnostics", "router", DEVELOPER_ACTION_TEXT_INPUT_TRACE, DEVELOPER_ACTION_NAV3_STACK), rows.map { it.key })
         assertEquals("Diagnostics", rows.first().title)
         assertTrue(rows.first().detail.contains("auth"))
         assertFalse(rows.first().detail.contains("network"))
