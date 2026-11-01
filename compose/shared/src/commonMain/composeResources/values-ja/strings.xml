@@ -2308,6 +2308,8 @@
     <string name="settings_computers_runtime_suffix_update_computer">（Raft Computer の更新が必要）</string>
     <string name="settings_computers_runtime_usage_title">%1$s の使用量</string>
     <string name="settings_computers_runtime_usage_dialog_label">%1$s ランタイムアカウントの使用量</string>
+    <string name="settings_computers_runtime_usage_version">バージョン %1$s</string>
+    <string name="settings_computers_runtime_usage_version_unavailable">バージョン不明</string>
     <string name="settings_computers_runtime_usage_private">コンピューターの編集権限を持つユーザー、またはこのコンピューターを接続したユーザーにのみ表示されます</string>
     <string name="settings_computers_runtime_usage_health_ok">正常</string>
     <string name="settings_computers_runtime_usage_health_rate_limited">レート制限中</string>

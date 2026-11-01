@@ -194,6 +194,8 @@ private fun RuntimeUsageSheetContent(@Suppress("UNUSED_PARAMETER") appearance: R
                     loading = false,
                     refresh = ComputerRuntimeUsageRefreshStatus.Idle,
                     cooldownLeftMillis = 0L,
+                    // GET servers/:id/machines `runtimeVersions.claude` (the CLI's own version line).
+                    runtimeVersion = "2.1.304 (Claude Code)",
                 ),
             timeContext = usageTimeContext,
         )
