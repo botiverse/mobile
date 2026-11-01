@@ -508,7 +508,6 @@ internal fun RaftArtifactViewerFrame(
     topSafeAreaOverride: androidx.compose.ui.unit.Dp? = null,
     content: @Composable () -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
             title = title,
@@ -519,25 +518,14 @@ internal fun RaftArtifactViewerFrame(
             topSafeAreaOverride = topSafeAreaOverride,
             trailingContent = {
                 if (onOpenInBrowser != null) {
-                    Box {
-                        RaftDesignSystemTheme {
-                            RaftIconButton(
-                                onClick = { menuOpen = true },
-                                tooltip = stringResource(Res.string.artifacts_viewer_more),
-                                variant = RaftButtonVariant.Ghost,
-                            ) {
-                                RaftSlotIcon(RaftLucideIconName.Ellipsis)
-                            }
-                            RaftDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, minWidth = 200.dp) {
-                                RaftMenuItem(
-                                    text = stringResource(Res.string.artifacts_viewer_open_in_browser),
-                                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
-                                    onClick = {
-                                        menuOpen = false
-                                        onOpenInBrowser()
-                                    },
-                                )
-                            }
+                    // One action, so a button rather than a one-item menu; the embedded page keeps its own ⋮.
+                    RaftDesignSystemTheme {
+                        RaftIconButton(
+                            onClick = onOpenInBrowser,
+                            tooltip = stringResource(Res.string.artifacts_viewer_open_in_browser),
+                            variant = RaftButtonVariant.Ghost,
+                        ) {
+                            RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
                         }
                     }
                 }
