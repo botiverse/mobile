@@ -34,6 +34,9 @@ internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = true
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = true
 
+internal actual fun raftPlatformShortcutsUseCommand(): Boolean =
+    System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
+
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = false
 
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = RaftDesktopClipboardAttachments.available()

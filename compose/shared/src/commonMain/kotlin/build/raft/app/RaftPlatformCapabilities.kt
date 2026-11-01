@@ -60,6 +60,12 @@ internal expect fun raftPlatformMessageTextPointerSelectable(): Boolean
 internal expect fun raftPlatformHasFinePointer(): Boolean
 
 /**
+ * Keyboard shortcuts take ⌘ rather than Ctrl (web `isApplePlatform`): iOS / iPadOS and the
+ * Compose desktop app on macOS. The rail's ⌘\ / Ctrl+\ sidebar toggle reads it.
+ */
+internal expect fun raftPlatformShortcutsUseCommand(): Boolean
+
+/**
  * An in-app browser page can show a web page. Desktop has no embedded web view yet
  * (RaftDesktopActuals `RaftSandboxWebViewHost`), so its web links always open in the default
  * browser and Settings does not offer the "Open web links" choice.

@@ -37,6 +37,8 @@
     <string name="tab_more">More</string>
     <string name="tab_activity_unread_dot">Unread activity</string>
     <string name="tab_more_attention_dot">Something new in More</string>
+    <string name="rail_collapse_sidebar">Collapse Sidebar</string>
+    <string name="rail_expand_sidebar">Expand Sidebar</string>
     <string name="tab_chat">Chat</string>
     <string name="tab_computers">Computers</string>
     <string name="tab_apps">Apps</string>

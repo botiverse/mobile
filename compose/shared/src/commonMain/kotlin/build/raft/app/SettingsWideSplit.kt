@@ -146,6 +146,7 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * The wide Settings tab: the Settings list in the sidebar column ([RaftListPaneKind.Sidebar], the
  * Home sidebar's width) with the [selectedKey] row highlighted, and [detailPane] beside it. Back
  * while a non-default section shows returns to the default one ([settingsWideBackReturnsToDefault]).
+ * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the whole width.
  */
 @Composable
 internal fun SettingsWideListDetail(
@@ -160,6 +161,7 @@ internal fun SettingsWideListDetail(
     detailBottomInset: Dp,
     bottomContentPadding: Dp,
     detailPane: @Composable (key: String, modifier: Modifier) -> Unit,
+    collapsed: Boolean = false,
     onResizingChange: (Boolean) -> Unit = {},
 ) {
     val rowKeys = payload.items.map { it.key }
@@ -194,6 +196,7 @@ internal fun SettingsWideListDetail(
                 }
             }
         },
+        collapsed = collapsed,
         onResizingChange = onResizingChange,
     )
 }

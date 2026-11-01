@@ -200,9 +200,10 @@ internal enum class RaftNavPresentation(
             RaftAppDestination.Computers,
             RaftAppDestination.Apps,
         ),
-        // The web heads this footer with its "collapse sidebar" toggle (SidebarToggleRailItem,
-        // RaftAppRailFooterItem.Toggle here). It is an action on the shell, not a destination,
-        // and the app's wide layout has no collapsible sidebar, so the rail leaves it out.
+        // The web heads this footer with its "collapse sidebar" toggle (SidebarToggleRailItem).
+        // It is an action on the shell, not a destination, so it is not listed here: the rail
+        // adds it (RaftRailSidebarToggle) where a list column sits beside the main area
+        // (appShellCollapsibleColumn).
         footer = listOf(RaftAppDestination.Help, RaftAppDestination.Settings),
     ),
     ;

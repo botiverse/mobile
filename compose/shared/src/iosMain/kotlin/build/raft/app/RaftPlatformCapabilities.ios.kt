@@ -42,6 +42,8 @@ internal actual fun raftPlatformMessageTextPointerSelectable(): Boolean = false
 
 internal actual fun raftPlatformHasFinePointer(): Boolean = false
 
+internal actual fun raftPlatformShortcutsUseCommand(): Boolean = true
+
 internal actual fun raftPlatformSupportsInAppBrowser(): Boolean = true
 
 internal actual fun raftPlatformClipboardHasAttachments(): Boolean = false

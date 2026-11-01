@@ -369,6 +369,18 @@ class KeyValueChatLayoutPreferenceStore(
         store.putString(kind.storageKey, widthDp)
     }
 
+    /**
+     * Whether the rail's toggle has hidden [column] (web uiStore `slock:sidebarHidden` /
+     * `slock:activityListHidden`): per device, for every server and account, like the widths.
+     */
+    fun readCollapsibleColumnHiddenSync(column: RaftCollapsibleColumn): Boolean =
+        store.getBoolean(column.storageKey, false)
+
+    fun saveCollapsibleColumnHidden(column: RaftCollapsibleColumn, hidden: Boolean) {
+        // Like web: only the hidden state is written; shown is the absence of the key.
+        store.putString(column.storageKey, if (hidden) "true" else null)
+    }
+
     private fun migrateAdaptiveListPaneWidths() {
         val legacy = store.getString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP) ?: return
         RaftListPaneKind.entries.forEach { kind ->
