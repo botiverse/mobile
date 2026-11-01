@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftSideAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.platform.testTag
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftIconTileVariant
 import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -514,14 +519,22 @@ data class RaftHomeNotificationItem(
     val primaryActionActive: Boolean = false,
     val targetId: String? = null,
     val kind: RaftHomeNotificationKind = RaftHomeNotificationKind.Warning,
-    val icon: RaftHomeNotificationIcon = RaftHomeNotificationIcon.Default
+    val icon: RaftHomeNotificationIcon = RaftHomeNotificationIcon.Default,
+    /**
+     * An account-security alert (web NotificationEntry `security`: a two-step verification reset):
+     * listed first, never dismissed, its body never cut, and while it is listed the bell wears the
+     * shield marker instead of the unread dot.
+     */
+    val security: Boolean = false,
+    /** False while the primary action runs (web `action.disabled`). */
+    val actionEnabled: Boolean = true,
 )
 
 @Serializable
 enum class RaftHomeNotificationKind { Warning, Info, Error }
 
 @Serializable
-enum class RaftHomeNotificationIcon { Default, WifiOff, CircleArrowUp, Info }
+enum class RaftHomeNotificationIcon { Default, WifiOff, CircleArrowUp, Info, ShieldAlert }
 
 data class RaftHomeInlineError(
     val title: String,
@@ -1322,6 +1335,47 @@ internal fun HomeNotificationCenterVisualScreen() {
     }
 }
 
+/**
+ * A pending two-step verification reset (web slock #12295): the bell with the shield marker and
+ * the open phone popover listing the reset first (no Dismiss, body not cut), then an ordinary entry.
+ */
+@Composable
+internal fun HomeNotificationCenterSecurityVisualScreen() {
+    val recovery =
+        build.raft.app.data.SecondFactorRecovery(
+            status = build.raft.app.data.SecondFactorRecoveryStatus.Waiting,
+            requestedAt = "2026-11-01T00:10:00.000Z",
+            eligibleAt = "2026-11-04T00:10:00.000Z",
+            expiresAt = "2026-11-11T00:10:00.000Z",
+            setPasswordFirst = false,
+        )
+    val notifications =
+        listOf(recovery.toHomeNotificationItem(secondFactorRecoveryNoticeCopy("Nov 4, 2026, 08:10"), cancelling = false)) +
+            visualHomeNotifications().take(1)
+    Column(modifier = Modifier.width(390.dp).height(640.dp).background(RaftColor.SurfaceWhite)) {
+        HomeTitlebar(
+            serverName = "Raft Design",
+            hasOtherServerUnread = false,
+            notifications = notifications,
+            notificationCenterExpanded = true,
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        Box(modifier = Modifier.fillMaxWidth().padding(top = HomeNotificationPopoverTopGap)) {
+            HomeNotificationPopover(
+                notifications = notifications,
+                onView = {},
+                onDismiss = {},
+                modifier = Modifier.align(Alignment.TopEnd).homeNotificationPopoverPhoneWidth(),
+                minWidth = 0.dp,
+                maxWidth = HomeNotificationPopoverPhoneMaxWidth
+            )
+        }
+    }
+}
+
 @Composable
 internal fun HomeAppUpdateBannerVisualScreen() {
     Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp)) {
@@ -1574,6 +1628,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val onSearchClick: () -> Unit = {},
     val onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     val onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
+    /** The notification center opened (web: its entries read again when looked at). */
+    val onNotificationCenterOpened: () -> Unit = {},
     val onInlineErrorAction: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
@@ -1697,6 +1753,7 @@ internal fun RaftStructuralHomeShell(
     onSearchClick: () -> Unit = {},
     onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
+    onNotificationCenterOpened: () -> Unit = {},
     onInlineErrorAction: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
@@ -1819,6 +1876,7 @@ internal fun RaftStructuralHomeShell(
                 onSearchClick = onSearchClick,
                 onNotificationView = onNotificationView,
                 onNotificationDismiss = onNotificationDismiss,
+                onNotificationCenterOpened = onNotificationCenterOpened,
                 onInlineErrorAction = onInlineErrorAction,
                 onRefresh = onRefresh,
                 onChannelSortModeChange = onChannelSortModeChange,
@@ -1939,6 +1997,7 @@ private fun RaftStructuralHomeShellContent(
     val onSearchClick = callbacks.onSearchClick
     val onNotificationView = callbacks.onNotificationView
     val onNotificationDismiss = callbacks.onNotificationDismiss
+    val onNotificationCenterOpened = callbacks.onNotificationCenterOpened
     val onInlineErrorAction = callbacks.onInlineErrorAction
     val onRefresh = callbacks.onRefresh
     val onChannelSortModeChange = callbacks.onChannelSortModeChange
@@ -2357,6 +2416,10 @@ private fun RaftStructuralHomeShellContent(
         if (externalFocusLossDismissEpoch > 0) {
             notificationCenterExpanded = false
         }
+    }
+    val latestNotificationCenterOpened by rememberUpdatedState(onNotificationCenterOpened)
+    LaunchedEffect(notificationCenterExpanded) {
+        if (notificationCenterExpanded) latestNotificationCenterOpened()
     }
     val sidebarInteractionsEnabled = true
     val resolvedTopSafeArea = raftTopSafeAreaPadding()
@@ -4216,8 +4279,9 @@ private fun homeSideColumnBellAction(
     onToggle: () -> Unit,
 ): RaftSideAction {
     val visible = remember(notifications) { notifications.visibleHomeNotifications() }
+    val securityAlertLabel = Res.string.home_notification_center_security_alert.format(listOf(visible.size)).localized()
     val attentionDescription =
-        when (visible.size) {
+        if (visible.hasHomeSecurityAlert()) securityAlertLabel else when (visible.size) {
             0 -> null
             1 -> Res.string.home_notification_center_item_count_one.format(listOf(1)).localized()
             else -> Res.string.home_notification_center_item_count_many.format(listOf(visible.size)).localized()
@@ -5154,6 +5218,9 @@ private fun HomeNotificationBellButton(
 ) {
     val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
     val hasUnread = visibleNotifications.isNotEmpty()
+    val securityAlert = visibleNotifications.hasHomeSecurityAlert()
+    val securityAlertLabel =
+        Res.string.home_notification_center_security_alert.format(listOf(visibleNotifications.size)).localized()
     // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
     Button(
         onClick = onToggle,
@@ -5162,6 +5229,8 @@ private fun HomeNotificationBellButton(
             Modifier
                 .size(size)
                 .background(if (open) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
+                // Web NotificationTrigger: "Notification center (N active), security alert".
+                .then(if (securityAlert) Modifier.semantics { contentDescription = securityAlertLabel } else Modifier)
     ) {
         // Web parity (task #113 / artin 2026-08-06): the pink dot sits
         // directly at the Bell icon's top-right corner (web: dot on the
@@ -5169,12 +5238,35 @@ private fun HomeNotificationBellButton(
         // corner. Icon-sized wrapper keeps the same geometry.
         Box(modifier = Modifier.size(HomeNotificationBellIconSize)) {
             RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(HomeNotificationBellIconSize))
-            if (hasUnread) {
+            if (securityAlert) {
+                HomeNotificationSecurityMarker(Modifier.align(Alignment.TopEnd))
+            } else if (hasUnread) {
                 ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
             }
         }
     }
 }
+
+/**
+ * Web NotificationTrigger `securityAlert` (slock #12295): a shield on raft-ui's warning IconTile
+ * (xs), on the bell's corner where the unread dot goes (`-top-2 -end-2`). The trigger's name says
+ * it, so the marker itself is not read out.
+ */
+@Composable
+internal fun HomeNotificationSecurityMarker(modifier: Modifier = Modifier) {
+    RaftIconTile(
+        modifier = modifier.offset(x = HomeNotificationSecurityMarkerOffset, y = -HomeNotificationSecurityMarkerOffset).testTag(HOME_NOTIFICATION_SECURITY_MARKER_TAG),
+        variant = RaftIconTileVariant.Warning,
+        size = RaftIconTileSize.Xs,
+    ) {
+        RaftContentLucideIcon(RaftLucideIconName.ShieldAlert, size = RaftIconTileSize.Xs.icon)
+    }
+}
+
+internal const val HOME_NOTIFICATION_SECURITY_MARKER_TAG = "home-notification-security-marker"
+private val HomeNotificationSecurityMarkerOffset = 8.dp
+
+internal fun List<RaftHomeNotificationItem>.hasHomeSecurityAlert(): Boolean = any { it.security }
 
 // A 20dp bell in a 44dp button: raft-ui NotificationCenter's bell size (`size-5`). The web phone navbar
 // uses 22px; artin found that too big in the app (2026-10-21).
@@ -5335,7 +5427,15 @@ private fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: 
         Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
             Text(title, style = RaftType.Button, color = RaftColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
             if (body.isNotBlank()) {
-                Text(body, style = RaftType.Button, color = RaftColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
+                // A security alert's body (until when a reset can finish, what to do if it isn't
+                // you) is never cut off (web NotificationCenter `line-clamp-none`).
+                Text(
+                    body,
+                    style = RaftType.Button,
+                    color = RaftColor.TextBlack,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = if (notification.security) Int.MAX_VALUE else 3
+                )
             }
             androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
                 if (notification.actionLabel.isNotBlank()) {
@@ -5343,10 +5443,14 @@ private fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: 
                         notification.actionLabel,
                         RaftColor.AccentPink,
                         onView,
-                        shadowOffset = notification.primaryActionShadowOffset()
+                        shadowOffset = notification.primaryActionShadowOffset(),
+                        enabled = notification.actionEnabled
                     )
                 }
-                HomeNotificationActionButton(stringResource(Res.string.common_dismiss), RaftColor.SurfaceWhite, onDismiss)
+                // A security alert has no Dismiss: it goes only when what it reports does.
+                if (!notification.security) {
+                    HomeNotificationActionButton(stringResource(Res.string.common_dismiss), RaftColor.SurfaceWhite, onDismiss)
+                }
             }
         }
     }
@@ -5361,6 +5465,7 @@ internal fun RaftHomeNotificationIcon.notificationIconName(kind: RaftHomeNotific
         RaftHomeNotificationIcon.WifiOff -> RaftLucideIconName.TriangleAlert
         RaftHomeNotificationIcon.CircleArrowUp -> RaftLucideIconName.CircleArrowUp
         RaftHomeNotificationIcon.Info -> RaftLucideIconName.Info
+        RaftHomeNotificationIcon.ShieldAlert -> RaftLucideIconName.ShieldAlert
         RaftHomeNotificationIcon.Default ->
             when (kind) {
                 RaftHomeNotificationKind.Warning -> RaftLucideIconName.TriangleAlert
@@ -5381,10 +5486,17 @@ private fun RaftHomeNotificationItem.isAppUpdateActionActive(): Boolean =
         (primaryActionActive || actionLabel.trim().lowercase() in setOf("downloading", "install"))
 
 @Composable
-private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit, shadowOffset: Dp = HomeNotificationActionShadowOffset) {
+private fun HomeNotificationActionButton(
+    text: String,
+    color: Color,
+    onClick: () -> Unit,
+    shadowOffset: Dp = HomeNotificationActionShadowOffset,
+    enabled: Boolean = true,
+) {
     RaftBrutalActionButton(
         label = text,
         onClick = onClick,
+        enabled = enabled,
         backgroundColor = color,
         minWidth = 72.dp,
         minHeight = 32.dp,

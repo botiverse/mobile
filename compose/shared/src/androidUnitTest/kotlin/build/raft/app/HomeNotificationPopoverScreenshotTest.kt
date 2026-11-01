@@ -26,6 +26,12 @@ class HomeNotificationPopoverScreenshotTest {
 
     @Test fun dark() = capture("home.notification-popover.dark", RaftAppAppearance.Dark)
 
+    /** A pending two-step verification reset: the bell's shield, the reset first, no Dismiss (slock #12295). */
+    @Test fun securityAlert() =
+        RaftRobolectricScreenshot.capture("home.notification-popover.security", RaftAppAppearance.Light, reportDir = ReportDir, activities = activities) {
+            RaftDesignSystemTheme { HomeNotificationCenterSecurityVisualScreen() }
+        }
+
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
             RaftDesignSystemTheme { HomeNotificationCenterVisualScreen() }

@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -113,8 +114,10 @@ internal fun RaftAppRailNotificationBell(
     onToggle: () -> Unit,
 ) {
     val visible = remember(state.notifications) { state.notifications.visibleHomeNotifications() }
+    val securityAlert = visible.hasHomeSecurityAlert()
+    val securityAlertLabel = Res.string.home_notification_center_security_alert.format(listOf(visible.size)).localized()
     val attentionDescription =
-        when (visible.size) {
+        if (securityAlert) securityAlertLabel else when (visible.size) {
             0 -> null
             1 -> Res.string.home_notification_center_item_count_one.format(listOf(1)).localized()
             else -> Res.string.home_notification_center_item_count_many.format(listOf(visible.size)).localized()
@@ -127,13 +130,17 @@ internal fun RaftAppRailNotificationBell(
             state.bellOpen.value = !state.bellOpen.value
         },
         icon = { ink ->
-            RaftLucideIcon(
-                name = RaftLucideIconName.Bell,
-                color = raftArgbHex(ink),
-                modifier = Modifier.size(RaftAppRailDefaults.IconSize),
-            )
+            Box(Modifier.size(RaftAppRailDefaults.IconSize)) {
+                RaftLucideIcon(
+                    name = RaftLucideIconName.Bell,
+                    color = raftArgbHex(ink),
+                    modifier = Modifier.size(RaftAppRailDefaults.IconSize),
+                )
+                // A security alert: the shield marker instead of the attention pixel (web #12295).
+                if (securityAlert) HomeNotificationSecurityMarker(Modifier.align(Alignment.TopEnd))
+            }
         },
-        attention = visible.isNotEmpty(),
+        attention = visible.isNotEmpty() && !securityAlert,
         attentionDescription = attentionDescription,
     )
 }

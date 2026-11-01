@@ -1143,7 +1143,7 @@ internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): Task
 }
 
 @Composable
-private fun TaskHeadDateTime.localized(): String {
+internal fun TaskHeadDateTime.localized(): String {
     val months =
         listOf(
             Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
