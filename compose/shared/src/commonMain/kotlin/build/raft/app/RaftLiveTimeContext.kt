@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -13,6 +14,7 @@ import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftDatetimeFoundationOwner
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.raftTimeContextRefreshDelayMillis
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
@@ -150,6 +152,37 @@ internal fun rememberLiveRaftTimeContext(
         }
     }
     return provider
+}
+
+/**
+ * A standalone page outside the app shell (no inherited [LocalRaftTimeContextProvider]) keeps its
+ * own live time context in the device zone, so its relative times ("resets tomorrow", "updated
+ * 1 minute ago") resolve instead of reading "unknown time". Inside the shell the shell's wins.
+ */
+@Composable
+internal fun ProvideStandaloneRaftTimeContext(
+    pageVisibleTick: Int = 0,
+    clock: RaftTimeClock = RaftSystemTimeClock,
+    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+    capabilities: RaftTimeCapabilities =
+        remember(clock, foundationOwner) {
+            RaftTimeCapabilities(
+                localOffsetMinutes = foundationOwner.localOffsetMinutesAt(clock.nowEpochMillis(), 0),
+                timeFormat = RaftTimeFormat24Hour,
+            )
+        },
+    content: @Composable () -> Unit,
+) {
+    val inherited = LocalRaftTimeContextProvider.current
+    val own =
+        rememberLiveRaftTimeContext(
+            capabilities = capabilities,
+            pageVisibleTick = pageVisibleTick,
+            active = inherited == null,
+            clock = clock,
+            foundationOwner = foundationOwner,
+        )
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides (inherited ?: own), content = content)
 }
 
 internal fun interface RaftTimeoutHandle {

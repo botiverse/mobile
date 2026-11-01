@@ -1566,6 +1566,8 @@ data class SettingsComputerSnapshot(
     val agentScopes: SettingsComputerAgentScopesSnapshot? = null,
     /** Server `osRelease`: the OS name and version ("Ubuntu 24.04"), reported by Linux Computers only. */
     val osRelease: String? = null,
+    /** Server `runtimeVersions`: runtime id -> detected CLI version, for the usage sheet's "Version …" line. */
+    val runtimeVersions: Map<String, String> = emptyMap(),
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
     val diskStatus: SettingsComputerSizeStatusSnapshot? = null,
     /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */

@@ -447,6 +447,8 @@ internal data class ComputerSummary(
     val createdAt: String?,
     /** Server `osRelease`: the reported OS name and version ("Ubuntu 24.04"), Linux only; null otherwise. */
     val osRelease: String? = null,
+    /** Server `runtimeVersions`: runtime id -> the CLI version the Computer detected ("2.1.59 (Claude Code)"). */
+    val runtimeVersions: Map<String, String> = emptyMap(),
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
     val creatorUserId: String? = null,
     /** True when the requester attached the Computer backing this machine (false for raw daemons). */
@@ -627,6 +629,9 @@ private data class ComputerDto(
     // services/machineReadModel.ts `osRelease: normalizeOsRelease(machine.osRelease)` (shared
     // OS_RELEASE_MAX_LENGTH): the OS name and version the Computer read from os-release.
     val osRelease: String? = null,
+    // services/machineReadModel.ts `runtimeVersions: Record<string, string>` (runtime id -> the version
+    // string the Computer's `ready` reported, e.g. "2.1.59 (Claude Code)"); the usage sheet's version line.
+    val runtimeVersions: Map<String, String> = emptyMap(),
     val description: String? = null,
     val lastHeartbeat: String? = null,
     val createdAt: String? = null,
@@ -866,6 +871,10 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         lastHeartbeat = lastHeartbeat,
         createdAt = createdAt,
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
+        runtimeVersions =
+            runtimeVersions.mapNotNull { (runtime, version) ->
+                version.trim().takeIf { runtime.isNotBlank() && it.isNotEmpty() }?.let { runtime to it }
+            }.toMap(),
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
         attachedByCurrentUser = computerAttachedByCurrentUser,
         agentCount = agentCount.coerceAtLeast(0),

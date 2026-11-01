@@ -184,14 +184,21 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
                 )
             }
         }
-    if (target == null) {
-        RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
-    } else {
-        RaftSettingsComputerDetailScreen(pager, target, pageVisible)
+    // A standalone page: without its own time context the usage sheet's "resets …" / "updated …"
+    // (and every other relative time here) read "unknown time" (xxchan, iOS).
+    ProvideStandaloneRaftTimeContext(pageVisibleTick = pageVisibleResumeTick) {
+        if (target == null) {
+            RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
+        } else {
+            RaftSettingsComputerDetailScreen(pager, target, pageVisible)
+        }
     }
 }
 
 internal data class RaftComputerPageTarget(val machineId: String, val serverId: String?)
+
+/** The usage sheet open on the Computers page: whose usage, the runtime's name and its reported version. */
+private data class RaftComputersOpenUsage(val key: RuntimeAccountUsageKey, val label: String, val runtimeVersion: String?)
 
 private data class RaftComputersFirstFrame(val computersStore: SharedComputersStore, val serverId: String?)
 
@@ -359,7 +366,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 .groupBy({ it.key.machineId }, { it.key.provider to it.value })
                 .mapValues { (_, loads) -> loads.toMap() }
         }
-    var openUsage by remember { mutableStateOf<Pair<RuntimeAccountUsageKey, String>?>(null) }
+    var openUsage by remember { mutableStateOf<RaftComputersOpenUsage?>(null) }
     fun refresh() {
         settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
         if (usageKeys.isNotEmpty()) usageScope.launch { usageSession.pullToRefresh(usageKeys, onUsageResult) }
@@ -429,7 +436,14 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 onOpenUsage = { machineId, column, label ->
                     val owner = usageAccess.owner
                     if (owner != null && usageServerId != null) {
-                        openUsage = RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider) to label
+                        // Web rack: the sheet names `machine.runtimeVersions[cell.runtimeId]`.
+                        val runtimeVersion =
+                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
+                                ?.firstOrNull { it.id == machineId }
+                                ?.runtimeVersions
+                                ?.get(column.runtimeId)
+                        openUsage =
+                            RaftComputersOpenUsage(RuntimeAccountUsageKey(owner, usageServerId, machineId, column.provider), label, runtimeVersion)
                     }
                 },
                 onOpenAgent = { agent ->
@@ -452,12 +466,13 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
         }
     }
-    openUsage?.let { (key, label) ->
+    openUsage?.let { (key, label, runtimeVersion) ->
         RaftComputersTheme {
             ComputerRuntimeUsageSheetHost(
                 runtimeLabel = label,
                 key = key,
                 access = usageAccess,
+                runtimeVersion = runtimeVersion,
                 onDismiss = {
                     openUsage = null
                     // The sheet may have refreshed it: show the store's value (no request).
@@ -1520,7 +1535,12 @@ private fun RaftComputerDetailBody(
                     // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
                     Item(stringResource(Res.string.settings_computers_label_runtimes)) {
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
-                        ComputerRuntimeUsageChips(raftComputerRuntimeChips(computer.runtimes, runtimeCatalog), machineId, enabled = canEdit) { chip ->
+                        ComputerRuntimeUsageChips(
+                            raftComputerRuntimeChips(computer.runtimes, runtimeCatalog),
+                            machineId,
+                            enabled = canEdit,
+                            runtimeVersions = snapshot.computer.runtimeVersions,
+                        ) { chip ->
                             RaftComputerRuntimeBadge(chip)
                         }
                     }

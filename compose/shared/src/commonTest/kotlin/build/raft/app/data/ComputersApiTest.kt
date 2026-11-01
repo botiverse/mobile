@@ -108,6 +108,31 @@ class ComputersApiTest {
     }
 
     @Test
+    fun runtimeVersionsMapTheReadModelRecordPerRuntime() = runPortableCoroutineTest {
+        // Wire shape per botiverse/slock f9d094481 (staging): services/machineReadModel.ts
+        // `MachineReadModel.runtimeVersions: Record<string, string>` (buildMachineReadModel returns
+        // `runtimeVersions`), spread into each GET /servers/:id/machines row by routes/servers.ts. The
+        // values are the daemon's `ready.runtimeVersions`, the CLI's own version line
+        // (packages/daemon/src/agentProcessManager.claude.test.ts: "2.1.59 (Claude Code)").
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"max","status":"online","isComputer":true,"computerVersion":"1.0.51",
+               "runtimes":["claude","codex"],"runtimeVersions":{"claude":"2.1.304 (Claude Code)","codex":" 0.75.1 ","kimi":""}},
+              {"id":"c-2","name":"Laptop","status":"offline","isComputer":true,"computerVersion":"0.1.0","runtimes":[],"runtimeVersions":{}}
+            ],"latestDaemonVersion":null,"latestComputerVersion":"9.9.9"}
+            """.trimIndent()
+        val summary =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data
+        val snapshots = summary.machines.map { it.toSettingsComputerSnapshot() }.associateBy { it.id }
+
+        assertEquals(mapOf("claude" to "2.1.304 (Claude Code)", "codex" to "0.75.1"), snapshots.getValue("c-1").runtimeVersions)
+        assertEquals(emptyMap(), snapshots.getValue("c-2").runtimeVersions)
+    }
+
+    @Test
     fun machineCreatorMapsTheServerCreatorSummaryOrNone() = runPortableCoroutineTest {
         // Wire shape per botiverse/slock 0e4aeb3af: GET /servers/:id/machines (routes/servers.ts) sends
         // `creator: computerLinkedMachineCreators.get(m.id) ?? null`, a ComputerCreatorSummary

@@ -79,6 +79,8 @@ internal fun ComputerRuntimeUsageChips(
     chips: List<RaftComputerRuntimeChip>,
     machineId: String,
     enabled: Boolean,
+    /** The machine's `runtimeVersions` (web `MachineRuntimeChips`): the sheet's "Version …" line. */
+    runtimeVersions: Map<String, String> = emptyMap(),
     plain: @Composable (RaftComputerRuntimeChip) -> Unit,
 ) {
     val usable =
@@ -88,7 +90,12 @@ internal fun ComputerRuntimeUsageChips(
     chips.forEach { chip ->
         if (usable && chip.availability == RaftComputerRuntimeAvailability.Detected && RuntimeAccountUsageProvider.forRuntime(chip.id) != null) {
             val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
-            ComputerRuntimeUsageChip(chip.name + experimental, membersRuntimeAccountUsageKey(access, chip.id, machineId), access)
+            ComputerRuntimeUsageChip(
+                chip.name + experimental,
+                membersRuntimeAccountUsageKey(access, chip.id, machineId),
+                access,
+                runtimeVersions[chip.id],
+            )
         } else {
             plain(chip)
         }
@@ -306,6 +313,7 @@ private fun ComputerRuntimeUsageChip(
     label: String,
     key: RuntimeAccountUsageKey?,
     access: MembersRuntimeAccountUsageAccess?,
+    runtimeVersion: String?,
 ) {
     val scope = rememberCoroutineScope()
     val controller =
@@ -377,7 +385,14 @@ private fun ComputerRuntimeUsageChip(
         }
         ComputerRuntimeUsageSheet(
             runtimeLabel = label,
-            state = ComputerRuntimeUsageSheetState(controller.load, controller.loading, controller.refresh, controller.cooldownLeftMillis),
+            state =
+                ComputerRuntimeUsageSheetState(
+                    controller.load,
+                    controller.loading,
+                    controller.refresh,
+                    controller.cooldownLeftMillis,
+                    runtimeVersion,
+                ),
             timeContext = timeContext,
             onRefresh = controller::refreshNow,
             onDismiss = { open = false },
@@ -395,6 +410,8 @@ internal fun ComputerRuntimeUsageSheetHost(
     runtimeLabel: String,
     key: RuntimeAccountUsageKey,
     access: MembersRuntimeAccountUsageAccess,
+    /** The machine's `runtimeVersions[runtimeId]` (web rack `RackRuntimeUsage`); null when not reported. */
+    runtimeVersion: String?,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -419,7 +436,14 @@ internal fun ComputerRuntimeUsageSheetHost(
     val timeContext = LocalRaftTimeContextProvider.current?.current
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
-        state = ComputerRuntimeUsageSheetState(controller.load, controller.loading, controller.refresh, controller.cooldownLeftMillis),
+        state =
+            ComputerRuntimeUsageSheetState(
+                controller.load,
+                controller.loading,
+                controller.refresh,
+                controller.cooldownLeftMillis,
+                runtimeVersion,
+            ),
         timeContext = timeContext,
         onRefresh = controller::refreshNow,
         onDismiss = onDismiss,
@@ -432,6 +456,8 @@ internal data class ComputerRuntimeUsageSheetState(
     val loading: Boolean,
     val refresh: ComputerRuntimeUsageRefreshStatus,
     val cooldownLeftMillis: Long,
+    /** The runtime CLI version the Computer reported (web `runtimeVersion`); null = "Version unavailable". */
+    val runtimeVersion: String? = null,
 )
 
 /** Web phone layout: the usage surface in a bottom sheet (`BottomSheet`, below md). */
@@ -447,7 +473,7 @@ private fun ComputerRuntimeUsageSheet(
         onDismissRequest = onDismiss,
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh, onDismiss) },
-        content = { ComputerRuntimeUsageContents(state, timeContext) },
+        content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
     )
 }
 
@@ -463,7 +489,7 @@ internal fun ComputerRuntimeUsageSheetSurface(
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         modifier = modifier,
         actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh = {}, onDismiss = {}) },
-        content = { ComputerRuntimeUsageContents(state, timeContext) },
+        content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
     )
 }
 
@@ -520,15 +546,35 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
 }
 
 @Composable
-internal fun ComputerRuntimeUsageContents(state: ComputerRuntimeUsageSheetState, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageContents(
+    state: ComputerRuntimeUsageSheetState,
+    timeContext: RaftTimeContext?,
+    /** The sheet's header line (web `Surface`); the migration target list embeds the contents without it. */
+    showsVersion: Boolean = false,
+) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RaftText(
-            stringResource(Res.string.settings_computers_runtime_usage_private),
-            style = typography.caption,
-            color = colors.foregroundHint,
-        )
+        // Web `Surface` header: the runtime's version (mono meta), then who may see this.
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (showsVersion) {
+                val version = state.runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
+                RaftText(
+                    if (version != null) {
+                        stringResource(Res.string.settings_computers_runtime_usage_version, version)
+                    } else {
+                        stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
+                    },
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
+                )
+            }
+            RaftText(
+                stringResource(Res.string.settings_computers_runtime_usage_private),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        }
         val load = state.load
         when {
             load == null && state.loading ->
