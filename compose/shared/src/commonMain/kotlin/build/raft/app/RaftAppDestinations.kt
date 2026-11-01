@@ -263,7 +263,9 @@ internal fun raftNavItems(
         val destination = RaftAppDestination.fromId(id)
         val selected =
             when (destination?.route) {
-                RaftNavRoute.Page -> false
+                // A page destination is selected only while it shows in the content area (the wide
+                // rail's inline Computers / Apps); pushed over the shell it never is.
+                RaftNavRoute.Page -> selectedKey == id
                 RaftNavRoute.Menu -> menuOpen
                 else -> selectedKey == id
             }

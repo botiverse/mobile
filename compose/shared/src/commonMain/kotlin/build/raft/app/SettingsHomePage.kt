@@ -1020,6 +1020,42 @@ internal const val AppShellRailSavedKey = "rail_saved"
 internal const val AppShellRailDraftsKey = "rail_drafts"
 
 /**
+ * artin 11-01: the rail's page destinations (Computers, Apps) open in the shell's content area
+ * beside the rail on the wide layout, like Chat / Activity / Tasks / Members (web LeftRail), not as
+ * a page over the shell. Inline keys, like [AppShellRailSearchKey]; not persisted tab keys.
+ */
+internal const val AppShellRailComputersKey = "rail_computers"
+internal const val AppShellRailAppsKey = "rail_apps"
+
+/** The inline key a rail page destination opens as on the wide layout, or null. */
+internal fun appShellRailInlinePageKey(destination: RaftAppDestination?): String? =
+    when (destination) {
+        RaftAppDestination.Computers -> AppShellRailComputersKey
+        RaftAppDestination.Apps -> AppShellRailAppsKey
+        else -> null
+    }
+
+/** The rail entry an inline page key highlights ("computers" / "apps"), or null for none / a list pane. */
+internal fun appShellRailInlinePageRailId(railInlineSecondaryDestination: String?): String? =
+    when (railInlineSecondaryDestination) {
+        AppShellRailComputersKey -> RaftAppDestination.Computers.id
+        AppShellRailAppsKey -> RaftAppDestination.Apps.id
+        else -> null
+    }
+
+/** The page an inline page key shows in the content area: the page its Settings row shows in the wide pane. */
+internal fun appShellRailInlinePage(railInlineSecondaryDestination: String?, storeScope: RaftShellStoreScope): Pair<String, JSONObject>? =
+    when (railInlineSecondaryDestination) {
+        AppShellRailComputersKey -> settingsWideDetailPage(SettingsDestinationComputers, storeScope)
+        AppShellRailAppsKey -> settingsWideDetailPage(SettingsDestinationConnectedApps, storeScope)
+        else -> null
+    }
+
+/** An inline rail destination that is a list pane (Search, Saved, Drafts) hosting the shared detail beside it. */
+private fun appShellRailInlineListPane(railInlineSecondaryDestination: String?): Boolean =
+    railInlineSecondaryDestination != null && appShellRailInlinePageRailId(railInlineSecondaryDestination) == null
+
+/**
  * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
  * [selectedTab]. Search is a tab left of More; a page pushed from More (Members) and Settings
  * itself keep More selected.
@@ -1136,7 +1172,7 @@ internal fun appShellSharedDetailSurfaceVisible(
                 // task #34: the Tasks board hosts the detail in a bounded overlay while a task
                 // opened from the board is showing.
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen) ||
-                railInlineSecondaryDestination != null
+                appShellRailInlineListPane(railInlineSecondaryDestination)
         )
 
 /**
@@ -1161,7 +1197,7 @@ internal fun appShellRailSurfaceBackDismissesDetailFirst(
 ): Boolean =
     selectionPresent &&
         (
-            railInlineSecondaryDestination != null ||
+            appShellRailInlineListPane(railInlineSecondaryDestination) ||
                 retainedAppShellSelectedTab(selectedTab) == "activity" ||
                 retainedAppShellSelectedTab(selectedTab) == "dms" ||
                 (retainedAppShellSelectedTab(selectedTab) == "tasks" && tasksDetailOverlayOpen)
@@ -6182,7 +6218,10 @@ private fun RaftAppShellReadyContent(
     /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
     fun restoreWideNavEntry(entry: RaftWideNavEntry) {
         serverMenuState.dismiss()
-        if (entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey) {
+        if (
+            entry.surface == AppShellRailSearchKey || entry.surface == AppShellRailSavedKey || entry.surface == AppShellRailDraftsKey ||
+                appShellRailInlinePageRailId(entry.surface) != null
+        ) {
             railInlineSecondaryDestination = entry.surface
         } else {
             railInlineSecondaryDestination = null
@@ -6424,9 +6463,10 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val appShellRailTabItems = remember(selectedTab, railNavLabels, activityTabUnreadCount, moreAttention) {
+    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention) {
         appShellRailTabs(
             selectedTab = selectedTab,
+            inlinePageRailId = appShellRailInlinePageRailId(railInlineSecondaryDestination),
             activityUnreadCount = activityTabUnreadCount,
             moreAttention = moreAttention,
             labelFor = { key -> railNavLabels[key] ?: key },
@@ -7039,9 +7079,10 @@ private fun RaftAppShellReadyContent(
                         // web LeftRail footer: Help, then Settings. Computers has its own entry and
                         // dot now, so Settings dots only for an app update (Settings > About).
                         val railBottomItems =
-                            remember(railNavLabels, selectedTab, moreAttention, railHelpOpen) {
+                            remember(railNavLabels, selectedTab, railInlineSecondaryDestination, moreAttention, railHelpOpen) {
                                 appShellRailFooterTabs(
-                                    selectedTab = selectedTab,
+                                    // An inline page (Computers, Apps) is the selection: Settings is not.
+                                    selectedTab = if (appShellRailInlinePageRailId(railInlineSecondaryDestination) != null) "" else selectedTab,
                                     labelFor = { key -> railNavLabels[key] ?: key },
                                     helpOpen = railHelpOpen,
                                     moreAttention = moreAttention,
@@ -7091,8 +7132,9 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 val destination = RaftAppDestination.fromId(key)
                                 if (destination?.route == RaftNavRoute.Page) {
-                                    // Computers and Apps open the pages their Settings rows open,
-                                    // over the shell; the selected tab stays.
+                                    // Computers and Apps open the pages their Settings rows open, in
+                                    // the content area beside the rail (an inline page; the selected
+                                    // tab stays under it).
                                     serverMenuState.dismiss()
                                     appShellTopBar.bellOpen.value = false
                                     RaftProductEvents.navEntrySelected(
@@ -7101,10 +7143,16 @@ private fun RaftAppShellReadyContent(
                                         wasActive = false,
                                     )
                                     bridge.log("app_shell_rail_page_open key=$key")
-                                    when (destination) {
-                                        RaftAppDestination.Computers -> openComputersPage()
-                                        RaftAppDestination.Apps -> pager.openSettingsMarketplacePage(storeScope)
-                                        else -> bridge.logWarn("app_shell_rail_page_unrouted key=$key")
+                                    val inlinePage = appShellRailInlinePageKey(destination)
+                                    if (inlinePage == null) {
+                                        bridge.logWarn("app_shell_rail_page_unrouted key=$key")
+                                    } else {
+                                        if (destination == RaftAppDestination.Computers) {
+                                            writeComputerAttentionSeen(
+                                                build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+                                            )
+                                        }
+                                        railInlineSecondaryDestination = inlinePage
                                     }
                                     return@RaftNavigationRailTabBar
                                 }
@@ -7141,8 +7189,11 @@ private fun RaftAppShellReadyContent(
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
-                                    wasActive = retainedAppShellSelectedTab(selectedTab) == key,
+                                    wasActive = railInlineSecondaryDestination == null && retainedAppShellSelectedTab(selectedTab) == key,
                                 )
+                                // Like a rail tab: Settings replaces an inline destination (Computers,
+                                // Apps) even when Settings is the tab under it.
+                                railInlineSecondaryDestination = null
                                 onAppShellTabSelected(key)
                             },
                             sidebarToggle =
@@ -7278,7 +7329,16 @@ private fun RaftAppShellReadyContent(
                                 railHelpOpen = false
                                 bridge.log("app_shell_rail_help_pick item=feedback")
                                 // The Settings Feedback row's page (web Help > Feedback opens Settings' Feedback).
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                val feedbackWeb =
+                                    settingsFeedbackUsesWebPage(
+                                        sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                                    )
+                                if (feedbackWeb && navRailActive) {
+                                    // Wide: Settings with Feedback in its detail pane, as the web.
+                                    railInlineSecondaryDestination = null
+                                    settingsWidePicked = SettingsDestinationHandsFeedback
+                                    onAppShellTabSelected("settings")
+                                } else if (feedbackWeb) {
                                     pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
                                     pager.openSettingsHandsFeedbackPage(storeScope)
@@ -8163,7 +8223,18 @@ private fun RaftAppShellReadyContent(
                             onDetailOpenRequestHandled = { wideNavMemberOpenRequest = null },
                             onForegroundActivity = { reason ->
                                 prewarmAdmissionGate.invalidate("members_$reason")
-                            }
+                            },
+                            // Web: the profile's DM button goes to the DM in Chat, beside the rail.
+                            openDirectMessageInShell =
+                                if (navRailActive) {
+                                    { conversation ->
+                                        onAppShellTabSelected("home")
+                                        openHomeConversation(conversation, "members_direct_message")
+                                        true
+                                    }
+                                } else {
+                                    null
+                                },
                         )
                     }
                     // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
@@ -8202,7 +8273,7 @@ private fun RaftAppShellReadyContent(
                             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
                             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
                             SettingsDestinationHandsFeedback ->
-                                if (sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)) {
+                                if (settingsFeedbackUsesWebPage(sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY))) {
                                     pager.openSettingsFeedbackWebViewPage(storeScope)
                                 } else {
                                     pager.openSettingsHandsFeedbackPage(storeScope)
@@ -8227,9 +8298,11 @@ private fun RaftAppShellReadyContent(
                         if (navRailActive) {
                             // artin 2026-10-29: the wide Settings is list + detail like the web's; the
                             // section opens beside the list (SettingsWideSplit.kt).
-                            // Feedback is the web page (and opens in the pane) behind this flag.
+                            // Feedback is the web page (and opens in the pane) behind this flag, and always on desktop.
                             val feedbackWeb =
-                                sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                                settingsFeedbackUsesWebPage(
+                                    sharedStores.serverFeatureFlags.isEnabled(readyServerId?.let(::ServerId), PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY)
+                                )
                             SettingsWideListDetail(
                                 payload = appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled),
                                 widths = adaptiveListPaneWidths,
@@ -8495,6 +8568,26 @@ private fun RaftAppShellReadyContent(
                             // Its list stays put (web: Search does not collapse).
                             null,
                         )
+                    } else if (appShellRailInlinePage(railInlineSecondaryDestination, storeScope) != null) {
+                        val inlinePage =
+                            remember(railInlineSecondaryDestination, storeScope) {
+                                appShellRailInlinePage(railInlineSecondaryDestination, storeScope)
+                            }
+                        if (inlinePage != null) {
+                            // The page as in the wide Settings pane: its head without Back (the rail
+                            // is the way out), under the top bar.
+                            CompositionLocalProvider(
+                                LocalRaftSettingsWideDetail provides true,
+                                LocalRaftSettingsWideDetailClose provides { railInlineSecondaryDestination = null },
+                            ) {
+                                RaftChildPage(
+                                    pageName = inlinePage.first,
+                                    pageData = inlinePage.second,
+                                    modifier = Modifier.fillMaxSize(),
+                                    active = pageVisible,
+                                )
+                            }
+                        }
                     } else {
                     AppShellTabPager(
                         selectedTab = selectedTab,
@@ -10032,7 +10125,9 @@ private fun SharedMembersScreen(
     /** A member the wide layout's Back / Forward reopens in the split's detail pane, until handled. */
     detailOpenRequest: MemberDetailIdentity? = null,
     onDetailOpenRequestHandled: () -> Unit = {},
-    onForegroundActivity: (String) -> Unit = {}
+    onForegroundActivity: (String) -> Unit = {},
+    /** The split detail's DM button: open the DM in the shell (Chat, the DM selected); false = a page. */
+    openDirectMessageInShell: ((ThreadLaunchConversationIdentity) -> Boolean)? = null,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(Res.string.tab_members)
@@ -10449,6 +10544,7 @@ private fun SharedMembersScreen(
                                 embeddedPayload = detail,
                                 storeScopeOverride = storeScope,
                                 onClose = { selectedDetail = null },
+                                openDirectMessageInShell = openDirectMessageInShell,
                             )
                         }
                     }

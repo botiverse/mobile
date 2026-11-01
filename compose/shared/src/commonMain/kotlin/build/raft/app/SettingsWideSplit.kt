@@ -79,6 +79,15 @@ internal val SettingsWideWebDetailKeys: Set<String> =
         SettingsDestinationReleaseNotes,
     )
 
+/**
+ * Whether Feedback is the web page: behind the server's product-feedback flag, and always on a host
+ * that cannot submit Hands feedback itself (the Compose desktop app), where the native page can't send.
+ */
+internal fun settingsFeedbackUsesWebPage(
+    productFeedbackMultiApp: Boolean,
+    nativeSubmit: Boolean = raftPlatformSupportsHandsFeedbackSubmit(),
+): Boolean = productFeedbackMultiApp || !nativeSubmit
+
 /** Every Settings row that opens in the wide detail pane. */
 internal fun settingsWideDetailKeys(feedbackWeb: Boolean): Set<String> =
     SettingsWideNativeDetailKeys + SettingsWideWebDetailKeys +

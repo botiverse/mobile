@@ -38,6 +38,7 @@ import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.tokens.RaftUiPalette
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.Utils
@@ -394,14 +396,33 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     // List / Cards, kept on this device (web `computersRackViewPreference`); the cards by default.
     val rackViewRepository = remember { KeyValueComputersRackViewPreferenceRepository(raftSharedPreferenceStore()) }
     var rackView by remember(rackViewRepository) { mutableStateOf(rackViewRepository.getComputersRackViewSync()) }
+    // Wide (the shell's content area / the wide Settings pane): the web's desktop head, the counts
+    // beside the title and Add Computer beside the toggle; the phone keeps them on the first row.
+    val wideHead = LocalRaftSettingsWideDetail.current
+    val computersTitle = stringResource(Res.string.settings_computers_title)
     SettingsDetailShell(
-        title = stringResource(Res.string.settings_computers_title),
+        title = computersTitle,
         subtitle = "",
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        titleContent =
+            if (wideHead && model is RaftComputersListModel.Content) {
+                {
+                    RaftComputersWideTitle(computersTitle, raftComputersCountsLine(raftComputersCounts(model.rows, agentsByMachine)))
+                }
+            } else {
+                null
+            },
         // Web: the toggle sits in the page header while there are computers to lay out.
         trailingContent =
             if (model is RaftComputersListModel.Content) {
-                { RaftComputersRackViewToggle(rackView) { rackView = rackViewRepository.selectComputersRackViewSync(it) } }
+                {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RaftComputersRackViewToggle(rackView) { rackView = rackViewRepository.selectComputersRackViewSync(it) }
+                        if (wideHead && model.canAddComputer) {
+                            RaftComputersAddButton { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) }
+                        }
+                    }
+                }
             } else {
                 null
             },
@@ -426,6 +447,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                     }
                 },
                 rackView = rackView,
+                summaryInHeader = wideHead,
                 computerControl = settingsState.computerControl,
                 onUpgradeComputer = { machineId, version -> settingsViewModel.dispatch(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
                 onCopyCommand = { command -> settingsViewModel.dispatch(SharedSettingsIntent.CopyComputerCommand(command)) },
@@ -507,6 +529,8 @@ internal fun RaftSettingsComputersContent(
     onOpenUsage: (machineId: String, column: RaftRackUsageColumn, runtimeLabel: String) -> Unit = { _, _, _ -> },
     /** Cards (each with its next step) or List rows; the header's toggle picks it. */
     rackView: ComputersRackView = ComputersRackView.Default,
+    /** The counts and Add Computer are in the page head (wide): no first row for them. */
+    summaryInHeader: Boolean = false,
     /** Restart / upgrade progress (the settings store's `computerControl`), for the cards' next step. */
     computerControl: SettingsComputerControlState = SettingsComputerControlState(),
     onUpgradeComputer: (machineId: String, version: String) -> Unit = { _, _ -> },
@@ -548,9 +572,15 @@ internal fun RaftSettingsComputersContent(
                     onAction = onAddComputer,
                 )
             is RaftComputersListModel.Content ->
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                val cardColumns = raftComputerCardColumns(maxWidth)
+                // Web ComputersRack desktop: `p-5` around the grid; the phone's single column keeps 16dp.
+                val cardEdge = if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp
                 LazyColumn(Modifier.fillMaxSize()) {
                     refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
-                    item(key = "summary") {
+                    if (summaryInHeader) {
+                        item(key = "summary-gap") { Spacer(Modifier.height(if (cardColumns > 1) RaftComputerCardGridEdge else 16.dp)) }
+                    } else item(key = "summary") {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -590,8 +620,10 @@ internal fun RaftSettingsComputersContent(
                         }
                     } else {
                         val computersById = model.computers.associateBy { it.id }
-                        // Web ComputersRack cards, one column on a phone.
-                        model.rows.forEachIndexed { index, row ->
+                        // Web ComputersRack cards: one column on a phone, a grid of cards at least
+                        // 250dp wide on a wide window (`repeat(auto-fill,minmax(250px,1fr))`, gap 12).
+                        @Composable
+                        fun card(row: RaftComputerRowModel, modifier: Modifier) {
                             val action =
                                 computersById[row.id]?.let { computer ->
                                     raftComputerRackAction(
@@ -601,7 +633,6 @@ internal fun RaftSettingsComputersContent(
                                         commandContext = model.commandContext,
                                     )
                                 }
-                            item(key = "computer-${row.id}") {
                                 RaftComputerRackCard(
                                     row = row,
                                     agents = agentsByMachine[row.id].orEmpty(),
@@ -614,19 +645,72 @@ internal fun RaftSettingsComputersContent(
                                     action = action,
                                     onUpgrade = { version -> onUpgradeComputer(row.id, version) },
                                     onCopyCommand = onCopyCommand,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp)
-                                            .padding(top = if (index > 0) 12.dp else 0.dp),
+                                    modifier = modifier,
                                 )
+                        }
+                        model.rows.chunked(cardColumns).forEachIndexed { rowIndex, rowCards ->
+                            item(key = "computers-${rowCards.first().id}") {
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = cardEdge)
+                                        .padding(top = if (rowIndex > 0) RaftComputerCardGridGap else 0.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(RaftComputerCardGridGap),
+                                ) {
+                                    rowCards.forEach { row -> card(row, Modifier.weight(1f)) }
+                                    // A short last row keeps the grid's card width.
+                                    repeat(cardColumns - rowCards.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         }
                     }
                     item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
                 }
+                }
         }
     }
+}
+
+/** Web ComputersRack desktop grid: cards at least 250 wide, 12 apart, 20 from the edges. */
+internal val RaftComputerCardMinWidth = 250.dp
+internal val RaftComputerCardGridGap = 12.dp
+internal val RaftComputerCardGridEdge = 20.dp
+
+/** How many card columns fit [width] (CSS `repeat(auto-fill, minmax(250px, 1fr))` in a `p-5` box); at least one. */
+internal fun raftComputerCardColumns(width: Dp): Int {
+    val inner = width - RaftComputerCardGridEdge * 2
+    return ((inner + RaftComputerCardGridGap) / (RaftComputerCardMinWidth + RaftComputerCardGridGap)).toInt().coerceAtLeast(1)
+}
+
+/** The wide head's title: "Computers" with the counts beside it (web `ComputersRackHeader`). */
+@Composable
+internal fun RowScope.RaftComputersWideTitle(title: String, counts: String) {
+    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        RaftText(
+            title,
+            style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            color = RaftTheme.colors.foreground,
+            maxLines = 1,
+        )
+        RaftText(
+            counts,
+            modifier = Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.monoMeta,
+            color = RaftTheme.colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+internal fun RaftComputersAddButton(onClick: () -> Unit) {
+    RaftButton(
+        text = stringResource(Res.string.settings_computers_add_computer),
+        onClick = onClick,
+        variant = RaftButtonVariant.Primary,
+        leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
+    )
 }
 
 /**
@@ -635,7 +719,7 @@ internal fun RaftSettingsComputersContent(
  * before its "·"), so a line only breaks after a "·", and no count is cut off.
  */
 @Composable
-private fun raftComputersCountsLine(counts: RaftComputersCounts): String =
+internal fun raftComputersCountsLine(counts: RaftComputersCounts): String =
     listOf(
         if (counts.computers == 1) {
             stringResource(Res.string.settings_computers_rack_computer_count_one, counts.computers)

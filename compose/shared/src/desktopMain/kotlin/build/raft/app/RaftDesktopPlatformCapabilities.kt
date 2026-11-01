@@ -79,8 +79,10 @@ internal actual fun raftPlatformSupportsPrivateAttachmentExport(): Boolean = fal
 
 internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean = true
 
-// TODO(desktop): no Hands release stream for desktop yet.
-internal actual fun raftReleaseNotesAppSlug(): String = "raft-desktop"
+// TODO(desktop): no Hands app (release stream) for desktop yet; hands.build/notes/raft-desktop is a
+// 404 and the dmg has no numeric version code. Blank hides Settings › Release Notes
+// (settingsReleaseNotesAvailable) until both exist.
+internal actual fun raftReleaseNotesAppSlug(): String = ""
 
 internal actual fun raftPlatformProductName(): String = "Desktop"
 
@@ -98,10 +100,14 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
 
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
-// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` yet.
+// TODO(desktop): RaftDesktopSettingsCapability has no `submitFeedback` yet, so Feedback is always
+// the web page here (settingsFeedbackUsesWebPage).
 internal actual fun raftPlatformSupportsHandsFeedbackSubmit(): Boolean = false
 
-internal actual fun raftFeedbackWebViewClientKind(): String = "desktop"
+// The server's feedback sources are web / ios / android / ohos (slock productFeedbackApps.ts); any
+// other X-Raft-Client-Kind is rejected (400 feedback_invalid). With no desktop Hands app, the
+// desktop app reports as the web app (the web and the Electron app send no kind, which is web).
+internal actual fun raftFeedbackWebViewClientKind(): String = "web"
 
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 

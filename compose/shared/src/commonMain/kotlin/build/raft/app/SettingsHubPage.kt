@@ -132,6 +132,7 @@ internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     imBridges: Boolean = false,
+    releaseNotes: Boolean = settingsReleaseNotesAvailable(),
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -149,8 +150,14 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationComputers,
         SettingsNativeDetailPage.About.key,
         SettingsDestinationHandsFeedback,
-        SettingsDestinationReleaseNotes,
+        SettingsDestinationReleaseNotes.takeIf { releaseNotes },
     )
+
+/**
+ * Release Notes is the platform's Hands release history, so the row shows only where the platform
+ * has a Hands app ([raftReleaseNotesAppSlug] not blank). The Compose desktop app has none yet.
+ */
+internal fun settingsReleaseNotesAvailable(appSlug: String = raftReleaseNotesAppSlug()): Boolean = appSlug.isNotBlank()
 
 /**
  * Whether the app preferences (message alignment, compact messages, composer key, ...) sit under
