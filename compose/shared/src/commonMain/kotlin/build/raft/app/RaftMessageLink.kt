@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftAppLogin
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
@@ -152,6 +153,44 @@ internal fun buildRaftMessageLink(link: RaftMessageLink, webUrl: String?): Strin
     val path = "$base/s/${link.serverSlug}/$routeKind/${link.channelId}"
     return if (query.isEmpty()) path else "$path?$query"
 }
+
+/**
+ * The pending sign-in request a sign-up email's link resumes, or null. A sign-up started in a
+ * native browser sign-in (this app, or Raft Desktop) gets
+ * `/?verify={token}&returnTo=/login/app?request={id}` (slock `verificationEmailUrl`; the web's
+ * register page sends the page it was on as `returnTo`, and the sign-in page reads `request`).
+ * Null for any other `?verify=` link (a web sign-up) and on hosts [parseRaftMessageLink] refuses.
+ */
+internal fun raftAppLoginVerificationLinkRequest(
+    url: String,
+    configuredWebUrl: String? = null,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): String? {
+    val parsed = url.toRaftLinkUrl() ?: return null
+    if (!parsed.isAllowedMessageLinkOrigin(configuredWebUrl?.toRaftLinkUrl(), appHosts)) return null
+    if (parsed.path != "" && parsed.path != "/") return null
+    val query = parsed.queryParameters() ?: return null
+    if (query["verify"].isNullOrBlank()) return null
+    val returnTo = query["returnTo"] ?: return null
+    if (returnTo.substringBefore('?') != "/login/app") return null
+    return RaftLinkUrl("https", parsed.host, null, "", returnTo.substringAfter('?', "")).queryParameters()
+        ?.get("request")
+        ?.takeIf(String::isNotBlank)
+}
+
+/**
+ * Whether iOS reopens a sign-up email's link in its web sign-in sheet: only when the request it
+ * names is the one this app is waiting for ([isWaitingFor], the stored pending request). The sheet
+ * shares the sign-up's browser session, so the web verifies, lands on that request and calls back
+ * as a normal browser login. A Raft Desktop sign-up has the same link but another request: that,
+ * an expired request and a web sign-up go to in-app Safari instead.
+ */
+internal fun raftAppLoginVerificationLinkResumes(
+    url: String,
+    configuredWebUrl: String?,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+    isWaitingFor: (String) -> Boolean,
+): Boolean = raftAppLoginVerificationLinkRequest(url, configuredWebUrl, appHosts)?.let(isWaitingFor) == true
 
 private fun isRaftLinkIdentifier(value: String): Boolean =
     value.length in 1..128 && value.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' }
@@ -328,6 +367,10 @@ object RaftMessageLinkIngress {
     /** Whether [url] is a message link the app takes, without queueing it. */
     fun isMessageLink(url: String, configuredWebUrl: String? = null): Boolean =
         parseRaftMessageLink(url, configuredWebUrl ?: appScopeWebUrlOrNull()) != null
+
+    /** [raftAppLoginVerificationLinkResumes] against the stored pending sign-in; [configuredWebUrl] as in [accept]. */
+    fun resumesPendingAppLogin(url: String, configuredWebUrl: String? = null): Boolean =
+        raftAppLoginVerificationLinkResumes(url, configuredWebUrl ?: appScopeWebUrlOrNull(), isWaitingFor = RaftAppLogin::isWaitingFor)
 
     private fun appScopeWebUrlOrNull(): String? =
         runCatching {
