@@ -680,6 +680,34 @@ fun RaftIconToggleButton(
 }
 
 /**
+ * raft-ui `PanelAction`: a panel or top-bar head action that is not a plain icon button, such as
+ * a glyph with a count or a label beside it (the thread header's participants, its ⋯). Ghost: no
+ * edge, no shadow, transparent at rest; hover and press lay the ghost press overlay inside the
+ * control radius, like [RaftIconButton]. The caller sizes it (raft-ui `h-control min-w-control`,
+ * `px-2` with a label) and names it for screen readers when its content does not.
+ */
+@Composable
+fun RaftPanelAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
+    content: @Composable () -> Unit,
+) {
+    RaftButtonBox(
+        look = raftButtonLook(RaftButtonVariant.Ghost, enabled, frameless = true, colors = RaftTheme.colors),
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        loading = false,
+        loadingLabel = "",
+        interactionSource = interactionSource,
+    ) {
+        Box(contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+/**
  * A [RaftIconButton] of a size its component sets ([box], with a [glyph] icon) rather than a
  * [RaftIconButtonSize]: the sidebar section control's 28dp (raft-ui: "28px is not a Button
  * size"). A box under 32dp widens its touch target to 44dp without growing (a tap there
