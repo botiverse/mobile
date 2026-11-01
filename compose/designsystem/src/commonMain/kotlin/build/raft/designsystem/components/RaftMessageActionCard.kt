@@ -214,7 +214,7 @@ private fun RaftMessageActionCardHeader(
                 if (icon != null) icon() else RaftGlyphIcon(RaftGlyph.Zap, size = RaftMessageActionCardDefaults.HeaderGlyphSize)
             }
         }
-        Column(Modifier.weight(1f).padding(top = (line - lineHeightOf(titleStyle)) / 2)) {
+        Column(Modifier.weight(1f).padding(top = ((line - lineHeightOf(titleStyle)) / 2).coerceAtLeast(0.dp))) {
             RaftText(title, Modifier.semantics { heading() }, style = titleStyle, color = colors.foreground)
             if (description != null) {
                 Box(Modifier.padding(top = 2.dp)) { description() }
@@ -222,7 +222,7 @@ private fun RaftMessageActionCardHeader(
         }
         if (status != null) {
             Row(
-                Modifier.padding(top = (line - lineHeightOf(statusStyle)) / 2),
+                Modifier.padding(top = ((line - lineHeightOf(statusStyle)) / 2).coerceAtLeast(0.dp)),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -287,7 +287,7 @@ fun RaftMessageActionCardHeaderDescription(
     val style = RaftTheme.typography.footnote
     Row(modifier, verticalAlignment = Alignment.Top) {
         if (check) {
-            Box(Modifier.padding(top = (lineHeightOf(style) - 16.dp) / 2, end = 6.dp)) {
+            Box(Modifier.padding(top = ((lineHeightOf(style) - 16.dp) / 2).coerceAtLeast(0.dp), end = 6.dp)) {
                 RaftGlyphIcon(RaftGlyph.Check, size = 16.dp, color = colors.foreground)
             }
         }
@@ -324,7 +324,7 @@ fun RaftMessageActionCardNotice(
         if (icon != null) {
             Box(
                 Modifier
-                    .padding(top = (lineHeightOf(style) - 14.dp) / 2)
+                    .padding(top = ((lineHeightOf(style) - 14.dp) / 2).coerceAtLeast(0.dp))
                     .size(14.dp)
                     .clearAndSetSemantics { },
                 contentAlignment = Alignment.Center,
