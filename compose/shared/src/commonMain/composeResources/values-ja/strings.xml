@@ -388,6 +388,10 @@
     <string name="thread_tab_chat">チャット</string>
     <string name="thread_tab_tasks">タスク</string>
     <string name="thread_tab_files">ファイル</string>
+    <string name="thread_side_card_tasks_open">タスクを開く</string>
+    <string name="thread_side_card_tasks_close">タスクを閉じる</string>
+    <string name="thread_side_card_files_open">ファイルを開く</string>
+    <string name="thread_side_card_files_close">ファイルを閉じる</string>
     <string name="thread_state_loading">読み込み中…</string>
     <string name="thread_error_load">スレッドを読み込めませんでした</string>
     <string name="thread_error_access_resolution">このスレッドまたは親メッセージへのアクセスを確認できませんでした。接続を確認して、もう一度お試しください。</string>

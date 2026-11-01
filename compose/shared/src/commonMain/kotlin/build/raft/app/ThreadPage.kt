@@ -38,6 +38,8 @@ import build.raft.designsystem.components.RaftMessageListJumpPill
 import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
@@ -474,6 +476,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -1425,6 +1428,8 @@ internal data class ThreadSharePreviewImage(
 )
 
 internal enum class ThreadTransientBackTarget(val label: String) {
+    /** Task v2: the Tasks / Files cards covering the conversation; Back closes them all (web). */
+    SideCards("conversation_side_cards"),
     ShareSelection("thread_share_selection"),
     InlineSearch("thread_inline_search")
 }
@@ -1432,10 +1437,13 @@ internal enum class ThreadTransientBackTarget(val label: String) {
 internal fun threadTransientBackTarget(
     activeModal: String?,
     shareSelectionActive: Boolean,
-    inlineSearchVisible: Boolean
+    inlineSearchVisible: Boolean,
+    sideCardsOpen: Boolean = false,
 ): ThreadTransientBackTarget? =
     when {
         activeModal != null -> null
+        // The cards cover the conversation: what is under them (a selection) waits its turn.
+        sideCardsOpen -> ThreadTransientBackTarget.SideCards
         shareSelectionActive -> ThreadTransientBackTarget.ShareSelection
         inlineSearchVisible -> ThreadTransientBackTarget.InlineSearch
         else -> null
@@ -8280,6 +8288,24 @@ private fun SharedThreadRouteContentContent(
                     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
                 )
         }
+    // Task v2: Tasks and Files are cards opened from the header, not tabs (ConversationSideCards.kt).
+    val sideCardsEnabled =
+        conversationSideCardsEnabled(
+            taskV2Enabled = taskV2Enabled,
+            showModeTabs = payload.showModeTabs,
+            assistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+        )
+    val sideCardsStore = LocalConversationSideCards.current
+    val sideCardsState by sideCardsStore.state.collectAsState()
+    // An old Tasks / Files tab link (route `selectedTab`, a `selectTab` event) opens that card over
+    // the conversation; the page itself stays on Chat.
+    LaunchedEffect(sideCardsEnabled, selectedThreadTab) {
+        if (!sideCardsEnabled) return@LaunchedEffect
+        val card = selectedThreadTab.conversationSideCard() ?: return@LaunchedEffect
+        if (selectedThreadTab in availableThreadTabs) sideCardsStore.open(card)
+        selectedThreadTab = RaftThreadTab.Chat
+        threadViewModel.dispatch(SharedThreadIntent.SelectTab(RaftThreadTab.Chat.wireValue))
+    }
     // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
     // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
     val threadUnreadBadgeEnabled =
@@ -8391,10 +8417,10 @@ private fun SharedThreadRouteContentContent(
         threadMembersServerId?.let { serverId -> serverMembersStore?.currentServerMembersEntry(serverId) }
             ?: SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty())
     )
-    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
+    LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId, sideCardsEnabled && sideCardsState.tasks) {
         val store = serverMembersStore ?: return@LaunchedEffect
         val serverId = threadMembersServerId ?: return@LaunchedEffect
-        if (selectedThreadTab == RaftThreadTab.Tasks) {
+        if (selectedThreadTab == RaftThreadTab.Tasks || (sideCardsEnabled && sideCardsState.tasks)) {
             store.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
@@ -12328,6 +12354,7 @@ private fun SharedThreadRouteContentContent(
             channelSuggestionsFlow = channelSuggestionsFlow,
             selectedTab = selectedThreadTab,
             availableTabs = availableThreadTabs,
+            sideCardsEnabled = sideCardsEnabled,
             onSelectedTabChanged = { selectedThreadTab = it },
             onSuggestionDemandChanged = { composerSuggestionDemand = it },
             activityMuteState = activityMuteState?.takeIf { renderSlice.writeActionsEnabled },
@@ -15487,7 +15514,12 @@ private class ThreadRouteScaffoldSlots(
     val rootModifier: Modifier = Modifier,
     val header: @Composable () -> Unit,
     val body: @Composable ColumnScope.() -> Unit,
-    val overlays: @Composable BoxScope.() -> Unit = {}
+    val overlays: @Composable BoxScope.() -> Unit = {},
+    /**
+     * Task v2's Tasks / Files cards ([ConversationSideCardsCover]): drawn over the body (the
+     * conversation and its composer), under the header. Null keeps the body as it always was.
+     */
+    val bodyCover: (@Composable BoxScope.() -> Unit)? = null,
 )
 
 @Composable
@@ -15507,7 +15539,15 @@ private fun ThreadRouteScaffold(
             ) {
                 // In the assistant's panel the panel's head stands for the page's (web ChatPanel `hideHeader`).
                 if (LocalThreadAssistantPanelEmbed.current == null) slots.header()
-                slots.body(this)
+                val bodyCover = slots.bodyCover
+                if (bodyCover == null) {
+                    slots.body(this)
+                } else {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize()) { slots.body(this) }
+                        bodyCover()
+                    }
+                }
             }
             slots.overlays(this)
         }
@@ -15626,6 +15666,7 @@ private data class ThreadPageContentData(
     val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     val selectedTab: RaftThreadTab,
     val availableTabs: List<RaftThreadTab>,
+    val sideCardsEnabled: Boolean,
     val activityMuteState: ThreadActivityMuteUiState?,
     val activityMutedIndicatorVisible: Boolean,
     val conversationPinState: ThreadConversationPinUiState?,
@@ -15735,6 +15776,8 @@ fun ThreadPageContent(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     selectedTab: RaftThreadTab,
     availableTabs: List<RaftThreadTab>,
+    /** Task v2 ([conversationSideCardsEnabled]): Tasks / Files cards instead of the tab row. */
+    sideCardsEnabled: Boolean = false,
     onSelectedTabChanged: (RaftThreadTab) -> Unit,
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
@@ -15841,6 +15884,7 @@ fun ThreadPageContent(
                 channelSuggestionsFlow = channelSuggestionsFlow,
                 selectedTab = selectedTab,
                 availableTabs = availableTabs,
+                sideCardsEnabled = sideCardsEnabled,
                 activityMuteState = activityMuteState,
                 activityMutedIndicatorVisible = activityMutedIndicatorVisible,
                 conversationPinState = conversationPinState,
@@ -15955,6 +15999,12 @@ private fun ThreadPageContentContent(
         rememberRaftMemberAppBot(data.headerDisplay.composerDmAgentPeerId())?.takeIf { it.removed }
     val selectedTab = data.selectedTab
     val availableTabs = data.availableTabs
+    // Task v2: the person's open Tasks / Files cards (app-level, not this conversation's).
+    val sideCardsEnabled = data.sideCardsEnabled
+    val sideCardsStore = LocalConversationSideCards.current
+    val sideCardsStoreState by sideCardsStore.state.collectAsState()
+    val sideCards =
+        if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
     val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
     val activityMuteState = data.activityMuteState
@@ -16067,12 +16117,14 @@ private fun ThreadPageContentContent(
         )
     }
     var visibleTasksStartThreadId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    LaunchedEffect(selectedTab, taskChannelId?.value, payload.status, tasksViewModel) {
+    LaunchedEffect(selectedTab, sideCards.tasks, taskChannelId?.value, payload.status, tasksViewModel) {
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
         tasksViewModel ?: return@LaunchedEffect
+        // An open Tasks card loads the channel's tasks as the Tasks tab did.
+        val tasksShownTab = if (sideCards.tasks) RaftThreadTab.Tasks else selectedTab
         if (
             !shouldStartThreadTasksJoin(
-                payload = payload.copy(selectedTab = selectedTab.wireValue),
+                payload = payload.copy(selectedTab = tasksShownTab.wireValue),
                 startedThreadId = visibleTasksStartThreadId,
                 taskChannelId = resolvedTaskChannelId
             )
@@ -16364,13 +16416,15 @@ private fun ThreadPageContentContent(
         threadTransientBackTarget(
             activeModal = activeModal,
             shareSelectionActive = shareSelectionActive,
-            inlineSearchVisible = inlineSearchVisible
+            inlineSearchVisible = inlineSearchVisible,
+            sideCardsOpen = sideCards.anyOpen
         )
     RaftBackHandler(
         enabled = transientBackTarget != null,
         label = transientBackTarget?.label
     ) {
         when (transientBackTarget) {
+            ThreadTransientBackTarget.SideCards -> sideCardsStore.closeAll()
             ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
             ThreadTransientBackTarget.InlineSearch -> inlineSearchVisible = false
             null -> Unit
@@ -16859,7 +16913,7 @@ private fun ThreadPageContentContent(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
                         serverId = forwardServerId?.value,
-                        active = tab == selectedTab,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { it == sideCards.shown } == true,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
@@ -16873,7 +16927,7 @@ private fun ThreadPageContentContent(
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
                         filesViewModel = filesViewModel,
-                        active = tab == selectedTab,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { it == sideCards.shown } == true,
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -16919,7 +16973,9 @@ private fun ThreadPageContentContent(
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     showBack = !threadInSplitDetailPane(),
-                    onBack = onBack,
+                    // Task v2 on a phone: the header's Back closes the cards covering the conversation
+                    // first (web `headerMobileBack`), then leaves the page.
+                    onBack = if (sideCards.anyOpen) sideCardsStore::closeAll else onBack,
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                     },
@@ -16991,8 +17047,44 @@ private fun ThreadPageContentContent(
                             parentIsDirectMessage = payload.parentChannelKind == "dm",
                             muted = payload.activityMuted
                         ),
+                    sideCardToggles =
+                        if (sideCardsEnabled) {
+                            ThreadHeaderSideCardToggles(
+                                tasksAvailable = RaftThreadTab.Tasks in availableTabs,
+                                cards = sideCards,
+                                onToggle = { card ->
+                                    if (!sideCards.isOpen(card)) clearShareSelection()
+                                    sideCardsStore.toggle(card)
+                                    RaftProductEvents.channelTabSelected(
+                                        card.toThreadTab().productChannelTab(),
+                                        sideCards.isOpen(card)
+                                    )
+                                }
+                            )
+                        } else {
+                            null
+                        },
                 )
             },
+            bodyCover =
+                if (sideCardsEnabled) {
+                    {
+                        ConversationSideCardsCover(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            // No header Back (a split's detail pane): the card keeps its own (web).
+                            onBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } },
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    }
+                } else {
+                    null
+                },
             body = {
             if (jointBillingNotice != JointBillingNotice.None) {
                 val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
@@ -17019,7 +17111,7 @@ private fun ThreadPageContentContent(
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
             data.taskConversationBar?.invoke()
             // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
-            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null) {
+            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null && !sideCardsEnabled) {
                 RaftTabbedScaffold(
                     tabs = availableTabs.map { it.toRaftTabSpec() },
                     selectedKey = selectedTab,
@@ -17036,7 +17128,8 @@ private fun ThreadPageContentContent(
                 // Task v2: the list tells the head how far it may fold ([taskHeadConversationOverflow]).
                 CompositionLocalProvider(LocalTaskHeadScrollState provides data.taskConversationHead) {
                     renderThreadTabContent(
-                        selectedTab,
+                        // Task v2 cards: the page under them is always the conversation.
+                        if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
                         Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
                             // Task v2 on a phone: the head above moves with the conversation's scroll.
                             .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
@@ -17618,6 +17711,8 @@ internal fun ThreadPageHeader(
      * docs/contracts/notifications.md §1.1); null leaves it out.
      */
     notificationLevelTarget: RaftNotificationLevelTarget? = null,
+    /** Task v2: the Tasks / Files card toggles between Search and Settings (null: none). */
+    sideCardToggles: ThreadHeaderSideCardToggles? = null,
 ) {
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
@@ -17700,6 +17795,7 @@ internal fun ThreadPageHeader(
                         onToggleThreadFollow = onToggleThreadFollow,
                         onMarkThreadUnread = onMarkThreadUnread,
                         onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
+                        sideCardToggles = sideCardToggles,
                     )
                 } else {
                     emptyList()
@@ -17839,6 +17935,17 @@ internal fun ThreadPageHeader(
                     if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
                     }
+                    sideCardToggles?.let { toggles ->
+                        // web ChannelTasksToggle / ChannelFilesToggle: no count on either.
+                        toggles.cardsInHeader().forEach { card ->
+                            ConversationHeaderToggle(
+                                icon = card.icon,
+                                selected = toggles.cards.isOpen(card),
+                                label = conversationSideCardToggleLabel(card, toggles.cards.isOpen(card)),
+                                onClick = { toggles.onToggle(card) }
+                            )
+                        }
+                    }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
                     }
@@ -17932,6 +18039,7 @@ private fun threadHeaderSideColumnActions(
     onToggleThreadFollow: (() -> Unit)?,
     onMarkThreadUnread: (() -> Unit)?,
     onViewTaskInChannel: (() -> Unit)?,
+    sideCardToggles: ThreadHeaderSideCardToggles? = null,
 ): List<RaftSideAction> {
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
@@ -17954,6 +18062,10 @@ private fun threadHeaderSideColumnActions(
     // The iOS host's SF Symbols, on the channel page only (the 1.17.1 prototype): every other
     // surface keeps a column drawn by us.
     val systemSymbols = threadHeaderSideColumnSystemSymbols(surfaceKind)
+    val sideCardLabels =
+        ConversationSideCard.entries.associateWith { card ->
+            conversationSideCardToggleLabel(card, sideCardToggles?.cards?.isOpen(card) == true)
+        }
     return buildList {
         if (!taskConversation && payload.threadHeaderSearchAction() != null) {
             add(
@@ -17965,6 +18077,20 @@ private fun threadHeaderSideColumnActions(
                     systemSymbol = "magnifyingglass".takeIf { systemSymbols },
                 )
             )
+        }
+        sideCardToggles?.let { toggles ->
+            toggles.cardsInHeader().forEach { card ->
+                add(
+                    raftSideColumnLucideAction(
+                        "thread-side-card-${card.name.lowercase()}",
+                        sideCardLabels.getValue(card),
+                        card.icon,
+                        { toggles.onToggle(card) },
+                        systemSymbol =
+                            (if (card == ConversationSideCard.Tasks) "checklist" else "paperclip").takeIf { systemSymbols },
+                    )
+                )
+            }
         }
         if (threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind)) {
             add(
@@ -18177,6 +18303,52 @@ private fun ThreadDmPeerAvatarTile(
 @Composable
 private fun ThreadHeaderIconButton(icon: RaftLucideIconName, onClick: () -> Unit) {
     ThreadHeaderCompactAction(icon = icon, onClick = onClick)
+}
+
+/** Task v2's header toggles ([ThreadPageHeader]); [cards] are the page's open cards. */
+internal class ThreadHeaderSideCardToggles(
+    val tasksAvailable: Boolean,
+    val cards: ConversationSideCardsState,
+    val onToggle: (ConversationSideCard) -> Unit,
+) {
+    /** Tasks before Files (raft-design channel.md); Tasks only where the conversation has tasks. */
+    fun cardsInHeader(): List<ConversationSideCard> =
+        ConversationSideCard.entries.filter { it != ConversationSideCard.Tasks || tasksAvailable }
+}
+
+/** web `task.sidePanel.open/close`, `message.chatPanel.filesCard.open/close`. */
+@Composable
+private fun conversationSideCardToggleLabel(card: ConversationSideCard, open: Boolean): String =
+    stringResource(
+        when (card) {
+            ConversationSideCard.Tasks ->
+                if (open) Res.string.thread_side_card_tasks_close else Res.string.thread_side_card_tasks_open
+            ConversationSideCard.Files ->
+                if (open) Res.string.thread_side_card_files_close else Res.string.thread_side_card_files_open
+        }
+    )
+
+/**
+ * A header toggle (raft-ui `PanelToggleAction`): pressed while its card is open, named "Close
+ * Tasks" then. The one place that draws it: switch to the design system's pressed icon button
+ * (yellow `selected` sticker, 1.5dp `sticker-ink` edge; sindresorhus, pending) when it lands.
+ */
+@Composable
+private fun ConversationHeaderToggle(
+    icon: RaftLucideIconName,
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    RaftIconButton(
+        onClick = onClick,
+        tooltip = label,
+        modifier = Modifier.semantics { this.selected = selected },
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Lg,
+    ) {
+        RaftContentLucideIcon(icon, size = ThreadHeaderActionIconSize)
+    }
 }
 
 @Composable
