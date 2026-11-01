@@ -711,6 +711,30 @@ class AuthDataSourceTest {
         )
     }
 
+    /** slock 540981dd routes/auth.ts: the mobile link start is gated (`identity_link`, stepUpGate.ts). */
+    @Test
+    fun mobileOAuthLinkStartRefusedForAStepUpCarriesTheMethods() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore()
+        store.saveSession(storedSession(accessToken = "current-access"))
+        val api =
+            FakeAuthApi(
+                mobileOAuthLinkStartResponse =
+                    AuthNetworkResponse(
+                        403,
+                        null,
+                        errorBodyText =
+                            """{"error":"Confirm it's you with your second step before connecting a sign-in method.","code":"second_factor_step_up_required","methods":["totp","passkey","backup_code"]}"""
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.startMobileOAuthLink(provider = "github", returnUri = "raft://oauth/callback", codeChallenge = "challenge-1")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals(listOf("totp", "passkey", "backup_code"), result.secondFactorStepUp?.methods)
+        assertEquals("Confirm it's you with your second step before connecting a sign-in method.", result.message)
+    }
+
     @Test
     fun mobileOAuthLinkCompleteUsesProviderEndpointWithCurrentSession() = runBlocking {
         val store = InMemoryRaftAuthSessionStore()

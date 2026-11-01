@@ -9,6 +9,10 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.SecondFactorStepUpBanner
+import build.raft.app.data.SecondFactorStepUpDialogState
+import build.raft.app.data.SecondFactorStepUpFieldError
+import build.raft.app.data.SecondFactorStepUpMethod
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,7 +25,10 @@ import org.robolectric.shadows.ShadowDialog
  * the verified email, and Connected accounts with one provider linked (GitHub, "Connected as …",
  * Disconnect) and one not (Google, "Not connected", Connect), then Sign out and Delete account.
  * `settings.account.delete-dialog{,.failed}`: Delete account's confirm dialog, and the same after
- * a failed request (the warning under the consequences; Request deletion retries). Fixed fixture data. Reports land in
+ * a failed request (the warning under the consequences; Request deletion retries).
+ * `settings.account.step-up{,.dark,.backup-used,.locked,.passkey-only}`: "Verify it's you" for a
+ * refused password or sign-in method change (code field with the backup-code link; a used backup
+ * code; the lock banner; only a passkey listed). Fixed fixture data. Reports land in
  * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
  * as [RaftRobolectricScreenshot].
  */
@@ -49,6 +56,61 @@ class SettingsAccountScreenshotTest {
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun deleteDialogFailedLight() = deleteDialog("settings.account.delete-dialog.failed", RaftAppAppearance.Light, failed = true)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogLight() = stepUpDialog("settings.account.step-up", RaftAppAppearance.Light, stepUpCode)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogDark() = stepUpDialog("settings.account.step-up.dark", RaftAppAppearance.Dark, stepUpCode)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogBackupCodeUsedLight() =
+        stepUpDialog(
+            "settings.account.step-up.backup-used",
+            RaftAppAppearance.Light,
+            stepUpCode.copy(
+                method = SecondFactorStepUpMethod.BackupCode,
+                input = "ABCD-EFGH",
+                fieldError = SecondFactorStepUpFieldError.BackupCodeUsed,
+            ),
+        )
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogLockedLight() =
+        stepUpDialog(
+            "settings.account.step-up.locked",
+            RaftAppAppearance.Light,
+            stepUpCode.copy(input = "123456", banner = SecondFactorStepUpBanner.Locked(lockedUntilEpochMillis = 0L)),
+        )
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogPasskeyOnlyLight() =
+        stepUpDialog(
+            "settings.account.step-up.passkey-only",
+            RaftAppAppearance.Light,
+            SecondFactorStepUpDialogState(methods = emptyList(), method = null),
+        )
+
+    private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
+        RaftRobolectricScreenshot.capture(
+            name,
+            appearance,
+            reportDir = "build/reports/home-screenshots",
+            activities = activities,
+            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
+        ) {
+            Page {
+                RaftDesignSystemTheme {
+                    // A fixed clock: goldens must not follow the machine's time zone.
+                    SecondFactorStepUpDialog(state = state, onIntent = {}, formatClock = { "23:40" })
+                }
+            }
+        }
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -86,6 +148,12 @@ class SettingsAccountScreenshotTest {
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
     }
 }
+
+private val stepUpCode =
+    SecondFactorStepUpDialogState(
+        methods = listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode),
+        method = SecondFactorStepUpMethod.Totp,
+    )
 
 private val accountFixture =
     RaftSettingsAccountPayload(

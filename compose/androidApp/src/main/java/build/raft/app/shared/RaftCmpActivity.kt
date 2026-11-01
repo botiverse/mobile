@@ -142,6 +142,7 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_APP_UPDATE_EVENT
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SECOND_FACTOR_STEP_UP_REQUIRED_CODE
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
@@ -5073,12 +5074,23 @@ internal class RaftBridgeModule(
                             }
                 }
                 is SharedAuthResult.Failure -> {
+                    val stepUp = startResult.secondFactorStepUp
                     callback?.invoke(
-                            mapOf(
-                                    "status" to "error",
-                                    "code" to "settings_mobile_oauth_link_start_failed",
-                                    "message" to startResult.message
-                            )
+                            if (stepUp != null) {
+                                // Shared settings opens "Verify it's you" and starts the link again.
+                                mapOf(
+                                        "status" to "error",
+                                        "code" to SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+                                        "message" to startResult.message,
+                                        "methods" to stepUp.methods.joinToString(",")
+                                )
+                            } else {
+                                mapOf(
+                                        "status" to "error",
+                                        "code" to "settings_mobile_oauth_link_start_failed",
+                                        "message" to startResult.message
+                                )
+                            }
                     )
                 }
                 SharedAuthResult.Unauthenticated -> {

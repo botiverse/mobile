@@ -25,6 +25,9 @@ interface SettingsRepository {
     /** `DELETE /api/auth/identities/:provider` (web Disconnect); the content is the account read again. */
     suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/second-factor/step-up` (SecondFactorStepUpApi.kt): verify this sign-in for a refused action. */
+    suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
+        SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable")
     /**
      * `PATCH /api/auth/me` `{ shareUsageData }` (RFC-067 "Share usage data"); the content is the choice the
      * server now holds, read back from the returned user.

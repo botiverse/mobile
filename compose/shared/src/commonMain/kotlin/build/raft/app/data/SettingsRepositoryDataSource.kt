@@ -305,6 +305,10 @@ class RealSettingsRepository(
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
+    private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
+
+    override suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
+        secondFactorStepUpRepository.stepUp(answer)
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
@@ -2539,8 +2543,19 @@ private fun DataResult<*>.settingsDiagnosticsResult(): String =
         is DataResult.NoPermission -> "result=no_permission:${blocker.code}"
     }
 
-private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> =
-    when (code) {
+private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> {
+    secondFactorStepUpChallengeOrNull()?.let { challenge ->
+        return DataResult.Error(
+            ScreenError(
+                code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+                retryable = false,
+                serverMessage = challenge.serverMessage ?: serverMessage,
+                serverCode = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+                secondFactorStepUp = challenge
+            )
+        )
+    }
+    return when (code) {
         401 -> authRequired(serverMessage)
         403 ->
             DataResult.NoPermission(
@@ -2559,6 +2574,7 @@ private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? =
                 ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage)
             )
     }
+}
 
 @Serializable
 private data class SettingsAccountRouteErrorDto(val error: String? = null)

@@ -290,7 +290,8 @@ final class RaftIosMobileOAuthHost: NSObject,
                     else {
                         completion(self.startError(
                             code: result.errorCode ?? "ios_mobile_oauth_start_failed",
-                            message: result.message ?? "Mobile sign-in could not be started."
+                            message: result.message ?? "Mobile sign-in could not be started.",
+                            stepUpMethods: result.stepUpMethods
                         ))
                         return
                     }
@@ -877,8 +878,10 @@ final class RaftIosMobileOAuthHost: NSObject,
         return ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) ? scheme : nil
     }
 
-    private func startError(code: String, message: String) -> NSDictionary {
-        ["status": "error", "code": code, "message": message]
+    private func startError(code: String, message: String, stepUpMethods: String? = nil) -> NSDictionary {
+        guard let stepUpMethods else { return ["status": "error", "code": code, "message": message] }
+        // `second_factor_step_up_required`: shared settings reads the methods for "Verify it's you".
+        return ["status": "error", "code": code, "message": message, "methods": stepUpMethods]
     }
 
     /// The window to present sign-in over: the requesting page's window while its scene is in the
