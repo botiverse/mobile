@@ -544,7 +544,7 @@ internal fun RaftCollapsibleSectionHeader(
         Spacer(Modifier.weight(1f))
         if (sortContentDescription != null && onSortClick != null) {
             RaftSectionHeaderIconAction(
-                icon = RaftLucideIconName.ArrowUpDown,
+                icon = RaftLucideIconName.ArrowDownUp,
                 contentDescription = sortContentDescription,
                 onClick2 = onSortClick
             )

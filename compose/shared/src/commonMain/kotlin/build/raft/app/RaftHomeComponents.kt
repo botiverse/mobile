@@ -3949,7 +3949,7 @@ internal fun raftHomeConversationMenuItems(
                 RaftBaseMenuItem(
                     id = "sort-channels",
                     label = labels.sortChannels,
-                    icon = RaftLucideIconName.ArrowUpDown
+                    icon = RaftLucideIconName.ArrowDownUp
                 )
             )
         }
@@ -3985,7 +3985,7 @@ internal fun raftHomePinnedMemberMenuItems(
         RaftBaseMenuItem(
             id = "sort-channels",
             label = labels.sortChannels,
-            icon = RaftLucideIconName.ArrowUpDown
+            icon = RaftLucideIconName.ArrowDownUp
         )
     )
 
@@ -7010,12 +7010,12 @@ private fun HomeSidebarSectionHeader(
     )
 }
 
-/** The section's Sort control, `arrow-up-down`; the sort menu opens under it. */
+/** The section's Sort control, `arrow-down-up` (icon standard: sort is ↓↑, as on web); the sort menu opens under it. */
 @Composable
 private fun HomeSidebarSortAction(label: String, onClick: (RaftPopoverAnchor) -> Unit) {
     val anchorRef = remember(label) { RaftLiveRootAnchorRef(identity = label) }
     RaftSidebarSectionAction(
-        glyph = RaftGlyph.ArrowUpDown,
+        glyph = RaftGlyph.ArrowDownUp,
         tooltip = label,
         onClick = { anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick) },
         modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef)

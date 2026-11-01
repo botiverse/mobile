@@ -61,6 +61,7 @@ LUCIDE_ICONS = [
     "align-horizontal-space-around",
     "app-window",
     "archive",
+    "arrow-down-up",
     "arrow-left",
     "arrow-up-down",
     "arrow-up-right",

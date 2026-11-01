@@ -15,6 +15,7 @@ enum class RaftLucideIconName(val wireName: String) {
     AlignHorizontalSpaceAround("align-horizontal-space-around"),
     AppWindow("app-window"),
     Archive("archive"),
+    ArrowDownUp("arrow-down-up"),
     ArrowLeft("arrow-left"),
     ArrowUpDown("arrow-up-down"),
     ArrowUpRight("arrow-up-right"),

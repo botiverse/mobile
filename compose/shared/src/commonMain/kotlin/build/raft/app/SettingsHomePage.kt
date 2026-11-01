@@ -13169,7 +13169,7 @@ internal fun SharedHomeSearchFilters(
                         label = state.sort.localizedSearchLabel(),
                         anchorIdentity = "search_filter:sort",
                         hasValue = sortActive,
-                        iconName = RaftLucideIconName.ArrowUpDown,
+                        iconName = RaftLucideIconName.ArrowDownUp,
                         onAnchorChanged = sortAnchorChanged,
                         onClick = { anchor ->
                             onOpenFilter("sort", anchor)
