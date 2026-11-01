@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bar icon appearance a RaftWindowDialog window starts with (RaftPrepareDialogWindow): applied
+     to the dialog's theme before its window is created, so the window never shows a frame with
+     the default icons. API 23 / 27 add the attributes; below that they do not exist. -->
+<resources>
+    <style name="RaftDialogBars_DarkStatus_DarkNav" />
+    <style name="RaftDialogBars_DarkStatus_LightNav" />
+    <style name="RaftDialogBars_LightStatus_DarkNav" />
+    <style name="RaftDialogBars_LightStatus_LightNav" />
+</resources>
