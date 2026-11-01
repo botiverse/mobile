@@ -25,6 +25,9 @@ internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
 internal actual fun RaftDialogWindowPolicy(isDark: Boolean) = Unit
 
 @Composable
+internal actual fun RaftPrepareDialogWindow(isDark: Boolean) = Unit
+
+@Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) = Unit
 
 internal actual val RaftPopupDefersFocus: Boolean = false

@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
+import build.raft.designsystem.R
 
 internal actual fun raftWindowDialogPlatformProperties(properties: RaftWindowDialogProperties): DialogProperties =
     DialogProperties(
@@ -54,6 +55,26 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
         onDispose {}
     }
 }
+
+@Composable
+internal actual fun RaftPrepareDialogWindow(isDark: Boolean) {
+    val context = LocalView.current.context
+    val appearance =
+        context.raftActivity()?.window?.raftSystemBarsAppearance()
+            ?: RaftSystemBarsAppearance(lightStatusBars = !isDark, lightNavigationBars = !isDark)
+    // In composition, ahead of the Dialog: its window wraps this context's theme
+    // (ContextThemeWrapper) and reads windowLightStatusBar / windowLightNavigationBar into the
+    // window's appearance when it is created, before it is shown. Re-applying is idempotent.
+    context.theme.applyStyle(appearance.raftDialogBarsStyle(), true)
+}
+
+private fun RaftSystemBarsAppearance.raftDialogBarsStyle(): Int =
+    when {
+        lightStatusBars && lightNavigationBars -> R.style.RaftDialogBars_LightStatus_LightNav
+        lightStatusBars -> R.style.RaftDialogBars_LightStatus_DarkNav
+        lightNavigationBars -> R.style.RaftDialogBars_DarkStatus_LightNav
+        else -> R.style.RaftDialogBars_DarkStatus_DarkNav
+    }
 
 @Composable
 internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) {

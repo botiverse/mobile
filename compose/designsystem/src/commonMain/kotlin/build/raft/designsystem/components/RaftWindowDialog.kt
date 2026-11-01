@@ -55,6 +55,7 @@ fun RaftWindowDialog(
 ) {
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
+    RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = raftWindowDialogPlatformProperties(properties),
@@ -86,6 +87,16 @@ internal expect fun raftWindowDialogPlatformProperties(properties: RaftWindowDia
  */
 @Composable
 internal expect fun RaftDialogWindowPolicy(isDark: Boolean)
+
+/**
+ * Composed just before the platform `Dialog`: on Android the dialog builds its window while it
+ * composes and shows it right after, before its content (and so [RaftDialogWindowPolicy]) runs.
+ * The window must already ask for the host's bar icons then, or the focused dialog draws a frame
+ * of the default (white) icons, as Material3's edge-to-edge dialog sets them before `show()`.
+ * Elsewhere a dialog is a layer in the host's window: nothing to do.
+ */
+@Composable
+internal expect fun RaftPrepareDialogWindow(isDark: Boolean)
 
 /**
  * Called from inside a focusable popup's content (a [RaftDropdownMenu]): on Android a focusable
