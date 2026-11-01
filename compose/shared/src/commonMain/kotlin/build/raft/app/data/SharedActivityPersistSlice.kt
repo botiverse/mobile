@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.PerReceiverReadStateChanged
 import kotlinx.serialization.Serializable
 
 internal fun createSharedActivityPersistSlice(
@@ -96,7 +97,11 @@ private object SharedActivityPersistSpec :
                     intent is SharedActivityIntent.MarkRead ||
                     intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction ||
-                    intent is SharedActivityIntent.ApplyRealtimeSummaryEvent
+                    intent is SharedActivityIntent.ApplyRealtimeSummaryEvent ||
+                    // A read fact accepted here also advanced the shared read-state version on disk
+                    // (PerReceiverStateVersionStore); persist the rows it cleared with it, or a cold
+                    // start shows the old unread under the newer version (audit addendum 2 item 4).
+                    (intent is SharedActivityIntent.ApplyRealtimeEvent && intent.event is PerReceiverReadStateChanged)
                 )
 
     override fun shouldRemove(
