@@ -37,6 +37,8 @@ data class RaftIosMobileOAuthStartResult(
     val callbackScheme: String? = null,
     val errorCode: String? = null,
     val message: String? = null,
+    /** With [errorCode] `second_factor_step_up_required`: the server's `methods`, comma-joined. */
+    val stepUpMethods: String? = null,
 )
 
 /** Swift-facing terminal result. */
@@ -143,7 +145,7 @@ internal class IosMobileOAuthPendingStore(
 
 internal sealed interface IosMobileOAuthStartOutcome {
     data class Success(val response: AuthMobileOAuthStartResponse) : IosMobileOAuthStartOutcome
-    data class Failure(val message: String) : IosMobileOAuthStartOutcome
+    data class Failure(val message: String, val stepUpMethods: String? = null) : IosMobileOAuthStartOutcome
     data object Unauthenticated : IosMobileOAuthStartOutcome
 }
 
@@ -264,7 +266,8 @@ private class SharedIosMobileOAuthRuntime(
 private fun SharedAuthResult<AuthMobileOAuthStartResponse>.toIosStartOutcome(): IosMobileOAuthStartOutcome =
     when (this) {
         is SharedAuthResult.Success -> IosMobileOAuthStartOutcome.Success(data)
-        is SharedAuthResult.Failure -> IosMobileOAuthStartOutcome.Failure(message)
+        is SharedAuthResult.Failure ->
+            IosMobileOAuthStartOutcome.Failure(message, secondFactorStepUp?.methods?.joinToString(","))
         SharedAuthResult.Unauthenticated -> IosMobileOAuthStartOutcome.Unauthenticated
     }
 
@@ -442,10 +445,18 @@ internal class IosMobileOAuthCoordinator(
                     )
                 }
                 is IosMobileOAuthStartOutcome.Failure ->
-                    startError(
-                        code = "ios_mobile_oauth_start_failed",
-                        message = outcome.message,
-                    )
+                    if (outcome.stepUpMethods != null) {
+                        // Shared settings opens "Verify it's you" and starts the link again.
+                        startError(
+                            code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+                            message = outcome.message,
+                        ).copy(stepUpMethods = outcome.stepUpMethods)
+                    } else {
+                        startError(
+                            code = "ios_mobile_oauth_start_failed",
+                            message = outcome.message,
+                        )
+                    }
                 IosMobileOAuthStartOutcome.Unauthenticated ->
                     startError(
                         code = "ios_mobile_oauth_auth_required",

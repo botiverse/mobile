@@ -75,6 +75,8 @@ data class SharedSettingsState(
     val actionState: SharedSettingsActionState? = null,
     /** Restart / upgrade of the open managed Computer (web machineStore's per-machine operation state). */
     val computerControl: SettingsComputerControlState = SettingsComputerControlState(),
+    /** The open "Verify it's you" dialog of a refused account action (SecondFactorStepUpCoordinator). */
+    val secondFactorStepUp: SecondFactorStepUpDialogState? = null,
     val effect: SharedSettingsEffect? = null
 )
 
@@ -454,6 +456,8 @@ sealed interface SharedSettingsIntent {
     data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
     /** Web Disconnect (after its confirm dialog): unlink the social sign-in [providerId]. */
     data class DisconnectAccountProvider(val providerId: String) : SharedSettingsIntent
+    /** The "Verify it's you" dialog of a refused password change or sign-in method change. */
+    data class SecondFactorStepUp(val intent: SecondFactorStepUpIntent) : SharedSettingsIntent
     /** Settings › Account "Share usage data" switch: optimistic, rolled back if the save fails. */
     data class SetShareUsageData(val enabled: Boolean) : SharedSettingsIntent
     /** The "Learn more" link under "Share usage data": the privacy policy, outside the app (web `target=_blank`). */
@@ -807,6 +811,10 @@ class SharedSettingsDataSource(
 
     suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
         settingsRepository?.disconnectAccountProvider(providerId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
+        settingsRepository?.stepUpSecondFactor(answer)
+            ?: SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable")
 
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2027,6 +2035,12 @@ class SharedSettingsStore(
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
+    private val secondFactorStepUp =
+        SecondFactorStepUpCoordinator(
+            stepUp = { answer -> dataSource.stepUpSecondFactor(answer) },
+            onStateChange = { dialog -> _state.value = _state.value.copy(secondFactorStepUp = dialog) }
+        )
+
     private var loadJob: Job? = null
     private val pendingMachineRealtimeIds = LinkedHashSet<String>()
     private var machineRealtimeDrainActive = false
@@ -2177,7 +2191,9 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.ChangeAccountPassword -> {
                 runAction(ACCOUNT_ACTION_PASSWORD_CHANGE) {
-                    dataSource.changeAccountPassword(intent.request).applyAccountActionResult(ACCOUNT_ACTION_PASSWORD_CHANGE)
+                    withSecondFactorStepUp(ACCOUNT_ACTION_PASSWORD_CHANGE) {
+                        dataSource.changeAccountPassword(intent.request)
+                    }?.applyAccountActionResult(ACCOUNT_ACTION_PASSWORD_CHANGE)
                 }
             }
             is SharedSettingsIntent.SetShareUsageData -> setShareUsageData(intent.enabled)
@@ -2185,15 +2201,21 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.OpenUrl(SHARE_USAGE_DATA_PRIVACY_URL))
             is SharedSettingsIntent.ConnectAccountProvider -> {
                 runAction(ACCOUNT_ACTION_PROVIDER_CONNECT, intent.request.providerId) {
-                    dataSource.startAccountProviderLink(intent.request)
-                        .applyAccountProviderLinkResult(intent.request.providerId)
+                    withSecondFactorStepUp(ACCOUNT_ACTION_PROVIDER_CONNECT, intent.request.providerId) {
+                        dataSource.startAccountProviderLink(intent.request)
+                    }?.applyAccountProviderLinkResult(intent.request.providerId)
                 }
             }
             is SharedSettingsIntent.DisconnectAccountProvider -> {
                 runAction(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId) {
-                    dataSource.disconnectAccountProvider(intent.providerId)
-                        .applyAccountActionResult(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId)
+                    withSecondFactorStepUp(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId) {
+                        dataSource.disconnectAccountProvider(intent.providerId)
+                    }?.applyAccountActionResult(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId)
                 }
+            }
+            is SharedSettingsIntent.SecondFactorStepUp -> {
+                secondFactorStepUp.accept(intent.intent)
+                if (intent.intent == SecondFactorStepUpIntent.SignInAgain) accept(SharedSettingsIntent.Logout)
             }
             is SharedSettingsIntent.RegisterConnectedApp -> {
                 runAction(CONNECTED_APPS_ACTION_REGISTER) {
@@ -3374,6 +3396,23 @@ class SharedSettingsStore(
         return DataResult.Content(data.copy(usageData = AccountUsageDataSnapshot(choice = pending.enabled)))
     }
 
+    /**
+     * [request], and after a passed step-up the same request once more. Null when the dialog was
+     * closed: the action then ends without an error.
+     */
+    private suspend fun <T> withSecondFactorStepUp(
+        action: String,
+        itemId: String? = null,
+        request: suspend () -> DataResult<T>
+    ): DataResult<T>? =
+        when (val outcome = secondFactorStepUp.run(request)) {
+            is SecondFactorStepUpOutcome.Completed -> outcome.result
+            SecondFactorStepUpOutcome.Cancelled -> {
+                _state.value = _state.value.copy(actionState = SharedSettingsActionState(action, itemId, inProgress = false))
+                null
+            }
+        }
+
     private suspend fun runAction(
         action: String,
         itemId: String? = null,
@@ -4072,6 +4111,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.ChangeAccountPassword,
             is SharedSettingsIntent.ConnectAccountProvider,
             is SharedSettingsIntent.DisconnectAccountProvider,
+            is SharedSettingsIntent.SecondFactorStepUp,
             is SharedSettingsIntent.SetShareUsageData,
             SharedSettingsIntent.OpenShareUsageDataPrivacy,
             is SharedSettingsIntent.RegisterConnectedApp,

@@ -2167,7 +2167,9 @@ sealed interface SharedAuthResult<out T> {
     data object Unauthenticated : SharedAuthResult<Nothing>
     data class Failure(
         val code: SharedAuthErrorCode,
-        val message: String
+        val message: String,
+        /** A 403 `second_factor_step_up_required` (linking a sign-in method): what to step up with. */
+        val secondFactorStepUp: SecondFactorStepUpChallenge? = null
     ) : SharedAuthResult<Nothing>
 }
 
@@ -2268,6 +2270,13 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
     }
     val message = errorDto?.error?.takeIf { it.isNotBlank() }
         ?: errorDto?.message?.takeIf { it.isNotBlank() }
+    parseSharedSecondFactorStepUpRequired(code, errorBodyText)?.let { challenge ->
+        return SharedAuthResult.Failure(
+            SharedAuthErrorCode.Unknown,
+            challenge.serverMessage ?: message ?: SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+            secondFactorStepUp = challenge
+        )
+    }
     return when {
         code == 422 && errorDto?.error in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED") ->
             SharedAuthResult.Failure(

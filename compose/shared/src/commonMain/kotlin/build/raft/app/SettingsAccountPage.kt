@@ -44,6 +44,8 @@ import build.raft.app.data.AccountProviderLinkStartRequest
 import build.raft.app.data.AccountSettingsSnapshot
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SecondFactorStepUpDialogState
+import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
@@ -337,6 +339,12 @@ private fun SettingsAccountScreen() {
                     )
                 )
             },
+            secondFactorStepUp =
+                settingsState.secondFactorStepUp?.let { dialog ->
+                    SettingsSecondFactorStepUpUi(dialog) { intent ->
+                        settingsViewModel.dispatch(SharedSettingsIntent.SecondFactorStepUp(intent))
+                    }
+                },
             onEvent = { action, value ->
                 handleStandaloneAccountAction(
                     action = action,
@@ -461,6 +469,8 @@ internal fun SettingsAccountContent(
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit = { _, _ -> },
     /** Delete account; null hides the row (web has no such row, so visual-parity fixtures pass null). */
     accountDeletion: SettingsAccountDeletionUi? = null,
+    /** The open "Verify it's you" of a refused password or sign-in method change; null: none. */
+    secondFactorStepUp: SettingsSecondFactorStepUpUi? = null,
     onEvent: (String, String?) -> Unit
 ) {
     val localizedPayload = payload.localizedPresentationCopy()
@@ -532,6 +542,10 @@ internal fun SettingsAccountContent(
                 onDismiss = { if (!busy) pendingDisconnect.value = null }
             )
         }
+        // Last, so it opens over the Disconnect confirm that asked for it.
+        if (secondFactorStepUp != null) {
+            SecondFactorStepUpDialog(secondFactorStepUp.state, secondFactorStepUp.onIntent)
+        }
         if (accountDeletion != null && accountDeletion.state != RaftAccountDeletionRequestState.Idle) {
             SettingsDeleteAccountDialog(
                 busy = accountDeletion.state == RaftAccountDeletionRequestState.Submitting,
@@ -542,6 +556,12 @@ internal fun SettingsAccountContent(
         }
     }
 }
+
+/** The open step-up dialog and where its intents go (SharedSettingsIntent.SecondFactorStepUp). */
+internal class SettingsSecondFactorStepUpUi(
+    val state: SecondFactorStepUpDialogState,
+    val onIntent: (SecondFactorStepUpIntent) -> Unit
+)
 
 /** The Delete account row's state and actions (see [RaftAccountDeletionRequestStore]). */
 internal class SettingsAccountDeletionUi(

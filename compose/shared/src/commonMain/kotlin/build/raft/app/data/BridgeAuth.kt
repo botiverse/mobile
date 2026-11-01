@@ -108,6 +108,9 @@ internal class BridgeSettingsPlatformCapabilities(
             "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
             else -> {
                 val code = response?.optString("code").orEmpty().ifBlank { "settings_mobile_oauth_link_failed" }
+                if (code == SECOND_FACTOR_STEP_UP_REQUIRED_CODE) {
+                    return DataResult.Error(mobileOAuthLinkStepUpError(response))
+                }
                 DataResult.Error(ScreenError(code, retryable = true))
             }
         }
@@ -1010,4 +1013,19 @@ internal interface SharedThreadNetworkApi {
     suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
+}
+
+private fun mobileOAuthLinkStepUpError(response: JsonObject?): ScreenError {
+    val challenge =
+        parseSharedMobileOAuthLinkStepUpChallenge(
+            methods = response?.optString("methods"),
+            message = response?.optString("message"),
+        )
+    return ScreenError(
+        code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+        retryable = false,
+        serverMessage = challenge.serverMessage,
+        serverCode = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+        secondFactorStepUp = challenge,
+    )
 }

@@ -64,6 +64,11 @@ data class ScreenError(
      * (an install card's 409 `current_text_revision_id`). Never user-facing copy.
      */
     val serverFields: Map<String, String> = emptyMap(),
+    /**
+     * A 403 `second_factor_step_up_required` (SecondFactorStepUpApi.kt): the refused action
+     * needs a fresh second step; [SecondFactorStepUpCoordinator] asks for it and retries.
+     */
+    val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
 )
 
 data class PermissionBlocker(
