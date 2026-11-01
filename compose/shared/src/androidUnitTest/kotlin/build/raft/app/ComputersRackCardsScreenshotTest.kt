@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -89,7 +90,43 @@ class ComputersRackCardsScreenshotTest {
     @Test
     fun computersListDark() = capture("settings.computers.list.dark", RaftAppAppearance.Dark, ComputersRackView.List)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, view: ComputersRackView = ComputersRackView.Cards) {
+    private fun capture(name: String, appearance: RaftAppAppearance, view: ComputersRackView = ComputersRackView.Cards) =
+        captureComputersRack(activities, name, appearance, view, wide = false)
+}
+
+/**
+ * The wide Computers page (Compose desktop's content area beside the rail, artin 11-01): the web's
+ * desktop head (title with the counts, List / Cards, Add Computer) and the cards in a grid of
+ * cards at least 250dp wide (`repeat(auto-fill, minmax(250px, 1fr))`): four columns at 1280dp,
+ * the short second row keeping the card width.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w1280dp-h1100dp-mdpi")
+class ComputersRackWideCardsScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    private val previousAppearance = RaftAppThemeState.appearance
+
+    @After
+    fun restoreAppearance() {
+        RaftAppThemeState.apply(previousAppearance)
+    }
+
+    @Test
+    fun computersWideCardsLight() =
+        captureComputersRack(activities, "settings.computers.wide", RaftAppAppearance.Light, ComputersRackView.Cards, wide = true)
+}
+
+private fun captureComputersRack(
+    activities: RobolectricComposeActivityRule,
+    name: String,
+    appearance: RaftAppAppearance,
+    view: ComputersRackView,
+    wide: Boolean,
+) {
+    run {
         RaftAppThemeState.apply(appearance)
         val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
@@ -98,7 +135,9 @@ class ComputersRackCardsScreenshotTest {
                 pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
             }
         activity.setContent {
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ComputersListVisualContent(appearance, view) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSettingsWideDetail provides wide) {
+                ComputersListVisualContent(appearance, view, wide)
+            }
         }
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
@@ -108,21 +147,22 @@ class ComputersRackCardsScreenshotTest {
         RaftRobolectricScreenshot.verifyOrRecord(name, bitmap, File("build/reports/home-screenshots"))
     }
 
-    private fun settle() {
-        repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
-    }
+}
 
-    private fun findComposeRoot(view: View): View? {
-        if (view is ViewRootForTest) return view
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) findComposeRoot(view.getChildAt(index))?.let { return it }
-        }
-        return null
+private fun settle() {
+    repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
+}
+
+private fun findComposeRoot(view: View): View? {
+    if (view is ViewRootForTest) return view
+    if (view is ViewGroup) {
+        for (index in 0 until view.childCount) findComposeRoot(view.getChildAt(index))?.let { return it }
     }
+    return null
 }
 
 @Composable
-private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: ComputersRackView) {
+private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: ComputersRackView, wide: Boolean = false) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -247,7 +287,23 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                 subtitle = "",
                 applyTopSafeArea = false,
                 onBack = {},
-                trailingContent = { RaftComputersRackViewToggle(view) {} },
+                titleContent =
+                    if (wide) {
+                        {
+                            RaftComputersWideTitle(
+                                stringResource(Res.string.settings_computers_title),
+                                raftComputersCountsLine(raftComputersCounts(raftComputersListModel(ScreenLoadState.Content(snapshot)).let { (it as RaftComputersListModel.Content).rows }, agentsByMachine)),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                trailingContent = {
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        RaftComputersRackViewToggle(view) {}
+                        if (wide) RaftComputersAddButton {}
+                    }
+                },
             ) {
                 RaftComputersTheme {
                     RaftSettingsComputersContent(
@@ -258,6 +314,7 @@ private fun ComputersListVisualContent(appearance: RaftAppAppearance, view: Comp
                         agentsByMachine = agentsByMachine,
                         usageLoads = rackUsageFixture(),
                         rackView = view,
+                        summaryInHeader = wide,
                         computerControl = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m-studio")),
                     )
                 }

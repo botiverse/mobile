@@ -3979,6 +3979,11 @@ internal fun MemberDetailPageContent(
     onClose: (() -> Unit)? = null,
     /** The pager's own visibility (covered / backgrounded); embedded hosts stay visible. */
     pageVisible: Boolean = true,
+    /**
+     * Embedded in the wide shell: opens a member's DM in the shell's content area (Chat with the DM
+     * selected) instead of a page over the shell; false falls back to the page.
+     */
+    openDirectMessageInShell: ((ThreadLaunchConversationIdentity) -> Boolean)? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -4691,6 +4696,8 @@ internal fun MemberDetailPageContent(
                                 routeScope.launch {
                                     provider.openDirectMessage(member).openMembersDirectMessageResult(
                                         pager = pager,
+                                        storeScope = provider.storeScope,
+                                        openInShell = openDirectMessageInShell,
                                         member = member,
                                         timeContext = timeContext,
                                         unavailableMessage = directMessageOpenError,
@@ -4880,6 +4887,8 @@ internal fun MemberDetailPageContent(
                             routeScope.launch {
                                 provider.openDirectMessage(current.member).openMembersDirectMessageResult(
                                     pager = pager,
+                                    storeScope = provider.storeScope,
+                                    openInShell = openDirectMessageInShell,
                                     member = current.member,
                                     timeContext = timeContext,
                                     unavailableMessage = directMessageOpenError,
@@ -5330,8 +5339,13 @@ private fun Pager.openMembersMessageTarget(
     )
 }
 
-private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
+internal fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     pager: Pager,
+    // The member page's own scope: an embedded detail (the wide Members pane) sits on the shell's
+    // pager, whose page data carries no shell scope, so the open was rejected (missing_source_scope)
+    // and showed "Unable to open direct message" (artin 11-01, Compose 版).
+    storeScope: RaftShellStoreScope,
+    openInShell: ((ThreadLaunchConversationIdentity) -> Boolean)?,
     member: MemberProfile,
     timeContext: RaftTimeContext,
     unavailableMessage: String,
@@ -5342,6 +5356,8 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
 ) {
     when (this) {
         is DataResult.Content -> {
+            val identity = membersDirectMessageConversationIdentity(member, data.conversation)
+            if (identity != null && openInShell?.invoke(identity) == true) return
             val launchPayload =
                 buildMembersDirectMessageThreadLaunchPayload(
                     member = member,
@@ -5354,6 +5370,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
                 pager.openRaftPage(
                     pageName = THREAD_PAGE,
                     pageData = launchPayload.toThreadPageData(),
+                    storeScopeOverride = storeScope,
                     onMissingScope = { onUnavailableAction(unavailableMessage) }
                 )
             }
@@ -5367,31 +5384,39 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     }
 }
 
+/** The DM with [member] as a conversation identity, or null without a thread / channel id. */
+internal fun membersDirectMessageConversationIdentity(
+    member: MemberProfile,
+    conversation: HomeDirectMessageRow,
+): ThreadLaunchConversationIdentity? {
+    val threadId =
+        conversation.threadId.value.trim().takeIf { it.isNotBlank() }
+            ?: conversation.channelId.value.trim().takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadLaunchConversationIdentity(
+        threadId = ThreadId(threadId),
+        channelId = ChannelId(threadId),
+        channelType = RaftThreadSurfaceKind.DirectMessage,
+        kind = ConversationKind.DirectMessage,
+        dmPeerIdentity =
+            memberDetailIdentity(
+                memberId = member.id.value,
+                kind = member.kind,
+                sourceServerId = member.serverId?.value
+            )
+    )
+}
+
 internal fun buildMembersDirectMessageThreadLaunchPayload(
     member: MemberProfile,
     conversation: HomeDirectMessageRow,
     timeContext: RaftTimeContext
 ): WireThreadLaunchPayload? {
-    val threadId =
-        conversation.threadId.value.trim().takeIf { it.isNotBlank() }
-            ?: conversation.channelId.value.trim().takeIf { it.isNotBlank() }
-            ?: return null
+    val identity = membersDirectMessageConversationIdentity(member, conversation) ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
-        conversation =
-            ThreadLaunchConversationIdentity(
-                threadId = ThreadId(threadId),
-                channelId = ChannelId(threadId),
-                channelType = RaftThreadSurfaceKind.DirectMessage,
-                kind = ConversationKind.DirectMessage,
-                dmPeerIdentity =
-                    memberDetailIdentity(
-                        memberId = member.id.value,
-                        kind = member.kind,
-                        sourceServerId = member.serverId?.value
-                    )
-            ),
+        conversation = identity,
         timeContext = timeContext,
-        instanceIdOverride = "members-message-${member.id.value}-$threadId"
+        instanceIdOverride = "members-message-${member.id.value}-${identity.threadId.value}"
     )
 }
 

@@ -178,11 +178,13 @@ internal fun appShellRailTabs(
     labelFor: (String) -> String,
     activityUnreadCount: Int = 0,
     moreAttention: Set<RaftMoreAttention> = emptySet(),
+    /** The rail page shown inline in the content area (Computers / Apps): it is the selected entry. */
+    inlinePageRailId: String? = null,
 ): List<RaftBottomTabItemPayload> =
     raftNavItems(
         presentation = RaftNavPresentation.Rail,
         ids = AppShellRailTabKeys,
-        selectedKey = retainedAppShellSelectedTab(selectedTab),
+        selectedKey = inlinePageRailId ?: retainedAppShellSelectedTab(selectedTab),
         labelFor = labelFor,
         badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
     )

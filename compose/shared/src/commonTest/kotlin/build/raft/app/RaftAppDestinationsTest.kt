@@ -86,10 +86,15 @@ class RaftAppDestinationsTest {
         )
         assertEquals(RaftNavRoute.Menu, RaftAppDestination.Help.route)
         assertEquals(RaftNavRoute.ServerPanel, RaftAppDestination.Server.route)
-        // A page entry is never selected, a menu only while open.
+        // A page entry is selected only while it is the selection (the wide rail's inline page,
+        // artin 11-01), a menu only while open.
         val items =
-            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "computers", labelFor = { it }, menuOpen = true)
+            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "home", labelFor = { it }, menuOpen = true)
         assertEquals(listOf(false, true), items.map { it.selected })
+        assertEquals(
+            listOf(true, false),
+            raftNavItems(RaftNavPresentation.Rail, listOf("computers", "help"), selectedKey = "computers", labelFor = { it }).map { it.selected },
+        )
         assertTrue(items.none { it.attentionDot })
     }
 }

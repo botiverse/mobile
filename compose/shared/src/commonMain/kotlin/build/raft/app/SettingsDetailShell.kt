@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,8 @@ internal fun SettingsDetailShell(
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
+    /** In place of the title (and subtitle) column, e.g. a title with its counts beside it. */
+    titleContent: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     // The wide Settings detail pane (SettingsWideListDetail): the list beside it is the way back,
@@ -40,6 +43,7 @@ internal fun SettingsDetailShell(
             applyTopSafeArea = applyTopSafeArea && !wideDetail,
             headerHeight = headerHeight,
             onBack = settingsDetailHeaderBack(onBack, wideDetail),
+            titleContent = titleContent,
             trailingContent = if (trailingContent != null) {
                 { trailingContent() }
             } else {
