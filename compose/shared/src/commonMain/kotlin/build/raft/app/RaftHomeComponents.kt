@@ -5221,14 +5221,13 @@ private fun HomeNotificationBellButton(
     val securityAlert = visibleNotifications.hasHomeSecurityAlert()
     val securityAlertLabel =
         Res.string.home_notification_center_security_alert.format(listOf(visibleNotifications.size)).localized()
-    // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
-    Button(
+    // raft-ui `PanelAction`: ghost; disclosure (and hover / press) shows the pressed wash, no shadow.
+    RaftPanelAction(
         onClick = onToggle,
-        pressOffset = 0.dp,
+        open = open,
         modifier =
             Modifier
                 .size(size)
-                .background(if (open) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
                 // Web NotificationTrigger: "Notification center (N active), security alert".
                 .then(if (securityAlert) Modifier.semantics { contentDescription = securityAlertLabel } else Modifier)
     ) {

@@ -708,12 +708,16 @@ fun RaftIconToggleButton(
  * edge, no shadow, transparent at rest; hover and press lay the ghost press overlay inside the
  * control radius, like [RaftIconButton]. The caller sizes it (raft-ui `h-control min-w-control`,
  * `px-2` with a label) and names it for screen readers when its content does not.
+ *
+ * [open] keeps the press overlay on while what it discloses is open (raft-ui
+ * `data-popup-open`), such as the notification bell's popover.
  */
 @Composable
 fun RaftPanelAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    open: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
@@ -725,6 +729,7 @@ fun RaftPanelAction(
         loading = false,
         loadingLabel = "",
         interactionSource = interactionSource,
+        open = open,
     ) {
         Box(contentAlignment = Alignment.Center) { content() }
     }
