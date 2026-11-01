@@ -6,7 +6,7 @@ target 'iosApp' do
 
   pod 'shared', :path => '../shared'
 
-  pod 'Hands', :git => 'https://github.com/oranix-io/hands.git', :tag => 'ios-v0.2.1'
+  pod 'Hands', :git => 'https://github.com/oranix-io/hands.git', :tag => 'ios-v0.2.2'
   pod 'SDWebImage'
   # task #436: SVG decoding for the durable avatar store (RaftIosAvatarCacheProvider
   # decodes committed avatar bytes through SDWebImage; UIImage has no native SVG
