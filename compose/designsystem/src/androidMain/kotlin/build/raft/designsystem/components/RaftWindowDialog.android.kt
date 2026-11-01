@@ -56,12 +56,17 @@ internal actual fun RaftDialogWindowPolicy(isDark: Boolean) {
 }
 
 @Composable
-internal actual fun RaftPopupWindowPolicy() {
+internal actual fun RaftPopupWindowPolicy(onReady: () -> Unit) {
     val popupView = LocalView.current
-    val hostWindow = LocalContext.current.raftActivity()?.window ?: return
+    val hostWindow = LocalContext.current.raftActivity()?.window
     // Every recomposition re-copies it: cheap, and it follows a host change while the menu is open.
-    SideEffect { popupView.rootView.copyRaftSystemBarsAppearanceFrom(hostWindow) }
+    SideEffect {
+        hostWindow?.let { popupView.rootView.copyRaftSystemBarsAppearanceFrom(it) }
+        onReady()
+    }
 }
+
+internal actual val RaftPopupDefersFocus: Boolean = true
 
 private fun Context.raftActivity(): Activity? {
     var context: Context? = this
