@@ -44,7 +44,7 @@ class RaftPageStackTest {
         assertEquals(listOf(RAFT_APP_SHELL_PAGE), names())
     }
 
-    @Test fun `the root page never closes, alone or covered`() {
+    @Test fun `the root page never closes alone or covered`() {
         val shell = stack.pages.single()
         stack.navigatorFor(shell).closePage()
         assertEquals(listOf(shell), stack.pages.toList())
@@ -86,14 +86,14 @@ class RaftPageStackTest {
         assertTrue(stack.pages.single() !== oldShell)
     }
 
-    @Test fun `every entry has its own content key, even for the same page and data`() {
+    @Test fun `every entry has its own content key even for the same page and data`() {
         stack.open("thread", data("id" to "t1"), from = null)
         stack.open("thread", data("id" to "t1"), from = null)
         val keys = stack.pages.map { it.contentKey }
         assertEquals(keys.size, keys.toSet().size)
     }
 
-    @Test fun `keys hold identity only, args add the host facts`() {
+    @Test fun `keys hold identity only and args add the host facts`() {
         val hosted = RaftPageStack(hostPageData = { JsonObject(it + ("localOffsetMinutes" to JsonPrimitive(480))) })
         val opened = JsonObject(mapOf("channelId" to JsonPrimitive("c1"), "messages" to JsonArray(emptyList())))
         hosted.open("thread", opened, from = null)
