@@ -13448,7 +13448,8 @@ private fun SharedHomePanelMessage(
             )
         }
         if (actionLabel != null && onAction != null) {
-            SharedHomePanelButton(label = actionLabel, selected = false, onClick = onAction)
+            // raft-ui Button md: an action in a card.
+            RaftButton(text = actionLabel, onClick = onAction)
         }
     }
 }
@@ -14465,39 +14466,6 @@ private fun SharedHomeLoadMoreRow(
             // raft-ui Button `md` (32dp): `text-footnote` bold.
             textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold),
             onClick = onClick
-        )
-    }
-}
-
-@Composable
-private fun SharedHomePanelButton(
-    label: String,
-    enabled: Boolean = true,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    dense: Boolean = false,
-    onClick: () -> Unit
-) {
-    val background =
-        when {
-            !enabled -> RaftColor.TextMutedGray.copy(alpha = 0.18f)
-            selected -> RaftColor.BrandYellow
-            else -> RaftColor.SurfaceWhite
-        }
-    Button(
-        enabled = enabled,
-        onClick = onClick,
-        modifier =
-            modifier
-                .raftControlSurface(fill = background, border = if (enabled && selected) RaftColor.StickerInk else RaftColor.BorderBlack)
-                .padding(horizontal = if (dense) 5.dp else 11.dp, vertical = if (dense) 6.dp else 7.dp)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
-            color = if (!enabled) RaftColor.TextMutedGray else if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }
