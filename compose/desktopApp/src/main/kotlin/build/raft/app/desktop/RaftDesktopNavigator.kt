@@ -1,85 +1,35 @@
 package build.raft.app.desktop
 
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import build.raft.app.RAFT_APP_SHELL_PAGE
 import build.raft.app.cmp.host.RaftCmpNavigator
-import build.raft.app.cmp.host.RaftCmpPageArgs
-import build.raft.app.cmp.host.RaftHostEvents
-import build.raft.app.toRaftJsonString
+import build.raft.app.nav.RaftPageStack
+import build.raft.app.nav.RaftStackPage
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import java.util.TimeZone
 
-/**
- * One open page: the Android Activity / iOS view controller counterpart, and the Navigation 3 key
- * of its back stack entry. Identity is the instance (two opens of the same page and data are two
- * entries); [contentKey] is the entry's content key: page name plus a per-window serial.
- */
-class RaftDesktopPage internal constructor(
-    val id: Long,
-    val args: RaftCmpPageArgs,
-) {
-    val events = RaftHostEvents()
-
-    val contentKey: String
-        get() = "${args.pageName}#$id"
-
-    override fun toString(): String = "RaftDesktopPage($contentKey)"
-}
+/** One open page of the window's stack ([RaftStackPage], shared with the other hosts). */
+typealias RaftDesktopPage = RaftStackPage
 
 /**
- * The window's Navigation 3 back stack ([pages], drawn by [RaftDesktopHost]'s `NavDisplay`). Same
- * routing contract as the Android host (RaftCmpActivity): `slockReplaceCurrentPage` replaces the
- * top page and the app shell starts a fresh stack. Unlike Android, the root page never closes: Back
- * on it (Esc, Cmd+[, the shell's root back handler calling closePage) does nothing, closePage from
- * the root page is ignored even while pages are open over it, and only closing
- * the window quits (Tenny; artin's Esc in a chat quit the app). Shared pages reach
- * it through [navigatorFor] (the unchanged [RaftCmpNavigator] `openPage` / `closePage`), which push
- * and pop entries here.
+ * The window's page back stack: :shared's [RaftPageStack] (open / replace / close, the root page
+ * never closes) drawn by [RaftDesktopHost]'s `NavDisplay`, plus the desktop's history input. Pages
+ * carry the host time context ([withRaftDesktopHostTimeContext]).
  */
 class RaftDesktopNavigator {
-    private var nextId = 0L
+    val stack = RaftPageStack(hostPageData = { it.withRaftDesktopHostTimeContext() }, log = ::log)
 
     /** The back stack, bottom first; the last entry is the page on screen. */
-    val pages = mutableStateListOf(page(RaftDesktopPages.APP_SHELL, JsonObject(emptyMap())))
+    val pages: SnapshotStateList<RaftDesktopPage> get() = stack.pages
 
-    fun navigatorFor(page: RaftDesktopPage): RaftCmpNavigator =
-        object : RaftCmpNavigator {
-            override fun openPage(pageName: String, pageData: JsonObject) = open(pageName, pageData, from = page)
+    fun navigatorFor(page: RaftDesktopPage): RaftCmpNavigator = stack.navigatorFor(page)
 
-            override fun closePage() = close(page)
-        }
+    fun open(pageName: String, pageData: JsonObject, from: RaftDesktopPage?) = stack.open(pageName, pageData, from)
 
-    fun open(pageName: String, pageData: JsonObject, from: RaftDesktopPage?) {
-        log("open page=$pageName from=${from?.args?.pageName} data=${pageData.toRaftJsonString().take(200)}")
-        val replace = (pageData[REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
-        val next = page(pageName, pageData)
-        when {
-            pageName == RaftDesktopPages.APP_SHELL -> {
-                pages.clear()
-                pages.add(next)
-            }
-            replace && from != null && pages.contains(from) -> pages[pages.indexOf(from)] = next
-            else -> pages.add(next)
-        }
-    }
+    fun close(page: RaftDesktopPage) = stack.close(page)
 
-    fun close(page: RaftDesktopPage) {
-        // The bottom entry stays, covered or not: the shell's root back handler calls closePage
-        // when it has nothing left to pop (Android finishes the Activity there).
-        if (page === pages.firstOrNull()) {
-            log("close page=${page.args.pageName} ignored: root page")
-            return
-        }
-        log("close page=${page.args.pageName}")
-        pages.remove(page)
-    }
-
-    fun back(): Boolean {
-        if (pages.size <= 1) return false
-        close(pages.last())
-        return true
-    }
+    fun back(): Boolean = stack.back()
 
     /**
      * A history step from the keyboard or mouse ([RaftDesktopHistoryInput]): the app shell, alone on
@@ -97,13 +47,6 @@ class RaftDesktopNavigator {
             RaftDesktopHistoryRoute.ClosePage -> back()
             RaftDesktopHistoryRoute.None -> false
         }
-    }
-
-    private fun page(pageName: String, pageData: JsonObject) =
-        RaftDesktopPage(nextId++, RaftCmpPageArgs(pageName, pageData.withRaftDesktopHostTimeContext()))
-
-    private companion object {
-        const val REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
     }
 }
 
@@ -130,7 +73,7 @@ internal fun JsonObject.withRaftDesktopHostTimeContext(
 
 /** Page names of the shared page registry the host opens itself. */
 object RaftDesktopPages {
-    const val APP_SHELL = "compose_slock_app_shell"
+    const val APP_SHELL = RAFT_APP_SHELL_PAGE
 }
 
 internal fun log(message: String) = println("RaftDesktop: $message")

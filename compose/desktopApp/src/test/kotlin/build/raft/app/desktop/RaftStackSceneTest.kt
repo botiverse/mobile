@@ -21,18 +21,21 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import build.raft.app.compat.pager.RaftPaneRole
+import build.raft.app.nav.RaftStackSceneStrategy
+import build.raft.app.nav.raftPaneRole
+import build.raft.app.nav.raftPaneRoleMetadata
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 
 /**
- * The Navigation 3 scene the desktop host draws its back stack with: pages under the top one stay
+ * The shared Navigation 3 stack scene the desktop host draws its back stack with: pages under the top one stay
  * composed (state kept, like an Activity under another) but are not shown; a popped page leaves
  * composition; pages see the host lifecycle (#3944: an unfocused window stays STARTED).
  */
 @OptIn(ExperimentalTestApi::class)
-class RaftDesktopStackSceneTest {
+class RaftStackSceneTest {
     private class Probe {
         val composed = mutableListOf<String>()
         val disposed = mutableListOf<String>()
@@ -60,7 +63,7 @@ class RaftDesktopStackSceneTest {
 
     @Composable
     private fun Display(backStack: MutableList<String>, probe: Probe) {
-        val strategy = remember { RaftDesktopStackSceneStrategy<String>() }
+        val strategy = remember { RaftStackSceneStrategy<String>() }
         NavDisplay(
             backStack = backStack,
             onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
@@ -138,7 +141,7 @@ class RaftDesktopStackSceneTest {
     }
 
     @Test fun `pane roles ride along as entry metadata`() {
-        fun role(page: String) = NavEntry(page, metadata = raftDesktopPaneRoleMetadata(page)) {}.raftDesktopPaneRole()
+        fun role(page: String) = NavEntry(page, metadata = raftPaneRoleMetadata(page)) {}.raftPaneRole()
         assertEquals(RaftPaneRole.Supporting, role("compose_channel_settings"))
         assertEquals(RaftPaneRole.Supporting, role("compose_thread_members"))
         assertEquals(RaftPaneRole.Window, role(RaftDesktopPages.APP_SHELL))
