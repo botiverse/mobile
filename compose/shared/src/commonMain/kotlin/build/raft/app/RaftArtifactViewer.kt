@@ -4,6 +4,7 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.ArtifactSummary
+import build.raft.app.data.ArtifactViewerPanel
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.isArtifactContentHost
@@ -217,14 +218,17 @@ internal fun raftArtifactViewerPagePath(target: ArtifactLinkTarget): String =
 
 /**
  * The embed contract's query (`embed=raft-settings-v1&shell=host`, slock `packages/web/src/embed.ts`,
- * honoured by the Artifact page since slock #11691): the App draws Back, the title and the version,
- * so the page draws no header of its own, only its toolbar (where it lives, its original message,
- * Comments, ⋯). The web reads it once, from the document's entry URL, and keeps it for the session.
+ * honoured by the Artifact page since slock #11691) with `chrome=none` (slock #12362): the App draws
+ * the one bar (Back, the title, where it lives, the version, who read it, Comments, ⋮), so the page
+ * draws only its content. The web reads it once, from the document's entry URL, and keeps it for
+ * the session.
  */
-internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell"
+internal val RaftArtifactViewerEmbedQuery: String = "embed=$SharedSettingsEmbedContract&shell=$SharedSettingsEmbedHostShell&chrome=none"
+
+private val RaftArtifactViewerEmbedKeys = setOf("embed", "shell", "chrome")
 
 /**
- * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced, every
+ * [url] with the embed contract in its query: any `embed`/`shell`/`chrome` already there is replaced, every
  * other parameter, the path (a pinned `/v/<n>` too) and the fragment stay as they are.
  */
 internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
@@ -234,7 +238,7 @@ internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
     val kept =
         beforeFragment.substringAfter('?', missingDelimiterValue = "")
             .split('&')
-            .filter { it.isNotEmpty() && it.substringBefore('=') != "embed" && it.substringBefore('=') != "shell" }
+            .filter { it.isNotEmpty() && it.substringBefore('=') !in RaftArtifactViewerEmbedKeys }
     return path + "?" + (kept + RaftArtifactViewerEmbedQuery).joinToString("&") + fragment
 }
 
@@ -289,6 +293,29 @@ internal fun raftArtifactViewerNavigateScript(webOrigin: String, sessionWrites: 
           var index = typeof previous.idx === 'number' ? previous.idx + 1 : 0;
           window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', $address);
           window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
+        }
+        """.trimIndent(),
+    )
+}
+
+/**
+ * Opens or closes the page's list without a reload (slock #12364): its address's fragment becomes
+ * `#panel=<panel>` (replaced, never a new history entry) and the page is told (`hashchange`, which it
+ * follows in the host shell). The page writes the list it shows back to the fragment, which the
+ * viewer reads from the address ([build.raft.app.data.artifactViewerPanelOf]). No bridge: only the
+ * address.
+ */
+internal fun raftArtifactViewerPanelScript(webOrigin: String, panel: ArtifactViewerPanel): String {
+    val hash = Json.encodeToString(String.serializer(), "#panel=" + panel.wire)
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        var hash = $hash;
+        if (window.location.hash !== hash) {
+          var url = new URL(window.location.href);
+          url.hash = hash;
+          window.history.replaceState(window.history.state, '', url.toString());
+          window.dispatchEvent(new HashChangeEvent('hashchange'));
         }
         """.trimIndent(),
     )

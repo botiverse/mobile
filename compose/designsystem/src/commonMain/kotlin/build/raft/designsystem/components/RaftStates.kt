@@ -523,7 +523,7 @@ val RaftTouchTargetSize: Dp = 44.dp
  * handles touches inside the box, the keyboard and accessibility. The space around the
  * control must be free: a neighbour hit first wins.
  */
-internal fun Modifier.raftTouchTarget(
+fun Modifier.raftTouchTarget(
     enabled: Boolean,
     interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
