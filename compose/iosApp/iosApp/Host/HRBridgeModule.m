@@ -1,5 +1,6 @@
 #import "HRBridgeModule.h"
 #import "RaftDiagnosticsPathAdmission.h"
+#import "RaftDiagnosticsCrashBuild.h"
 #import "RaftDiagnosticsEnvironmentRows.h"
 
 #import "RaftPageViewController.h"
@@ -1945,7 +1946,11 @@ static NSString *RaftDiagnosticsBuildExportText(NSDictionary *about, BOOL omitEm
         @{ @"key": @"socketStatusLabel", @"label": @"Socket" },
         @{ @"key": @"diagnosticsReason", @"label": @"Diagnostics reason" },
         @{ @"key": @"crashAtMillis", @"label": @"Crash at millis" },
-        @{ @"key": @"crashAt", @"label": @"Crash at" }
+        @{ @"key": @"crashAt", @"label": @"Crash at" },
+        @{ @"key": @"crashBuildLabel", @"label": @"Crash build" },
+        @{ @"key": @"uploadVersionLabel", @"label": @"Upload version" },
+        @{ @"key": @"uploadBuildLabel", @"label": @"Upload build" },
+        @{ @"key": @"uploadSourceLabel", @"label": @"Upload source" }
     ];
     // task #382 (product ruling 2026-09-17, option (a)): user-facing copy/share
     // surfaces omit empty rows entirely instead of printing "--" placeholders;
@@ -2178,8 +2183,53 @@ static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, 
 }
 
 
+// Outside the diagnostics directory: it is not a log, must survive "clear
+// diagnostics", and must never be admitted as an attachment.
+static NSString *RaftCrashBuildHistoryPath(void) {
+    NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *base = urls.firstObject ?: NSTemporaryDirectory();
+    return [base stringByAppendingPathComponent:@"raft-crash-build-history.json"];
+}
+
+static NSArray *RaftCrashBuildHistoryRead(void) {
+    NSData *data = [NSData dataWithContentsOfFile:RaftCrashBuildHistoryPath()];
+    id parsed = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    return [parsed isKindOfClass:NSArray.class] ? parsed : @[];
+}
+
+// Runs at launch, before any crash of this process can happen: a pending Hands
+// crash is uploaded by a later launch, which resolves the crashed build here.
+static void RaftIosRecordLaunchBuild(void) {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
+    NSDictionary *record = RaftCrashBuildRecord(
+        (long long)(NSDate.date.timeIntervalSince1970 * 1000.0),
+        RaftBridgeString(info[@"CFBundleShortVersionString"]),
+        RaftBridgeString(info[@"CFBundleVersion"]),
+        RaftBridgeGitCommit());
+    NSArray *history = RaftCrashBuildHistoryAppending(RaftCrashBuildHistoryRead(), record, RaftCrashBuildHistoryMaxRecords);
+    if (!history) {
+        return;
+    }
+    NSString *path = RaftCrashBuildHistoryPath();
+    [[NSFileManager defaultManager] createDirectoryAtPath:path.stringByDeletingLastPathComponent
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:history options:0 error:nil];
+    [data writeToFile:path atomically:YES];
+}
+
 static NSDictionary *RaftDiagnosticsCrashAbout(long long crashAtMillis) {
-    NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+    NSDictionary *crashBuild = RaftCrashBuildForCrashAt(RaftCrashBuildHistoryRead(), crashAtMillis);
+    NSMutableDictionary *about = [RaftCrashBuildApplyToAbout(RaftDiagnosticsCurrentEnvironmentAbout(), crashBuild) mutableCopy];
+    RaftDiagnosticsRecord(@"info", @"SlockDiagnostics",
+        [NSString stringWithFormat:@"hands_crash_build crashAtMillis=%lld resolved=%@ version=%@ build=%@ source=%@ uploadBuild=%@",
+            crashAtMillis,
+            crashBuild ? @"true" : @"false",
+            about[@"versionLabel"] ?: @"",
+            about[@"buildLabel"] ?: @"",
+            about[@"sourceLabel"] ?: @"",
+            about[@"uploadBuildLabel"] ?: @""]);
     [about addEntriesFromDictionary:@{
         @"diagnosticsReason" : @"crash",
         @"crashAtMillis" : @(crashAtMillis)
@@ -2254,6 +2304,7 @@ void RaftIosInstallHandsReporting(void) {
                                                           appSlug:@"raft-ios"
                                                           channel:handsChannel
                                                         clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
+        RaftIosRecordLaunchBuild();
         // Install fatal handlers before our diagnostic registration/logging.
         // The provider is evaluated on a later upload, not during registration.
         RaftIosRegisterHandsDiagnosticsProvider();

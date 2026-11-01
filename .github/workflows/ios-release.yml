@@ -397,6 +397,10 @@ jobs:
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_environment_rows.sh
 
+      - name: Test diagnostics crash build
+        shell: bash
+        run: compose/iosApp/scripts/test_diagnostics_crash_build.sh
+
       # Link the release framework once, as its own visible step (same pattern
       # as test.yml / visual-testing.yml), instead of inside xcodebuild's
       # CocoaPods "[CP-User] Build shared" phase, whose output Xcode buffers
