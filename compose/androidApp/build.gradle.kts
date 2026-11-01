@@ -785,6 +785,16 @@ kotlin {
     }
 }
 
+// CI full tier (test.yml with BUILD_CONNECTED_APKS) builds the connected-test APKs and runs the
+// :shared JVM suite in one Gradle call. D8's dex merges run as background work, so they could start
+// before the suite and overlap with its ~5 GB test JVM. That exhausted the 16 GB hosted runner
+// ("The runner has received a shutdown signal", PR #4081, run 41303254799), while runs that merged
+// after the suite passed. Pin that order; it adds no dependency, so builds without the suite are
+// unaffected.
+tasks.matching { it.name.startsWith("mergeLibDexConnectedTest") }.configureEach {
+    mustRunAfter(":shared:testDebugUnitTest")
+}
+
 // Keep the custom connectedTest target on the production dependency graph. Forcing newer
 // lifecycle/savedstate atomic groups here previously upgraded only its Compose runtime to 1.9.x,
 // while the app is compiled against the production Compose runtime.
