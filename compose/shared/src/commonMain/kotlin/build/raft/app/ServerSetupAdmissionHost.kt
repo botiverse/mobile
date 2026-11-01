@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
+import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.data.NetworkRaftServerSetupProjectionApi
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
@@ -20,7 +21,11 @@ import build.raft.app.data.StoredAuthSession
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 
@@ -90,6 +95,15 @@ internal fun serverSetupAdmissionResolved(state: ServerSetupAdmissionState?): Bo
     state is ServerSetupAdmissionState.Admitted ||
         state is ServerSetupAdmissionState.Blocked ||
         state is ServerSetupAdmissionState.Failed
+
+/**
+ * The top padding of the setup WebView. The web surface (`/s/:slug/onboarding`) draws edge to
+ * edge and pads itself with `env(safe-area-inset-*)`; WKWebView fills those (iOS: 0 here), but
+ * Android WebView reports no system-bar insets, so on Android ([hostPadsWebView]) the host keeps
+ * the page below the status bar. The bottom uses [raftArtifactViewerWebBottomInsetPx].
+ */
+internal fun serverSetupWebViewTopInset(statusBarTop: Dp, hostPadsWebView: Boolean): Dp =
+    if (hostPadsWebView) statusBarTop.coerceAtLeast(0.dp) else 0.dp
 
 /**
  * One setup check for [identity]. A server admitted earlier in this process sends no request (also
@@ -200,7 +214,22 @@ internal fun rememberServerSetupAdmissionHost(
                                 })();
                             """.trimIndent()
                         }
-                        Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+                        val density = LocalDensity.current
+                        val topInset = serverSetupWebViewTopInset(
+                            statusBarTop = raftTopSafeAreaPadding(),
+                            hostPadsWebView = raftWebViewNeedsHostBottomInsets,
+                        )
+                        val bottomInsetPx = raftArtifactViewerWebBottomInsetPx(
+                            imeBottomPx = raftImeBottomPx(density),
+                            navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
+                            hostPadsWebView = raftWebViewNeedsHostBottomInsets,
+                        )
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(RaftColor.SurfaceCream)
+                                .padding(top = topInset, bottom = with(density) { bottomInsetPx.toDp() }),
+                        ) {
                             SettingsWebViewContent(
                                 url = url,
                                 allowNavigation = false,
