@@ -63,11 +63,14 @@ class DuoSideColumnScreenshotTest {
     @Test
     @Config(sdk = [34], qualifiers = "w466dp-h678dp-xhdpi")
     fun outerScreenHome() =
-        capture("duo.outer.home", outerPosture, tabBarStandIn = OuterTabBarHeight) { HomeList(serverSwitcherInTopBar = false) }
+        capture("duo.outer.home", outerPosture, tabBarStandIn = OuterTabBarHeight) {
+            // A phone page clears its own top inset (no top bar above it).
+            HomeList(serverSwitcherInTopBar = false, topSafeArea = raftTopSafeAreaPadding())
+        }
 
     @Test
     @Config(sdk = [34], qualifiers = "w466dp-h678dp-xhdpi")
-    fun outerScreenChannel() = capture("duo.outer.channel", outerPosture.copy(nativeTabBarHeight = 0.dp), tabBarStandIn = 0.dp) { ChannelPage() }
+    fun outerScreenChannel() = capture("duo.outer.channel", outerPosture.copy(nativeTabBarHeight = 0.dp), tabBarStandIn = 0.dp) { ChannelPage(applyTopSafeArea = true) }
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
