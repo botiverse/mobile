@@ -114,6 +114,13 @@ internal fun RaftAdaptivePaneEvent.toRaftSideColumnPosture(): RaftSideColumnPost
 /** This window's side-column facts; [RaftSideColumnPosture.None] unless the page host provides them. */
 internal val LocalRaftSideColumnPosture = staticCompositionLocalOf { RaftSideColumnPosture.None }
 
+/**
+ * The frame's top inset while the system keeps a side column (`--raft-frame-inset-top`): with the
+ * camera in the column the window has no top band, and 12pt moves the first control of every
+ * column's header out of the screen's rounded corner (Kirby, #proj-raft-ui 2026-11-01).
+ */
+internal val RaftSideColumnTopInset: Dp = 12.dp
+
 /** What the page shows in the side column: [primary] (Back) and its [actions]. */
 @Immutable
 internal data class RaftSideColumnControls(
@@ -175,7 +182,7 @@ internal fun RaftSideColumnScaffold(
     val onRight = posture.stripEdge == RaftSideActionColumnSide.Right
     val left = if (column && !onRight) posture.stripWidth else 0.dp
     val right = if (column && onRight) posture.stripWidth else 0.dp
-    val frameInsets = if (column) RaftFrameInsets(left = left, right = right) else LocalRaftFrameInsets.current
+    val frameInsets = if (column) RaftFrameInsets(top = RaftSideColumnTopInset, left = left, right = right) else LocalRaftFrameInsets.current
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -188,7 +195,8 @@ internal fun RaftSideColumnScaffold(
         ) {
             // The column is a frame inset (page-structure "Frame insets"): menus keep 8dp from it and
             // tooltips flip away from it. Physical, never mirrored. The camera sits inside the column's
-            // own band, so the page has no top inset of its own.
+            // own band, so the window has no top band: the frame keeps [RaftSideColumnTopInset]
+            // (headers through raftTopSafeAreaPadding).
             CompositionLocalProvider(
                 LocalRaftFrameInsets provides frameInsets,
                 LocalRaftSideColumnPosture provides posture,
