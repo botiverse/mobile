@@ -175,6 +175,7 @@
     <string name="settings_account_delete_title">Delete your account?</string>
     <string name="settings_step_up_title">Verify it's you</string>
     <string name="settings_step_up_description">Changing how you sign in needs a fresh second step. It lasts 10 minutes.</string>
+    <string name="settings_step_up_generic_description">This needs a fresh second step. It lasts 10 minutes.</string>
     <string name="settings_step_up_code_label">Authenticator code</string>
     <string name="settings_step_up_backup_code_label">Backup code</string>
     <string name="settings_step_up_backup_code_hint">Each code works once. Capitals and the hyphen are optional.</string>

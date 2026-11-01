@@ -49,6 +49,8 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
 internal fun SecondFactorStepUpDialog(
     state: SecondFactorStepUpDialogState,
     onIntent: (SecondFactorStepUpIntent) -> Unit,
+    /** What the step-up is for (web SecondFactorStepUpHost `reason`); changing how you sign in by default. */
+    description: String = stringResource(Res.string.settings_step_up_description),
     formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
 ) {
     val dismiss = { if (!state.submitting) onIntent(SecondFactorStepUpIntent.Cancel) }
@@ -58,7 +60,7 @@ internal fun SecondFactorStepUpDialog(
         title = stringResource(Res.string.settings_step_up_title),
         modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_DIALOG_TAG),
         size = RaftDialogSize.Sm,
-        description = stringResource(Res.string.settings_step_up_description),
+        description = description,
         dismissOnClickOutside = false,
         closeLabel = stringResource(Res.string.common_close),
         footer = {

@@ -175,6 +175,7 @@
     <string name="settings_account_delete_title">アカウントを削除しますか？</string>
     <string name="settings_step_up_title">本人確認</string>
     <string name="settings_step_up_description">ログイン方法を変更するには、もう一度 2 段階認証が必要です。10 分間有効です。</string>
+    <string name="settings_step_up_generic_description">この操作には、もう一度 2 段階認証が必要です。10 分間有効です。</string>
     <string name="settings_step_up_code_label">認証アプリのコード</string>
     <string name="settings_step_up_backup_code_label">バックアップコード</string>
     <string name="settings_step_up_backup_code_hint">各コードは 1 回だけ使えます。大文字とハイフンは省略できます。</string>

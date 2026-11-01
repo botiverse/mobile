@@ -13,6 +13,11 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SecondFactorStepUpAnswer
+import build.raft.app.data.SecondFactorStepUpChallenge
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpIntent
+import build.raft.app.data.SecondFactorStepUpResult
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.actionCardFormIssue
 import build.raft.app.data.parseActionCardSpec
@@ -61,7 +66,7 @@ class ThreadActionCardSpecStoreTest {
     private fun card(type: String = "channel:create", state: String = "prepared", version: Int = 3, spec: String? = null) =
         ThreadActionCard(type = type, state = state, confirmationVersion = version, presentationCardJson = spec)
 
-    private class Harness(scope: TestScope) {
+    private class Harness(scope: TestScope, stepUp: SecondFactorStepUpCoordinator? = null) {
         val calls = mutableListOf<Triple<String, Int?, ExecuteActionFormBody?>>()
         val answers = ArrayDeque<CompletableDeferred<DataResult<ActionCardExecuteOutcome>>>()
         val applied = mutableListOf<Pair<String, ThreadActionCard>>()
@@ -76,6 +81,7 @@ class ThreadActionCardSpecStoreTest {
                 applyCard = { messageId, card -> applied += messageId to card },
                 loadWebUrl = { "https://staging.raft.example" },
                 openInBrowser = { url -> opened += url },
+                stepUp = stepUp,
             )
 
         fun answer(result: DataResult<ActionCardExecuteOutcome>) = CompletableDeferred<DataResult<ActionCardExecuteOutcome>>().also {
@@ -244,6 +250,54 @@ class ThreadActionCardSpecStoreTest {
         runCurrent()
         assertEquals(listOf("m-1" to executed), h.applied)
         assertNull(h.store.state.value.busyElement("m-1", typedPending = false))
+    }
+
+    /**
+     * An approver-class card (Approve Login as a spec card) refused for a fresh second step: the
+     * refusal body of botiverse/slock staging 0dd599ab68 (routes/secondFactor.ts
+     * `refuseUnverifiedApprover`; the card gate itself is pending contract verification).
+     */
+    @Test
+    fun aRefusedExecuteStepsUpAndRunsOnceMoreOrStaysQuietWhenClosed() = runTest {
+        val refusal =
+            DataResult.Error(
+                ScreenError(
+                    code = "action_execute_contract_mismatch",
+                    secondFactorStepUp = SecondFactorStepUpChallenge(methods = listOf("totp", "backup_code")),
+                )
+            )
+        val answers = mutableListOf<SecondFactorStepUpAnswer>()
+        val stepUp = SecondFactorStepUpCoordinator(stepUp = { answers += it; SecondFactorStepUpResult.Verified() })
+        val h = Harness(this, stepUp)
+        val approve = card(type = "integration:approve_agent_login")
+        val executed = approve.copy(state = "executed")
+
+        // Plain execute: verify, then exactly one more execute, applied.
+        h.answer(refusal)
+        h.answer(DataResult.Content(ActionCardExecuteOutcome.Executed(executed)))
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "go", approve, spec("go" to execute)))
+        runCurrent()
+        assertNotNull(stepUp.state.value, "the refusal opens Verify it's you")
+        stepUp.accept(SecondFactorStepUpIntent.InputChanged("123456"))
+        stepUp.accept(SecondFactorStepUpIntent.Submit)
+        runCurrent()
+        assertEquals(2, h.calls.size)
+        assertEquals(listOf("m-1" to executed), h.applied)
+        assertEquals(listOf<SecondFactorStepUpAnswer>(SecondFactorStepUpAnswer.AuthenticatorCode("123456")), answers)
+
+        // Behind a confirm, closed: nothing more runs, the sheet stays open with no error.
+        h.answer(refusal)
+        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-2", "sure", approve, spec("sure" to confirmed)))
+        h.store.dispatch(ThreadActionCardSpecIntent.ConfirmExecute)
+        runCurrent()
+        stepUp.accept(SecondFactorStepUpIntent.Cancel)
+        runCurrent()
+        assertEquals(3, h.calls.size)
+        val confirm = assertNotNull(h.store.state.value.confirm)
+        assertEquals(false, confirm.submitting)
+        assertNull(confirm.error)
+        assertTrue(h.store.state.value.errors.isEmpty())
+        assertNull(stepUp.state.value)
     }
 
     @Test

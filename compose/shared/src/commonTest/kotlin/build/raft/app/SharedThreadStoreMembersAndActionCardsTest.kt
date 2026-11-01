@@ -1300,9 +1300,12 @@ class SharedThreadStoreMembersAndActionCardsTest {
                       }
                     }
                     """.trimIndent()
-            )
+            ),
+        /** Answers for the first executes, in order; [executeResponse] after them. */
+        firstExecuteResponses: List<HomeNetworkResponse> = emptyList(),
     ) : RaftIntegrationsActionsPushApi {
         val calls: MutableList<String> = mutableListOf()
+        private val queuedExecuteResponses = ArrayDeque(firstExecuteResponses)
 
         override suspend fun integrationsOverview(): HomeNetworkResponse = error("unused")
         override suspend fun integrationClients(): HomeNetworkResponse = error("unused")
@@ -1313,7 +1316,7 @@ class SharedThreadStoreMembersAndActionCardsTest {
         override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse {
             calls += "POST actions/${messageId.value}/execute body=$body"
-            return executeResponse
+            return queuedExecuteResponses.removeFirstOrNull() ?: executeResponse
         }
         override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
 

@@ -181,6 +181,10 @@ import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpIntent
+import build.raft.app.data.SecondFactorStepUpOutcome
+import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
@@ -8837,6 +8841,15 @@ private fun SharedThreadRouteContentContent(
             false
         }
 
+    // A card execute refused for a fresh second step (two-step verification on; approver-class
+    // cards: Approve Login, Install App, and their spec-card forms): "Verify it's you", then the
+    // card runs once more. One dialog for the typed commit, the install confirmation and spec cards.
+    val actionCardStepUp =
+        remember(sharedStores, storeScope, threadInstanceKey) {
+            val repository = SecondFactorStepUpRepository(sharedStores.networkClient(storeScope))
+            SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
+        }
+    val actionCardStepUpState by actionCardStepUp.state.collectAsState()
     // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
     val installAppDialogStore =
         remember(threadInstanceKey) {
@@ -8847,6 +8860,7 @@ private fun SharedThreadRouteContentContent(
                 // The card's done line names what was installed.
                 toastInstalled = { bridge.toast(genericActionCardSuccessLabel) },
                 routeAuthRequired = { result -> routeAuthRequired(result) },
+                stepUp = actionCardStepUp,
             )
         }
     val installAppDialogState by installAppDialogStore.state.collectAsState()
@@ -8860,6 +8874,7 @@ private fun SharedThreadRouteContentContent(
             ThreadActionCardSpecStore(
                 scope = coroutineScope,
                 execute = { messageId, card, form -> dataSource.executeActionCardSpec(messageId, card, form) },
+                stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
                 loadWebUrl = {
@@ -13001,7 +13016,10 @@ private fun SharedThreadRouteContentContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
+                            val outcome = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp)
+                            // "Verify it's you" closed: the card stays as it was, nothing is shown.
+                            val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
+                            when (result) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(itemId, result.data)
@@ -14444,6 +14462,17 @@ private fun SharedThreadRouteContentContent(
                 onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
                 candidates = candidates,
                 formError = threadActionCardSpecErrorText(formState.error),
+            )
+        }
+        // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.
+        actionCardStepUpState?.let { dialogState ->
+            SecondFactorStepUpDialog(
+                state = dialogState,
+                onIntent = { intent ->
+                    coroutineScope.launch { actionCardStepUp.accept(intent) }
+                    if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
+                },
+                description = stringResource(Res.string.settings_step_up_generic_description),
             )
         }
         createAgentDialogState?.let { dialogState ->

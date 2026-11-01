@@ -67,6 +67,8 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.SecondFactorStepUpCoordinator
+import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedForegroundLoadGate
@@ -3855,6 +3857,20 @@ internal class SharedThreadDataSource(
                 DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
         }
     }
+
+    /**
+     * [commitThreadActionCard] behind step-up: an Approve Login card's execute refused with 403
+     * `second_factor_step_up_required` opens [stepUp]'s "Verify it's you" dialog and, once it
+     * passed, runs once more. [SecondFactorStepUpOutcome.Cancelled] when the dialog was closed (the
+     * caller shows nothing). Any other card's commit is the same as [commitThreadActionCard].
+     */
+    suspend fun commitThreadActionCard(
+        payload: RaftThreadScreenPayload,
+        messageId: String,
+        card: ThreadActionCard,
+        stepUp: SecondFactorStepUpCoordinator,
+    ): SecondFactorStepUpOutcome<ThreadActionCard> =
+        stepUp.run { commitThreadActionCard(payload, messageId, card) }
 
     /**
      * The Install of an `integration:install_marketplace_app` card's confirmation (web
