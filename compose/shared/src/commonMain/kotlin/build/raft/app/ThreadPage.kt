@@ -38,8 +38,7 @@ import build.raft.designsystem.components.RaftMessageListJumpPill
 import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
@@ -476,7 +475,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -18329,9 +18327,8 @@ private fun conversationSideCardToggleLabel(card: ConversationSideCard, open: Bo
     )
 
 /**
- * A header toggle (raft-ui `PanelToggleAction`): pressed while its card is open, named "Close
- * Tasks" then. The one place that draws it: switch to the design system's pressed icon button
- * (yellow `selected` sticker, 1.5dp `sticker-ink` edge; sindresorhus, pending) when it lands.
+ * A header toggle (raft-ui `PanelToggleAction`): the yellow sticker while its card is open, named
+ * "Close Tasks" then; the toggle state is announced by [RaftIconToggleButton].
  */
 @Composable
 private fun ConversationHeaderToggle(
@@ -18340,12 +18337,10 @@ private fun ConversationHeaderToggle(
     label: String,
     onClick: () -> Unit,
 ) {
-    RaftIconButton(
-        onClick = onClick,
+    RaftIconToggleButton(
+        checked = selected,
+        onCheckedChange = { onClick() },
         tooltip = label,
-        modifier = Modifier.semantics { this.selected = selected },
-        variant = RaftButtonVariant.Ghost,
-        size = RaftIconButtonSize.Lg,
     ) {
         RaftContentLucideIcon(icon, size = ThreadHeaderActionIconSize)
     }
