@@ -326,7 +326,7 @@ private fun RaftArtifactViewerScreen() {
         }
     }
 
-    // The one bar's counts, versions and following (`GET /api/artifacts/:id` and `/presence`): read
+    // The one bar's counts, versions and following (`GET /api/artifacts/:id/details` and `/presence`): read
     // on open, when the latest is read again and when the comments list closes; never polled. A
     // failed read only hides what it would show.
     val coroutineScope = rememberCoroutineScope()

@@ -8,7 +8,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 /**
- * The viewer bar's routes with the payloads the server writes (botiverse/slock staging a2654a29f9,
+ * The viewer bar's routes with the payloads the server writes (botiverse/slock staging a2654a29f9;
+ * the details route, fc1a4089 #12366, answers the viewer's `ArtifactViewerData` without `frame`,
  * `packages/server/src/apps/artifacts/web.api.test.ts`): "viewer: the current version as
  * ArtifactViewerData" (its deepEqual, ids and names filled in), "presence: … who read the current
  * version, and who only an older one" (`{ viewing, readCurrentVersion: [{ actor, at }], readOtherVersion:
@@ -167,7 +168,7 @@ class ArtifactViewerApiTest {
         val path = "artifacts/pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
         assertEquals(
             listOf(
-                Recorded(DataRequestPriority.Visible, "GET", path, listOf("version" to "1")),
+                Recorded(DataRequestPriority.Visible, "GET", "$path/details", listOf("version" to "1")),
                 Recorded(DataRequestPriority.Visible, "GET", "$path/presence", emptyList()),
                 Recorded(DataRequestPriority.Foreground, "PUT", "$path/subscription", emptyList()),
                 Recorded(DataRequestPriority.Foreground, "DELETE", "$path/subscription", emptyList()),

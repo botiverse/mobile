@@ -11,12 +11,13 @@ import kotlinx.serialization.json.Json
  * `mount.ts`, `webViewer.ts`, `webComments.ts`). Every route reads the reader's server
  * (X-Server-Id), as the viewer's summaries do.
  *
- * - `GET /api/artifacts/:id[?version=<n>]` → `ArtifactViewerData`: `card` (`ArtifactCard`, the
- *   summaries' card: `commentCount`, `home`, `latestVersion`), `versions` (newest first,
- *   `ArtifactVersionSummary` `{ number, publisher, createdAt, note, changedPaths }`) and
- *   `following`. Opening the current version moves the reader's read position, as the page does
- *   (`shownWithVersions`); a pinned `version` does not. Signs a frame ticket (not read here), so it
- *   is in the frame route's budget (120 a minute per user). 404 NOT_VISIBLE for anything unseen.
+ * - `GET /api/artifacts/:id/details[?version=<n>]` (slock staging fc1a4089, #12366,
+ *   `artifactWebPaths.details`, `webViewer.ts` `details`) → `ArtifactViewerData` without `frame`:
+ *   `card` (`ArtifactCard`, the summaries' card: `commentCount`, `home`, `latestVersion`),
+ *   `versions` (newest first, `ArtifactVersionSummary` `{ number, publisher, createdAt, note,
+ *   changedPaths }`), `viewer` and `following`. Signs no ticket and moves no read position (the
+ *   page opening does), so it is outside the frame budget; `?version=` and the refusals as the
+ *   viewer route's (404 NOT_VISIBLE for anything unseen).
  * - `GET /api/artifacts/:id/presence` → `ArtifactPresence` `{ viewing, readCurrentVersion,
  *   readOtherVersion }` (the reader left out; each list at most 20, `PRESENCE_READERS_SHOWN`;
  *   `viewing` always empty until the socket exists). The bar counts it as the web's summary line
@@ -187,7 +188,7 @@ fun parseArtifactSubscription(bodyText: String?): Boolean? =
 
 /** The native bar's reads and its one write, for one Server. Answers [DataResult]; nothing raw leaks upward. */
 interface ArtifactViewerRepository {
-    /** `GET /api/artifacts/:id[?version=<n>]` ([version]: the pinned version shown, null for the latest). */
+    /** `GET /api/artifacts/:id/details[?version=<n>]` ([version]: the pinned version shown, null for the latest). */
     suspend fun details(serverId: String, artifactId: String, version: Int?): DataResult<ArtifactViewerDetails>
 
     /** `GET /api/artifacts/:id/presence`: who is here and who read it. */
@@ -207,7 +208,7 @@ internal class NetworkArtifactViewerRepository(private val networkClient: RaftNe
             networkClient.request(
                 // The on-screen bar's counts, beside the page that is already showing.
                 priority = DataRequestPriority.Visible,
-                path = artifactViewerPath(artifactId),
+                path = artifactViewerPath(artifactId) + "/details",
                 query = version?.takeIf { it > 0 }?.let { listOf("version" to it.toString()) }.orEmpty(),
                 serverIdOverride = ServerId(serverId),
             )
