@@ -2254,9 +2254,11 @@ class SharedSettingsStore(
                 }
             }
             is SharedSettingsIntent.InstallMarketplaceApp -> {
+                // The server asks the installer's second step (refuseUnverifiedApprover); uninstall is not gated.
                 runAction(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId) {
-                    dataSource.installMarketplaceApp(intent.clientRecordId)
-                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId)
+                    withSecondFactorStepUp(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId) {
+                        dataSource.installMarketplaceApp(intent.clientRecordId)
+                    }?.applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId)
                 }
             }
             is SharedSettingsIntent.UninstallMarketplaceApp -> {

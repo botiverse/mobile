@@ -35,6 +35,17 @@ class SecondFactorStepUpTest {
     private val providers = """{"providers":[{"id":"google","label":"Google","enabled":true}]}"""
     private val identities = """{"identities":[],"passwordConfigured":true}"""
 
+    /**
+     * POST /api/integrations/marketplace/:clientId/install refused (pending server PR: the install
+     * gate is not on staging yet). Pinned to the same `refuseUnverifiedApprover` refusal as
+     * POST /api/integrations/requests/:requestId/approve at botiverse/slock 0dd599ab
+     * (routes/integrations.ts, routes/secondFactor.ts).
+     */
+    private val installRefusal =
+        """{"error":"Confirm it's you with your second step before approving this app's access.","code":"second_factor_step_up_required","methods":["totp","backup_code"]}"""
+    private val installedClient =
+        """{"id":"market-1","serverId":"server-1","clientId":"market-1","name":"Installed","appType":"marketplace","publishStatus":"approved","category":"productivity"}"""
+
     @Test
     fun parsesTheStepUpRefusalOnlyFromA403WithItsCode() {
         val challenge = assertNotNull(parseSharedSecondFactorStepUpRequired(403, passwordRefusal))
@@ -370,6 +381,89 @@ class SecondFactorStepUpTest {
         assertNull(store.state.value.actionState?.errorCode)
     }
 
+    @Test
+    fun installingAMarketplaceAppStepsUpAndInstallsItOnce() = runTest {
+        val network =
+            ScriptedAgentControlsNetworkClient().apply {
+                respond("POST", MARKETPLACE_INSTALL_PATH, 403, installRefusal)
+                respond("POST", MARKETPLACE_INSTALL_PATH, 200, installedClient)
+                respond("POST", "auth/second-factor/step-up", 200, """{"verified":true}""")
+                respond("GET", "integrations/clients", 200, "[]")
+                respond("GET", "integrations/built-in", 200, "[]")
+                respond("GET", "integrations/marketplace", 200, "[]")
+            }
+        val store = settingsStore(network)
+
+        val install = launch { store.accept(SharedSettingsIntent.InstallMarketplaceApp("market-1")) }
+        runCurrent()
+        val dialog = assertNotNull(store.state.value.secondFactorStepUp, "the install opens Verify it's you")
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.methods)
+        assertEquals(true, store.state.value.actionState?.inProgress)
+
+        store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.InputChanged("123456")))
+        store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.Submit))
+        install.join()
+
+        assertNull(store.state.value.secondFactorStepUp)
+        assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps)
+        val action = assertNotNull(store.state.value.actionState)
+        assertEquals(Triple(CONNECTED_APPS_ACTION_INSTALL, "market-1", false), Triple(action.action, action.itemId, action.inProgress))
+        assertNull(action.errorCode)
+        assertEquals(
+            listOf("POST $MARKETPLACE_INSTALL_PATH", "POST auth/second-factor/step-up", "POST $MARKETPLACE_INSTALL_PATH"),
+            network.requests.map { "${it.method} ${it.path}" }.filter { !it.startsWith("GET") }
+        )
+    }
+
+    @Test
+    fun cancellingAMarketplaceInstallStepUpDoesNotRetryOrShowAnError() = runTest {
+        val network =
+            ScriptedAgentControlsNetworkClient().apply {
+                respond("POST", MARKETPLACE_INSTALL_PATH, 403, installRefusal)
+            }
+        val store = settingsStore(network)
+
+        launch { store.accept(SharedSettingsIntent.InstallMarketplaceApp("market-1")) }
+        runCurrent()
+        assertNotNull(store.state.value.secondFactorStepUp)
+
+        store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.Cancel))
+        runCurrent()
+
+        assertNull(store.state.value.secondFactorStepUp)
+        assertEquals(
+            SharedSettingsActionState(CONNECTED_APPS_ACTION_INSTALL, "market-1", inProgress = false),
+            store.state.value.actionState
+        )
+        assertNull(store.state.value.routeErrorCode)
+        assertEquals(listOf("POST $MARKETPLACE_INSTALL_PATH"), network.requests.map { "${it.method} ${it.path}" })
+    }
+
+    @Test
+    fun marketplaceInstallErrorsOtherThanStepUpAreUnchanged() = runTest {
+        // status, body -> the action's error code, as before the step-up.
+        val cases =
+            listOf(
+                Triple(403, """{"error":"Only server owners and admins can manage integrations"}""", "server_forbidden"),
+                Triple(500, """{"error":"Failed to install marketplace app"}""", "server_unavailable"),
+            )
+        for ((status, body, expectedCode) in cases) {
+            val network =
+                ScriptedAgentControlsNetworkClient().apply {
+                    respond("POST", MARKETPLACE_INSTALL_PATH, status, body)
+                }
+            val store = settingsStore(network)
+
+            store.accept(SharedSettingsIntent.InstallMarketplaceApp("market-1"))
+            runCurrent()
+
+            assertNull(store.state.value.secondFactorStepUp, "HTTP $status opens no dialog")
+            val action = assertNotNull(store.state.value.actionState, "HTTP $status")
+            assertEquals(expectedCode to false, action.errorCode to action.inProgress, "HTTP $status")
+            assertEquals(listOf("POST $MARKETPLACE_INSTALL_PATH"), network.requests.map { "${it.method} ${it.path}" }, "HTTP $status")
+        }
+    }
+
     private fun TestScope.settingsStore(network: RaftNetworkClient): SharedSettingsStore {
         val sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession())
         return SharedSettingsStore(
@@ -416,3 +510,5 @@ class SecondFactorStepUpTest {
         }
     }
 }
+
+private const val MARKETPLACE_INSTALL_PATH = "integrations/marketplace/market-1/install"
