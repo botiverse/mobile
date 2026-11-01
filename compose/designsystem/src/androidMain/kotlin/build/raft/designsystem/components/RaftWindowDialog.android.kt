@@ -65,6 +65,9 @@ internal actual fun RaftPrepareDialogWindow(isDark: Boolean) {
     // In composition, ahead of the Dialog: its window wraps this context's theme
     // (ContextThemeWrapper) and reads windowLightStatusBar / windowLightNavigationBar into the
     // window's appearance when it is created, before it is shown. Re-applying is idempotent.
+    // This mutates the theme itself (usually the Activity's), not a copy: the RaftDialogBars_*
+    // styles may only hold attributes read when a window is created, never anything the host's
+    // own views read later.
     context.theme.applyStyle(appearance.raftDialogBarsStyle(), true)
 }
 
