@@ -3,8 +3,10 @@ package build.raft.app.data
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 // No kotlinx-coroutines-test; all suspend fakes complete inline and time is injected.
 class AppLoginCoordinatorTest {
@@ -123,5 +125,27 @@ class AppLoginCoordinatorTest {
         assertEquals("login_error", coordinator.complete(uri, "request-1", "code", ""))
         assertEquals("ignored", coordinator.complete(uri, "request-1", "code", ""))
         assertEquals(1, runtime.exchanges)
+    }
+    @Test fun waitingForIsOnlyThePendingUnexpiredRequest() = runBlocking {
+        val store = InMemoryRaftKeyValueStore()
+        val runtime = Runtime()
+        var now = 1000L
+        val coordinator = AppLoginCoordinator(store, { runtime }, { now })
+        assertFalse(coordinator.isWaitingFor("request-1"))
+        coordinator.start("generation", verifier, challenge, uri)
+        assertTrue(coordinator.isWaitingFor("request-1"))
+        assertFalse(coordinator.isWaitingFor("desktop-request"))
+        assertFalse(coordinator.isWaitingFor(""))
+        // Read-only, and survives a process restart (the iOS sheet is replaced, not the request).
+        assertTrue(AppLoginCoordinator(store, { runtime }, { now }).isWaitingFor("request-1"))
+        now = 1000L + 600_000L
+        assertFalse(coordinator.isWaitingFor("request-1"))
+        now = 2000L
+        // A new attempt replaces it; a completed one is no longer waited for.
+        coordinator.start("generation-2", verifier, challenge, uri)
+        assertFalse(coordinator.isWaitingFor("request-1"))
+        assertTrue(coordinator.isWaitingFor("request-2"))
+        assertEquals("app_shell", coordinator.complete(uri, "request-2", "code", ""))
+        assertFalse(coordinator.isWaitingFor("request-2"))
     }
 }

@@ -54,6 +54,18 @@ internal class AppLoginCoordinator(
         url
     }
 
+    /**
+     * Whether [requestId] is the browser sign-in this app is waiting for: the one on file, not
+     * expired. Read-only, so a host can ask before reopening a link that names a request.
+     */
+    fun isWaitingFor(requestId: String): Boolean {
+        val pending = pending() ?: return false
+        return requestId.isNotBlank() && pending.requestId == requestId && isFresh(pending)
+    }
+
+    private fun ageMs(pending: AppLoginPending): Long = now() - pending.startedAt
+    private fun isFresh(pending: AppLoginPending): Boolean = ageMs(pending) in -60_000L until 600_000L
+
     suspend fun cancel(generation: String) = mutex.withLock {
         if (pending()?.generation == generation) clear()
     }
@@ -70,13 +82,12 @@ internal class AppLoginCoordinator(
         // or the login page sits there silently.
         if (pending.requestId != requestId) return@withLock exit(APP_LOGIN_STALE_CALLBACK, "request_id_mismatch")
         val active = runtime() ?: return@withLock exit("retry", "runtime_unavailable")
-        val age = now() - pending.startedAt
         val refusal =
             when {
                 // The identity is key + API/socket/web addresses (no credentials): log both sides.
                 active.environment != pending.environment ->
                     "environment_changed started=${pending.environment} callback=${active.environment}"
-                age !in -60_000L until 600_000L -> "expired ageMs=$age"
+                !isFresh(pending) -> "expired ageMs=${ageMs(pending)}"
                 !pkce.matches(pending.verifier) -> "verifier_invalid"
                 else -> null
             }
@@ -152,6 +163,7 @@ internal object RaftAppLogin {
     suspend fun start(generation: String, verifier: String, challenge: String, returnUri: String) =
         coordinator.start(generation, verifier, challenge, returnUri)
     suspend fun cancel(generation: String) = coordinator.cancel(generation)
+    fun isWaitingFor(requestId: String) = coordinator.isWaitingFor(requestId)
     suspend fun complete(returnUri: String, requestId: String, code: String, error: String) = coordinator.complete(returnUri, requestId, code, error)
 }
 
