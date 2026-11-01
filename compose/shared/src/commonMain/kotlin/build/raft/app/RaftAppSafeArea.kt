@@ -223,8 +223,20 @@ private fun raftHostWindowIdEnsuringObserver(): String {
     return windowId
 }
 
+/**
+ * The top inset a page header keeps: the host's top safe area, and at least
+ * [RaftSideColumnTopInset] while a system side column replaces the top band (iPhone Duo held
+ * sideways: the camera sits in the column, so the safe area has no top and a header would start
+ * on the rounded corner; raft-design page-structure, Kirby 2026-11-01).
+ */
 @Composable
 internal fun raftTopSafeAreaPadding(): Dp {
+    val host = raftHostTopSafeAreaPadding()
+    return if (LocalRaftSideColumnPosture.current.sideColumn) maxOf(host, RaftSideColumnTopInset) else host
+}
+
+@Composable
+private fun raftHostTopSafeAreaPadding(): Dp {
     val windowId = raftHostWindowIdEnsuringObserver()
     val pageData = (LocalActivity.current.getPager() as Pager).pageData
     val params = pageData.params

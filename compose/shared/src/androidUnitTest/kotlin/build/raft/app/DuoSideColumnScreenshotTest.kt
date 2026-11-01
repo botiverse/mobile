@@ -63,11 +63,14 @@ class DuoSideColumnScreenshotTest {
     @Test
     @Config(sdk = [34], qualifiers = "w466dp-h678dp-xhdpi")
     fun outerScreenHome() =
-        capture("duo.outer.home", outerPosture, tabBarStandIn = OuterTabBarHeight) { HomeList(serverSwitcherInTopBar = false) }
+        capture("duo.outer.home", outerPosture, tabBarStandIn = OuterTabBarHeight) {
+            // A phone page clears its own top inset (no top bar above it).
+            HomeList(serverSwitcherInTopBar = false, topSafeArea = raftTopSafeAreaPadding())
+        }
 
     @Test
     @Config(sdk = [34], qualifiers = "w466dp-h678dp-xhdpi")
-    fun outerScreenChannel() = capture("duo.outer.channel", outerPosture.copy(nativeTabBarHeight = 0.dp), tabBarStandIn = 0.dp) { ChannelPage() }
+    fun outerScreenChannel() = capture("duo.outer.channel", outerPosture.copy(nativeTabBarHeight = 0.dp), tabBarStandIn = 0.dp) { ChannelPage(applyTopSafeArea = true) }
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
@@ -179,7 +182,7 @@ private val duoServers =
     )
 
 @Composable
-private fun HomeList(serverSwitcherInTopBar: Boolean) {
+private fun HomeList(serverSwitcherInTopBar: Boolean, topSafeArea: Dp = 0.dp) {
     RaftStructuralHomeShell(
         currentServerName = duoServers.first().name,
         currentServerId = duoServers.first().id,
@@ -199,7 +202,7 @@ private fun HomeList(serverSwitcherInTopBar: Boolean) {
         notifications = listOf(RaftHomeNotificationItem(id = "n-offline", title = "Computer offline")),
         serverSwitcherInTopBar = serverSwitcherInTopBar,
         applyTopSafeArea = false,
-        topSafeAreaOverride = 0.dp,
+        topSafeAreaOverride = topSafeArea,
         showBottomBar = false,
         searchAndActivityOnShellNav = true,
         bottomContentPadding = 0.dp,
@@ -238,7 +241,7 @@ private fun duoMessage(id: String, seq: Long, author: String, body: String) =
     )
 
 @Composable
-private fun ChannelPage(showBack: Boolean = true) {
+private fun ChannelPage(showBack: Boolean = true, applyTopSafeArea: Boolean = false) {
     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         ThreadPageHeader(
             payload = channelPayload,
@@ -249,7 +252,7 @@ private fun ChannelPage(showBack: Boolean = true) {
                     surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "channel",
                 ),
-            applyTopSafeArea = false,
+            applyTopSafeArea = applyTopSafeArea,
             showBack = showBack,
             onBack = {},
             onOpenInChannel = {},
@@ -300,6 +303,9 @@ private fun WideShell(
 ) {
     val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive = true)
     val topBar = remember { RaftAppShellTopBarState().apply { drawn = !railWithoutTopBar } }
+    // As the shell: the top bar clears the top inset; without it every column does (12pt while
+    // the system column holds the status bar, raft-design #938).
+    val columnTop = if (railWithoutTopBar) raftTopSafeAreaPadding() else 0.dp
     val serverPanel = remember { RaftMobileNavServerPopoverState().apply { if (serverPanelOpen) show() } }
     // Home closes the shell's bell when it first shows: open it a frame later, as a tap would.
     if (bellOpen) {
@@ -340,6 +346,7 @@ private fun WideShell(
                         },
                     onSelect = {},
                     modifier = Modifier.fillMaxHeight(),
+                    topSafeArea = columnTop,
                     bottomItems = listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
                     header =
                         if (railWithoutTopBar) {
@@ -349,8 +356,8 @@ private fun WideShell(
                         },
                     footerTools = if (railWithoutTopBar) ({ RaftAppRailNotificationBell(topBar, onToggle = {}) }) else null,
                 )
-                Box(Modifier.width(listWidth).fillMaxHeight()) { HomeList(serverSwitcherInTopBar = true) }
-                Box(Modifier.weight(1f).fillMaxHeight()) { if (channelOpen) ChannelPage(showBack = false) }
+                Box(Modifier.width(listWidth).fillMaxHeight()) { HomeList(serverSwitcherInTopBar = true, topSafeArea = columnTop) }
+                Box(Modifier.weight(1f).fillMaxHeight()) { if (channelOpen) ChannelPage(showBack = false, applyTopSafeArea = railWithoutTopBar) }
             }
           }
             RaftAppTopBarNotificationOverlay(topBar, topInset = 0.dp, besideRail = true)
