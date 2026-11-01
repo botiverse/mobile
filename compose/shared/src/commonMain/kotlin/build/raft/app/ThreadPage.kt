@@ -28638,33 +28638,12 @@ private fun ThreadMessageSelectionToggle(
     modifier: Modifier = Modifier
 ) {
     // web MessageMultiSelectCheckbox: a 20dp raft-ui Checkbox, `self-start mt-1.5`.
-    Button(
-        onClick = onClick,
-        pressFeedback = false,
-        modifier =
-            modifier
-                .size(20.dp)
-                .background(Color.Transparent)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(20.dp)
-                    // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
-                    // foreground and an inverse check.
-                    .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
-                    .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (checked) {
-                RaftLucideIcon(
-                    RaftLucideIconName.Check,
-                    modifier = Modifier.size(14.dp),
-                    color = raftArgbHex(RaftColor.ForegroundInverse)
-                )
-            }
-        }
-    }
+    build.raft.designsystem.components.RaftCheckbox(
+        checked = checked,
+        onCheckedChange = { onClick() },
+        modifier = modifier,
+        enabled = true
+    )
 }
 
 @Composable
@@ -28755,10 +28734,9 @@ private fun ThreadMessageLocalSendStatus(
             )
         }
         if (isFailed && retryEnabled) {
-            Button(
+            RaftPanelAction(
                 onClick = { if (message.canRetryLocalSend()) onRetry() },
                 enabled = message.canRetryLocalSend(),
-                pressFeedback = message.canRetryLocalSend(),
                 modifier =
                     Modifier.heightIn(min = 28.dp)
                         .background(LocalThreadMessageGeometryTints.current?.retryTint ?: Color.Transparent)
@@ -29472,7 +29450,7 @@ private fun ThreadReactionChip(
 ) {
     // raft-ui MessageReactionChip (gap 6): the design-system chip draws; the gestures stay here.
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
-    val chipContent: @Composable () -> Unit = {
+    val chipContent: @Composable (onChipClick: (() -> Unit)?) -> Unit = { onChipClick ->
         build.raft.designsystem.components.RaftMessageReaction(
             count = reaction.count,
             mine = reaction.selected,
@@ -29482,6 +29460,7 @@ private fun ThreadReactionChip(
                     modifier = Modifier.size(build.raft.designsystem.components.RaftMessageReactionGlyphSize)
                 )
             },
+            onClick = onChipClick,
             interactionSource = hoverInteractionSource
         )
     }
@@ -29522,14 +29501,13 @@ private fun ThreadReactionChip(
                 },
             contentAlignment = Alignment.Center
         ) {
-            chipContent()
+            chipContent(null)
         }
     } else if (onClick != null) {
-        Button(onClick = onClick, pressFeedback = false) {
-            chipContent()
-        }
+        // The design-system chip owns the tap (a toggle, with its hover / press overlay).
+        chipContent(onClick)
     } else {
-        chipContent()
+        chipContent(null)
     }
 }
 
@@ -32693,10 +32671,9 @@ private fun ThreadMessageReactionRow(
         horizontalArrangement = horizontalArrangement
     ) {
         ThreadQuickReactionEmojis.forEach { reaction ->
-            Button(
+            RaftPanelAction(
                 onClick = { onReact(reaction) },
                 enabled = enabled,
-                pressFeedback = false,
                 modifier = Modifier
                     .alpha(if (enabled) 1f else 0.45f)
                     .size(buttonSize)
@@ -32710,10 +32687,9 @@ private fun ThreadMessageReactionRow(
         }
         if (onAddReaction != null) {
             val addReactionLabel = stringResource(Res.string.thread_action_add_reaction)
-            Button(
+            RaftPanelAction(
                 onClick = onAddReaction,
                 enabled = enabled,
-                pressFeedback = false,
                 modifier = Modifier
                     .alpha(if (enabled) 1f else 0.45f)
                     .size(buttonSize)

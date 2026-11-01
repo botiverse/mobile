@@ -423,9 +423,17 @@ internal fun RaftHeaderRefreshIndicator(
 internal fun RaftPanelAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    open: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    build.raft.designsystem.components.RaftPanelAction(onClick = onClick, modifier = modifier, content = content)
+    build.raft.designsystem.components.RaftPanelAction(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        open = open,
+        content = content
+    )
 }
 
 @Composable
