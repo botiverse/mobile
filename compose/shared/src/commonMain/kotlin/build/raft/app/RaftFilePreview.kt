@@ -4,6 +4,8 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -107,6 +109,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -4541,7 +4544,7 @@ internal fun RaftFilePreviewImageEditorHistoryActions(
             label = stringResource(Res.string.common_undo),
             onClick = state::undo,
             enabled = !saving && state.history.canUndo,
-            size = 32.dp,
+            size = RaftIconButtonSize.Md,
             iconSize = 22.dp,
         )
         RaftFilePreviewBorderlessIconButton(
@@ -4549,7 +4552,7 @@ internal fun RaftFilePreviewImageEditorHistoryActions(
             label = stringResource(Res.string.common_redo),
             onClick = state::redo,
             enabled = !saving && state.history.canRedo,
-            size = 32.dp,
+            size = RaftIconButtonSize.Md,
             iconSize = 22.dp,
         )
         Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
@@ -5458,7 +5461,7 @@ private fun RaftFilePreviewPencilOptions(
             onClick = onSelectEraser,
             enabled = enabled,
             iconColor = raftFilePreviewEditorToolIconColor(mode == RaftComposerImagePencilMode.Eraser),
-            size = RaftAppSize.IconButton,
+            size = RaftIconButtonSize.Lg,
             iconSize = 22.dp,
         )
         Box(
@@ -5591,23 +5594,24 @@ private fun RaftFilePreviewBorderlessIconButton(
     onClick: () -> Unit,
     enabled: Boolean,
     iconColor: String = RaftColor.TextBlackArgb,
-    size: androidx.compose.ui.unit.Dp = RaftAppSize.IconButton,
+    size: RaftIconButtonSize = RaftIconButtonSize.Lg,
     iconSize: androidx.compose.ui.unit.Dp = 22.dp,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    // raft-ui ghost icon button: transparent at rest, press overlay on hover and press.
+    RaftIconButton(
         onClick = onClick,
+        tooltip = label,
+        modifier = modifier,
+        variant = RaftButtonVariant.Ghost,
+        size = size,
         enabled = enabled,
-        pressOffset = 0.dp,
-        modifier =
-            modifier
-                .size(size)
-                .semantics { contentDescription = label },
     ) {
+        // The undo / redo glyph keeps its 22dp in the 32dp (`Md`, 18dp glyph) box.
         RaftLucideIcon(
             name = icon,
             color = if (enabled) iconColor else RaftColor.TextMutedGrayArgb,
-            modifier = Modifier.size(iconSize),
+            modifier = Modifier.requiredSize(iconSize),
         )
     }
 }

@@ -45,6 +45,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -422,18 +425,7 @@ internal fun RaftPanelAction(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    Button(
-        onClick = onClick,
-        pressOffset = 0.dp,
-        onPressedChange = { pressed = it },
-        modifier =
-            modifier
-                .clip(shape)
-                .background(if (pressed) RaftColor.FillPressed else Color.Transparent, shape),
-        content = content
-    )
+    build.raft.designsystem.components.RaftPanelAction(onClick = onClick, modifier = modifier, content = content)
 }
 
 @Composable
@@ -466,117 +458,6 @@ internal fun RaftCenteredLoading(
                 modifier = Modifier.widthIn(max = 220.dp)
             )
         }
-    }
-}
-
-@Composable
-internal fun RaftCollapsibleSectionHeader(
-    label: String,
-    count: Int,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    showCollapsedUnreadDot: Boolean = false,
-    minHeight: Dp = 30.dp,
-    // raft-ui section titles keep source case (`normal-case`); callers may still opt in.
-    uppercaseLabel: Boolean = false,
-    countPrefix: String = "",
-    sortContentDescription: String? = null,
-    onSortClick: ((RaftPopoverAnchor) -> Unit)? = null,
-    // task #512: custom section headers open their context menu on long-press
-    // (web right-click). Null keeps the plain tap-to-collapse clickable.
-    // [longPressAnchorIdentity] must uniquely identify the header (a section
-    // id, not its display label) so the popover anchor registry never mixes
-    // two same-named sections.
-    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null,
-    longPressAnchorIdentity: String = label,
-    trailingContent: (@Composable BoxScope.() -> Unit)? = null
-) {
-    val longPressAnchorRef = remember(longPressAnchorIdentity) { RaftLiveRootAnchorRef(identity = "section-header:$longPressAnchorIdentity") }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = minHeight)
-            .then(
-                if (onLongPress != null) {
-                    Modifier
-                        .raftCaptureLiveRootAnchor(longPressAnchorRef)
-                        .pointerInput(onExpandedChange, expanded) {
-                            detectTapGestures(
-                                onTap = { onExpandedChange(!expanded) },
-                                onLongPress = {
-                                    longPressAnchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onLongPress)
-                                }
-                            )
-                        }
-                } else {
-                    Modifier.clickable { onExpandedChange(!expanded) }
-                }
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RaftCollapsibleSectionContentGap)
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.ChevronRight,
-            Modifier.size(SectionChevronSize),
-            color = raftArgbHex(RaftColor.ForegroundHint),
-            rotationDegrees = if (expanded) 90f else 0f,
-            rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
-        )
-        Text(
-            if (uppercaseLabel) label.raftDisplayUppercase() else label,
-            // raft-ui `SidebarSectionDisclosure`: normal tracking in source case.
-            style = if (uppercaseLabel) RaftType.SectionLabel else RaftType.SectionLabel.copy(letterSpacing = 0.sp),
-            color = RaftColor.ForegroundHint
-        )
-        Text(
-            countPrefix + count,
-            style = RaftCollapsibleSectionCountTextStyle,
-            color = RaftCollapsibleSectionCountColor
-        )
-        if (!expanded && showCollapsedUnreadDot) {
-            RaftStatusIndicator(
-                color = RaftColor.AccentPink,
-                size = RaftStatusIndicatorTokens.InlineSize,
-                modifier = Modifier.padding(start = RaftAppSpacing.Xs)
-            )
-        }
-        Spacer(Modifier.weight(1f))
-        if (sortContentDescription != null && onSortClick != null) {
-            RaftSectionHeaderIconAction(
-                icon = RaftLucideIconName.ArrowDownUp,
-                contentDescription = sortContentDescription,
-                onClick2 = onSortClick
-            )
-        }
-        if (trailingContent != null) {
-            Box(content = trailingContent)
-        }
-    }
-}
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftSectionHeaderIconAction(
-    icon: RaftLucideIconName,
-    contentDescription: String,
-    onClick: () -> Unit = {},
-    onClick2: (RaftPopoverAnchor) -> Unit = {},
-    size: Dp = SectionHeaderActionSize,
-    iconSize: Dp = SectionHeaderActionIconSize
-) {
-    val anchorRef = remember(contentDescription) { RaftLiveRootAnchorRef(identity = contentDescription) }
-    Button(
-        onClick = {
-            onClick()
-            anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick2)
-        },
-        modifier =
-            Modifier
-                .size(size)
-                .raftCaptureLiveRootAnchor(anchorRef)
-    ) {
-        RaftLucideIcon(icon, Modifier.size(iconSize))
     }
 }
 
