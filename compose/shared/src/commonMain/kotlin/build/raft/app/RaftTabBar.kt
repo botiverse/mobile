@@ -328,9 +328,10 @@ internal object RaftBottomTabBarSpec {
     val LabelLineHeight = RaftMobileNavDefaults.LabelLineHeight
     val LabelWeight = FontWeight.SemiBold
     val SelectedLabelWeight = FontWeight.Bold
-    // Count badge, positioned from the pill slot's outer top-left corner.
+    // Count badge, positioned from the pill slot's outer top-left corner; on the 30dp pill it
+    // straddles the top edge 4dp up, its lower half clear of the 22dp icon.
     val BadgeOffsetX = 35.dp
-    val BadgeOffsetY = (-3).dp
+    val BadgeOffsetY = (-4).dp
     val BadgeHeight = 18.dp
     val BadgeMinWidth = 20.dp
     val BadgeHorizontalPadding = 5.dp

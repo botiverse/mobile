@@ -37,9 +37,9 @@ class RaftTabBarStyleTest {
         assertEquals(5.dp, spec.BadgeRadius)
         assertEquals(1.5.dp, spec.BadgeBorder)
         assertEquals(11.sp, spec.BadgeFontSize)
-        // CSS `left:33px; top:-5px` inside the pill's 2px border = 35 / -3 from the outer corner.
+        // On the 30dp pill the count rides 1dp higher so its lower half stays clear of the 22dp icon.
         assertEquals(35.dp, spec.BadgeOffsetX)
-        assertEquals((-3).dp, spec.BadgeOffsetY)
+        assertEquals((-4).dp, spec.BadgeOffsetY)
     }
 
     @Test
