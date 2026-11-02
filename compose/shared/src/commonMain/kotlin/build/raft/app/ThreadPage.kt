@@ -27959,21 +27959,41 @@ private fun ThreadMessageCardContent(
                                             Arrangement.spacedBy(6.dp)
                                         }
                                 ) {
-                                    Text(
-                                        text = localizedAuthorName,
-                                        // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
-                                        color = RaftColor.TextBlack,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier =
-                                            Modifier
-                                                // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
-                                                // subtitle and time share the first baseline.
-                                                .alignByBaseline()
-                                                .widthIn(max = 220.dp)
-                                                .clickable { openAuthorProfile("author_name") }
-                                    )
+                                    // Web MessageItem: the sender's name mentions them in the composer
+                                    // (tooltip "Mention @name"); the avatar opens the profile (artin
+                                    // 2026-11-02). External, deleted and removed authors keep the profile.
+                                    val nameMentionHandle =
+                                        message.authorHandle.trim().removePrefix("@").takeIf {
+                                            it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
+                                                message.threadAuthorBadgeLabel() == null
+                                        }
+                                    val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
+                                        Text(
+                                            text = localizedAuthorName,
+                                            // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
+                                            color = RaftColor.TextBlack,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier =
+                                                nameModifier
+                                                    .widthIn(max = 220.dp)
+                                                    .clickable {
+                                                        if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
+                                                    }
+                                        )
+                                    }
+                                    // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
+                                    // subtitle and time share the first baseline.
+                                    if (nameMentionHandle != null) {
+                                        RaftTooltip(
+                                            text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
+                                            modifier = Modifier.alignByBaseline(),
+                                            openOnLongPress = false,
+                                        ) { authorNameText(Modifier) }
+                                    } else {
+                                        authorNameText(Modifier.alignByBaseline())
+                                    }
                                     authorAppBot?.let { appBot ->
                                         RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
                                     }
