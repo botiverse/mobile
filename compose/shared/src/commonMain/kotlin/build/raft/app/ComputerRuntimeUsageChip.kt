@@ -908,6 +908,19 @@ internal fun ComputerRuntimeUsageCard(
                         ComputerRuntimeUsageAccountBlock(account, timeContext)
                     }
                 }
+                // `px-4 py-2 text-caption text-foreground-hint`: when the snapshot was taken.
+                RaftSeparator()
+                val updated =
+                    read.snapshot.collectedAt
+                        ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    style = typography.caption,
+                    color = colors.foregroundHint,
+                )
             }
         }
         else ->
