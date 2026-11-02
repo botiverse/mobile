@@ -6,6 +6,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.OnBackPressedDispatcher
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.navigation3.runtime.NavEntry
+import kotlinx.serialization.json.JsonPrimitive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,7 +45,8 @@ import org.robolectric.annotation.Config
  * Navigation 3 step 1 on a real composition: Back goes to the top page's own handler first, then
  * pops the stack, then (root page alone) to the root page's handlers and the host's fallback (the
  * Android shell's move-to-background). A covered page is paused: lifecycle CREATED, back handlers
- * off. AGENTS.md "Compose UI tests".
+ * off. Batch 3 (the chat): the composer's Back before the page's, a covered chat keeps its
+ * viewport size and gives up the keyboard. AGENTS.md "Compose UI tests".
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -56,7 +67,7 @@ class RaftMobilePageStackDisplayUiTest {
     }
 
     @Composable
-    private fun Host(stack: RaftPageStack, probe: Probe) {
+    private fun Host(stack: RaftPageStack, probe: Probe, pageExtra: @Composable () -> Unit = {}) {
         val activity = LocalContext.current.componentActivity()
         // The host's fallback, registered before the stack (RaftCmpActivity.hostSystemBackCallback).
         remember {
@@ -77,6 +88,7 @@ class RaftMobilePageStackDisplayUiTest {
             } else {
                 probe.pageLifecycle = LocalLifecycleOwner.current.lifecycle
                 BackHandler(enabled = probe.pageHandlerOn) { probe.pageBacks++ }
+                pageExtra()
                 Box(Modifier.testTag(PAGE))
             }
         }
@@ -139,6 +151,122 @@ class RaftMobilePageStackDisplayUiTest {
             assertTrue(probe.shellLifecycle!!.currentState.isAtLeast(Lifecycle.State.STARTED))
         }
 
+    // Step 2 batch 3: the chat on the stack ----------------------------------------------------------
+
+    @Test
+    fun aChatsBackGoesToTheComposerThenThePageThenPops() =
+        runRobolectricComposeUiTest {
+            val stack = RaftPageStack()
+            val probe = Probe()
+            var composerOn by mutableStateOf(true)
+            var composerBacks = 0
+            setContent {
+                Host(stack, probe) {
+                    // The composer (reply / edit mode, attachment tray) registers inside the page,
+                    // after the page's own handler: it goes first.
+                    BackHandler(enabled = composerOn) { composerBacks++ }
+                }
+            }
+            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
+            waitForIdle()
+
+            runOnIdle { probe.dispatcher.onBackPressed() }
+            waitForIdle()
+            assertEquals(1, composerBacks, "the composer's handler first")
+            assertEquals(0, probe.pageBacks)
+
+            runOnIdle { composerOn = false }
+            runOnIdle { probe.dispatcher.onBackPressed() }
+            waitForIdle()
+            assertEquals(1, probe.pageBacks, "then the page's own")
+            assertEquals(2, stack.pages.size)
+
+            runOnIdle { probe.pageHandlerOn = false }
+            runOnIdle { probe.dispatcher.onBackPressed() }
+            waitForIdle()
+            assertEquals(1, stack.pages.size, "then the stack pops the chat")
+            assertEquals(0, probe.shellBacks)
+            assertEquals(0, probe.hostBacks)
+        }
+
+    @Test
+    fun aCoveredChatKeepsTheWindowSizeAndOtherPagesCollapse() =
+        runRobolectricComposeUiTest {
+            val stack = RaftPageStack()
+            val sizes = mutableMapOf<String, IntSize>()
+            setContent {
+                RaftMobilePageStackDisplay(stack) { page ->
+                    Box(Modifier.fillMaxSize().onSizeChanged { sizes[page.contentKey] = it })
+                }
+            }
+            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
+            waitForIdle()
+            val chat = stack.pages.last()
+            val window = sizes.getValue(chat.contentKey)
+            assertTrue(window.width > 0 && window.height > 0, "chat on top: $window")
+            assertEquals(IntSize.Zero, sizes.getValue(stack.pages.first().contentKey), "covered shell collapses as before")
+
+            runOnIdle { stack.open("compose_member_detail", JsonObject(emptyMap()), from = chat) }
+            waitForIdle()
+            val profile = stack.pages.last()
+            assertEquals(window, sizes.getValue(profile.contentKey))
+            assertEquals(window, sizes.getValue(chat.contentKey), "covered chat keeps its viewport size")
+
+            runOnIdle { stack.back() }
+            waitForIdle()
+            assertEquals(window, sizes.getValue(chat.contentKey))
+        }
+
+    @Test
+    fun aCoveredPageGivesUpTextFocusAndANewPageKeepsItsOwn() =
+        runRobolectricComposeUiTest {
+            val stack = RaftPageStack()
+            val focused = mutableMapOf<String, Boolean>()
+            val requesters = mutableMapOf<String, FocusRequester>()
+            setContent {
+                RaftMobilePageStackDisplay(stack) { page ->
+                    val requester = remember { FocusRequester() }
+                    requesters[page.contentKey] = requester
+                    var text by remember { mutableStateOf("") }
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.focusRequester(requester).onFocusChanged { focused[page.contentKey] = it.isFocused },
+                    )
+                    // Search focuses its field when it opens.
+                    if (page.args.pageName == SEARCH) LaunchedEffect(Unit) { requester.requestFocus() }
+                }
+            }
+            runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
+            waitForIdle()
+            val chat = stack.pages.last()
+            runOnIdle { requesters.getValue(chat.contentKey).requestFocus() }
+            waitForIdle()
+            assertEquals(true, focused[chat.contentKey], "the composer has the keyboard")
+
+            runOnIdle { stack.open("compose_member_detail", JsonObject(emptyMap()), from = chat) }
+            waitForIdle()
+            assertEquals(false, focused[chat.contentKey], "covered, the composer lets go of the keyboard")
+
+            runOnIdle { stack.back() }
+            runOnIdle { stack.open(SEARCH, JsonObject(emptyMap()), from = chat) }
+            waitForIdle()
+            assertEquals(true, focused[stack.pages.last().contentKey], "a page that focuses on open keeps it")
+            assertEquals(false, focused[chat.contentKey])
+        }
+
+    @Test
+    fun entryMetadataMarksTheChatAndAnOpenWithoutThePush() {
+        val stack = RaftPageStack()
+        stack.open(CHAT, JsonObject(mapOf("slockOpenWithoutAnimation" to JsonPrimitive(true))), from = stack.pages.first())
+        stack.open("compose_settings_native_detail", JsonObject(emptyMap()), from = stack.pages.first())
+        val (chat, settings) = stack.pages.drop(1).map { page -> NavEntry(page, page.contentKey, raftMobileStackEntryMetadata(page)) {} }
+        assertTrue(chat.raftStackCoveredKeepsSize())
+        assertTrue(chat.raftStackOpensWithoutMotion(), "opened without the push: no slide-in")
+        assertFalse(settings.raftStackCoveredKeepsSize())
+        assertFalse(settings.raftStackOpensWithoutMotion())
+    }
+
     private fun Context.componentActivity(): ComponentActivity {
         var context: Context = this
         while (context !is ComponentActivity) context = (context as ContextWrapper).baseContext
@@ -148,5 +276,7 @@ class RaftMobilePageStackDisplayUiTest {
     private companion object {
         const val SHELL = "shell"
         const val PAGE = "page"
+        const val CHAT = "compose_thread"
+        const val SEARCH = "compose_home_search"
     }
 }

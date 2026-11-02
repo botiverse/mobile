@@ -56,6 +56,19 @@ fun raftStackOpenRoute(
 
 internal const val RAFT_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
+/** Batch 3: the chat, its pages, the file pages and Search (any pageData). */
+internal val RaftStackChatFilesBrowsePages: List<String> =
+    listOf(
+        build.raft.app.THREAD_PAGE,
+        build.raft.app.THREAD_MEMBERS_PAGE,
+        build.raft.app.CHANNEL_SETTINGS_PAGE,
+        build.raft.app.JOINT_CHANNEL_CONNECTIONS_PAGE,
+        build.raft.app.THREAD_FORWARD_BUNDLE_PAGE,
+        build.raft.app.RAFT_FILE_PREVIEW_PAGE,
+        build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
+        build.raft.app.HOME_SEARCH_PAGE,
+    )
+
 /** The Settings web page surfaces on the stack (the others keep the host's way). */
 internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSurface> =
     listOf(
@@ -81,6 +94,15 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
  * Administration, IM Bridges, Connected apps, web Feedback; WebView file chooser), Storage,
  * Release notes and Computers (list and one machine). The picker, camera and file chooser results
  * reach the page that asked through the host's result routing, keyed by the page's content key.
+ *
+ * Batch 3: the chat, files and browse pages. The conversation page (channel, DM, thread, task
+ * conversation; its Chat / Tasks / Files tabs are the files list), what it opens over itself
+ * (conversation members, channel settings, joint channel connections, a forwarded bundle), the
+ * file page (preview or file detail of an attachment), the artifact viewer and Search. The
+ * composer's picker and camera are `threadAttachmentUpload` (batch 2 routing); a notification,
+ * share or deep link reaches the shell (new Intent) and the shell opens the chat on the stack.
+ * Covered, the chat and the file pages keep the window size ([RaftStackCoveredKeepsSizePages]).
+ * Still Activities: the in-app browser, message link pages, login / auth, onboarding web pages.
  */
 val RaftMobileStackPages: RaftStackPageAllowlist =
     RaftStackPageAllowlist(
@@ -102,6 +124,7 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
             ) +
+            RaftStackChatFilesBrowsePages.map { RaftStackPageRule(pageName = it) } +
             RaftStackSettingsWebSurfaces.map { surface ->
                 RaftStackPageRule(
                     pageName = build.raft.app.SETTINGS_WEB_VIEW_PAGE,
@@ -109,4 +132,16 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                     value = surface.diagnosticsName,
                 )
             }
+    )
+
+/**
+ * Pages that keep the window size while covered on the mobile stack (measured, not placed) rather
+ * than 0x0: the chat (list viewport intents, scroll restore, read position) and the file pages
+ * (image pager page, PDF / text scroll), whose viewports must not collapse and regrow.
+ */
+internal val RaftStackCoveredKeepsSizePages: Set<String> =
+    setOf(
+        build.raft.app.THREAD_PAGE,
+        build.raft.app.RAFT_FILE_PREVIEW_PAGE,
+        build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
     )

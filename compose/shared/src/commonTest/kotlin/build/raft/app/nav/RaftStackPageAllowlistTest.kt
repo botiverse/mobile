@@ -1,11 +1,19 @@
 package build.raft.app.nav
 
+import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.HOME_DRAFTS_PAGE
+import build.raft.app.HOME_SEARCH_PAGE
+import build.raft.app.JOINT_CHANNEL_CONNECTIONS_PAGE
+import build.raft.app.LOGIN_PAGE
 import build.raft.app.HOME_SAVED_PAGE
 import build.raft.app.MEMBERS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.RAFT_FILE_PREVIEW_PAGE
+import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
+import build.raft.app.RAFT_MESSAGE_LINK_NOT_FOUND_PAGE
+import build.raft.app.RAFT_MESSAGE_LINK_PUBLIC_PREVIEW_PAGE
 import build.raft.app.RELEASE_NOTES_PAGE
 import build.raft.app.SETTINGS_ACCOUNT_PAGE
 import build.raft.app.SETTINGS_COMPUTERS_PAGE
@@ -16,6 +24,8 @@ import build.raft.app.SETTINGS_STORAGE_PAGE
 import build.raft.app.SETTINGS_WEB_VIEW_PAGE
 import build.raft.app.SettingsNativeDetailPage
 import build.raft.app.SettingsWebViewSurface
+import build.raft.app.THREAD_FORWARD_BUNDLE_PAGE
+import build.raft.app.THREAD_MEMBERS_PAGE
 import build.raft.app.THREAD_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +38,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * Navigation 3 open routing: with the stack off every page keeps the host's way (an Android
  * Activity); with it on only the allowlist (step 2 batch 1: Settings detail pages, Saved, Drafts,
  * member detail; batch 2: Account, Feedback, five Settings web pages, Storage, Release notes,
- * Computers) goes onto the stack.
+ * Computers; batch 3: the chat and its pages, the file pages, Search) goes onto the stack.
  */
 class RaftStackPageAllowlistTest {
     private fun data(vararg pairs: Pair<String, Any>) =
@@ -60,7 +70,7 @@ class RaftStackPageAllowlistTest {
         assertTrue(RaftMobileStackPages.allows(SETTINGS_NATIVE_DETAIL_PAGE, data("settingsPage" to " about ")))
         assertFalse(RaftMobileStackPages.allows(SETTINGS_NATIVE_DETAIL_PAGE, data("settingsPage" to "billing")))
         assertFalse(RaftMobileStackPages.allows(SETTINGS_NATIVE_DETAIL_PAGE, data()))
-        assertFalse(RaftMobileStackPages.allows("compose_thread", about))
+        assertFalse(RaftMobileStackPages.allows(RAFT_IN_APP_BROWSER_PAGE, about))
     }
 
     @Test fun `batch 1 allowlist has Saved Drafts and member detail`() {
@@ -107,10 +117,12 @@ class RaftStackPageAllowlistTest {
 
     @Test fun `pages not moved yet stay on the host path`() {
         listOf(
-            SETTINGS_HOME_PAGE,
-            MEMBERS_PAGE,
-            THREAD_PAGE, // step 3
-            RAFT_FILE_PREVIEW_PAGE, // step 3
+            SETTINGS_HOME_PAGE, // a shell tab
+            MEMBERS_PAGE, // a shell tab (the page is a developer route)
+            RAFT_IN_APP_BROWSER_PAGE,
+            RAFT_MESSAGE_LINK_NOT_FOUND_PAGE,
+            RAFT_MESSAGE_LINK_PUBLIC_PREVIEW_PAGE,
+            LOGIN_PAGE,
         ).forEach { name ->
             assertEquals(RaftStackOpenRoute.Host, route(name, data("channelId" to "c1")), name)
             assertEquals(RaftStackOpenRoute.Host, route(name, data("channelId" to "c1"), fromRoot = false), name)
@@ -126,8 +138,39 @@ class RaftStackPageAllowlistTest {
     @Test fun `stack on opens allowlisted pages on the stack and the rest on the host`() {
         assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_NATIVE_DETAIL_PAGE, about))
         assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_NATIVE_DETAIL_PAGE, about, fromRoot = false))
-        assertEquals(RaftStackOpenRoute.Host, route("compose_thread", data("channelId" to "c1")))
+        assertEquals(RaftStackOpenRoute.Host, route(RAFT_IN_APP_BROWSER_PAGE, data("url" to "https://example.com")))
         assertEquals(RaftStackOpenRoute.Host, route(SETTINGS_NATIVE_DETAIL_PAGE, data("settingsPage" to "billing")))
+    }
+
+    @Test fun `batch 3 allowlist has the chat its pages the file pages and Search`() {
+        val pages =
+            listOf(
+                THREAD_PAGE, // channel, DM, thread, task conversation; its Files tab is the files list
+                THREAD_MEMBERS_PAGE,
+                CHANNEL_SETTINGS_PAGE,
+                JOINT_CHANNEL_CONNECTIONS_PAGE,
+                THREAD_FORWARD_BUNDLE_PAGE,
+                RAFT_FILE_PREVIEW_PAGE, // preview or file detail
+                RAFT_ARTIFACT_VIEWER_PAGE,
+                HOME_SEARCH_PAGE,
+            )
+        assertEquals(pages, RaftStackChatFilesBrowsePages)
+        val chat = data("payload" to "{\"threadId\":\"c1\"}", "instanceId" to "thread-c1", "slockShellInstanceId" to "shell-1")
+        pages.forEach { name ->
+            assertEquals(RaftStackOpenRoute.Stack, route(name, chat), name)
+            // From a stack page: a reply thread from a chat, a file from a chat, a chat from Search.
+            assertEquals(RaftStackOpenRoute.Stack, route(name, chat, fromRoot = false), name)
+        }
+        // A chat opened in place of another (DM switch): replaces the opener on the stack.
+        val replacing = JsonObject(chat + ("slockReplaceCurrentPage" to JsonPrimitive(true)))
+        assertEquals(RaftStackOpenRoute.Stack, route(THREAD_PAGE, replacing, fromRoot = false))
+        assertEquals(RaftStackOpenRoute.Host, route(THREAD_PAGE, chat, enabled = false))
+    }
+
+    @Test fun `covered the chat and the file pages keep the window size and the rest collapse`() {
+        assertEquals(setOf(THREAD_PAGE, RAFT_FILE_PREVIEW_PAGE, RAFT_ARTIFACT_VIEWER_PAGE), RaftStackCoveredKeepsSizePages)
+        assertFalse(SETTINGS_NATIVE_DETAIL_PAGE in RaftStackCoveredKeepsSizePages)
+        assertFalse(HOME_SEARCH_PAGE in RaftStackCoveredKeepsSizePages)
     }
 
     @Test fun `the app shell never goes onto the stack`() {
