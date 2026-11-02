@@ -402,7 +402,8 @@ class ThreadMessageMenuParityTest {
         assertEquals(plain.primaryTools(), overSelection.primaryTools(), "the full message menu stays")
         assertTrue(overSelection.showsReactionRow())
         assertEquals(Res.string.common_copy, ThreadNewMessageMenuTool.CopySelection.compactLabelResource(overSelection))
-        assertEquals(RaftLucideIconName.Copy, ThreadNewMessageMenuTool.CopySelection.compactIcon(overSelection))
+        // Not Copy: that is Copy Markdown in the same menu.
+        assertEquals(RaftLucideIconName.Type, ThreadNewMessageMenuTool.CopySelection.compactIcon(overSelection))
         assertFalse(
             ThreadNewMessageMenuTool.CopySelection in threadInPlaceSelectionMenuAvailability(overSelection, coversAll = false).secondaryTools(),
             "the selection menu has its own Copy"
