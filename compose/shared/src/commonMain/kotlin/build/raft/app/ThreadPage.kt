@@ -28514,7 +28514,9 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.TaskStatus -> threadTaskStatusMenuIcon(availability.taskDone)
         ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.Plus
         ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.SquareDashedText
-        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
+        // Not SquareCheckBig: that is Mark as Done in the same menu (web MessageItem). Select All
+        // only shows over a partial selection, where Select Text is hidden.
+        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Copy
     }
