@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
@@ -20,6 +21,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
@@ -28,6 +34,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -37,6 +45,12 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftTextSelectionToolbar
+import build.raft.designsystem.components.RaftTextSelectionToolbarButton
+import build.raft.designsystem.components.RaftTextSelectionToolbarDefaults
+import build.raft.designsystem.components.RaftTextSelectionToolbarSeparator
 import kotlinx.coroutines.awaitCancellation
 
 /**
@@ -79,7 +93,10 @@ internal interface ThreadInPlaceSelectionTarget {
  * The platform text toolbar is replaced on both toolbar paths (Android's new text context menu,
  * [LocalTextContextMenuToolbarProvider], on by default there, and the legacy [LocalTextToolbar]
  * that skiko/iOS still uses) by the full Compact New Message Menu, WeChat style: reactions and
- * message tools, with Copy copying the selection and Select All added.
+ * message tools, with Copy copying the selection and Select All added. Compose only asks for that
+ * toolbar for a touch selection; a selection made with the mouse or trackpad (desktop, an iPad
+ * with a pointer) gets the web's small selection toolbar instead, "Quote | Copy", shown when the
+ * button is let go ([threadInPlaceSelectionToolbarKind], artin 2026-11-01).
  */
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
@@ -92,6 +109,12 @@ internal class ThreadInPlaceTextSelectionHost(
      * the message actions, publishes into it.
      */
     val selectionMenu = ThreadInPlaceSelectionMenuSlot()
+
+    /**
+     * The page composer's quote append (what Select Text > Quote does with its Markdown quote), or
+     * null when the page shows no composer: the mouse selection toolbar then offers Copy only.
+     */
+    var quoteIntoComposer by mutableStateOf<((String) -> Unit)?>(null)
 
     /** The thread list's visible viewport in window space; the bar never leaves it. */
     var viewportInWindow by mutableStateOf<Rect?>(null)
@@ -187,6 +210,64 @@ internal fun threadInPlaceSelectionWidensToWholeMessage(
     startedByTouch: Boolean,
     coversAll: Boolean,
 ): Boolean = startedByTouch && !coversAll
+
+/** Which toolbar a message's in-place selection shows this frame. */
+internal enum class ThreadInPlaceSelectionToolbarKind {
+    None,
+
+    /** The full Compact New Message Menu: a finger selection (Compose asked for its toolbar). */
+    MessageMenu,
+
+    /** The web's small "Quote | Copy" toolbar: a mouse or trackpad selection, once the button is up. */
+    SelectionToolbar
+}
+
+/**
+ * [mouseSelectionEnded]: the last press on the body was the primary mouse button and it has been
+ * let go. [platformToolbarRequested]: Compose asked for its text toolbar, which it only does for a
+ * touch selection. A mouse release wins: a touch press afterwards resets it.
+ */
+internal fun threadInPlaceSelectionToolbarKind(
+    pageActive: Boolean,
+    hasSelection: Boolean,
+    mouseSelectionEnded: Boolean,
+    platformToolbarRequested: Boolean,
+): ThreadInPlaceSelectionToolbarKind =
+    when {
+        !pageActive || !hasSelection -> ThreadInPlaceSelectionToolbarKind.None
+        mouseSelectionEnded -> ThreadInPlaceSelectionToolbarKind.SelectionToolbar
+        platformToolbarRequested -> ThreadInPlaceSelectionToolbarKind.MessageMenu
+        else -> ThreadInPlaceSelectionToolbarKind.None
+    }
+
+/** A press that can end a mouse selection: every pointer a mouse (trackpads report as one), primary button. */
+internal fun threadInPlaceSelectionPressIsPrimaryMouse(
+    pointerTypes: List<PointerType>,
+    primaryPressed: Boolean,
+): Boolean = primaryPressed && pointerTypes.isNotEmpty() && pointerTypes.all { it == PointerType.Mouse }
+
+/**
+ * Body-local anchor for the mouse selection toolbar: the line where the button was let go (the
+ * selection's focus end, as on the web), [lineHeightPx] tall around [release], kept inside the
+ * body (a drag may end past it).
+ */
+internal fun threadInPlaceSelectionMouseAnchorInBody(
+    release: Offset,
+    bodySize: IntSize,
+    lineHeightPx: Float,
+): Rect {
+    val width = bodySize.width.toFloat()
+    val height = bodySize.height.toFloat()
+    val x = release.x.coerceIn(0f, (width - 1f).coerceAtLeast(0f))
+    val y = release.y.coerceIn(0f, height)
+    val half = lineHeightPx / 2f
+    return Rect(
+        left = x,
+        top = (y - half).coerceAtLeast(0f),
+        right = (x + 1f).coerceAtMost(width),
+        bottom = (y + half).coerceAtMost(height),
+    )
+}
 
 internal enum class ThreadMessageLongPressRoute {
     MessageMenu,
@@ -299,6 +380,8 @@ internal class ThreadInPlaceSelectionMenuRequest(
     val dismiss: () -> Unit,
     /** Read inside the menu so it switches between full and partial as the handles move. */
     val coversAll: () -> Boolean = { true },
+    /** Quotes the selection into the composer (the mouse selection toolbar's Quote); null: no composer. */
+    val quoteSelection: (() -> Unit)? = null,
 )
 
 /**
@@ -364,12 +447,27 @@ internal class ThreadInPlaceSelectionController(
     val menuRequested: Boolean
         get() = menuRectInBody != null || menuDataProvider != null
 
+    // Where the primary mouse button was let go after a press on the body (body-local), or null:
+    // the mouse selection toolbar's anchor. Any press on the body resets it.
+    private var mouseReleaseInBody by mutableStateOf<Offset?>(null)
+
+    val mouseSelectionEnded: Boolean
+        get() = mouseReleaseInBody != null
+
+    internal fun onBodyPointerPress() {
+        mouseReleaseInBody = null
+    }
+
+    internal fun onBodyMouseRelease(position: Offset) {
+        mouseReleaseInBody = position
+    }
+
     override val hasSelection: Boolean
         get() = selectionState.selectedTexts.any { it.isNotEmpty() }
 
     internal fun onBodyPositioned(coordinates: LayoutCoordinates) {
         bodyCoordinates = coordinates
-        if (menuRequested) bodyLayoutTick++
+        if (menuRequested || mouseSelectionEnded) bodyLayoutTick++
     }
 
     /** Window-space bar anchor for the current frame (snapshot reads keep it live), or null to hide. */
@@ -385,6 +483,17 @@ internal class ThreadInPlaceSelectionController(
         return threadInPlaceSelectionVisibleAnchor(selection, body.boundsInWindow(), host.viewportInWindow)
     }
 
+    /** Window-space anchor for the mouse selection toolbar (the release line), or null to hide. */
+    fun currentMouseToolbarAnchorInWindow(lineHeightPx: Float): ThreadInPlaceSelectionBarAnchor? {
+        @Suppress("UNUSED_VARIABLE")
+        val tick = bodyLayoutTick
+        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return null
+        val release = mouseReleaseInBody ?: return null
+        val local = threadInPlaceSelectionMouseAnchorInBody(release, body.size, lineHeightPx)
+        val selection = Rect(body.localToWindow(local.topLeft), local.size)
+        return threadInPlaceSelectionVisibleAnchor(selection, body.boundsInWindow(), host.viewportInWindow)
+    }
+
     fun selectedTexts(): List<String> = selectionState.selectedTexts.map { it.text }
 
     fun selectableTexts(): List<String> = selectionState.getSelectableTexts().map { it.text }
@@ -392,6 +501,7 @@ internal class ThreadInPlaceSelectionController(
     override fun clear() {
         selectionState.clear()
         hideMenu()
+        mouseReleaseInBody = null
     }
 
     fun selectAll() {
@@ -515,7 +625,9 @@ internal fun ThreadInPlaceSelectableBody(
     ) {
         SelectionContainer(
             controller.selectionState,
-            Modifier.onGloballyPositioned(controller::onBodyPositioned),
+            Modifier
+                .onGloballyPositioned(controller::onBodyPositioned)
+                .threadInPlaceMouseSelectionEnd(controller),
         ) {
             content()
         }
@@ -559,21 +671,32 @@ internal fun ThreadInPlaceSelectableBody(
         diagnosticsLogger("thread_in_place_selection_back_clear messageId=${controller.messageId}")
         controller.clear()
     }
-    if (pageActive && controller.menuRequested && controller.hasSelection) {
+    val toolbarKind =
+        threadInPlaceSelectionToolbarKind(
+            pageActive = pageActive,
+            hasSelection = controller.hasSelection,
+            mouseSelectionEnded = controller.mouseSelectionEnded,
+            platformToolbarRequested = controller.menuRequested,
+        )
+    if (toolbarKind != ThreadInPlaceSelectionToolbarKind.None) {
+        val quoteIntoComposer = host.quoteIntoComposer
         val request =
-            remember(controller, fullMessageText, wholeMessageText, host) {
+            remember(controller, fullMessageText, wholeMessageText, host, quoteIntoComposer) {
+                // The text Copy copies, and Quote quotes: the selection, or the whole message.
+                val selectionText = {
+                    threadInPlaceSelectionCopyText(
+                        selectedTexts = controller.selectedTexts(),
+                        selectableTexts = controller.selectableTexts(),
+                        fullMessageText = fullMessageText,
+                        emptySelectionFallback = wholeMessageText
+                    )
+                }
                 ThreadInPlaceSelectionMenuRequest(
                     messageId = controller.messageId,
                     copySelection = {
                         val selected = controller.selectedTexts()
                         val selectable = controller.selectableTexts()
-                        val text =
-                            threadInPlaceSelectionCopyText(
-                                selectedTexts = selected,
-                                selectableTexts = selectable,
-                                fullMessageText = fullMessageText,
-                                emptySelectionFallback = wholeMessageText
-                            )
+                        val text = selectionText()
                         diagnosticsLogger(
                             "thread_in_place_selection_copy messageId=${controller.messageId} " +
                                 "chars=${text.length} lines=${text.lines().size} " +
@@ -593,24 +716,111 @@ internal fun ThreadInPlaceSelectableBody(
                     },
                     coversAll = {
                         threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
-                    }
+                    },
+                    quoteSelection =
+                        quoteIntoComposer?.let { quote ->
+                            {
+                                // Select Text > Quote's formatter and composer append.
+                                val text = formatThreadMessageQuote(selectionText())
+                                diagnosticsLogger(
+                                    "thread_in_place_selection_quote messageId=${controller.messageId} chars=${text.length}"
+                                )
+                                if (text.isNotEmpty()) quote(text)
+                                controller.clear()
+                            }
+                        }
                 )
             }
-        ThreadInPlaceSelectionMenuHost(controller = controller) {
-            host.selectionMenu.menu(request)
+        if (toolbarKind == ThreadInPlaceSelectionToolbarKind.SelectionToolbar) {
+            val lineHeightPx = with(LocalDensity.current) { ThreadInPlaceSelectionMouseAnchorLineHeight.toPx() }
+            ThreadInPlaceSelectionMenuHost(
+                anchorFor = { controller.currentMouseToolbarAnchorInWindow(lineHeightPx) },
+                gap = RaftTextSelectionToolbarDefaults.AnchorGap,
+            ) {
+                ThreadInPlaceSelectionToolbar(onQuote = request.quoteSelection, onCopy = request.copySelection)
+            }
+        } else {
+            ThreadInPlaceSelectionMenuHost(anchorFor = controller::currentMenuAnchorInWindow) {
+                host.selectionMenu.menu(request)
+            }
         }
     }
 }
 
+/** The line the mouse selection toolbar sits above: about one message body line (15/22). */
+private val ThreadInPlaceSelectionMouseAnchorLineHeight = 22.dp
+
+internal const val ThreadInPlaceSelectionToolbarTag = "thread_in_place_selection_toolbar"
+
+/**
+ * The web's text selection toolbar for a mouse selection: "Quote | Copy" (Quote only when the
+ * page has a composer). Both act on the selection and then clear it.
+ */
+@Composable
+internal fun ThreadInPlaceSelectionToolbar(
+    onQuote: (() -> Unit)?,
+    onCopy: () -> Unit,
+) {
+    RaftDesignSystemTheme {
+        RaftTextSelectionToolbar(modifier = Modifier.testTag(ThreadInPlaceSelectionToolbarTag)) {
+            if (onQuote != null) {
+                RaftTextSelectionToolbarButton(
+                    label = stringResource(Res.string.thread_action_quote),
+                    onClick = onQuote,
+                    icon = { RaftSlotIcon(RaftLucideIconName.TextQuote) },
+                )
+                RaftTextSelectionToolbarSeparator()
+            }
+            RaftTextSelectionToolbarButton(
+                label = stringResource(Res.string.common_copy),
+                onClick = onCopy,
+                icon = { RaftSlotIcon(RaftLucideIconName.Copy) },
+            )
+        }
+    }
+}
+
+/**
+ * Watches the body's presses without consuming them (selection keeps its gestures): any press
+ * resets the mouse toolbar, and letting go of a primary mouse press records where, which shows
+ * the toolbar if that gesture left a selection.
+ */
+private fun Modifier.threadInPlaceMouseSelectionEnd(controller: ThreadInPlaceSelectionController): Modifier =
+    pointerInput(controller) {
+        awaitPointerEventScope {
+            var primaryMousePress = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                when (event.type) {
+                    PointerEventType.Press -> {
+                        primaryMousePress =
+                            threadInPlaceSelectionPressIsPrimaryMouse(
+                                pointerTypes = event.changes.map { it.type },
+                                primaryPressed = event.buttons.isPrimaryPressed
+                            )
+                        controller.onBodyPointerPress()
+                    }
+                    PointerEventType.Release ->
+                        if (primaryMousePress && !event.buttons.isPrimaryPressed) {
+                            primaryMousePress = false
+                            val change = event.changes.firstOrNull()
+                            if (change != null) controller.onBodyMouseRelease(change.position)
+                        }
+                }
+            }
+        }
+    }
+
 /** Separate scope: only the menu recomposes as the body moves; hidden while the selection is off-screen. */
 @Composable
 private fun ThreadInPlaceSelectionMenuHost(
-    controller: ThreadInPlaceSelectionController,
+    anchorFor: () -> ThreadInPlaceSelectionBarAnchor?,
+    gap: Dp = 8.dp,
     menu: @Composable () -> Unit,
 ) {
-    val anchor = controller.currentMenuAnchorInWindow() ?: return
+    val anchor = anchorFor() ?: return
     val density = LocalDensity.current
-    val gapPx = with(density) { 8.dp.roundToPx() }
+    val gapPx = with(density) { gap.roundToPx() }
     val edgePx = with(density) { 8.dp.roundToPx() }
     val positionProvider =
         remember(anchor, gapPx, edgePx) {

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
@@ -462,5 +463,61 @@ class ThreadInPlaceTextSelectionTest {
 
         // …but what rows and the popup hold is the same reference, so rows are not invalidated.
         assertTrue(before === host.selectionMenu.menu)
+    }
+    @Test
+    fun aMouseSelectionGetsTheSelectionToolbarAndAFingerSelectionTheFullMenu() {
+        // Mouse: Compose never asks for its toolbar; the release shows Quote | Copy.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.SelectionToolbar,
+            threadInPlaceSelectionToolbarKind(
+                pageActive = true,
+                hasSelection = true,
+                mouseSelectionEnded = true,
+                platformToolbarRequested = false
+            )
+        )
+        // Finger (long press): Compose's toolbar request keeps the full Compact menu.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.MessageMenu,
+            threadInPlaceSelectionToolbarKind(
+                pageActive = true,
+                hasSelection = true,
+                mouseSelectionEnded = false,
+                platformToolbarRequested = true
+            )
+        )
+        // Mid-drag (button still down), no selection, or an inactive page: nothing.
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = true, hasSelection = true, mouseSelectionEnded = false, platformToolbarRequested = false)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = true, hasSelection = false, mouseSelectionEnded = true, platformToolbarRequested = true)
+        )
+        assertEquals(
+            ThreadInPlaceSelectionToolbarKind.None,
+            threadInPlaceSelectionToolbarKind(pageActive = false, hasSelection = true, mouseSelectionEnded = true, platformToolbarRequested = false)
+        )
+    }
+
+    @Test
+    fun onlyAPrimaryMousePressCanEndAMouseSelection() {
+        assertTrue(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Mouse), primaryPressed = true))
+        // A right-click opens the message menu, not the selection toolbar.
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Mouse), primaryPressed = false))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Touch), primaryPressed = true))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(listOf(PointerType.Stylus), primaryPressed = true))
+        assertFalse(threadInPlaceSelectionPressIsPrimaryMouse(emptyList(), primaryPressed = true))
+    }
+
+    @Test
+    fun theMouseToolbarAnchorsOnTheReleaseLineInsideTheBody() {
+        val bodySize = IntSize(300, 100)
+        assertEquals(Rect(120f, 39f, 121f, 61f), threadInPlaceSelectionMouseAnchorInBody(Offset(120f, 50f), bodySize, 22f))
+        // A drag that ended below and right of the body anchors on its last line, at its edge.
+        assertEquals(Rect(299f, 89f, 300f, 100f), threadInPlaceSelectionMouseAnchorInBody(Offset(400f, 180f), bodySize, 22f))
+        // Above the body: its first line.
+        assertEquals(Rect(0f, 0f, 1f, 11f), threadInPlaceSelectionMouseAnchorInBody(Offset(-5f, -40f), bodySize, 22f))
     }
 }
