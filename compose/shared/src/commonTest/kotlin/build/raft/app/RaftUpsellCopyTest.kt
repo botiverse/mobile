@@ -10,13 +10,12 @@ import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.CardStack
 import build.raft.app.data.ScreenError
+import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.createAgentErrorText
 import build.raft.app.data.ActionCardSpecContent
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 /** iOS view-only Billing: what a prompt that tells someone to upgrade says and offers instead. */
 class RaftUpsellCopyTest {
@@ -49,7 +48,7 @@ class RaftUpsellCopyTest {
     }
 
     @Test
-    fun seatRequestCardLosesItsAddSeatsButtonWhereTheAppOffersNoUpgrade() {
+    fun seatRequestButtonsBecomeViewYourPlanWhereTheAppOffersNoUpgrade() {
         val card =
             ActionCardSpecCard(
                 title = msg("Add Pro seats"),
@@ -58,23 +57,24 @@ class RaftUpsellCopyTest {
                         root = "root",
                         elements =
                             mapOf(
-                                "root" to CardStack(children = listOf("why", "actions")),
+                                "root" to CardStack(children = listOf("why", "add", "upgrade")),
                                 "why" to ActionCardSpecDisplayElement.Text(ActionCardSpecContent.Plain("Ana asks for 1 Pro seat.")),
-                                "actions" to CardStack(children = listOf("add", "web")),
                                 "add" to ActionCardSpecButton(msg("Add Seats"), action = ActionCardSpecAction.Open(ActionCardSpecIntent.AddSeats)),
-                                "web" to ActionCardSpecButton(msg("Upgrade"), action = ActionCardSpecAction.Open(ActionCardSpecIntent.UpgradeDialog)),
+                                "upgrade" to ActionCardSpecButton(msg("Upgrade"), action = ActionCardSpecAction.Open(ActionCardSpecIntent.UpgradeDialog)),
                             ),
                     ),
             )
+        val viewPlan = msg("View your plan")
 
-        val stripped = requireNotNull(card.withoutUpgradeIntentButtons())
+        val labelled = card.withUpgradeButtonsLabelled(viewPlan)
 
-        assertEquals(setOf("root", "why", "actions"), stripped.spec.elements.keys)
-        assertEquals(emptyList(), (stripped.spec.elements["actions"] as CardStack).children)
-        val onlyButton = card.copy(spec = ActionCardSpecTree("add", mapOf("add" to card.spec.elements.getValue("add"))))
-        assertNull(onlyButton.withoutUpgradeIntentButtons())
-        val plain = card.copy(spec = ActionCardSpecTree("why", mapOf("why" to card.spec.elements.getValue("why"))))
-        assertSame(plain, plain.withoutUpgradeIntentButtons())
+        assertEquals(viewPlan, (labelled.spec.elements.getValue("add") as ActionCardSpecButton).label)
+        assertEquals(viewPlan, (labelled.spec.elements.getValue("upgrade") as ActionCardSpecButton).label)
+        val seatRequest = ThreadActionCard(type = "seats:add")
+        assertEquals(ThreadActionCardSpecPress.ViewPlan, threadActionCardSpecPress(seatRequest, labelled, "add", offersUpgrade = false))
+        assertEquals(ThreadActionCardSpecPress.ViewPlan, threadActionCardSpecPress(seatRequest, labelled, "upgrade", offersUpgrade = false))
+        // Android and desktop: the app has no add-seats screen, so the web as before.
+        assertEquals(ThreadActionCardSpecPress.OpenInWeb, threadActionCardSpecPress(seatRequest, card, "add", offersUpgrade = true))
     }
 
     private fun msg(text: String) = ActionCardSpecMsg(key = "test.$text", text = mapOf("en" to text))

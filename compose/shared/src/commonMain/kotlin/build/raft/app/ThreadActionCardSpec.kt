@@ -14,6 +14,7 @@ import build.raft.app.data.ActionCardSpecEmphasis
 import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecNavigateTarget
+import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.CardStack
 import build.raft.app.data.DataResult
@@ -75,11 +76,14 @@ internal fun ThreadActionCard.actionCardSpecToRender(
 ): ActionCardSpecCard? {
     if (!specEnabled && type !in ThreadActionCardSpecOnlyTypes) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
-    val presented = presentationCard ?: return null
+    val read = presentationCard ?: return null
     // iOS view-only Billing: a seat request's Add Seats or a Pro request's Upgrade would strip to
-    // "Open in web", a way to buy in the browser; those buttons go, the request itself stays.
-    val read = if (offersUpgrade) presented else presented.withoutUpgradeIntentButtons() ?: return null
-    val stripped = stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities)) ?: return null
+    // "Open in web", a way to buy in the browser. They are kept as "View your plan" instead
+    // (labelled by the view, routed by threadActionCardSpecPress to the view-only Plan & Billing).
+    val cardCapabilities =
+        actionCardSpecCapabilitiesFor(capabilities) +
+            if (offersUpgrade) emptyList() else ActionCardSpecUpgradeIntents.map { it.capability }
+    val stripped = stripActionCardSpec(read, cardCapabilities) ?: return null
     return if (feedbackTicketVisible) stripped else stripped.withoutResultIntentButtons()
 }
 
@@ -122,38 +126,20 @@ internal fun ActionCardSpecCard.withoutResultIntentButtons(): ActionCardSpecCard
 /** The `open` intents that lead to buying: the upgrade dialog and a seat request's Add Seats. */
 internal val ActionCardSpecUpgradeIntents: Set<ActionCardSpecIntent> = setOf(ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats)
 
-/**
- * [this] without the buttons that `open` an upgrade intent ([ActionCardSpecUpgradeIntents]), in the
- * card and its result: removed from the elements and from every Stack's children. A result whose
- * root was such a button is dropped; a card whose root was one is null (the legacy card is drawn).
- */
-internal fun ActionCardSpecCard.withoutUpgradeIntentButtons(): ActionCardSpecCard? {
-    fun upgradeButtons(tree: ActionCardSpecTree): Set<String> =
-        tree.elements.filterValues { node ->
-            node is ActionCardSpecButton && (node.action as? ActionCardSpecAction.Open)?.intent in ActionCardSpecUpgradeIntents
-        }.keys
-    fun without(tree: ActionCardSpecTree, removed: Set<String>): ActionCardSpecTree =
-        ActionCardSpecTree(
-            tree.root,
-            tree.elements.filterKeys { it !in removed }.mapValues { (_, node) ->
-                if (node is CardStack && node.children.orEmpty().any { it in removed }) node.copy(children = node.children.orEmpty().filterNot { it in removed }) else node
+/** The buttons that `open` an upgrade intent ([ActionCardSpecUpgradeIntents]) labelled [label], in the card and its result. */
+internal fun ActionCardSpecCard.withUpgradeButtonsLabelled(label: ActionCardSpecMsg): ActionCardSpecCard {
+    fun relabel(tree: ActionCardSpecTree) =
+        tree.copy(
+            elements = tree.elements.mapValues { (_, node) ->
+                if (node is ActionCardSpecButton && node.action.opensUpgrade) node.copy(label = label) else node
             },
         )
-    val inSpec = upgradeButtons(spec)
-    if (spec.root in inSpec) return null
-    val resultTree = result
-    val inResult = resultTree?.let(::upgradeButtons).orEmpty()
-    if (inSpec.isEmpty() && inResult.isEmpty()) return this
-    return copy(
-        spec = if (inSpec.isEmpty()) spec else without(spec, inSpec),
-        result =
-            when {
-                resultTree == null || inResult.isEmpty() -> resultTree
-                resultTree.root in inResult -> null
-                else -> without(resultTree, inResult)
-            },
-    )
+    return copy(spec = relabel(spec), result = result?.let(::relabel))
 }
+
+/** An `open` of an upgrade intent ([ActionCardSpecUpgradeIntents]). */
+internal val ActionCardSpecAction.opensUpgrade: Boolean
+    get() = (this as? ActionCardSpecAction.Open)?.intent in ActionCardSpecUpgradeIntents
 
 /**
  * [capabilities] for this card: an `intent.*` only for the intent whose native path is this card's
@@ -211,6 +197,9 @@ internal sealed interface ThreadActionCardSpecPress {
     /** This message's web link, in the browser. */
     data object OpenInWeb : ThreadActionCardSpecPress
 
+    /** iOS view-only Billing: an Add Seats / Upgrade button, "View your plan", opens Plan & Billing. */
+    data object ViewPlan : ThreadActionCardSpecPress
+
     /**
      * `open feedback_ticket` (S0.3): Settings › Feedback on [ticketId], the done card's
      * `result.ticketId`; null (none, or not a UUID) opens the feedback list.
@@ -234,10 +223,13 @@ internal fun threadActionCardSpecPress(
     spec: ActionCardSpecCard,
     elementId: String,
     viewerServerId: String? = null,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ): ThreadActionCardSpecPress {
     val button = spec.button(elementId) ?: return ThreadActionCardSpecPress.Ignore
     if (button.disabledReason != null) return ThreadActionCardSpecPress.Ignore
     val buttonAction = button.action
+    // Viewing the plan changes nothing, so it works on a done or frozen card too.
+    if (!offersUpgrade && buttonAction.opensUpgrade) return ThreadActionCardSpecPress.ViewPlan
     // A result intent views the done card's result: it works on a done card, where every button
     // that changes the card is gone. Only on the card type it belongs to.
     if (buttonAction is ActionCardSpecAction.Open && buttonAction.intent.resultOnly) {

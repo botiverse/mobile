@@ -213,6 +213,7 @@
     <string name="settings_billing_subtitle">Plan and usage</string>
     <string name="settings_billing_managed_on_web">Billing is managed on the web.</string>
     <string name="settings_billing_open_in_browser">Open in browser</string>
+    <string name="settings_billing_view_your_plan">View your plan</string>
     <string name="settings_billing_vo_plan_free">Free</string>
     <string name="settings_billing_vo_plan_pro">Pro</string>
     <string name="settings_billing_vo_plan_founder">Founder</string>

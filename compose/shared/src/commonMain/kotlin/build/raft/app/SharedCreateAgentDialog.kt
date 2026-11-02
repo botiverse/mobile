@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.components.raftUpsellCopy
+import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftComboboxOption
@@ -366,6 +367,9 @@ internal fun SharedCreateAgentDialog(
     runtimeFormV2Override: RuntimeFormV2Access? = null,
     errorFieldKeys: Set<String> = emptySet(),
     takenAgentNames: List<String> = emptyList(),
+    /** iOS view-only Billing: "View your plan" on the agent-limit banner (and [errorMessage] when [errorOffersViewPlan]). */
+    onViewPlan: (() -> Unit)? = null,
+    errorOffersViewPlan: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -591,7 +595,8 @@ internal fun SharedCreateAgentDialog(
                         PlanLimitBanner(
                             currentAgentCount = currentAgentCount,
                             maxAgents = maxAgents,
-                            planLabel = limitPlanLabel
+                            planLabel = limitPlanLabel,
+                            onViewPlan = onViewPlan,
                         )
                     }
                 }
@@ -600,7 +605,8 @@ internal fun SharedCreateAgentDialog(
                         RaftUiBanner(
                             status = RaftUiBannerStatus.Warning,
                             description = error,
-                            size = RaftUiBannerSize.Medium
+                            size = RaftUiBannerSize.Medium,
+                            action = onViewPlan?.takeIf { errorOffersViewPlan }?.let { open -> { RaftViewPlanButton(onClick = open) } }
                         )
                     }
                 }
@@ -819,17 +825,25 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
     }
 
 @Composable
-private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
-    // iOS view-only Billing: the limit stated, with no "Upgrade for more" (raftUpsellCopy).
+private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?, onViewPlan: (() -> Unit)? = null) {
+    // iOS view-only Billing: the limit stated, with no "Upgrade for more" (raftUpsellCopy), and
+    // "View your plan" ([onViewPlan]) to the view-only Plan & Billing page.
     val offersUpgrade = settingsBillingOffersUpgrade()
-    if (planLabel.isNullOrBlank()) {
+    val viewPlan: (@Composable () -> Unit)? = onViewPlan?.takeIf { !offersUpgrade }?.let { open -> { RaftViewPlanButton(onClick = open) } }
+    if (planLabel.isNullOrBlank() || viewPlan != null) {
         RaftUiBanner(
             status = RaftUiBannerStatus.Warning,
             description =
-                raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
-                    .format(listOf(currentAgentCount, maxAgents))
-                    .localized(),
-            size = RaftUiBannerSize.Medium
+                if (planLabel.isNullOrBlank()) {
+                    raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
+                        .format(listOf(currentAgentCount, maxAgents))
+                        .localized()
+                } else {
+                    Res.string.agent_create_error_limit_plan.format(listOf(currentAgentCount, maxAgents, planLabel)).localized() +
+                        " " + stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
+                },
+            size = RaftUiBannerSize.Medium,
+            action = viewPlan
         )
         return
     }

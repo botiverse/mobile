@@ -8985,6 +8985,10 @@ private fun SharedThreadRouteContentContent(
                     bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
                     pager.openSettingsFeedbackWebViewPage(storeScope, ticketId = ticketId)
                 },
+                openPlan = {
+                    bridge.log("thread_view_plan_open")
+                    pager.openSettingsBillingPage(storeScope)
+                },
             )
         }
 
@@ -17122,7 +17126,15 @@ private fun ThreadPageContentContent(
                         },
                     size = RaftUiBannerSize.Medium,
                     iconName = RaftLucideIconName.TriangleAlert,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    // iOS view-only Billing: "View your plan" (the view-only Plan & Billing page).
+                    action =
+                        if (settingsBillingOffersUpgrade()) {
+                            null
+                        } else {
+                            val openPlan = LocalThreadActionCardSpecHost.current.openPlan
+                            ({ build.raft.app.components.RaftViewPlanButton(onClick = openPlan) })
+                        },
                 )
             }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {
@@ -27874,6 +27886,7 @@ private fun ThreadMessageCardContent(
                                             ThreadActionCardSpecPress.Store ->
                                                 specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
                                             ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
+                                            ThreadActionCardSpecPress.ViewPlan -> specHost.openPlan()
                                             is ThreadActionCardSpecPress.OpenFeedbackTicket -> specHost.openFeedbackTicket(press.ticketId)
                                             is ThreadActionCardSpecPress.OpenUrl -> onOpenMarkdownUrl(press.url)
                                             is ThreadActionCardSpecPress.Navigate ->

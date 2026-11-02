@@ -38,8 +38,8 @@ internal fun RaftProBadge(modifier: Modifier = Modifier) {
  * (web `AgentMigrationUpgradeDialog`, a ConfirmDialog with an accent
  * "Upgrade" that opens Settings > Billing). [title]/[description] name the
  * feature; the action and dismissal are shared. Where the app offers no upgrade
- * ([offersUpgrade] false: iOS view-only Billing, App Store guideline 3.1.1) it is the
- * message only, with OK.
+ * ([offersUpgrade] false: iOS view-only Billing, App Store guideline 3.1.1) the action is
+ * "View your plan" ([onUpgrade] opens the view-only Plan & Billing page there) beside Cancel.
  */
 @Composable
 internal fun RaftProUpgradeDialog(
@@ -78,11 +78,12 @@ internal fun RaftProUpgradeDialog(
                 )
             } else {
                 RaftButton(
-                    text = stringResource(Res.string.common_ok),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = onDismiss,
-                    variant = RaftButtonVariant.Primary,
+                    variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
+                RaftViewPlanButton(onClick = onUpgrade, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg)
             }
         }
     }
@@ -139,3 +140,24 @@ private val RaftUpsellNeutralCopy: Map<String, StringResource> =
 /** [resource], or its neutral wording ([RaftUpsellNeutralCopy]) where the app offers no upgrade. */
 internal fun raftUpsellCopy(resource: StringResource, offersUpgrade: Boolean = settingsBillingOffersUpgrade()): StringResource =
     if (offersUpgrade) resource else RaftUpsellNeutralCopy[resource.key] ?: resource
+
+/**
+ * "View your plan": where an Upgrade / Add Seats / View Billing button would be on iOS (view-only
+ * Billing, artin 11-02). It opens the view-only Plan & Billing page, which shows a member who
+ * can't read billing its no-permission card. Not a way to buy: the page has none.
+ */
+@Composable
+internal fun RaftViewPlanButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    variant: RaftButtonVariant = RaftButtonVariant.Default,
+    size: RaftButtonSize = RaftButtonSize.Md,
+) {
+    RaftButton(
+        text = stringResource(Res.string.settings_billing_view_your_plan),
+        onClick = onClick,
+        modifier = modifier,
+        variant = variant,
+        size = size
+    )
+}

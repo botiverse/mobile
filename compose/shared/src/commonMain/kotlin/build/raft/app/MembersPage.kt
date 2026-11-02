@@ -155,6 +155,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.createAgentErrorText
+import build.raft.app.data.isCreateAgentLimitError
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
@@ -2716,7 +2717,9 @@ internal fun MembersPageContent(
             createAgentRetryMachines = retryMachines,
             createAgentFormStore = createAgentFormStore,
             createAgentServerId = serverId,
-            createAgentTakenAgentNames = localMembers.takenAgentNames()
+            createAgentTakenAgentNames = localMembers.takenAgentNames(),
+            createAgentViewPlan =
+                if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
         ),
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
         // Task #409: persist per-machine collapse under the session user id.
@@ -5559,7 +5562,12 @@ internal class MembersCreateAgentInputs(
     val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore? = null,
     val createAgentServerId: String? = null,
     /** Agent @names already used on this server, so a suggested name avoids them. */
-    val createAgentTakenAgentNames: List<String> = emptyList()
+    val createAgentTakenAgentNames: List<String> = emptyList(),
+    /**
+     * iOS view-only Billing: "View your plan" on the agent-limit banner and error opens the
+     * view-only Plan & Billing page. Null elsewhere (no button).
+     */
+    val createAgentViewPlan: (() -> Unit)? = null
 )
 
 /** @names (handles) of live agents and humans, so a suggested create-agent name avoids them. */
@@ -5721,6 +5729,8 @@ internal fun MembersListContent(
     var createAgentError by remember { mutableStateOf<String?>(null) }
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
     var createAgentErrorFields by remember { mutableStateOf(emptySet<String>()) }
+    // The last failure was the plan's agent limit: its banner offers "View your plan" (iOS).
+    var createAgentErrorIsLimit by remember { mutableStateOf(false) }
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     val emptyResponseMessage = stringResource(Res.string.member_error_empty_response)
     val createAgentFailed = stringResource(Res.string.member_error_create_agent)
@@ -5937,6 +5947,8 @@ internal fun MembersListContent(
             submitting = createAgentSubmitting,
             errorMessage = createAgentError,
             errorFieldKeys = createAgentErrorFields,
+            onViewPlan = createAgent.createAgentViewPlan,
+            errorOffersViewPlan = createAgentErrorIsLimit,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,
@@ -5956,8 +5968,10 @@ internal fun MembersListContent(
                 createAgentSubmitting = true
                 createAgentError = null
                 createAgentErrorFields = emptySet()
+                createAgentErrorIsLimit = false
                 scope.launch {
                     val result = submit(request)
+                    createAgentErrorIsLimit = (result as? DataResult.Error)?.error?.let(::isCreateAgentLimitError) == true
                     createAgentSubmitting = false
                     createAgentErrorFields = (result as? DataResult.Error)?.error?.formFieldKeys.orEmpty().toSet()
                     when (result) {

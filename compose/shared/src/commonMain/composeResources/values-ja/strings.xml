@@ -215,6 +215,7 @@
     <string name="settings_billing_subtitle">プランと使用量</string>
     <string name="settings_billing_managed_on_web">プランと請求は Web で管理します。</string>
     <string name="settings_billing_open_in_browser">ブラウザで開く</string>
+    <string name="settings_billing_view_your_plan">プランを確認</string>
     <string name="settings_billing_vo_plan_free">無料プラン</string>
     <string name="settings_billing_vo_plan_pro">Pro</string>
     <string name="settings_billing_vo_plan_founder">ファウンダー</string>

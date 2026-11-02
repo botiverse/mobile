@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
+import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointSameAdminContext
@@ -156,15 +157,19 @@ internal fun CreateJointChannelDialog(
                     status = RaftBannerStatus.Warning,
                     size = RaftBannerSize.Sm,
                     action =
-                        // iOS view-only Billing: the plan-limit message only (App Store 3.1.1).
-                        if (state.showsBillingLink && settingsBillingOffersUpgrade()) {
+                        if (state.showsBillingLink) {
                             {
-                                RaftButton(
-                                    text = stringResource(Res.string.joint_create_view_billing),
-                                    onClick = onOpenBilling,
-                                    variant = RaftButtonVariant.Default,
-                                    trailingIcon = raftBillingLeavesRaftTrailingIcon(),
-                                )
+                                if (settingsBillingOffersUpgrade()) {
+                                    RaftButton(
+                                        text = stringResource(Res.string.joint_create_view_billing),
+                                        onClick = onOpenBilling,
+                                        variant = RaftButtonVariant.Default,
+                                        trailingIcon = raftBillingLeavesRaftTrailingIcon(),
+                                    )
+                                } else {
+                                    // iOS view-only Billing (App Store 3.1.1): the plan, not a purchase.
+                                    RaftViewPlanButton(onClick = onOpenBilling)
+                                }
                             }
                         } else {
                             null

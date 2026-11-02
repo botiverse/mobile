@@ -213,6 +213,7 @@
     <string name="settings_billing_subtitle">套餐与用量</string>
     <string name="settings_billing_managed_on_web">套餐与账单在网页上管理。</string>
     <string name="settings_billing_open_in_browser">在浏览器中打开</string>
+    <string name="settings_billing_view_your_plan">查看我的套餐</string>
     <string name="settings_billing_vo_plan_free">免费版</string>
     <string name="settings_billing_vo_plan_pro">Pro</string>
     <string name="settings_billing_vo_plan_founder">创始成员版</string>
