@@ -93,5 +93,6 @@ private val agentModel =
                 .toRaftAgentStatusIndicatorState(),
         runtimeLabel = "Claude Code",
         modelLabel = "Claude Opus",
+        computer = RaftProfilePreviewComputer.Named("studio-mac"),
         readReceipt = RaftProfilePreviewReadReceipt.Unread,
     )
