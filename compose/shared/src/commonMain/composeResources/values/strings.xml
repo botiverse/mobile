@@ -1562,6 +1562,8 @@
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">No preview is available for this file type.</string>
     <string name="file_preview_download_to_open">Download this file, or use Open with to view it in another app.</string>
+    <string name="file_preview_no_preview_too_large_download">This file is too large to preview. Download it, or use Open with to view it in another app.</string>
+    <string name="file_preview_no_preview_temporarily_download">Preview of this file is temporarily unavailable. Download it, or use Open with to view it in another app.</string>
     <string name="file_preview_error_image_unavailable">Image preview is unavailable.</string>
     <string name="file_preview_image_full_load_failed">Couldn't load full image</string>
     <string name="file_preview_error_load_generic">Unable to load this file preview.</string>
