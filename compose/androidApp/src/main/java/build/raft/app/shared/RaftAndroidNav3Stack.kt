@@ -1,10 +1,13 @@
 package build.raft.app.shared
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import build.raft.app.LocalRaftStackShellTabs
+import build.raft.app.RaftStackShellTabs
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.data.SharedPreferenceStore
@@ -17,6 +20,7 @@ import build.raft.app.nav.RaftPageStackSavedState
 import build.raft.app.nav.RaftStackOpenRoute
 import build.raft.app.nav.RaftStackPage
 import build.raft.app.nav.RaftStackPageAllowlist
+import build.raft.app.nav.RaftStackTransitionListener
 import build.raft.app.nav.raftAppShellPageDataWithTab
 import build.raft.app.nav.raftStackOpenRoute
 import build.raft.designsystem.components.RaftSystemBarsAppearance
@@ -145,6 +149,10 @@ internal class RaftStackPageBridgeTransport(
  * shell (root page) by [shell], every other page by [page]. Each page reports its system bar icons
  * and canvas colour; only the top page's reach the window ([onSystemBars] / [onCanvas]), and a page
  * coming back on top re-applies its last ones.
+ *
+ * The shell publishes its tabs to the pages over it ([LocalRaftStackShellTabs]: the server panel's
+ * Members and Settings pages draw the shell's own tab content); [transitions] hears every push, pop
+ * and predictive back gesture (the frame probe, RaftNavTransitionFrameProbe).
  */
 @Composable
 internal fun RaftAndroidNav3StackContent(
@@ -153,10 +161,26 @@ internal fun RaftAndroidNav3StackContent(
     onCanvas: (Color) -> Unit,
     shell: @Composable (onBars: (RaftSystemBarsAppearance) -> Unit, onCanvas: (Color) -> Unit) -> Unit,
     page: @Composable (RaftStackPage, onBars: (RaftSystemBarsAppearance) -> Unit, onCanvas: (Color) -> Unit) -> Unit,
+    transitions: RaftStackTransitionListener? = null,
+) {
+    val shellTabs = remember { RaftStackShellTabs() }
+    CompositionLocalProvider(LocalRaftStackShellTabs provides shellTabs) {
+        RaftAndroidNav3StackPages(stack, onSystemBars, onCanvas, shell, page, transitions)
+    }
+}
+
+@Composable
+private fun RaftAndroidNav3StackPages(
+    stack: RaftPageStack,
+    onSystemBars: (RaftSystemBarsAppearance) -> Unit,
+    onCanvas: (Color) -> Unit,
+    shell: @Composable (onBars: (RaftSystemBarsAppearance) -> Unit, onCanvas: (Color) -> Unit) -> Unit,
+    page: @Composable (RaftStackPage, onBars: (RaftSystemBarsAppearance) -> Unit, onCanvas: (Color) -> Unit) -> Unit,
+    transitions: RaftStackTransitionListener?,
 ) {
     val bars = remember { HashMap<String, RaftSystemBarsAppearance>() }
     val canvases = remember { HashMap<String, Color>() }
-    RaftMobilePageStackDisplay(stack) { stackPage ->
+    RaftMobilePageStackDisplay(stack, transitions) { stackPage ->
         val key = stackPage.contentKey
         val onTop = stack.pages.lastOrNull() === stackPage
         val reportBars =

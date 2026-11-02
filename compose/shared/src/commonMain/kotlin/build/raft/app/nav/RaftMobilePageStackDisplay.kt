@@ -3,6 +3,9 @@ package build.raft.app.nav
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.lifecycle.Lifecycle
@@ -33,17 +36,34 @@ import kotlinx.serialization.json.booleanOrNull
  * Back order: the top page's own back handlers (registered after this display's), then this
  * display pops the top page, then, with only the root page left (no previous scene, `NavDisplay`'s
  * handler off), the root page's handlers and the host's own fallback.
+ *
+ * [transitions] (optional) hears each push, pop and predictive back gesture from its start to its
+ * settled motion ([RaftStackTransitionTracker]); the Android host measures their frames.
  */
 @Composable
 fun RaftMobilePageStackDisplay(
     stack: RaftPageStack,
+    transitions: RaftStackTransitionListener? = null,
     pageContent: @Composable (RaftStackPage) -> Unit,
 ) {
     // The root page never leaves the stack; guard NavDisplay's non-empty requirement anyway.
     if (stack.pages.isEmpty()) return
-    val motion = remember { RaftMobileStackMotion() }
-    motion.update(stack.pages.map { it.contentKey })
-    val sceneStrategy = remember(motion) { RaftMobileStackSceneStrategy<RaftStackPage>(motion) }
+    val motion = remember { RaftMobileStackMotion().apply { settledTop = stack.pages.last().contentKey } }
+    val contentKeys = stack.pages.map { it.contentKey }
+    val tracker = remember { RaftStackTransitionTracker() }
+    tracker.listener = transitions
+    // After the change is applied, before the scenes' motion reports (their effects run later).
+    SideEffect { tracker.onStack(contentKeys) }
+
+    motion.update(contentKeys)
+    // A settle that never comes (a scene left mid motion) must not leave the top page inactive.
+    LaunchedEffect(contentKeys.last()) {
+        delay(RaftMobileStackSettleFallbackMillis)
+        motion.settledTop = contentKeys.last()
+    }
+
+    val sceneStrategy =
+        remember(motion, tracker) { RaftMobileStackSceneStrategy<RaftStackPage>(motion, tracker.takeIf { transitions != null }) }
     val focusManager = LocalFocusManager.current
     // Before NavDisplay: its effects (the new top page's focus requests) run after this one.
     DisposableEffect(stack.pages.last().contentKey) {
@@ -60,18 +80,26 @@ fun RaftMobilePageStackDisplay(
         entryProvider = { page ->
             NavEntry(page, contentKey = page.contentKey, metadata = raftMobileStackEntryMetadata(page)) {
                 RaftStackPageViewModels {
-                    RaftStackPageActivity(active = stack.pages.lastOrNull() === page) { pageContent(page) }
+                    val top = stack.pages.lastOrNull() === page
+                    // On top: resumed at once (its content renders through the slide), active (back
+                    // handlers, viewDidAppear: read state, realtime interest, loads) once settled.
+                    RaftStackPageActivity(resumed = top, active = top && motion.settledTop == page.contentKey) { pageContent(page) }
                 }
             }
         },
     )
 }
 
-/** A stack page's lifecycle cap and page activity: resumed and active on top, stopped and inactive under it. */
+private const val RaftMobileStackSettleFallbackMillis = 1_000L
+
+/**
+ * A stack page's lifecycle cap and page activity: on top it is resumed at once (its content renders
+ * through the slide) and [active] once its motion settled; under the top page stopped and inactive.
+ */
 @Composable
-internal fun RaftStackPageActivity(active: Boolean, content: @Composable () -> Unit) {
+internal fun RaftStackPageActivity(resumed: Boolean, active: Boolean = resumed, content: @Composable () -> Unit) {
     val owner =
-        rememberLifecycleOwner(maxLifecycle = if (active) Lifecycle.State.RESUMED else Lifecycle.State.CREATED)
+        rememberLifecycleOwner(maxLifecycle = if (resumed) Lifecycle.State.RESUMED else Lifecycle.State.CREATED)
     CompositionLocalProvider(LocalLifecycleOwner provides owner) {
         RaftProvidePageActive(active, content)
     }

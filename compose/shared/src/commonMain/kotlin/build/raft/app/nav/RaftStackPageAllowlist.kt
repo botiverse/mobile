@@ -69,6 +69,9 @@ internal val RaftStackChatFilesBrowsePages: List<String> =
         build.raft.app.HOME_SEARCH_PAGE,
     )
 
+/** The shell tabs the phone server panel opens as stack pages (RAFT_APP_SHELL_SERVER_PAGE): Members, Settings. */
+internal val RaftStackServerPanelTabs: List<String> = listOf("members", build.raft.app.AppShellServerTabKey)
+
 /** The Settings web page surfaces on the stack (the others keep the host's way). */
 internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSurface> =
     listOf(
@@ -103,6 +106,10 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
  * share or deep link reaches the shell (new Intent) and the shell opens the chat on the stack.
  * Covered, the chat and the file pages keep the window size ([RaftStackCoveredKeepsSizePages]).
  * Still Activities: the in-app browser, message link pages, login / auth, onboarding web pages.
+ *
+ * Server panel pages (artin 2026-11-02): the phone server panel's Members and Settings
+ * ([RaftStackServerPanelTabs], the shell's own tab content on a page of its own) slide in like
+ * the rest; Computers was already a stack page (batch 2).
  */
 val RaftMobileStackPages: RaftStackPageAllowlist =
     RaftStackPageAllowlist(
@@ -125,6 +132,13 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
             ) +
             RaftStackChatFilesBrowsePages.map { RaftStackPageRule(pageName = it) } +
+            RaftStackServerPanelTabs.map { tab ->
+                RaftStackPageRule(
+                    pageName = build.raft.app.RAFT_APP_SHELL_SERVER_PAGE,
+                    field = build.raft.app.RAFT_APP_SHELL_SERVER_PAGE_TAB,
+                    value = tab,
+                )
+            } +
             RaftStackSettingsWebSurfaces.map { surface ->
                 RaftStackPageRule(
                     pageName = build.raft.app.SETTINGS_WEB_VIEW_PAGE,

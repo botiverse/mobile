@@ -9,6 +9,10 @@ import build.raft.app.HOME_SAVED_PAGE
 import build.raft.app.MEMBERS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.RAFT_APP_SHELL_SERVER_PAGE
+import build.raft.app.appShellServerPagePushes
+import build.raft.app.appShellServerStackPageData
+import build.raft.app.appShellServerStackPageTab
 import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.RAFT_FILE_PREVIEW_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
@@ -165,6 +169,28 @@ class RaftStackPageAllowlistTest {
         val replacing = JsonObject(chat + ("slockReplaceCurrentPage" to JsonPrimitive(true)))
         assertEquals(RaftStackOpenRoute.Stack, route(THREAD_PAGE, replacing, fromRoot = false))
         assertEquals(RaftStackOpenRoute.Host, route(THREAD_PAGE, chat, enabled = false))
+    }
+
+    @Test fun `the server panel opens Members and Settings as stack pages by shell tab key`() {
+        assertEquals(listOf("members", "more"), RaftStackServerPanelTabs)
+        listOf("members", "more").forEach { tab ->
+            val key = data("tab" to tab)
+            assertEquals(RaftStackOpenRoute.Stack, route(RAFT_APP_SHELL_SERVER_PAGE, key), tab)
+            // Settings > panel > Members never happens on the phone (no bar over a page) but stays on the stack.
+            assertEquals(RaftStackOpenRoute.Stack, route(RAFT_APP_SHELL_SERVER_PAGE, key, fromRoot = false), tab)
+            assertEquals(RaftStackOpenRoute.Host, route(RAFT_APP_SHELL_SERVER_PAGE, key, enabled = false), tab)
+            assertEquals(tab, appShellServerStackPageTab(appShellServerStackPageData(tab).optString("tab")))
+        }
+        // Any other tab is not a server page: not on the stack and the page shows nothing.
+        listOf("home", "settings", "").forEach { tab ->
+            assertEquals(RaftStackOpenRoute.Host, route(RAFT_APP_SHELL_SERVER_PAGE, data("tab" to tab)), tab)
+            assertEquals(null, appShellServerStackPageTab(tab), tab)
+        }
+        assertEquals(RaftStackOpenRoute.Host, route(RAFT_APP_SHELL_SERVER_PAGE, data()))
+        // The panel pushes only on a shell that is a stack root and only on the phone layout.
+        assertTrue(appShellServerPagePushes(stackRoot = true, navRailActive = false))
+        assertFalse(appShellServerPagePushes(stackRoot = true, navRailActive = true))
+        assertFalse(appShellServerPagePushes(stackRoot = false, navRailActive = false))
     }
 
     @Test fun `covered the chat and the file pages keep the window size and the rest collapse`() {
