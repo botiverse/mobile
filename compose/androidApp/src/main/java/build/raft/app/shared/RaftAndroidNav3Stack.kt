@@ -20,7 +20,10 @@ import build.raft.app.nav.RaftStackPageAllowlist
 import build.raft.app.nav.raftAppShellPageDataWithTab
 import build.raft.app.nav.raftStackOpenRoute
 import build.raft.designsystem.components.RaftSystemBarsAppearance
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /*
  * Navigation 3 on Android, plan step 1: the app shell Activity draws the shared page stack
@@ -40,6 +43,12 @@ import kotlinx.serialization.json.JsonObject
  *   put back over the shell, with the shell tab under them (raftAndroidNav3ShellArgs); anything
  *   unusable (over the size guard, a page no longer on the allowlist, a key with content) brings the
  *   window back on the shell alone.
+ * - Activity results (picker, camera, WebView file chooser) asked for by a stack page: one router,
+ *   RaftStackActivityResults, keyed by the page's content key; the result goes to the page that asked
+ *   while it is open, a closed page's call ends as cancelled, and after a recreation (the callbacks
+ *   are gone) the result is dropped as an Activity page's is today.
+ * - Window replacement (sign-out opens the login page in place of the shell): today's login
+ *   replacement finishes the window; the stack is cleared with it and not saved.
  */
 
 /** The stack is drawn by the app shell window only, and only with the switch on for this process. */
@@ -93,15 +102,27 @@ internal fun raftAndroidNav3ShellArgs(args: RaftCmpPageArgs, stack: RaftPageStac
 
 /**
  * A stack page's bridge wire: the Activity's, except `closePage`, which closes this page on the
- * stack instead of finishing the shell window.
+ * stack instead of finishing the shell window, and the calls answered by an Activity result
+ * ([RAFT_STACK_ACTIVITY_RESULT_CALLS]: picker, camera), whose answer goes through [results] under
+ * this page's [pageKey]: to this page while it is open, a cancelled answer once it has closed.
  */
 internal class RaftStackPageBridgeTransport(
     private val delegate: HostBridgeTransport,
     private val onClosePage: () -> Unit,
+    private val pageKey: String? = null,
+    private val results: RaftStackActivityResults? = null,
 ) : HostBridgeTransport {
     override fun call(method: String, paramsJson: String, callback: ((String?) -> Unit)?) {
         if (method == "closePage") {
             onClosePage()
+            return
+        }
+        val cancelled = RAFT_STACK_ACTIVITY_RESULT_CALLS[method]
+        if (cancelled != null && callback != null && pageKey != null && results != null) {
+            val requestId = results.begin(pageKey, method)
+            delegate.call(method, paramsJson) { answer ->
+                callback(if (results.complete(requestId)) answer else cancelled)
+            }
             return
         }
         delegate.call(method, paramsJson, callback)
@@ -157,4 +178,127 @@ internal fun RaftAndroidNav3StackContent(
         }
         if (stackPage === stack.pages.firstOrNull()) shell(reportBars, reportCanvas) else page(stackPage, reportBars, reportCanvas)
     }
+}
+
+/**
+ * Bridge calls a stack page makes that the shell Activity answers with an Activity result, and the
+ * answer the page gets instead when it closed before the result came (the call's "cancelled").
+ * `threadAttachmentUpload` is the photo / file picker and the camera (Account avatar, Feedback
+ * attachments, member detail agent avatar).
+ */
+internal val RAFT_STACK_ACTIVITY_RESULT_CALLS: Map<String, String> =
+    mapOf(RAFT_STACK_RESULT_ATTACHMENT_PICKER to """{"code":204,"bodyText":""}""")
+
+/** [RaftStackActivityResults] kind of the picker / camera bridge call (its method name). */
+internal const val RAFT_STACK_RESULT_ATTACHMENT_PICKER = "threadAttachmentUpload"
+
+/** [RaftStackActivityResults] kind of a WebView `<input type=file>` chooser. */
+internal const val RAFT_STACK_RESULT_WEB_FILE_CHOOSER = "webViewFileChooser"
+
+/** onSaveInstanceState key of the pending Activity results ([RaftStackActivityResults.encode]). */
+internal const val RAFT_NAV3_STACK_RESULTS_KEY = "raftNav3StackResults"
+
+/**
+ * The shell window's Activity results requested by stack pages, keyed by the asking page's content
+ * key (`pageName#id`, the key saved with the stack), so a result reaches the page that asked:
+ *
+ * - [begin] when a page launches a picker / camera / WebView file chooser; [complete] when the
+ *   result comes back: true while that page is still on the stack ([isOpen]), false (drop it, the
+ *   caller answers "cancelled") once it has closed, or for an unknown request.
+ * - Process death or recreation: the pending requests are saved with the stack keys ([encode] /
+ *   [restore]); their callbacks died with the old instance, so the Activity drops a result that
+ *   comes back to the new one (as it does for an Activity page today) and calls [dropRecreated],
+ *   which ends the request whether or not its page was restored. A result never goes to another page.
+ * - [clear] when the window is replaced (sign-out): no page is left to receive anything.
+ */
+internal class RaftStackActivityResults(
+    private val isOpen: (pageKey: String) -> Boolean,
+    private val log: (String) -> Unit = {},
+) {
+    private class Request(val id: String, val pageKey: String, val kind: String, val recreated: Boolean)
+
+    private val requests = LinkedHashMap<String, Request>()
+    private var serial = 0L
+
+    /** Requests waiting for their result (saved ones included). */
+    val pendingCount: Int
+        get() = requests.size
+
+    /** A new request of [kind] by the page [pageKey]; its id goes to [complete]. */
+    fun begin(pageKey: String, kind: String): String {
+        val id = "r${serial++}"
+        requests[id] = Request(id, pageKey, kind, recreated = false)
+        log("nav3_result_begin id=$id kind=$kind page=$pageKey")
+        return id
+    }
+
+    /** The result of [requestId] came back: true to hand it to its page, false to drop it. */
+    fun complete(requestId: String): Boolean {
+        val request = requests.remove(requestId) ?: return false.also { log("nav3_result_drop id=$requestId reason=unknown") }
+        val open = isOpen(request.pageKey)
+        log("nav3_result_${if (open) "deliver" else "drop"} id=$requestId kind=${request.kind} page=${request.pageKey}" + if (open) "" else " reason=page_closed")
+        return open
+    }
+
+    /**
+     * A result of [kind] came back to a recreated window, where nothing waits for it: ends the
+     * oldest saved request of that kind and returns its page key (null when there was none).
+     */
+    fun dropRecreated(kind: String): String? {
+        val request = requests.values.firstOrNull { it.recreated && it.kind == kind } ?: return null
+        requests.remove(request.id)
+        log("nav3_result_drop id=${request.id} kind=$kind page=${request.pageKey} reason=recreated pageRestored=${isOpen(request.pageKey)}")
+        return request.pageKey
+    }
+
+    /** Ends every request (the window is being replaced). */
+    fun clear() {
+        if (requests.isNotEmpty()) log("nav3_result_clear count=${requests.size}")
+        requests.clear()
+    }
+
+    /** The pending requests as saved text, or null with none. */
+    fun encode(): String? {
+        if (requests.isEmpty()) return null
+        return JsonArray(
+            requests.values.map { request ->
+                JsonObject(
+                    mapOf(
+                        "id" to JsonPrimitive(request.id),
+                        "page" to JsonPrimitive(request.pageKey),
+                        "kind" to JsonPrimitive(request.kind),
+                    ),
+                )
+            },
+        ).toString()
+    }
+
+    /** Puts back the requests saved by [encode] (unreadable text: none), as recreated requests. */
+    fun restore(text: String?) {
+        if (text.isNullOrBlank()) return
+        val array = runCatching { Json.parseToJsonElement(text) as? JsonArray }.getOrNull() ?: return
+        array.take(RAFT_STACK_RESULTS_SAVED_MAX).forEach { element ->
+            val item = element as? JsonObject ?: return@forEach
+            fun field(name: String) = (item[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(String::isNotBlank)
+            val id = field("id") ?: return@forEach
+            val pageKey = field("page") ?: return@forEach
+            val kind = field("kind") ?: return@forEach
+            requests[id] = Request(id, pageKey, kind, recreated = true)
+            id.removePrefix("r").toLongOrNull()?.let { serial = maxOf(serial, it + 1) }
+        }
+        if (requests.isNotEmpty()) log("nav3_result_restore count=${requests.size}")
+    }
+}
+
+/** Most saved pending results (one picker is on screen at a time; the rest is noise). */
+private const val RAFT_STACK_RESULTS_SAVED_MAX = 8
+
+/**
+ * The window is being replaced (sign-out, account deletion's sign-out, an API environment switch
+ * open the login page in place of the shell window): every page over the shell closes and no
+ * result is waited for. The Activity itself is finished by today's login replacement.
+ */
+internal fun raftAndroidNav3ClearForWindowReplace(stack: RaftPageStack, results: RaftStackActivityResults?) {
+    stack.pages.drop(1).asReversed().forEach(stack::close)
+    results?.clear()
 }
