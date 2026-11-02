@@ -521,11 +521,8 @@ final class SignedInHomeShotTests: XCTestCase {
         var closeAttempts = 0
         var events: [String] = []
         while Date() < deadline {
-            let open = springboard.buttons["Open"].firstMatch
-            if open.exists {
-                open.tap()
-                openedAt = Date()
-                events.append("tapped Open")
+            if let answered = answerAlert(springboard: springboard, app: app, events: &events) {
+                if answered == "Open" { openedAt = Date() }
                 Thread.sleep(forTimeInterval: 1)
                 continue
             }
@@ -536,15 +533,6 @@ final class SignedInHomeShotTests: XCTestCase {
                 events.append("closed sheet: \(sheetClosed)")
                 Thread.sleep(forTimeInterval: 2)
                 continue
-            }
-            for host in [springboard, app] {
-                let alert = host.alerts.firstMatch
-                guard alert.exists else { continue }
-                let order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
-                if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
-                    events.append("alert \(alert.label): \(button.label)")
-                    button.tap()
-                }
             }
             if tabBar.exists && tabBar.frame.height > 0 { break }
             let server = element(app, label: "OranixSlockTest")
@@ -561,15 +549,7 @@ final class SignedInHomeShotTests: XCTestCase {
         }
         // Late first-run alerts.
         for _ in 0..<5 {
-            for host in [springboard, app] {
-                let alert = host.alerts.firstMatch
-                guard alert.exists else { continue }
-                let order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
-                if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
-                    events.append("alert \(alert.label): \(button.label)")
-                    button.tap()
-                }
-            }
+            _ = answerAlert(springboard: springboard, app: app, events: &events)
             Thread.sleep(forTimeInterval: 1)
         }
         // Let avatars, badges and the channel list settle.
@@ -595,6 +575,33 @@ final class SignedInHomeShotTests: XCTestCase {
         attach(app, name: "home")
         // 4. Keep the app up until the host has its screenshot.
         _ = waitFor("shot-done", timeout: 120)
+    }
+
+    // One system alert, if any: "Open in “Raft”?" (the callback) -> Open; the web sign-in
+    // prompt "“Raft” Wants to Use … to Sign In" -> Cancel (no sheet needed: the request was
+    // approved through the API, and closing the browser keeps the pending request); anything
+    // else (first-run permissions) -> Allow / OK. Returns the button tapped.
+    private func answerAlert(springboard: XCUIApplication, app: XCUIApplication, events: inout [String]) -> String? {
+        for host in [springboard, app] {
+            let alert = host.alerts.firstMatch
+            guard alert.exists else { continue }
+            let label = alert.label
+            let order: [String]
+            if label.hasPrefix("Open in") {
+                order = ["Open"]
+            } else if label.localizedCaseInsensitiveContains("to Sign In") {
+                order = ["Cancel"]
+            } else {
+                order = ["Allow", "OK", "Don’t Allow", "Don't Allow", "Cancel"]
+            }
+            if let button = order.map({ alert.buttons[$0] }).first(where: { $0.exists }) {
+                let name = button.label
+                events.append("alert \(label): \(name)")
+                button.tap()
+                return name
+            }
+        }
+        return nil
     }
 
     // The web sign-in sheet's close (X) button: by label when the sheet exposes one, else its
