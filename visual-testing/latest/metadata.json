@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-30T22:02:53.105Z",
-  "runId": "f149c5a3-20261030220049",
-  "commit": "f149c5a3-20261030220049",
-  "commitSubject": "fix(links): open Raft Desktop raft:// message links on iOS and Android (#4028)",
+  "generatedAt": "2026-11-02T05:54:39.850Z",
+  "runId": "8a04b1cc-20261102055356",
+  "commit": "8a04b1cc-20261102055356",
+  "commitSubject": "fix(visual): Visual Testing green again (followers capture tap, ottie avatar data) (#4108)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -29,54 +29,6 @@
         "total": 101,
         "ready": 16,
         "pending": 85
-      }
-    },
-    {
-      "key": "react__ios",
-      "leftProvider": "react",
-      "rightProvider": "ios",
-      "label": "React ↔ iOS",
-      "class": "baseline",
-      "baseline": "react",
-      "current": "ios",
-      "comparison": "react__ios",
-      "detailHref": "react__ios.html",
-      "summary": {
-        "total": 101,
-        "same": 0,
-        "pass": 15,
-        "basic-pass": 18,
-        "different": 48,
-        "missing": 20
-      },
-      "analysisSummary": {
-        "total": 101,
-        "ready": 0,
-        "pending": 101
-      }
-    },
-    {
-      "key": "android__ios",
-      "leftProvider": "android",
-      "rightProvider": "ios",
-      "label": "Android ↔ iOS",
-      "class": "cross-platform",
-      "baseline": "android",
-      "current": "ios",
-      "comparison": "android__ios",
-      "detailHref": "android__ios.html",
-      "summary": {
-        "total": 101,
-        "same": 0,
-        "pass": 23,
-        "basic-pass": 27,
-        "different": 31,
-        "missing": 20
-      },
-      "analysisSummary": {
-        "total": 101,
-        "ready": 0,
-        "pending": 101
       }
     }
   ],
@@ -1103,7 +1055,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.965322180100068,
+        "rgbSimilarity": 0.9653221580373503,
         "pixelPerfectSimilarity": 0.8842893020618139,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
@@ -1945,8 +1897,8 @@
         "status": "pass",
         "rawStatus": "different",
         "acceptance": "pass: pixel perfect 99.94% > 99%",
-        "rgbSimilarity": 0.9999975453035882,
-        "pixelPerfectSimilarity": 0.9994022092267706,
+        "rgbSimilarity": 0.9999976302411803,
+        "pixelPerfectSimilarity": 0.9993978774095733,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
       }
     },
@@ -2267,8 +2219,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8061852003643919,
-        "pixelPerfectSimilarity": 0.5626297916582277,
+        "rgbSimilarity": 0.8058486689077752,
+        "pixelPerfectSimilarity": 0.556304262702367,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -2289,8 +2241,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8100627154802542,
-        "pixelPerfectSimilarity": 0.5478838389975831,
+        "rgbSimilarity": 0.808979499145482,
+        "pixelPerfectSimilarity": 0.5249007574836959,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-empty.side-by-side.png"
       }
     },
@@ -2311,8 +2263,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8042507165743912,
-        "pixelPerfectSimilarity": 0.5385648316927938,
+        "rgbSimilarity": 0.8039401110172307,
+        "pixelPerfectSimilarity": 0.5329383886255924,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-error.side-by-side.png"
       }
     },
@@ -2355,8 +2307,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8077580042876509,
-        "pixelPerfectSimilarity": 0.44803472812951484,
+        "rgbSimilarity": 0.8082606830104463,
+        "pixelPerfectSimilarity": 0.4488472340368075,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-onboarding.side-by-side.png"
       }
     },
@@ -2409,7 +2361,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.930613818339095,
+        "rgbSimilarity": 0.9306138395193039,
         "pixelPerfectSimilarity": 0.8556632370613413,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
@@ -2475,7 +2427,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9335123224250796,
+        "rgbSimilarity": 0.9335123330151841,
         "pixelPerfectSimilarity": 0.8555430658511227,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.loading-state.side-by-side.png"
       }
@@ -3284,7 +3236,7 @@
             "EditChannelDialog",
             "FormField"
           ],
-          "path": "packages/web/src/components/channel/EditChannelDialog.tsx",
+          "path": "packages/web/src/features/channel/EditChannelDialog.tsx",
           "fixture": "fixtures/components.channel.settings.panel.json",
           "reason": ""
         },
@@ -3343,7 +3295,7 @@
             "SegmentedControl",
             "ConversationPreviewCard"
           ],
-          "path": "packages/web/src/components/thread/ThreadsInbox.tsx",
+          "path": "packages/web/src/features/thread/ThreadsInbox.tsx",
           "fixture": "fixtures/components.home.activity.results.json",
           "reason": ""
         },
@@ -3439,8 +3391,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8043040540770275,
-        "pixelPerfectSimilarity": 0.643218090492972,
+        "rgbSimilarity": 0.7999584964978916,
+        "pixelPerfectSimilarity": 0.607258206073372,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.create-channel.dialog.side-by-side.png"
       }
     },
@@ -3577,7 +3529,7 @@
             "MessageSearchPage",
             "SelectionPopover"
           ],
-          "path": "packages/web/src/components/search/MessageSearchPage.tsx",
+          "path": "packages/web/src/features/search/MessageSearchPage.tsx",
           "fixture": "fixtures/components.home.search.results.json",
           "reason": ""
         },
@@ -3636,7 +3588,7 @@
             "SelectionPopover",
             "SegmentedControl"
           ],
-          "path": "packages/web/src/components/search/MessageSearchPage.tsx",
+          "path": "packages/web/src/features/search/MessageSearchPage.tsx",
           "fixture": "fixtures/components.home.search.results.json",
           "reason": ""
         },
@@ -3854,8 +3806,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8064098998767972,
-        "pixelPerfectSimilarity": 0.5629497981393716,
+        "rgbSimilarity": 0.8060733684201806,
+        "pixelPerfectSimilarity": 0.5566242691835109,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -3928,7 +3880,7 @@
           "components": [
             "AccountSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/account/AccountSection.tsx",
           "fixture": "fixtures/components.settings.account.error-state.json",
           "reason": ""
         },
@@ -3986,7 +3938,7 @@
           "components": [
             "AccountSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/account/AccountSection.tsx",
           "fixture": "fixtures/components.settings.account.page.json",
           "reason": ""
         },
@@ -4044,7 +3996,7 @@
           "components": [
             "AdminsSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/AdminsSection.tsx",
           "fixture": "fixtures/components.settings.administration.admins.json",
           "reason": ""
         },
@@ -4093,7 +4045,7 @@
           "components": [
             "InvitesSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/InvitesSection.tsx",
           "fixture": "fixtures/components.settings.administration.invites.json",
           "reason": ""
         },
@@ -4142,7 +4094,7 @@
           "components": [
             "JoinLinksSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/JoinLinksSection.tsx",
           "fixture": "fixtures/components.settings.administration.join-links.json",
           "reason": ""
         },
@@ -4191,7 +4143,7 @@
           "components": [
             "MemberPermissionsSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/MemberPermissionsSection.tsx",
           "fixture": "fixtures/components.settings.administration.member-permissions.json",
           "reason": ""
         },
@@ -4240,7 +4192,7 @@
           "components": [
             "OnboardingAgentSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/OnboardingAgentSection.tsx",
           "fixture": "fixtures/components.settings.administration.onboarding.json",
           "reason": ""
         },
@@ -4289,7 +4241,7 @@
           "components": [
             "PreJoinAgreementSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/PreJoinAgreementSection.tsx",
           "fixture": "fixtures/components.settings.administration.pre-join-agreement.json",
           "reason": ""
         },
@@ -4338,7 +4290,7 @@
           "components": [
             "ServerTranslationSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/ServerTranslationSection.tsx",
           "fixture": "fixtures/components.settings.administration.translation.json",
           "reason": ""
         },
@@ -4388,7 +4340,7 @@
             "SettingsPanel",
             "AppearanceSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
+          "path": "packages/web/src/features/settings/appearance/AppearanceSection.tsx#AppearanceSection",
           "fixture": "fixtures/components.settings.appearance.page.json",
           "reason": ""
         },
@@ -4446,7 +4398,7 @@
           "components": [
             "NotificationsTabContent"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/notifications/NotificationsTabContent.tsx",
           "fixture": "fixtures/components.settings.notifications.page.json",
           "reason": ""
         },
@@ -4483,8 +4435,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9199063570014574,
-        "pixelPerfectSimilarity": 0.678072804850056,
+        "rgbSimilarity": 0.9207986708183603,
+        "pixelPerfectSimilarity": 0.6817960870093571,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
       }
     },
@@ -4552,8 +4504,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9500951392920725,
-        "pixelPerfectSimilarity": 0.8917463307273734,
+        "rgbSimilarity": 0.9501640808720198,
+        "pixelPerfectSimilarity": 0.891776373529928,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
     },
@@ -4573,7 +4525,7 @@
           "components": [
             "ProfileSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/server/ProfileSection.tsx",
           "fixture": "fixtures/components.settings.server.profile.json",
           "reason": ""
         },
@@ -4803,7 +4755,7 @@
             "ChatPanel",
             "PanelHeader"
           ],
-          "path": "packages/web/src/components/message/ChatPanel.tsx",
+          "path": "packages/web/src/features/channel/ChatPanel.tsx",
           "fixture": "packages/web/visual-testing/VisualTestingCases.tsx#ThreadHeaderVisualCaseView",
           "reason": ""
         },
@@ -4839,8 +4791,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9668457690135204,
-        "pixelPerfectSimilarity": 0.8852943969610636,
+        "rgbSimilarity": 0.9668992514384624,
+        "pixelPerfectSimilarity": 0.885432098765432,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
       }
     },
@@ -5053,8 +5005,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9433755852025704,
-        "pixelPerfectSimilarity": 0.9017360689161638,
+        "rgbSimilarity": 0.9503940666116035,
+        "pixelPerfectSimilarity": 0.8929024722863586,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.side-by-side.png"
       }
     },
@@ -5112,8 +5064,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9470584339018006,
-        "pixelPerfectSimilarity": 0.8667824496023548,
+        "rgbSimilarity": 0.9523129132291375,
+        "pixelPerfectSimilarity": 0.8588167186508419,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.dark.side-by-side.png"
       }
     },
@@ -5207,8 +5159,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9756627035848274,
-        "pixelPerfectSimilarity": 0.8538397402141478,
+        "rgbSimilarity": 0.978156348860286,
+        "pixelPerfectSimilarity": 0.8668901311081406,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -5363,8 +5315,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9593983240982731,
-        "pixelPerfectSimilarity": 0.9120994855592012,
+        "rgbSimilarity": 0.9596837265306244,
+        "pixelPerfectSimilarity": 0.9126770499993249,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -5421,7 +5373,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9298394054787631,
+        "rgbSimilarity": 0.9298394160688676,
         "pixelPerfectSimilarity": 0.8537570381172277,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
@@ -5537,7 +5489,7 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 96.59% > 96%",
-        "rgbSimilarity": 0.9845937243217698,
+        "rgbSimilarity": 0.9845937799198182,
         "pixelPerfectSimilarity": 0.9659128961261663,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
@@ -5656,7 +5608,7 @@
           "components": [
             "ADMINISTRATION_VISUAL_SECTIONS"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/features/settings/administration/administrationVisualSections.ts",
           "fixture": "fixtures/screens.settings.administration.full-height.json",
           "reason": ""
         },
@@ -5699,7 +5651,7 @@
         "react": {
           "id": "react",
           "status": "pending",
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
+          "path": "packages/web/src/features/settings/appearance/AppearanceSection.tsx#AppearanceSection",
           "fixture": "fixtures/screens.settings.appearance.json",
           "reason": "Needs a real React Settings route capture for the Appearance screen; component-only SettingsPanel capture is tracked separately.",
           "components": []
@@ -5739,7 +5691,7 @@
         "react": {
           "id": "react",
           "status": "external",
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx#BillingTabContent",
+          "path": "packages/web/src/features/settings/billing/BillingTabContent.tsx#BillingTabContent",
           "fixture": "fixtures/screens.settings.billing-portal.json",
           "reason": "Billing portal opens an external website; validate Billing tab action availability instead of a portal screen.",
           "components": []
@@ -5784,7 +5736,7 @@
             "DangerZoneSection",
             "Modal"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
+          "path": "packages/web/src/features/settings/server/DangerZoneSection.tsx#DangerZoneSection",
           "fixture": "fixtures/screens.settings.server-danger-modal.json",
           "reason": ""
         },
