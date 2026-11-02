@@ -71,7 +71,7 @@ internal fun ChannelMembersPageHeader(
             RaftText(
                 title,
                 modifier = Modifier.weight(1f, fill = false),
-                style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                style = RaftType.Headline,
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

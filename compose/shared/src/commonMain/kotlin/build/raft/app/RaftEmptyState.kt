@@ -54,7 +54,8 @@ internal fun RaftEmptyState(
             )
             Text(
                 text = title,
-                style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                // Web EmptyState: title `text-headline` 17/22 700, detail `text-callout` 14/20.
+                style = RaftType.Headline,
                 color = RaftColor.TextMutedGray,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -63,7 +64,7 @@ internal fun RaftEmptyState(
             detail?.takeIf { it.isNotBlank() }?.let { value ->
                 Text(
                     text = value,
-                    style = RaftType.Caption,
+                    style = RaftType.Callout,
                     color = RaftColor.TextMutedGray,
                     textAlign = TextAlign.Center,
                     maxLines = 3,

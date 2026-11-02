@@ -5398,7 +5398,7 @@ private fun HomeNotificationCenterEmptyState() {
         )
         Text(
             text = stringResource(Res.string.home_notification_center_empty_title),
-            style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            style = RaftType.Headline,
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
             maxLines = 2,
