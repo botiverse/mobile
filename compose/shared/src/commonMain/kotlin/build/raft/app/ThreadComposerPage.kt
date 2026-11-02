@@ -457,6 +457,7 @@ internal data class RaftThreadComposerPayload(
     val syncNonce: Int = 0,
     @kotlinx.serialization.Transient val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
+    @kotlinx.serialization.Transient val focusRequestShowsKeyboard: Boolean = true,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -560,6 +561,7 @@ internal data class ThreadComposerUiState(
     val syncNonce: Int = 0,
     val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
+    val focusRequestShowsKeyboard: Boolean = true,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -634,11 +636,17 @@ internal fun threadComposerSessionFocusRestorePlan(
     editorSessionReplaced: Boolean,
     editorFocused: Boolean,
     keyboardInsetDp: Float,
+    explicitRequestShowsKeyboard: Boolean = true,
 ): ThreadComposerSessionFocusRestorePlan {
-    val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardInsetDp > 0f
+    val keyboardVisible = keyboardInsetDp > 0f
+    val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardVisible
+    // A keep-only request (Send) holds an open keyboard across the clear but never raises a
+    // keyboard the user has put away.
+    val explicitRaises = explicitFocusRequest && explicitRequestShowsKeyboard
+    val explicitKeeps = explicitFocusRequest && !explicitRequestShowsKeyboard && keyboardVisible
     return ThreadComposerSessionFocusRestorePlan(
-        requestFocus = explicitFocusRequest || transferVisibleEditor,
-        showKeyboard = explicitFocusRequest || transferVisibleEditor,
+        requestFocus = explicitRaises || explicitKeeps || transferVisibleEditor,
+        showKeyboard = explicitRaises || explicitKeeps || transferVisibleEditor,
     )
 }
 
@@ -1856,6 +1864,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         syncNonce = syncNonce,
         editorCommand = editorCommand,
         focusRequestNonce = focusRequestNonce,
+        focusRequestShowsKeyboard = focusRequestShowsKeyboard,
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
@@ -2212,6 +2221,7 @@ internal fun ThreadComposerContentLeaf(
                 editorSessionReplaced = editorSessionReplaced,
                 editorFocused = focused,
                 keyboardInsetDp = keyboardInsetDp,
+                explicitRequestShowsKeyboard = state.focusRequestShowsKeyboard,
             )
         handledEditorSessionId = editorSessionId
         if (explicitFocusRequest) {
