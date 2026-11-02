@@ -27727,7 +27727,9 @@ private fun ThreadMessageCardContent(
                         // device check of #4091); no profile, mention or hover card meanwhile.
                         onClick = if (shareSelectionActive) onToggleShareSelection else { { openAuthorProfile("avatar") } },
                         onLongPress = if (shareSelectionActive) ({}) else { { onMentionAuthor(message) } },
-                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive }
+                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive },
+                        // Lagoon 11-02: a finger gets what a hover gets; the card replaces the hint toast.
+                        previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
                     )
                 }
                 val contentModifier =
@@ -33173,7 +33175,12 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
-    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null
+    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null,
+    /**
+     * A click on the avatar, by any pointer, pins [previewCard] instead of running [onClick]
+     * (an external author: the card is all there is to show, for a finger too).
+     */
+    previewCardPinOnClick: Boolean = false,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
@@ -33207,7 +33214,12 @@ private fun ThreadMessageAvatarSlot(
                         avatar()
                     } else {
                         val previewCardState = rememberRaftPreviewCardState()
-                        RaftPreviewCard(card = { previewCard(previewCardState) }, state = previewCardState, trigger = avatar)
+                        RaftPreviewCard(
+                            card = { previewCard(previewCardState) },
+                            state = previewCardState,
+                            pinOnClick = previewCardPinOnClick,
+                            trigger = avatar,
+                        )
                     }
                 }
             slotLayout.timestampVisible ->
