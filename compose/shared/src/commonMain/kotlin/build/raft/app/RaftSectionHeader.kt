@@ -71,7 +71,8 @@ internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.Foregroun
 internal val RaftMainTabHeaderStartPadding = 16.dp
 // Task #179: getter so the header follows the Settings font option.
 internal val RaftMainTabHeaderTitleStyle: TextStyle
-    get() = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    // Web TabRootBar: `text-headline` 17/22 700 (it was 16/20).
+    get() = RaftType.Headline
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
 // After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
@@ -133,7 +134,8 @@ internal fun RaftTopPageHeader(
     contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = if (onBack != null) RaftTopPageHeaderBackContentSpacing else RaftTopPageHeaderContentSpacing,
-    titleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+    // Web PanelHeader: `text-headline` 17/22 700 (it was 18/22).
+    titleStyle: TextStyle = RaftType.Headline,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     titleLeadingContent: (@Composable RowScope.() -> Unit)? = null,

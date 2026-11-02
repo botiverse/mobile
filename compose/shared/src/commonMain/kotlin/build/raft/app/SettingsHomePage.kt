@@ -16621,7 +16621,7 @@ internal fun PageErrorContent(
     subtitle: String,
     iconName: RaftLucideIconName?,
     headerContentStartPadding: Dp = 20.dp,
-    headerTitleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+    headerTitleStyle: TextStyle = RaftType.Headline,
     message: String,
     code: String,
     retryLabel: String? = "Retry",

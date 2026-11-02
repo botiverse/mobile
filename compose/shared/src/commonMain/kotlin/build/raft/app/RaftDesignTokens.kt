@@ -426,6 +426,12 @@ internal object RaftType {
     /** `text-title` 22/28 700, -0.01em. */
     val PageTitle: TextStyle
         get() = raftTextStyle(RaftScale.title)
+    /** `text-headline` 17/22 700: page, panel, dialog and empty-state titles (web PanelHeader, TabRootBar). */
+    val Headline: TextStyle
+        get() = raftTextStyle(RaftScale.headline)
+    /** `text-callout` 14/20 400: empty-state details, previews, list values. */
+    val Callout: TextStyle
+        get() = raftTextStyle(RaftScale.callout)
     /**
      * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
      * tracking-normal` (13/18 700), source case, no tracking.
