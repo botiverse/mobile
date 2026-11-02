@@ -578,6 +578,9 @@ internal class RaftSharedStoreProvider private constructor(
     }
     val artifactSummaryStore: SharedArtifactSummaryStore by artifactSummaryStoreLazy
 
+    /** The Artifact viewer's native bar: its counts, versions and following (`/api/artifacts/:id…`). */
+    val artifactViewerRepository: ArtifactViewerRepository by lazy { NetworkArtifactViewerRepository(networkClient) }
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(
