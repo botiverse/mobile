@@ -1,6 +1,10 @@
 package build.raft.designsystem
 
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftPaneGridColumn
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
+import build.raft.designsystem.components.RaftPaneGridHandedUp
+import build.raft.designsystem.components.RaftPaneGridHost
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
 import build.raft.designsystem.components.raftPaneGridDragMaxDp
 import build.raft.designsystem.components.raftPaneGridFitWidths
@@ -85,5 +89,62 @@ class RaftPaneGridTest {
         assertFalse(sizes.isCollapsed("a"))
         sizes.setCollapsed("a", true)
         assertTrue(sizes.isCollapsed("a"))
+    }
+
+    private fun column(bounds: RaftPaneGridColumnBounds) = RaftPaneGridColumn(bounds = bounds, resizeLabel = bounds.id, cells = emptyList())
+
+    private val thread = RaftPaneGridColumnBounds(id = "thread", defaultWidthDp = 400f, minWidthDp = 360f)
+    private val cards = RaftPaneGridColumnBounds(id = "sideCards", defaultWidthDp = 360f, minWidthDp = 280f)
+
+    @Test
+    fun nestedGridsHandTheirColumnsUpOuterLevelsFirst() {
+        val host = RaftPaneGridHost()
+        val outer = RaftPaneGridColumnBounds(id = "outer", defaultWidthDp = 300f, minWidthDp = 300f)
+        // The conversation (two levels in) hands up Tasks / Files before the workspace hands up the thread.
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards)), topInset = 24.dp))
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
+        // Web order: conversation | thread | Tasks / Files; the outermost grid's own columns first.
+        assertEquals(listOf("thread", "sideCards"), host.placed(emptyList(), 0.dp).map { it.column.bounds.id })
+        assertEquals(listOf("outer", "thread", "sideCards"), host.placed(listOf(column(outer)), 0.dp).map { it.column.bounds.id })
+        // Each keeps the top inset of the grid that declared it.
+        assertEquals(listOf(0.dp, 24.dp), host.placed(emptyList(), 0.dp).map { it.topInset })
+        // A grid with nothing left to hand up leaves the row.
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = emptyList()))
+        assertEquals(listOf("thread"), host.placed(emptyList(), 0.dp).map { it.column.bounds.id })
+        host.handUp("workspace", null)
+        assertEquals(emptyList(), host.placed(emptyList(), 0.dp))
+    }
+
+    @Test
+    fun theRightmostColumnGivesWayFirstAndTheConversationKeeps360() {
+        val host = RaftPaneGridHost()
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread))))
+        host.handUp("conversation", RaftPaneGridHandedUp(depth = 2, columns = listOf(column(cards))))
+        val placed = host.placed(emptyList(), 0.dp).map { it.column.bounds.defaultWidthDp to it.column.bounds.minWidthDp }
+        // Row right of a 300 list (and its seam) in a 1500 window: 1199 holds 360 + 400 + 360 and more.
+        assertEquals(listOf(400f, 360f), raftPaneGridFitWidths(1500f - 301f, placed))
+        // 1080: the cards (rightmost) give way first, to 320; the thread keeps 400.
+        assertEquals(listOf(400f, 320f), raftPaneGridFitWidths(1080f, placed))
+        // 1020: the cards are at 280, the thread gives way to 380; the conversation keeps 360.
+        val fitted = raftPaneGridFitWidths(1020f, placed)
+        assertEquals(listOf(380f, 280f), fitted)
+        assertEquals(360f, 1020f - fitted.sum())
+        // Before the outermost grid is measured nobody can tell.
+        assertEquals(null, host.spareDp(2))
+        // The cards (two levels in) may count on what is left with the conversation at 360 and the thread at its 360.
+        host.roomDp = 1000f
+        assertEquals(280f, host.spareDp(2))
+        host.roomDp = 999f
+        assertEquals(279f, host.spareDp(2))
+        // The thread itself (one level out) does not count the cards.
+        assertEquals(639f, host.spareDp(1))
+    }
+
+    @Test
+    fun aFocusedColumnFillsTheRowFromAnyLevel() {
+        val host = RaftPaneGridHost()
+        assertEquals(setOf("own"), host.fillIds("own"))
+        host.handUp("workspace", RaftPaneGridHandedUp(depth = 1, columns = listOf(column(thread)), fillColumn = "thread"))
+        assertEquals(setOf("thread"), host.fillIds(null))
     }
 }

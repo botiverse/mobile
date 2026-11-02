@@ -56,6 +56,8 @@ internal typealias RaftPaneGridCellScope = build.raft.designsystem.components.Ra
 internal typealias RaftPaneGridCell = build.raft.designsystem.components.RaftPaneGridCell
 internal typealias RaftPaneGridColumn = build.raft.designsystem.components.RaftPaneGridColumn
 internal typealias RaftPaneGridStackLayout = build.raft.designsystem.components.RaftPaneGridStackLayout
+internal typealias RaftPaneGridLeadingColumn = build.raft.designsystem.components.RaftPaneGridLeadingColumn
+internal typealias RaftPaneGridLeadingMode = build.raft.designsystem.components.RaftPaneGridLeadingMode
 
 internal const val RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP = build.raft.designsystem.components.RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
 internal const val RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP = build.raft.designsystem.components.RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP
@@ -92,6 +94,14 @@ internal fun raftPaneGridMoveSeam(
     heightDp: Float,
     collapsed: List<Boolean>,
 ): List<Float> = build.raft.designsystem.components.raftPaneGridMoveSeam(shares, seam, top, heightDp, collapsed)
+
+/** See the design system's `raftPaneGridSpareDp`: the room a grid declared here could give its columns. */
+@Composable
+internal fun raftPaneGridSpareDp(): Float? = build.raft.designsystem.components.raftPaneGridSpareDp()
+
+/** See the design system's `raftPaneGridRoomDp`: the outermost grid's room for its main pane and the columns handed up. */
+@Composable
+internal fun raftPaneGridRoomDp(): Float? = build.raft.designsystem.components.raftPaneGridRoomDp()
 
 internal object RaftPaneGridColumns {
     /** Web `COLUMN_BOUNDS.thread`: 400, at least 360, growing until the main pane is at 360. */
@@ -218,10 +228,11 @@ internal fun RaftPaneGrid(
     modifier: Modifier = Modifier,
     fillColumn: String? = null,
     topInset: Dp = 0.dp,
+    leading: RaftPaneGridLeadingColumn? = null,
     main: @Composable () -> Unit,
 ) {
     RaftPaneGridAppLocals {
-        DsRaftPaneGrid(columns, modifier, fillColumn, topInset, main)
+        DsRaftPaneGrid(columns, modifier, fillColumn, topInset, leading, main)
     }
 }
 

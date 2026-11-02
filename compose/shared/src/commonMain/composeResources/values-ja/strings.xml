@@ -461,6 +461,8 @@
     <string name="thread_side_card_resize_column">%1$sの幅を変更</string>
     <string name="thread_side_card_tasks_and_files">タスクとファイル</string>
     <string name="thread_side_thread_resize">スレッドの幅を変更</string>
+    <string name="home_list_pane_resize_sidebar">サイドバーの幅を変更</string>
+    <string name="home_list_pane_resize_list">リストの幅を変更</string>
     <string name="thread_state_loading">読み込み中…</string>
     <string name="thread_error_load">スレッドを読み込めませんでした</string>
     <string name="thread_error_access_resolution">このスレッドまたは親メッセージへのアクセスを確認できませんでした。接続を確認して、もう一度お試しください。</string>

@@ -104,6 +104,22 @@ class RaftPaneGridTest {
     }
 
     @Test
+    fun cardsStandBesideInTheGridWhileTheir280Fits() {
+        // The room the grid leaves with the conversation at 360 and the thread at its 360.
+        assertTrue(conversationSideCardsBesideInGrid(windowWidthDp = 1400f, spareDp = 280f))
+        assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 1400f, spareDp = 279f))
+        // A phone (or a window under the app's 744 breakpoint) keeps the cover.
+        assertFalse(conversationSideCardsBesideInGrid(windowWidthDp = 700f, spareDp = 400f))
+    }
+
+    @Test
+    fun activitysListIsAtMostHalfTheRowWithAnItemOpen() {
+        // Web shareCapWidth: half of a 1223 row is 611; never under the list's 240.
+        assertEquals(611f, raftListPaneShareCapDp(1223f, 0.5f, 240f))
+        assertEquals(240f, raftListPaneShareCapDp(400f, 0.5f, 240f))
+    }
+
+    @Test
     fun cardsStandBesideOnAWideWindowWithRoomForBoth() {
         assertTrue(conversationSideCardsBeside(windowWidthDp = 1280f, pageWidthDp = 640f))
         assertFalse(conversationSideCardsBeside(windowWidthDp = 1280f, pageWidthDp = 639f))
