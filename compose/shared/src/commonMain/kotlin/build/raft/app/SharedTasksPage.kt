@@ -6,6 +6,15 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
@@ -58,7 +67,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -73,7 +81,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1315,12 +1322,8 @@ private fun SharedTasksBoardColumn(
                 .width(320.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .background(RaftColor.SurfaceWhite)
-                .border(
-                    RaftAppStroke.Default,
-                    RaftColor.BorderBlack.copy(alpha = 0.2f),
-                    RoundedCornerShape(RaftAppRadius.Container),
-                )
+                // The design-system card surface: card layer, container radius, hairline.
+                .raftCardSurface()
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1738,19 +1741,15 @@ private fun SharedTasksNotice(
     detail: String,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(RaftColor.AccentRed.copy(alpha = 0.12f), RoundedCornerShape(RaftAppRadius.Container))
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Container))
-                .padding(RaftAppSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(text = title, style = RaftType.ButtonBold, color = RaftColor.TextBlack)
-        Text(text = detail, style = RaftType.Caption, color = RaftColor.AccentRed)
-    }
+    // A recoverable failure: the design-system warning banner (raft-ui keeps `destructive`
+    // for what cannot be undone).
+    RaftBanner(
+        description = detail,
+        status = RaftBannerStatus.Warning,
+        modifier = modifier.fillMaxWidth(),
+        title = title,
+        size = RaftBannerSize.Sm
+    )
 }
 
 @Composable
@@ -1892,12 +1891,12 @@ private fun TasksStatusDialog(
             items(TaskStatus.values().size) { idx ->
                 val status = TaskStatus.values()[idx]
                 val selected = status == task.status
-                RaftModalFullWidthActionButton(
+                // The design-system radio row: the current status is the selected one.
+                RaftRadioRow(
                     label = status.localizedLabel(),
-                    icon = if (selected) RaftLucideIconName.Check else RaftLucideIconName.Circle,
-                    color = if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite,
-                    enabled = !updating && !selected,
-                    onClick = { onSelect(status) }
+                    selected = selected,
+                    onClick = { if (!selected) onSelect(status) },
+                    enabled = !updating
                 )
             }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
@@ -1946,22 +1945,25 @@ private fun TasksCreateDialog(
             }
             items(titles.size) { index ->
                 val value = titles[index]
-                TextField(
+                val titleEditor =
+                    rememberRaftDesignSystemEditor(
+                        keyboardOptions = KeyboardOptions.Default,
+                        keyboardActions = KeyboardActions.Default,
+                        keyboardHeightChange = {},
+                        focusRequester = remember { FocusRequester() },
+                        autoFocus = index == 0,
+                        onFocus = {},
+                        onBlur = {}
+                    )
+                RaftTextField(
                     value = value,
                     onValueChange = { next ->
                         titles = titles.toMutableList().also { it[index] = next }
                     },
+                    modifier = Modifier.fillMaxWidth().then(titleEditor.modifier),
                     placeholder = stringResource(Res.string.tasks_label_title),
-                    placeholderColor = RaftColor.TextMutedGray,
                     enabled = !loading,
-                    autoFocus = index == 0,
-                    maxLines = 2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 36.dp)
-                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f), RoundedCornerShape(RaftAppRadius.Control))
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Control))
-                        .padding(horizontal = RaftAppSpacing.Sm, vertical = 6.dp)
+                    keyboardOptions = titleEditor.keyboardOptions
                 )
             }
             item {

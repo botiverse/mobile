@@ -351,8 +351,8 @@ internal fun AuthCenterMark(modifier: Modifier = Modifier, size: Dp = 36.dp) {
 
 @Composable
 internal fun AuthLogoBadge(text: String, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.width(166.dp).height(64.dp).padding(end = 4.dp, bottom = 4.dp)) {
-        // Brand mark: an ink sticker (sticker radius), no offset shadow.
+    // Brand mark: an ink sticker (sticker radius), no offset shadow, so no room kept for one.
+    Box(modifier = modifier.width(162.dp).height(60.dp)) {
         Box(
             modifier = Modifier.fillMaxSize().background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
             contentAlignment = Alignment.Center

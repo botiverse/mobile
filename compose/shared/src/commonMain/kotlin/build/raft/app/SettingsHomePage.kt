@@ -592,7 +592,6 @@ internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
-private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack

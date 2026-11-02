@@ -13,6 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
@@ -599,9 +601,9 @@ private fun HomeActivityRouterContent(
             }
             Spacer(
                 modifier = Modifier
-                    .width(1.dp)
+                    .width(RaftStroke.Hairline)
                     .fillMaxHeight()
-                    .background(RaftColor.BorderBlack),
+                    .background(RaftTheme.colors.lineSeam),
             )
             Box(
                 modifier = Modifier

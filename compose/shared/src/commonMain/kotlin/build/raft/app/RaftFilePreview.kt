@@ -11,6 +11,14 @@ import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabStrip
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipePaging
@@ -4815,8 +4823,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color(0xFF000000)) // raft-color: image editor stage is black in both modes
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .background(Color(0xFF000000)), // raft-color: image editor stage is black in both modes
             contentAlignment = Alignment.Center
         ) {
             val committedContent = state.history.content
@@ -5268,19 +5275,22 @@ internal fun RaftFilePreviewComposerImageEditor(
                             textDraft = textDraft.updated(payload.imageUrl, nextText)
                         },
                         placeholder = stringResource(Res.string.file_preview_placeholder_tap_to_add_text),
-                        placeholderColor = RaftColor.TextMutedGray,
+                        placeholderColor = RaftTheme.colors.foregroundHint,
                         autoFocus = true,
                         keyboardHeightChange = { params ->
                             keyboardInsetDp = params.height.coerceAtLeast(0f)
                         },
                         maxLines = 1,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftTheme.colors.foreground),
+                        // RaftTextField's box (layer-card, 1dp line-field, control radius): this
+                        // field stays the platform TextField for its autofocus and keyboard-height
+                        // callback, which the editor's bottom padding follows.
                         modifier =
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = 36.dp)
-                                .background(RaftColor.SurfaceCream)
-                                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                                .background(RaftTheme.colors.layerCard, RoundedCornerShape(RaftRadius.Control))
+                                .border(RaftStroke.Hairline, RaftTheme.colors.lineField, RoundedCornerShape(RaftRadius.Control))
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
                     RaftIconButton(
@@ -8602,24 +8612,14 @@ private fun RaftFilePreviewImageGallerySurface(
             )
         }
         if (progressLabel != null) {
-            Box(
+            RaftBadge(
+                text = progressLabel,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
                         .graphicsLayer { alpha = dismissState.backgroundAlpha }
-                        .padding(top = 12.dp, end = 12.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = progressLabel,
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1
-                )
-            }
+                        .padding(top = 12.dp, end = 12.dp),
+            )
         }
     }
 }
@@ -8761,8 +8761,7 @@ private fun RaftFilePreviewVideoPanel(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .heightIn(max = 420.dp)
-                    .background(Color(0xFF000000)) // raft-color: video viewer is black in both modes
-                    .border(RaftAppStroke.Default, RaftColor.StickerInk),
+                    .background(Color(0xFF000000)), // raft-color: video viewer is black in both modes
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
@@ -10678,12 +10677,9 @@ internal fun RaftFilePreviewMarkdownPanel(
         }
         return
     }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+    RaftCard(
+        modifier = modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(Res.string.file_preview_fallback_markdown) },
@@ -10691,7 +10687,7 @@ internal fun RaftFilePreviewMarkdownPanel(
             meta = meta,
             statusLabel = statusLabel
         )
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        RaftSeparator()
         when (status) {
             "content" ->
                 LazyColumn(
@@ -10753,12 +10749,9 @@ internal fun RaftFilePreviewTextPanel(
         }
         return
     }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+    RaftCard(
+        modifier = modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(Res.string.file_preview_fallback_text_file) },
@@ -10766,12 +10759,11 @@ internal fun RaftFilePreviewTextPanel(
             meta = meta,
             statusLabel = null
         )
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        RaftSeparator()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 280.dp, max = 560.dp)
-                .background(RaftColor.SurfaceCream)
                 .padding(RaftAppSpacing.Sm)
         ) {
             Text(
@@ -10798,58 +10790,34 @@ internal fun RaftFilePreviewXlsxPanel(
         remember(sheets, selectedSheetName) {
             sheets.firstOrNull { it.name == selectedSheetName } ?: sheets.firstOrNull()
         }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+    RaftCard(
+        modifier = modifier.fillMaxWidth(),
+        variant = RaftCardVariant.Inset,
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(Res.string.file_preview_fallback_file) },
             meta = meta,
             statusLabel = null
         )
+        RaftSeparator()
         if (sheets.size > 1) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-            ) {
+            // The sheet tabs: a panel tab strip (scrolls sideways, line-seam under it).
+            RaftTabStrip {
                 sheets.forEach { sheet ->
-                    val selected = sheet.name == selectedSheet?.name
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .background(if (selected) RaftColor.SurfaceWhite else RaftColor.SurfaceCream)
-                                .border(
-                                    width = if (selected) RaftAppStroke.Default else RaftAppStroke.Thin,
-                                    color = RaftColor.BorderBlack
-                                )
-                                .clickable { selectedSheetName = sheet.name }
-                                .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm)
-                    ) {
-                        Text(
-                            text = sheet.name,
-                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    RaftTab(
+                        text = sheet.name,
+                        selected = sheet.name == selectedSheet?.name,
+                        onClick = { selectedSheetName = sheet.name },
+                    )
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
         if (selectedSheet == null) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 280.dp, max = 560.dp)
-                        .background(RaftColor.SurfaceCream)
                         .padding(RaftAppSpacing.Sm)
             ) {
                 Text(
@@ -10864,7 +10832,6 @@ internal fun RaftFilePreviewXlsxPanel(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 280.dp, max = 560.dp)
-                        .background(RaftColor.SurfaceCream)
                         .padding(RaftAppSpacing.Sm)
             ) {
                 RaftCard(
@@ -10899,7 +10866,7 @@ internal fun RaftFilePreviewImagePanel(
     modifier: Modifier = Modifier,
     placeholderLabel: String? = null,
     backgroundColor: androidx.compose.ui.graphics.Color = RaftColor.SurfaceWhite,
-    borderWidth: androidx.compose.ui.unit.Dp = RaftAppStroke.Default,
+    borderWidth: androidx.compose.ui.unit.Dp = 0.dp,
     zoomable: Boolean = true,
     zoomState: RaftZoomableImageState? = null,
     /** Play [source] when it turns out to be an animated GIF / WebP. */
@@ -11035,10 +11002,10 @@ private fun RaftFilePreviewPanelHeader(
     // The shown name; null when [name] is a stand-in ("Markdown", "Text file").
     copyText: String? = name,
 ) {
+    // The header of a RaftCard: on the card's own surface, no strip of its own.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
             .padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {

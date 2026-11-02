@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -233,7 +234,7 @@ private fun SettingsWebViewScreen() {
 
 @Composable
 private fun SettingsWebViewInvalidRoute(pager: Pager) {
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_title),
             iconName = RaftLucideIconName.Settings,
@@ -350,7 +351,7 @@ internal fun SettingsWebViewPageScaffold(
         onBack = ::goBackOrClose,
     )
 
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         // This wrapper, rather than RaftTopPageHeader's inner content Box, is the sibling of the
         // WebView body. The layer must live here so it can order those two layout siblings.
         Box(modifier = Modifier.fillMaxWidth().zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX)) {
@@ -373,7 +374,7 @@ internal fun SettingsWebViewPageScaffold(
                     .weight(1f)
                     .fillMaxWidth()
                     .zIndex(SETTINGS_WEB_VIEW_BODY_Z_INDEX)
-                    .background(RaftColor.SurfaceCream),
+                    .background(RaftTheme.colors.layerCanvas),
         ) {
             if (bodyReady) {
                 content(webViewController) { update ->
@@ -635,7 +636,7 @@ internal fun SettingsWebViewContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(RaftColor.SurfaceCream)
+                .background(RaftTheme.colors.layerCanvas)
                 .onGloballyPositioned { coordinates ->
                     bodyFrameReady =
                         settingsWebViewFrameIsReady(
@@ -663,7 +664,7 @@ internal fun SettingsWebViewContent(
                         Modifier
                             .fillMaxWidth()
                             .height(webViewHeight)
-                            .background(RaftColor.SurfaceCream)
+                            .background(RaftTheme.colors.layerCanvas)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
                     allowNavigation = allowNavigation,
@@ -729,7 +730,7 @@ internal fun SettingsWebViewContent(
 
 @Composable
 internal fun SettingsWebViewLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }
 
 @Composable
@@ -739,7 +740,7 @@ internal fun SettingsWebViewErrorContent(
     onAction: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Lg) {

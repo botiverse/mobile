@@ -340,7 +340,7 @@ internal fun SettingsBillingViewOnlyPage(pager: Pager) {
     val sessionPlan by produceState<String?>(null, environment.authStore) {
         value = runCatchingPreservingCancellation { environment.authStore.readSession() }.getOrNull()?.currentServerSummary()?.plan
     }
-    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_billing_title),
             iconName = RaftLucideIconName.CreditCard,

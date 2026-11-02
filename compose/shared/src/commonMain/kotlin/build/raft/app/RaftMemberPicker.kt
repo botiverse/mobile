@@ -253,7 +253,8 @@ private fun RaftMemberPickerRow(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(RaftRadius.Chip))
-            .then(if (highlighted) Modifier.background(RaftColor.BrandYellow) else Modifier)
+            // The design-system selected row (RaftListRow's `info-soft`).
+            .then(if (highlighted) Modifier.background(RaftTheme.colors.infoSoft) else Modifier)
             .then(selection)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

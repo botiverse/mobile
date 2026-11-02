@@ -8,6 +8,7 @@ import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,15 +30,11 @@ import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -265,21 +262,14 @@ internal fun MembersRuntimeUsageAccountCard(
     stale: Boolean,
     timeContext: RaftTimeContext?
 ) {
-    // raft-ui card nested in a dialog: rounded container with a hairline ring, not a
-    // square ink box (it clashed with the rounded dialog and button around it).
-    val shape = RoundedCornerShape(RaftAppRadius.Container)
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(if (stale) RaftColor.SurfaceCream else RaftColor.SurfaceWhite, shape)
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape)
-                .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    // raft-ui Card nested in a dialog; a stale snapshot lays it on `fill-subtle` (inactive),
+    // as raft-ui marks a subject that is away, instead of a cream panel.
+    RaftCard(modifier = Modifier.fillMaxWidth(), inactive = stale) {
         // The Computers sheet's account block: the raft-ui StatusChip and "X% used · resets …"
         // rows, the same as the web (artin 10-29: no square badge; web #11855 / raft-ui 0.50:
         // usage says what is used).
-        ComputerRuntimeUsageAccountBlock(account, timeContext)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ComputerRuntimeUsageAccountBlock(account, timeContext)
+        }
     }
 }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -75,5 +76,5 @@ internal fun Pager.openSettingsComputerPage(
 
 @Composable
 internal fun SettingsComputersLoadingContent() {
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }

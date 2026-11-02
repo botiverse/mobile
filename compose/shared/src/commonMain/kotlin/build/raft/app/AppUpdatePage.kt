@@ -23,7 +23,6 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +49,9 @@ import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
 import build.raft.app.components.RaftProgressBar
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
@@ -377,11 +379,12 @@ internal fun AppUpdateSummary(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.StickerInk),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.StickerInk))
+            RaftIconTile(size = RaftIconTileSize.Md) {
+                RaftLucideIcon(
+                    RaftLucideIconName.Download,
+                    modifier = Modifier.size(RaftIconTileSize.Md.icon),
+                    color = raftArgbHex(RaftColor.TextMuted)
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -433,7 +436,7 @@ internal fun AppUpdateSummary(
                 Text(text = label, style = RaftType.Caption, color = RaftColor.TextMutedGray)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        RaftSeparator()
         if (appUpdateCanSkipVersion(snapshot)) {
             Text(
                 text = stringResource(Res.string.app_update_skip_version),
