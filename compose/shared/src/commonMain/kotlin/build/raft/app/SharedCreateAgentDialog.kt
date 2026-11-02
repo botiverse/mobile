@@ -10,8 +10,26 @@ import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftDesignSystemEditor
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
@@ -46,7 +64,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,13 +82,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import build.raft.app.compat.pager.LocalActivity
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
 import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftSlotIcon
@@ -370,6 +383,8 @@ internal fun SharedCreateAgentDialog(
     /** iOS view-only Billing: "View your plan" on the agent-limit banner (and [errorMessage] when [errorOffersViewPlan]). */
     onViewPlan: (() -> Unit)? = null,
     errorOffersViewPlan: Boolean = false,
+    /** Where Billing offers upgrades: "Upgrade for more" in the agent-limit banner opens Billing. */
+    onUpgrade: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -575,19 +590,7 @@ internal fun SharedCreateAgentDialog(
         ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
-                                    .padding(RaftAppSpacing.Xs)
-                        ) {
-                            Text(
-                                text = hint,
-                                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                                color = RaftColor.TextMutedGray
-                            )
-                        }
+                        CreateAgentDraftHint(hint)
                     }
                 }
                 if (atLimit) {
@@ -597,6 +600,7 @@ internal fun SharedCreateAgentDialog(
                             maxAgents = maxAgents,
                             planLabel = limitPlanLabel,
                             onViewPlan = onViewPlan,
+                            onUpgrade = onUpgrade,
                         )
                     }
                 }
@@ -637,63 +641,65 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "name") {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(Res.string.agent_create_label_name),
-                        required = true,
-                        value = name,
-                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                        onValueChange = { name = it },
-                        placeholder = stringResource(Res.string.agent_create_placeholder_name),
+                        modifier = Modifier.fillMaxWidth(),
+                        error = inlineNameError?.let { localizedInlineNameError ?: it },
                         enabled = !submitting,
-                        autoFocus = true,
-                        labelAccessory = {
+                        required = true,
+                        labelTrailing = {
                             CreateAgentRandomNameButton(
                                 enabled = !submitting,
                                 onClick = { name = suggestAgentName(listOf(name) + takenAgentNames) }
                             )
                         }
-                    )
-                }
-                if (inlineNameError != null) {
-                    item(key = "name-error") {
-                        Text(
-                            text = localizedInlineNameError ?: inlineNameError,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
+                    ) {
+                        val editor =
+                            rememberRaftDesignSystemEditor(
+                                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                                keyboardActions = KeyboardActions.Default,
+                                keyboardHeightChange = {},
+                                focusRequester = remember { FocusRequester() },
+                                autoFocus = !submitting,
+                                onFocus = {},
+                                onBlur = {}
+                            )
+                        RaftTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                            placeholder = stringResource(Res.string.agent_create_placeholder_name),
+                            keyboardOptions = editor.keyboardOptions
                         )
                     }
                 }
                 item(key = "description") {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftBrutalTextField(
-                            label = stringResource(Res.string.agent_create_label_description),
-                            optional = true,
+                    RaftField(
+                        label = stringResource(Res.string.agent_create_label_description),
+                        modifier = Modifier.fillMaxWidth(),
+                        error =
+                            if (descriptionTooLong) {
+                                Res.string.agent_create_error_description_length
+                                    .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                    .localized()
+                            } else {
+                                null
+                            },
+                        enabled = !submitting,
+                        optional = true
+                    ) {
+                        // The TextareaGroup counter ("n/3000") under the box replaces the hand-drawn one.
+                        RaftTextarea(
                             value = description,
                             onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
+                            modifier = Modifier.fillMaxWidth(),
                             placeholder = stringResource(Res.string.agent_create_placeholder_description),
-                            enabled = !submitting,
-                            maxLines = 3,
-                            fieldMinHeight = 82.dp
+                            limit = CREATE_AGENT_DESCRIPTION_MAX_LENGTH,
+                            minHeight = 82.dp,
+                            // Three 24dp field lines inside the textarea's 10dp vertical padding, then it scrolls.
+                            maxHeight = 92.dp,
+                            inputModifier = rememberRaftTextareaEditorModifier()
                         )
-                        if (descriptionTooLong) {
-                            Text(
-                                text =
-                                    Res.string.agent_create_error_description_length
-                                        .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
-                                        .localized(),
-                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                                color = RaftColor.AccentRed
-                            )
-                        } else {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                    style = RaftType.Caption,
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
                     }
                 }
                 if (!external && availableSelectedMachineId != null) {
@@ -825,54 +831,65 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
     }
 
 @Composable
-private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?, onViewPlan: (() -> Unit)? = null) {
+private fun PlanLimitBanner(
+    currentAgentCount: Int,
+    maxAgents: Int,
+    planLabel: String?,
+    onViewPlan: (() -> Unit)? = null,
+    onUpgrade: (() -> Unit)? = null
+) {
     // iOS view-only Billing: the limit stated, with no "Upgrade for more" (raftUpsellCopy), and
     // "View your plan" ([onViewPlan]) to the view-only Plan & Billing page.
     val offersUpgrade = settingsBillingOffersUpgrade()
-    val viewPlan: (@Composable () -> Unit)? = onViewPlan?.takeIf { !offersUpgrade }?.let { open -> { RaftViewPlanButton(onClick = open) } }
-    if (planLabel.isNullOrBlank() || viewPlan != null) {
-        RaftUiBanner(
-            status = RaftUiBannerStatus.Warning,
-            description =
-                if (planLabel.isNullOrBlank()) {
-                    raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
-                        .format(listOf(currentAgentCount, maxAgents))
-                        .localized()
+    val viewPlan: (@Composable RowScope.() -> Unit)? =
+        if (onViewPlan != null && !offersUpgrade) ({ RaftViewPlanButton(onClick = onViewPlan) }) else null
+    val description =
+        if (planLabel.isNullOrBlank()) {
+            AnnotatedString(
+                raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
+                    .format(listOf(currentAgentCount, maxAgents))
+                    .localized()
+            )
+        } else {
+            val summary =
+                Res.string.agent_create_error_limit_plan
+                    .format(listOf(currentAgentCount, maxAgents, planLabel))
+                    .localized()
+            val upgrade = stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
+            // raft-ui: an action inside a Banner's text is a strong TextLink (web CreateAgentDialog
+            // `<upgrade>`); only the upgrade wording links, never the neutral iOS statement.
+            val upgradeLink = onUpgrade?.takeIf { offersUpgrade && viewPlan == null }
+            buildAnnotatedString {
+                append(summary)
+                append(" ")
+                if (upgradeLink != null) {
+                    appendRaftTextLink(upgrade, onClick = upgradeLink)
                 } else {
-                    Res.string.agent_create_error_limit_plan.format(listOf(currentAgentCount, maxAgents, planLabel)).localized() +
-                        " " + stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
-                },
-            size = RaftUiBannerSize.Medium,
-            action = viewPlan
-        )
-        return
-    }
+                    append(upgrade)
+                }
+            }
+        }
+    RaftBanner(
+        description = description,
+        status = RaftBannerStatus.Warning,
+        action = viewPlan
+    )
+}
 
-    val summary =
-        Res.string.agent_create_error_limit_plan
-            .format(listOf(currentAgentCount, maxAgents, planLabel))
-            .localized()
-    val action = stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftUiBannerStatus.Warning.background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftUiBannerSize.Medium.padding)
-    ) {
-        Text(
-            text =
-                buildAnnotatedString {
-                    append(summary)
-                    append(" ")
-                    // The underline reads as a link: only on the upgrade wording, not the neutral statement.
-                    if (offersUpgrade) pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                    append(action)
-                    if (offersUpgrade) pop()
-                },
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack
+/**
+ * The action card's draft note above the form: web AddMembersDialog's context line (`border-l-2
+ * border-line-seam pl-2.5 text-callout text-foreground-muted`), context rather than a warning.
+ */
+@Composable
+private fun CreateAgentDraftHint(hint: String) {
+    val colors = RaftTheme.colors
+    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(colors.lineSeam))
+        RaftText(
+            text = hint,
+            modifier = Modifier.padding(start = 10.dp),
+            style = RaftTheme.typography.callout,
+            color = colors.foregroundMuted
         )
     }
 }
@@ -900,44 +917,25 @@ internal fun MachinePicker(
                 color = RaftColor.TextMutedGray
             )
             !machinesErrorMessage.isNullOrBlank() ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                            .border(RaftAppStroke.Thin, RaftColor.AccentRed.copy(alpha = 0.5f))
-                            .background(RaftColor.SurfaceCream)
-                            .padding(RaftAppSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-                ) {
-                    Text(
-                        text = machinesErrorMessage,
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.AccentRed
-                    )
-                    RaftButton(
-                        text = stringResource(Res.string.common_retry),
-                        onClick = onRetry,
-                        modifier = Modifier.widthIn(min = 72.dp),
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Md,
-                        enabled = enabled,
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
-                    )
-                }
-            machines.isEmpty() -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.3f))
-                    .background(RaftColor.SurfaceCream)
-                    .padding(RaftAppSpacing.Sm)
-            ) {
-                Text(
-                    text = stringResource(Res.string.agent_create_state_computers_empty),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
+                RaftBanner(
+                    description = machinesErrorMessage,
+                    status = RaftBannerStatus.Warning,
+                    action = {
+                        RaftButton(
+                            text = stringResource(Res.string.common_retry),
+                            onClick = onRetry,
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            enabled = enabled,
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
+                        )
+                    }
                 )
-            }
+            machines.isEmpty() ->
+                RaftBanner(
+                    description = stringResource(Res.string.agent_create_state_computers_empty),
+                    status = RaftBannerStatus.Info
+                )
             else -> {
                 val machineItems =
                     createAgentMachineDropdownItems(
@@ -1041,23 +1039,29 @@ private fun CreateAgentRandomNameButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    RaftBrutalIconButton(
-        iconName = RaftLucideIconName.Dices,
+    RaftIconButton(
         onClick = onClick,
-        contentDescription = stringResource(Res.string.agent_create_random_name),
-        enabled = enabled,
-        backgroundColor = Color.Transparent,
-        disabledBackgroundColor = Color.Transparent,
-        borderColor = Color.Transparent,
-        disabledBorderColor = Color.Transparent,
-        shadowColor = Color.Transparent,
-        disabledShadowColor = Color.Transparent,
-        iconColor = RaftColor.TextBlackArgb,
-        disabledIconColor = RaftColor.TextMutedGrayArgb,
-        size = 22.dp,
-        iconSize = 13.dp
-    )
+        tooltip = stringResource(Res.string.agent_create_random_name),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Md,
+        enabled = enabled
+    ) {
+        RaftSlotIcon(RaftLucideIconName.Dices)
+    }
 }
+
+/** The app editor behaviour (IME action, tap-outside dismiss) for one env-var field. */
+@Composable
+private fun rememberCreateAgentEnvVarEditor(keyboardOptions: KeyboardOptions): RaftDesignSystemEditor =
+    rememberRaftDesignSystemEditor(
+        keyboardOptions = keyboardOptions,
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = remember { FocusRequester() },
+        autoFocus = false,
+        onFocus = {},
+        onBlur = {}
+    )
 
 @Composable
 private fun RaftCreateAgentSpinnerIcon() {
@@ -1084,29 +1088,38 @@ internal fun EnvVarsEditor(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.agent_create_label_key),
-                    value = key,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = { newKey ->
-                        onChange(entries.toMutableList().also { it[idx] = newKey to value })
-                    },
-                    placeholder = "FOO",
-                    enabled = enabled,
-                    fieldMinHeight = 32.dp,
-                    modifier = Modifier.weight(1f)
-                )
-                RaftBrutalTextField(
+                    modifier = Modifier.weight(1f),
+                    enabled = enabled
+                ) {
+                    val editor = rememberCreateAgentEnvVarEditor(RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions)
+                    RaftTextField(
+                        value = key,
+                        onValueChange = { newKey ->
+                            onChange(entries.toMutableList().also { it[idx] = newKey to value })
+                        },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = "FOO",
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
+                RaftField(
                     label = stringResource(Res.string.agent_create_label_value),
-                    value = value,
-                    onValueChange = { newValue ->
-                        onChange(entries.toMutableList().also { it[idx] = key to newValue })
-                    },
-                    placeholder = "bar",
-                    enabled = enabled,
-                    fieldMinHeight = 32.dp,
-                    modifier = Modifier.weight(1.5f)
-                )
+                    modifier = Modifier.weight(1.5f),
+                    enabled = enabled
+                ) {
+                    val editor = rememberCreateAgentEnvVarEditor(KeyboardOptions.Default)
+                    RaftTextField(
+                        value = value,
+                        onValueChange = { newValue ->
+                            onChange(entries.toMutableList().also { it[idx] = key to newValue })
+                        },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = "bar",
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 Box(
                     modifier =

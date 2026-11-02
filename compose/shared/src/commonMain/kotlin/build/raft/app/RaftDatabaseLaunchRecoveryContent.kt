@@ -6,11 +6,12 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
-import build.raft.app.components.RaftBrutalCard
+import build.raft.designsystem.components.RaftCard
 import build.raft.app.data.RaftDatabaseVersionMismatch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,53 +36,51 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                 .padding(RaftAppSpacing.Xl),
         contentAlignment = Alignment.Center,
     ) {
-        RaftBrutalCard(
-            modifier = Modifier.widthIn(max = 480.dp),
-            contentPadding = 20.dp,
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(44.dp)
-                            .background(RaftColor.BrandYellow),
-                    contentAlignment = Alignment.Center,
+        RaftCard(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                 ) {
-                    RaftLucideIcon(
-                        name = RaftLucideIconName.TriangleAlert,
-                        modifier = Modifier.size(22.dp),
-                        color = raftArgbHex(RaftColor.StickerInk),
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(44.dp)
+                                .background(RaftColor.BrandYellow),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        RaftLucideIcon(
+                            name = RaftLucideIconName.TriangleAlert,
+                            modifier = Modifier.size(22.dp),
+                            color = raftArgbHex(RaftColor.StickerInk),
+                        )
+                    }
+                    Text(
+                        text = stringResource(Res.string.database_recovery_title),
+                        modifier = Modifier.weight(1f),
+                        style = RaftType.PageTitle,
+                        color = RaftColor.TextBlack,
                     )
                 }
                 Text(
-                    text = stringResource(Res.string.database_recovery_title),
-                    modifier = Modifier.weight(1f),
-                    style = RaftType.PageTitle,
-                    color = RaftColor.TextBlack,
+                    text =
+                        stringResource(
+                            Res.string.database_recovery_detail,
+                            mismatch.databaseVersion,
+                            mismatch.supportedVersion,
+                        ),
+                    style = RaftType.Body,
+                    color = RaftColor.TextMutedGray,
+                )
+                RaftButton(
+                    text = stringResource(Res.string.database_recovery_action_retry),
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
                 )
             }
-            Text(
-                text =
-                    stringResource(
-                        Res.string.database_recovery_detail,
-                        mismatch.databaseVersion,
-                        mismatch.supportedVersion,
-                    ),
-                style = RaftType.Body,
-                color = RaftColor.TextMutedGray,
-            )
-            RaftButton(
-                text = stringResource(Res.string.database_recovery_action_retry),
-                onClick = onRetry,
-                modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg,
-            )
         }
     }
 }

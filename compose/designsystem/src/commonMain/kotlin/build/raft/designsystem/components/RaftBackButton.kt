@@ -26,7 +26,7 @@ object RaftBackButtonDefaults {
  * raft-ui top-bar Back (and a leading Close): the phone top bar's ghost icon button
  * ([RaftIconButton] `variant = Ghost, size = Lg`), a 44dp target with a 22dp Lucide
  * `arrow-left`. Every page header, search bar, sheet and preview uses this one control;
- * do not draw a back arrow with a bare icon, a `clickable` box or a `RaftBrutal*` button.
+ * do not draw a back arrow with a bare icon, a `clickable` box or a hand-drawn icon button.
  *
  * [label] is the accessible name and the long-press tooltip ("Back", or "Close" with
  * [glyph] = [RaftGlyph.X]). The arrow takes the button ink (`LocalRaftContentColor`,

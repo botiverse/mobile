@@ -1,5 +1,15 @@
 package build.raft.app
 
+import build.raft.app.components.RaftDesignSystemEditor
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftReadOnlyField
+import build.raft.designsystem.components.RaftTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSpinnerSize
@@ -33,11 +43,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalReadOnlyField
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.components.RaftBrutalTextField
-import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
@@ -758,23 +764,41 @@ private fun SettingsAccountProfileCard(
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
         }
-        RaftBrutalReadOnlyField(
-            label = payload.handleLabel,
-            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-            // Copies the handle as shown here (no "@"); nothing for the placeholder.
-            copyText = profile.handle.removePrefix("@").ifBlank { null },
-            textStyle = settingsAccountInputTextStyle(RaftColor.TextMutedGray),
-            textColor = RaftColor.TextMutedGray
-        )
-        RaftBrutalTextField(
+        RaftField(
+            label = payload.handleLabel.takeIf { it.isNotBlank() },
+            modifier = Modifier.fillMaxWidth(),
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            RaftReadOnlyField(
+                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+                // Copies the handle as shown here (no "@"); nothing for the placeholder.
+                copyText = profile.handle.removePrefix("@").ifBlank { null }
+            )
+        }
+        RaftField(
             label = payload.displayNameLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = displayName,
-            placeholder = payload.displayNamePlaceholder,
-            onValueChange = { displayNameState.value = it },
+            modifier = Modifier.fillMaxWidth(),
             enabled = payload.canEditProfile && !payload.saveInProgress,
-            textStyle = settingsAccountInputTextStyle()
-        )
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor =
+                rememberRaftDesignSystemEditor(
+                    keyboardOptions = KeyboardOptions.Default,
+                    keyboardActions = KeyboardActions.Default,
+                    keyboardHeightChange = {},
+                    focusRequester = remember { FocusRequester() },
+                    autoFocus = false,
+                    onFocus = {},
+                    onBlur = {}
+                )
+            RaftTextField(
+                value = displayName,
+                onValueChange = { displayNameState.value = it },
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = payload.displayNamePlaceholder.ifEmpty { null },
+                keyboardOptions = editor.keyboardOptions
+            )
+        }
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
         SettingsProfileSaveButton(
             text = payload.profileSaveButtonLabel(),
@@ -949,11 +973,9 @@ private fun RaftSettingsAccountPayload.profileSaveButtonLabel(): String =
 
 @Composable
 private fun SettingsAccountHardShadowCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    RaftBrutalCard(
-        contentPadding = 16.dp,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        content = content
-    )
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
 }
 
 @Composable
@@ -998,36 +1020,54 @@ private fun SettingsPasswordForm(
     onSubmit: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalTextField(
+        RaftField(
             label = payload.currentPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = currentPassword,
-            placeholder = "",
-            onValueChange = onCurrentPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
-        RaftBrutalTextField(
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = currentPassword,
+                onValueChange = onCurrentPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = null,
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
+        RaftField(
             label = payload.newPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = newPassword,
-            placeholder = payload.newPasswordPlaceholder,
-            onValueChange = onNewPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
-        RaftBrutalTextField(
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = newPassword,
+                onValueChange = onNewPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = payload.newPasswordPlaceholder.ifEmpty { null },
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
+        RaftField(
             label = payload.confirmPasswordLabel,
-            labelSize = RaftFormFieldSize.Compact,
-            value = confirmPassword,
-            placeholder = "",
-            onValueChange = onConfirmPasswordChange,
+            modifier = Modifier.fillMaxWidth(),
             enabled = !payload.passwordInProgress,
-            textStyle = settingsAccountInputTextStyle(),
-            password = true
-        )
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            val editor = rememberSettingsAccountPasswordEditor()
+            RaftTextField(
+                value = confirmPassword,
+                onValueChange = onConfirmPasswordChange,
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = null,
+                keyboardOptions = editor.keyboardOptions,
+                visualTransformation = PasswordVisualTransformation()
+            )
+        }
         draftError?.let { SettingsAccountWarning(it) }
         payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let {
             SettingsAccountWarning(stringResource(Res.string.settings_account_password_update_failed, it))
@@ -1326,3 +1366,16 @@ private fun connectedAccountStatusDetail(account: RaftSettingsConnectedAccount, 
     } else {
         stringResource(Res.string.settings_account_not_connected)
     }
+
+/** The app editor behaviour for a masked password field (password keyboard, tap-outside dismiss). */
+@Composable
+private fun rememberSettingsAccountPasswordEditor(): RaftDesignSystemEditor =
+    rememberRaftDesignSystemEditor(
+        keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Password),
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = remember { FocusRequester() },
+        autoFocus = false,
+        onFocus = {},
+        onBlur = {}
+    )

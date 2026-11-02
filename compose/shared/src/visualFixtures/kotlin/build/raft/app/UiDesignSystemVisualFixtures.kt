@@ -45,7 +45,7 @@ import build.raft.designsystem.theme.RaftTheme
 
 // components.ui.* fixtures drawn with compose/designsystem (raft-ui 0.8.0) components, so
 // the Android capture of each case is the design-system component the pages migrate to,
-// not the RaftBrutal* / build.raft.app.components helpers (AGENTS.md, Shared UI Component
+// not the build.raft.app.components helpers (AGENTS.md, Shared UI Component
 // Discipline). Each frame is the web case's: 342dp wide, `layer-canvas`, 16dp padding.
 
 /**

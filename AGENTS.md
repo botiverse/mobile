@@ -624,9 +624,9 @@ or helper scripts as a workaround for branch protection.
   strokes, states, type), with screenshot tests, then use it. Do not fix the
   same visual primitive separately inside each page; page-local UI is only for
   one-off layout composition around design-system controls.
-- The older `RaftBrutal*` components (`RaftBrutalActionButton`,
-  `RaftBrutalIconButton`, `RaftBrutalTextField`, `RaftBrutalSearchField`, ...)
-  and the helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
+- The older `RaftBrutal*` component layer has been removed (see
+  `docs/raftbrutal-migration.md`); do not bring it back. The remaining helpers
+  under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
   are pending migration: add no new usages, and replace them with the
   design-system component when you touch that UI.
 - Local wrappers are acceptable only as semantic adapters and keep the

@@ -32,7 +32,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 /**
- * JVM screenshots of the agent profile controls that moved off RaftBrutal* (migration batch 3,
+ * JVM screenshots of the agent profile controls that moved off the retired legacy components (migration batch 3,
  * docs/raftbrutal-migration.md), light and dark:
  * - `members.agent-controls`: the archive confirmation (warning commit with the Archive icon),
  *   the agent role as plain text, the inline role editor (default soft badge, md Save / Cancel),

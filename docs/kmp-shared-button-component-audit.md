@@ -1,6 +1,6 @@
 # KMP Shared Button Component Audit
 
-> **Obsolete (2026-10-20):** prescribes `RaftBrutal*` primitives, which are now pending removal. Use `compose/designsystem` components (AGENTS.md "Shared UI Component Discipline", skill `raft-designsystem-ui`).
+> **Obsolete (2026-10-20):** prescribes `RaftBrutal*` primitives, which were removed on 2026-11-02 (docs/raftbrutal-migration.md). Use `compose/designsystem` components (AGENTS.md "Shared UI Component Discipline", skill `raft-designsystem-ui`).
 
 Date: 2026-06-08
 Task: #product task #189

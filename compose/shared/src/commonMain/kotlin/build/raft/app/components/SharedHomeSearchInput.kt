@@ -199,26 +199,16 @@ internal fun SharedHomeSearchInput(
         return
     }
     if (interactive) {
-        RaftBrutalInputField(
+        // The plain (no search icon) field of the classic shell: the design-system input with its clear addon.
+        val editor = rememberSharedHomeSearchEditor(autoFocus, focusRequester, { submitSharedHomeSearchInput(query, loading, onSubmit) })
+        RaftTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = placeholder,
-            maxLines = 1,
-            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions =
-                KeyboardActions(
-                    onSearch = { submitSharedHomeSearchInput(query, loading, onSubmit) },
-                    onDone = { submitSharedHomeSearchInput(query, loading, onSubmit) }
-                ),
-            showClearWhenNotEmpty = true,
-            onClear = onClear,
-            autoFocus = autoFocus,
-            focusRequester = focusRequester ?: remember { FocusRequester() },
-            modifier = modifier
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            trailingAction = if (query.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = sharedHomeSearchKeyboardActions { submitSharedHomeSearchInput(query, loading, onSubmit) }
         )
     } else {
         Box(
@@ -285,26 +275,16 @@ internal fun SharedHomeSearchInput(
         return
     }
     if (interactive) {
-        RaftBrutalInputField(
+        // The plain (no search icon) field of the classic shell: the design-system input with its clear addon.
+        val editor = rememberSharedHomeSearchEditor(autoFocus, focusRequester, { submitSharedHomeSearchInput(query.text, loading, onSubmit) })
+        RaftTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = placeholder,
-            maxLines = 1,
-            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions =
-                KeyboardActions(
-                    onSearch = { submitSharedHomeSearchInput(query.text, loading, onSubmit) },
-                    onDone = { submitSharedHomeSearchInput(query.text, loading, onSubmit) }
-                ),
-            showClearWhenNotEmpty = true,
-            onClear = onClear,
-            autoFocus = autoFocus,
-            focusRequester = focusRequester ?: remember { FocusRequester() },
-            modifier = modifier
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            trailingAction = if (query.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = sharedHomeSearchKeyboardActions { submitSharedHomeSearchInput(query.text, loading, onSubmit) }
         )
     } else {
         Box(

@@ -3,9 +3,14 @@ package build.raft.app.components
 import build.raft.app.RaftAppAvatar
 import build.raft.app.RaftAvatarStep
 import build.raft.app.RaftAvatarWithStatus
-import build.raft.app.RaftBrutalDropdownMenuItem
 import build.raft.app.RaftMonoFamily
-import build.raft.app.RaftBrutalDropdownMenuSurface
+import build.raft.app.raftFloatingContentClickTarget
+import build.raft.app.resources.Res
+import build.raft.app.resources.common_no_actions_available
+import build.raft.app.resources.stringResource
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.app.RaftColor
 import build.raft.app.raftArgbHex
 import build.raft.app.RaftLucideIcon
@@ -25,7 +30,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
 import androidx.compose.foundation.layout.height
@@ -84,11 +93,11 @@ internal enum class RaftUiButtonVariant(val background: Color) {
     Outline(RaftColor.SurfaceWhite)
 }
 
-internal enum class RaftUiBadgeVariant(val tone: RaftBrutalTone) {
-    Success(RaftBrutalTone.Lime),
-    Information(RaftBrutalTone.Cyan),
-    Warning(RaftBrutalTone.Warning),
-    Danger(RaftBrutalTone.Red)
+internal enum class RaftUiBadgeVariant(val variant: RaftBadgeVariant) {
+    Success(RaftBadgeVariant.Success),
+    Information(RaftBadgeVariant.Information),
+    Warning(RaftBadgeVariant.Warning),
+    Danger(RaftBadgeVariant.Danger)
 }
 
 internal data class RaftUiTabItem(val value: String, val label: String)
@@ -132,6 +141,7 @@ internal fun RaftUiButton(
     )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUiBadge(
     label: String,
@@ -139,7 +149,8 @@ internal fun RaftUiBadge(
     variant: RaftUiBadgeVariant = RaftUiBadgeVariant.Information,
     uppercase: Boolean = false
 ) {
-    RaftBrutalBadge(label = label, modifier = modifier, tone = variant.tone, uppercase = uppercase)
+    // raft-ui badges keep the source case: [uppercase] is ignored.
+    RaftBadge(text = label, modifier = modifier, appearance = RaftBadgeAppearance.Soft, variant = variant.variant)
 }
 
 @Composable
@@ -469,19 +480,23 @@ internal fun RaftUiTextarea(
     fieldHeight: Dp = 76.dp,
     maxLines: Int = 3
 ) {
-    RaftBrutalTextarea(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier,
-        placeholder = placeholder,
-        hint = hint,
-        error = error,
-        showCounter = showCounter,
-        limit = limit,
-        enabled = enabled,
-        fieldHeight = fieldHeight,
-        maxLines = maxLines
-    )
+    RaftField(
+        label = null,
+        modifier = modifier.fillMaxWidth(),
+        description = hint?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled
+    ) {
+        RaftTextarea(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder.takeIf { it.isNotEmpty() },
+            limit = limit.takeIf { showCounter },
+            minHeight = fieldHeight,
+            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
+            inputModifier = rememberRaftTextareaEditorModifier()
+        )
+    }
 }
 
 @Composable
@@ -648,6 +663,17 @@ internal fun RaftUiSelectTrigger(
     )
 }
 
+/**
+ * The design-system menu popup ([RaftMenuSurface]: container radius, popover layer, seam ring,
+ * float shadow, `p-1.5`, at least `min-w-60`) with a [RaftMenuItem] per item: a spinner in
+ * place of the icon while [RaftUiMenuItem.loading], the check on a selected row without
+ * trailing text, the trailing text as the mono shortcut, a [RaftMenuSeparator] before
+ * [RaftUiMenuItem.dividerBefore]. A tap selects an enabled item, then dismisses. A [header]
+ * (the message menu's reaction bar) sits above a separator. An empty list shows one disabled
+ * "No actions available" row. [rowHeight], [shadowOffset] and [showDividers] are ignored:
+ * raft menu rows are 36dp, cast no shadow and only draw explicit separators.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUiMenuSurface(
     items: List<RaftUiMenuItem>,
@@ -657,30 +683,49 @@ internal fun RaftUiMenuSurface(
     shadowOffset: Dp = 0.dp,
     showDividers: Boolean = false,
     onSelect: (String) -> Unit = {},
-    onDismiss: () -> Unit = {}
+    onDismiss: () -> Unit = {},
+    header: (@Composable () -> Unit)? = null
 ) {
-    RaftBrutalDropdownMenuSurface(
-        items =
-            items.map { item ->
-                RaftBrutalDropdownMenuItem(
-                    id = item.id,
-                    label = item.label,
-                    icon = item.icon,
-                    trailing = item.trailing,
-                    trailingIcon = if (item.selected && item.trailing == null) RaftLucideIconName.Check else null,
-                    destructive = item.destructive,
+    RaftMenuSurface(
+        modifier = modifier.raftFloatingContentClickTarget(),
+        width = width?.let(::raftMenuWidth)
+    ) {
+        header?.let { content ->
+            Box(modifier = Modifier.fillMaxWidth()) { content() }
+            RaftMenuSeparator()
+        }
+        if (items.isEmpty()) {
+            RaftMenuItem(
+                text = stringResource(Res.string.common_no_actions_available),
+                onClick = {},
+                enabled = false
+            )
+        } else {
+            items.forEachIndexed { index, item ->
+                if (index > 0 && item.dividerBefore) {
+                    RaftMenuSeparator()
+                }
+                RaftMenuItem(
+                    text = item.label,
+                    onClick = {
+                        if (item.enabled) {
+                            onSelect(item.id)
+                        }
+                        onDismiss()
+                    },
                     enabled = item.enabled,
-                    loading = item.loading
+                    checked = item.selected && item.trailing == null,
+                    leadingIcon =
+                        if (item.loading) {
+                            { RaftIconSpinner() }
+                        } else {
+                            item.icon?.let { icon -> { RaftSlotIcon(icon) } }
+                        },
+                    shortcut = item.trailing
                 )
-            },
-        onSelect = onSelect,
-        modifier = modifier,
-        width = width,
-        rowHeight = rowHeight,
-        showDividers = showDividers,
-        dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet(),
-        onDismiss = onDismiss
-    )
+            }
+        }
+    }
 }
 
 @Composable

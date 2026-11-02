@@ -9,6 +9,10 @@ import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftTextFieldDefaults
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import androidx.compose.foundation.text.KeyboardActions
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
@@ -60,10 +64,12 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
-import build.raft.app.components.RaftBrutalListRow
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.app.components.RaftAnchoredPickerTrigger
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.RaftLinkButton
@@ -424,6 +430,8 @@ import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftMetrics
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -7456,14 +7464,15 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         } else {
-                            RaftBrutalDropdownMenu(
+                            RaftUiControlledMenu(
+                                expanded = true,
                                 // The anchor arrives already resolved in WINDOW space: the page owns the
                                 // conversion, and re-deriving it here is what produced four rounds of
                                 // wrong positions.
                                 anchor = RaftPopoverAnchor.forRootOffset(open.request.anchor),
                                 items =
                                     open.request.items.map { item ->
-                                        RaftBrutalDropdownMenuItem(
+                                        RaftUiMenuItem(
                                             id = item.id,
                                             label = item.label,
                                             enabled = item.enabled
@@ -7479,7 +7488,9 @@ private fun RaftAppShellReadyContent(
                                     )
                                     shellOverlayMenu = null
                                 },
-                                onDismiss = dismissShellOverlay
+                                onDismiss = dismissShellOverlay,
+                                // raft-ui DropdownMenuContent's `sideOffset` 6.
+                                verticalOffset = RaftMetrics.MenuSideOffset
                             )
                         }
                     }
@@ -9772,21 +9783,24 @@ internal fun AppShellServerGateContent(
                 )
             } else {
                 latestSession.servers.forEach { server ->
-                    RaftBrutalListRow(
-                        title = server.name,
-                        subtitle =
-                            if (pendingServerId == server.id) {
-                                stringResource(Res.string.auth_state_opening_server)
-                            } else {
-                                "/${server.slug.orEmpty().ifBlank { server.id }}"
-                            },
-                        enabled = !loading,
-                        onClick = {
-                            loading = true
-                            errorPresentation = null
-                            pendingServerId = server.id
-                        }
-                    )
+                    RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                        RaftListRow(
+                            title = server.name,
+                            variant = RaftListRowVariant.Plain,
+                            description =
+                                if (pendingServerId == server.id) {
+                                    stringResource(Res.string.auth_state_opening_server)
+                                } else {
+                                    "/${server.slug.orEmpty().ifBlank { server.id }}"
+                                },
+                            enabled = !loading,
+                            onClick = {
+                                loading = true
+                                errorPresentation = null
+                                pendingServerId = server.id
+                            }
+                        )
+                    }
                 }
                 AuthActionButton(
                     text = stringResource(Res.string.auth_action_create_new_server),
@@ -11673,42 +11687,61 @@ private fun SharedCreateChannelDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.channel_create_label_name),
-                    required = true,
-                    value = name,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = { name = it },
-                    placeholder = stringResource(Res.string.channel_create_placeholder_name),
+                    modifier = Modifier.fillMaxWidth(),
+                    description = stringResource(Res.string.channel_create_hint_name_format),
+                    error = nameError?.takeIf { it.isNotBlank() },
                     enabled = !submitting,
-                    hint = stringResource(Res.string.channel_create_hint_name_format),
-                    error = nameError,
-                    autoFocus = false,
-                    onFocusChanged = { isFocused ->
-                        if (isFocused) {
-                            memberSearchFocused = false
-                            createChannelScrollCoordinator.invalidate()
-                        }
-                    }
-                )
+                    required = true
+                ) {
+                    val editor =
+                        rememberRaftDesignSystemEditor(
+                            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                            keyboardActions = KeyboardActions.Default,
+                            keyboardHeightChange = {},
+                            focusRequester = remember { FocusRequester() },
+                            autoFocus = false,
+                            onFocus = {
+                                memberSearchFocused = false
+                                createChannelScrollCoordinator.invalidate()
+                            },
+                            onBlur = {}
+                        )
+                    RaftTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                        placeholder = stringResource(Res.string.channel_create_placeholder_name),
+                        keyboardOptions = editor.keyboardOptions
+                    )
+                }
             }
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.channel_create_label_description),
-                    optional = true,
-                    value = description,
-                    onValueChange = { description = it },
-                    placeholder = stringResource(Res.string.channel_create_placeholder_description),
+                    modifier = Modifier.fillMaxWidth(),
                     enabled = !submitting,
-                    maxLines = 2,
-                    autoFocus = false,
-                    onFocusChanged = { isFocused ->
-                        if (isFocused) {
-                            memberSearchFocused = false
-                            createChannelScrollCoordinator.invalidate()
-                        }
-                    }
-                )
+                    optional = true
+                ) {
+                    // Two field lines (web `<textarea rows={2}>`): 42dp, growing to two 24dp lines in
+                    // the textarea's 10dp vertical padding (68dp), then it scrolls.
+                    RaftTextarea(
+                        value = description,
+                        onValueChange = { description = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = stringResource(Res.string.channel_create_placeholder_description),
+                        minHeight = 42.dp,
+                        maxHeight = maxOf(42.dp, 24.dp * 2 + 20.dp),
+                        inputModifier =
+                            rememberRaftTextareaEditorModifier(
+                                onFocus = {
+                                    memberSearchFocused = false
+                                    createChannelScrollCoordinator.invalidate()
+                                }
+                            )
+                    )
+                }
             }
             item {
                 SharedCreateChannelVisibilityControl(

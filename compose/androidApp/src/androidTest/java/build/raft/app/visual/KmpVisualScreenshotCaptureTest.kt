@@ -322,7 +322,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Android-only theme-axis case: captures RaftBrutalActionButton under both
+    // Android-only theme-axis case: captures the action button under both
     // RaftThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
     // theme axis) — guards that the LocalRaftTheme switch keeps driving border/corner/
     // shadow/ink (brutal row must stay byte-identical to the shipping look).
@@ -398,7 +398,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     // Elegant-register textarea capture (same content under RaftThemeProvider(elegantTheme)):
-    // inherits the RaftBrutalInputField elegant flat-field register. Paired against the React
+    // inherits the design-system field look. Paired against the React
     // elegant render as components.ui.textarea.states.elegant.
     @Test
     fun captureUiTextareaStatesElegant() {

@@ -13,9 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalSelectField
-import build.raft.app.components.RaftBrutalSelectOption
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftDesignSystemEditor
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftLinkButton
 import build.raft.app.data.DataResult
@@ -52,12 +58,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-
-/** Sentinel select id for "no value", which a derived select offers as the runtime default. */
-private const val RUNTIME_FORM_V2_DEFAULT_OPTION_ID = "__runtime_form_v2_default__"
-
-/** Select id prefix for a group heading (`provider.saved_connection`: saved / direct). */
-private const val RUNTIME_FORM_V2_GROUP_OPTION_PREFIX = "__runtime_form_v2_group__"
 
 /**
  * Runtime form v2 renderer shared by create and edit. Every field is drawn by
@@ -203,7 +203,7 @@ private fun RuntimeFormV2FieldRow(
     val hint = if (connectionOwned) managedHint else field.hint
     when (field.kind) {
         RuntimeFormV2FieldKind.Text, RuntimeFormV2FieldKind.Url ->
-            RaftBrutalTextField(
+            RuntimeFormV2TextInput(
                 label = field.label,
                 value = current,
                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
@@ -217,20 +217,29 @@ private fun RuntimeFormV2FieldRow(
             // Masked input keeps its own TextFieldValue so the editing token survives recomposition.
             var secret by remember(field.key) { mutableStateOf(TextFieldValue(current)) }
             if (secret.text != current) secret = TextFieldValue(current)
-            RaftBrutalTextField(
-                label = field.label,
-                value = secret,
-                onValueChange = {
-                    secret = it
-                    onChange(field.key, JsonPrimitive(it.text))
-                },
-                placeholder = field.placeholder.orEmpty(),
-                required = required && !editing,
-                hint = if (editing && !connectionOwned) stringResource(Res.string.runtime_form_v2_secret_keep_hint) else hint,
-                error = error,
+            RaftField(
+                label = field.label.takeIf { it.isNotBlank() },
+                modifier = Modifier.fillMaxWidth(),
+                description =
+                    (if (editing && !connectionOwned) stringResource(Res.string.runtime_form_v2_secret_keep_hint) else hint)
+                        ?.takeIf { it.isNotBlank() },
+                error = error?.takeIf { it.isNotBlank() },
                 enabled = fieldEnabled,
-                password = true
-            )
+                required = required && !editing
+            ) {
+                val editor = rememberRuntimeFormV2Editor(KeyboardOptions.Default.copy(keyboardType = KeyboardType.Password))
+                RaftTextField(
+                    value = secret,
+                    onValueChange = {
+                        secret = it
+                        onChange(field.key, JsonPrimitive(it.text))
+                    },
+                    modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                    placeholder = field.placeholder.orEmpty().ifEmpty { null },
+                    keyboardOptions = editor.keyboardOptions,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+            }
         }
         RuntimeFormV2FieldKind.Boolean ->
             Row(
@@ -278,7 +287,7 @@ private fun RuntimeFormV2FieldRow(
         RuntimeFormV2FieldKind.DerivedSelect ->
             when (val choices = runtimeFormV2Choices(field, loaded.sources, values)) {
                 RuntimeFormV2Choices.FreeText ->
-                    RaftBrutalTextField(
+                    RuntimeFormV2TextInput(
                         label = field.label,
                         value = current,
                         onValueChange = { onChange(field.key, JsonPrimitive(it)) },
@@ -298,27 +307,20 @@ private fun RuntimeFormV2FieldRow(
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
+                    // One option list for both pickers; "" is the runtime default.
                     val options = buildList {
-                        if (choices.allowEmpty) add(RaftBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
-                        var lastGroup: String? = null
+                        if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
                         choices.options.forEach { option ->
-                            val group = option.group
-                            if (grouped && group != null && group != lastGroup) {
-                                val heading = if (group == "saved") savedGroupLabel else directGroupLabel
-                                add(RaftBrutalSelectOption("$RUNTIME_FORM_V2_GROUP_OPTION_PREFIX$group", heading, header = true))
-                            }
-                            lastGroup = group
-                            // A bound connection that is unavailable stays visible but cannot be picked again.
-                            add(RaftBrutalSelectOption(option.value, option.label, enabled = !option.unavailable))
+                            add(
+                                RaftComboboxOption(
+                                    value = option.value,
+                                    label = option.label,
+                                    group = option.group?.takeIf { grouped }?.let { if (it == "saved") savedGroupLabel else directGroupLabel },
+                                    // A bound connection that is unavailable stays visible but cannot be picked again.
+                                    enabled = !option.unavailable
+                                )
+                            )
                         }
-                        if (unlisted) {
-                            // A stored value the server no longer offers stays visible, but cannot be re-picked.
-                            add(RaftBrutalSelectOption(current, current, enabled = false))
-                        }
-                    }
-                    val selectedId = when {
-                        current.isEmpty() && choices.allowEmpty -> RUNTIME_FORM_V2_DEFAULT_OPTION_ID
-                        else -> current
                     }
                     // `option_source.status`: a source that is not live says why.
                     val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
@@ -350,19 +352,7 @@ private fun RuntimeFormV2FieldRow(
                             // A stored value the list does not offer shows as itself.
                             RaftCombobox(
                                 value = current.takeIf { it.isNotEmpty() || choices.allowEmpty },
-                                options = buildList {
-                                    if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
-                                    choices.options.forEach { option ->
-                                        add(
-                                            RaftComboboxOption(
-                                                value = option.value,
-                                                label = option.label,
-                                                group = option.group?.takeIf { grouped }?.let { if (it == "saved") savedGroupLabel else directGroupLabel },
-                                                enabled = !option.unavailable
-                                            )
-                                        )
-                                    }
-                                },
+                                options = options,
                                 onValueChange = { next ->
                                     clearFocus()
                                     onChange(field.key, JsonPrimitive(next))
@@ -380,18 +370,27 @@ private fun RuntimeFormV2FieldRow(
                                 label = field.label
                             )
                         } else {
-                            RaftBrutalSelectField(
-                                options = options,
-                                selectedId = selectedId,
-                                selectedLabel = options.firstOrNull { it.id == selectedId }?.label.orEmpty(),
-                                placeholder = field.placeholder ?: field.label,
-                                enabled = fieldEnabled,
-                                rowHeight = 36.dp,
-                                onSelect = { option ->
+                            // raft-ui ComboboxSelect without `create`: the list under the trigger up to
+                            // ten options, a searchable sheet above (the picker-count rule). A stored value
+                            // the server no longer offers stays visible, but cannot be re-picked.
+                            RaftCombobox(
+                                value = current.takeIf { it.isNotEmpty() || choices.allowEmpty },
+                                options =
+                                    if (unlisted) {
+                                        options + RaftComboboxOption(current, current, enabled = false)
+                                    } else {
+                                        options
+                                    },
+                                onValueChange = { next ->
                                     clearFocus()
-                                    val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
                                     onChange(field.key, JsonPrimitive(next))
-                                }
+                                },
+                                emptyText = { noMatches },
+                                placeholder = field.placeholder ?: field.label,
+                                title = field.label,
+                                searchPlaceholder = searchLabel,
+                                enabled = fieldEnabled,
+                                label = field.label
                             )
                         }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
@@ -591,3 +590,46 @@ internal fun RuntimeFormV2RuntimeSection(
         if (runtimeAvailabilityError == null) content()
     }
 }
+
+/** A single-line runtime-form text field: the design-system field with the app editor behaviour. */
+@Composable
+private fun RuntimeFormV2TextInput(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    required: Boolean,
+    hint: String?,
+    error: String?,
+    enabled: Boolean
+) {
+    RaftField(
+        label = label.takeIf { it.isNotBlank() },
+        modifier = Modifier.fillMaxWidth(),
+        description = hint?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled,
+        required = required
+    ) {
+        val editor = rememberRuntimeFormV2Editor(KeyboardOptions.Default)
+        RaftTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            keyboardOptions = editor.keyboardOptions
+        )
+    }
+}
+
+@Composable
+private fun rememberRuntimeFormV2Editor(keyboardOptions: KeyboardOptions): RaftDesignSystemEditor =
+    rememberRaftDesignSystemEditor(
+        keyboardOptions = keyboardOptions,
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = remember { FocusRequester() },
+        autoFocus = false,
+        onFocus = {},
+        onBlur = {}
+    )
