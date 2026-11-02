@@ -107,11 +107,20 @@ data class RaftTypography(
     val control: TextStyle,
 ) {
     companion object {
-        /** CSS half-leading: extra line height split above and below, nothing trimmed. */
+        /**
+         * CSS half-leading: extra line height split above and below, nothing trimmed, and the
+         * line box exactly the line height ([LineHeightStyle.Mode.Tight]), as CSS keeps it. With
+         * the default [LineHeightStyle.Mode.Fixed] Android pads a text's first and last lines when a
+         * fallback font is taller than the line height (Han text falls back to Noto Sans CJK,
+         * ~1.45em), so every line with Chinese in a style under ~1.45em (headline 17/22, footnote
+         * 13/18, label 11/13, mono meta 12/16) stood 1-3dp taller than the web's (artin
+         * 2026-11-02, the typography specimen). Tall glyphs may draw past the box, as in CSS.
+         */
         val CssLineHeightStyle =
             LineHeightStyle(
                 alignment = LineHeightStyle.Alignment.Center,
                 trim = LineHeightStyle.Trim.None,
+                mode = LineHeightStyle.Mode.Tight,
             )
 
         /**
