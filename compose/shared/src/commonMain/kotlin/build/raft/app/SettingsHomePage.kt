@@ -551,7 +551,7 @@ internal val SettingsRouteVisualPageDataFields =
         "slockVisualFullHeight"
     )
 private const val SettingsDeveloperUnlockTapCount = 7
-private const val AppShellInitialTabKey = "slockInitialTab"
+internal const val AppShellInitialTabKey = "slockInitialTab"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
 internal const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
@@ -2171,6 +2171,9 @@ private fun RaftAppShellReadyContent(
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    // Navigation 3 (Android, stack on): the host saves the tab under the stack's pages with them.
+    val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
+    if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {

@@ -97,6 +97,8 @@ import build.raft.app.nav.RaftPageStack
 import build.raft.app.nav.RaftPageStackSavedState
 import build.raft.app.nav.RaftStackOpenRoute
 import build.raft.app.nav.RaftStackPage
+import build.raft.app.nav.LocalRaftStackRootTab
+import build.raft.app.nav.RaftStackRootTab
 import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
@@ -771,6 +773,9 @@ internal open class RaftCmpActivity :
     private var nav3Stack: RaftPageStack? = null
     // The page keys saved before this instance was recreated (process death, recreation).
     private var nav3SavedKeysText: String? = null
+    // The shell tab under the stack's pages: written by the shell, saved with the keys.
+    private val nav3RootTab = RaftStackRootTab()
+    private var nav3SavedRootTab: String? = null
     // onNewIntent resets the window to the shell: the recreation must not bring the stack back.
     private var nav3DropStackOnSave = false
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
@@ -894,6 +899,7 @@ internal open class RaftCmpActivity :
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
         nav3SavedKeysText = savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
+        nav3SavedRootTab = savedInstanceState?.getString(RAFT_NAV3_STACK_ROOT_TAB_KEY)
         pendingAttachmentSaveAs =
                 savedInstanceState
                     ?.getBundle(ATTACHMENT_SAVE_AS_STATE_KEY)
@@ -1049,6 +1055,8 @@ internal open class RaftCmpActivity :
             )
         val stack = createNav3StackIfEnabled(spec.pageName)
         nav3Stack = stack
+        val shellArgs = raftAndroidNav3ShellArgs(args, stack, nav3SavedRootTab)
+        nav3SavedRootTab = null
         val composeView =
             ComposeView(this).apply {
                 setContent {
@@ -1066,7 +1074,9 @@ internal open class RaftCmpActivity :
                                 onSystemBars = ::applySystemBarAppearance,
                                 onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
                                 shell = { onBars, onCanvas ->
-                                    RaftCmpRoot(args, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                    CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
+                                        RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
+                                    }
                                 },
                                 page = { page, onBars, onCanvas ->
                                     val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
@@ -1109,7 +1119,7 @@ internal open class RaftCmpActivity :
         if (savedText != null) {
             val keys = raftAndroidNav3RestoredKeys(savedText)
             val restored = keys != null && stack.restore(keys)
-            RaftAppLog.record(TAG, "nav3_stack_restore restored=$restored pages=${keys?.size ?: 0} chars=${savedText.length}")
+            RaftAppLog.record(TAG, "nav3_stack_restore restored=$restored pages=${keys?.size ?: 0} chars=${savedText.length} rootTab=${nav3SavedRootTab.orEmpty()}")
         }
         RaftAppLog.record(TAG, "nav3_stack_on pages=${stack.pages.size}")
         return stack
@@ -1424,6 +1434,7 @@ internal open class RaftCmpActivity :
             val text = RaftPageStackSavedState.encode(keys)
             if (text != null) {
                 outState.putString(RAFT_NAV3_STACK_STATE_KEY, text)
+                nav3RootTab.tab?.let { outState.putString(RAFT_NAV3_STACK_ROOT_TAB_KEY, it) }
             } else {
                 RaftAppLog.record(TAG, "nav3_stack_save_skipped pages=${keys.size} reason=size_guard")
             }
