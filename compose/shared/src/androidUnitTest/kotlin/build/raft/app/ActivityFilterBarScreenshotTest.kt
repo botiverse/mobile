@@ -33,7 +33,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h300dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h360dp-xxhdpi")
 class ActivityFilterBarScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
