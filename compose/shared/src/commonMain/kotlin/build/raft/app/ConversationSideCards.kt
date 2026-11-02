@@ -17,10 +17,17 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabs
+import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
+import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Task v2 (`task_v2_conversations_v0`; web ChatPanel / ChannelSideArea, raft-design
@@ -77,26 +84,71 @@ internal data class ConversationSideCardsState(
 }
 
 /**
- * The person's open cards for the app's lifetime (web keeps them in localStorage). Back on a
- * phone closes every open card at once, as web's `closeOpenCards`.
+ * Persisted key of one person's open cards (web `slock:channelSideCards` in localStorage, kept
+ * across reloads): `conversationSideCards:open:<environment>|<user>`, the value web's JSON
+ * `{"tasks":true,"files":false}`. Per person, so another account on the device starts closed.
  */
-internal class ConversationSideCardsStore {
+internal const val CONVERSATION_SIDE_CARDS_OPEN_KEY_PREFIX = "conversationSideCards:open:"
+
+internal fun conversationSideCardsOpenKey(ownerKey: String): String = "$CONVERSATION_SIDE_CARDS_OPEN_KEY_PREFIX$ownerKey"
+
+internal fun ConversationSideCardsState.encodeOpenCards(): String = "{\"tasks\":$tasks,\"files\":$files}"
+
+/** Web's open flags; anything unreadable is "closed". Which card shows first is not kept (web neither). */
+internal fun decodeConversationSideCardsOpen(raw: String?): ConversationSideCardsState {
+    val value =
+        raw?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }
+            ?: return ConversationSideCardsState()
+    fun flag(name: String): Boolean = (value[name] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true
+    return ConversationSideCardsState(tasks = flag("tasks"), files = flag("files"))
+}
+
+/**
+ * The person's open cards, kept across app restarts per person ([bindOwner]). Back on a phone
+ * closes every open card at once, as web's `closeOpenCards`.
+ */
+internal class ConversationSideCardsStore(
+    private val preferences: () -> SharedPreferenceStore? = { null },
+) {
     private val mutableState = MutableStateFlow(ConversationSideCardsState())
     val state: StateFlow<ConversationSideCardsState> = mutableState.asStateFlow()
+    private var ownerKey: String? = null
+    private val store: SharedPreferenceStore? by lazy { runCatching(preferences).getOrNull() }
 
-    fun toggle(card: ConversationSideCard) = mutableState.update { it.toggled(card) }
+    /**
+     * The signed-in person ([messageBodyFontSizeOwnerKey]: environment + user): loads their cards
+     * once when the person changes; later changes are saved under them. Null (no session yet) keeps
+     * what is shown.
+     */
+    fun bindOwner(ownerKey: String?) {
+        if (ownerKey == null || ownerKey == this.ownerKey) return
+        this.ownerKey = ownerKey
+        val stored = runCatching { store?.getString(conversationSideCardsOpenKey(ownerKey)) }.getOrNull()
+        mutableState.value = decodeConversationSideCardsOpen(stored)
+    }
 
-    fun open(card: ConversationSideCard) = mutableState.update { it.withOpen(card, true) }
+    fun toggle(card: ConversationSideCard) = change { it.toggled(card) }
 
-    fun close(card: ConversationSideCard) = mutableState.update { it.withOpen(card, false) }
+    fun open(card: ConversationSideCard) = change { it.withOpen(card, true) }
+
+    fun close(card: ConversationSideCard) = change { it.withOpen(card, false) }
 
     fun focus(card: ConversationSideCard) = mutableState.update { it.focused(card) }
 
-    fun closeAll() = mutableState.update { ConversationSideCardsState() }
+    fun closeAll() = change { ConversationSideCardsState() }
+
+    private fun change(transform: (ConversationSideCardsState) -> ConversationSideCardsState) {
+        val before = mutableState.value
+        mutableState.update(transform)
+        val after = mutableState.value
+        val owner = ownerKey ?: return
+        if (before.tasks == after.tasks && before.files == after.files) return
+        runCatching { store?.putString(conversationSideCardsOpenKey(owner), after.encodeOpenCards()) }
+    }
 
     companion object {
-        /** App-level: the same cards in every conversation page. */
-        val App: ConversationSideCardsStore = ConversationSideCardsStore()
+        /** App-level: the same cards in every conversation page, saved in the shared local preferences. */
+        val App: ConversationSideCardsStore = ConversationSideCardsStore(preferences = { raftSharedPreferenceStore() })
     }
 }
 
@@ -128,19 +180,27 @@ internal fun ConversationSideCard.toThreadTab(): RaftThreadTab =
  * with both open, the Tasks / Files switch on top; then the card's 56dp head with its title;
  * then its body. The conversation's header Back closes the cards, so the head draws none of its
  * own unless [onBack] is given (no header Back: a split's detail pane).
+ *
+ * On iOS the page's back swipe closes the cards like Back does ([onSwipeClose]; web closes the
+ * card): the card slides away with the finger and the conversation shows again, instead of the
+ * swipe doing nothing while the open card blocks the page pop. Android's system back gesture
+ * already reaches the page's back handler, so nothing changes there.
  */
 @Composable
 internal fun ConversationSideCardsCover(
     cards: ConversationSideCardsState,
     onPick: (ConversationSideCard) -> Unit,
     onBack: (() -> Unit)?,
+    onSwipeClose: () -> Unit,
     modifier: Modifier = Modifier,
     tasksContent: @Composable () -> Unit,
     filesContent: @Composable () -> Unit,
 ) {
     val shown = cards.shown ?: return
+    val swipeClose = rememberRaftBackSwipeDismiss(onDismiss = onSwipeClose)
     Column(
         modifier
+            .then(swipeClose)
             .fillMaxSize()
             .background(RaftColor.Canvas)
             // The conversation under the cover takes no touches.

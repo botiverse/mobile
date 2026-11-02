@@ -8294,6 +8294,8 @@ private fun SharedThreadRouteContentContent(
         )
     val sideCardsStore = LocalConversationSideCards.current
     val sideCardsState by sideCardsStore.state.collectAsState()
+    // The person's open cards, kept across restarts (web keeps them across reloads).
+    LaunchedEffect(sideCardsStore, messageBodyOwnerKey) { sideCardsStore.bindOwner(messageBodyOwnerKey) }
     // An old Tasks / Files tab link (route `selectedTab`, a `selectTab` event) opens that card over
     // the conversation; the page itself stays on Chat.
     LaunchedEffect(sideCardsEnabled, selectedThreadTab) {
@@ -17079,11 +17081,14 @@ private fun ThreadPageContentContent(
             bodyCover =
                 if (sideCardsEnabled) {
                     {
+                        // No header Back (a split's detail pane): the card keeps its own (web).
+                        val cardBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } }
                         ConversationSideCardsCover(
                             cards = sideCards,
                             onPick = sideCardsStore::focus,
-                            // No header Back (a split's detail pane): the card keeps its own (web).
-                            onBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } },
+                            onBack = cardBack,
+                            // iOS back swipe: what Back does here (the card's own, else every open card).
+                            onSwipeClose = cardBack ?: sideCardsStore::closeAll,
                             tasksContent = {
                                 renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
                             },
