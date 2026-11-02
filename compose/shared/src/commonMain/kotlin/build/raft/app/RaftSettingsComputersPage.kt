@@ -708,7 +708,7 @@ internal fun RowScope.RaftComputersWideTitle(title: String, counts: String) {
     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftText(
             title,
-            style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            style = RaftType.Headline,
             color = RaftTheme.colors.foreground,
             maxLines = 1,
         )
