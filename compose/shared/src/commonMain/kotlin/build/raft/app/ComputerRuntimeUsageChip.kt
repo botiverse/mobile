@@ -340,9 +340,11 @@ private fun ComputerRuntimeUsageChip(
         }
     DisposableEffect(controller) { onDispose { controller?.cancel() } }
     LaunchedEffect(controller) { controller?.start() }
+    var open by remember(controller) { mutableStateOf(false) }
     val load = controller?.load
     val offered = controller != null && load !is RuntimeAccountUsageLoad.Forbidden
     val health = load.computerRuntimeUsageHealth()
+    val dialogLabel = stringResource(Res.string.settings_computers_runtime_usage_dialog_label, label)
     val healthDot: (@Composable () -> Unit)? =
         if (health == null) {
             null
@@ -362,28 +364,46 @@ private fun ComputerRuntimeUsageChip(
                 )
             }
         }
-    val chip: @Composable () -> Unit = {
-        // A badge whose long press copies the runtime name; the usage card opens on hover and pins
-        // on a click (below), so the badge takes no click of its own.
-        RaftBadge(
-            text = label,
-            copyText = label,
-            appearance = RaftBadgeAppearance.Soft,
-            variant = RaftBadgeVariant.Information,
-            trailing = healthDot,
-        )
-    }
-    // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage card,
-    // a click (a finger's tap too) pins it.
-    if (controller == null) {
-        chip()
-    } else {
-        ComputerRuntimeUsagePreviewCard(
+    // The tap handler is always attached and the modifier chain keeps its shape (Kuikly keeps
+    // stale native props when a modifier is removed); whether a tap opens is decided inside.
+    RaftBadge(
+        text = label,
+        // A badge button: a tap opens its usage, a long press copies the runtime name; its
+        // touch target reaches 44dp (raft-ui 0.52.2).
+        onClick = {
+            if (offered) {
+                open = true
+                controller?.onOpen()
+            }
+        },
+        onClickLabel = dialogLabel,
+        copyText = label,
+        appearance = RaftBadgeAppearance.Soft,
+        variant = RaftBadgeVariant.Information,
+        trailing = healthDot,
+    )
+    // Read before the sheet: its window may not carry the page's composition locals.
+    val timeContext = LocalRaftTimeContextProvider.current?.current
+    if (open && offered && controller != null) {
+        LaunchedEffect(controller) {
+            while (true) {
+                controller.updateCooldown()
+                delay(1_000L)
+            }
+        }
+        ComputerRuntimeUsageSheet(
             runtimeLabel = label,
-            controller = controller,
-            runtimeVersion = runtimeVersion,
-            enabled = offered,
-            trigger = chip,
+            state =
+                ComputerRuntimeUsageSheetState(
+                    controller.load,
+                    controller.loading,
+                    controller.refresh,
+                    controller.cooldownLeftMillis,
+                    runtimeVersion,
+                ),
+            timeContext = timeContext,
+            onRefresh = controller::refreshNow,
+            onDismiss = { open = false },
         )
     }
 }
