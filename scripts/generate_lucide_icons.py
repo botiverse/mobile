@@ -180,6 +180,8 @@ LUCIDE_ICONS = [
     "folder-input",
     "folder-open",
     "folder-plus",
+    "follow-thread",
+    "forward",
     "funnel",
     "git-branch",
     "globe",
@@ -201,6 +203,7 @@ LUCIDE_ICONS = [
     "link",
     "link-2",
     "list-filter",
+    "list-checks",
     "list-tree",
     "list-todo",
     "lock",
@@ -240,6 +243,7 @@ LUCIDE_ICONS = [
     "plus",
     "presentation",
     "refresh-cw",
+    "reopen-task",
     "redo-2",
     "rotate-ccw",
     "rotate-cw",
@@ -261,15 +265,18 @@ LUCIDE_ICONS = [
     "sparkles",
     "square",
     "square-check-big",
+    "square-dashed-text",
     "square-terminal",
     "store",
     "terminal",
     "text-quote",
+    "thread",
     "triangle-alert",
     "trash",
     "trash-2",
     "type",
     "undo-2",
+    "unfollow-thread",
     "unlink",
     "upload",
     "user",
@@ -286,8 +293,17 @@ LUCIDE_ICONS = [
     "zoom-out",
 ]
 
+RAFT_UI_ICON_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "raft-ui")
+
+# Icons drawn by raft-ui where Lucide has none (raft-design packages/ui/src/components/icons:
+# conversation-icons.tsx ThreadIcon, action-icons.tsx Follow/UnfollowThreadIcon, ReopenTaskIcon),
+# copied path for path so the app's menus draw what the web's do.
 CUSTOM_ICONS = {
     "mosaic": os.path.join(BRAND_ASSET_SOURCE_DIR, "mosaic.svg"),
+    "thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "thread.svg"),
+    "follow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "follow-thread.svg"),
+    "unfollow-thread": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "unfollow-thread.svg"),
+    "reopen-task": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "reopen-task.svg"),
 }
 
 BRAND_SVGS = {

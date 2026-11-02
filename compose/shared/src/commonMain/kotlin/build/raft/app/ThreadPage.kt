@@ -28515,20 +28515,21 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
 ): RaftLucideIconName =
     when (this) {
         ThreadNewMessageMenuTool.Copy -> RaftLucideIconName.Copy
-        ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.MessageSquare
-        ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Redo2
+        ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.Thread
+        ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Forward
         ThreadNewMessageMenuTool.Save ->
             if (availability.saved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark
         ThreadNewMessageMenuTool.Translate -> RaftLucideIconName.Languages
-        ThreadNewMessageMenuTool.Select -> RaftLucideIconName.CircleCheck
+        ThreadNewMessageMenuTool.Select -> RaftLucideIconName.ListChecks
         ThreadNewMessageMenuTool.AddReaction -> RaftLucideIconName.SmilePlus
         ThreadNewMessageMenuTool.CopyLink -> RaftLucideIconName.Link
         ThreadNewMessageMenuTool.FollowThread -> threadFollowMenuIcon(availability.threadFollowed)
-        ThreadNewMessageMenuTool.TaskStatus ->
-            if (availability.taskDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig
-        ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
-        ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.FileText
-        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
+        ThreadNewMessageMenuTool.TaskStatus -> threadTaskStatusMenuIcon(availability.taskDone)
+        ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.Plus
+        ThreadNewMessageMenuTool.SelectText -> RaftLucideIconName.SquareDashedText
+        // Not SquareCheckBig: that is Mark as Done in the same menu (web MessageItem). Select All
+        // only shows over a partial selection, where Select Text is hidden.
+        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareDashedText
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Copy
     }
@@ -31696,12 +31697,12 @@ internal data class ThreadMessageMenuAction(
 )
 
 // Web MessageItem context menu (raft-ui ContextMenuPopup + slock MenuItem): `min-w-60`
-// popup, 36dp `min-h-9` rows with lucide 14 icons, and a `h-9 gap-1 px-2` quick-reaction
+// popup, 36dp `min-h-9` rows with 16dp icons (MenuItem forces `size-4` in `foreground-muted`
+// whatever size a caller passes; raft-design iconography.md: menus are 16px), and a `h-9 gap-1 px-2` quick-reaction
 // row of seven 28dp (`size-7`) buttons -- 7 * 28 + 6 * 4 + 2 * 8 = 236dp, which with
 // the popup's `p-1.5` makes the menu 248dp wide whenever the reaction row shows.
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
-private val ThreadMessageMenuIconSize = 14.dp
 private val ThreadMessageMenuReactionRowHeight = 36.dp
 private val ThreadMessageMenuReactionButtonSize = 28.dp
 private val ThreadMessageMenuReactionGap = 4.dp
@@ -31819,8 +31820,16 @@ internal const val MARK_THREAD_UNREAD_ACTION = "markThreadUnread"
 internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
 internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
+/** raft-ui `FollowThreadIcon` / `UnfollowThreadIcon`, as web MessageItem's menu draws them. */
 internal fun threadFollowMenuIcon(isFollowed: Boolean): RaftLucideIconName =
-    if (isFollowed) RaftLucideIconName.MessageCircleOff else RaftLucideIconName.MessageCirclePlus
+    if (isFollowed) RaftLucideIconName.UnfollowThread else RaftLucideIconName.FollowThread
+
+/**
+ * web MessageItem: Mark as Done is Lucide `square-check-big`, Reopen Task raft-ui `ReopenTaskIcon`
+ * (raft-design iconography.md: reopen is not restart, so not `refresh-cw`/`rotate-ccw`).
+ */
+internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
+    if (isDone) RaftLucideIconName.ReopenTask else RaftLucideIconName.SquareCheckBig
 
 /**
  * What a message's long-press menu offers, shared by the Classic and Compact menus and aligned
@@ -31995,7 +32004,7 @@ internal fun threadMessageMenuActions(
             )
         }
         add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
+        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.SquareDashedText, "copy", onClick = onSelectText))
         if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
@@ -32016,18 +32025,19 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = Res.string.thread_action_select_message.desc(),
-                    icon = RaftLucideIconName.CircleCheck,
+                    // web: ListChecks (SquareCheckBig is Mark as Done in the same menu).
+                    icon = RaftLucideIconName.ListChecks,
                     group = "copy",
                     onClick = onShareMessages
                 )
             )
         }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
+            add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
         }
         if (showForwardAction) {
-            // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
-            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
+            // Web uses the select-mode Forward glyph (lucide forward) for the per-message entry.
+            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Forward, "message", onClick = onForward))
         }
         if (onDownloadVideo != null) {
             // Telegram / WhatsApp / iMessage: a long press on a video message offers to save it.
@@ -32117,7 +32127,7 @@ internal fun threadMessageMenuActions(
                         } else {
                             Res.string.thread_action_mark_done.desc()
                         },
-                    icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
+                    icon = threadTaskStatusMenuIcon(isDone),
                     group = "task",
                     onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
                 )
@@ -32132,7 +32142,7 @@ internal fun threadMessageMenuActions(
                         } else {
                             Res.string.thread_action_convert_to_task.desc()
                         },
-                    icon = RaftLucideIconName.ClipboardCheck,
+                    icon = RaftLucideIconName.Plus,
                     group = "task",
                     onClick = onConvertToTask
                 )
@@ -32652,11 +32662,10 @@ internal fun ThreadMessageMenuChrome(
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
         width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
-        // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
+        // web MenuItem: 36dp `min-h-9` rows; icons at the menu row's own 16dp (RaftMetrics.MenuIconSize).
         rowHeight = ThreadMessageMenuRowHeight,
         showDividers = false,
         dividerBeforeIds = groupDividerIds,
-        iconSize = ThreadMessageMenuIconSize,
         headerContent =
             if (showReactionActions) {
                 {
@@ -36034,7 +36043,7 @@ internal fun ThreadShareSelectionToolbar(
                 )
                 ThreadShareSelectionActionButton(
                     label = stringResource(Res.string.thread_action_forward),
-                    icon = RaftLucideIconName.Send,
+                    icon = RaftLucideIconName.Forward,
                     onClick = onForward,
                     enabled = hasSelection && forwardEnabled,
                     variant = build.raft.designsystem.components.RaftButtonVariant.Primary
