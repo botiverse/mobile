@@ -10,6 +10,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -192,121 +194,67 @@ internal fun MembersAgentRuntimeUsageChip(
 ) {
     val access = LocalMembersRuntimeAccountUsageAccess.current
     val key = membersRuntimeAccountUsageKey(access, runtimeId, machineId)
-    var load by remember(key) { mutableStateOf<RuntimeAccountUsageLoad?>(null) }
-    var reloadNonce by remember(key) { mutableStateOf(0) }
-    var loading by remember(key) { mutableStateOf(false) }
-    var dialogOpen by remember(key) { mutableStateOf(false) }
-    LaunchedEffect(key, reloadNonce) {
-        val store = access?.store
-        if (key == null || store == null) return@LaunchedEffect
-        loading = true
-        val result = store.read(key, force = reloadNonce > 0)
-        access?.log?.invoke("member_runtime_usage_read provider=${key.provider.wire} force=${reloadNonce > 0} result=${result.diagnosticsLabel()}")
-        load = result.shownRuntimeAccountUsage()
-        loading = false
-        if (!load.offersRuntimeAccountUsage()) dialogOpen = false
-        if (result is RuntimeAccountUsageLoad.Superseded) access?.onIdentityChanged?.invoke()
-    }
-    val offered = key != null && load.offersRuntimeAccountUsage()
+    val scope = rememberCoroutineScope()
+    // The Computer page's controller: the same read, refresh and follow-ups as its chips.
+    val controller =
+        remember(key, access) {
+            if (key == null || access == null) {
+                null
+            } else {
+                ComputerRuntimeUsageController(
+                    key = key,
+                    store = access.store,
+                    scope = scope,
+                    log = { message -> access.log("member_$message") },
+                    onIdentityChanged = access.onIdentityChanged,
+                )
+            }
+        }
+    DisposableEffect(controller) { onDispose { controller?.cancel() } }
+    LaunchedEffect(controller) { controller?.start() }
+    val load = controller?.load
+    val offered = controller != null && load.offersRuntimeAccountUsage()
     val attention = offered && load.runtimeAccountUsageNeedsAttention()
     val statusVariant = membersRuntimeUsageStatusVariant(offered, attention)
-    // The click handler is always attached and the modifier chain never changes shape (Kuikly
-    // keeps stale native props when a modifier is removed); whether a tap opens the card is
-    // decided inside the handler.
     val statusDescription =
         when {
             !offered -> null
             attention -> stringResource(Res.string.member_runtime_usage_attention)
             else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
         }
-    RaftRuntimeChip(
-        text = label,
-        // Long press copies the runtime name (never the usage status); a tap opens usage.
-        modifier = Modifier.raftCopyable(label) {
-            access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
-            if (offered) dialogOpen = true
-        },
-        // Web `RuntimeAccountUsageChip`: Status `sm` after the label (`ml-1`); the attention
-        // state is the light's accessible name only, never drawn as text.
-        trailing =
-            statusVariant?.let { variant ->
-                {
-                    RaftStatusDot(
-                        variant = variant,
-                        size = RaftStatusSize.Sm,
-                        contentDescription = statusDescription
-                    )
+    val chip: @Composable () -> Unit = {
+        RaftRuntimeChip(
+            text = label,
+            // Long press copies the runtime name (never the usage status).
+            modifier = Modifier.raftCopyable(label),
+            // Web `RuntimeAccountUsageChip`: Status `sm` after the label (`ml-1`); the attention
+            // state is the light's accessible name only, never drawn as text.
+            trailing =
+                statusVariant?.let { variant ->
+                    {
+                        RaftStatusDot(
+                            variant = variant,
+                            size = RaftStatusSize.Sm,
+                            contentDescription = statusDescription
+                        )
+                    }
                 }
-            }
-    )
-    // Read before the dialog: its content is rehosted in a separate native window where page
-    // composition locals are not retained.
-    val timeContext = LocalRaftTimeContextProvider.current?.current
-    if (dialogOpen && offered) {
-        LaunchedEffect(Unit) { access?.log?.invoke("member_runtime_usage_dialog_composed") }
-        MembersRuntimeAccountUsageDialog(
-            runtimeLabel = label,
-            timeContext = timeContext,
-            load = load,
-            loading = loading,
-            onReload = { reloadNonce += 1 },
-            onDismiss = { dialogOpen = false }
         )
     }
-}
-
-@Composable
-private fun MembersRuntimeAccountUsageDialog(
-    runtimeLabel: String,
-    timeContext: RaftTimeContext?,
-    load: RuntimeAccountUsageLoad?,
-    loading: Boolean,
-    onReload: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    RaftUnifiedDialog(
-        title = stringResource(Res.string.member_runtime_usage_title),
-        overline = runtimeLabel,
-        onDismiss = onDismiss,
-        contentSpacing = 12.dp
-    ) {
-        when (load) {
-            null -> MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_reading))
-            RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Superseded -> Unit
-            is RuntimeAccountUsageLoad.Failed ->
-                MembersRuntimeUsageNote(
-                    text = stringResource(Res.string.member_runtime_usage_read_failed),
-                    color = RaftColor.AccentRed
-                )
-            is RuntimeAccountUsageLoad.Loaded ->
-                when (val read = load.read) {
-                    RuntimeAccountUsageRead.Missing -> {
-                        MembersRuntimeUsageNote(
-                            text = stringResource(Res.string.member_runtime_usage_missing),
-                            bold = true
-                        )
-                        MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_missing_detail))
-                    }
-                    is RuntimeAccountUsageRead.Available -> {
-                        if (read.stale) {
-                            MembersRuntimeUsageBanner(stringResource(Res.string.member_runtime_usage_stale))
-                        }
-                        read.snapshot.accounts.forEach { account ->
-                            MembersRuntimeUsageAccountCard(account = account, stale = read.stale, timeContext = timeContext)
-                        }
-                    }
-                }
-        }
-        RaftButton(
-            text = if (loading) {
-                    stringResource(Res.string.member_runtime_usage_reading)
-                } else {
-                    stringResource(Res.string.member_runtime_usage_reload)
-                },
-            enabled = !loading,
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onReload,
-            size = RaftButtonSize.Lg
+    // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage
+    // card, a click (a finger's tap too) pins it; the card's own Refresh and close. Without usage
+    // to show, the chip alone.
+    if (controller == null) {
+        chip()
+    } else {
+        ComputerRuntimeUsagePreviewCard(
+            runtimeLabel = label,
+            controller = controller,
+            runtimeVersion = null,
+            // As the Computer chips: hover works while the first read is still loading (the card
+            // has its loading state); only a 403 turns it off.
+            enabled = load !is RuntimeAccountUsageLoad.Forbidden,
+            trigger = chip,
         )
     }
 }
@@ -334,35 +282,4 @@ internal fun MembersRuntimeUsageAccountCard(
         // usage says what is used).
         ComputerRuntimeUsageAccountBlock(account, timeContext)
     }
-}
-
-@Composable
-private fun MembersRuntimeUsageBanner(text: String) {
-    Text(
-        text = text,
-        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
-        color = RaftColor.StickerInk,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.AccentOrange)
-                .border(RaftAppStroke.Thin, RaftColor.StickerInk)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-    )
-}
-
-@Composable
-private fun MembersRuntimeUsageNote(
-    text: String,
-    color: Color = RaftColor.TextMutedGray,
-    bold: Boolean = false
-) {
-    Text(
-        text = text,
-        style =
-            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp).let {
-                if (bold) it.withRaftFontWeight(FontWeight.Bold) else it
-            },
-        color = if (bold) RaftColor.TextBlack else color
-    )
 }
