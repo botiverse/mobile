@@ -3967,7 +3967,17 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_thread_followers_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,
-            beforeScreenshot = { tapDp(265f, 28f); Thread.sleep(500) },
+            // Tap the avatar-chip trigger by its accessibility label, not a fixed point: #4032 moved a
+            // reply thread's Search / View in Channel into the ⋯ menu, the chip slid right and the
+            // old (265dp, 28dp) tap missed it, leaving a near-blank page (nightlies from 10-31).
+            beforeScreenshot = {
+                tapComposeNodeWithText(
+                    // `thread_followers_count` for the fixture's three agents (it renders zh-CN).
+                    texts = listOf("3 个 Agent 正在关注", "3 watching", "3 エージェントがフォロー中"),
+                    what = "Thread followers trigger",
+                )
+                Thread.sleep(500)
+            },
         )
     }
 
@@ -5076,6 +5086,30 @@ class KmpVisualScreenshotCaptureTest {
         }
         visit(root, 0)
         return matches
+    }
+
+    /** Taps the clickable node (or its clickable ancestor) whose text or description is one of [texts]. */
+    private fun tapComposeNodeWithText(texts: List<String>, what: String) {
+        awaitFixtureIsActiveInputWindow(what)
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS
+        var target: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (target == null) {
+            target =
+                texts
+                    .asSequence()
+                    .flatMap { findComposeNodesWithText(uiAutomation.rootInActiveWindow, it).asSequence() }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isClickable } }
+                    .firstOrNull()
+            if (target != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(target) { "$what is not visible (looked for ${texts.joinToString(" | ")})" }
+        val bounds = android.graphics.Rect()
+        target.getBoundsInScreen(bounds)
+        require(!bounds.isEmpty) { "$what has empty bounds" }
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
     }
 
     private fun openPendingMentionDrawer() {
