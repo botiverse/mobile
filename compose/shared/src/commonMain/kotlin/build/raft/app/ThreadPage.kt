@@ -14354,20 +14354,33 @@ private fun SharedThreadRouteContentContent(
                 }
             )
         }
+        // Where a quote of selected text lands (Select Text > Quote, the mouse selection's Quote).
+        val selectionQuoteTarget =
+            threadSelectTextQuoteTarget(
+                surfaceKind = renderedThread.surfaceKind,
+                composerAvailable =
+                    jointBillingNotice != JointBillingNotice.Locked &&
+                        shouldShowThreadComposerForReadyContent(
+                            joined = payload.joined && renderSlice.writeActionsEnabled,
+                            showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
+                            selectedTab = selectedThreadTab.wireValue
+                        )
+            )
+        // The in-place selection toolbar's Quote: the same composer append as Select Text > Quote.
+        val selectionQuoteAvailable = selectionQuoteTarget != ThreadSelectTextQuoteTarget.None
+        val inPlaceSelectionQuote: ((String) -> Unit)? =
+            remember(selectionQuoteAvailable, composerDraftViewModel) {
+                if (selectionQuoteAvailable) {
+                    { quote: String -> composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote)) }
+                } else {
+                    null
+                }
+            }
+        SideEffect { inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote }
         textSelectionMessage?.let { message ->
             // Select Text (web #11467): the message's Markdown in a bottom sheet; Copy / Quote take
             // the selection made there, or the whole message.
-            val quoteTarget =
-                threadSelectTextQuoteTarget(
-                    surfaceKind = renderedThread.surfaceKind,
-                    composerAvailable =
-                        jointBillingNotice != JointBillingNotice.Locked &&
-                            shouldShowThreadComposerForReadyContent(
-                                joined = payload.joined && renderSlice.writeActionsEnabled,
-                                showComposer = payload.showComposer && renderSlice.writeActionsEnabled,
-                                selectedTab = selectedThreadTab.wireValue
-                            )
-                )
+            val quoteTarget = selectionQuoteTarget
             // Same time source as the message list: the live provider when there is one, else the payload's.
             val timeContext =
                 LocalRaftTimeContextProvider.current?.current ?: payload.toRaftTimeCapabilities().staticContext()
