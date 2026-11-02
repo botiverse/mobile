@@ -1164,7 +1164,8 @@ class SharedMembersParserTest {
         assertTrue(
             membersAgentDetailShowsProfileStateNotice(
                 selectedTab = MembersAgentDetailTab.Profile,
-                avatarManagementMode = false
+                avatarManagementMode = false,
+                state = MembersAgentDetailLoadState.Loading,
             )
         )
         listOf(
@@ -1178,7 +1179,8 @@ class SharedMembersParserTest {
                 false,
                 membersAgentDetailShowsProfileStateNotice(
                     selectedTab = tab,
-                    avatarManagementMode = false
+                    avatarManagementMode = false,
+                    state = MembersAgentDetailLoadState.Loading,
                 ),
                 "profile API notice leaked into $tab"
             )
@@ -1187,9 +1189,17 @@ class SharedMembersParserTest {
             false,
             membersAgentDetailShowsProfileStateNotice(
                 selectedTab = MembersAgentDetailTab.Profile,
-                avatarManagementMode = true
+                avatarManagementMode = true,
+                state = MembersAgentDetailLoadState.Loading,
             )
         )
+    }
+
+    @Test
+    fun aLoadedProfileTakesNoNoticeSlot() {
+        assertEquals(false, membersAgentDetailStateHasNotice(MembersAgentDetailLoadState.Idle))
+        assertTrue(membersAgentDetailStateHasNotice(MembersAgentDetailLoadState.Loading))
+        assertTrue(membersAgentDetailStateHasNotice(MembersAgentDetailLoadState.Empty))
     }
 
     @Test
