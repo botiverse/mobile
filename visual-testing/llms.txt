@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-02 18:33:25 UTC
+Generated: 2026-11-02 19:04:26 UTC
 Latest run: 4f79b778-20261102183226
 Latest commit: 4f79b778-20261102183226
 Commit subject: feat(nav): Navigation 3 step 2 batch 3 — chat, file pages and Search on the Android stack (flag off)
 Providers: react vs android
 Summary: total 101, same 0, pass 1, basic-pass 16, different 81, missing 3
-AI analysis: ready 7 / total 101, pending 94
+AI analysis: ready 19 / total 101, pending 82
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

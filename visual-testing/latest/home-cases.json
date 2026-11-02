@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T18:33:25.290Z",
+  "generatedAt": "2026-11-02T19:04:26.032Z",
   "runId": "4f79b778-20261102183226",
   "cases": [
     {
@@ -26,17 +26,30 @@
         "currentHeight": 288
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.414Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:45:12.016Z",
+        "severity": "low",
+        "summary": [
+          "The segmented-control track, selected pill, labels, typography, colors, spacing, and component bounds match between React and Android.",
+          "No missing, clipped, shifted, or incorrectly sized control elements are visible.",
+          "The top-right platform badge differs: Android uses a more saturated yellow fill and displays “ANDROID” instead of “REACT”."
+        ],
+        "likelyCauses": [
+          "Intentional platform-specific badge content and styling.",
+          "Minor platform font antialiasing and rounded-border rasterization may contribute to the residual pixel mismatch."
+        ],
+        "suggestedOwner": "Design systems / visual-test infrastructure",
+        "suggestedFixes": [
+          "No segmented-control implementation change is needed.",
+          "Mask or normalize the platform badge when calculating component-level pixel similarity.",
+          "If badge parity is required, standardize its fill color, border, and typography across platforms."
+        ],
+        "intentional": [
+          "The top-right badge identifies the rendered platform with different text and a different yellow fill."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -112,17 +125,30 @@
             "currentHeight": 288
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.414Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:45:12.016Z",
+            "severity": "low",
+            "summary": [
+              "The segmented-control track, selected pill, labels, typography, colors, spacing, and component bounds match between React and Android.",
+              "No missing, clipped, shifted, or incorrectly sized control elements are visible.",
+              "The top-right platform badge differs: Android uses a more saturated yellow fill and displays “ANDROID” instead of “REACT”."
+            ],
+            "likelyCauses": [
+              "Intentional platform-specific badge content and styling.",
+              "Minor platform font antialiasing and rounded-border rasterization may contribute to the residual pixel mismatch."
+            ],
+            "suggestedOwner": "Design systems / visual-test infrastructure",
+            "suggestedFixes": [
+              "No segmented-control implementation change is needed.",
+              "Mask or normalize the platform badge when calculating component-level pixel similarity.",
+              "If badge parity is required, standardize its fill color, border, and typography across platforms."
+            ],
+            "intentional": [
+              "The top-right badge identifies the rendered platform with different text and a different yellow fill."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -164,7 +190,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.411Z",
+        "generatedAt": "2026-11-02T19:04:24.071Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -250,7 +276,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.411Z",
+            "generatedAt": "2026-11-02T19:04:24.071Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -298,7 +324,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.410Z",
+        "generatedAt": "2026-11-02T19:04:24.074Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -384,7 +410,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.410Z",
+            "generatedAt": "2026-11-02T19:04:24.074Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -435,7 +461,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.420Z",
+        "generatedAt": "2026-11-02T19:04:24.068Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -521,7 +547,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.420Z",
+            "generatedAt": "2026-11-02T19:04:24.068Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -569,7 +595,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.421Z",
+        "generatedAt": "2026-11-02T19:04:24.062Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -655,7 +681,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.421Z",
+            "generatedAt": "2026-11-02T19:04:24.062Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -706,7 +732,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.404Z",
+        "generatedAt": "2026-11-02T19:04:24.088Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -792,7 +818,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.404Z",
+            "generatedAt": "2026-11-02T19:04:24.088Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -839,17 +865,28 @@
         "currentHeight": 888
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.427Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:45:29.664Z",
+        "severity": "low",
+        "summary": [
+          "The Android render closely matches React in typography, field dimensions, spacing, alignment, colors, corner radii, and error-state treatment.",
+          "No missing, clipped, or shifted elements are apparent; both sides show identical labels, values, helper text, red error outline, and error message.",
+          "Remaining differences are limited to subtle text and rounded-border antialiasing, without meaningful layout or component-bound drift."
+        ],
+        "likelyCauses": [
+          "Platform-specific font rasterization and antialiasing.",
+          "Independent device-pixel rounding of strokes and rounded-corner curves."
+        ],
+        "suggestedOwner": "Design systems and Android UI engineering",
+        "suggestedFixes": [
+          "Normalize font family, weight, size, and line-height tokens across React and Android.",
+          "Use identical border width and corner-radius values and snap component bounds to the same pixel grid.",
+          "Accept the current 97.13% pixel-perfect and 98.8% RGB similarity unless subpixel rendering parity is required."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -925,17 +962,28 @@
             "currentHeight": 888
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.427Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:45:29.664Z",
+            "severity": "low",
+            "summary": [
+              "The Android render closely matches React in typography, field dimensions, spacing, alignment, colors, corner radii, and error-state treatment.",
+              "No missing, clipped, or shifted elements are apparent; both sides show identical labels, values, helper text, red error outline, and error message.",
+              "Remaining differences are limited to subtle text and rounded-border antialiasing, without meaningful layout or component-bound drift."
+            ],
+            "likelyCauses": [
+              "Platform-specific font rasterization and antialiasing.",
+              "Independent device-pixel rounding of strokes and rounded-corner curves."
+            ],
+            "suggestedOwner": "Design systems and Android UI engineering",
+            "suggestedFixes": [
+              "Normalize font family, weight, size, and line-height tokens across React and Android.",
+              "Use identical border width and corner-radius values and snap component bounds to the same pixel grid.",
+              "Accept the current 97.13% pixel-perfect and 98.8% RGB similarity unless subpixel rendering parity is required."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -973,17 +1021,32 @@
         "currentHeight": 888
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.435Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:45:38.489Z",
+        "severity": "low",
+        "summary": [
+          "Android renders the error border and error message in a slightly brighter, more saturated red than React's darker brick red.",
+          "Text glyph rendering differs subtly in edge weight and antialiasing across labels, field values, optional text, and error text, while font sizes and baselines remain aligned.",
+          "Field positions, dimensions, spacing, component bounds, required/optional indicators, and error-state content match; no elements are missing or clipped."
+        ],
+        "likelyCauses": [
+          "The Android implementation uses a slightly different error-state color token from React.",
+          "Different font rasterization and hinting between the React browser and Android text stack causes minor glyph-weight and antialiasing differences.",
+          "Platform-specific font fallback or text-style configuration may be applied on Android."
+        ],
+        "suggestedOwner": "Android design-system or form-field team",
+        "suggestedFixes": [
+          "Map the Android error border and error text to the exact shared error color token used by React.",
+          "Match the React font family, font weight, letter spacing, and text-style settings in the Android form-field component.",
+          "Avoid synthetic font weights and verify the fixture at the target density and 342×296 crop size.",
+          "Retain the current field geometry, spacing, and alignment, which already match."
+        ],
+        "intentional": [
+          "The upper-right platform badges use different labels and yellow fills for React and Android."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1059,17 +1122,32 @@
             "currentHeight": 888
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.435Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:45:38.489Z",
+            "severity": "low",
+            "summary": [
+              "Android renders the error border and error message in a slightly brighter, more saturated red than React's darker brick red.",
+              "Text glyph rendering differs subtly in edge weight and antialiasing across labels, field values, optional text, and error text, while font sizes and baselines remain aligned.",
+              "Field positions, dimensions, spacing, component bounds, required/optional indicators, and error-state content match; no elements are missing or clipped."
+            ],
+            "likelyCauses": [
+              "The Android implementation uses a slightly different error-state color token from React.",
+              "Different font rasterization and hinting between the React browser and Android text stack causes minor glyph-weight and antialiasing differences.",
+              "Platform-specific font fallback or text-style configuration may be applied on Android."
+            ],
+            "suggestedOwner": "Android design-system or form-field team",
+            "suggestedFixes": [
+              "Map the Android error border and error text to the exact shared error color token used by React.",
+              "Match the React font family, font weight, letter spacing, and text-style settings in the Android form-field component.",
+              "Avoid synthetic font weights and verify the fixture at the target density and 342×296 crop size.",
+              "Retain the current field geometry, spacing, and alignment, which already match."
+            ],
+            "intentional": [
+              "The upper-right platform badges use different labels and yellow fills for React and Android."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1110,17 +1188,30 @@
         "currentHeight": 756
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.436Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:35:49.264Z",
+        "severity": "medium",
+        "summary": [
+          "The React textarea has a dark charcoal outline, while the Android textarea uses a bright red outline, indicating inconsistent invalid/error-state styling.",
+          "React shows a gray diagonal resize handle at the textarea's lower-right corner; Android has no resize handle.",
+          "The \"57 / 40\" counter and \"Agreement body must be shorter.\" message share one row in React, while Android stacks the counter above the message with larger vertical gaps."
+        ],
+        "likelyCauses": [
+          "The Android and React implementations map error-state border colors differently.",
+          "The resize affordance is implemented only in the React textarea.",
+          "The platforms use different footer layout, element ordering, or margin rules for the counter and validation message."
+        ],
+        "suggestedOwner": "Cross-platform Textarea component and design-system team",
+        "suggestedFixes": [
+          "Apply a shared invalid/error border token and stroke width in both implementations; make React red if the Android treatment is the intended error state.",
+          "Add an equivalent resize affordance to Android or explicitly disable resizing in both platforms.",
+          "Use a shared footer layout so the counter and validation message have the same order, baseline, and spacing on React and Android.",
+          "Normalize the vertical gap between the textarea bottom and the counter/message footer."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1196,17 +1287,30 @@
             "currentHeight": 756
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.436Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:35:49.264Z",
+            "severity": "medium",
+            "summary": [
+              "The React textarea has a dark charcoal outline, while the Android textarea uses a bright red outline, indicating inconsistent invalid/error-state styling.",
+              "React shows a gray diagonal resize handle at the textarea's lower-right corner; Android has no resize handle.",
+              "The \"57 / 40\" counter and \"Agreement body must be shorter.\" message share one row in React, while Android stacks the counter above the message with larger vertical gaps."
+            ],
+            "likelyCauses": [
+              "The Android and React implementations map error-state border colors differently.",
+              "The resize affordance is implemented only in the React textarea.",
+              "The platforms use different footer layout, element ordering, or margin rules for the counter and validation message."
+            ],
+            "suggestedOwner": "Cross-platform Textarea component and design-system team",
+            "suggestedFixes": [
+              "Apply a shared invalid/error border token and stroke width in both implementations; make React red if the Android treatment is the intended error state.",
+              "Add an equivalent resize affordance to Android or explicitly disable resizing in both platforms.",
+              "Use a shared footer layout so the counter and validation message have the same order, baseline, and spacing on React and Android.",
+              "Normalize the vertical gap between the textarea bottom and the counter/message footer."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1244,17 +1348,33 @@
         "currentHeight": 756
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.445Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:35:50.613Z",
+        "severity": "medium",
+        "summary": [
+          "The Android textarea has a red error-state outline, while React uses a black neutral outline.",
+          "React displays a diagonal resize grip at the textarea's lower-right corner; Android omits it.",
+          "React places the error helper and the 57 / 40 counter on the same row below the textarea; Android stacks the counter above the helper.",
+          "The Android counter is inset from the textarea's right edge, whereas the React counter aligns with the textarea edge.",
+          "The Android stacked layout increases the vertical gap between the textarea and error helper."
+        ],
+        "likelyCauses": [
+          "Android uses a different border-color token for the invalid textarea state.",
+          "The Android validation footer uses a vertical layout instead of a horizontal helper/counter row.",
+          "The resize-handle implementation is missing or hidden on Android.",
+          "Android applies different end padding or alignment to the character counter."
+        ],
+        "suggestedOwner": "Android UI/Textarea component team",
+        "suggestedFixes": [
+          "Match the React border color for this state, or update the shared design spec if the red outline is intentional.",
+          "Add the lower-right diagonal resize grip to the Android textarea.",
+          "Arrange the error helper on the left and the character counter on the right in one horizontal row.",
+          "Align the counter's right edge with the textarea's right edge and normalize the vertical spacing."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1330,17 +1450,33 @@
             "currentHeight": 756
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.445Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:35:50.613Z",
+            "severity": "medium",
+            "summary": [
+              "The Android textarea has a red error-state outline, while React uses a black neutral outline.",
+              "React displays a diagonal resize grip at the textarea's lower-right corner; Android omits it.",
+              "React places the error helper and the 57 / 40 counter on the same row below the textarea; Android stacks the counter above the helper.",
+              "The Android counter is inset from the textarea's right edge, whereas the React counter aligns with the textarea edge.",
+              "The Android stacked layout increases the vertical gap between the textarea and error helper."
+            ],
+            "likelyCauses": [
+              "Android uses a different border-color token for the invalid textarea state.",
+              "The Android validation footer uses a vertical layout instead of a horizontal helper/counter row.",
+              "The resize-handle implementation is missing or hidden on Android.",
+              "Android applies different end padding or alignment to the character counter."
+            ],
+            "suggestedOwner": "Android UI/Textarea component team",
+            "suggestedFixes": [
+              "Match the React border color for this state, or update the shared design spec if the red outline is intentional.",
+              "Add the lower-right diagonal resize grip to the Android textarea.",
+              "Arrange the error helper on the left and the character counter on the right in one horizontal row.",
+              "Align the counter's right edge with the textarea's right edge and normalize the vertical spacing."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1382,7 +1518,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.440Z",
+        "generatedAt": "2026-11-02T19:04:24.149Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1468,7 +1604,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.440Z",
+            "generatedAt": "2026-11-02T19:04:24.149Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1515,17 +1651,28 @@
         "currentHeight": 396
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.436Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:36:10.398Z",
+        "severity": "low",
+        "summary": [
+          "All three Android checkbox rows are shifted approximately 3 rendered pixels (about 1 raw pixel/dp) to the left of their React counterparts; the boxes and labels move together.",
+          "Vertical alignment, typography, checkbox dimensions, corner shapes, state colors, checkmarks, and label-to-checkbox spacing otherwise match.",
+          "No elements are missing or clipped, and both implementations use identical 342×132 component bounds."
+        ],
+        "likelyCauses": [
+          "The Android checkbox-row container uses a slightly smaller horizontal inset or start padding than React.",
+          "A negative offset, density rounding, or parent-content inset is being applied only to the Android body rows."
+        ],
+        "suggestedOwner": "Android UI component implementation",
+        "suggestedFixes": [
+          "Align the Android checkbox-row group to the React start position by adding approximately 1 dp of start padding or removing the equivalent negative offset.",
+          "Use the same horizontal inset token for the Android header and checkbox-row container.",
+          "Re-run the Slock comparison and confirm the pixel mismatch drops below the 2% tolerance."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -1601,17 +1748,28 @@
             "currentHeight": 396
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.436Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:36:10.398Z",
+            "severity": "low",
+            "summary": [
+              "All three Android checkbox rows are shifted approximately 3 rendered pixels (about 1 raw pixel/dp) to the left of their React counterparts; the boxes and labels move together.",
+              "Vertical alignment, typography, checkbox dimensions, corner shapes, state colors, checkmarks, and label-to-checkbox spacing otherwise match.",
+              "No elements are missing or clipped, and both implementations use identical 342×132 component bounds."
+            ],
+            "likelyCauses": [
+              "The Android checkbox-row container uses a slightly smaller horizontal inset or start padding than React.",
+              "A negative offset, density rounding, or parent-content inset is being applied only to the Android body rows."
+            ],
+            "suggestedOwner": "Android UI component implementation",
+            "suggestedFixes": [
+              "Align the Android checkbox-row group to the React start position by adding approximately 1 dp of start padding or removing the equivalent negative offset.",
+              "Use the same horizontal inset token for the Android header and checkbox-row container.",
+              "Re-run the Slock comparison and confirm the pixel mismatch drops below the 2% tolerance."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -1653,7 +1811,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.450Z",
+        "generatedAt": "2026-11-02T19:04:24.161Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1739,7 +1897,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.450Z",
+            "generatedAt": "2026-11-02T19:04:24.161Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1787,7 +1945,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.459Z",
+        "generatedAt": "2026-11-02T19:04:24.175Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -1873,7 +2031,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.459Z",
+            "generatedAt": "2026-11-02T19:04:24.175Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -1921,7 +2079,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.451Z",
+        "generatedAt": "2026-11-02T19:04:24.197Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2007,7 +2165,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.451Z",
+            "generatedAt": "2026-11-02T19:04:24.197Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2213,7 +2371,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.458Z",
+        "generatedAt": "2026-11-02T19:04:24.194Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2299,7 +2457,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.458Z",
+            "generatedAt": "2026-11-02T19:04:24.194Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2347,7 +2505,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.468Z",
+        "generatedAt": "2026-11-02T19:04:24.208Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2433,7 +2591,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.468Z",
+            "generatedAt": "2026-11-02T19:04:24.208Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2637,7 +2795,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.473Z",
+        "generatedAt": "2026-11-02T19:04:24.217Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2723,7 +2881,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.473Z",
+            "generatedAt": "2026-11-02T19:04:24.217Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2771,7 +2929,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.472Z",
+        "generatedAt": "2026-11-02T19:04:24.228Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2857,7 +3015,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.472Z",
+            "generatedAt": "2026-11-02T19:04:24.228Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -2905,7 +3063,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.475Z",
+        "generatedAt": "2026-11-02T19:04:24.222Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -2991,7 +3149,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.475Z",
+            "generatedAt": "2026-11-02T19:04:24.222Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3038,17 +3196,27 @@
         "currentHeight": 756
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.502Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:37:17.394Z",
+        "severity": "medium",
+        "summary": [
+          "React shows a thick, dark rectangular focus/selection outline around the full search-input row; Android renders the same row without that outline.",
+          "The missing Android outline leaves the search field bounded only by surrounding separators, so its active state is not visually indicated."
+        ],
+        "likelyCauses": [
+          "Android may be rendering the unfocused/default search-field state while React is rendering the focused or selected state.",
+          "The active-border color and thickness may not be implemented or exposed by the Android search-field component."
+        ],
+        "suggestedOwner": "Android UI component owner for the selection popover and search field",
+        "suggestedFixes": [
+          "Add the React-equivalent active-state border to the Android search row, including its top, sides, and bottom.",
+          "Align focus/selection state defaults and test-harness focus behavior so both platforms capture the same state.",
+          "Use the shared popover border color and thickness tokens instead of a native or default Android field style."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -3124,17 +3292,27 @@
             "currentHeight": 756
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.502Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:37:17.394Z",
+            "severity": "medium",
+            "summary": [
+              "React shows a thick, dark rectangular focus/selection outline around the full search-input row; Android renders the same row without that outline.",
+              "The missing Android outline leaves the search field bounded only by surrounding separators, so its active state is not visually indicated."
+            ],
+            "likelyCauses": [
+              "Android may be rendering the unfocused/default search-field state while React is rendering the focused or selected state.",
+              "The active-border color and thickness may not be implemented or exposed by the Android search-field component."
+            ],
+            "suggestedOwner": "Android UI component owner for the selection popover and search field",
+            "suggestedFixes": [
+              "Add the React-equivalent active-state border to the Android search row, including its top, sides, and bottom.",
+              "Align focus/selection state defaults and test-harness focus behavior so both platforms capture the same state.",
+              "Use the shared popover border color and thickness tokens instead of a native or default Android field style."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -3173,7 +3351,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.500Z",
+        "generatedAt": "2026-11-02T19:04:24.257Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3259,7 +3437,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.500Z",
+            "generatedAt": "2026-11-02T19:04:24.257Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3306,17 +3484,31 @@
         "currentHeight": 582
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.486Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:55:48.808Z",
+        "severity": "medium",
+        "summary": [
+          "The Android populated select has a roughly twice-as-heavy black outline as the React version, while its outer bounds and content alignment remain essentially unchanged.",
+          "The Android disabled select also has a slightly heavier light-gray outline than the React disabled border.",
+          "Typography, label and chevron placement, spacing, and component sizes match; no elements are missing or clipped."
+        ],
+        "likelyCauses": [
+          "Android may use a 2 dp/px select stroke where React uses a 1 px border.",
+          "Android density scaling may rasterize a nominal 1 dp border as multiple physical pixels.",
+          "Enabled and disabled outlines may use separate Android stroke-width tokens."
+        ],
+        "suggestedOwner": "Android design-system / Select component owner",
+        "suggestedFixes": [
+          "Match the Android select outline to the React stroke width, approximately 1 px/1 dp in the rendered comparison, for both populated and disabled states.",
+          "Keep the existing outer component bounds; adjust stroke weight rather than control size or padding.",
+          "Use explicit shared state colors and border tokens: black for the populated outline and the same light gray for the disabled outline."
+        ],
+        "intentional": [
+          "The yellow top-right badge changes from “REACT” to “ANDROID,” including the badge width needed for the platform label."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -3392,17 +3584,31 @@
             "currentHeight": 582
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.486Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:55:48.808Z",
+            "severity": "medium",
+            "summary": [
+              "The Android populated select has a roughly twice-as-heavy black outline as the React version, while its outer bounds and content alignment remain essentially unchanged.",
+              "The Android disabled select also has a slightly heavier light-gray outline than the React disabled border.",
+              "Typography, label and chevron placement, spacing, and component sizes match; no elements are missing or clipped."
+            ],
+            "likelyCauses": [
+              "Android may use a 2 dp/px select stroke where React uses a 1 px border.",
+              "Android density scaling may rasterize a nominal 1 dp border as multiple physical pixels.",
+              "Enabled and disabled outlines may use separate Android stroke-width tokens."
+            ],
+            "suggestedOwner": "Android design-system / Select component owner",
+            "suggestedFixes": [
+              "Match the Android select outline to the React stroke width, approximately 1 px/1 dp in the rendered comparison, for both populated and disabled states.",
+              "Keep the existing outer component bounds; adjust stroke weight rather than control size or padding.",
+              "Use explicit shared state colors and border tokens: black for the populated outline and the same light gray for the disabled outline."
+            ],
+            "intentional": [
+              "The yellow top-right badge changes from “REACT” to “ANDROID,” including the badge width needed for the platform label."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -3440,17 +3646,29 @@
         "currentHeight": 546
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.496Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:55:51.827Z",
+        "severity": "low",
+        "summary": [
+          "The top-right badge reads \"ANDROID\" on the right and \"REACT\" on the left; the Android badge is wider to fit its label.",
+          "The list-item typography, spacing, alignment, colors, rounded borders, and selected-state fill otherwise appear visually equivalent, with no visible clipping or missing content."
+        ],
+        "likelyCauses": [
+          "The comparison includes platform-specific screenshot labels rather than only the shared list-item component.",
+          "The manual comparison crop covers the full canvas, including header and badge chrome."
+        ],
+        "suggestedOwner": "Design-system or visual-test infrastructure owner",
+        "suggestedFixes": [
+          "Exclude or normalize the platform badge when comparing component pixels.",
+          "Crop the comparison to the list-item cards and their content instead of the full labeled canvas.",
+          "If the badge is part of the tested surface, use equal badge bounds and align its typography to the shared specification."
+        ],
+        "intentional": [
+          "The \"REACT\" versus \"ANDROID\" badge text and resulting badge-width difference appear intentional."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -3526,17 +3744,29 @@
             "currentHeight": 546
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.496Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:55:51.827Z",
+            "severity": "low",
+            "summary": [
+              "The top-right badge reads \"ANDROID\" on the right and \"REACT\" on the left; the Android badge is wider to fit its label.",
+              "The list-item typography, spacing, alignment, colors, rounded borders, and selected-state fill otherwise appear visually equivalent, with no visible clipping or missing content."
+            ],
+            "likelyCauses": [
+              "The comparison includes platform-specific screenshot labels rather than only the shared list-item component.",
+              "The manual comparison crop covers the full canvas, including header and badge chrome."
+            ],
+            "suggestedOwner": "Design-system or visual-test infrastructure owner",
+            "suggestedFixes": [
+              "Exclude or normalize the platform badge when comparing component pixels.",
+              "Crop the comparison to the list-item cards and their content instead of the full labeled canvas.",
+              "If the badge is part of the tested surface, use equal badge bounds and align its typography to the shared specification."
+            ],
+            "intentional": [
+              "The \"REACT\" versus \"ANDROID\" badge text and resulting badge-width difference appear intentional."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -3575,7 +3805,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.506Z",
+        "generatedAt": "2026-11-02T19:04:24.276Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3661,7 +3891,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.506Z",
+            "generatedAt": "2026-11-02T19:04:24.276Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3709,7 +3939,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.493Z",
+        "generatedAt": "2026-11-02T19:04:24.294Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3795,7 +4025,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.493Z",
+            "generatedAt": "2026-11-02T19:04:24.294Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3848,7 +4078,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.497Z",
+        "generatedAt": "2026-11-02T19:04:24.289Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -3934,7 +4164,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.497Z",
+            "generatedAt": "2026-11-02T19:04:24.289Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -3989,7 +4219,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.506Z",
+        "generatedAt": "2026-11-02T19:04:24.305Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4075,7 +4305,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.506Z",
+            "generatedAt": "2026-11-02T19:04:24.305Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4130,7 +4360,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.516Z",
+        "generatedAt": "2026-11-02T19:04:24.331Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4216,7 +4446,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.516Z",
+            "generatedAt": "2026-11-02T19:04:24.331Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4271,7 +4501,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.516Z",
+        "generatedAt": "2026-11-02T19:04:24.323Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4357,7 +4587,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.516Z",
+            "generatedAt": "2026-11-02T19:04:24.323Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4413,7 +4643,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.539Z",
+        "generatedAt": "2026-11-02T19:04:24.356Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4499,7 +4729,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.539Z",
+            "generatedAt": "2026-11-02T19:04:24.356Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4554,7 +4784,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.553Z",
+        "generatedAt": "2026-11-02T19:04:24.359Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4640,7 +4870,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.553Z",
+            "generatedAt": "2026-11-02T19:04:24.359Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4695,7 +4925,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.539Z",
+        "generatedAt": "2026-11-02T19:04:24.366Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4781,7 +5011,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.539Z",
+            "generatedAt": "2026-11-02T19:04:24.366Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4836,7 +5066,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.561Z",
+        "generatedAt": "2026-11-02T19:04:24.386Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -4922,7 +5152,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.561Z",
+            "generatedAt": "2026-11-02T19:04:24.386Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -4975,7 +5205,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.544Z",
+        "generatedAt": "2026-11-02T19:04:24.400Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5061,7 +5291,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.544Z",
+            "generatedAt": "2026-11-02T19:04:24.400Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5116,7 +5346,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.534Z",
+        "generatedAt": "2026-11-02T19:04:24.401Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5202,7 +5432,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.534Z",
+            "generatedAt": "2026-11-02T19:04:24.401Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5257,7 +5487,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.539Z",
+        "generatedAt": "2026-11-02T19:04:24.414Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5343,7 +5573,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.539Z",
+            "generatedAt": "2026-11-02T19:04:24.414Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5393,7 +5623,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.594Z",
+        "generatedAt": "2026-11-02T19:04:24.488Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5479,7 +5709,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.594Z",
+            "generatedAt": "2026-11-02T19:04:24.488Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5529,7 +5759,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.686Z",
+        "generatedAt": "2026-11-02T19:04:24.526Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5615,7 +5845,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.686Z",
+            "generatedAt": "2026-11-02T19:04:24.526Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5665,7 +5895,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.650Z",
+        "generatedAt": "2026-11-02T19:04:24.521Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -5751,7 +5981,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.650Z",
+            "generatedAt": "2026-11-02T19:04:24.521Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -5800,17 +6030,26 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.637Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:57:26.211Z",
+        "severity": "low",
+        "summary": [
+          "No actionable visual defects are apparent; typography, spacing, alignment, colors, shapes, bounds, and clipping closely match at the shared 390×844 viewport.",
+          "The recorded 1.33% pixel mismatch is below the configured 2% tolerance."
+        ],
+        "likelyCauses": [
+          "Minor platform-specific text and icon rendering differences account for the remaining pixel variance."
+        ],
+        "suggestedOwner": "Android modal UI team",
+        "suggestedFixes": [
+          "No visual change is required; continue regression testing within the configured pixel tolerance."
+        ],
+        "intentional": [
+          "Android shows a left-facing back arrow where React shows an X/close icon, reflecting Android's single combined forward flow versus React's two-step flow; these controls should remain platform-specific."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -5886,17 +6125,26 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.637Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:57:26.211Z",
+            "severity": "low",
+            "summary": [
+              "No actionable visual defects are apparent; typography, spacing, alignment, colors, shapes, bounds, and clipping closely match at the shared 390×844 viewport.",
+              "The recorded 1.33% pixel mismatch is below the configured 2% tolerance."
+            ],
+            "likelyCauses": [
+              "Minor platform-specific text and icon rendering differences account for the remaining pixel variance."
+            ],
+            "suggestedOwner": "Android modal UI team",
+            "suggestedFixes": [
+              "No visual change is required; continue regression testing within the configured pixel tolerance."
+            ],
+            "intentional": [
+              "Android shows a left-facing back arrow where React shows an X/close icon, reflecting Android's single combined forward flow versus React's two-step flow; these controls should remain platform-specific."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -5927,7 +6175,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.689Z",
+        "generatedAt": "2026-11-02T19:04:24.615Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6013,7 +6261,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.689Z",
+            "generatedAt": "2026-11-02T19:04:24.615Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6053,7 +6301,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.626Z",
+        "generatedAt": "2026-11-02T19:04:24.616Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6139,7 +6387,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.626Z",
+            "generatedAt": "2026-11-02T19:04:24.616Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6215,7 +6463,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.645Z",
+        "generatedAt": "2026-11-02T19:04:24.665Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6301,7 +6549,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.645Z",
+            "generatedAt": "2026-11-02T19:04:24.665Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6354,7 +6602,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.654Z",
+        "generatedAt": "2026-11-02T19:04:24.660Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6440,7 +6688,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.654Z",
+            "generatedAt": "2026-11-02T19:04:24.660Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6497,7 +6745,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.673Z",
+        "generatedAt": "2026-11-02T19:04:24.746Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6583,7 +6831,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.673Z",
+            "generatedAt": "2026-11-02T19:04:24.746Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6636,7 +6884,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.693Z",
+        "generatedAt": "2026-11-02T19:04:24.684Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6722,7 +6970,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.693Z",
+            "generatedAt": "2026-11-02T19:04:24.684Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6776,7 +7024,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.710Z",
+        "generatedAt": "2026-11-02T19:04:24.755Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -6862,7 +7110,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.710Z",
+            "generatedAt": "2026-11-02T19:04:24.755Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -6917,7 +7165,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.726Z",
+        "generatedAt": "2026-11-02T19:04:24.781Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7003,7 +7251,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.726Z",
+            "generatedAt": "2026-11-02T19:04:24.781Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7057,7 +7305,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.701Z",
+        "generatedAt": "2026-11-02T19:04:24.714Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7143,7 +7391,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.701Z",
+            "generatedAt": "2026-11-02T19:04:24.714Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7196,7 +7444,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.761Z",
+        "generatedAt": "2026-11-02T19:04:24.828Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7282,7 +7530,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.761Z",
+            "generatedAt": "2026-11-02T19:04:24.828Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7337,7 +7585,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.769Z",
+        "generatedAt": "2026-11-02T19:04:24.864Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7423,7 +7671,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.769Z",
+            "generatedAt": "2026-11-02T19:04:24.864Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7479,7 +7727,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.813Z",
+        "generatedAt": "2026-11-02T19:04:24.885Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7565,7 +7813,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.813Z",
+            "generatedAt": "2026-11-02T19:04:24.885Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7616,7 +7864,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.806Z",
+        "generatedAt": "2026-11-02T19:04:24.930Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7702,7 +7950,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.806Z",
+            "generatedAt": "2026-11-02T19:04:24.930Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -7753,7 +8001,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.776Z",
+        "generatedAt": "2026-11-02T19:04:24.924Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -7839,7 +8087,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.776Z",
+            "generatedAt": "2026-11-02T19:04:24.924Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8061,7 +8309,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.796Z",
+        "generatedAt": "2026-11-02T19:04:24.996Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8147,7 +8395,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.796Z",
+            "generatedAt": "2026-11-02T19:04:24.996Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8376,7 +8624,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.857Z",
+        "generatedAt": "2026-11-02T19:04:25.044Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8462,7 +8710,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.857Z",
+            "generatedAt": "2026-11-02T19:04:25.044Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8688,7 +8936,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.896Z",
+        "generatedAt": "2026-11-02T19:04:25.133Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8774,7 +9022,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.896Z",
+            "generatedAt": "2026-11-02T19:04:25.133Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8827,7 +9075,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.882Z",
+        "generatedAt": "2026-11-02T19:04:25.141Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -8913,7 +9161,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.882Z",
+            "generatedAt": "2026-11-02T19:04:25.141Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -8967,7 +9215,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.899Z",
+        "generatedAt": "2026-11-02T19:04:25.200Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9053,7 +9301,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.899Z",
+            "generatedAt": "2026-11-02T19:04:25.200Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9107,7 +9355,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.889Z",
+        "generatedAt": "2026-11-02T19:04:25.223Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9193,7 +9441,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.889Z",
+            "generatedAt": "2026-11-02T19:04:25.223Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9246,7 +9494,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.916Z",
+        "generatedAt": "2026-11-02T19:04:25.254Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9332,7 +9580,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.916Z",
+            "generatedAt": "2026-11-02T19:04:25.254Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9374,7 +9622,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.377Z",
+        "generatedAt": "2026-11-02T19:04:24.003Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9431,7 +9679,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.377Z",
+            "generatedAt": "2026-11-02T19:04:24.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9474,7 +9722,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.905Z",
+        "generatedAt": "2026-11-02T19:04:25.261Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9560,7 +9808,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.905Z",
+            "generatedAt": "2026-11-02T19:04:25.261Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9614,7 +9862,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.970Z",
+        "generatedAt": "2026-11-02T19:04:25.305Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9700,7 +9948,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.970Z",
+            "generatedAt": "2026-11-02T19:04:25.305Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9753,7 +10001,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.999Z",
+        "generatedAt": "2026-11-02T19:04:25.357Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9839,7 +10087,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.999Z",
+            "generatedAt": "2026-11-02T19:04:25.357Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9886,17 +10134,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.013Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:50:49.866Z",
+        "severity": "medium",
+        "summary": [
+          "The Android app bar truncates the title as “Computer Missing Pr...” and adds an outlined chat action; React shows the full title without that action.",
+          "The Chat and Reminder tabs use different icons on each platform: React uses a speech bubble and alarm clock, while Android uses a rectangular chat bubble and bell.",
+          "In the profile summary, React includes edit pencils for the name and description, uses a terminal-style Codex CLI icon, and displays a clipped “Capturing deterministic profile sta...” status; Android omits the pencils, uses a chip-like icon, and shows a compact “Working” status.",
+          "Android adds a Display name field above the description. Its description body text is smaller and wraps to two lines, while React's larger text wraps to three lines and has an edit pencil.",
+          "Info and Runtime sections differ in structure: Android adds a computer-value dash, shows Created and Creator side by side, uses a letter avatar, lays out Runtime Config in two columns, and reveals Environment Variables and Created Agents that are not visible in React."
+        ],
+        "likelyCauses": [
+          "The Android profile screen uses a different component schema and field-visibility configuration from React.",
+          "Separate responsive breakpoint rules are producing different stacks, columns, typography, and vertical spacing.",
+          "Platform-specific icon and avatar mappings have diverged between implementations.",
+          "The Android app-bar action row includes an extra button, reducing the title's available width.",
+          "Status and profile-edit affordances are rendered by different components rather than a shared specification."
+        ],
+        "suggestedOwner": "Android UI team with the shared design-system owner",
+        "suggestedFixes": [
+          "Align the app bar with React by matching action icons, title width, and truncation behavior; either remove the Android chat action or add the corresponding React action.",
+          "Use the same Chat, Reminder, Codex CLI, role, and status icon set on both platforms.",
+          "Match profile and description edit affordances, including showing the same pencils and allowing the complete status text to fit without clipping.",
+          "Unify the displayed fields and ordering by deciding whether Display name, the computer dash, Environment Variables, and Created Agents belong in the mobile profile view, then render them consistently.",
+          "Standardize mobile typography and layout: use matching description sizing and consistent single-column or two-column arrangements for Info and Runtime Config, including equivalent creator avatar rendering."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -9972,17 +10238,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.013Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:50:49.866Z",
+            "severity": "medium",
+            "summary": [
+              "The Android app bar truncates the title as “Computer Missing Pr...” and adds an outlined chat action; React shows the full title without that action.",
+              "The Chat and Reminder tabs use different icons on each platform: React uses a speech bubble and alarm clock, while Android uses a rectangular chat bubble and bell.",
+              "In the profile summary, React includes edit pencils for the name and description, uses a terminal-style Codex CLI icon, and displays a clipped “Capturing deterministic profile sta...” status; Android omits the pencils, uses a chip-like icon, and shows a compact “Working” status.",
+              "Android adds a Display name field above the description. Its description body text is smaller and wraps to two lines, while React's larger text wraps to three lines and has an edit pencil.",
+              "Info and Runtime sections differ in structure: Android adds a computer-value dash, shows Created and Creator side by side, uses a letter avatar, lays out Runtime Config in two columns, and reveals Environment Variables and Created Agents that are not visible in React."
+            ],
+            "likelyCauses": [
+              "The Android profile screen uses a different component schema and field-visibility configuration from React.",
+              "Separate responsive breakpoint rules are producing different stacks, columns, typography, and vertical spacing.",
+              "Platform-specific icon and avatar mappings have diverged between implementations.",
+              "The Android app-bar action row includes an extra button, reducing the title's available width.",
+              "Status and profile-edit affordances are rendered by different components rather than a shared specification."
+            ],
+            "suggestedOwner": "Android UI team with the shared design-system owner",
+            "suggestedFixes": [
+              "Align the app bar with React by matching action icons, title width, and truncation behavior; either remove the Android chat action or add the corresponding React action.",
+              "Use the same Chat, Reminder, Codex CLI, role, and status icon set on both platforms.",
+              "Match profile and description edit affordances, including showing the same pencils and allowing the complete status text to fit without clipping.",
+              "Unify the displayed fields and ordering by deciding whether Display name, the computer dash, Environment Variables, and Created Agents belong in the mobile profile view, then render them consistently.",
+              "Standardize mobile typography and layout: use matching description sizing and consistent single-column or two-column arrangements for Info and Runtime Config, including equivalent creator avatar rendering."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -10021,7 +10305,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.973Z",
+        "generatedAt": "2026-11-02T19:04:25.382Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10107,7 +10391,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.973Z",
+            "generatedAt": "2026-11-02T19:04:25.382Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10155,7 +10439,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.981Z",
+        "generatedAt": "2026-11-02T19:04:25.414Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10241,7 +10525,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.981Z",
+            "generatedAt": "2026-11-02T19:04:25.414Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10289,7 +10573,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.986Z",
+        "generatedAt": "2026-11-02T19:04:25.448Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10375,7 +10659,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.986Z",
+            "generatedAt": "2026-11-02T19:04:25.448Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10423,7 +10707,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.001Z",
+        "generatedAt": "2026-11-02T19:04:25.476Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10509,7 +10793,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.001Z",
+            "generatedAt": "2026-11-02T19:04:25.476Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10557,7 +10841,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.000Z",
+        "generatedAt": "2026-11-02T19:04:25.481Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10643,7 +10927,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.000Z",
+            "generatedAt": "2026-11-02T19:04:25.481Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10691,7 +10975,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.057Z",
+        "generatedAt": "2026-11-02T19:04:25.517Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10777,7 +11061,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.057Z",
+            "generatedAt": "2026-11-02T19:04:25.517Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10830,7 +11114,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.094Z",
+        "generatedAt": "2026-11-02T19:04:25.565Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10916,7 +11200,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.094Z",
+            "generatedAt": "2026-11-02T19:04:25.565Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10969,7 +11253,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.071Z",
+        "generatedAt": "2026-11-02T19:04:25.589Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11055,7 +11339,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.071Z",
+            "generatedAt": "2026-11-02T19:04:25.589Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11108,7 +11392,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.085Z",
+        "generatedAt": "2026-11-02T19:04:25.590Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11194,7 +11478,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.085Z",
+            "generatedAt": "2026-11-02T19:04:25.590Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11422,7 +11706,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.150Z",
+        "generatedAt": "2026-11-02T19:04:25.663Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11508,7 +11792,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.150Z",
+            "generatedAt": "2026-11-02T19:04:25.663Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11553,7 +11837,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.110Z",
+        "generatedAt": "2026-11-02T19:04:25.696Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11639,7 +11923,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.110Z",
+            "generatedAt": "2026-11-02T19:04:25.696Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11684,7 +11968,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.142Z",
+        "generatedAt": "2026-11-02T19:04:25.708Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11770,7 +12054,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.142Z",
+            "generatedAt": "2026-11-02T19:04:25.708Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11815,7 +12099,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.137Z",
+        "generatedAt": "2026-11-02T19:04:25.741Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -11901,7 +12185,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.137Z",
+            "generatedAt": "2026-11-02T19:04:25.741Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -11946,7 +12230,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.184Z",
+        "generatedAt": "2026-11-02T19:04:25.768Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12032,7 +12316,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.184Z",
+            "generatedAt": "2026-11-02T19:04:25.768Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12082,7 +12366,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.172Z",
+        "generatedAt": "2026-11-02T19:04:25.827Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12168,7 +12452,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.172Z",
+            "generatedAt": "2026-11-02T19:04:25.827Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12221,7 +12505,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.156Z",
+        "generatedAt": "2026-11-02T19:04:25.771Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12307,7 +12591,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.156Z",
+            "generatedAt": "2026-11-02T19:04:25.771Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12352,7 +12636,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.199Z",
+        "generatedAt": "2026-11-02T19:04:25.844Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12438,7 +12722,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.199Z",
+            "generatedAt": "2026-11-02T19:04:25.844Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12483,7 +12767,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.157Z",
+        "generatedAt": "2026-11-02T19:04:25.814Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12569,7 +12853,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.157Z",
+            "generatedAt": "2026-11-02T19:04:25.814Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12614,7 +12898,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.189Z",
+        "generatedAt": "2026-11-02T19:04:25.807Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12700,7 +12984,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.189Z",
+            "generatedAt": "2026-11-02T19:04:25.807Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12745,7 +13029,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.219Z",
+        "generatedAt": "2026-11-02T19:04:25.880Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12831,7 +13115,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.219Z",
+            "generatedAt": "2026-11-02T19:04:25.880Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -12876,7 +13160,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.193Z",
+        "generatedAt": "2026-11-02T19:04:25.873Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -12962,7 +13246,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.193Z",
+            "generatedAt": "2026-11-02T19:04:25.873Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13007,7 +13291,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.174Z",
+        "generatedAt": "2026-11-02T19:04:25.855Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13093,7 +13377,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.174Z",
+            "generatedAt": "2026-11-02T19:04:25.855Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13138,7 +13422,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.214Z",
+        "generatedAt": "2026-11-02T19:04:25.905Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13224,7 +13508,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.214Z",
+            "generatedAt": "2026-11-02T19:04:25.905Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13269,7 +13553,7 @@
       },
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.213Z",
+        "generatedAt": "2026-11-02T19:04:25.892Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13355,7 +13639,7 @@
           },
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.213Z",
+            "generatedAt": "2026-11-02T19:04:25.892Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13568,17 +13852,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-11-02T18:33:25.265Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-11-02T18:44:35.144Z",
+        "severity": "high",
+        "summary": [
+          "React renders a bottom sheet flush with the viewport edges; Android renders an inset, nearly full-height rounded dialog with the dark backdrop visible on all sides.",
+          "Header actions differ: React places X before the title and a disabled Create button in the header; Android places the title left, X right, and moves Cancel/Create to the footer.",
+          "The limit banner differs in shape, border, color, and text treatment: Android uses a square beige box with a dark border and bold underlined copy, while React uses a borderless rounded pale-peach card with mixed-weight copy.",
+          "React uses bordered dropdowns for Computer and Runtime; Android uses radio groups, shows a selected Codex CLI option, and adds a runtime-unavailable notice.",
+          "Description spacing and details differ: Android adds '(optional)', omits React's textarea resize grip, and uses different padding and vertical rhythm."
+        ],
+        "likelyCauses": [
+          "Android appears to implement a separate centered-dialog component rather than porting the React bottom-sheet composition.",
+          "The Android dialog follows a different header, footer, and form-control layout contract.",
+          "Platform-specific theme tokens or custom styles account for the heavier warning text, dark border, square banner, and differing padding.",
+          "The rendered data or state differs: Android has computer and runtime radio selections plus an availability message, while React shows a populated computer select and an empty runtime select.",
+          "Capture contracts differ between platforms—React uses an element/modal-viewport crop and Android uses a manual viewport-bounds crop—which can amplify comparison differences despite matching 390×844 raw sizes."
+        ],
+        "suggestedOwner": "Android UI engineering for the Create Agent dialog, with design-system and product review",
+        "suggestedFixes": [
+          "Use the React baseline as the source of truth and port the bottom-sheet bounds: flush left, right, and bottom edges, top-only rounded corners, and equivalent backdrop extent.",
+          "Match the header structure by placing X before the title and a disabled Create button at the top right; remove or relocate Android's footer actions.",
+          "Replace the Android limit banner with React's borderless rounded pale-peach treatment, regular first line, and bold but non-underlined upgrade line.",
+          "Use bordered dropdown controls for Computer and Runtime, and reconcile the data states so selected values and the runtime-unavailable message correspond.",
+          "Align Description copy, typography, field padding, spacing, and textarea resize behavior, then rerun both captures with the same modal-viewport crop contract."
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3.1-Flash-Preview",
+        "error": null
       },
       "providers": {
         "react": {
@@ -13654,17 +13956,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-11-02T18:33:25.265Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-11-02T18:44:35.144Z",
+            "severity": "high",
+            "summary": [
+              "React renders a bottom sheet flush with the viewport edges; Android renders an inset, nearly full-height rounded dialog with the dark backdrop visible on all sides.",
+              "Header actions differ: React places X before the title and a disabled Create button in the header; Android places the title left, X right, and moves Cancel/Create to the footer.",
+              "The limit banner differs in shape, border, color, and text treatment: Android uses a square beige box with a dark border and bold underlined copy, while React uses a borderless rounded pale-peach card with mixed-weight copy.",
+              "React uses bordered dropdowns for Computer and Runtime; Android uses radio groups, shows a selected Codex CLI option, and adds a runtime-unavailable notice.",
+              "Description spacing and details differ: Android adds '(optional)', omits React's textarea resize grip, and uses different padding and vertical rhythm."
+            ],
+            "likelyCauses": [
+              "Android appears to implement a separate centered-dialog component rather than porting the React bottom-sheet composition.",
+              "The Android dialog follows a different header, footer, and form-control layout contract.",
+              "Platform-specific theme tokens or custom styles account for the heavier warning text, dark border, square banner, and differing padding.",
+              "The rendered data or state differs: Android has computer and runtime radio selections plus an availability message, while React shows a populated computer select and an empty runtime select.",
+              "Capture contracts differ between platforms—React uses an element/modal-viewport crop and Android uses a manual viewport-bounds crop—which can amplify comparison differences despite matching 390×844 raw sizes."
+            ],
+            "suggestedOwner": "Android UI engineering for the Create Agent dialog, with design-system and product review",
+            "suggestedFixes": [
+              "Use the React baseline as the source of truth and port the bottom-sheet bounds: flush left, right, and bottom edges, top-only rounded corners, and equivalent backdrop extent.",
+              "Match the header structure by placing X before the title and a disabled Create button at the top right; remove or relocate Android's footer actions.",
+              "Replace the Android limit banner with React's borderless rounded pale-peach treatment, regular first line, and bold but non-underlined upgrade line.",
+              "Use bordered dropdown controls for Computer and Runtime, and reconcile the data states so selected values and the runtime-unavailable message correspond.",
+              "Align Description copy, typography, field padding, spacing, and textarea resize behavior, then rerun both captures with the same modal-viewport crop contract."
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3.1-Flash-Preview",
+            "error": null
           }
         }
       },
@@ -13695,7 +14015,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.377Z",
+        "generatedAt": "2026-11-02T19:04:24.003Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13752,7 +14072,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.377Z",
+            "generatedAt": "2026-11-02T19:04:24.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -13795,7 +14115,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-11-02T18:33:24.377Z",
+        "generatedAt": "2026-11-02T19:04:24.003Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -13852,7 +14172,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-11-02T18:33:24.377Z",
+            "generatedAt": "2026-11-02T19:04:24.003Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

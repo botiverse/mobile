@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T18:33:25.290Z",
+  "generatedAt": "2026-11-02T19:04:26.032Z",
   "runId": "4f79b778-20261102183226",
   "commit": "4f79b778-20261102183226",
   "commitSubject": "feat(nav): Navigation 3 step 2 batch 3 — chat, file pages and Search on the Android stack (flag off)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 101,
-        "ready": 7,
-        "pending": 94
+        "ready": 19,
+        "pending": 82
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 101,
-    "ready": 7,
-    "pending": 94
+    "ready": 19,
+    "pending": 82
   },
   "componentMatrixSummary": {
     "total": 130,
