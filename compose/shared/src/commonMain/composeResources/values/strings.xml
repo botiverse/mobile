@@ -453,6 +453,12 @@
     <string name="thread_side_card_tasks_close">Close Tasks</string>
     <string name="thread_side_card_files_open">Open Files</string>
     <string name="thread_side_card_files_close">Close Files</string>
+    <string name="thread_side_card_collapse">Collapse %1$s</string>
+    <string name="thread_side_card_expand">Expand %1$s</string>
+    <string name="thread_side_card_resize_split">Resize Tasks and Files</string>
+    <string name="thread_side_card_resize_column">Resize %1$s</string>
+    <string name="thread_side_card_tasks_and_files">Tasks and Files</string>
+    <string name="thread_side_thread_resize">Resize thread</string>
     <string name="thread_state_loading">Loading…</string>
     <string name="thread_error_load">Failed to load thread</string>
     <string name="thread_error_access_resolution">Could not verify access to this thread or its parent message. Check your connection and try again.</string>

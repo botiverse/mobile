@@ -7647,25 +7647,41 @@ private fun RaftAppShellReadyContent(
                                         .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
                                         .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
                                 }
-                            if (!sideThreadFocusActive) {
-                                Spacer(
-                                    modifier =
-                                        Modifier
-                                            .width(RAFT_SIDE_THREAD_DIVIDER_DP.dp)
-                                            .fillMaxHeight()
-                                            .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
-                                )
-                            }
-                            RaftChildPage(
-                                pageName = THREAD_PAGE,
-                                pageData = sidePageData,
-                                modifier =
-                                    if (sideThreadFocusActive) {
-                                        Modifier.weight(1f).fillMaxHeight()
-                                    } else {
-                                        Modifier.width(RAFT_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight()
-                                    },
-                                active = childActive,
+                            // The thread's column in the pane grid (RaftPaneGrid.kt; web COLUMN_BOUNDS.thread):
+                            // 400 by default, at least 360, its left seam dragging it until the
+                            // conversation beside it is down to 360; the width is kept. In Focus
+                            // mode it takes the row.
+                            val sideThreadPageData by rememberUpdatedState(sidePageData)
+                            val sideThreadDetailWidthDp = adaptiveWorkspaceSession.detailPaneWidthDp ?: 0f
+                            val sideThreadWidthDp =
+                                raftPaneGridFitWidths(
+                                    availableDp = sideThreadDetailWidthDp.takeIf { it > 0f } ?: Float.MAX_VALUE,
+                                    columns = listOf(LocalRaftPaneGridStore.current.widthDp(RaftPaneGridColumns.Thread) to RaftPaneGridColumns.Thread.minWidthDp),
+                                ).first()
+                            val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
+                            val sideThreadColumn =
+                                remember(sideThreadResizeLabel, childActive) {
+                                    RaftPaneGridColumn(
+                                        bounds = RaftPaneGridColumns.Thread,
+                                        resizeLabel = sideThreadResizeLabel,
+                                        cells =
+                                            listOf(
+                                                RaftPaneGridCell(id = "thread") {
+                                                    RaftChildPage(
+                                                        pageName = THREAD_PAGE,
+                                                        pageData = sideThreadPageData,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        active = childActive,
+                                                    )
+                                                }
+                                            ),
+                                    )
+                                }
+                            RaftPaneGridSideColumn(
+                                column = sideThreadColumn,
+                                widthDp = sideThreadWidthDp,
+                                mainWidthDp = maxOf(0f, sideThreadDetailWidthDp - sideThreadWidthDp),
+                                fill = sideThreadFocusActive,
                             )
                         }
                         }

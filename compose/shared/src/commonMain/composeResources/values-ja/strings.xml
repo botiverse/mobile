@@ -455,6 +455,12 @@
     <string name="thread_side_card_tasks_close">タスクを閉じる</string>
     <string name="thread_side_card_files_open">ファイルを開く</string>
     <string name="thread_side_card_files_close">ファイルを閉じる</string>
+    <string name="thread_side_card_collapse">%1$sを折りたたむ</string>
+    <string name="thread_side_card_expand">%1$sを展開</string>
+    <string name="thread_side_card_resize_split">タスクとファイルの高さを変更</string>
+    <string name="thread_side_card_resize_column">%1$sの幅を変更</string>
+    <string name="thread_side_card_tasks_and_files">タスクとファイル</string>
+    <string name="thread_side_thread_resize">スレッドの幅を変更</string>
     <string name="thread_state_loading">読み込み中…</string>
     <string name="thread_error_load">スレッドを読み込めませんでした</string>
     <string name="thread_error_access_resolution">このスレッドまたは親メッセージへのアクセスを確認できませんでした。接続を確認して、もう一度お試しください。</string>

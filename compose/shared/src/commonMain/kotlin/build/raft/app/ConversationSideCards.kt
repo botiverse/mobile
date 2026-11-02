@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -206,22 +208,7 @@ internal fun ConversationSideCardsCover(
             // The conversation under the cover takes no touches.
             .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
     ) {
-        val open = cards.openCards
-        if (open.size > 1) {
-            Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
-                RaftTabs {
-                    open.forEach { card ->
-                        RaftTab(
-                            text = card.title(),
-                            selected = card == shown,
-                            onClick = { onPick(card) },
-                            icon = { RaftContentLucideIcon(card.icon) },
-                        )
-                    }
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-        }
+        if (cards.openCards.size > 1) ConversationSideCardsSwitch(cards.openCards, shown, onPick)
         RaftPanelBackHeader(title = shown.title(), subtitle = null, onBack = onBack)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (shown) {
@@ -230,6 +217,28 @@ internal fun ConversationSideCardsCover(
             }
         }
     }
+}
+
+/** The Tasks / Files switch over one card at a time (web `channel-side-switch`): 48dp, a seam under it. */
+@Composable
+private fun ConversationSideCardsSwitch(
+    open: List<ConversationSideCard>,
+    shown: ConversationSideCard,
+    onPick: (ConversationSideCard) -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+        RaftTabs {
+            open.forEach { card ->
+                RaftTab(
+                    text = card.title(),
+                    selected = card == shown,
+                    onClick = { onPick(card) },
+                    icon = { RaftContentLucideIcon(card.icon) },
+                )
+            }
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
 }
 
 internal val ConversationSideCard.icon: RaftLucideIconName
@@ -247,3 +256,82 @@ private fun ConversationSideCard.title(): String =
             ConversationSideCard.Files -> Res.string.thread_tab_files
         }
     )
+
+// ---------------------------------------------------------------- wide: the cards' column in the pane grid
+
+/**
+ * The cards stand beside the conversation (web `beside`) on a wide window ([DualPaneMinimumWidthDp];
+ * web: a desktop viewport, 768) when the page leaves the conversation its 360 next to the column's
+ * 280 (web `placeSections`: `mins(columns) <= room - SIDE_CARDS_CHAT_MIN_WIDTH`). Otherwise an open
+ * card covers the conversation ([ConversationSideCardsCover]), as on a phone.
+ */
+internal fun conversationSideCardsBeside(windowWidthDp: Float, pageWidthDp: Float): Boolean =
+    windowWidthDp >= DualPaneMinimumWidthDp &&
+        pageWidthDp >= RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP + RaftPaneGridColumns.SideCards.minWidthDp
+
+/** On screen: beside the conversation every open card is; covering it, the one shown. */
+internal fun sideCardShowing(cards: ConversationSideCardsState, beside: Boolean, card: ConversationSideCard): Boolean =
+    if (beside) cards.isOpen(card) else card == cards.shown
+
+/** The cards' cell ids in the pane grid: web's section names, which key their folds and split. */
+internal val ConversationSideCard.paneCellId: String
+    get() =
+        when (this) {
+            ConversationSideCard.Tasks -> "tasks"
+            ConversationSideCard.Files -> "files"
+        }
+
+/**
+ * Task v2 on a wide page (web ChannelSideArea `beside`, ChannelSideCard): the open cards as the
+ * pane grid's Tasks / Files column ([RaftPaneGrid]), Tasks over Files (web's default layout), each
+ * a [RaftPaneGridCard] with its collapse chevron (where both share the column), title and ×. The
+ * grid owns the column's width, the split and the folds; a column too short for both shows one at
+ * a time under the Tasks / Files switch (web `sideCardsOneAtATime`).
+ */
+@Composable
+internal fun conversationSideCardsColumn(
+    cards: ConversationSideCardsState,
+    onPick: (ConversationSideCard) -> Unit,
+    onClose: (ConversationSideCard) -> Unit,
+    tasksContent: @Composable () -> Unit,
+    filesContent: @Composable () -> Unit,
+): RaftPaneGridColumn? {
+    val open = cards.openCards
+    if (open.isEmpty()) return null
+    val titles = ConversationSideCard.entries.associateWith { it.title() }
+    val closeLabels =
+        ConversationSideCard.entries.associateWith {
+            stringResource(if (it == ConversationSideCard.Tasks) Res.string.thread_side_card_tasks_close else Res.string.thread_side_card_files_close)
+        }
+    val shown = cards.shown ?: open.first()
+    val currentOnClose by rememberUpdatedState(onClose)
+    val currentTasks by rememberUpdatedState(tasksContent)
+    val currentFiles by rememberUpdatedState(filesContent)
+    return RaftPaneGridColumn(
+        bounds = RaftPaneGridColumns.SideCards,
+        resizeLabel =
+            stringResource(
+                Res.string.thread_side_card_resize_column,
+                if (open.size > 1) stringResource(Res.string.thread_side_card_tasks_and_files) else titles.getValue(open.first()),
+            ),
+        splitLabel = stringResource(Res.string.thread_side_card_resize_split),
+        cells =
+            open.map { card ->
+                RaftPaneGridCell(
+                    id = card.paneCellId,
+                    // Web `defaultShares(["tasks", "files"])`: 60/40.
+                    defaultShare = if (card == ConversationSideCard.Tasks) 0.6f else 0.4f,
+                ) {
+                    RaftPaneGridCard(
+                        title = titles.getValue(card),
+                        closeLabel = closeLabels.getValue(card),
+                        onClose = { currentOnClose(card) },
+                    ) {
+                        if (card == ConversationSideCard.Tasks) currentTasks() else currentFiles()
+                    }
+                }
+            },
+        shortShownCell = shown.paneCellId,
+        shortSwitch = { ConversationSideCardsSwitch(open, shown, onPick) },
+    )
+}

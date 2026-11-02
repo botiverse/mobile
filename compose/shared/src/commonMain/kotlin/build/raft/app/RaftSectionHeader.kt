@@ -235,6 +235,10 @@ internal fun RaftTopPageHeader(
  * canvas row with a 1dp seam, 16dp start edge; the 44dp ghost Back (22dp glyph) is pulled 13dp
  * into that edge (`-ml-[13px]`), then an 8dp gap, the `text-headline` title over the
  * `text-caption` hint meta line.
+ *
+ * [leadingContent] takes Back's place (a 44dp icon button on the same edge: a side card's
+ * collapse chevron); [trailingContent] holds the head's actions, its last 44dp icon button's
+ * glyph ending on the 16dp line (web `PanelActions`).
  */
 @Composable
 internal fun RaftPanelBackHeader(
@@ -245,6 +249,8 @@ internal fun RaftPanelBackHeader(
     topSafeArea: Dp = 0.dp,
     refreshing: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
+    leadingContent: (@Composable () -> Unit)? = null,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val safeTop = topSafeArea.coerceAtLeast(0.dp)
     // iPhone Duo: Back moves to the system's side column (raft-design #859).
@@ -268,13 +274,17 @@ internal fun RaftPanelBackHeader(
                     // horizontal safe area.
                     .raftSafeAreaHorizontalPadding()
                     // The last 44dp icon button's 22dp glyph ends on the 16dp line, like Back's.
-                    .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = RaftBackButtonDefaults.EdgeInset),
+                    .padding(
+                        start = if (onBack != null || leadingContent != null) RaftBackButtonDefaults.EdgeInset else 16.dp,
+                        end = RaftBackButtonDefaults.EdgeInset,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (onBack != null) {
                 RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
+            leadingContent?.invoke()
             Column(
                 // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
                 modifier =
@@ -303,6 +313,9 @@ internal fun RaftPanelBackHeader(
             }
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
+            }
+            if (trailingContent != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
             }
         }
         Box(
