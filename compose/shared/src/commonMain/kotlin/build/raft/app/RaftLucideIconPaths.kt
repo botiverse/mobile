@@ -1204,6 +1204,24 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"),
                     ),
                 )
+            RaftLucideIconName.FollowThread ->
+                RaftLucideIconSpec(
+                    "follow-thread",
+                    listOf(
+                        RaftLucidePathSpec("M4.667 15.333 2.333 17.667V5.667A2.667 2.667 0 0 1 5 3h10"),
+                        RaftLucidePathSpec("M11 6.667h8.333A2.667 2.667 0 0 1 22 9.333v6.334a2.667 2.667 0 0 1-2.667 2.666h-2v3.334L13 18.333h-2a2.667 2.667 0 0 1-2.667-2.666V9.333A2.667 2.667 0 0 1 11 6.667Z"),
+                        RaftLucidePathSpec("M15.167 10v5"),
+                        RaftLucidePathSpec("M12.667 12.5h5"),
+                    ),
+                )
+            RaftLucideIconName.Forward ->
+                RaftLucideIconSpec(
+                    "forward",
+                    listOf(
+                        RaftLucidePathSpec("m15 17 5-5-5-5"),
+                        RaftLucidePathSpec("M4 18v-2a4 4 0 0 1 4-4h12"),
+                    ),
+                )
             RaftLucideIconName.Funnel ->
                 RaftLucideIconSpec(
                     "funnel",
@@ -1401,6 +1419,17 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M2 5h20"),
                         RaftLucidePathSpec("M6 12h12"),
                         RaftLucidePathSpec("M9 19h6"),
+                    ),
+                )
+            RaftLucideIconName.ListChecks ->
+                RaftLucideIconSpec(
+                    "list-checks",
+                    listOf(
+                        RaftLucidePathSpec("M13 5h8"),
+                        RaftLucidePathSpec("M13 12h8"),
+                        RaftLucidePathSpec("M13 19h8"),
+                        RaftLucidePathSpec("m3 17 2 2 4-4"),
+                        RaftLucidePathSpec("m3 7 2 2 4-4"),
                     ),
                 )
             RaftLucideIconName.ListTree ->
@@ -1754,6 +1783,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M8 16H3v5"),
                     ),
                 )
+            RaftLucideIconName.ReopenTask ->
+                RaftLucideIconSpec(
+                    "reopen-task",
+                    listOf(
+                        RaftLucidePathSpec("M20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"),
+                        RaftLucidePathSpec("M20 9V7a2 2 0 0 0-2-2h-6"),
+                        RaftLucidePathSpec("m15 2-3 3 3 3"),
+                        RaftLucidePathSpec("m9 12.5 2 2 4-4"),
+                    ),
+                )
             RaftLucideIconName.Redo2 ->
                 RaftLucideIconSpec(
                     "redo-2",
@@ -1945,6 +1984,27 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m9 11 3 3L22 4"),
                     ),
                 )
+            RaftLucideIconName.SquareDashedText ->
+                RaftLucideIconSpec(
+                    "square-dashed-text",
+                    listOf(
+                        RaftLucidePathSpec("M14 21h1"),
+                        RaftLucidePathSpec("M14 3h1"),
+                        RaftLucidePathSpec("M19 3a2 2 0 0 1 2 2"),
+                        RaftLucidePathSpec("M21 14v1"),
+                        RaftLucidePathSpec("M21 19a2 2 0 0 1-2 2"),
+                        RaftLucidePathSpec("M21 9v1"),
+                        RaftLucidePathSpec("M3 14v1"),
+                        RaftLucidePathSpec("M3 9v1"),
+                        RaftLucidePathSpec("M5 21a2 2 0 0 1-2-2"),
+                        RaftLucidePathSpec("M5 3a2 2 0 0 0-2 2"),
+                        RaftLucidePathSpec("M7 12h10"),
+                        RaftLucidePathSpec("M7 16h6"),
+                        RaftLucidePathSpec("M7 8h8"),
+                        RaftLucidePathSpec("M9 21h1"),
+                        RaftLucidePathSpec("M9 3h1"),
+                    ),
+                )
             RaftLucideIconName.SquareTerminal ->
                 RaftLucideIconSpec(
                     "square-terminal",
@@ -1980,6 +2040,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M21 19H8"),
                         RaftLucidePathSpec("M3 12v7"),
                     ),
+                )
+            RaftLucideIconName.Thread ->
+                RaftLucideIconSpec(
+                    "thread",
+                    listOf(
+                        RaftLucidePathSpec("M3.5 11.5L1.75 13.25V4.25A2 2 0 0 1 3.75 2.25H11.25", strokeWidth = 1.5f),
+                        RaftLucidePathSpec("M8.25 5H14.5C15.6 5 16.5 5.9 16.5 7V11.75C16.5 12.85 15.6 13.75 14.5 13.75H13V16.25L9.75 13.75H8.25C7.15 13.75 6.25 12.85 6.25 11.75V7C6.25 5.9 7.15 5 8.25 5Z", strokeWidth = 1.5f),
+                    ),
+                    viewBoxWidth = 18f,
+                    viewBoxHeight = 18f,
                 )
             RaftLucideIconName.TriangleAlert ->
                 RaftLucideIconSpec(
@@ -2025,6 +2095,15 @@ internal object RaftLucideIconPaths {
                     listOf(
                         RaftLucidePathSpec("M9 14 4 9l5-5"),
                         RaftLucidePathSpec("M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"),
+                    ),
+                )
+            RaftLucideIconName.UnfollowThread ->
+                RaftLucideIconSpec(
+                    "unfollow-thread",
+                    listOf(
+                        RaftLucidePathSpec("M4.667 15.333 2.333 17.667V5.667A2.667 2.667 0 0 1 5 3h10"),
+                        RaftLucidePathSpec("M11 6.667h8.333A2.667 2.667 0 0 1 22 9.333v6.334a2.667 2.667 0 0 1-2.667 2.666h-2v3.334L13 18.333h-2a2.667 2.667 0 0 1-2.667-2.666V9.333A2.667 2.667 0 0 1 11 6.667Z"),
+                        RaftLucidePathSpec("M12.667 12.5h5"),
                     ),
                 )
             RaftLucideIconName.Unlink ->

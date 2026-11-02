@@ -169,7 +169,7 @@ class ThreadMessageMenuParityTest {
             actions.any { it.icon == RaftLucideIconName.SmilePlus },
             "Add Reaction ends the reaction row, it is not an action row"
         )
-        assertEquals(RaftLucideIconName.Send, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
+        assertEquals(RaftLucideIconName.Forward, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
         actions.single { it.label == Res.string.thread_action_forward.desc() }.onClick()
         assertEquals(1, forwarded)
     }
@@ -308,7 +308,7 @@ class ThreadMessageMenuParityTest {
         }
         val plain = capabilities(message()).toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
         assertEquals(Res.string.thread_action_select_text, ThreadNewMessageMenuTool.SelectText.compactLabelResource(plain))
-        assertEquals(RaftLucideIconName.FileText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
+        assertEquals(RaftLucideIconName.SquareDashedText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
         // An in-place selection already picks text: the sheet's entry is not offered there.
         for (coversAll in listOf(true, false)) {
             assertFalse(ThreadNewMessageMenuTool.SelectText in threadInPlaceSelectionMenuAvailability(plain, coversAll).secondaryTools())
