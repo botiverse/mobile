@@ -16,6 +16,9 @@ import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftFieldState
+import build.raft.designsystem.components.LocalRaftFieldState
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -950,17 +953,19 @@ internal fun MachinePicker(
                 val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
                 val computerLabel = stringResource(Res.string.agent_create_label_computer)
                 val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
-                RaftCombobox(
-                    value = selectedMachineId,
-                    options = createAgentMachineChoiceOptions(machineItems, quotaLines),
-                    onValueChange = onSelect,
-                    emptyText = { query -> noMatches.replace("\u0001", query) },
-                    placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
-                    title = computerLabel,
-                    searchPlaceholder = stringResource(Res.string.runtime_picker_search),
-                    enabled = enabled,
-                    label = computerLabel
-                )
+                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, inField = true)) {
+                    RaftCombobox(
+                        value = selectedMachineId,
+                        options = createAgentMachineChoiceOptions(machineItems, quotaLines),
+                        onValueChange = onSelect,
+                        emptyText = { query -> noMatches.replace("\u0001", query) },
+                        placeholder = stringResource(Res.string.agent_create_placeholder_select_computer),
+                        title = computerLabel,
+                        searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+                        enabled = enabled,
+                        label = computerLabel
+                    )
+                }
             }
         }
         if (!requiredComputer.isNullOrBlank()) {

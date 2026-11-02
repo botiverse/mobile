@@ -14,6 +14,9 @@ import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.data.runtimeQuotaLineParts
 import build.raft.app.data.summarizeRuntimeQuota
 import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftFieldState
+import build.raft.designsystem.components.LocalRaftFieldState
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftSelectTrigger
@@ -193,18 +196,22 @@ internal fun RuntimePickerChoice(
     val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
     // Web CreateAgentDialog / EditAgentDialog: a select at any count, never radios (artin
     // 2026-11-02). raft-ui ComboboxSelect: the list under the trigger, a searchable sheet past ten.
-    RaftCombobox(
-        value = value,
-        options = options,
-        onValueChange = onValueChange,
-        title = title,
-        emptyText = { query -> noMatches.replace("\u0001", query) },
-        placeholder = placeholder,
-        searchPlaceholder = stringResource(Res.string.runtime_picker_search),
-        enabled = enabled,
-        label = title,
-        listAction = listAction
-    )
+    // A form field (its label sits above it): the value in the field type, regular, as the web's
+    // Select in a Field, not the standalone select's semibold.
+    CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = title, inField = true)) {
+        RaftCombobox(
+            value = value,
+            options = options,
+            onValueChange = onValueChange,
+            title = title,
+            emptyText = { query -> noMatches.replace("\u0001", query) },
+            placeholder = placeholder,
+            searchPlaceholder = stringResource(Res.string.runtime_picker_search),
+            enabled = enabled,
+            label = title,
+            listAction = listAction
+        )
+    }
 }
 
 /**
