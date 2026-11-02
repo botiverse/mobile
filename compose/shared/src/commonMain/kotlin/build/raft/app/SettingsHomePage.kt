@@ -550,7 +550,6 @@ internal val SettingsRouteVisualPageDataFields =
         "fullHeight",
         "slockVisualFullHeight"
     )
-private const val SettingsDeveloperUnlockTapCount = 7
 internal const val AppShellInitialTabKey = "slockInitialTab"
 private const val DiagnosticsDeepLinkIdKey = "slockDiagnosticsDeepLinkId"
 private const val DiagnosticsDeepLinkAutoCloseMsKey = "slockDiagnosticsDeepLinkAutoCloseMs"
@@ -2183,7 +2182,7 @@ private fun RaftAppShellReadyContent(
     val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
     val childPagePrewarmPolicy =
         remember { appShellChildPagePrewarmPolicy(raftPlatformAppShellChildPagePrewarmMode()) }
-    var settingsHeaderTapCount by remember { mutableStateOf(0) }
+    val settingsHeaderTaps = remember { SettingsDeveloperUnlockTaps() }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
@@ -6331,7 +6330,6 @@ private fun RaftAppShellReadyContent(
     val railNavLabels = raftNavLabels(RaftNavPresentation.Rail)
     val homeTabLabel = phoneNavLabels.getValue(RaftAppDestination.Chat.id)
     val tasksTabLabel = phoneNavLabels.getValue(RaftAppDestination.Tasks.id)
-    val membersTabLabel = stringResource(RaftAppDestination.Members.label)
     val settingsTabLabel = stringResource(RaftAppDestination.Settings.label)
     val dmsTabLabel = stringResource(Res.string.tab_dms)
     val activityTabLabel = phoneNavLabels.getValue(RaftAppDestination.Activity.id)
@@ -8289,18 +8287,8 @@ private fun RaftAppShellReadyContent(
                     // keeps its Settings page as before.
                     val openSettingsRow: (String) -> Unit = { key ->
                         prewarmAdmissionGate.invalidate("settings_open_page:$key")
-                        settingsHeaderTapCount = 0
+                        settingsHeaderTaps.reset()
                         when (key) {
-                            SettingsMoreMembersRowKey -> {
-                                RaftProductEvents.navEntrySelected(
-                                    destination = RaftNavDestination.Members,
-                                    surface = RaftNavSurface.MobileMore,
-                                    wasActive = false,
-                                )
-                                bridge.log("app_shell_more_open row=$key from=$selectedTab")
-                                selectAppShellTab("members", directChildSwitch = true)
-                                retainedAppShellTabs = retainedAppShellTabs + "members"
-                            }
                             SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
                             SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
                             SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
@@ -8398,9 +8386,7 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     SettingsMoreRoot(
                                         title = settingsTabLabel,
-                                        membersTitle = membersTabLabel,
                                         attentionRowKeys = moreAttention.mapTo(mutableSetOf()) { it.settingsRowKey },
-                                        leadsWithMembersAndComputers = false,
                                     )
                                 },
                             onBack = moreChildBack,
@@ -8410,12 +8396,8 @@ private fun RaftAppShellReadyContent(
                             scrollToTopRequest = tabScrollToTopRequests.more,
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
-                                val nextTapCount = settingsHeaderTapCount + 1
-                                if (nextTapCount >= SettingsDeveloperUnlockTapCount) {
-                                    settingsHeaderTapCount = 0
+                                if (settingsHeaderTaps.tap()) {
                                     pager.openSettingsNativeDetailPage(SettingsNativeDetailPage.Developer, storeScope)
-                                } else {
-                                    settingsHeaderTapCount = nextTapCount
                                 }
                             },
                             onSelect = openSettingsRow,
