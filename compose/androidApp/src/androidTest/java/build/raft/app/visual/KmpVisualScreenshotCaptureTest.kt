@@ -440,6 +440,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureUiTypographySpecimen() {
+        captureKmpComponentCase(
+            caseId = "components.ui.typography.specimen",
+            pageName = "compose_ui_typography_specimen_visual",
+            crop = UI_TYPOGRAPHY_SPECIMEN_CROP
+        )
+    }
+
+    @Test
     fun captureUiAttentionDotStates() {
         captureKmpComponentCase(
             caseId = "components.ui.attention-dot.states",
@@ -6745,6 +6754,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 112
+            )
+        private val UI_TYPOGRAPHY_SPECIMEN_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 300
             )
         private val UI_ATTENTION_DOT_CROP =
             VisualCrop(

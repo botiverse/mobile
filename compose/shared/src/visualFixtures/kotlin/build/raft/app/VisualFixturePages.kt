@@ -786,6 +786,14 @@ internal class ComposeUiCheckMarkerVisualPage : BasePager() {
     }
 }
 
+@Page("compose_ui_typography_specimen_visual", supportInLocal = true)
+internal class ComposeUiTypographySpecimenVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTypographySpecimenVisualContent() } }
+    }
+}
+
 @Page("compose_ui_attention_dot_visual", supportInLocal = true)
 internal class ComposeUiAttentionDotVisualPage : BasePager() {
     override fun willInit() {
