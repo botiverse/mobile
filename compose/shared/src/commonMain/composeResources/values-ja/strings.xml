@@ -1564,6 +1564,8 @@
     <string name="file_preview_image_placeholder">IMG</string>
     <string name="file_preview_no_preview">このファイル形式のプレビューは利用できません。</string>
     <string name="file_preview_download_to_open">このファイルをダウンロードするか、「アプリで開く」を使って別のアプリで表示してください。</string>
+    <string name="file_preview_no_preview_too_large_download">このファイルは大きすぎるためプレビューできません。ダウンロードするか、「アプリで開く」を使って別のアプリで表示してください。</string>
+    <string name="file_preview_no_preview_temporarily_download">このファイルのプレビューは一時的に利用できません。ダウンロードするか、「アプリで開く」を使って別のアプリで表示してください。</string>
     <string name="file_preview_error_image_unavailable">画像プレビューを利用できません。</string>
     <string name="file_preview_image_full_load_failed">元の画像を読み込めませんでした</string>
     <string name="file_preview_error_load_generic">このファイルのプレビューを読み込めませんでした。</string>

@@ -66,6 +66,7 @@ internal class RaftFilesMessagesApiClient(
                 status = status,
                 content = wire.data?.toAttachmentPreviewContent(),
                 truncated = wire.truncated ?: false,
+                reason = wire.reason?.takeIf { it.isNotBlank() },
             )
         }
 
@@ -177,6 +178,8 @@ internal data class AttachmentPreview(
     val status: String,
     val content: AttachmentPreviewContent?,
     val truncated: Boolean,
+    /** Why a `status: "unsupported"` preview has no body: `too_large`, `unavailable`, `unsupported`. */
+    val reason: String? = null,
 ) {
     val isOk: Boolean
         get() = status == "ok"
@@ -273,6 +276,7 @@ private data class AttachmentPreviewResponseDto(
     val status: String,
     val data: AttachmentPreviewDataDto? = null,
     val truncated: Boolean? = null,
+    val reason: String? = null,
 )
 
 @Serializable
@@ -321,6 +325,7 @@ internal fun parseSharedAttachmentPreview(bodyText: String): AttachmentPreview? 
         status = status,
         content = wire.data?.toAttachmentPreviewContent(),
         truncated = wire.truncated ?: false,
+        reason = wire.reason?.takeIf { it.isNotBlank() },
     )
 }.getOrNull()
 

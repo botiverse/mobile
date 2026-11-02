@@ -1583,6 +1583,8 @@ internal data class RaftFilePreviewPayload(
     val csvTableJson: String = "",
     val message: String = "",
     val messageDesc: StringDesc? = Res.string.file_preview_no_preview.desc(),
+    /** The server's reason for "no preview" (`too_large`, `unavailable`); the card says it. */
+    val noPreviewReason: String = "",
     val error: String? = null,
     val externalUrl: String? = null,
     val videoUrl: String? = null,
@@ -4141,6 +4143,12 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onPdfRetry = ::retryPdf,
                     onImageRetry = ::retryFullImage,
                     onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
+                    onRetryLoad =
+                        if (payload.canRetryPreviewLoad()) {
+                            { payload = payload.withPreviewReload() }
+                        } else {
+                            null
+                        },
                     onShare =
                         if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
                             { requestExternalOpen(share = true) }
@@ -7241,18 +7249,43 @@ private suspend fun RaftFilePreviewPayload.loadThreadVideoAttachmentPreview(
 }
 
 /**
- * Server-side preview attempt per task #203: `GET attachments/:id/preview`
- * returns text/markdown bodies already truncated to a safe size with an
- * explicit `truncated` flag, so text-like previews stop downloading whole
- * files through signed URLs. Returns null when the endpoint is missing,
- * errors, reports unsupported, or answers with a kind the caller does not
- * render — callers then fall back to the legacy full-body fetch.
+ * What `GET attachments/:id/preview` answered (task #203: text/markdown bodies come back already
+ * truncated to a safe size with an explicit `truncated` flag, so text-like previews stop
+ * downloading whole files through signed URLs).
  */
+internal sealed interface RaftFilePreviewServerAnswer {
+    data class Ok(val preview: AttachmentPreview) : RaftFilePreviewServerAnswer
+
+    /**
+     * The server read the file and has no preview for it (web `openDocumentPreview`: say so and
+     * download instead). [reason] is the wire `reason` (`too_large`, `unavailable`, `unsupported`).
+     */
+    data class Unsupported(val reason: String) : RaftFilePreviewServerAnswer
+
+    /** No usable answer: no response, a non-2xx, or a body that does not parse. */
+    data object Failed : RaftFilePreviewServerAnswer
+}
+
+internal val RaftFilePreviewServerAnswer.okPreview: AttachmentPreview?
+    get() = (this as? RaftFilePreviewServerAnswer.Ok)?.preview
+
+internal fun raftFilePreviewServerAnswer(code: Int, bodyText: String?): RaftFilePreviewServerAnswer {
+    if (code !in 200..299) return RaftFilePreviewServerAnswer.Failed
+    val body = bodyText?.takeIf { it.isNotBlank() } ?: return RaftFilePreviewServerAnswer.Failed
+    val preview = parseSharedAttachmentPreview(body) ?: return RaftFilePreviewServerAnswer.Failed
+    return when {
+        preview.isOk -> RaftFilePreviewServerAnswer.Ok(preview)
+        preview.status == "unsupported" ->
+            RaftFilePreviewServerAnswer.Unsupported(preview.reason ?: RaftFilePreviewNoPreviewReasonUnsupported)
+        else -> RaftFilePreviewServerAnswer.Failed
+    }
+}
+
 private suspend fun fetchServerAttachmentPreview(
     networkClient: RaftNetworkClient,
     attachmentId: String
-): AttachmentPreview? {
-    val cleanId = attachmentId.trim().takeIf { it.isNotBlank() } ?: return null
+): RaftFilePreviewServerAnswer {
+    val cleanId = attachmentId.trim().takeIf { it.isNotBlank() } ?: return RaftFilePreviewServerAnswer.Failed
     val response =
         try {
             networkClient.request(
@@ -7262,19 +7295,96 @@ private suspend fun fetchServerAttachmentPreview(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            return null
+            return RaftFilePreviewServerAnswer.Failed
         }
-    if (response.code !in 200..299) return null
-    val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return null
-    val preview = parseSharedAttachmentPreview(body) ?: return null
-    return preview.takeIf { it.isOk }
+    return raftFilePreviewServerAnswer(response.code, response.bodyText)
 }
+
+internal const val RaftFilePreviewNoPreviewReasonTooLarge = "too_large"
+internal const val RaftFilePreviewNoPreviewReasonUnavailable = "unavailable"
+internal const val RaftFilePreviewNoPreviewReasonUnsupported = "unsupported"
+
+/**
+ * A raw-text fallback failure that is a load error (an error with Retry), not "this file has no
+ * preview": no response, the signed URL refused (401/403), the file gone (404/410), or a
+ * transient answer (408/429/5xx). [httpCode] is null when no response arrived.
+ */
+internal fun raftFilePreviewRawFetchIsLoadError(httpCode: Int?): Boolean =
+    httpCode == null ||
+        httpCode == 401 || httpCode == 403 || httpCode == 404 || httpCode == 408 ||
+        httpCode == 410 || httpCode == 429 || httpCode in 500..599
+
+/**
+ * Bytes that are not text (git's heuristic: a NUL in the first 8000 characters). Such a body
+ * shows the download card rather than garbage.
+ */
+internal fun raftFilePreviewLooksBinary(body: String): Boolean =
+    body.indexOf('\u0000').let { it in 0 until 8000 }
+
+/**
+ * How a client-side raw fetch that produced no preview is shown: the download card when the
+ * server already said the file has no preview and the failure is not a load error, or when the
+ * bytes are not text; otherwise the load error with Retry.
+ */
+internal fun raftFilePreviewRawFallbackShowsDownload(
+    serverAnswer: RaftFilePreviewServerAnswer,
+    httpCode: Int?,
+): Boolean =
+    serverAnswer is RaftFilePreviewServerAnswer.Unsupported && !raftFilePreviewRawFetchIsLoadError(httpCode)
+
+/** The file page's no-preview card (Download, Open in browser), as web downloads instead. */
+internal fun RaftFilePreviewPayload.withNoPreviewDownload(
+    reason: String = RaftFilePreviewNoPreviewReasonUnsupported
+): RaftFilePreviewPayload =
+    copy(
+        kind = "unsupported",
+        titleDesc = Res.string.file_preview_title.desc(),
+        content = "",
+        markdown = false,
+        message = "",
+        messageDesc = Res.string.file_preview_no_preview.desc(),
+        error = null,
+        noPreviewReason = reason,
+    )
+
+/** The server's reason when it said "no preview"; plain "unsupported" otherwise. */
+internal fun RaftFilePreviewServerAnswer.noPreviewReason(): String =
+    (this as? RaftFilePreviewServerAnswer.Unsupported)?.reason ?: RaftFilePreviewNoPreviewReasonUnsupported
+
+/** Retry for a load error: the page loads the same file again. */
+internal fun RaftFilePreviewPayload.withPreviewReload(): RaftFilePreviewPayload =
+    copy(
+        kind = "loading",
+        titleDesc = Res.string.file_preview_title.desc(),
+        message = "",
+        messageDesc = Res.string.common_loading.desc(),
+        error = null
+    )
+
+/** The load errors of a thread attachment's preview, which Retry loads again. */
+internal fun RaftFilePreviewPayload.canRetryPreviewLoad(): Boolean =
+    kind == "error" &&
+        source == RaftFilePreviewSourceThreadAttachment &&
+        attachmentId.isNotBlank() &&
+        error in RaftFilePreviewRetryableLoadErrors
+
+private val RaftFilePreviewRetryableLoadErrors =
+    setOf(
+        "text_preview_url_failed",
+        "text_preview_fetch_failed",
+        "markdown_preview_url_failed",
+        "markdown_preview_fetch_failed",
+        "html_preview_url_failed",
+        "video_preview_url_failed",
+    )
 
 /**
  * Text-like attachments. A `kind: "csv"` server preview becomes the CSV table (web
  * `CsvPreviewPane`), whatever kind the caller asked for: a restored route knows only "text".
  * Without a server text/CSV preview the raw body is fetched as plain text, unless
- * [rawTextFallback] is false (then the file shows the no-preview card, as on the web).
+ * [rawTextFallback] is false (then the file shows the no-preview card, as on the web). A raw
+ * fetch that yields no text shows the no-preview card too when the server had already said the
+ * file has no preview, or the bytes are binary; a load error keeps the error with Retry.
  */
 private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: RaftThreadApiClient,
@@ -7283,7 +7393,8 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     truncatedPreviewHint: String,
     rawTextFallback: Boolean = true
 ): RaftFilePreviewPayload {
-    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverAnswer = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverPreview = serverAnswer.okPreview
     val csvCarrier =
         (serverPreview?.content as? AttachmentPreviewContent.Csv)?.let { csv ->
             raftFilePreviewCsvCarrier(csv, responseTruncated = serverPreview.truncated)
@@ -7301,13 +7412,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
         )
     }
     if (!rawTextFallback) {
-        return copy(
-            kind = "unsupported",
-            titleDesc = Res.string.file_preview_title.desc(),
-            message = "",
-            messageDesc = Res.string.file_preview_no_preview.desc(),
-            error = null,
-        )
+        return withNoPreviewDownload(serverAnswer.noPreviewReason())
     }
     val serverText = (serverPreview?.content as? AttachmentPreviewContent.Text)?.text
     if (serverPreview != null && serverText != null) {
@@ -7352,6 +7457,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
             )
         }
     if (response.code !in 200..299) {
+        if (raftFilePreviewRawFallbackShowsDownload(serverAnswer, response.code)) {
+            return withNoPreviewDownload(serverAnswer.noPreviewReason())
+        }
         return copy(
             kind = "error",
             titleDesc = Res.string.file_preview_unavailable.desc(),
@@ -7361,6 +7469,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
         )
     }
     val body = response.bodyText.orEmpty()
+    if (raftFilePreviewLooksBinary(body)) {
+        return withNoPreviewDownload(serverAnswer.noPreviewReason())
+    }
     val previewBody =
         if (body.length > RaftFilePreviewTextMaxChars) {
             body.take(RaftFilePreviewTextMaxChars) + "\n\n$truncatedPreviewHint"
@@ -7384,7 +7495,8 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     priority: DataRequestPriority,
     truncatedPreviewHint: String
 ): RaftFilePreviewPayload {
-    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverAnswer = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val serverPreview = serverAnswer.okPreview
     val serverMarkdown = (serverPreview?.content as? AttachmentPreviewContent.Markdown)?.markdown
     if (serverPreview != null && serverMarkdown != null) {
         val previewBody =
@@ -7432,6 +7544,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             )
         }
     if (response.code !in 200..299) {
+        if (raftFilePreviewRawFallbackShowsDownload(serverAnswer, response.code)) {
+            return withNoPreviewDownload(serverAnswer.noPreviewReason())
+        }
         return copy(
             kind = "error",
             titleDesc = Res.string.file_preview_unavailable.desc(),
@@ -7439,6 +7554,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             messageDesc = Res.string.file_preview_error_load_markdown.desc(),
             error = "markdown_preview_fetch_failed"
         )
+    }
+    if (raftFilePreviewLooksBinary(response.bodyText.orEmpty())) {
+        return withNoPreviewDownload(serverAnswer.noPreviewReason())
     }
     val body =
         response.bodyText?.takeIf { it.isNotBlank() }
@@ -7471,8 +7589,8 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
 private suspend fun RaftFilePreviewPayload.loadThreadXlsxAttachmentPreview(
     networkClient: RaftNetworkClient,
 ): RaftFilePreviewPayload {
-    val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
-    val xlsx = serverPreview?.content as? AttachmentPreviewContent.Xlsx
+    val serverAnswer = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val xlsx = serverAnswer.okPreview?.content as? AttachmentPreviewContent.Xlsx
     if (xlsx != null) {
         return copy(
             kind = "xlsx",
@@ -7485,13 +7603,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadXlsxAttachmentPreview(
             xlsxSheetsJson = encodeRaftFilePreviewXlsx(xlsx),
         )
     }
-    return copy(
-        kind = "unsupported",
-        titleDesc = Res.string.file_preview_title.desc(),
-        message = "",
-        messageDesc = Res.string.file_preview_no_preview.desc(),
-        error = null,
-    )
+    return withNoPreviewDownload(serverAnswer.noPreviewReason())
 }
 
 @Serializable
@@ -8048,6 +8160,8 @@ internal fun RaftFilePreviewPayloadContent(
     onImageRetry: (() -> Unit)? = null,
     /** PDF failure fallback: hand the file to another app (the Open with action). */
     onPdfOpenInOtherApp: (() -> Unit)? = null,
+    /** A load error (network, expired link, file gone): Retry loads the preview again. */
+    onRetryLoad: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -8349,6 +8463,8 @@ internal fun RaftFilePreviewPayloadContent(
                         localizedMessage = payload.localizedMessage(),
                         fallbackMessage = stringResource(Res.string.file_preview_error_load_generic)
                     ),
+                actionLabel = onRetryLoad?.let { stringResource(Res.string.common_retry) },
+                onAction = onRetryLoad,
                 modifier = modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
             )
         else ->
@@ -10097,6 +10213,10 @@ internal fun raftFilePreviewPrimaryAction(
 
 internal fun raftFilePreviewUnsupportedFileMessage(payload: RaftFilePreviewPayload, downloadable: Boolean): StringDesc =
     when {
+        downloadable && payload.noPreviewReason == RaftFilePreviewNoPreviewReasonTooLarge ->
+            Res.string.file_preview_no_preview_too_large_download.desc()
+        downloadable && payload.noPreviewReason == RaftFilePreviewNoPreviewReasonUnavailable ->
+            Res.string.file_preview_no_preview_temporarily_download.desc()
         downloadable -> Res.string.file_preview_download_to_open.desc()
         payload.message.isNotBlank() -> payload.message.desc()
         else -> payload.messageDesc ?: Res.string.file_preview_no_preview.desc()
@@ -10861,7 +10981,9 @@ internal fun RaftFilePreviewMessage(
     iconName: RaftLucideIconName,
     title: String,
     detail: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier.padding(RaftAppSpacing.Lg),
@@ -10884,6 +11006,11 @@ internal fun RaftFilePreviewMessage(
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        if (actionLabel != null && onAction != null) {
+            RaftDesignSystemTheme {
+                RaftButton(text = actionLabel, onClick = onAction)
+            }
         }
     }
 }
