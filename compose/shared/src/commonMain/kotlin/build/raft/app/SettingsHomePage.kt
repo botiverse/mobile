@@ -24,7 +24,6 @@ import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
-import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -411,7 +410,6 @@ import build.raft.app.compat.ui.bouncesEnable
 import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -12270,7 +12268,56 @@ internal fun SharedHomeSearchPanel(
                         openFilterId = id
                     },
                     onIntent = onIntent,
-                    showSenderFilter = showSenderFilter
+                    showSenderFilter = showSenderFilter,
+                    // From and Channel open the web's Combobox popup under the chip, with search,
+                    // at any number of options (artin 2026-11-02), never a sheet.
+                    // Composed only while open, so a closed chip builds no option list.
+                    chipPopover = { id ->
+                        if (openFilterId == id) when (id) {
+                            "sender" ->
+                                RaftFilterComboboxPopover(
+                                    expanded = true,
+                                    title = stringResource(Res.string.search_filter_from),
+                                    searchPlaceholder = stringResource(Res.string.search_filter_search),
+                                    searchText = senderSearch,
+                                    onSearchChange = { senderSearch = it },
+                                    options = state.senderFilterOptions(),
+                                    // One sender, like the web: a pick replaces the current sender.
+                                    selectedIds = setOfNotNull(state.selectedSenderId),
+                                    onToggle = {
+                                        onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
+                                    },
+                                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
+                                    onDismiss = { openFilterId = null },
+                                    multiSelect = false,
+                                    showClear = true,
+                                    // An empty list while senders load (or fail) says so.
+                                    status =
+                                        when {
+                                            state.senderFiltersLoading -> stringResource(Res.string.search_filter_loading_senders)
+                                            else -> state.senderFiltersErrorCode
+                                        }
+                                )
+                            "channel" ->
+                                RaftFilterComboboxPopover(
+                                    expanded = true,
+                                    title = stringResource(Res.string.search_filter_channels),
+                                    searchPlaceholder = stringResource(Res.string.search_filter_search),
+                                    searchText = channelSearch,
+                                    onSearchChange = { channelSearch = it },
+                                    options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
+                                    selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
+                                    onToggle = {
+                                        onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
+                                    },
+                                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
+                                    onDismiss = { openFilterId = null },
+                                    multiSelect = false,
+                                    showClear = true
+                                )
+                            else -> Unit
+                        }
+                    }
                 )
                 SharedHomeSearchDivider()
                 LazyColumn(
@@ -12416,7 +12463,8 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (entityResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities))
+                            // web SearchEntityResultsSection: "Server entities" and their count.
+                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities), count = entityResults.size)
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                             Box(
@@ -12456,7 +12504,11 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_messages))
+                            // web SearchMessageResultsSection: the message count once loaded.
+                            SharedHomeSearchSectionLabel(
+                                stringResource(Res.string.search_section_messages),
+                                count = state.totalCount.takeIf { it > 0 && !state.loading },
+                            )
                         }
                     }
                     groupedResults.forEachIndexed { groupIndex, group ->
@@ -12547,45 +12599,6 @@ internal fun SharedHomeSearchPanel(
                         surfaceShadowColor = SearchPopoverShadowColor,
                         selectedRowColor = RaftColor.SurfaceWhite,
                         showClearWhenSelected = true
-                    )
-                "sender" ->
-                    RaftFilterSheet(
-                        title = stringResource(Res.string.search_filter_from),
-                        searchPlaceholder = stringResource(Res.string.search_filter_search_senders),
-                        searchText = senderSearch,
-                        onSearchChange = { senderSearch = it },
-                        options = state.senderFilterOptions(),
-                        // One sender, like the web: a pick replaces the current sender.
-                        selectedIds = setOfNotNull(state.selectedSenderId),
-                        onToggle = {
-                            onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
-                        onDismiss = { openFilterId = null },
-                        multiSelect = false,
-                        showClear = true,
-                        // An empty list while senders load (or fail) says so.
-                        status =
-                            when {
-                                state.senderFiltersLoading -> stringResource(Res.string.search_filter_loading_senders)
-                                else -> state.senderFiltersErrorCode
-                            }
-                    )
-                "channel" ->
-                    RaftFilterSheet(
-                        title = stringResource(Res.string.search_filter_channels),
-                        searchPlaceholder = stringResource(Res.string.search_filter_search),
-                        searchText = channelSearch,
-                        onSearchChange = { channelSearch = it },
-                        options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
-                        selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
-                        onToggle = {
-                            onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
-                        },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
-                        onDismiss = { openFilterId = null },
-                        multiSelect = false,
-                        showClear = true
                     )
                 "time" ->
                     RaftFilterPopover(
@@ -13332,6 +13345,7 @@ private fun SharedHomeSavedHeader(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
@@ -13343,7 +13357,10 @@ internal fun SharedHomeSearchFilters(
     sortAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
     onOpenFilter: (String, RaftPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
-    showSenderFilter: Boolean = true
+    showSenderFilter: Boolean = true,
+    // The popup a chip opens under itself (the sender and channel comboboxes), composed in the
+    // chip's own box so it anchors to it; given the filter id.
+    chipPopover: @Composable (String) -> Unit = {}
 ) {
     val hasActiveFilters =
         state.selectedScopes.isNotEmpty() ||
@@ -13360,38 +13377,35 @@ internal fun SharedHomeSearchFilters(
     val scopeLabel = stringResource(Res.string.search_filter_scope)
     val channelLabel = stringResource(Res.string.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
-    // `info-soft` wash. Web MessageSearchPage labels every chip (From, Scope, Channel, the time
-    // range, the sort) and wraps them; a phone row scrolls sideways instead, its first and last
-    // chips 16dp in from the edges (content padding, so a scrolled chip runs to the edge). A chip
-    // is never wider than the row (web `max-w-full`): a long sender or channel name ends in an
-    // ellipsis.
+    // `info-soft` wash. Web SearchFilterBar labels every chip (From, Scope, Channel, the time
+    // range, the sort, Clear All) in a `flex flex-wrap gap-2` row: the chips wrap onto more
+    // lines, 8dp apart both ways, 16dp in from the edges. A chip is never wider than the row
+    // (web `max-w-full`): a long sender or channel name ends in an ellipsis.
     SharedHomeSearchControlsBlock {
-        val backSwipeRowState = rememberLazyListState()
-        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
         BoxWithConstraints(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding()) {
             val chipModifier = Modifier.widthIn(max = (maxWidth - SearchControlsHorizontalPadding * 2).coerceAtLeast(0.dp))
-            LazyRow(
-                state = backSwipeRowState,
-                userScrollEnabled = backSwipeRow.userScrollEnabled,
-                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = SearchControlsHorizontalPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 homeSearchFilterOrder(showSenderFilter).forEach { filter ->
-                    item(key = "search-filter-${filter.id}") {
+                    key("search-filter-${filter.id}") {
                         when (filter) {
                             HomeSearchFilter.Sender ->
-                                RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
-                                    label = state.localizedSenderFilterLabel(),
-                                    anchorIdentity = "search_filter:sender",
-                                    hasValue = senderActive,
-                                    iconName = RaftLucideIconName.CircleUser,
-                                    onAnchorChanged = senderAnchorChanged,
-                                    onClick = { anchor ->
-                                        onOpenFilter("sender", anchor)
-                                    }
-                                )
+                                Box(chipModifier) {
+                                    RaftAnchoredPickerTrigger(
+                                        label = state.localizedSenderFilterLabel(),
+                                        anchorIdentity = "search_filter:sender",
+                                        hasValue = senderActive,
+                                        iconName = RaftLucideIconName.CircleUser,
+                                        onAnchorChanged = senderAnchorChanged,
+                                        onClick = { anchor ->
+                                            onOpenFilter("sender", anchor)
+                                        }
+                                    )
+                                    chipPopover("sender")
+                                }
                             HomeSearchFilter.Scope ->
                                 RaftAnchoredPickerTrigger(
                                     modifier = chipModifier,
@@ -13405,17 +13419,19 @@ internal fun SharedHomeSearchFilters(
                                     }
                                 )
                             HomeSearchFilter.Channel ->
-                                RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
-                                    label = selectedChannel?.label ?: channelLabel,
-                                    anchorIdentity = "search_filter:channel",
-                                    hasValue = channelActive,
-                                    iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
-                                    onAnchorChanged = channelAnchorChanged,
-                                    onClick = { anchor ->
-                                        onOpenFilter("channel", anchor)
-                                    }
-                                )
+                                Box(chipModifier) {
+                                    RaftAnchoredPickerTrigger(
+                                        label = selectedChannel?.label ?: channelLabel,
+                                        anchorIdentity = "search_filter:channel",
+                                        hasValue = channelActive,
+                                        iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
+                                        onAnchorChanged = channelAnchorChanged,
+                                        onClick = { anchor ->
+                                            onOpenFilter("channel", anchor)
+                                        }
+                                    )
+                                    chipPopover("channel")
+                                }
                             HomeSearchFilter.Time ->
                                 RaftAnchoredPickerTrigger(
                                     modifier = chipModifier,
@@ -13431,32 +13447,23 @@ internal fun SharedHomeSearchFilters(
                         }
                     }
                 }
-                item {
-                    RaftAnchoredPickerTrigger(
-                        modifier = chipModifier,
-                        label = state.sort.localizedSearchLabel(),
-                        anchorIdentity = "search_filter:sort",
-                        hasValue = sortActive,
-                        iconName = RaftLucideIconName.ArrowDownUp,
-                        onAnchorChanged = sortAnchorChanged,
-                        onClick = { anchor ->
-                            onOpenFilter("sort", anchor)
-                        }
-                    )
-                }
+                RaftAnchoredPickerTrigger(
+                    modifier = chipModifier,
+                    label = state.sort.localizedSearchLabel(),
+                    anchorIdentity = "search_filter:sort",
+                    hasValue = sortActive,
+                    iconName = RaftLucideIconName.ArrowDownUp,
+                    onAnchorChanged = sortAnchorChanged,
+                    onClick = { anchor ->
+                        onOpenFilter("sort", anchor)
+                    }
+                )
                 if (hasActiveFilters) {
-                    item {
-                        RaftPickerTriggerButton(
-                            text = stringResource(Res.string.search_filter_clear_all),
-                            showIndicator = false,
-                            onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
-                        )
-                    }
-                }
-                if (!showSenderFilter) {
-                    item {
-                        Spacer(Modifier.width(0.dp))
-                    }
+                    RaftPickerTriggerButton(
+                        text = stringResource(Res.string.search_filter_clear_all),
+                        showIndicator = false,
+                        onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
+                    )
                 }
             }
         }
@@ -14007,9 +14014,12 @@ internal fun TextStyle.withHomeSearchVisualTextScale(scale: Float): TextStyle {
 private fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
+    count: Int? = null,
 ) {
     RaftSearchSectionHeading(
         label = label,
+        count = count,
+        countStyle = RaftTheme.typography.monoMeta.withHomeSearchVisualTextScale(visualTextScale),
         style =
             RaftTheme.typography.footnote
                 .copy(fontWeight = FontWeight.Bold)

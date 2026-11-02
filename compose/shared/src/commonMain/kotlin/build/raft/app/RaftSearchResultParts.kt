@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -144,15 +145,31 @@ internal fun RaftSearchSectionHeading(
     label: String,
     style: TextStyle,
     modifier: Modifier = Modifier,
+    count: Int? = null,
+    countStyle: TextStyle = style,
 ) {
-    Box(modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp)) {
+    Row(
+        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         RaftText(
             text = label,
+            modifier = Modifier.weight(1f, fill = false),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // web SearchResultsSectionHeading's count: `font-mono text-mono-meta font-normal`.
+        if (count != null) {
+            RaftText(
+                text = count.toString(),
+                style = countStyle,
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+            )
+        }
     }
 }
 

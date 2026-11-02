@@ -442,6 +442,8 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
             includeTopSafeArea = false,
             showSenderFilter = true,
             initialOpenFilterId = openFilterId,
+            // The phone Search tab root, as the React capture: the field in the frame head, no Back.
+            tabHead = true,
             onOpenItem = {},
             onOpenEntity = {},
             bottomContentPadding = 12.dp,
