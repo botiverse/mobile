@@ -8,7 +8,8 @@
   "sources": {
     "web": [
       "packages/web/src/utils/channelUnreadIndicator.ts (getDmUnreadIndicatorState)",
-      "packages/web/src/components/layout/Sidebar.tsx (DmRow tone, SidebarPeerRowBody)"
+      "packages/web/src/features/sidebar/rows/DmRow.tsx (tone)",
+      "packages/web/src/features/sidebar/rows/SidebarPeerRowBody.tsx"
     ],
     "app": [
       "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt (homeConversationBadgeProjection: mentionPierced/followed are loud)"
