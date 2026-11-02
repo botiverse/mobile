@@ -55,7 +55,7 @@ class RaftNav3StackFlagTest {
         assertFalse(RaftNav3StackFlag.launchDecision { error("no store yet") })
     }
 
-    @Test fun `alpha builds default on, release builds default off`() {
+    @Test fun `alpha builds default on and release builds default off`() {
         assertTrue(RaftNav3StackFlag.stored(store, buildDefault = true))
         assertTrue(RaftNav3StackFlag.localOverride(store, buildDefault = true), "the developer switch shows on")
         assertFalse(RaftNav3StackFlag.stored(store, buildDefault = false))
