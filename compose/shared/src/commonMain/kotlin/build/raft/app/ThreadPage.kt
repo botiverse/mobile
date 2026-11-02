@@ -27375,6 +27375,9 @@ private fun ThreadMessageCardContent(
     // The author's profile card under a mouse or trackpad pointer on the avatar (web MessageItem's
     // avatar hover card); View Profile is the avatar's own click.
     val memberPreviewCardSource = LocalRaftMemberPreviewCardSource.current
+    val externalAuthor = message.externalAuthor
+    val externalAuthorFallbackName = rememberExternalAuthorFallbackName()
+    val externalAuthorName = externalAuthor?.let { externalAuthorShownName(it, it.displayName, externalAuthorFallbackName) }.orEmpty()
     val authorPreviewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? =
         if (memberPreviewCardSource != null && authorProfileIdentity != null && !shareSelectionActive) {
             { state ->
@@ -27386,6 +27389,9 @@ private fun ThreadMessageCardContent(
                     onViewProfile = { openAuthorProfile("preview_card") },
                 )
             }
+        } else if (externalAuthor != null && !shareSelectionActive) {
+            // A Slack-bridged author: who they are outside Raft (web ExternalIdentityPreviewCard).
+            { _ -> RaftExternalIdentityPreviewCardContent(externalAuthor, externalAuthorName) }
         } else {
             null
         }
@@ -27721,7 +27727,9 @@ private fun ThreadMessageCardContent(
                         // device check of #4091); no profile, mention or hover card meanwhile.
                         onClick = if (shareSelectionActive) onToggleShareSelection else { { openAuthorProfile("avatar") } },
                         onLongPress = if (shareSelectionActive) ({}) else { { onMentionAuthor(message) } },
-                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive }
+                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive },
+                        // Lagoon 11-02: a finger gets what a hover gets; the card replaces the hint toast.
+                        previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
                     )
                 }
                 val contentModifier =
@@ -33167,7 +33175,12 @@ private fun ThreadMessageAvatarSlot(
     onClick: () -> Unit,
     onLongPress: () -> Unit = {},
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
-    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null
+    previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null,
+    /**
+     * A click on the avatar, by any pointer, pins [previewCard] instead of running [onClick]
+     * (an external author: the card is all there is to show, for a finger too).
+     */
+    previewCardPinOnClick: Boolean = false,
 ) {
     val slotLayout = threadMessageMetadataSlotLayout(showAvatar, compactTimestampGutter, showTimestamp)
     Box(
@@ -33201,7 +33214,12 @@ private fun ThreadMessageAvatarSlot(
                         avatar()
                     } else {
                         val previewCardState = rememberRaftPreviewCardState()
-                        RaftPreviewCard(card = { previewCard(previewCardState) }, state = previewCardState, trigger = avatar)
+                        RaftPreviewCard(
+                            card = { previewCard(previewCardState) },
+                            state = previewCardState,
+                            pinOnClick = previewCardPinOnClick,
+                            trigger = avatar,
+                        )
                     }
                 }
             slotLayout.timestampVisible ->

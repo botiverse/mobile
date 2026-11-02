@@ -459,6 +459,14 @@
     <string name="thread_error_open_thread">Unable to open thread</string>
     <string name="thread_external_author_hint">External %1$s user</string>
     <string name="message_author_external_fallback">External user</string>
+    <string name="message_external_identity_provider_and_kind">%1$s · %2$s</string>
+    <string name="message_external_identity_from_workspace">From %1$s</string>
+    <string name="message_external_identity_projection">External identity</string>
+    <string name="message_external_identity_kind_human">Human</string>
+    <string name="message_external_identity_kind_guest">Guest</string>
+    <string name="message_external_identity_kind_remote">Remote participant</string>
+    <string name="message_external_identity_kind_app">App</string>
+    <string name="message_external_identity_kind_unknown">External participant</string>
     <string name="thread_error_open_profile">Unable to open profile</string>
     <string name="thread_error_comments_unavailable">Comments are unavailable</string>
     <string name="thread_error_send_comment">Unable to send comment</string>

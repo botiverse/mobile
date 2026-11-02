@@ -253,6 +253,8 @@ data class ExternalMessageAuthor(
     val installId: String? = null,
     val appRegistrationId: String? = null,
     val actorProjectionRevision: Long? = null,
+    /** The external workspace's name ("Acme" for a Slack workspace); the identity card's "From …". */
+    val workspaceName: String? = null,
     /**
      * The wire carried no display name (no `externalAuthor.displayName`, no `senderName`):
      * [displayName] is an English stand-in, and every surface that shows the sender name shows
