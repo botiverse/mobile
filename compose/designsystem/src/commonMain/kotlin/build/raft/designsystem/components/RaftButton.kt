@@ -504,6 +504,11 @@ fun RaftButton(
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
     trailingText: String? = null,
+    /**
+     * Touches up to 44dp round a button shorter than that count (raft-ui `after:` hit inset), with
+     * no change to layout: a 32dp button standing alone where a finger aims at it (a sheet's head).
+     */
+    widenTouchTarget: Boolean = false,
 ) {
     // raft-ui 0.23 (#727): stacked full width (a dialog footer that didn't fit, a sheet's
     // actions), a ghost text button takes the ink frame of `default`, so it reads as a button.
@@ -527,6 +532,7 @@ fun RaftButton(
         loading = loading,
         loadingLabel = loadingLabel,
         interactionSource = interactionSource,
+        widenTouchTarget = widenTouchTarget,
     ) {
         Row(
             modifier = Modifier.padding(start = start, end = end),

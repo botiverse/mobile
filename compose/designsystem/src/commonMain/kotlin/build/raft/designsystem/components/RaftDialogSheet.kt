@@ -129,6 +129,8 @@ private fun RaftDialogSheetSurfaceImpl(
                         enabled = commitEnabled,
                         loading = commitLoading,
                         leadingIcon = commitIcon,
+                        // The 32dp commit takes a finger's 44dp (Lagoon on #4161; the old footer was 44).
+                        widenTouchTarget = true,
                     )
                 }
             }
