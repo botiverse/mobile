@@ -27689,9 +27689,12 @@ private fun ThreadMessageCardContent(
                         muted = authorBadgeLabel != null,
                         delegatedBy = message.delegatedBy,
                         delegatedSurface = rowSurface,
-                        onClick = { openAuthorProfile("avatar") },
-                        onLongPress = { onMentionAuthor(message) },
-                        previewCard = authorPreviewCard
+                        // Selecting messages: the avatar toggles the row like its body does, so the
+                        // strip it shares with the checkbox's touch target selects too (Lagoon,
+                        // device check of #4091); no profile, mention or hover card meanwhile.
+                        onClick = if (shareSelectionActive) onToggleShareSelection else { { openAuthorProfile("avatar") } },
+                        onLongPress = if (shareSelectionActive) ({}) else { { onMentionAuthor(message) } },
+                        previewCard = authorPreviewCard.takeUnless { shareSelectionActive }
                     )
                 }
                 val contentModifier =
