@@ -479,17 +479,20 @@ private fun ThreadAgentFollower.avatarIdentity(): RaftMemberAvatarIdentity =
 /**
  * Task #20: the followers endpoint's `status` is the agent's DB lifecycle column (active /
  * inactive / stopped), not its live activity, and it is a one-shot snapshot — so it never
- * drives the dot or the caption. A follower on this server reads the live member-status
- * source the thread's message avatars read; a peer server's agent is not in this server's
- * store and shows no status (web ThreadAgentFollowers shows none for any follower).
+ * drives the dot or the caption. Every follower reads the live member-status source the
+ * thread's message avatars read: a peer server's agent in a joint channel too, from the
+ * channel's members (artin 2026-11-02: the web shows "Message received" under a peer agent;
+ * the app showed nothing).
  */
+@Suppress("UNUSED_PARAMETER")
 internal fun threadFollowerStatusResolver(
     agent: ThreadAgentFollower,
     liveResolver: RaftAgentStatusResolver,
-): RaftAgentStatusResolver = if (agent.isCurrentServer) liveResolver else EmptyRaftAgentStatusResolver
+): RaftAgentStatusResolver = liveResolver
 
 /** The follower row's indicator; null (no dot, no caption) until the live source has the agent. */
+@Suppress("UNUSED_PARAMETER")
 internal fun threadFollowerStatusIndicator(
     agent: ThreadAgentFollower,
     live: RaftAgentStatusIndicatorState?,
-): RaftAgentStatusIndicatorState? = live.takeIf { agent.isCurrentServer }
+): RaftAgentStatusIndicatorState? = live
