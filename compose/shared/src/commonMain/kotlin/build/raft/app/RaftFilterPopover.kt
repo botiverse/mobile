@@ -38,6 +38,8 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftMultiComboboxSheet
+import build.raft.designsystem.components.RaftComboboxPopover
+import build.raft.designsystem.components.RaftMultiComboboxPopover
 
 private const val RaftFilterPopoverWidthValue = 220f
 private const val RaftFilterPopoverVerticalOffsetValue = 8f
@@ -296,13 +298,13 @@ private fun RaftLookFilterPopover(
 
 /**
  * A searchable filter or picker opened from a chip (Tasks' channel / creator / assignee
- * filters and assignee picker, Search's sender and channel filters): on a phone, raft-ui
- * ComboboxSelect is a bottom sheet with search ([RaftMultiComboboxSheet] /
- * [RaftComboboxSheet]), not a popover under the chip. Same callbacks as
- * [RaftFilterPopover]: [onToggle] per changed id, [onClear] for "clear all"; a one-value
- * pick ([multiSelect] false) closes the sheet. An empty list says [status] when given (a
- * load in progress or its error), else "No matches". The short fixed lists (sort, time,
- * scope) stay anchored popovers.
+ * filters and assignee picker): on a phone, raft-ui ComboboxSelect is a bottom sheet with
+ * search ([RaftMultiComboboxSheet] / [RaftComboboxSheet]), not a popover under the chip.
+ * Same callbacks as [RaftFilterPopover]: [onToggle] per changed id, [onClear] for "clear
+ * all"; a one-value pick ([multiSelect] false) closes the sheet. An empty list says
+ * [status] when given (a load in progress or its error), else "No matches". The short fixed
+ * lists (sort, time, scope) stay anchored popovers. Search's sender and channel filters
+ * open [RaftFilterComboboxPopover] instead, as on the web.
  */
 @Composable
 internal fun RaftFilterSheet(
@@ -320,29 +322,14 @@ internal fun RaftFilterSheet(
     status: String? = null
 ) {
     val comboboxOptions = remember(options) { options.map { RaftComboboxOption(it.id, it.label) } }
-    val icons = remember(options) { options.mapNotNull { option -> option.icon?.let { option.id to it } }.toMap() }
-    val leading: (@Composable (RaftComboboxOption<String>) -> Unit)? =
-        if (icons.isEmpty()) {
-            null
-        } else {
-            { option -> icons[option.value]?.let { RaftSlotIcon(it, size = 16.dp) } }
-        }
-    val noMatches = stringResource(Res.string.common_no_matches)
-    val emptyFor: (String) -> String = { status ?: noMatches }
+    val leading = rememberRaftFilterOptionLeading(options)
+    val emptyFor = raftFilterEmptyText(status)
     val clearLabel = stringResource(Res.string.common_clear)
     if (multiSelect) {
         RaftMultiComboboxSheet(
             values = options.map { it.id }.filter { it in selectedIds },
             options = comboboxOptions,
-            onValuesChange = { next ->
-                if (next.isEmpty()) {
-                    onClear()
-                } else {
-                    val nextSet = next.toSet()
-                    (selectedIds - nextSet).forEach(onToggle)
-                    (nextSet - selectedIds).forEach(onToggle)
-                }
-            },
+            onValuesChange = { next -> applyRaftFilterSelection(selectedIds, next, onToggle, onClear) },
             onDismissRequest = onDismiss,
             title = title,
             emptyText = emptyFor,
@@ -369,4 +356,108 @@ internal fun RaftFilterSheet(
             optionLeading = leading
         )
     }
+}
+
+/**
+ * A searchable filter opened from a chip as the web's search filters open it (raft-ui
+ * Combobox popup, artin 2026-11-02: "small dropdowns" around here): a small popup under the
+ * chip, at any number of options, with the title, Clear and the search row at its top
+ * ([RaftComboboxPopover] / [RaftMultiComboboxPopover]); the search row takes focus only when
+ * tapped. Place it in the same `Box` as the chip, shown while [expanded]. Callbacks as
+ * [RaftFilterSheet]; a one-value pick ([multiSelect] false) closes the popup, a multiple
+ * pick keeps it open.
+ */
+@Composable
+internal fun RaftFilterComboboxPopover(
+    expanded: Boolean,
+    title: String,
+    searchPlaceholder: String,
+    searchText: String,
+    onSearchChange: (String) -> Unit,
+    options: List<RaftFilterOption>,
+    selectedIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+    multiSelect: Boolean = true,
+    showClear: Boolean = multiSelect,
+    status: String? = null
+) {
+    val comboboxOptions = remember(options) { options.map { RaftComboboxOption(it.id, it.label) } }
+    val leading = rememberRaftFilterOptionLeading(options)
+    val emptyFor = raftFilterEmptyText(status)
+    val clearLabel = stringResource(Res.string.common_clear)
+    if (multiSelect) {
+        RaftMultiComboboxPopover(
+            expanded = expanded,
+            values = options.map { it.id }.filter { it in selectedIds },
+            options = comboboxOptions,
+            onValuesChange = { next -> applyRaftFilterSelection(selectedIds, next, onToggle, onClear) },
+            onDismissRequest = onDismiss,
+            title = title,
+            emptyText = emptyFor,
+            query = searchText,
+            onQueryChange = onSearchChange,
+            searchPlaceholder = searchPlaceholder,
+            clearLabel = clearLabel.takeIf { showClear },
+            optionLeading = leading
+        )
+    } else {
+        RaftComboboxPopover(
+            expanded = expanded,
+            value = selectedIds.firstOrNull(),
+            options = comboboxOptions,
+            onValueChange = onToggle,
+            onDismissRequest = onDismiss,
+            title = title,
+            emptyText = emptyFor,
+            query = searchText,
+            onQueryChange = onSearchChange,
+            searchPlaceholder = searchPlaceholder,
+            onClear = onClear.takeIf { showClear },
+            clearLabel = clearLabel,
+            optionLeading = leading
+        )
+    }
+}
+
+/** An option's [RaftFilterOption.icon] as the combobox row's leading slot; null when no option has one. */
+@Composable
+private fun rememberRaftFilterOptionLeading(
+    options: List<RaftFilterOption>
+): (@Composable (RaftComboboxOption<String>) -> Unit)? {
+    val icons = remember(options) { options.mapNotNull { option -> option.icon?.let { option.id to it } }.toMap() }
+    val leading: (@Composable (RaftComboboxOption<String>) -> Unit)? =
+        if (icons.isEmpty()) {
+            null
+        } else {
+            { option -> icons[option.value]?.let { RaftSlotIcon(it, size = 16.dp) } }
+        }
+    return leading
+}
+
+/** What an empty list says: [status] (a load in progress or its error) when given, else "No matches". */
+@Composable
+private fun raftFilterEmptyText(status: String?): (String) -> String {
+    val noMatches = stringResource(Res.string.common_no_matches)
+    return { status ?: noMatches }
+}
+
+/** A multiple pick's new [next] values as the filter's callbacks: [onClear] when none is left, else [onToggle] per changed id. */
+private fun applyRaftFilterSelection(
+    selectedIds: Set<String>,
+    next: List<String>,
+    onToggle: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    if (next.isEmpty()) onClear() else raftFilterSelectionToggles(selectedIds, next).forEach(onToggle)
+}
+
+/**
+ * The ids whose membership differs between [selectedIds] and [next], in the order to toggle
+ * them: the ones dropped (in [selectedIds]'s order), then the ones added (in [next]'s order).
+ */
+internal fun raftFilterSelectionToggles(selectedIds: Set<String>, next: List<String>): List<String> {
+    val nextSet = next.toSet()
+    return selectedIds.filter { it !in nextSet } + next.distinct().filter { it !in selectedIds }
 }

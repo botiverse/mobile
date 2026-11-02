@@ -2128,7 +2128,7 @@
     <string name="search_empty_query_detail">別のキーワードや短いフレーズをお試しください。</string>
     <string name="search_empty_filters_detail">別のフィルターの組み合わせをお試しください。</string>
     <string name="search_section_channels_dms">チャンネルと DM</string>
-    <string name="search_section_entities">チャンネル、メンバー、コンピューター</string>
+    <string name="search_section_entities">サーバー内の項目</string>
     <string name="search_section_messages">メッセージ</string>
     <string name="search_action_load_more_results">さらに結果を読み込む</string>
     <string name="search_filter_scope">範囲</string>

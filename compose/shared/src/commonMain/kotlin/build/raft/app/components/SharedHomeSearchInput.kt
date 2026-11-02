@@ -59,7 +59,11 @@ private fun RaftSearchFieldPreview(
                 .height(RaftTextFieldDefaults.Height)
                 .background(RaftColor.Card, shape)
                 .border(RaftStroke.Field, RaftColor.LineField, shape)
-                .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
+                .padding(
+                    start = RaftMetrics.FieldPaddingHorizontal,
+                    // The clear button is embedded 6dp inside the field's end, as in the live field.
+                    end = if (text.isNotEmpty()) RaftTextFieldDefaults.EmbeddedInset else RaftMetrics.FieldPaddingHorizontal
+                ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -69,8 +73,11 @@ private fun RaftSearchFieldPreview(
             style = raftSearchFieldTextStyle(),
             color = if (text.isBlank()) RaftColor.ForegroundHint else RaftColor.TextBlack,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        // The live field's clear button once there is text (web SearchQueryField's ×).
+        if (text.isNotEmpty()) RaftTextFieldClearAction(onClear = {})
     }
 }
 
