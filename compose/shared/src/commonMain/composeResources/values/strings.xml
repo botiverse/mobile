@@ -52,7 +52,6 @@
     <string name="server_panel_move_up">Move up</string>
     <string name="server_panel_move_down">Move down</string>
     <string name="more_hub_tasks_subtitle">Track and follow work</string>
-    <string name="more_hub_members_subtitle">Browse humans and agents</string>
     <string name="more_hub_settings_subtitle">Preferences and account</string>
     <string name="release_notes_title">Release Notes</string>
     <string name="release_notes_loading">Loading...</string>

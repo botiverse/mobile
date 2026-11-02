@@ -191,13 +191,22 @@ internal fun RaftTopPageHeader(
             if (titleContent != null) {
                 titleContent.invoke(this)
             } else {
+                val titleTapModifier =
+                    if (onTitleClick != null) {
+                        // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onTitleClick,
+                        )
+                    } else {
+                        // No title action: no clickable at all. A disabled clickable still takes the
+                        // tap, so the header's own [modifier] click (Settings' 7-tap Developer entry)
+                        // never fired from the title.
+                        Modifier
+                    }
                 Column(
-                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
-                    modifier = Modifier.weight(1f).clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = onTitleClick != null
-                    ) { onTitleClick?.invoke() },
+                    modifier = Modifier.weight(1f).then(titleTapModifier),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(

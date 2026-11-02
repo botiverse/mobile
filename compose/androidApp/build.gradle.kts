@@ -634,6 +634,8 @@ android {
         buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "false")
         buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "true")
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
+        // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for Alpha testers only.
+        buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "false")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
@@ -661,6 +663,7 @@ android {
             buildConfigField("Boolean", "SCREENSHOT_FEEDBACK_ENABLED", "true")
             buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
+            buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
             buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
             buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
             if (raftAlphaOptimized) {

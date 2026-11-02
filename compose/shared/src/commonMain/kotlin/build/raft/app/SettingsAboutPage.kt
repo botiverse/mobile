@@ -38,8 +38,11 @@ internal fun SharedSettingsAboutContent(
     onCopyEnvironmentInfo: () -> Unit,
     onOpenApiEnvironment: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onSendFeedback: (() -> Unit)? = null
+    onSendFeedback: (() -> Unit)? = null,
+    /** Settings › Developer, opened by tapping the version row [SettingsDeveloperUnlockTapCount] times. */
+    onOpenDeveloper: (() -> Unit)? = null
 ) {
+    val versionTaps = remember { SettingsDeveloperUnlockTaps() }
     val snapshot =
         when (state) {
             is ScreenLoadState.Content -> state.data
@@ -109,11 +112,13 @@ internal fun SharedSettingsAboutContent(
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
             SETTINGS_ABOUT_FEEDBACK_ACTION -> onSendFeedback?.invoke()
+            SETTINGS_ABOUT_VERSION_ROW -> if (onOpenDeveloper != null && versionTaps.tap()) onOpenDeveloper()
         }
     }
 }
 
 internal const val SETTINGS_ABOUT_FEEDBACK_ACTION = "sendFeedback"
+internal const val SETTINGS_ABOUT_VERSION_ROW = "version"
 internal const val SETTINGS_ABOUT_SOURCE_CODE_ACTION = "openSourceCode"
 
 /** The app's own source repository, opened from Settings › About › Source code. */
@@ -294,7 +299,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                     rows =
                         listOf(
                             RaftSharedSettingsRow("appName", RaftLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
-                            RaftSharedSettingsRow("version", RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = versionLabel),
+                            RaftSharedSettingsRow(SETTINGS_ABOUT_VERSION_ROW, RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = versionLabel, hiddenTap = true),
                             RaftSharedSettingsRow("buildTime", RaftLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
                             RaftSharedSettingsRow("gitCommit", RaftLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
                             RaftSharedSettingsRow("package", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)

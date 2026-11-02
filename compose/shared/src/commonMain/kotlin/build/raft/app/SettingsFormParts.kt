@@ -29,6 +29,8 @@ import build.raft.app.components.raftControlSurface
 import build.raft.app.data.SharedSettingsActionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,7 +87,12 @@ internal data class RaftSharedSettingsRow(
     /** When non-blank and a copy handler is wired, long-pressing the row copies this value. */
     val copyValue: String = "",
     /** The row takes people to another site: it ends in ↗ (raft-ui 0.26, #758). */
-    val external: Boolean = false
+    val external: Boolean = false,
+    /**
+     * A hidden tap target on a row that does not look like a control (About's version row: 7 taps
+     * open Developer): taps reach the action with no press wash, the row keeps its [enabled] look.
+     */
+    val hiddenTap: Boolean = false
 )
 
 /** A settings row's "Beta" (or similar) mark: the raft-ui solid `primary` Badge. */
@@ -399,7 +406,7 @@ private fun SharedSettingsRow(
                         },
                         onTap = {
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                                if (callbacks.row.enabled) {
+                                if (callbacks.row.enabled || callbacks.row.hiddenTap) {
                                     callbacks.onAction(
                                         callbacks.row.key,
                                         callbacks.row.value.takeIf { it.isNotBlank() }
@@ -413,6 +420,10 @@ private fun SharedSettingsRow(
                             }
                         }
                     )
+                }
+            } else if (row.hiddenTap && !row.enabled) {
+                Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    onAction(row.key, row.value.takeIf { it.isNotBlank() })
                 }
             } else {
                 Modifier.clickable(enabled = row.enabled) { onAction(row.key, row.value.takeIf { it.isNotBlank() }) }
