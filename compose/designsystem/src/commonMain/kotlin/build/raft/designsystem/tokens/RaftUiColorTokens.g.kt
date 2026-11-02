@@ -2,10 +2,10 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.54.0/dist/styles.css sha256=1dfba2b73642ba49
-//   npm:@botiverse/raft-ui@0.54.0/dist/foundation.css sha256=b298725e92892e88
-//   npm:@botiverse/raft-ui@0.54.0/dist/themes.css sha256=d676bb4b3ad783cf
-//   botiverse/slock@dc7aa1fddc4543d60993311949ee86ca1f7166e0:packages/web/src/index.css sha256=ef85016bf7575075
+//   npm:@botiverse/raft-ui@0.57.0/dist/styles.css sha256=59e968f723234929
+//   npm:@botiverse/raft-ui@0.57.0/dist/foundation.css sha256=8ae8e2a7ee907cca
+//   npm:@botiverse/raft-ui@0.57.0/dist/themes.css sha256=d676bb4b3ad783cf
+//   botiverse/slock@a3669d15a0852a912c0c146055c02fcd3e3720ae:packages/web/src/index.css sha256=ef85016bf7575075
 
 package build.raft.designsystem.tokens
 
@@ -13,32 +13,6 @@ import androidx.compose.ui.graphics.Color
 
 /** Theme-invariant Web colours: raw ramps, brand colours and the Tailwind palette. */
 object RaftUiPalette {
-    /** `--accent-100` */
-    val accent100 = Color(0xFFFFE1E8)
-    /** `--accent-200` */
-    val accent200 = Color(0xFFFEC1D2)
-    /** `--accent-300` */
-    val accent300 = Color(0xFFFEA0BC)
-    /** `--accent-400` */
-    val accent400 = Color(0xFFFF99C3)
-    /** `--accent-50` */
-    val accent50 = Color(0xFFFFF0F4)
-    /** `--accent-500` */
-    val accent500 = Color(0xFFFE7DA8)
-    /** `--accent-600` */
-    val accent600 = Color(0xFFD4086F)
-    /** `--accent-700` */
-    val accent700 = Color(0xFF9F0551)
-    /** `--accent-800` */
-    val accent800 = Color(0xFF700238)
-    /** `--accent-900` */
-    val accent900 = Color(0xFF42011E)
-    /** `--accent-950` */
-    val accent950 = Color(0xFF2F0014)
-    /** `--accent-active` */
-    val accentActive = Color(0xFFE88BB1)
-    /** `--accent-hover` */
-    val accentHover = Color(0xFFE88BB1)
     /** `--attention-100` */
     val attention100 = Color(0xFFFFE1E8)
     /** `--attention-200` */
@@ -85,8 +59,6 @@ object RaftUiPalette {
     val brand900 = Color(0xFF2D2300)
     /** `--brand-950` */
     val brand950 = Color(0xFF1C1500)
-    /** `--color-accent` */
-    val accent = Color(0xFFFF99C3)
     /** `--color-amber-100` */
     val amber100 = Color(0xFFFEF3C6)
     /** `--color-amber-200` */
@@ -135,222 +107,6 @@ object RaftUiPalette {
     val blue900 = Color(0xFF1C398E)
     /** `--color-blue-950` */
     val blue950 = Color(0xFF162456)
-    /** `--color-brutal-cream` */
-    val brutalCream = Color(0xFFFFFAEF)
-    /** `--color-brutal-cream-100` */
-    val brutalCream100 = Color(0xFFFFFCF5)
-    /** `--color-brutal-cream-200` */
-    val brutalCream200 = Color(0xFFFFFAEF)
-    /** `--color-brutal-cream-300` */
-    val brutalCream300 = Color(0xFFF9ECCF)
-    /** `--color-brutal-cream-400` */
-    val brutalCream400 = Color(0xFFEBD38F)
-    /** `--color-brutal-cream-50` */
-    val brutalCream50 = Color(0xFFFFFDF9)
-    /** `--color-brutal-cream-500` */
-    val brutalCream500 = Color(0xFFD2B100)
-    /** `--color-brutal-cream-600` */
-    val brutalCream600 = Color(0xFFA78C00)
-    /** `--color-brutal-cream-700` */
-    val brutalCream700 = Color(0xFF7C6800)
-    /** `--color-brutal-cream-800` */
-    val brutalCream800 = Color(0xFF554500)
-    /** `--color-brutal-cream-900` */
-    val brutalCream900 = Color(0xFF312700)
-    /** `--color-brutal-cream-950` */
-    val brutalCream950 = Color(0xFF191300)
-    /** `--color-brutal-cyan` */
-    val brutalCyan = Color(0xFF28CCF3)
-    /** `--color-brutal-cyan-100` */
-    val brutalCyan100 = Color(0xFFD7F2FE)
-    /** `--color-brutal-cyan-200` */
-    val brutalCyan200 = Color(0xFFA9E6FE)
-    /** `--color-brutal-cyan-300` */
-    val brutalCyan300 = Color(0xFF68DAFD)
-    /** `--color-brutal-cyan-400` */
-    val brutalCyan400 = Color(0xFF28CCF3)
-    /** `--color-brutal-cyan-50` */
-    val brutalCyan50 = Color(0xFFECF9FF)
-    /** `--color-brutal-cyan-500` */
-    val brutalCyan500 = Color(0xFF1EA6C6)
-    /** `--color-brutal-cyan-600` */
-    val brutalCyan600 = Color(0xFF15849F)
-    /** `--color-brutal-cyan-700` */
-    val brutalCyan700 = Color(0xFF0E6276)
-    /** `--color-brutal-cyan-800` */
-    val brutalCyan800 = Color(0xFF06414F)
-    /** `--color-brutal-cyan-900` */
-    val brutalCyan900 = Color(0xFF02252F)
-    /** `--color-brutal-cyan-950` */
-    val brutalCyan950 = Color(0xFF01161C)
-    /** `--color-brutal-lavender` */
-    val brutalLavender = Color(0xFFBBAFE6)
-    /** `--color-brutal-lime` */
-    val brutalLime = Color(0xFFA9D877)
-    /** `--color-brutal-lime-100` */
-    val brutalLime100 = Color(0xFFDCFAC1)
-    /** `--color-brutal-lime-200` */
-    val brutalLime200 = Color(0xFFC0F588)
-    /** `--color-brutal-lime-300` */
-    val brutalLime300 = Color(0xFFB4E67F)
-    /** `--color-brutal-lime-400` */
-    val brutalLime400 = Color(0xFFA9D877)
-    /** `--color-brutal-lime-50` */
-    val brutalLime50 = Color(0xFFF1FDE9)
-    /** `--color-brutal-lime-500` */
-    val brutalLime500 = Color(0xFF8AB261)
-    /** `--color-brutal-lime-600` */
-    val brutalLime600 = Color(0xFF6B8B4A)
-    /** `--color-brutal-lime-700` */
-    val brutalLime700 = Color(0xFF506836)
-    /** `--color-brutal-lime-800` */
-    val brutalLime800 = Color(0xFF344522)
-    /** `--color-brutal-lime-900` */
-    val brutalLime900 = Color(0xFF1C2711)
-    /** `--color-brutal-lime-950` */
-    val brutalLime950 = Color(0xFF101808)
-    /** `--color-brutal-orange` */
-    val brutalOrange = Color(0xFFF8A16F)
-    /** `--color-brutal-orange-100` */
-    val brutalOrange100 = Color(0xFFFDE6DE)
-    /** `--color-brutal-orange-200` */
-    val brutalOrange200 = Color(0xFFFBD1C0)
-    /** `--color-brutal-orange-300` */
-    val brutalOrange300 = Color(0xFFF9B899)
-    /** `--color-brutal-orange-400` */
-    val brutalOrange400 = Color(0xFFF8A16F)
-    /** `--color-brutal-orange-50` */
-    val brutalOrange50 = Color(0xFFFEF5F1)
-    /** `--color-brutal-orange-500` */
-    val brutalOrange500 = Color(0xFFDD7E34)
-    /** `--color-brutal-orange-600` */
-    val brutalOrange600 = Color(0xFFAD6127)
-    /** `--color-brutal-orange-700` */
-    val brutalOrange700 = Color(0xFF83481A)
-    /** `--color-brutal-orange-800` */
-    val brutalOrange800 = Color(0xFF5B310F)
-    /** `--color-brutal-orange-900` */
-    val brutalOrange900 = Color(0xFF331905)
-    /** `--color-brutal-orange-950` */
-    val brutalOrange950 = Color(0xFF220E02)
-    /** `--color-brutal-pink` */
-    val brutalPink = Color(0xFFFE7DA8)
-    /** `--color-brutal-pink-100` */
-    val brutalPink100 = Color(0xFFFFE1E8)
-    /** `--color-brutal-pink-200` */
-    val brutalPink200 = Color(0xFFFEC1D2)
-    /** `--color-brutal-pink-300` */
-    val brutalPink300 = Color(0xFFFEA0BC)
-    /** `--color-brutal-pink-400` */
-    val brutalPink400 = Color(0xFFFE7DA8)
-    /** `--color-brutal-pink-50` */
-    val brutalPink50 = Color(0xFFFFF0F4)
-    /** `--color-brutal-pink-500` */
-    val brutalPink500 = Color(0xFFFE2F8B)
-    /** `--color-brutal-pink-600` */
-    val brutalPink600 = Color(0xFFD4086F)
-    /** `--color-brutal-pink-700` */
-    val brutalPink700 = Color(0xFF9F0551)
-    /** `--color-brutal-pink-800` */
-    val brutalPink800 = Color(0xFF700238)
-    /** `--color-brutal-pink-900` */
-    val brutalPink900 = Color(0xFF42011E)
-    /** `--color-brutal-pink-950` */
-    val brutalPink950 = Color(0xFF2F0014)
-    /** `--color-brutal-purple-100` */
-    val brutalPurple100 = Color(0xFFEFECF9)
-    /** `--color-brutal-purple-200` */
-    val brutalPurple200 = Color(0xFFDCD7F2)
-    /** `--color-brutal-purple-300` */
-    val brutalPurple300 = Color(0xFFCCC4EC)
-    /** `--color-brutal-purple-400` */
-    val brutalPurple400 = Color(0xFFBBAFE6)
-    /** `--color-brutal-purple-50` */
-    val brutalPurple50 = Color(0xFFF7F6FC)
-    /** `--color-brutal-purple-500` */
-    val brutalPurple500 = Color(0xFF9D8ADA)
-    /** `--color-brutal-purple-600` */
-    val brutalPurple600 = Color(0xFF7F62CB)
-    /** `--color-brutal-purple-700` */
-    val brutalPurple700 = Color(0xFF6341B0)
-    /** `--color-brutal-purple-800` */
-    val brutalPurple800 = Color(0xFF442B7C)
-    /** `--color-brutal-purple-900` */
-    val brutalPurple900 = Color(0xFF251548)
-    /** `--color-brutal-purple-950` */
-    val brutalPurple950 = Color(0xFF170C31)
-    /** `--color-brutal-red` */
-    val brutalRed = Color(0xFFF97264)
-    /** `--color-brutal-red-100` */
-    val brutalRed100 = Color(0xFFFDDEDD)
-    /** `--color-brutal-red-200` */
-    val brutalRed200 = Color(0xFFFBBDB9)
-    /** `--color-brutal-red-300` */
-    val brutalRed300 = Color(0xFFFA9991)
-    /** `--color-brutal-red-400` */
-    val brutalRed400 = Color(0xFFF97264)
-    /** `--color-brutal-red-50` */
-    val brutalRed50 = Color(0xFFFEF1F0)
-    /** `--color-brutal-red-500` */
-    val brutalRed500 = Color(0xFFEB4423)
-    /** `--color-brutal-red-600` */
-    val brutalRed600 = Color(0xFFBB3419)
-    /** `--color-brutal-red-700` */
-    val brutalRed700 = Color(0xFF8E2510)
-    /** `--color-brutal-red-800` */
-    val brutalRed800 = Color(0xFF621708)
-    /** `--color-brutal-red-900` */
-    val brutalRed900 = Color(0xFF3E0B03)
-    /** `--color-brutal-red-950` */
-    val brutalRed950 = Color(0xFF280501)
-    /** `--color-brutal-stone` */
-    val brutalStone = Color(0xFFC0B9B1)
-    /** `--color-brutal-stone-100` */
-    val brutalStone100 = Color(0xFFEFEDEB)
-    /** `--color-brutal-stone-200` */
-    val brutalStone200 = Color(0xFFE0DCD7)
-    /** `--color-brutal-stone-300` */
-    val brutalStone300 = Color(0xFFD2CBC2)
-    /** `--color-brutal-stone-400` */
-    val brutalStone400 = Color(0xFFC0B9B1)
-    /** `--color-brutal-stone-50` */
-    val brutalStone50 = Color(0xFFF7F6F5)
-    /** `--color-brutal-stone-500` */
-    val brutalStone500 = Color(0xFF9D9891)
-    /** `--color-brutal-stone-600` */
-    val brutalStone600 = Color(0xFF7B7671)
-    /** `--color-brutal-stone-700` */
-    val brutalStone700 = Color(0xFF5D5955)
-    /** `--color-brutal-stone-800` */
-    val brutalStone800 = Color(0xFF3E3B38)
-    /** `--color-brutal-stone-900` */
-    val brutalStone900 = Color(0xFF23211F)
-    /** `--color-brutal-stone-950` */
-    val brutalStone950 = Color(0xFF141312)
-    /** `--color-brutal-yellow` */
-    val brutalYellow = Color(0xFFFFD441)
-    /** `--color-brutal-yellow-100` */
-    val brutalYellow100 = Color(0xFFFFF6E3)
-    /** `--color-brutal-yellow-200` */
-    val brutalYellow200 = Color(0xFFFFE9B9)
-    /** `--color-brutal-yellow-300` */
-    val brutalYellow300 = Color(0xFFFFDF91)
-    /** `--color-brutal-yellow-400` */
-    val brutalYellow400 = Color(0xFFFFD441)
-    /** `--color-brutal-yellow-50` */
-    val brutalYellow50 = Color(0xFFFFF9ED)
-    /** `--color-brutal-yellow-500` */
-    val brutalYellow500 = Color(0xFFD3AD03)
-    /** `--color-brutal-yellow-600` */
-    val brutalYellow600 = Color(0xFFA78802)
-    /** `--color-brutal-yellow-700` */
-    val brutalYellow700 = Color(0xFF7A6300)
-    /** `--color-brutal-yellow-800` */
-    val brutalYellow800 = Color(0xFF534300)
-    /** `--color-brutal-yellow-900` */
-    val brutalYellow900 = Color(0xFF2D2300)
-    /** `--color-brutal-yellow-950` */
-    val brutalYellow950 = Color(0xFF1C1500)
     /** `--color-cyan-100` */
     val cyan100 = Color(0xFFCEFAFE)
     /** `--color-cyan-200` */
@@ -721,8 +477,6 @@ object RaftUiPalette {
     val rose900 = Color(0xFF8B0836)
     /** `--color-rose-950` */
     val rose950 = Color(0xFF4D0218)
-    /** `--color-secondary` */
-    val secondary = Color(0xFFC0B9B1)
     /** `--color-sky-100` */
     val sky100 = Color(0xFFDFF2FE)
     /** `--color-sky-200` */
@@ -767,8 +521,6 @@ object RaftUiPalette {
     val slate900 = Color(0xFF0F172B)
     /** `--color-slate-950` */
     val slate950 = Color(0xFF020618)
-    /** `--color-soft-signal` */
-    val softSignal = Color(0xFFFFD441)
     /** `--color-stone-100` */
     val stone100 = Color(0xFFF5F5F4)
     /** `--color-stone-200` */
@@ -1131,48 +883,6 @@ object RaftUiPalette {
     val presenceOffline = Color(0xFFC0B9B1)
     /** `--presence-online` */
     val presenceOnline = Color(0xFFA9D877)
-    /** `--primary-100` */
-    val primary100 = Color(0xFFFFF6E3)
-    /** `--primary-200` */
-    val primary200 = Color(0xFFFFE9B9)
-    /** `--primary-300` */
-    val primary300 = Color(0xFFFFDF91)
-    /** `--primary-50` */
-    val primary50 = Color(0xFFFFF9ED)
-    /** `--primary-500` */
-    val primary500 = Color(0xFFD3AD03)
-    /** `--primary-600` */
-    val primary600 = Color(0xFFA78802)
-    /** `--primary-700` */
-    val primary700 = Color(0xFF7A6300)
-    /** `--primary-800` */
-    val primary800 = Color(0xFF534300)
-    /** `--primary-900` */
-    val primary900 = Color(0xFF2D2300)
-    /** `--primary-950` */
-    val primary950 = Color(0xFF1C1500)
-    /** `--secondary-100` */
-    val secondary100 = Color(0xFFEFEDEB)
-    /** `--secondary-200` */
-    val secondary200 = Color(0xFFE0DCD7)
-    /** `--secondary-300` */
-    val secondary300 = Color(0xFFD2CBC2)
-    /** `--secondary-400` */
-    val secondary400 = Color(0xFFC0B9B1)
-    /** `--secondary-50` */
-    val secondary50 = Color(0xFFF7F6F5)
-    /** `--secondary-500` */
-    val secondary500 = Color(0xFF9D9891)
-    /** `--secondary-600` */
-    val secondary600 = Color(0xFF7B7671)
-    /** `--secondary-700` */
-    val secondary700 = Color(0xFF5D5955)
-    /** `--secondary-800` */
-    val secondary800 = Color(0xFF3E3B38)
-    /** `--secondary-900` */
-    val secondary900 = Color(0xFF23211F)
-    /** `--secondary-950` */
-    val secondary950 = Color(0xFF141312)
     /** `--selected` */
     val selected = Color(0xFFFFD440)
     /** `--sticker-ink` */
@@ -1183,8 +893,6 @@ object RaftUiPalette {
     val stickerMedium = Color(0x1A141111)
     /** `--sticker-paper` */
     val stickerPaper = Color(0xFFFFFFFF)
-    /** `--sticker-pressed` */
-    val stickerPressed = Color(0x1A141111)
     /** `--success` */
     val success = Color(0xFFA9D877)
     /** `--success-foreground` */
@@ -1239,10 +947,6 @@ enum class RaftThemeId(val wire: String, val isPro: Boolean) {
  * bounded by the JVM's 255-slot parameter limit.
  */
 sealed class RaftUiThemeColors {
-    /** `--accent-soft` */
-    abstract val accentSoft: Color
-    /** `--accent-strong` */
-    abstract val accentStrong: Color
     /** `--attention-soft` */
     abstract val attentionSoft: Color
     /** `--attention-strong` */
@@ -1267,8 +971,8 @@ sealed class RaftUiThemeColors {
     abstract val codeForeground: Color
     /** `--color-code-surface` */
     abstract val codeSurface: Color
-    /** `--color-primary` */
-    abstract val primary: Color
+    /** `--color-fill-row-hover` */
+    abstract val fillRowHover: Color
     /** `--danger-muted` */
     abstract val dangerMuted: Color
     /** `--danger-soft` */
@@ -1283,20 +987,10 @@ sealed class RaftUiThemeColors {
     abstract val fillCellSelected: Color
     /** `--fill-frame-medium` */
     abstract val fillFrameMedium: Color
-    /** `--fill-frame-pressed` */
-    abstract val fillFramePressed: Color
     /** `--fill-medium` */
     abstract val fillMedium: Color
-    /** `--fill-message-hover` */
-    abstract val fillMessageHover: Color
     /** `--fill-muted` */
     abstract val fillMuted: Color
-    /** `--fill-pressed` */
-    abstract val fillPressed: Color
-    /** `--fill-row-hover` */
-    abstract val fillRowHover: Color
-    /** `--fill-row-open` */
-    abstract val fillRowOpen: Color
     /** `--fill-strong` */
     abstract val fillStrong: Color
     /** `--fill-subtle` */
@@ -1311,8 +1005,6 @@ sealed class RaftUiThemeColors {
     abstract val foregroundHint: Color
     /** `--foreground-hover` */
     abstract val foregroundHover: Color
-    /** `--foreground-icon` */
-    abstract val foregroundIcon: Color
     /** `--foreground-inverse` */
     abstract val foregroundInverse: Color
     /** `--foreground-link` */
@@ -1329,10 +1021,6 @@ sealed class RaftUiThemeColors {
     abstract val foregroundOnHud: Color
     /** `--foreground-on-hud-muted` */
     abstract val foregroundOnHudMuted: Color
-    /** `--foreground-placeholder` */
-    abstract val foregroundPlaceholder: Color
-    /** `--foreground-strong` */
-    abstract val foregroundStrong: Color
     /** `--inactive-soft` */
     abstract val inactiveSoft: Color
     /** `--info-muted` */
@@ -1367,8 +1055,6 @@ sealed class RaftUiThemeColors {
     abstract val layerBackdropNested: Color
     /** `--layer-canvas` */
     abstract val layerCanvas: Color
-    /** `--layer-canvas-muted` */
-    abstract val layerCanvasMuted: Color
     /** `--layer-card` */
     abstract val layerCard: Color
     /** `--layer-code` */
@@ -1379,20 +1065,12 @@ sealed class RaftUiThemeColors {
     abstract val layerFrameActive: Color
     /** `--layer-hud` */
     abstract val layerHud: Color
-    /** `--layer-hud-foreground` */
-    abstract val layerHudForeground: Color
-    /** `--layer-inset` */
-    abstract val layerInset: Color
-    /** `--layer-panel` */
-    abstract val layerPanel: Color
     /** `--layer-popover` */
     abstract val layerPopover: Color
     /** `--layer-sidebar` */
     abstract val layerSidebar: Color
     /** `--layer-veil` */
     abstract val layerVeil: Color
-    /** `--line` */
-    abstract val line: Color
     /** `--line-field` */
     abstract val lineField: Color
     /** `--line-field-hover` */
@@ -1401,28 +1079,12 @@ sealed class RaftUiThemeColors {
     abstract val lineFrameActive: Color
     /** `--line-hairline` */
     abstract val lineHairline: Color
-    /** `--line-muted` */
-    abstract val lineMuted: Color
     /** `--line-seam` */
     abstract val lineSeam: Color
     /** `--line-strong` */
     abstract val lineStrong: Color
     /** `--presence-busy-soft` */
     abstract val presenceBusySoft: Color
-    /** `--primary-400` */
-    abstract val primary400: Color
-    /** `--primary-active` */
-    abstract val primaryActive: Color
-    /** `--primary-edge` */
-    abstract val primaryEdge: Color
-    /** `--primary-glow` */
-    abstract val primaryGlow: Color
-    /** `--primary-hover` */
-    abstract val primaryHover: Color
-    /** `--primary-soft` */
-    abstract val primarySoft: Color
-    /** `--primary-strong` */
-    abstract val primaryStrong: Color
     /** `--read-mark` */
     abstract val readMark: Color
     /** `--selection` */
@@ -1474,8 +1136,6 @@ sealed class RaftUiThemeColors {
 
     /** raft-ui light mode, Raft (default) theme values; other themes override their differences. */
     sealed class Light : RaftUiThemeColors() {
-        override val accentSoft = Color(0xFFFFD6E2)
-        override val accentStrong = Color(0xFFC00064)
         override val attentionSoft = Color(0xFFFFD6E2)
         override val attentionStrong = Color(0xFFC00064)
         override val brand400 = Color(0xFFFFD440)
@@ -1488,7 +1148,7 @@ sealed class RaftUiThemeColors {
         override val brand = Color(0xFFFFD440)
         override val codeForeground = Color(0xFF24292E)
         override val codeSurface = Color(0xFFFFFFFF)
-        override val primary = Color(0xFFFFD440)
+        override val fillRowHover = Color(0x0A141111)
         override val dangerMuted = Color(0xFFFBBDB9)
         override val dangerSoft = Color(0xFFFDDEDD)
         override val dangerStrong = Color(0xFFB5321A)
@@ -1496,13 +1156,8 @@ sealed class RaftUiThemeColors {
         override val fillCellPress = Color(0x14141111)
         override val fillCellSelected = Color(0xFFD7F2FE)
         override val fillFrameMedium = Color(0x1A141111)
-        override val fillFramePressed = Color(0x1A141111)
         override val fillMedium = Color(0x14141111)
-        override val fillMessageHover = Color(0x0A141111)
         override val fillMuted = Color(0xFFF3F3F3)
-        override val fillPressed = Color(0x14141111)
-        override val fillRowHover = Color(0x0A141111)
-        override val fillRowOpen = Color(0x0A141111)
         override val fillStrong = Color(0xFFEAEAEA)
         override val fillSubtle = Color(0x0A141111)
         override val foreground = Color(0xFF141111)
@@ -1510,7 +1165,6 @@ sealed class RaftUiThemeColors {
         override val foregroundDisabled = Color(0x4D141111)
         override val foregroundHint = Color(0x9E141111)
         override val foregroundHover = Color(0xFF141111)
-        override val foregroundIcon = Color(0xAD141111)
         override val foregroundInverse = Color(0xFFFFFFFF)
         override val foregroundLink = Color(0xFF184F95)
         override val foregroundMuted = Color(0xAD141111)
@@ -1519,8 +1173,6 @@ sealed class RaftUiThemeColors {
         override val foregroundOnFrameMuted = Color(0xFF564919)
         override val foregroundOnHud = Color(0xFFF3F3F5)
         override val foregroundOnHudMuted = Color(0xB2F3F3F5)
-        override val foregroundPlaceholder = Color(0x9E141111)
-        override val foregroundStrong = Color(0xFF141111)
         override val inactiveSoft = Color(0xFFE0DCD7)
         override val infoMuted = Color(0xFFA9E6FE)
         override val infoSoft = Color(0xFFD7F2FE)
@@ -1538,34 +1190,21 @@ sealed class RaftUiThemeColors {
         override val layerBackdrop = Color(0xA6000000)
         override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFFFFFFFF)
-        override val layerCanvasMuted = Color(0xFFFFFAEF)
         override val layerCard = Color(0xFFFFFFFF)
         override val layerCode = Color(0xFFFFFFFF)
         override val layerFrame = Color(0xFFFFD440)
         override val layerFrameActive = Color(0xFFFFFFFF)
         override val layerHud = Color(0xFF252429)
-        override val layerHudForeground = Color(0xFFF3F3F5)
-        override val layerInset = Color(0xFFF3F3F3)
-        override val layerPanel = Color(0xFFFFFFFF)
         override val layerPopover = Color(0xFFFFFFFF)
         override val layerSidebar = Color(0xFFFFFAEF)
         override val layerVeil = Color(0xCCFFFFFF)
-        override val line = Color(0x73141111)
         override val lineField = Color(0xFF141111)
         override val lineFieldHover = Color(0xFF141111)
         override val lineFrameActive = Color(0xFF141111)
         override val lineHairline = Color(0x26141111)
-        override val lineMuted = Color(0x26141111)
         override val lineSeam = Color(0x73141111)
         override val lineStrong = Color(0xFF141111)
         override val presenceBusySoft = Color(0xFFFFF0BD)
-        override val primary400 = Color(0xFFFFD440)
-        override val primaryActive = Color(0xFFE8C13B)
-        override val primaryEdge = Color(0xFF141111)
-        override val primaryGlow = Color(0xFFFFD440)
-        override val primaryHover = Color(0xFFE8C13B)
-        override val primarySoft = Color(0xFFFFF0BD)
-        override val primaryStrong = Color(0xFF564919)
         override val readMark = Color(0xFF506836)
         override val selection = Color(0xFFFFF0BD)
         override val stickerEdge = Color(0x00141111)
@@ -1594,8 +1233,6 @@ sealed class RaftUiThemeColors {
 
     /** raft-ui dark mode, Raft (default) theme values; other themes override their differences. */
     sealed class Dark : RaftUiThemeColors() {
-        override val accentSoft = Color(0x29D0457C)
-        override val accentStrong = Color(0xFFFFACC7)
         override val attentionSoft = Color(0x29D0457C)
         override val attentionStrong = Color(0xFFFFACC7)
         override val brand400 = Color(0xFFFFD440)
@@ -1608,7 +1245,7 @@ sealed class RaftUiThemeColors {
         override val brand = Color(0xFFFFD440)
         override val codeForeground = Color(0xFFF0F3F6)
         override val codeSurface = Color(0xFF0A0C10)
-        override val primary = Color(0xFFFFD440)
+        override val fillRowHover = Color(0x08FAFAF7)
         override val dangerMuted = Color(0x4CD33C30)
         override val dangerSoft = Color(0x2EC93126)
         override val dangerStrong = Color(0xFFF8A49D)
@@ -1616,13 +1253,8 @@ sealed class RaftUiThemeColors {
         override val fillCellPress = Color(0x1FFAFAF7)
         override val fillCellSelected = Color(0x61005F7A)
         override val fillFrameMedium = Color(0x0FFAFAF7)
-        override val fillFramePressed = Color(0x0FFAFAF7)
         override val fillMedium = Color(0x11FAFAF7)
-        override val fillMessageHover = Color(0x08FAFAF7)
         override val fillMuted = Color(0xFF32322F)
-        override val fillPressed = Color(0x11FAFAF7)
-        override val fillRowHover = Color(0x08FAFAF7)
-        override val fillRowOpen = Color(0x08FAFAF7)
         override val fillStrong = Color(0xFF3A3A37)
         override val fillSubtle = Color(0x08FAFAF7)
         override val foreground = Color(0xFFE5E5E2)
@@ -1630,7 +1262,6 @@ sealed class RaftUiThemeColors {
         override val foregroundDisabled = Color(0xFF636360)
         override val foregroundHint = Color(0xFF9E9E9B)
         override val foregroundHover = Color(0xFFE5E5E2)
-        override val foregroundIcon = Color(0xFFC4C4C1)
         override val foregroundInverse = Color(0xFF1B1B19)
         override val foregroundLink = Color(0xFF6DA7EC)
         override val foregroundMuted = Color(0xFFC4C4C1)
@@ -1639,8 +1270,6 @@ sealed class RaftUiThemeColors {
         override val foregroundOnFrameMuted = Color(0xFF9E9E9B)
         override val foregroundOnHud = Color(0xFFE5E5E2)
         override val foregroundOnHudMuted = Color(0xFFC4C4C1)
-        override val foregroundPlaceholder = Color(0xFF9E9E9B)
-        override val foregroundStrong = Color(0xFFE5E5E2)
         override val inactiveSoft = Color(0xFF32322F)
         override val infoMuted = Color(0x47007592)
         override val infoSoft = Color(0x2E005F7A)
@@ -1658,34 +1287,21 @@ sealed class RaftUiThemeColors {
         override val layerBackdrop = Color(0x99000000)
         override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFF1B1B19)
-        override val layerCanvasMuted = Color(0xFF0D0D0B)
         override val layerCard = Color(0xFF242422)
         override val layerCode = Color(0xFF0A0C10)
         override val layerFrame = Color(0xFF0D0D0B)
         override val layerFrameActive = Color(0xFFFFD440)
         override val layerHud = Color(0xFF292927)
-        override val layerHudForeground = Color(0xFFE5E5E2)
-        override val layerInset = Color(0xFF32322F)
-        override val layerPanel = Color(0xFF1B1B19)
         override val layerPopover = Color(0xFF292927)
         override val layerSidebar = Color(0xFF0D0D0B)
         override val layerVeil = Color(0xCC1B1B19)
-        override val line = Color(0x42FAFAF7)
         override val lineField = Color(0xFFE5E5E2)
         override val lineFieldHover = Color(0xFFE5E5E2)
         override val lineFrameActive = Color(0xFF141111)
         override val lineHairline = Color(0x1AFAFAF7)
-        override val lineMuted = Color(0x1AFAFAF7)
         override val lineSeam = Color(0x42FAFAF7)
         override val lineStrong = Color(0xFFE5E5E2)
         override val presenceBusySoft = Color(0x33876F1F)
-        override val primary400 = Color(0xFFFFD440)
-        override val primaryActive = Color(0xFFE8C13B)
-        override val primaryEdge = Color(0xFF141111)
-        override val primaryGlow = Color(0xFFFFD440)
-        override val primaryHover = Color(0xFFE8C13B)
-        override val primarySoft = Color(0x33876F1F)
-        override val primaryStrong = Color(0xFFFFD440)
         override val readMark = Color(0xFFA9D877)
         override val selection = Color(0x38FFD440)
         override val stickerEdge = Color(0x59FAFAF7)
@@ -1718,7 +1334,7 @@ sealed class RaftUiThemeColors {
     /** Raft (the default theme, no `data-theme`), dark mode. */
     data object RaftDark : Dark()
 
-    /** `[data-theme="boring"]`, light mode: 27 tokens differ from [RaftLight]. */
+    /** `[data-theme="boring"]`, light mode: 17 tokens differ from [RaftLight]. */
     data object BoringLight : Light() {
         override val brand400 = Color(0xFFE6E6E6)
         override val brandActive = Color(0xFFD1D1D1)
@@ -1728,28 +1344,18 @@ sealed class RaftUiThemeColors {
         override val brandSoft = Color(0xFFEEEEEE)
         override val brandStrong = Color(0xFF3A3A3A)
         override val brand = Color(0xFFE6E6E6)
-        override val primary = Color(0xFFE6E6E6)
         override val fillFrameMedium = Color(0x0F000000)
-        override val fillFramePressed = Color(0x0F000000)
         override val foregroundOnFrame = Color(0xFF161616)
         override val foregroundOnFrameActive = Color(0xFF161616)
         override val foregroundOnFrameMuted = Color(0xFF555555)
-        override val layerCanvasMuted = Color(0xFFF7F7F7)
         override val layerFrame = Color(0xFFF7F7F7)
         override val layerFrameActive = Color(0xFFE4E4E4)
         override val layerSidebar = Color(0xFFF7F7F7)
         override val lineFrameActive = Color(0x00000000)
-        override val primary400 = Color(0xFFE6E6E6)
-        override val primaryActive = Color(0xFFD1D1D1)
-        override val primaryEdge = Color(0x00000000)
-        override val primaryGlow = Color(0xFFE6E6E6)
-        override val primaryHover = Color(0xFFD1D1D1)
-        override val primarySoft = Color(0xFFEEEEEE)
-        override val primaryStrong = Color(0xFF3A3A3A)
         override val selection = Color(0xFFDEDEDE)
     }
 
-    /** `[data-theme="boring"]`, dark mode: 31 tokens differ from [RaftDark]. */
+    /** `[data-theme="boring"]`, dark mode: 20 tokens differ from [RaftDark]. */
     data object BoringDark : Dark() {
         override val brand400 = Color(0xFFD1D1D1)
         override val brandActive = Color(0xFFBEBEBE)
@@ -1759,242 +1365,193 @@ sealed class RaftUiThemeColors {
         override val brandSoft = Color(0x1FFFFFFF)
         override val brandStrong = Color(0xFFD1D1D1)
         override val brand = Color(0xFFD1D1D1)
-        override val primary = Color(0xFFD1D1D1)
         override val fillFrameMedium = Color(0x12FFFFFF)
-        override val fillFramePressed = Color(0x12FFFFFF)
         override val foregroundOnFrame = Color(0xFFE8E8E8)
         override val foregroundOnFrameActive = Color(0xFFF2F2F2)
         override val foregroundOnFrameMuted = Color(0xFF9E9E9E)
         override val layerCanvas = Color(0xFF1E1E1E)
-        override val layerCanvasMuted = Color(0xFF141414)
         override val layerCard = Color(0xFF242424)
         override val layerFrame = Color(0xFF141414)
         override val layerFrameActive = Color(0xFF333333)
-        override val layerPanel = Color(0xFF1E1E1E)
         override val layerPopover = Color(0xFF292929)
         override val layerSidebar = Color(0xFF141414)
         override val lineFrameActive = Color(0x00000000)
-        override val primary400 = Color(0xFFD1D1D1)
-        override val primaryActive = Color(0xFFBEBEBE)
-        override val primaryEdge = Color(0x00000000)
-        override val primaryGlow = Color(0xFFD1D1D1)
-        override val primaryHover = Color(0xFFBEBEBE)
-        override val primarySoft = Color(0x1FFFFFFF)
-        override val primaryStrong = Color(0xFFD1D1D1)
         override val selection = Color(0x33FFFFFF)
     }
 
-    /** `[data-theme="bots"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="bots"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object BotsLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF544B54)
-        override val layerCanvasMuted = Color(0xFFF3FBFF)
         override val layerFrame = Color(0xFFAEC8DC)
         override val layerSidebar = Color(0xFFF3FBFF)
     }
 
-    /** `[data-theme="bots"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="bots"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object BotsDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF151F27)
-        override val layerCanvasMuted = Color(0xFF0E1920)
         override val layerCard = Color(0xFF1C272E)
         override val layerFrame = Color(0xFF1D3343)
-        override val layerPanel = Color(0xFF151F27)
         override val layerPopover = Color(0xFF222D34)
         override val layerSidebar = Color(0xFF0E1920)
     }
 
-    /** `[data-theme="critters"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="critters"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object CrittersLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF634E49)
-        override val layerCanvasMuted = Color(0xFFFFF8F2)
         override val layerFrame = Color(0xFFF7CAA6)
         override val layerSidebar = Color(0xFFFFF8F2)
     }
 
-    /** `[data-theme="critters"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="critters"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object CrittersDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF251C15)
-        override val layerCanvasMuted = Color(0xFF1F150D)
         override val layerCard = Color(0xFF2D231B)
         override val layerFrame = Color(0xFF412B18)
-        override val layerPanel = Color(0xFF251C15)
         override val layerPopover = Color(0xFF332921)
         override val layerSidebar = Color(0xFF1F150D)
     }
 
-    /** `[data-theme="space"]`, light mode: 8 tokens differ from [RaftLight]. */
+    /** `[data-theme="space"]`, light mode: 6 tokens differ from [RaftLight]. */
     data object SpaceLight : Light() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
-        override val layerCanvasMuted = Color(0xFFFAF9FF)
         override val layerFrame = Color(0xFF31205A)
         override val layerFrameActive = Color(0xFFFFD440)
         override val layerSidebar = Color(0xFFFAF9FF)
     }
 
-    /** `[data-theme="space"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="space"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object SpaceDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF1F1B2D)
-        override val layerCanvasMuted = Color(0xFF181327)
         override val layerCard = Color(0xFF262235)
         override val layerFrame = Color(0xFF2E2151)
-        override val layerPanel = Color(0xFF1F1B2D)
         override val layerPopover = Color(0xFF2C283B)
         override val layerSidebar = Color(0xFF181327)
     }
 
-    /** `[data-theme="desk"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="desk"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object DeskLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF5C4B45)
-        override val layerCanvasMuted = Color(0xFFFFF9F1)
         override val layerFrame = Color(0xFFDFC29C)
         override val layerSidebar = Color(0xFFFFF9F1)
     }
 
-    /** `[data-theme="desk"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="desk"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object DeskDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF241D13)
-        override val layerCanvasMuted = Color(0xFF1D160C)
         override val layerCard = Color(0xFF2B241A)
         override val layerFrame = Color(0xFF3C2D18)
-        override val layerPanel = Color(0xFF241D13)
         override val layerPopover = Color(0xFF312A20)
         override val layerSidebar = Color(0xFF1D160C)
     }
 
-    /** `[data-theme="food"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="food"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object FoodLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF634E51)
-        override val layerCanvasMuted = Color(0xFFFFF7FA)
         override val layerFrame = Color(0xFFFCC6DA)
         override val layerSidebar = Color(0xFFFFF7FA)
     }
 
-    /** `[data-theme="food"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="food"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object FoodDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF28191F)
-        override val layerCanvasMuted = Color(0xFF211218)
         override val layerCard = Color(0xFF2F2026)
         override val layerFrame = Color(0xFF462432)
-        override val layerPanel = Color(0xFF28191F)
         override val layerPopover = Color(0xFF36262C)
         override val layerSidebar = Color(0xFF211218)
     }
 
-    /** `[data-theme="quest"]`, light mode: 8 tokens differ from [RaftLight]. */
+    /** `[data-theme="quest"]`, light mode: 6 tokens differ from [RaftLight]. */
     data object QuestLight : Light() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
-        override val layerCanvasMuted = Color(0xFFFFF7F6)
         override val layerFrame = Color(0xFF7C2524)
         override val layerFrameActive = Color(0xFFFFD440)
         override val layerSidebar = Color(0xFFFFF7F6)
     }
 
-    /** `[data-theme="quest"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="quest"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object QuestDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF2B1817)
-        override val layerCanvasMuted = Color(0xFF24110F)
         override val layerCard = Color(0xFF32201E)
         override val layerFrame = Color(0xFF521D1B)
-        override val layerPanel = Color(0xFF2B1817)
         override val layerPopover = Color(0xFF392624)
         override val layerSidebar = Color(0xFF24110F)
     }
 
-    /** `[data-theme="weather"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="weather"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object WeatherLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF5B4C5F)
-        override val layerCanvasMuted = Color(0xFFF2FCFF)
         override val layerFrame = Color(0xFF90DEF9)
         override val layerSidebar = Color(0xFFF2FCFF)
     }
 
-    /** `[data-theme="weather"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="weather"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object WeatherDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF12202B)
-        override val layerCanvasMuted = Color(0xFF091925)
         override val layerCard = Color(0xFF192733)
         override val layerFrame = Color(0xFF133047)
-        override val layerPanel = Color(0xFF12202B)
         override val layerPopover = Color(0xFF1F2D39)
         override val layerSidebar = Color(0xFF091925)
     }
 
-    /** `[data-theme="plants"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="plants"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object PlantsLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF574939)
-        override val layerCanvasMuted = Color(0xFFF4FDF7)
         override val layerFrame = Color(0xFF95CDAB)
         override val layerSidebar = Color(0xFFF4FDF7)
     }
 
-    /** `[data-theme="plants"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="plants"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object PlantsDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF14221A)
-        override val layerCanvasMuted = Color(0xFF0B1B12)
         override val layerCard = Color(0xFF1B2921)
         override val layerFrame = Color(0xFF153524)
-        override val layerPanel = Color(0xFF14221A)
         override val layerPopover = Color(0xFF212F27)
         override val layerSidebar = Color(0xFF0B1B12)
     }
 
-    /** `[data-theme="spooky"]`, light mode: 4 tokens differ from [RaftLight]. */
+    /** `[data-theme="spooky"]`, light mode: 3 tokens differ from [RaftLight]. */
     data object SpookyLight : Light() {
         override val foregroundOnFrameMuted = Color(0xFF643D36)
-        override val layerCanvasMuted = Color(0xFFFFF8F3)
         override val layerFrame = Color(0xFFFA995A)
         override val layerSidebar = Color(0xFFFFF8F3)
     }
 
-    /** `[data-theme="spooky"]`, dark mode: 11 tokens differ from [RaftDark]. */
+    /** `[data-theme="spooky"]`, dark mode: 8 tokens differ from [RaftDark]. */
     data object SpookyDark : Dark() {
         override val fillFrameMedium = Color(0x1AFFFFFF)
-        override val fillFramePressed = Color(0x1AFFFFFF)
         override val foregroundOnFrame = Color(0xFFF4F2EA)
         override val foregroundOnFrameMuted = Color(0xFFC3BDB0)
         override val layerCanvas = Color(0xFF201B2A)
-        override val layerCanvasMuted = Color(0xFF191424)
         override val layerCard = Color(0xFF272232)
         override val layerFrame = Color(0xFF2B1F3F)
-        override val layerPanel = Color(0xFF201B2A)
         override val layerPopover = Color(0xFF2D2838)
         override val layerSidebar = Color(0xFF191424)
     }

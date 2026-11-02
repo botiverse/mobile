@@ -1894,7 +1894,7 @@ private fun raftMessagePermalinkChipLinkStyles(): TextLinkStyles {
         )
     // raft-ui `active:overlay-medium`; link styles cannot reach the box annotation, so a span wash
     // over the chip's text stands in for the overlay.
-    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillPressed))
+    return raftChipLinkStyles(base, pressed = base.copy(background = RaftAppThemeState.colors.fillMedium))
 }
 
 private object RaftMarkdownPreparedBodyCache {
@@ -2916,7 +2916,7 @@ private fun RaftMarkdownCodeBlockContent(
                     .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset)
                     .size(RaftMarkdownCodeActionSize)
                     .clip(RoundedCornerShape(RaftMarkdownCodeActionRadius))
-                    .background(if (pressed) RaftAppThemeState.colors.fillPressed else Color.Transparent)
+                    .background(if (pressed) RaftAppThemeState.colors.fillMedium else Color.Transparent)
                     .clickable(interactionSource = pressSource, indication = null) {
                         bridge.copyToPasteboard(code)
                         copied = true
@@ -3465,7 +3465,7 @@ private fun RaftRichTextChromeStyleToken.toPressedTagSpanStyle(): SpanStyle =
             when {
                 chipFill == null -> Color.Unspecified
                 inkEdge -> RaftColor.StickerPressed
-                else -> RaftAppThemeState.colors.fillPressed
+                else -> RaftAppThemeState.colors.fillMedium
             },
     )
 

@@ -198,7 +198,7 @@ internal fun RaftMarkdownTaskChipStyle.linkStyles(): TextLinkStyles =
     raftChipLinkStyles(
         textSpanStyle(),
         // raft-ui `press-overlay` on the chip; the span wash stands in for it.
-        pressed = textSpanStyle().copy(background = RaftAppThemeState.colors.fillPressed),
+        pressed = textSpanStyle().copy(background = RaftAppThemeState.colors.fillMedium),
     )
 
 internal fun taskNumberFromRefLabel(label: String): Int? =

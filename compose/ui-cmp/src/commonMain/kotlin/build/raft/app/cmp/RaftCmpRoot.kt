@@ -76,7 +76,7 @@ fun RaftCmpRoot(
             if (onCanvasColorResolved != null) {
                 LaunchedEffect(canvas) { onCanvasColorResolved(canvas) }
             }
-            val pressWash = RaftTheme.colors.fillPressed
+            val pressWash = RaftTheme.colors.fillMedium
             val indication = remember(pressWash) { RaftPressIndication(pressWash) }
             CompositionLocalProvider(
                 LocalIndication provides indication,

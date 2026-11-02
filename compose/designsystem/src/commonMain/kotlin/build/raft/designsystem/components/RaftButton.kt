@@ -100,7 +100,7 @@ enum class RaftButtonSize {
 
 /**
  * raft-ui Button icon sizes (0.21: `icon-md` and `icon-lg`; `icon-xs` / `icon-sm` are old
- * names of `icon-md`). There is no smaller icon button: a component that needs a 28dp one
+ * names of `icon-md`). There is no smaller icon button: a component that needs a smaller one
  * (the sidebar section control) sizes it itself.
  */
 enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
@@ -737,9 +737,10 @@ fun RaftPanelAction(
 
 /**
  * A [RaftIconButton] of a size its component sets ([box], with a [glyph] icon) rather than a
- * [RaftIconButtonSize]: the sidebar section control's 28dp (raft-ui: "28px is not a Button
- * size"). A box under 32dp widens its touch target to 44dp without growing (a tap there
- * clicks; a long press needs the box); keep the space round it free.
+ * [RaftIconButtonSize]: the sidebar section control's 24dp (raft-ui 0.55, #916). A box under
+ * 32dp widens its touch target to 44dp without growing (a tap there clicks; a long press needs
+ * the box); where two widened targets overlap, the nearer one takes the tap. [open] keeps the
+ * press overlay while what the button opens is open (`data-popup-open`).
  */
 @Composable
 internal fun RaftSizedIconButton(
@@ -756,6 +757,7 @@ internal fun RaftSizedIconButton(
     contentDescription: String? = tooltip,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
+    open: Boolean = false,
     icon: @Composable () -> Unit,
 ) {
     val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
@@ -777,6 +779,7 @@ internal fun RaftSizedIconButton(
             onLongClick = onLongClick,
             onLongClickLabel = longClickLabel,
             widenTouchTarget = box < RaftIconButtonSize.Md.box,
+            open = open,
         ) {
             Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
         }

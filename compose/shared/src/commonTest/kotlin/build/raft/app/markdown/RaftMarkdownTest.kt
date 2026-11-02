@@ -920,7 +920,7 @@ class RaftMarkdownTest {
         assertEquals(Color.Unspecified, ordinaryPressed?.background)
         val channelPressed = raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.Channel).pressedStyle
         assertEquals(TextDecoration.None, channelPressed?.textDecoration)
-        assertEquals(RaftAppThemeState.colors.fillPressed, channelPressed?.background)
+        assertEquals(RaftAppThemeState.colors.fillMedium, channelPressed?.background)
         assertEquals(
             RaftColor.StickerPressed,
             raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.SelfMention).pressedStyle?.background

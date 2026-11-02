@@ -16,11 +16,19 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +52,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.raftPlatformPointerIsFine
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -663,9 +672,17 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  *   "Humans · 11"). Null (the sidebar): the count stands 6dp after the title.
  * - [attention]: the pink status pixel (`SidebarSectionAttention`) of a collapsed group
  *   holding something unread; hidden while [expanded].
- * - [actions]: the group's controls (`SidebarSectionControls`), always shown on a phone:
- *   [RaftSidebarSectionAction]s, 4dp apart. They overhang the 18dp line instead of
- *   growing the header (`-my-1.5`).
+ * - [actions]: the group's controls (`SidebarSectionControls`): [RaftSidebarSectionAction]s,
+ *   4dp apart with every input (raft-ui 0.57, #935). They overhang the 18dp line instead of
+ *   growing the header (`-my-1`), and the last one's icon box, not its button, ends on the
+ *   header's line: the row of them hangs 5dp past it (`-mr-icon-inset`, 0.56 #922), as the
+ *   chevron starts on the other end. Pass only [RaftSidebarSectionAction]s.
+ *   On a touch screen they show at rest, after the attention pixel. With a mouse (the
+ *   desktop app, [raftPlatformPointerIsFine]) they keep their place in the row but stay
+ *   invisible until the pointer is over the header, one of them has keyboard focus or one
+ *   has its menu open (`menuOpen`), so a long title truncates before them and nothing moves
+ *   when they show; the attention pixel then sits over that place and hides while the
+ *   controls show or the pointer is over the header (0.56.1, #931).
  * - Press: the disclosure lights up its hit area with `fill-pressed` (States: a text
  *   button lights up its hit area when pressed).
  * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
@@ -702,15 +719,25 @@ fun RaftSidebarSectionHeader(
     val showAttention = attention && !expanded && !menuOpen
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
+    val pointerFine = raftPlatformPointerIsFine()
+    val headerHover = remember { MutableInteractionSource() }
+    val headerHovered = raftIsHovered(headerHover)
+    var controlsFocused by remember { mutableStateOf(false) }
+    val controlsState = remember { RaftSidebarSectionControlsState() }
+    val controlsShown = !pointerFine || headerHovered || controlsFocused || controlsState.openMenus > 0
     Row(
-        modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(horizontal = 8.dp),
+        modifier
+            .fillMaxWidth()
+            .raftPointerHover(headerHover, enabled = pointerFine)
+            .raftSafeAreaHorizontalPadding()
+            .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Box(
             Modifier
                 .weight(1f)
-                .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
+                .raftPressOverlay(pressed, colors.fillMedium, RaftRadius.Control)
                 .then(
                     if (onExpandedChange != null) {
                         val toggle = { onExpandedChange(!expanded) }
@@ -787,24 +814,60 @@ fun RaftSidebarSectionHeader(
         }
         // The trailing box stays while a menu hides the pixel (`min-w-4.5`), so nothing moves.
         if ((attention && !expanded) || actions != null) {
-            Row(
-                Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
-                actions?.invoke(this)
+            val controls: (@Composable () -> Unit)? =
+                actions?.let { content ->
+                    {
+                        Row(
+                            Modifier
+                                .hangEnd(RaftSidebarSectionActionIconInset)
+                                .then(if (pointerFine) Modifier.alpha(if (controlsShown) 1f else 0f) else Modifier)
+                                .onFocusChanged { controlsFocused = it.hasFocus },
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val scope = this
+                            CompositionLocalProvider(LocalRaftSidebarSectionControls provides controlsState) { content(scope) }
+                        }
+                    }
+                }
+            if (pointerFine) {
+                Box(
+                    Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    controls?.invoke()
+                    if (showAttention && !headerHovered && !(actions != null && controlsShown)) {
+                        Box(Modifier.widthIn(min = 18.dp), contentAlignment = Alignment.Center) {
+                            RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
+                    controls?.invoke()
+                }
             }
         }
     }
 }
 
 /**
- * A group header's control (`SidebarSectionControl`: ghost, `h-7 min-w-7`): a 28dp
- * (touch target widened to 44dp) [RaftIconButton]
- * [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
- * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
- * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
+ * A group header's control (`SidebarSectionControl`: ghost, `h-6 min-w-6`, raft-ui 0.55 #916):
+ * a 24dp [RaftIconButton] [RaftButtonVariant.Ghost] with a 14dp [glyph], named by [tooltip]
+ * (Title Case: "Sort Channels", "Create Channel"). Sort is [RaftGlyph.ArrowUpDown] (or
+ * [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
+ *
+ * - Ink (0.56 #922): at rest the title's `foreground-hint`, so the header reads as one label;
+ *   `foreground` under the pointer, pressed, in keyboard focus or with [menuOpen].
+ * - [menuOpen]: what it opens is open (`data-popup-open`): the ghost fill stays
+ *   (`fill-medium`) and, with a mouse, the header keeps its controls shown.
+ * - Touch target: 44dp high and 10dp past its edges; between two controls 4dp apart the
+ *   nearer one takes a tap in the gap, so the areas meet in its middle (0.57 #935).
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -813,16 +876,18 @@ fun RaftSidebarSectionAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    menuOpen: Boolean = false,
 ) {
-    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled) {
+    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled, menuOpen = menuOpen) {
         RaftGlyphIcon(glyph, size = RaftSidebarSectionActionIconSize)
     }
 }
 
 /**
  * [RaftSidebarSectionAction] with any [icon] (an app icon the module has no [RaftGlyph]
- * for), drawn in a 16dp box in the button's ink ([LocalRaftContentColor]: `foreground`,
- * `foreground-disabled` when not [enabled]). Size the icon 16dp or let it fill the box.
+ * for), drawn in a 14dp box in the control's ink ([LocalRaftContentColor]: `foreground-hint`
+ * at rest, `foreground` when active, `foreground-disabled` when not [enabled]). Size the icon
+ * 14dp or let it fill the box.
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -830,23 +895,66 @@ fun RaftSidebarSectionAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    menuOpen: Boolean = false,
     icon: @Composable () -> Unit,
 ) {
+    val colors = RaftTheme.colors
+    val source = remember { MutableInteractionSource() }
+    val hovered = raftIsHovered(source)
+    val pressed = raftIsPressed(source)
+    val focused = raftIsFocused(source)
+    val active = hovered || pressed || focused || menuOpen
+    val section = LocalRaftSidebarSectionControls.current
+    if (menuOpen && section != null) {
+        DisposableEffect(section) {
+            section.openMenus++
+            onDispose { section.openMenus-- }
+        }
+    }
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
-        box = 28.dp,
+        box = 24.dp,
         glyph = RaftSidebarSectionActionIconSize,
         modifier = modifier,
         variant = RaftButtonVariant.Ghost,
         enabled = enabled,
+        interactionSource = source,
+        open = menuOpen,
     ) {
-        Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
+        val ink = if (!enabled) LocalRaftContentColor.current else if (active) colors.foreground else colors.foregroundHint
+        CompositionLocalProvider(LocalRaftContentColor provides ink) {
+            Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
+        }
     }
 }
 
-/** `SidebarSectionControl` `[&>svg]:size-4`. */
-private val RaftSidebarSectionActionIconSize = 16.dp
+/** `SidebarSectionControl` `[&_svg:not([class*='size-'])]:size-3.5`. */
+private val RaftSidebarSectionActionIconSize = 14.dp
+
+/** `--icon-inset`: (24 - 14) / 2, the empty part of the control past its icon. */
+private val RaftSidebarSectionActionIconInset = 5.dp
+
+/** What a header's controls report to it: how many of them have their menu open. */
+@Stable
+private class RaftSidebarSectionControlsState {
+    var openMenus by mutableIntStateOf(0)
+}
+
+private val LocalRaftSidebarSectionControls = staticCompositionLocalOf<RaftSidebarSectionControlsState?> { null }
+
+/**
+ * Lays the content out at its own width but reports [hang] less, so it overhangs the end of
+ * its slot by [hang] (CSS negative end margin; mirrored in RTL).
+ */
+private fun Modifier.hangEnd(hang: Dp): Modifier =
+    layout { measurable, constraints ->
+        val extra = hang.roundToPx()
+        val placeable = measurable.measure(constraints.copy(maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth + extra else constraints.maxWidth))
+        layout((placeable.width - extra).coerceAtLeast(0), placeable.height) {
+            placeable.placeRelative(0, 0)
+        }
+    }
 
 /**
  * Lays the content out at its own height but reports [height] (padding included in the

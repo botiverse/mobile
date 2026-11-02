@@ -741,7 +741,7 @@ private fun RaftMobileNavPill(selected: Boolean, washed: Boolean, open: Boolean 
             )
             .then(
                 when {
-                    washed -> Modifier.background(if (selected) RaftUiPalette.stickerPressed else colors.fillPressed, shape)
+                    washed -> Modifier.background(if (selected) RaftUiPalette.stickerMedium else colors.fillMedium, shape)
                     // raft-ui `data-popup-open:before:bg-fill-medium`: the tab keeps a fill while its popover is open.
                     open -> Modifier.background(colors.fillMedium, shape)
                     else -> Modifier
@@ -754,7 +754,7 @@ private fun RaftMobileNavPill(selected: Boolean, washed: Boolean, open: Boolean 
 @Composable
 private fun raftMobileNavServerWash(pressed: Boolean, open: Boolean): Color =
     when {
-        pressed -> RaftTheme.colors.fillPressed
+        pressed -> RaftTheme.colors.fillMedium
         open -> RaftTheme.colors.fillMedium
         else -> Color.Transparent
     }

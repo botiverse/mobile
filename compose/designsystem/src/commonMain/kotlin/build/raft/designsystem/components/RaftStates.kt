@@ -310,9 +310,9 @@ enum class RaftPressSurface {
 
 internal fun raftPressOverlayColor(surface: RaftPressSurface, colors: RaftUiThemeColors): Color =
     when (surface) {
-        RaftPressSurface.Paper -> colors.fillPressed
-        RaftPressSurface.Sticker -> RaftUiPalette.stickerPressed
-        RaftPressSurface.Frame -> colors.fillFramePressed
+        RaftPressSurface.Paper -> colors.fillMedium
+        RaftPressSurface.Sticker -> RaftUiPalette.stickerMedium
+        RaftPressSurface.Frame -> colors.fillFrameMedium
         RaftPressSurface.InkSticker -> RaftUiPalette.stickerInkMedium
     }
 
@@ -348,7 +348,7 @@ internal fun raftActiveStickerLook(
             edge = RaftUiPalette.stickerInk,
             ink = RaftUiPalette.stickerInk,
             dieCut = colors.stickerEdge,
-            pressOverlay = RaftUiPalette.stickerPressed,
+            pressOverlay = RaftUiPalette.stickerMedium,
         )
     } else {
         RaftStickerLook(
@@ -356,7 +356,7 @@ internal fun raftActiveStickerLook(
             edge = Color.Transparent,
             ink = restingInk,
             dieCut = Color.Transparent,
-            pressOverlay = colors.fillPressed,
+            pressOverlay = colors.fillMedium,
         )
     }
 

@@ -1,6 +1,6 @@
 {
   "comment": "Pinned Web design sources. Bump with update_sources.sh; versions must match slock packages/web (raft-ui, tailwindcss) at the pinned commit.",
-  "slockCommit": "dc7aa1fddc4543d60993311949ee86ca1f7166e0",
+  "slockCommit": "a3669d15a0852a912c0c146055c02fcd3e3720ae",
   "sources": {
     "tailwind": {
       "path": "source/tailwindcss-4.3.3/theme.css",
@@ -8,23 +8,23 @@
       "sha256": "443d7af364200f8ec8352dc78e39485a118a1840d498c97967bf0ae402b39167"
     },
     "raftUiStyles": {
-      "path": "source/raft-ui-0.54.0/styles.css",
-      "origin": "npm:@botiverse/raft-ui@0.54.0/dist/styles.css",
-      "sha256": "1dfba2b73642ba49a102dc3759f1fbbaafb2ba416be81e715d9522ef8a915298"
+      "path": "source/raft-ui-0.57.0/styles.css",
+      "origin": "npm:@botiverse/raft-ui@0.57.0/dist/styles.css",
+      "sha256": "59e968f723234929d410b7de568f66c34ed97167dbc1ea09643803bb072eca7f"
     },
     "raftUiFoundation": {
-      "path": "source/raft-ui-0.54.0/foundation.css",
-      "origin": "npm:@botiverse/raft-ui@0.54.0/dist/foundation.css",
-      "sha256": "b298725e92892e888b62af2325704e90c48af6ca3df6be34e1893554ad6a5256"
+      "path": "source/raft-ui-0.57.0/foundation.css",
+      "origin": "npm:@botiverse/raft-ui@0.57.0/dist/foundation.css",
+      "sha256": "8ae8e2a7ee907cca72af51cbab03537b8476982c38c4ec9f1d231d38084dd912"
     },
     "raftUiThemes": {
-      "path": "source/raft-ui-0.54.0/themes.css",
-      "origin": "npm:@botiverse/raft-ui@0.54.0/dist/themes.css",
+      "path": "source/raft-ui-0.57.0/themes.css",
+      "origin": "npm:@botiverse/raft-ui@0.57.0/dist/themes.css",
       "sha256": "d676bb4b3ad783cfbe81a1428939d76783f2bee1b9ed1ec5d3913e661b65093d"
     },
     "web": {
       "path": "source/raft-web/index.css",
-      "origin": "botiverse/slock@dc7aa1fddc4543d60993311949ee86ca1f7166e0:packages/web/src/index.css",
+      "origin": "botiverse/slock@a3669d15a0852a912c0c146055c02fcd3e3720ae:packages/web/src/index.css",
       "sha256": "ef85016bf7575075c6472424d39d0632d4f3f9b2a92ded51c72904c6ed8498a8"
     }
   }

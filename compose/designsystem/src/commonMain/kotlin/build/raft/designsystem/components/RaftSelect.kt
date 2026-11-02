@@ -275,7 +275,7 @@ internal fun raftPickerTriggerLook(
                     },
                 ink = if (hasValue) colors.foreground else colors.foregroundMuted,
                 indicator = colors.foregroundHint,
-                pressOverlay = colors.fillPressed,
+                pressOverlay = colors.fillMedium,
             )
     }
 

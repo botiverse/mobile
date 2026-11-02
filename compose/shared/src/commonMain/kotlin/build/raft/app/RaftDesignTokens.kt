@@ -95,9 +95,9 @@ internal object RaftColor {
     // Opaque neutral fills: resting/disabled control fill and the 8% pressed wash.
     val FillMuted: Color get() = RaftAppThemeState.colors.fillMuted
     val FillStrong: Color get() = RaftAppThemeState.colors.fillStrong
-    val FillPressed: Color get() = RaftAppThemeState.colors.fillPressed
+    val FillPressed: Color get() = RaftAppThemeState.colors.fillMedium
     // Pressed wash on the yellow frame (`fill-frame-pressed`), e.g. header controls.
-    val FillFramePressed: Color get() = RaftAppThemeState.colors.fillFramePressed
+    val FillFramePressed: Color get() = RaftAppThemeState.colors.fillFrameMedium
     // `--line-field` (input ink); card edges and menu separators use [BorderHairline].
     val LineField: Color get() = RaftAppThemeState.colors.lineField
     // The yellow frame (`--layer-frame`) and the overlay backdrop.
@@ -134,7 +134,7 @@ internal object RaftColor {
     val StickerInk = RaftUiPalette.stickerInk
     val StickerPaper = RaftUiPalette.stickerPaper
     // 12% ink laid over a pressed sticker (`press-overlay-sticker`).
-    val StickerPressed = RaftUiPalette.stickerPressed
+    val StickerPressed = RaftUiPalette.stickerMedium
     // Die-cut edge around stickers: transparent in light, a 35% paper ring in dark.
     val StickerEdge: Color get() = RaftAppThemeState.colors.stickerEdge
     // Presence lights (`--presence-*`): fixed meanings, same in both modes.

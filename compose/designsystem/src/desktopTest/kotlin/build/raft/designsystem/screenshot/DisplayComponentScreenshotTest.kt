@@ -192,7 +192,7 @@ class DisplayComponentScreenshotTest {
                         .border(RaftStroke.Hairline, colors.lineSeam, RoundedCornerShape(RaftRadius.Container)),
                 ) {
                     Row(Modifier.fillMaxWidth().height(40.dp).raftInsetFocusOutline(true, colors.foreground).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftText("Search channels", color = colors.foregroundPlaceholder)
+                        RaftText("Search channels", color = colors.foregroundHint)
                     }
                     Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         RaftText("general")
@@ -537,7 +537,7 @@ class DisplayComponentScreenshotTest {
                     DelegatedOwner(deleted = true) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
                     Caption("Presence, face, placeholder, deleted")
                 }
-                val rowFill = RaftTheme.colors.fillPressed.compositeOver(RaftTheme.colors.layerCanvas)
+                val rowFill = RaftTheme.colors.fillMedium.compositeOver(RaftTheme.colors.layerCanvas)
                 Row(
                     Modifier.background(rowFill).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -1089,7 +1089,7 @@ class DisplayComponentScreenshotTest {
                     actions = {
                         RaftSidebarSectionAction(RaftGlyph.ArrowDownUp, "Sort Channels", onClick = {})
                         // Any icon: an app icon through the slot.
-                        RaftSidebarSectionAction(tooltip = "Create Channel", onClick = {}) { Glyph(RaftGlyph.Plus) }
+                        RaftSidebarSectionAction(tooltip = "Create Channel", onClick = {}) { Glyph(RaftGlyph.Plus, size = 14.dp) }
                     },
                 )
                 RaftSidebarChannelItem("proj-raft-computer", onClick = {}, mentioned = true, unreadCount = 4, threadCount = 2)
@@ -1238,7 +1238,7 @@ class DisplayComponentScreenshotTest {
     @Test
     fun sectionAndCode() =
         capture("section_code") {
-            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerPanel)) {
+            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerCanvas)) {
                 RaftSection("Connect a computer", separator = false) {
                     RaftCodeBlock(
                         "npx @raft/agent connect --token rft_9c2b1f7e4a8d4c0e9b6f3a2d1c0b9a8f",
@@ -1277,7 +1277,7 @@ class DisplayComponentScreenshotTest {
     @Test
     fun sectionHeading() =
         capture("section_heading") {
-            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerPanel)) {
+            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerCanvas)) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     RaftSectionEyebrow("Profile")
                     RaftSectionEyebrow("Created agents", count = "3")

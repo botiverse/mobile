@@ -27631,7 +27631,7 @@ private fun ThreadMessageCardContent(
             } else if (popupOpen) {
                 // raft-ui 0.13 MessageItem `data-popup-open:bg-fill-row-open`: the row
                 // under an open context menu keeps one step past the hover.
-                RaftTheme.colors.fillRowOpen
+                RaftTheme.colors.fillSubtle
             } else if (searchMatch) {
                 // raft-ui: the current match of a search inside a page is a selection; it
                 // stays info-soft while it is current, and doesn't fade.

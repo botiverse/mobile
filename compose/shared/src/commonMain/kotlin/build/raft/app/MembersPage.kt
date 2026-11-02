@@ -13346,7 +13346,8 @@ private fun MembersCreateAgentAction(
         RaftSidebarSectionAction(
             glyph = RaftGlyph.Plus,
             tooltip = stringResource(Res.string.agent_create_action_create),
-            onClick = onOpenMenu
+            onClick = onOpenMenu,
+            menuOpen = menuOpen
         )
         RaftDropdownMenu(
             expanded = menuOpen,
