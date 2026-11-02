@@ -1489,11 +1489,15 @@ private object RaftMarkdownTextProvider : TextProvider {
         val hoverInk = raftMarkdownLinkHoverInk()
         val displayText =
             remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+        // The tint restyles the text, and Compose drops a selection in a text that changes: while
+        // the body holds a selection (a mouse drag across a link included) the tint stays as it is.
+        val bodySelection = LocalRaftMarkdownLinkDragSelection.current
         val hoverModifier =
             if (inlineDecorations.underlines.isEmpty()) {
                 Modifier
             } else {
                 Modifier.raftPointerHoverPosition { position ->
+                    if (bodySelection?.holdsSelection == true) return@raftPointerHoverPosition
                     val next = position?.let { at -> decorationLayout?.let { raftMarkdownUnderlinedLinkAt(it, inlineDecorations, at) } }
                     if (next != hoveredLink) hoveredLink = next
                 }

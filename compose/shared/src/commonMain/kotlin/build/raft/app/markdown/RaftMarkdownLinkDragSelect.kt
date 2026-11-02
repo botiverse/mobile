@@ -60,14 +60,8 @@ internal class RaftMarkdownLinkDragSelection(
      * [SelectionState.select]: the selectable texts in their layout order, end to end.
      */
     fun globalOffsetAt(source: RaftMarkdownLinkDragText, position: Offset): Int? {
-        val sourceCoordinates = source.coordinates?.takeIf { it.isAttached } ?: return null.also { raftMarkdownLinkDragTrace?.invoke("no source coordinates") }
+        val sourceCoordinates = source.coordinates?.takeIf { it.isAttached } ?: return null
         val selectables = selectionState.getSelectableTexts()
-        raftMarkdownLinkDragTrace?.invoke(
-            "selectables=${selectables.map { it.text }} texts=${texts.map { it.layout?.layoutInput?.text?.text }} " +
-                "same=${texts.map { t -> selectables.indexOfFirst { it === t.layout?.layoutInput?.text } }} " +
-                "eq=${texts.map { t -> selectables.indexOfFirst { it == t.layout?.layoutInput?.text } }} " +
-                "textEq=${texts.map { t -> selectables.indexOfFirst { it.text == t.layout?.layoutInput?.text?.text } }}"
-        )
         val candidates =
             texts.mapNotNull { text ->
                 val layout = text.layout ?: return@mapNotNull null
@@ -83,16 +77,16 @@ internal class RaftMarkdownLinkDragSelection(
         return raftMarkdownSelectableStart(selectables.map { it.length }, index) + layout.getOffsetForPosition(local)
     }
 
+    /** Some text of the body is selected (a drag in progress included). */
+    val holdsSelection: Boolean
+        get() = selectionState.selectedTexts.any { it.isNotEmpty() }
+
     fun select(anchor: Int, focus: Int) {
         selectionState.select(TextRange(anchor, focus))
-        raftMarkdownLinkDragTrace?.invoke("select($anchor,$focus) -> ${selectionState.selectedTexts.map { it.text }}")
     }
 
     fun onDragStart() = onMouseSelectionStart()
 }
-
-// TEMP diagnostics for the Robolectric drag test (removed once it is green).
-internal var raftMarkdownLinkDragTrace: ((String) -> Unit)? = null
 
 internal val LocalRaftMarkdownLinkDragSelection = compositionLocalOf<RaftMarkdownLinkDragSelection?> { null }
 
@@ -182,10 +176,6 @@ internal fun Modifier.raftMarkdownLinkDragSelect(
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val change = event.changes.firstOrNull() ?: continue
-                raftMarkdownLinkDragTrace?.invoke(
-                    "${event.type} ${change.type} primary=${event.buttons.isPrimaryPressed} at=${change.position} " +
-                        "layout=${text.layout != null} onLink=${text.layout?.let { raftMarkdownLinkAt(it, change.position) }} pressedOnLink=$pressedOnLink anchor=$anchor"
-                )
                 when (event.type) {
                     PointerEventType.Press -> {
                         anchor = null

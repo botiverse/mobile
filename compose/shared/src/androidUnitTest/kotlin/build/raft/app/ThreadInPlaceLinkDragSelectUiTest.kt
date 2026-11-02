@@ -119,8 +119,6 @@ class ThreadInPlaceLinkDragSelectUiTest {
         runRobolectricComposeUiTest {
             showBody()
             assertLinkSemantics()
-            val trace = mutableListOf<String>()
-            build.raft.app.markdown.raftMarkdownLinkDragTrace = { trace += it }
             val start = linkCenter()
             val end = charCenter(renderedIndexOf("tomorrow") + 3)
             textNode().performMouseInput {
@@ -132,8 +130,7 @@ class ThreadInPlaceLinkDragSelectUiTest {
             }
             waitForIdle()
             val selected = controller!!.selectedTexts().joinToString("")
-            build.raft.app.markdown.raftMarkdownLinkDragTrace = null
-            assertTrue(selected.isNotEmpty(), "a drag from the link selects; start=$start end=$end trace=\n" + trace.joinToString("\n"))
+            assertTrue(selected.isNotEmpty(), "a drag from the link selects")
             assertTrue(selected.startsWith("he docs") || selected.startsWith("e docs"), "from the press point: '$selected'")
             assertTrue(selected.contains("tomo"), "to the pointer: '$selected'")
             assertTrue(opened.isEmpty(), "a drag opens no link: $opened")
