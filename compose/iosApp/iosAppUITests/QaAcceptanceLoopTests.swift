@@ -462,7 +462,7 @@ final class QaAcceptanceLoopTests: XCTestCase {
 //      (the app starts a real app-login request and opens the web sign-in sheet)
 //   2. host: read that request id from the app's container, approve it with the QA account
 //      (CI secrets, API), `simctl openurl` the callback        -> callback-opened.json
-//   3. test: wait for the native tab bar (pick OranixSlockTest if a server picker shows),
+//   3. test: confirm SpringBoard's "Open in “Raft”?", wait for the native tab bar (pick OranixSlockTest if a server picker shows),
 //      dismiss the leftover sign-in sheet / system alerts       -> home-ready.json
 //   4. host: `simctl io screenshot`                            -> shot-done.json
 final class SignedInHomeShotTests: XCTestCase {
@@ -514,6 +514,13 @@ final class SignedInHomeShotTests: XCTestCase {
         var pickedServer = false
         while Date() < deadline {
             if tabBar.exists && tabBar.frame.height > 0 { break }
+            // `simctl openurl` of the callback asks first: "Open in “Raft”?" (SpringBoard).
+            let open = springboard.buttons["Open"].firstMatch
+            if open.exists {
+                open.tap()
+                Thread.sleep(forTimeInterval: 1)
+                continue
+            }
             let server = element(app, label: "OranixSlockTest")
             if !pickedServer && server.exists && server.frame.height > 0 {
                 tap(app, x: server.frame.midX, y: server.frame.midY)
