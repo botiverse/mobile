@@ -128,6 +128,8 @@ private data class HomeSecondaryRouteEnvironment(
     // OpenDetail instead of pushing a standalone page (which would cover the rail).
     // Null = legacy standalone behavior (push).
     val inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
+    // True when the entity opened inline; false when it has no inline home (a computer, a
+    // person), and the caller then opens its page.
     val inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     // When embedded inline there is no pushed page to pop — "close" returns to the host tab.
     val inlineOnClose: (() -> Unit)? = null,
@@ -1014,8 +1016,7 @@ private fun HomeSearchRouterContent(
         },
         onOpenEntity = { entity ->
             val opened =
-                environment.inlineOpenEntity?.invoke(entity)
-                    ?: run {
+                openHomeSearchEntityResult(entity, environment.inlineOpenEntity) {
                         // task #45: OFF standalone entity opens (channel/DM search results)
                         // park the current selection so re-enabling restores this
                         // conversation — same contract as the message-open fallback above.

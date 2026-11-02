@@ -8542,21 +8542,15 @@ private fun RaftAppShellReadyContent(
                                     }
                                 },
                                 inlineOpenEntity = { entity ->
-                                    when (entity.destinationOrNull()) {
-                                        is HomeSearchEntityDestination.Conversation -> {
-                                            // Conversation entities open in the shared detail
-                                            // pane; everything else still needs a full page.
-                                            val destination =
-                                                entity.destinationOrNull()
-                                                    as HomeSearchEntityDestination.Conversation
-                                            openHomeConversation(
-                                                conversation = destination.identity,
-                                                source = "home_search_entity",
-                                            )
-                                            true
-                                        }
-                                        else -> false
-                                    }
+                                    // Conversation entities open in the shared detail pane;
+                                    // computers and people decline and open their page.
+                                    entity.homeSearchInlineConversationOrNull()?.let { conversation ->
+                                        openHomeConversation(
+                                            conversation = conversation,
+                                            source = "home_search_entity",
+                                        )
+                                        true
+                                    } ?: false
                                 },
                             )
                         }
@@ -14643,6 +14637,25 @@ internal fun SearchEntityResult.destinationOrNull(): HomeSearchEntityDestination
     if (identity.kind != MemberKind.Human && identity.kind != MemberKind.Agent) return null
     return HomeSearchEntityDestination.Member(identity)
 }
+
+/**
+ * The conversation a search entity opens in the wide shell's detail pane beside the inline
+ * Search, or null when it has no inline home there (a computer, a person or agent): those open
+ * their page, as on the phone.
+ */
+internal fun SearchEntityResult.homeSearchInlineConversationOrNull(): ThreadLaunchConversationIdentity? =
+    (destinationOrNull() as? HomeSearchEntityDestination.Conversation)?.identity
+
+/**
+ * Opens a search entity: inline first when [openInline] takes it, else its page. An inline host
+ * that declines (returns false) must not swallow the click: the wide Search returned false for
+ * computers and people, and `false ?: page` never reached the page (artin 11-02, Compose 版).
+ */
+internal fun openHomeSearchEntityResult(
+    entity: SearchEntityResult,
+    openInline: ((SearchEntityResult) -> Boolean)?,
+    openPage: () -> Boolean,
+): Boolean = openInline?.invoke(entity) == true || openPage()
 
 private sealed interface HomeSearchResultGroup {
     data class Message(val item: InboxItem) : HomeSearchResultGroup
