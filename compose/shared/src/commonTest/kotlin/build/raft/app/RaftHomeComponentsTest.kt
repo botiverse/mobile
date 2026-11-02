@@ -2068,9 +2068,9 @@ class RaftHomeComponentsTest {
 
     @Test
     fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
-        // The bell's button ends 48.25dp into the head; web's popover hangs 8dp under it.
-        assertEquals(56.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
-        assertEquals(80.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
+        // The bell's button ends 49.25dp into the head; web's popover hangs 8dp under it.
+        assertEquals(57.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
+        assertEquals(81.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
     }
 
     @Test

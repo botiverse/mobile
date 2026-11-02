@@ -5367,8 +5367,8 @@ private val HomeNotificationPopoverPhoneMaxWidth = 480.dp
 private fun Modifier.homeNotificationPopoverPhoneWidth(): Modifier =
     padding(horizontal = HomeNotificationPopoverPhoneEdgeInset).fillMaxWidth()
 /**
- * The popover's top under the Home head: the bell's 44dp button (its slot centred in the head's
- * content line, the button at the slot's top) ends at 48.25dp, and the popover hangs
+ * The popover's top under the Home head: the bell's 44dp button (centred in the head's
+ * content line) ends at 49.25dp, and the popover hangs
  * [HomeNotificationPopoverBellGap] below it, as web's anchored popover does.
  */
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
