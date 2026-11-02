@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import build.raft.app.cmp.RaftCmpRoot
+import build.raft.app.cmp.RaftCmpToastLayer
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.nav.RaftPageStackDisplay
@@ -37,9 +38,9 @@ import build.raft.app.nav.RaftPageStackDisplay
  */
 @Composable
 fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
-    Box(Modifier.fillMaxSize()) {
+    // The window's one toast host, over every page of the stack (each page's RaftCmpRoot uses it).
+    RaftCmpToastLayer {
         RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
-        RaftDesktopToasts.Overlay()
     }
 }
 

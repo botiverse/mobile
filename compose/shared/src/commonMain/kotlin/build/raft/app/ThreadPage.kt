@@ -13,6 +13,8 @@ import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftToastAvoid
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
 import build.raft.app.emoji.RaftEmojiCatalog
 import build.raft.app.emoji.RaftEmojiPickerPreferences
@@ -24544,6 +24546,8 @@ internal fun ThreadComposerDock(
                     .raftSafeAreaHorizontalPadding()
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
+                    // raft-ui: on a conversation page the window's toasts sit just above the composer.
+                    .raftToastAvoid(enabled = LocalRaftPageActive.current)
         ) { composer() }
     }
 }

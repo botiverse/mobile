@@ -45,6 +45,9 @@ import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.RaftToastAvoidBottom
+import build.raft.designsystem.components.raftToastAvoid
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftMobileNavDefaults
 import build.raft.designsystem.components.RaftMobileNavItem
 import build.raft.designsystem.components.RaftAppRailDefaults
@@ -444,15 +447,29 @@ internal fun RaftAppBottomTabBarHost(
         // The host draws the system tab bar; Compose only publishes the tabs. Leaving
         // composition (the shell hides its bar) hides the native bar too.
         RaftNativeTabBarPublisher(bridge = nativeTabBar, items = items, onSelect = onSelect)
+        RaftNativeTabBarToastAvoidance(nativeTabBar)
         return
     }
     if (raftAppTabBarRenderer() == RaftAppTabBarRenderer.NativeHost) return
     RaftSharedBottomTabBarBand(
         items = items,
         onSelect = onSelect,
-        modifier = hostModifier,
+        // raft-ui: on a top-level page the window's toasts sit just above the tab bar.
+        modifier = hostModifier.raftToastAvoid(enabled = LocalRaftPageActive.current),
         bottomSafeArea = bottomSafeArea,
         serverTab = serverTab,
+    )
+}
+
+/** raft-ui: the window's toasts sit just above a host-drawn bar on the bottom edge while it shows. */
+@Composable
+private fun RaftNativeTabBarToastAvoidance(bridge: RaftNativeTabBarBridge) {
+    val band by bridge.band.collectAsState()
+    val state by bridge.state.collectAsState()
+    val bottomBand = band?.takeIf { it.edge == RaftNativeTabBarEdge.Bottom && state.visible }
+    RaftToastAvoidBottom(
+        height = (bottomBand?.points ?: 0.0).toFloat().dp,
+        enabled = bottomBand != null && LocalRaftPageActive.current,
     )
 }
 

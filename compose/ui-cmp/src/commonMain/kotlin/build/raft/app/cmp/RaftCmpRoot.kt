@@ -49,6 +49,8 @@ import build.raft.designsystem.tokens.RaftSpacing
  * a host can give its native container the same colour (whatever Compose does not draw, e.g. the
  * area a keyboard offset uncovers, then shows the app surface instead of a platform default).
  * [backSwipeRegions] is the host's full-page back swipe probe (iOS); null on hosts without one.
+ * The page draws under the window's toast host ([RaftCmpToastLayer]): one per window, this
+ * root's own unless the host wrapped its roots in one.
  */
 @Composable
 fun RaftCmpRoot(
@@ -82,9 +84,13 @@ fun RaftCmpRoot(
                 LocalIndication provides indication,
                 LocalRaftStatusBarBackdrop provides statusBarBackdrop,
             ) {
-                Box(Modifier.fillMaxSize().background(canvas)) {
-                    val content = RaftCmpRouter.content(args.pageName)
-                    if (content != null) content() else UnknownCmpPage(args.pageName)
+                // The window's one toast host, over the page (unless a host already put one
+                // round this root: Android's and the desktop's page stacks).
+                RaftCmpToastLayer(origin = host.capabilities) {
+                    Box(Modifier.fillMaxSize().background(canvas)) {
+                        val content = RaftCmpRouter.content(args.pageName)
+                        if (content != null) content() else UnknownCmpPage(args.pageName)
+                    }
                 }
             }
         }

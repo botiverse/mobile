@@ -78,8 +78,8 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  *   `not-disabled:hover:underline`); it takes touches 44dp round it.
  * - Title only: at least 44 x 112dp, the text centred.
  *
- * Neutral by rule: no intent tint and never yellow. The host (one toast at a time, the
- * timeout, swipe to dismiss, bottom-centre placement) is not part of this module yet.
+ * Neutral by rule: no intent tint and never yellow. [RaftToastHost] places, times and stacks
+ * toasts (one at a time, the timeout, swipe to dismiss, bottom-centre placement).
  */
 @Composable
 fun RaftToast(
@@ -103,7 +103,8 @@ fun RaftToast(
                 .widthIn(max = 384.dp)
                 .defaultMinSize(minWidth = if (titleOnly) 112.dp else 0.dp, minHeight = if (titleOnly) 44.dp else 0.dp)
                 .raftOverlaySurface(look.fill, look.ring, RaftTheme.isDark, RaftRadius.Container)
-                .semantics { liveRegion = LiveRegionMode.Polite }
+                // raft-ui: each toast is announced in a live region; an `error` at a higher priority.
+                .semantics { liveRegion = if (intent == RaftToastIntent.Error) LiveRegionMode.Assertive else LiveRegionMode.Polite }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp, if (titleOnly) Alignment.CenterHorizontally else Alignment.Start),
             verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
