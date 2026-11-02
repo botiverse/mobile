@@ -46,6 +46,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 
 internal enum class RaftUiBannerStatus(val background: Color) {
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
@@ -113,21 +116,19 @@ internal fun RaftUiButton(
     enabled: Boolean = true,
     size: RaftUiBannerSize = RaftUiBannerSize.Small
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    // Both banner sizes are the raft-ui `md` (32dp) button.
+    RaftButton(
+        text = label,
         onClick = {},
         modifier = modifier,
-        enabled = enabled,
-        // The paper / cream variants read the themed token here (the enum value is fixed at init).
-        backgroundColor =
+        variant =
             when (variant) {
-                RaftUiButtonVariant.Default, RaftUiButtonVariant.Outline -> RaftColor.SurfaceWhite
-                RaftUiButtonVariant.Muted -> RaftColor.SurfaceCream
-                else -> variant.background
+                RaftUiButtonVariant.Primary -> RaftButtonVariant.Primary
+                RaftUiButtonVariant.Danger -> RaftButtonVariant.Danger
+                RaftUiButtonVariant.Default, RaftUiButtonVariant.Muted, RaftUiButtonVariant.Outline -> RaftButtonVariant.Default
             },
-        minHeight = if (size == RaftUiBannerSize.Small) 28.dp else 32.dp,
-        minWidth = 0.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = if (size == RaftUiBannerSize.Small) 12.sp else 14.sp, lineHeight = 14.sp)
+        size = RaftButtonSize.Md,
+        enabled = enabled
     )
 }
 

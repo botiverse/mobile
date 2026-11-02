@@ -24,7 +24,6 @@ import build.raft.app.RaftPopoverAnchorResolver
 import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftArgbHex
-import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPickerTriggerButton
@@ -117,14 +116,6 @@ internal fun raftIconButtonVariantFor(backgroundColor: Color): RaftButtonVariant
     when (val variant = raftButtonVariantFor(backgroundColor)) {
         RaftButtonVariant.Default -> RaftButtonVariant.Ghost
         else -> variant
-    }
-
-/** raft-ui button size for a legacy min height: below 38dp `md` (32), below 52dp `lg` (44), else `xl` (52). */
-internal fun raftButtonSizeFor(minHeight: Dp): RaftButtonSize =
-    when {
-        minHeight >= 52.dp -> RaftButtonSize.Xl
-        minHeight >= 38.dp -> RaftButtonSize.Lg
-        else -> RaftButtonSize.Md
     }
 
 /**

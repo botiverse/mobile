@@ -13,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.ScreenError
@@ -50,6 +49,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
 import build.raft.app.components.RaftProgressBar
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
+import androidx.compose.foundation.layout.widthIn
 
 const val APP_UPDATE_PAGE = "compose_app_update"
 
@@ -402,13 +406,14 @@ internal fun AppUpdateSummary(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            RaftBrutalActionButton(
-                label = actionLabel,
+            RaftButton(
+                text = actionLabel,
                 onClick = if (errorMessage != null && snapshot == null) onRetry else onAction,
+                modifier = Modifier.widthIn(min = 96.dp),
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
                 enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorMessage),
-                leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorMessage),
-                minWidth = 96.dp,
-                backgroundColor = RaftColor.AccentPink
+                leadingIcon = { RaftSlotIcon(appUpdatePrimaryActionIcon(snapshot, errorMessage)) }
             )
         }
         if (progress?.active == true) {

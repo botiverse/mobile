@@ -6,7 +6,6 @@ import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
@@ -48,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftButtonSize
 
 @Composable
 internal fun UiSegmentedControlVisualContent() {
@@ -78,7 +78,7 @@ internal fun UiSegmentedControlVisualContent() {
 
 @Composable
 internal fun UiButtonThemeVisualContent() {
-    // Phase 1 theme-axis proof: the SAME RaftBrutalActionButton rendered under each
+    // Phase 1 theme-axis proof: the SAME button rendered under each
     // register via RaftThemeProvider. Top row = brutalTheme (default, byte-identical
     // to the shipping look: square, 2dp black hairline, hard 4dp offset shadow, black
     // ink). Bottom row = elegantTheme (8dp rounded, 1dp gray hairline, near-black ink).
@@ -141,28 +141,14 @@ internal fun UiCardVisualContent() {
                 style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = theme.inkMuted
             )
-            RaftBrutalActionButton(
-                label = "Save changes",
+            RaftButton(
+                text = "Save changes",
                 onClick = {},
                 // React places <Button size="sm"> in a flex-col so it stretches to the card
-                // content width (~280dp); Kuikly Column keeps it content-sized without this,
-                // so fill the card width to match (XiShi actual-capture audit, both registers).
-                //
-                // Shadow-ink contract (brutal): RaftBrutalActionButton uses shadowOffset as BOTH
-                // the offset-box shadow displacement AND its end/bottom layout reserve. React's
-                // size="sm" button shadow is 2px, so shadowOffset = 2.dp gives a matching 2dp
-                // shadow ink (the standalone button fixture already sets 2.dp per size; the card
-                // fixture previously omitted it and fell to brutalTheme.shadow.offset = 4dp). To
-                // keep the already-parity brutal footprint (Card border 128dp, nested Button core
-                // 278dp), a brutal-only external end/bottom = 2.dp reserve restores the original
-                // 4dp footprint (2dp external + 2dp internal). Elegant renders via Modifier.shadow
-                // (no offset-box), so it ignores shadowOffset and takes NO external reserve — its
-                // geometry (the accepted waiver capture) is unchanged.
+                // content width; fill the card width to match.
                 modifier = Modifier.fillMaxWidth(),
-                backgroundColor = RaftColor.BrandYellow,
-                minHeight = 28.dp,
-                minWidth = 0.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Md
             )
         }
     }

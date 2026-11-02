@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.app.resources.*
 import build.raft.app.components.RaftLinkButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.raftButtonChrome
 import build.raft.app.components.raftCardSurface
@@ -67,6 +66,10 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.app.components.RaftSlotIcon
 
 internal enum class AuthButtonTone {
     Pink,
@@ -445,17 +448,18 @@ internal fun AuthTextField(
             trailingContent =
                 if (password) {
                     {
-                        RaftBrutalIconButton(
-                            iconName = if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye,
+                        RaftIconButton(
                             onClick = { passwordVisible = !passwordVisible },
-                            contentDescription =
+                            tooltip =
                                 stringResource(
                                     if (passwordVisible) Res.string.common_hide_password else Res.string.common_show_password
                                 ),
-                            enabled = enabled,
-                            size = 28.dp,
-                            iconSize = 15.dp
-                        )
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftIconButtonSize.Md,
+                            enabled = enabled
+                        ) {
+                            RaftSlotIcon(if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye)
+                        }
                     }
                 } else {
                     null

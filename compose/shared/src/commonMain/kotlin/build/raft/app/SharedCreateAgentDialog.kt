@@ -8,7 +8,6 @@ import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
@@ -72,6 +71,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
+import androidx.compose.foundation.layout.widthIn
+import build.raft.app.components.RaftSlotIcon
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
 // cap has been removed. The dialog body now fills the viewport via
@@ -698,17 +699,18 @@ internal fun SharedCreateAgentDialog(
                                         Res.string.runtime_form_v2_load_failed.format(listOf(runtimeSection.code)).localized(),
                                     size = RaftUiBannerSize.Medium,
                                     action = {
-                                        RaftBrutalActionButton(
-                                            label = stringResource(Res.string.common_retry),
+                                        RaftButton(
+                                            text = stringResource(Res.string.common_retry),
                                             onClick = {
                                                 v2StaleReloads = 0
                                                 v2LoadAttempt += 1
                                                 runtimeCatalogAttempt += 1
                                             },
+                                            modifier = Modifier.widthIn(min = 72.dp),
+                                            variant = RaftButtonVariant.Default,
+                                            size = RaftButtonSize.Md,
                                             enabled = !submitting,
-                                            leadingIcon = RaftLucideIconName.RefreshCw,
-                                            minWidth = 72.dp,
-                                            minHeight = 32.dp
+                                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                                         )
                                     }
                                 )
@@ -773,16 +775,17 @@ internal fun SharedCreateAgentDialog(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
                 )
-                RaftBrutalActionButton(
-                    label =
+                RaftButton(
+                    text =
                         if (submitting) {
                             stringResource(Res.string.agent_create_action_creating)
                         } else {
                             stringResource(Res.string.agent_create_submit)
                         },
                     enabled = canSubmit,
-                    minWidth = 126.dp,
-                    backgroundColor = RaftColor.AccentPink,
+                    modifier = Modifier.widthIn(min = 126.dp),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
                     onClick = {
                         val submit =
                             createAgentDialogSubmit(
@@ -793,7 +796,7 @@ internal fun SharedCreateAgentDialog(
                                 runtime = runtime,
                                 loaded = v2Form ?: v2Loaded,
                                 values = v2Values
-                            ) ?: return@RaftBrutalActionButton
+                            ) ?: return@RaftButton
                         onSubmit(submit)
                     }
                 )
@@ -894,13 +897,14 @@ internal fun MachinePicker(
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.AccentRed
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.common_retry),
+                    RaftButton(
+                        text = stringResource(Res.string.common_retry),
                         onClick = onRetry,
+                        modifier = Modifier.widthIn(min = 72.dp),
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md,
                         enabled = enabled,
-                        leadingIcon = RaftLucideIconName.RefreshCw,
-                        minWidth = 72.dp,
-                        minHeight = 32.dp
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                     )
                 }
             machines.isEmpty() -> Box(

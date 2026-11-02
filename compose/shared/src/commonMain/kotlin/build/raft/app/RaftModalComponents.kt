@@ -5,8 +5,6 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButton
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.app.components.raftLookOverlaySurface
@@ -58,6 +56,16 @@ import build.raft.app.compat.ui.KeyboardParams
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlinx.coroutines.Job
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.raftButtonVariantFor
+import build.raft.app.components.raftIconButtonVariantFor
+import build.raft.app.components.LocalRaftDialogFooter
+import build.raft.app.components.RaftLegacyIconInkArgb
 
 // The brutal dialog defaults (p-6, 18sp title); raft swaps them for p-5 and the 17/22 headline.
 private val RaftUnifiedDialogLegacyPadding = 24.dp
@@ -659,15 +667,16 @@ internal fun RaftModalActionButton(
     enabled: Boolean = true,
     loading: Boolean = false
 ) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = icon,
-        loading = loading,
+    // raft: an `lg` Button (44dp); in a dialog footer the paper secondary is the ghost Cancel.
+    RaftButton(
+        text = label,
         onClick = onClick,
         modifier = modifier,
-        backgroundColor = color,
+        variant = raftButtonVariantFor(color, inDialogFooter = LocalRaftDialogFooter.current),
+        size = RaftButtonSize.Lg,
         enabled = enabled,
-        textStyle = RaftType.ButtonBold
+        loading = loading,
+        leadingIcon = icon?.let { name -> { RaftSlotIcon(name) } }
     )
 }
 
@@ -682,15 +691,15 @@ internal fun RaftModalFullWidthActionButton(
     loading: Boolean = false
 ) {
     // raft: a full-width `lg` Button (44dp) with the variant mapped from [color].
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
+        variant = raftButtonVariantFor(color, inDialogFooter = LocalRaftDialogFooter.current),
+        size = RaftButtonSize.Lg,
         enabled = enabled,
-        backgroundColor = color,
-        minHeight = 44.dp,
-        leadingIcon = icon,
-        loading = loading
+        loading = loading,
+        leadingIcon = { RaftSlotIcon(icon) }
     )
 }
 
@@ -702,22 +711,25 @@ internal fun RaftModalSquareActionButton(
     modifier: Modifier = Modifier,
     color: Color = RaftColor.SurfaceWhite,
     enabled: Boolean = true,
-    size: Dp = 28.dp,
-    iconColor: String = "#FF000000",
+    iconColor: String = RaftLegacyIconInkArgb,
     loading: Boolean = false
 ) {
-    RaftBrutalIconButton(
-        iconName = icon,
+    RaftIconButton(
         onClick = onClick,
-        contentDescription = contentDescription,
+        tooltip = contentDescription.takeIf { it.isNotBlank() },
         modifier = modifier,
+        variant = raftIconButtonVariantFor(color),
+        size = RaftIconButtonSize.Md,
         enabled = enabled,
-        backgroundColor = color,
-        size = size,
-        iconColor = iconColor,
-        disabledIconColor = iconColor,
         loading = loading
-    )
+    ) {
+        // An explicit ink stays (a muted remove); the legacy black follows the variant.
+        if (enabled && iconColor != RaftLegacyIconInkArgb) {
+            RaftLucideIcon(icon, color = iconColor, modifier = Modifier.fillMaxSize())
+        } else {
+            RaftSlotIcon(icon)
+        }
+    }
 }
 
 @Composable

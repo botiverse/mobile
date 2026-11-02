@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.AnnouncementItem
 import build.raft.app.data.RaftSharedStoreRegistry
 import androidx.compose.foundation.layout.height
@@ -25,6 +24,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 
 // task #226: global announcement modal, aligned with web. Shows the latest
 // active (server-dedup'd, per-user) announcement. Multi-page markdown with
@@ -119,23 +122,25 @@ internal fun SharedAnnouncementModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (hasMultiplePages && pageIndex > 0) {
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.common_back),
+                    RaftButton(
+                        text = stringResource(Res.string.common_back),
                         onClick = { pageIndex -= 1 },
-                        leadingIcon = RaftLucideIconName.ChevronLeft,
-                        backgroundColor = RaftColor.SurfaceWhite
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.ChevronLeft) }
                     )
                 }
                 val isLastPage = pageIndex >= pages.lastIndex
                 if (isLastPage && announcement.cta != null) {
-                    RaftBrutalActionButton(
-                        label = stringResource(Res.string.announcement_action_got_it),
+                    RaftButton(
+                        text = stringResource(Res.string.announcement_action_got_it),
                         onClick = onDismiss,
-                        backgroundColor = RaftColor.SurfaceWhite,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg,
                     )
                 }
-                RaftBrutalActionButton(
-                    label = announcement.cta?.takeIf { isLastPage }?.label
+                RaftButton(
+                    text = announcement.cta?.takeIf { isLastPage }?.label
                         ?: stringResource(if (isLastPage) Res.string.announcement_action_got_it else Res.string.pagination_next),
                     onClick = {
                         if (!isLastPage) pageIndex += 1
@@ -144,8 +149,9 @@ internal fun SharedAnnouncementModal(
                             onDismiss()
                         }
                     },
-                    leadingIcon = if (isLastPage) null else RaftLucideIconName.ChevronRight,
-                    backgroundColor = RaftColor.BrandYellow
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    leadingIcon = RaftLucideIconName.ChevronRight.takeIf { !isLastPage }?.let { icon -> { RaftSlotIcon(icon) } }
                 )
             }
         }
