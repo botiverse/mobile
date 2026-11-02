@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
@@ -161,6 +164,9 @@ class RaftPreviewCardState(
      */
     internal var closedByOutsidePress = false
 
+    /** The trigger's focus, which a pinned card takes so Escape reaches it. */
+    internal val triggerFocus = FocusRequester()
+
     internal val wantsOpen: Boolean get() = raftPreviewCardWantsOpen(isTriggerHovered, isCardHovered, suppressed, pinnedOpen)
 
     /**
@@ -272,7 +278,10 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                 } else {
                     false
                 }
-            }.pointerInput(state, pinOnClick) {
+            }
+            // After the key handler, so it sees keys while this node has focus (a pinned card).
+            .then(if (pinOnClick) Modifier.focusRequester(state.triggerFocus).focusable() else Modifier)
+            .pointerInput(state, pinOnClick) {
                 awaitPointerEventScope {
                     var downAt: Offset? = null
                     var downMillis = 0L
@@ -305,6 +314,9 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                                         )
                                     ) {
                                         state.pin()
+                                        // Focus comes to the trigger, so Escape closes the pinned card
+                                        // wherever the pointer is (web: a document listener while pinned).
+                                        runCatching { state.triggerFocus.requestFocus() }
                                         // The click pins the card and goes no further: the trigger's
                                         // own click (a sheet, a page) would show the same thing twice.
                                         change.consume()
@@ -398,9 +410,10 @@ fun RaftPreviewCardPopup(
                 }
             }
         },
-        // A pinned card takes focus, so Escape closes it wherever focus was (web: a document
-        // listener while pinned); a hover card never does.
-        properties = PopupProperties(focusable = pinned, dismissOnBackPress = true, dismissOnClickOutside = true),
+        // Never focusable, pinned or not: a focusable popup takes the clicks and scrolls meant for
+        // the page under it (web: neither). Escape reaches a pinned card through its trigger,
+        // which takes focus when it pins ([raftPreviewCardTrigger]).
+        properties = PopupProperties(focusable = false, dismissOnBackPress = true, dismissOnClickOutside = true),
     ) {
         Box(
             if (room == null) {
