@@ -2173,6 +2173,9 @@ private fun RaftAppShellReadyContent(
     // Navigation 3 (Android, stack on): the host saves the tab under the stack's pages with them.
     val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
     if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
+    // Navigation 3 (Android, stack on): the window's shell tabs for the server pages pushed over
+    // the shell (AppShellServerStackPage.kt); null when the shell is not a stack root.
+    val stackShellTabs = LocalRaftStackShellTabs.current
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
     // artin 2026-11-02: the tabs picked before this one; Back on a tab root walks back through them.
     var appShellTabHistory by remember { mutableStateOf(AppShellTabHistory()) }
@@ -6956,8 +6959,13 @@ private fun RaftAppShellReadyContent(
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == "members",
                 )
-                selectAppShellTab("members", directChildSwitch = true, source = AppShellTabSwitchSource.User)
-                retainedAppShellTabs = retainedAppShellTabs + "members"
+                if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+                    serverTabFocusOnPageReturn = true
+                    pager.openAppShellServerStackPage("members")
+                } else {
+                    selectAppShellTab("members", directChildSwitch = true, source = AppShellTabSwitchSource.User)
+                    retainedAppShellTabs = retainedAppShellTabs + "members"
+                }
             }
             RaftServerMenuEntry.Computers -> {
                 RaftProductEvents.navEntrySelected(
@@ -6977,8 +6985,13 @@ private fun RaftAppShellReadyContent(
                     surface = RaftNavSurface.MobileMore,
                     wasActive = retainedAppShellSelectedTab(selectedTab) == settingsKey,
                 )
-                selectAppShellTab(settingsKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
-                retainedAppShellTabs = retainedAppShellTabs + settingsKey
+                if (appShellServerPagePushes(stackShellTabs != null, navRailActive)) {
+                    serverTabFocusOnPageReturn = true
+                    pager.openAppShellServerStackPage(settingsKey)
+                } else {
+                    selectAppShellTab(settingsKey, directChildSwitch = true, source = AppShellTabSwitchSource.User)
+                    retainedAppShellTabs = retainedAppShellTabs + settingsKey
+                }
             }
         }
     }
@@ -8261,8 +8274,11 @@ private fun RaftAppShellReadyContent(
                             }
                         }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        // On the Navigation 3 stack (AppShellServerStackPage.kt) Back closes the page
+                        // and no bottom bar sits under it.
+                        val stackPageClose = LocalAppShellServerStackPageClose.current
                         SharedMembersScreen(
-                            onBack = moreChildBack,
+                            onBack = stackPageClose ?: moreChildBack,
                             bridge = bridge,
                             storeScope = navigationStoreScope,
                             sharedStores = sharedStores,
@@ -8288,7 +8304,8 @@ private fun RaftAppShellReadyContent(
                                 membersListRefreshKey += 1
                             },
                             timeContext = threadTimeContext,
-                            bottomContentPadding = appShellBottomContentInset,
+                            bottomContentPadding =
+                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.members,
                             initialListState = membersListState,
                             onListStateSnapshot = {
@@ -8414,6 +8431,7 @@ private fun RaftAppShellReadyContent(
                                 },
                             )
                         } else {
+                        val stackPageClose = LocalAppShellServerStackPageClose.current
                         SettingsAppShellHomeContent(
                             moreRoot =
                                 if (navRailActive) {
@@ -8424,10 +8442,11 @@ private fun RaftAppShellReadyContent(
                                         attentionRowKeys = moreAttention.mapTo(mutableSetOf()) { it.settingsRowKey },
                                     )
                                 },
-                            onBack = moreChildBack,
+                            onBack = stackPageClose ?: moreChildBack,
                             session = settingsSession,
                             imBridgesEnabled = imBridgesEnabled,
-                            bottomContentPadding = appShellBottomContentInset,
+                            bottomContentPadding =
+                                if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
@@ -8516,6 +8535,10 @@ private fun RaftAppShellReadyContent(
                             renderer = childTabRenderer
                         )
                         childTabEntry.modalHostState = appShellModalHostState
+                        if (stackShellTabs != null) {
+                            stackShellTabs.entry = childTabEntry
+                            stackShellTabs.renderer = childTabRenderer
+                        }
                     }
                     LaunchedEffect(childTabShellId, childTabEntry.debugId) {
                         bridge.log(
@@ -8526,6 +8549,10 @@ private fun RaftAppShellReadyContent(
                     }
                     DisposableEffect(childTabShellId, childTabEntry) {
                         onDispose {
+                            if (stackShellTabs != null && stackShellTabs.entry === childTabEntry) {
+                                stackShellTabs.entry = null
+                                stackShellTabs.renderer = null
+                            }
                             val removed = AppShellChildTabRegistry.unregister(childTabShellId, childTabEntry)
                             bridge.log(
                                 "app_shell_child_tab_registry_unregister shellId=$childTabShellId " +

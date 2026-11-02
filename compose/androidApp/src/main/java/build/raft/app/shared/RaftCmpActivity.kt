@@ -138,6 +138,7 @@ import build.raft.app.core.data.diagnostics.RaftAuthCriticalJournal
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftPerformanceDiagnostics
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
+import build.raft.app.core.data.diagnostics.RaftNavTransitionFrameProbe
 import build.raft.app.core.data.diagnostics.RaftScrollFrameProbe
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
@@ -773,6 +774,8 @@ internal open class RaftCmpActivity :
     private var pageSpec: RaftPageSpec? = null
     // Navigation 3 page stack of the app shell window; null with the switch off or on any other page.
     private var nav3Stack: RaftPageStack? = null
+    // nav_transition_frames: one line per push, pop and predictive back gesture of that stack.
+    private val nav3TransitionProbe by lazy { RaftNavTransitionFrameProbe(this) }
     // The page keys saved before this instance was recreated (process death, recreation).
     private var nav3SavedKeysText: String? = null
     // The shell tab under the stack's pages: written by the shell, saved with the keys.
@@ -1115,6 +1118,7 @@ internal open class RaftCmpActivity :
                                         val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
                                         RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas)
                                     },
+                                    transitions = nav3TransitionProbe,
                                 )
                             }
                         }
@@ -1155,6 +1159,7 @@ internal open class RaftCmpActivity :
             val restored = keys != null && stack.restore(keys)
             RaftAppLog.record(TAG, "nav3_stack_restore restored=$restored pages=${keys?.size ?: 0} chars=${savedText.length} rootTab=${nav3SavedRootTab.orEmpty()}")
         }
+        stack.onChangeRequested = { nav3TransitionProbe.onNavigate() }
         RaftAppLog.record(TAG, "nav3_stack_on pages=${stack.pages.size}")
         return stack
     }
@@ -1659,6 +1664,7 @@ internal open class RaftCmpActivity :
     override fun onPause() {
         RaftResumeFrameProbe.onActivityPaused(this)
         RaftScrollFrameProbe.onActivityPaused(this)
+        if (nav3Stack != null) nav3TransitionProbe.onPaused()
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Hidden, "activity_on_pause")
         }

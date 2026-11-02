@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,7 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
 class RaftMobileStackScene<T : Any>(
     override val entries: List<NavEntry<T>>,
     private val motion: RaftMobileStackMotion,
+    private val transitions: RaftStackTransitionTracker? = null,
 ) : Scene<T> {
     init {
         require(entries.isNotEmpty()) { "RaftMobileStackScene needs at least one entry" }
@@ -63,6 +66,24 @@ class RaftMobileStackScene<T : Any>(
         val entering =
             scope.transition.targetState == EnterExitState.Visible &&
                 scope.transition.currentState != EnterExitState.Visible
+        if (transitions != null) {
+            // This scene's motion for the transition tracker: shown and about to leave while its
+            // page is still on top is a predictive back preview; headed to shown with nothing left
+            // running is settled (a push / pop landing here, or a gesture let go back onto it: a
+            // cancelled seek can end with the target shown and no animation, whatever the current).
+            val topKey = top.contentKey.toString()
+            val transition = scope.transition
+            LaunchedEffect(transition, topKey) {
+                snapshotFlow { Triple(transition.currentState, transition.targetState, transition.isRunning) }
+                    .collect { (current, target, running) ->
+                        if (target == EnterExitState.PostExit) {
+                            if (current == EnterExitState.Visible) transitions.onBackPreview(topKey)
+                        } else if (target == EnterExitState.Visible && !running) {
+                            transitions.onSettled(topKey)
+                        }
+                    }
+            }
+        }
         entries.forEach { entry ->
             key(entry.contentKey) {
                 val modifier =
@@ -92,9 +113,12 @@ class RaftMobileStackScene<T : Any>(
 }
 
 /** [RaftMobileStackScene] for any non-empty back stack. */
-class RaftMobileStackSceneStrategy<T : Any>(private val motion: RaftMobileStackMotion) : SceneStrategy<T> {
+class RaftMobileStackSceneStrategy<T : Any>(
+    private val motion: RaftMobileStackMotion,
+    private val transitions: RaftStackTransitionTracker? = null,
+) : SceneStrategy<T> {
     override fun SceneStrategyScope<T>.calculateScene(entries: List<NavEntry<T>>): Scene<T>? =
-        if (entries.isEmpty()) null else RaftMobileStackScene(entries, motion)
+        if (entries.isEmpty()) null else RaftMobileStackScene(entries, motion, transitions)
 }
 
 /**

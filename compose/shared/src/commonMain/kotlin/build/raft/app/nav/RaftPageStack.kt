@@ -49,6 +49,9 @@ class RaftPageStack(
 ) {
     private var nextId = 0L
 
+    /** Called as an open or a close changes [pages], before it is drawn (a host's transition timing). */
+    var onChangeRequested: (() -> Unit)? = null
+
     /** The back stack, bottom first; the last entry is the page on screen. */
     val pages: SnapshotStateList<RaftStackPage> = mutableStateListOf(page(RAFT_APP_SHELL_PAGE, JsonObject(emptyMap())))
 
@@ -63,6 +66,7 @@ class RaftPageStack(
         log("open page=$pageName from=${from?.args?.pageName} data=${pageData.toString().take(200)}")
         val replace = (pageData[RAFT_REPLACE_CURRENT_PAGE] as? JsonPrimitive)?.booleanOrNull == true
         val next = page(pageName, pageData)
+        onChangeRequested?.invoke()
         when {
             pageName == RAFT_APP_SHELL_PAGE -> {
                 pages.clear()
@@ -81,7 +85,7 @@ class RaftPageStack(
             return
         }
         log("close page=${page.args.pageName}")
-        pages.remove(page)
+        if (pages.remove(page)) onChangeRequested?.invoke()
     }
 
     /** Closes the top page; false (nothing done) when only the root page is left. */
