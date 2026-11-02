@@ -1889,6 +1889,9 @@
     <string name="agent_create_action_create_external">外部エージェントを作成</string>
     <string name="agent_create_action_creating">作成中...</string>
     <string name="agent_create_error_limit">エージェント数の上限に達しました（このサーバーで %1$d/%2$d）。アップグレードすると追加できます。</string>
+    <string name="agent_create_error_limit_neutral">エージェント数の上限に達しました（このサーバーで %1$d/%2$d）。さらに追加するには Pro プランが必要です。</string>
+    <string name="agent_create_limit_needs_pro">さらに追加するには Pro プランが必要です。</string>
+    <string name="agent_create_error_limit_reached_neutral">エージェント数の上限に達しました。さらに追加するには Pro プランが必要です。</string>
     <string name="agent_create_error_limit_plan">エージェント数の上限に達しました（%3$s プランで %1$d/%2$d）。</string>
     <string name="agent_create_action_upgrade_for_more">アップグレードして追加</string>
     <string name="agent_create_state_computers_loading">コンピューターを読み込み中...</string>
@@ -3200,6 +3203,7 @@
     <string name="joint_connections_slug_pattern">サーバーのスラッグは小文字の英字で始め、小文字の英字、数字、ハイフンのみを使用してください</string>
     <string name="joint_connections_people_required">招待する人を 1 人以上指定してください</string>
     <string name="joint_limit_free_servers">この共同チャンネルにはすでに無料サーバーが 2 個参加しています。続行するには、いずれかのサーバーを Pro にアップグレードするか、無料サーバーに退出してもらってください（サーバーは最大 30 個）。</string>
+    <string name="joint_limit_free_servers_neutral">この共同チャンネルにはすでに無料サーバーが 2 個参加しています。続行するには、無料サーバーが退出するか、いずれかのサーバーが Pro プランである必要があります（サーバーは最大 30 個）。</string>
     <string name="joint_limit_servers">共同チャンネルに参加できるサーバーは最大 %1$d 個です。上限の引き上げをご希望の場合は、設定からフィードバックを送信してください。</string>
     <string name="joint_invite_rate_limited_one">短時間に招待しすぎました。1 分後にもう一度お試しください。</string>
     <string name="joint_invite_rate_limited_other">短時間に招待しすぎました。%1$d 分後にもう一度お試しください。</string>
@@ -3241,7 +3245,9 @@
     <string name="joint_create_humans">人間</string>
     <string name="joint_create_no_matches">「%1$s」に一致するメンバーはいません</string>
     <string name="joint_create_free_host_limit">この無料サーバーは、他のサーバーが参加している共同チャンネル #%1$s をすでにホストしています。さらにホストするには Pro にアップグレードするか、他のサーバーがすべて #%1$s から退出するまでお待ちください。</string>
+    <string name="joint_create_free_host_limit_neutral">この無料サーバーは、他のサーバーが参加している共同チャンネル #%1$s をすでにホストしています。さらにホストするには Pro プランが必要です。または、他のサーバーがすべて #%1$s から退出するまでお待ちください。</string>
     <string name="joint_create_free_host_limit_unnamed">この無料サーバーは、他のサーバーが参加している共同チャンネルをすでにホストしています。さらにホストするには Pro にアップグレードするか、他のサーバーがすべて退出するまでお待ちください。</string>
+    <string name="joint_create_free_host_limit_unnamed_neutral">この無料サーバーは、他のサーバーが参加している共同チャンネルをすでにホストしています。さらにホストするには Pro プランが必要です。または、他のサーバーがすべて退出するまでお待ちください。</string>
     <string name="joint_invite_error_invitee_not_found">サーバー「%2$s」に %1$s に一致する人が見つかりませんでした。ハンドルまたはメールアドレスを確認してください。</string>
     <string name="joint_same_admin_notice">%1$s と %2$s の両方の管理者であるため、両サーバーの管理者として直接接続します。メールは送信されません。</string>
     <string name="joint_same_admin_confirm">両サーバーの管理者として直接接続</string>
@@ -3448,6 +3454,7 @@
     <string name="agent_migration_error_not_cancelable">エージェントはすでにクラウドに移行したため、この移行はキャンセルできません。</string>
     <string name="agent_migration_error_already_in_progress">このエージェントはすでに移行中です。完了するまで待ってから、もう一度お試しください。</string>
     <string name="agent_migration_error_pro_plan_required">エージェントの移行には Pro プランが必要です。このサーバーを Pro にアップグレードしてから、もう一度お試しください。</string>
+    <string name="agent_migration_error_pro_plan_required_neutral">エージェントの移行には Pro プランが必要です。</string>
     <string name="agent_migration_error_transport_not_provisioned">Raft はこれらのコンピューター間の安全な転送を準備できませんでした。両方のコンピューターがオンラインで最新の状態であることを確認してから、もう一度お試しください。</string>
     <string name="agent_migration_error_transport_provision_failed">Raft は転送を準備できませんでした。両方のコンピューターがオンラインであることを確認してから、もう一度お試しください。</string>
     <string name="agent_migration_error_workspace_already_exists">そのワークスペースがすでに存在するため、移行先のコンピューターにエージェントをインストールできませんでした。どちらのコピーが最新かを確認し、競合するワークスペースを移動またはバックアップしてから、もう一度お試しください。Raft が自動で削除することはありません。</string>

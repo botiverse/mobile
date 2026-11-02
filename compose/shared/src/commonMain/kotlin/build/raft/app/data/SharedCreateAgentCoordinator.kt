@@ -194,6 +194,26 @@ internal const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
  */
 internal fun createAgentFallbackErrorText(error: ScreenError, genericPrefix: String): String =
     error.serverMessage?.takeIf { it.isNotBlank() } ?: genericPrefix
+
+/** The server's code for an agent create past the plan's agents (shared `AGENT_LIMIT_REACHED_CODE`). */
+internal const val AGENT_CREATE_LIMIT_REACHED = "agent_limit_reached"
+
+/**
+ * The create-agent failure text. The server words a refused create past the plan's agents as
+ * "Agent limit reached (5/5 on Free plan). Upgrade for more."; where the app offers no upgrade
+ * (iOS view-only Billing) it is [limitReachedNeutral] instead, a statement with no call to upgrade.
+ */
+internal fun createAgentErrorText(
+    error: ScreenError,
+    genericPrefix: String,
+    limitReachedNeutral: String,
+    offersUpgrade: Boolean,
+): String =
+    if (!offersUpgrade && (error.code == AGENT_CREATE_LIMIT_REACHED || error.serverMessage?.contains("Upgrade for more") == true)) {
+        limitReachedNeutral
+    } else {
+        createAgentFallbackErrorText(error, genericPrefix)
+    }
 internal val CREATE_AGENT_RUNTIME_FORM_REJECTION_CODES =
     setOf(
         "form_definition_ref_required",

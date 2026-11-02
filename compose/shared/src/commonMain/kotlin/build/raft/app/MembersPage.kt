@@ -154,7 +154,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
-import build.raft.app.data.createAgentFallbackErrorText
+import build.raft.app.data.createAgentErrorText
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
@@ -5724,6 +5724,7 @@ internal fun MembersListContent(
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     val emptyResponseMessage = stringResource(Res.string.member_error_empty_response)
     val createAgentFailed = stringResource(Res.string.member_error_create_agent)
+    val createAgentLimitReachedNeutral = stringResource(Res.string.agent_create_error_limit_reached_neutral)
     val createAgentForbidden = stringResource(Res.string.member_error_create_agent_forbidden)
     val createAgentNameTaken = stringResource(Res.string.agent_create_error_name_taken)
     val canInviteHumans = payload.canInviteHumans && inviteHumanDialog != null
@@ -5972,7 +5973,13 @@ internal fun MembersListContent(
                                 when (result.error.code) {
                                     AGENT_CREATE_NAME_TAKEN ->
                                         createAgentNameTaken
-                                    else -> createAgentFallbackErrorText(result.error, createAgentFailed)
+                                    else ->
+                                        createAgentErrorText(
+                                            result.error,
+                                            createAgentFailed,
+                                            limitReachedNeutral = createAgentLimitReachedNeutral,
+                                            offersUpgrade = settingsBillingOffersUpgrade(),
+                                        )
                                 }
                         }
                         is DataResult.NoPermission -> {

@@ -71,10 +71,14 @@ internal fun ThreadActionCard.actionCardSpecToRender(
     specEnabled: Boolean,
     capabilities: Collection<String>,
     feedbackTicketVisible: Boolean = false,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ): ActionCardSpecCard? {
     if (!specEnabled && type !in ThreadActionCardSpecOnlyTypes) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
-    val read = presentationCard ?: return null
+    val presented = presentationCard ?: return null
+    // iOS view-only Billing: a seat request's Add Seats or a Pro request's Upgrade would strip to
+    // "Open in web", a way to buy in the browser; those buttons go, the request itself stays.
+    val read = if (offersUpgrade) presented else presented.withoutUpgradeIntentButtons() ?: return null
     val stripped = stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities)) ?: return null
     return if (feedbackTicketVisible) stripped else stripped.withoutResultIntentButtons()
 }
@@ -113,6 +117,42 @@ internal fun ActionCardSpecCard.withoutResultIntentButtons(): ActionCardSpecCard
             if (node is CardStack && node.children.orEmpty().any { it in removed }) node.copy(children = node.children.orEmpty().filterNot { it in removed }) else node
         }
     return copy(result = ActionCardSpecTree(tree.root, elements))
+}
+
+/** The `open` intents that lead to buying: the upgrade dialog and a seat request's Add Seats. */
+internal val ActionCardSpecUpgradeIntents: Set<ActionCardSpecIntent> = setOf(ActionCardSpecIntent.UpgradeDialog, ActionCardSpecIntent.AddSeats)
+
+/**
+ * [this] without the buttons that `open` an upgrade intent ([ActionCardSpecUpgradeIntents]), in the
+ * card and its result: removed from the elements and from every Stack's children. A result whose
+ * root was such a button is dropped; a card whose root was one is null (the legacy card is drawn).
+ */
+internal fun ActionCardSpecCard.withoutUpgradeIntentButtons(): ActionCardSpecCard? {
+    fun upgradeButtons(tree: ActionCardSpecTree): Set<String> =
+        tree.elements.filterValues { node ->
+            node is ActionCardSpecButton && (node.action as? ActionCardSpecAction.Open)?.intent in ActionCardSpecUpgradeIntents
+        }.keys
+    fun without(tree: ActionCardSpecTree, removed: Set<String>): ActionCardSpecTree =
+        ActionCardSpecTree(
+            tree.root,
+            tree.elements.filterKeys { it !in removed }.mapValues { (_, node) ->
+                if (node is CardStack && node.children.orEmpty().any { it in removed }) node.copy(children = node.children.orEmpty().filterNot { it in removed }) else node
+            },
+        )
+    val inSpec = upgradeButtons(spec)
+    if (spec.root in inSpec) return null
+    val resultTree = result
+    val inResult = resultTree?.let(::upgradeButtons).orEmpty()
+    if (inSpec.isEmpty() && inResult.isEmpty()) return this
+    return copy(
+        spec = if (inSpec.isEmpty()) spec else without(spec, inSpec),
+        result =
+            when {
+                resultTree == null || inResult.isEmpty() -> resultTree
+                resultTree.root in inResult -> null
+                else -> without(resultTree, inResult)
+            },
+    )
 }
 
 /**

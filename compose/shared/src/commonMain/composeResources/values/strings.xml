@@ -1887,6 +1887,9 @@
     <string name="agent_create_action_create_external">Create External Agent</string>
     <string name="agent_create_action_creating">Creating...</string>
     <string name="agent_create_error_limit">Agent limit reached (%1$d/%2$d on this server). Upgrade for more.</string>
+    <string name="agent_create_error_limit_neutral">Agent limit reached (%1$d/%2$d on this server). More agents need a Pro plan.</string>
+    <string name="agent_create_limit_needs_pro">More agents need a Pro plan.</string>
+    <string name="agent_create_error_limit_reached_neutral">Agent limit reached. More agents need a Pro plan.</string>
     <string name="agent_create_error_limit_plan">Agent limit reached (%1$d/%2$d on %3$s plan).</string>
     <string name="agent_create_action_upgrade_for_more">Upgrade for more</string>
     <string name="agent_create_state_computers_loading">Loading computers...</string>
@@ -3200,6 +3203,7 @@
     <string name="joint_connections_slug_pattern">Server slug must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens</string>
     <string name="joint_connections_people_required">At least one invited person is required</string>
     <string name="joint_limit_free_servers">This Joint Channel already has 2 free servers. Upgrade either side to Pro, or have a free server leave, to continue (30 servers max).</string>
+    <string name="joint_limit_free_servers_neutral">This Joint Channel already has 2 free servers. To continue, a free server has to leave or one side needs a Pro plan (30 servers max).</string>
     <string name="joint_limit_servers">Joint Channels are limited to %1$d servers. To request a higher limit, send feedback from Settings.</string>
     <string name="joint_invite_rate_limited_one">Too many invites in a short time. Try again in 1 minute.</string>
     <string name="joint_invite_rate_limited_other">Too many invites in a short time. Try again in %1$d minutes.</string>
@@ -3241,7 +3245,9 @@
     <string name="joint_create_humans">Humans</string>
     <string name="joint_create_no_matches">No members match “%1$s”</string>
     <string name="joint_create_free_host_limit">Your free server already hosts #%1$s, a Joint Channel another server has joined. Upgrade to Pro to host more, or wait until all other servers leave #%1$s.</string>
+    <string name="joint_create_free_host_limit_neutral">Your free server already hosts #%1$s, a Joint Channel another server has joined. Hosting more needs a Pro plan, or wait until all other servers leave #%1$s.</string>
     <string name="joint_create_free_host_limit_unnamed">Your free server already hosts a Joint Channel another server has joined. Upgrade to Pro to host more, or wait until all other servers leave it.</string>
+    <string name="joint_create_free_host_limit_unnamed_neutral">Your free server already hosts a Joint Channel another server has joined. Hosting more needs a Pro plan, or wait until all other servers leave it.</string>
     <string name="joint_invite_error_invitee_not_found">No one matching %1$s was found on server “%2$s”. Check the handle or email.</string>
     <string name="joint_same_admin_notice">You’re an admin of both %1$s and %2$s. The connection will be made directly as admin of both, and no email will be sent.</string>
     <string name="joint_same_admin_confirm">Connect directly as admin of both servers</string>
@@ -3448,6 +3454,7 @@
     <string name="agent_migration_error_not_cancelable">The agent already moved to the cloud, so this migration can no longer be canceled.</string>
     <string name="agent_migration_error_already_in_progress">This agent already has a migration in progress. Wait for it to finish before trying again.</string>
     <string name="agent_migration_error_pro_plan_required">Agent migration requires the Pro plan. Upgrade this Server to Pro before trying again.</string>
+    <string name="agent_migration_error_pro_plan_required_neutral">Agent migration requires the Pro plan.</string>
     <string name="agent_migration_error_transport_not_provisioned">Raft could not prepare a secure transfer between these computers. Make sure both computers are online and up to date, then try again.</string>
     <string name="agent_migration_error_transport_provision_failed">Raft could not prepare the transfer. Make sure both computers are online, then try again.</string>
     <string name="agent_migration_error_workspace_already_exists">The target computer could not install the agent because that workspace already exists. Check which copy is current; move or back up the conflicting workspace, then try again. Raft will not delete it automatically.</string>

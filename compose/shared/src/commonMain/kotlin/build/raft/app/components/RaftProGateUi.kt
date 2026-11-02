@@ -120,3 +120,22 @@ internal fun raftProThemeGateDescription(offersUpgrade: Boolean = settingsBillin
     } else {
         Res.string.settings_server_theme_pro_description_neutral
     }
+
+/**
+ * Copy that tells someone to upgrade, and its neutral wording for where the app offers no upgrade
+ * (iOS view-only Billing, App Store guideline 3.1.1): a statement of what needs a Pro plan, with
+ * no "Upgrade …" call to action. Android and the Compose desktop app keep the original copy.
+ */
+private val RaftUpsellNeutralCopy: Map<String, StringResource> =
+    mapOf(
+        Res.string.agent_create_error_limit.key to Res.string.agent_create_error_limit_neutral,
+        Res.string.agent_create_action_upgrade_for_more.key to Res.string.agent_create_limit_needs_pro,
+        Res.string.joint_limit_free_servers.key to Res.string.joint_limit_free_servers_neutral,
+        Res.string.joint_create_free_host_limit.key to Res.string.joint_create_free_host_limit_neutral,
+        Res.string.joint_create_free_host_limit_unnamed.key to Res.string.joint_create_free_host_limit_unnamed_neutral,
+        Res.string.agent_migration_error_pro_plan_required.key to Res.string.agent_migration_error_pro_plan_required_neutral,
+    )
+
+/** [resource], or its neutral wording ([RaftUpsellNeutralCopy]) where the app offers no upgrade. */
+internal fun raftUpsellCopy(resource: StringResource, offersUpgrade: Boolean = settingsBillingOffersUpgrade()): StringResource =
+    if (offersUpgrade) resource else RaftUpsellNeutralCopy[resource.key] ?: resource

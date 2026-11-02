@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftComboboxOption
@@ -819,11 +820,13 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
 
 @Composable
 private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
+    // iOS view-only Billing: the limit stated, with no "Upgrade for more" (raftUpsellCopy).
+    val offersUpgrade = settingsBillingOffersUpgrade()
     if (planLabel.isNullOrBlank()) {
         RaftUiBanner(
             status = RaftUiBannerStatus.Warning,
             description =
-                Res.string.agent_create_error_limit
+                raftUpsellCopy(Res.string.agent_create_error_limit, offersUpgrade)
                     .format(listOf(currentAgentCount, maxAgents))
                     .localized(),
             size = RaftUiBannerSize.Medium
@@ -835,7 +838,7 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
         Res.string.agent_create_error_limit_plan
             .format(listOf(currentAgentCount, maxAgents, planLabel))
             .localized()
-    val action = stringResource(Res.string.agent_create_action_upgrade_for_more)
+    val action = stringResource(raftUpsellCopy(Res.string.agent_create_action_upgrade_for_more, offersUpgrade))
     Box(
         modifier =
             Modifier
@@ -849,9 +852,10 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
                 buildAnnotatedString {
                     append(summary)
                     append(" ")
-                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
+                    // The underline reads as a link: only on the upgrade wording, not the neutral statement.
+                    if (offersUpgrade) pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
                     append(action)
-                    pop()
+                    if (offersUpgrade) pop()
                 },
             style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
             color = RaftColor.TextBlack

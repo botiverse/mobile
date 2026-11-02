@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.components.raftUpsellCopy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -332,7 +333,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
     val invitee = details?.invitee.orEmpty()
     val server = details?.targetServerSlug.orEmpty()
     val blocking = details?.blockingChannelName.orEmpty()
-    val freeHost = stringResource(Res.string.joint_create_free_host_limit, blocking)
+    val freeHost = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit), blocking)
     val notFound = stringResource(Res.string.joint_invite_error_invitee_not_found, invitee, server)
     val notAdmin = stringResource(Res.string.joint_invite_error_invitee_not_admin, invitee, server)
     val serverNotFound = stringResource(Res.string.joint_invite_error_server_not_found, server)
@@ -343,10 +344,10 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
             slugRequired = stringResource(Res.string.joint_connections_slug_required),
             peopleRequired = stringResource(Res.string.joint_connections_people_required),
             sameAdminConfirmRequired = stringResource(Res.string.joint_same_admin_confirm_required),
-            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             freeHostLimit = { freeHost },
-            freeHostLimitUnnamed = stringResource(Res.string.joint_create_free_host_limit_unnamed),
+            freeHostLimitUnnamed = stringResource(raftUpsellCopy(Res.string.joint_create_free_host_limit_unnamed)),
             inviteeNotFound = { _, _ -> notFound },
             inviteeNotAdmin = { _, _ -> notAdmin },
             serverNotFound = { serverNotFound },
