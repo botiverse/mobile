@@ -1000,10 +1000,23 @@ internal fun membersRemoteAgentProfileSnapshot(
 
 internal fun membersAgentDetailShowsProfileStateNotice(
     selectedTab: MembersAgentDetailTab,
-    avatarManagementMode: Boolean
+    avatarManagementMode: Boolean,
+    state: MembersAgentDetailLoadState,
 ): Boolean =
     selectedTab == MembersAgentDetailTab.Profile &&
-        !avatarManagementMode
+        !avatarManagementMode &&
+        membersAgentDetailStateHasNotice(state)
+
+/**
+ * Whether [MembersAgentDetailStateNotice] draws a banner for [state]. An empty notice must not
+ * take a list slot: its 16dp gap pushed the loaded profile 16dp below the web's hero.
+ */
+internal fun membersAgentDetailStateHasNotice(state: MembersAgentDetailLoadState): Boolean =
+    when (state) {
+        MembersAgentDetailLoadState.Idle -> false
+        is MembersAgentDetailLoadState.Content -> state.refreshing
+        else -> true
+    }
 
 internal fun membersOrderedAgentTabs(
     visibleTabs: List<MembersAgentDetailTab>,
@@ -1281,7 +1294,7 @@ internal fun membersAgentComputerNavigationTarget(
 private fun String?.cleanMemberDetailServerId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
-private sealed interface MembersAgentDetailLoadState {
+internal sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
     data class Content(
@@ -6855,13 +6868,16 @@ private fun MembersDetailContent(
                         ) {
                             if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
-                                    Spacer(Modifier.height(RaftAppSpacing.Sm))
+                                    // Web AgentDetailPanel's hero sits 20dp under the tabs
+                                    // (`py-5`): this slot's 16dp gap plus the hero's 4dp.
+                                    Spacer(Modifier.height(if (pageTab == MembersAgentDetailTab.Profile) 0.dp else RaftAppSpacing.Sm))
                                 }
                             }
                             if (
                                 membersAgentDetailShowsProfileStateNotice(
                                     selectedTab = pageTab,
-                                    avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
+                                    avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement,
+                                    state = agentDetailState,
                                 )
                             ) {
                                 item(key = "member-detail-${member.id.value}-state-notice") {
@@ -7486,9 +7502,8 @@ internal fun MembersDetailHeader(
     val headerMetaLabel =
         when {
             deleted -> stringResource(Res.string.member_status_deleted)
-            member.kind == MemberKind.Agent ->
-                summary?.description?.takeIf { it.isNotBlank() }
-                    ?: member.description?.takeIf { it.isNotBlank() }
+            // Web AgentDetailHeader: the weaker @handle under the name (cindyz #737), in mono.
+            member.kind == MemberKind.Agent -> member.detailHandle
             else -> null
         }
     val topSafeArea = raftTopSafeAreaPadding()
@@ -7532,7 +7547,7 @@ internal fun MembersDetailHeader(
                 if (!headerMetaLabel.isNullOrBlank()) {
                     RaftText(
                         text = headerMetaLabel,
-                        style = typography.caption,
+                        style = if (deleted) typography.caption else typography.monoMeta.copy(lineHeight = typography.caption.lineHeight),
                         color = if (deleted) colors.dangerStrong else colors.foregroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -7579,7 +7594,8 @@ internal fun MembersDetailHeader(
                                 currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
                             }
                     ) {
-                        RaftContentLucideIcon(RaftLucideIconName.Ellipsis, size = 22.dp)
+                        // Web AgentProfileOverflowMenu: EllipsisVertical.
+                        RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
                     }
                 }
             }
