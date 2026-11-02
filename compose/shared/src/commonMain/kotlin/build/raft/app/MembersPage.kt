@@ -2733,6 +2733,8 @@ internal fun MembersPageContent(
             createAgentTakenAgentNames = localMembers.takenAgentNames(),
             createAgentViewPlan =
                 if (settingsBillingOffersUpgrade()) null else ({ pager.openSettingsBillingPage(storeScope) }),
+            createAgentUpgrade =
+                if (settingsBillingOffersUpgrade()) ({ pager.openSettingsBillingPage(storeScope) }) else null,
         ),
         inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
         // Task #409: persist per-machine collapse under the session user id.
@@ -5580,7 +5582,9 @@ internal class MembersCreateAgentInputs(
      * iOS view-only Billing: "View your plan" on the agent-limit banner and error opens the
      * view-only Plan & Billing page. Null elsewhere (no button).
      */
-    val createAgentViewPlan: (() -> Unit)? = null
+    val createAgentViewPlan: (() -> Unit)? = null,
+    /** Where Billing offers upgrades: the agent-limit banner's "Upgrade for more" link opens Billing. */
+    val createAgentUpgrade: (() -> Unit)? = null
 )
 
 /** @names (handles) of live agents and humans, so a suggested create-agent name avoids them. */
@@ -5962,6 +5966,7 @@ internal fun MembersListContent(
             errorFieldKeys = createAgentErrorFields,
             onViewPlan = createAgent.createAgentViewPlan,
             errorOffersViewPlan = createAgentErrorIsLimit,
+            onUpgrade = createAgent.createAgentUpgrade,
             machines = createAgentMachines,
             machinesLoading = createAgentMachinesLoading,
             machinesErrorMessage = createAgentMachinesErrorMessage,

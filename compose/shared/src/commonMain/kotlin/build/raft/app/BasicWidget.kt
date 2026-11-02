@@ -1908,7 +1908,7 @@ internal val LocalRaftDialogKeyboardHeightChange =
  * (systemNewlineAction / imeActionRequested were native-editor props; see [raftImeEnterAction] /
  * [raftResolvedKeyboardOptions]), dialog keyboard-height events, [focusRequester], focus / blur
  * callbacks and the global tap-outside focus-dismiss registry. [TextField] and the
- * design-system `RaftTextField` adapters (`RaftBrutalInputField`, `RaftBrutalSearchField`) share
+ * design-system fields (`RaftTextField` / `RaftTextarea` through `rememberRaftDesignSystemEditor` / `rememberRaftTextareaEditorModifier`) share
  * it, so a field keeps the same behaviour whichever editor draws it.
  */
 @Composable

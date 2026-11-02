@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import build.raft.app.components.RaftBrutalInputField
+import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftLookSeparator
 import build.raft.app.components.raftLookOverlaySurface
@@ -116,27 +116,12 @@ internal fun RaftFilterPopover(
         searchField =
             if (searchable) {
                 {
-                    RaftBrutalInputField(
+                    // raft-ui Combobox / Select popup search row (glyph, field type, its own hairline).
+                    RaftMenuSearchField(
                         value = searchText,
                         onValueChange = onSearchChange,
-                        placeholder = searchPlaceholder,
-                        autoFocus = false,
-                        maxLines = 1,
-                        textStyle = RaftFilterPopoverInputStyle(),
-                        fieldMinHeight = RaftFilterSearchHeight,
-                        horizontalPadding = RaftFilterSearchPaddingHorizontal,
-                        verticalPadding = 0.dp,
-                        showShadow = false,
-                        // The search row is chromeless: only the hairline below it.
-                        borderColor = Color.Transparent,
-                        enabledBackgroundColor = Color.Transparent,
-                        placeholderColor = RaftColor.ForegroundHint,
-                        // The whole 40dp row focuses the editor (iOS's native hit
-                        // region is smaller than the row).
-                        containerTapRequestsFocus = true,
-                        showClearWhenNotEmpty = true,
-                        onClear = { onSearchChange("") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = searchPlaceholder.ifEmpty { null }
                     )
                 }
             } else {
@@ -152,14 +137,9 @@ internal fun RaftFilterPopover(
 // the selected row bold with a trailing 16dp check. No row dividers, no selected fill.
 private val RaftFilterHeaderHeight = 28.dp
 private val RaftFilterSearchHeight = 40.dp
-private val RaftFilterSearchPaddingHorizontal = 12.dp
 private val RaftFilterHeaderSlotHeight = 24.dp
 private val RaftFilterListMaxHeight = 256.dp
 private val RaftFilterMinWidth = 220.dp
-
-@Composable
-private fun RaftFilterPopoverInputStyle() =
-    RaftType.Input.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack)
 
 @Composable
 private fun RaftLookFilterPopover(
@@ -254,10 +234,8 @@ private fun RaftLookFilterPopover(
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) { it() }
             }
             RaftLookSeparator()
-            if (searchField != null) {
-                searchField()
-                RaftLookSeparator()
-            }
+            // The search row draws its own hairline under it.
+            searchField?.invoke()
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(

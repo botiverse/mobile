@@ -1,14 +1,15 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.app.components.rememberRaftTextareaEditorModifier
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalTextarea
+import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftAttentionDot
 import build.raft.app.components.RaftProgressBar
 import build.raft.app.components.RaftProgressBarTone
@@ -129,27 +130,29 @@ internal fun UiCardVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(start = 16.dp, top = 16.dp)
     ) {
-        RaftBrutalCard(modifier = Modifier.width(cardWidth)) {
-            Text(
-                text = "Channel settings",
-                style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                color = theme.ink,
-                maxLines = 1
-            )
-            Text(
-                text = "Control who can post and how the channel appears to members.",
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = theme.inkMuted
-            )
-            RaftButton(
-                text = "Save changes",
-                onClick = {},
-                // React places <Button size="sm"> in a flex-col so it stretches to the card
-                // content width; fill the card width to match.
-                modifier = Modifier.fillMaxWidth(),
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Md
-            )
+        RaftCard(modifier = Modifier.width(cardWidth)) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Channel settings",
+                    style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                    color = theme.ink,
+                    maxLines = 1
+                )
+                Text(
+                    text = "Control who can post and how the channel appears to members.",
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = theme.inkMuted
+                )
+                RaftButton(
+                    text = "Save changes",
+                    onClick = {},
+                    // React places <Button size="sm"> in a flex-col so it stretches to the card
+                    // content width; fill the card width to match.
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Md
+                )
+            }
         }
     }
 }
@@ -176,40 +179,22 @@ internal fun UiFormFieldVisualContent() {
                 label = "Email",
                 required = true
             ) {
-                RaftBrutalInputField(
-                    value = "cindy@slock.ai",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp
-                )
+                RaftTextField(value = "cindy@slock.ai", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
             RaftField(
                 label = "Description",
                 optional = true,
                 description = "Shown in channel discovery."
             ) {
-                RaftBrutalInputField(
-                    value = "Visual parity fixture",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp
-                )
+                RaftTextField(value = "Visual parity fixture", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
             RaftField(
                 label = "Server Name",
                 labelSize = RaftFieldLabelSize.Sm,
                 error = "Name is required"
             ) {
-                RaftBrutalInputField(
-                    value = "",
-                    onValueChange = {},
-                    placeholder = "",
-                    autoFocus = false,
-                    fieldMinHeight = 42.dp,
-                    borderColor = RaftColor.AccentRed
-                )
+                // Invalid through the field's error (LocalRaftFieldState).
+                RaftTextField(value = "", onValueChange = {}, modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -228,15 +213,17 @@ internal fun UiTextareaVisualContent() {
                 .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
-        RaftBrutalTextarea(
-            value = "This agreement copy is too long for the configured limit.",
-            onValueChange = {},
-            error = "Agreement body must be shorter.",
-            showCounter = true,
-            limit = 40,
-            fieldHeight = 96.dp,
-            maxLines = 2
-        )
+        RaftField(label = null, modifier = Modifier.fillMaxWidth(), error = "Agreement body must be shorter.") {
+            // Two 24dp field lines inside the 10dp padding stay under the 96dp minimum.
+            RaftTextarea(
+                value = "This agreement copy is too long for the configured limit.",
+                onValueChange = {},
+                limit = 40,
+                minHeight = 96.dp,
+                maxHeight = 96.dp,
+                inputModifier = rememberRaftTextareaEditorModifier()
+            )
+        }
     }
 }
 

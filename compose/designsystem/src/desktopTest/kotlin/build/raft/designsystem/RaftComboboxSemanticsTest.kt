@@ -20,6 +20,9 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.performScrollToNode
+import build.raft.designsystem.components.RaftComboboxListAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -114,6 +117,39 @@ class RaftComboboxSemanticsTest {
             onAllNodes(selectableRow).assertCountEquals(0)
             onNodeWithText("No models match \"openaizz\"")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        }
+
+    @Test
+    fun theListActionIsTheLastRowOfTheAnchoredList() = listActionRuns(models, searchable = false)
+
+    /** Past ten (the runtime list once Show All Supported adds runtimes): the searchable sheet keeps it (Lagoon on #4150). */
+    @Test
+    fun theListActionIsTheLastRowOfTheSheet() = listActionRuns(manyModels, searchable = true)
+
+    private fun listActionRuns(options: List<RaftComboboxOption<String>>, searchable: Boolean) =
+        runComposeUiTest {
+            var actions = 0
+            setContent(
+                themed {
+                    RaftCombobox(
+                        value = null,
+                        options = options,
+                        onValueChange = {},
+                        emptyText = noModels,
+                        placeholder = "Choose a model",
+                        label = "Model",
+                        listAction = RaftComboboxListAction("Show All Supported") { actions++ },
+                    )
+                },
+            )
+            onNodeWithContentDescription("Model, Choose a model").performClick()
+            waitForIdle()
+            onAllNodes(hasSetTextAction()).assertCountEquals(if (searchable) 1 else 0)
+            // The sheet's lazy list composes its last row once it is scrolled to.
+            if (searchable) onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Show All Supported"))
+            onNodeWithText("Show All Supported").performClick()
+            waitForIdle()
+            assertEquals(1, actions)
         }
 
     @Test

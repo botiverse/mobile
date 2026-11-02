@@ -21,7 +21,7 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
 import build.raft.app.data.SharedActivityPresentationStore
-import build.raft.app.components.RaftBrutalTone
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.app.data.activityPendingUpdateIncrement
 import build.raft.app.data.activityPendingUpdateMarkers
 import build.raft.app.data.activityUpdatePresentation
@@ -1549,7 +1549,7 @@ class SharedInboxPanelTest {
         assertFalse(item.hasMention)
         assertEquals(null, item.firstUnreadMessageId)
         assertEquals(
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff),
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Muted, RaftLucideIconName.BellOff),
             SharedActivityFooterSlot.Unfollowed.badgeVisual()
         )
         assertTrue(item.activityShowsDoneAction(), "web keeps Done on unfollowed rows")
@@ -1601,36 +1601,36 @@ class SharedInboxPanelTest {
     fun activityFooterSlotsProjectEveryMetadataKindToSquareBadgeVisuals() {
         assertEquals(
             SharedActivityFooterBadgeVisual(
-                tone = RaftBrutalTone.Cyan,
+                variant = RaftBadgeVariant.Information,
                 leadingIcon = RaftLucideIconName.Play
             ),
             SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress)
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.White),
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default),
             SharedActivityFooterSlot.Replies.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.Yellow, RaftLucideIconName.AtSign),
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Primary, RaftLucideIconName.AtSign),
             SharedActivityFooterSlot.Mention.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.Pink),
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Accent),
             SharedActivityFooterSlot.New.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil),
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default, RaftLucideIconName.Pencil),
             SharedActivityFooterSlot.Draft.badgeVisual()
         )
     }
 
     @Test
     fun activityTaskBadgeVisualKeepsSharedStatusColors() {
-        assertEquals(RaftBrutalTone.Orange, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Todo).tone)
-        assertEquals(RaftBrutalTone.Cyan, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress).tone)
-        assertEquals(RaftBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
-        assertEquals(RaftBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
-        assertEquals(RaftBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
+        assertEquals(RaftBadgeVariant.Warning, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Todo).variant)
+        assertEquals(RaftBadgeVariant.Information, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress).variant)
+        assertEquals(RaftBadgeVariant.Information, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).variant)
+        assertEquals(RaftBadgeVariant.Success, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).variant)
+        assertEquals(RaftBadgeVariant.Muted, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).variant)
     }
 
     @Test

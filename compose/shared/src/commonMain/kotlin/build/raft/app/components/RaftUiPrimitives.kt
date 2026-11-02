@@ -11,9 +11,6 @@ import build.raft.app.raftArgbHex
 import build.raft.app.RaftType
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeAppearance
-import build.raft.designsystem.components.RaftBadgeVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,83 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-@Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftBadge's variant. Add no new uses; see docs/raftbrutal-migration.md.",
-    level = DeprecationLevel.WARNING,
-)
-internal enum class RaftBrutalTone(val color: Color) {
-    White(RaftColor.SurfaceWhite),
-    Black(RaftColor.TextBlack),
-    Yellow(RaftColor.BrandYellow),
-    Pink(RaftColor.AccentPink),
-    Cyan(RaftColor.AccentCyan),
-    Lavender(RaftColor.AccentLavender),
-    Orange(RaftColor.AccentOrange),
-    Lime(RaftColor.AccentLime),
-    Red(RaftColor.AccentRed),
-    // react raft-ui badge variant "muted": bg --secondary-400 -> brutal stone
-    // #C0B9B1 (== RaftColor.AccentStone), not the cream surface color.
-    Stone(RaftColor.AccentStone),
-    // react raft-ui badge variant "warning": bg --state-warning-base #FF6900,
-    // NOT the softer AccentOrange (#F8A16F) — drift issue #773.
-    Warning(RaftColor.StateWarningBase)
-}
-
-/**
- * Legacy-named badge; renders the design-system soft [RaftBadge] in the closest raft-ui
- * variant ([raftBadgeVariant]). [uppercase] is the retired brutal register's caps: raft-ui
- * badges keep the source case.
- */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-@Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftBadge. Add no new uses; see docs/raftbrutal-migration.md.",
-    level = DeprecationLevel.WARNING,
-)
-internal fun RaftBrutalBadge(
-    label: String,
-    modifier: Modifier = Modifier,
-    tone: RaftBrutalTone = RaftBrutalTone.White,
-    uppercase: Boolean = true,
-    leadingIcon: RaftLucideIconName? = null
-) {
-    RaftBadge(
-        text = label,
-        modifier = modifier,
-        appearance = RaftBadgeAppearance.Soft,
-        variant = tone.raftBadgeVariant,
-        icon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
-    )
-}
-
-/**
- * The raft-ui badge variant of a legacy tone. raft-ui has no inverse and no lavender badge:
- * black (inverse) is the neutral `default`, lavender (the activity footer's In review task
- * badge) the cool `information`.
- */
-internal val RaftBrutalTone.raftBadgeVariant: RaftBadgeVariant
-    get() =
-        when (this) {
-            RaftBrutalTone.White,
-            RaftBrutalTone.Black -> RaftBadgeVariant.Default
-            RaftBrutalTone.Yellow -> RaftBadgeVariant.Primary
-            RaftBrutalTone.Pink -> RaftBadgeVariant.Accent
-            RaftBrutalTone.Cyan,
-            RaftBrutalTone.Lavender -> RaftBadgeVariant.Information
-            RaftBrutalTone.Lime -> RaftBadgeVariant.Success
-            RaftBrutalTone.Orange,
-            RaftBrutalTone.Warning -> RaftBadgeVariant.Warning
-            RaftBrutalTone.Red -> RaftBadgeVariant.Danger
-            RaftBrutalTone.Stone -> RaftBadgeVariant.Muted
-        }
 
 @Composable
 internal fun RaftSectionHeader(

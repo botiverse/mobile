@@ -35,18 +35,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.remember
-import androidx.compose.ui.focus.FocusRequester
-import build.raft.app.raftAppEditorBehavior
-import build.raft.designsystem.components.RaftField
-import build.raft.designsystem.components.RaftTextarea
-
-internal enum class RaftFormFieldSize {
-    Default,
-    Compact
-}
 
 internal val RaftSlugInputPrefixBackground =
     RaftColor.BrandYellow.copy(alpha = 0.30f) // react-parity: intentional bg-palette-yellow/30 wash
@@ -58,116 +46,11 @@ internal val RaftSlugInputPrefixBackground =
 internal val RaftSlugInputDisabledPrefixBackground: Color
     get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFFF7DD) // raft-color: light legacy flattened yellow tile
 
-/**
- * Legacy-named textarea: the design-system [RaftField] (help or error under it, field state for
- * the box) round a [RaftTextarea], at least [fieldHeight] tall and growing to [maxLines] lines
- * before it scrolls; [showCounter] with a [limit] adds the `TextareaCounter`. The editor keeps
- * the app editor behaviour ([raftAppEditorBehavior]: keyboard-height events, tap-outside focus
- * dismiss).
- */
-@Composable
-@Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextarea inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
-    level = DeprecationLevel.WARNING,
-)
-internal fun RaftBrutalTextarea(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    placeholder: String = "",
-    hint: String? = null,
-    error: String? = null,
-    showCounter: Boolean = false,
-    limit: Int? = null,
-    enabled: Boolean = true,
-    fieldHeight: Dp = 76.dp,
-    maxLines: Int = 3
-) {
-    RaftTextareaField(modifier = modifier, hint = hint, error = error, enabled = enabled) {
-        RaftTextarea(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = placeholder.takeIf { it.isNotEmpty() },
-            limit = limit.takeIf { showCounter },
-            minHeight = fieldHeight,
-            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
-            inputModifier = rememberRaftTextareaEditorModifier()
-        )
-    }
-}
-
-/**
- * [RaftBrutalTextarea] on a caller-owned [TextFieldValue], so selection and composition survive
- * controlled recomposition; the counter counts the text.
- */
-@Composable
-@Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextarea inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
-    level = DeprecationLevel.WARNING,
-)
-internal fun RaftBrutalTextarea(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    modifier: Modifier = Modifier,
-    placeholder: String = "",
-    hint: String? = null,
-    error: String? = null,
-    showCounter: Boolean = false,
-    limit: Int? = null,
-    enabled: Boolean = true,
-    fieldHeight: Dp = 76.dp,
-    maxLines: Int = 3
-) {
-    RaftTextareaField(modifier = modifier, hint = hint, error = error, enabled = enabled) {
-        RaftTextarea(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = placeholder.takeIf { it.isNotEmpty() },
-            limit = limit.takeIf { showCounter },
-            minHeight = fieldHeight,
-            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
-            inputModifier = rememberRaftTextareaEditorModifier()
-        )
-    }
-}
-
-@Composable
-private fun RaftTextareaField(
-    modifier: Modifier,
-    hint: String?,
-    error: String?,
-    enabled: Boolean,
-    textarea: @Composable () -> Unit
-) {
-    RaftField(
-        label = null,
-        modifier = modifier.fillMaxWidth(),
-        description = hint?.takeIf { it.isNotBlank() },
-        error = error?.takeIf { it.isNotBlank() },
-        enabled = enabled,
-        content = textarea
-    )
-}
-
 /** [maxLines] lines of the field type (24dp line) inside the textarea's 10dp vertical padding. */
-private fun raftTextareaMaxHeight(fieldHeight: Dp, maxLines: Int): Dp =
+internal fun raftTextareaMaxHeight(fieldHeight: Dp, maxLines: Int): Dp =
     if (maxLines == Int.MAX_VALUE) Dp.Infinity else maxOf(fieldHeight, RaftTextareaLineHeight * maxLines + 20.dp)
 
 private val RaftTextareaLineHeight = 24.dp
-
-@Composable
-private fun rememberRaftTextareaEditorModifier(): Modifier {
-    val focusRequester = remember { FocusRequester() }
-    return Modifier.raftAppEditorBehavior(
-        singleLine = false,
-        resolvedKeyboardOptions = KeyboardOptions.Default,
-        keyboardActions = KeyboardActions.Default,
-        keyboardHeightChange = {},
-        focusRequester = focusRequester,
-        onFocus = {},
-        onBlur = {}
-    )
-}
 
 @Composable
 internal fun RaftSlugInput(

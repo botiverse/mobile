@@ -94,16 +94,22 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.components.RaftAttachmentPreviewCard
 import build.raft.app.components.RaftAttachmentPreviewCardAction
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.components.rememberRaftTextareaEditorModifier
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextarea
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.components.RaftUiMenuSurface
+import build.raft.app.components.raftMenuWidth
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.RaftToolbarChip
@@ -18859,7 +18865,7 @@ private fun ThreadHeaderFocusModeMenu(
     val items =
         buildList {
             if (!drawLocally) add(
-                RaftBrutalDropdownMenuItem(
+                RaftUiMenuItem(
                     id = FOCUS_MODE_MENU_ITEM_ID,
                     label =
                         stringResource(
@@ -18877,7 +18883,7 @@ private fun ThreadHeaderFocusModeMenu(
             // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
             if (onSearchInTask != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = SEARCH_IN_TASK_MENU_ITEM_ID,
                         label = stringResource(if (taskFollowLabels) Res.string.task_conversation_search else Res.string.thread_action_search_in_thread),
                         icon = RaftLucideIconName.Search,
@@ -18887,7 +18893,7 @@ private fun ThreadHeaderFocusModeMenu(
             }
             if (onViewInChannel != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
                         label = stringResource(Res.string.task_conversation_view_in_channel),
                         icon = RaftLucideIconName.MapPin,
@@ -18897,7 +18903,7 @@ private fun ThreadHeaderFocusModeMenu(
             }
             if (onMarkUnread != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = MARK_THREAD_UNREAD_MENU_ITEM_ID,
                         label = stringResource(Res.string.home_action_mark_as_unread),
                         icon = RaftLucideIconName.MessageSquareDot,
@@ -18910,7 +18916,7 @@ private fun ThreadHeaderFocusModeMenu(
             // the row is not offered at all rather than shown disabled.
             if (followed != null && onToggleFollow != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
@@ -18929,7 +18935,7 @@ private fun ThreadHeaderFocusModeMenu(
             // Design §4.3: the thread's level (All replies = follow / Mentions / Nothing / Default).
             if (notificationLevelTarget != null) {
                 add(
-                    RaftBrutalDropdownMenuItem(
+                    RaftUiMenuItem(
                         id = NOTIFICATION_LEVEL_MENU_ITEM_ID,
                         label = notificationLevelLabel,
                         icon = RaftLucideIconName.BellRing,
@@ -19047,7 +19053,8 @@ private fun ThreadHeaderFocusModeMenu(
         contentDescription = stringResource(Res.string.thread_focus_mode_menu_more)
     )
     localMenuAnchor?.let { anchor ->
-        RaftBrutalDropdownMenu(
+        RaftUiControlledMenu(
+            expanded = true,
             anchor = anchor,
             items = items,
             onSelect = { id ->
@@ -19061,6 +19068,8 @@ private fun ThreadHeaderFocusModeMenu(
                 }
             },
             onDismiss = { localMenuAnchor = null },
+            // raft-ui DropdownMenuContent's `sideOffset` 6.
+            verticalOffset = RaftMetrics.MenuSideOffset
         )
     }
     if (notificationLevelDialogOpen && notificationLevelTarget != null) {
@@ -31951,7 +31960,7 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
-    // raft-ui menu (RaftBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
+    // raft-ui menu (RaftUiMenuSurface): `p-1.5` popup inset on
     // both edges, a hairline separator with a 6dp inset either side between groups and
     // under the reaction header; the seam ring is drawn over the content and the float
     // shadow takes no layout space.
@@ -32857,32 +32866,25 @@ internal fun ThreadMessageMenuChrome(
     onAddReaction: (() -> Unit)? = null
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
-    // RaftBrutalDropdownMenu surface — press wash, row metrics and icon specs
+    // design-system menu surface ([RaftUiMenuSurface]) — press wash, row metrics and icon specs
     // come from the one component instead of a hand-rolled Button stack. The
     // reaction bar rides in the surface's header slot; group boundaries map to
-    // dividerBeforeIds.
+    // dividerBefore.
     val menuItems = actions.mapIndexed { index, action ->
-        RaftBrutalDropdownMenuItem(
+        RaftUiMenuItem(
             id = index.toString(),
             label = action.label.localized(),
             icon = action.icon,
-            enabled = action.enabled
+            enabled = action.enabled,
+            dividerBefore = index > 0 && actions.getOrNull(index - 1)?.group != action.group
         )
     }
-    val groupDividerIds = actions.mapIndexedNotNull { index, action ->
-        val previousGroup = actions.getOrNull(index - 1)?.group
-        if (index > 0 && previousGroup != action.group) index.toString() else null
-    }.toSet()
-    RaftBrutalDropdownMenuSurface(
+    RaftUiMenuSurface(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
         width = threadMessageMenuWidthDp(showReactionActions, showAddReactionAction = onAddReaction != null).dp,
-        // web MenuItem: 36dp `min-h-9` rows; icons at the menu row's own 16dp (RaftMetrics.MenuIconSize).
-        rowHeight = ThreadMessageMenuRowHeight,
-        showDividers = false,
-        dividerBeforeIds = groupDividerIds,
-        headerContent =
+        header =
             if (showReactionActions) {
                 {
                     ThreadMessageReactionRow(
@@ -33773,7 +33775,7 @@ private fun ThreadInlineMetaTag(label: String) {
     }
 }
 
-// Keep Anchor/Quote tag text aligned with RaftBrutalTextField's default horizontalPadding.
+// Anchor/Quote tag text inset (the retired legacy field's 10dp text inset).
 private val ThreadInlineMetaTagHorizontalPadding: Dp = 10.dp
 
 @Composable
@@ -34668,16 +34670,22 @@ private fun ThreadAttachmentCommentComposer(
                 color = RaftColor.TextMutedGray
             )
         }
-        RaftBrutalTextField(
+        RaftField(
             label = stringResource(Res.string.thread_comments_label),
-            value = state.draft,
-            placeholder = stringResource(Res.string.thread_comments_placeholder),
-            enabled = enabled,
-            maxLines = if (compact) 3 else 4,
-            fieldMinHeight = if (compact) 64.dp else 82.dp,
-            onValueChange = onDraftChange,
-            password = false
-        )
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled
+        ) {
+            // 3 (compact) / 4 lines of the 24dp field line inside the 10dp padding, then it scrolls.
+            RaftTextarea(
+                value = state.draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = stringResource(Res.string.thread_comments_placeholder),
+                minHeight = if (compact) 64.dp else 82.dp,
+                maxHeight = if (compact) 92.dp else 116.dp,
+                inputModifier = rememberRaftTextareaEditorModifier()
+            )
+        }
         RaftModalFullWidthActionButton(
             label =
                 if (state.sending) {
@@ -36126,20 +36134,26 @@ internal fun ThreadForwardNoteDialog(
                 )
             }
             item {
-                RaftBrutalTextField(
+                RaftField(
                     label = stringResource(Res.string.thread_state_note),
-                    value = note,
-                    placeholder =
-                        if (messageCount == 1) {
-                            stringResource(Res.string.thread_forward_placeholder_one)
-                        } else {
-                            stringResource(Res.string.thread_forward_placeholder_many, messageCount)
-                        },
-                    maxLines = 3,
-                    fieldMinHeight = 76.dp,
-                    onValueChange = onNoteChange,
-                    password = false
-                )
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Three 24dp field lines inside the 10dp padding, then it scrolls.
+                    RaftTextarea(
+                        value = note,
+                        onValueChange = onNoteChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder =
+                            if (messageCount == 1) {
+                                stringResource(Res.string.thread_forward_placeholder_one)
+                            } else {
+                                stringResource(Res.string.thread_forward_placeholder_many, messageCount)
+                            },
+                        minHeight = 76.dp,
+                        maxHeight = 92.dp,
+                        inputModifier = rememberRaftTextareaEditorModifier()
+                    )
+                }
             }
         }
         RaftDialogFooter {
@@ -36206,14 +36220,14 @@ internal fun ThreadShareSelectionToolbar(
     val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
     val moreItems =
         listOfNotNull(
-            RaftBrutalDropdownMenuItem(
+            RaftUiMenuItem(
                 id = "generate-image",
                 label = stringResource(Res.string.thread_share_generate_image),
                 icon = RaftLucideIconName.Image,
                 enabled = hasSelection
             ),
             onCopyMarkdown?.let {
-                RaftBrutalDropdownMenuItem(
+                RaftUiMenuItem(
                     id = "copy-md",
                     label = stringResource(Res.string.thread_share_copy_markdown),
                     icon = RaftLucideIconName.Copy,
@@ -36293,7 +36307,8 @@ internal fun ThreadShareSelectionToolbar(
         }
     }
     moreMenuAnchor?.let { anchor ->
-        RaftBrutalDropdownMenu(
+        RaftUiControlledMenu(
+            expanded = true,
             anchor = anchor,
             items = moreItems,
             onSelect = { id ->
@@ -36304,6 +36319,8 @@ internal fun ThreadShareSelectionToolbar(
                 }
             },
             onDismiss = { moreMenuAnchor = null },
+            // raft-ui DropdownMenuContent's `sideOffset` 6.
+            verticalOffset = RaftMetrics.MenuSideOffset,
             verticalPlacement = RaftFloatingVerticalPlacement.Above
         )
     }
@@ -37054,27 +37071,47 @@ internal fun ThreadSettingsModal(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(Res.string.thread_settings_name),
-                        value = name,
-                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                        placeholder = stringResource(Res.string.thread_settings_name_placeholder),
-                        onValueChange = { name = it },
-                        required = true,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
-                    )
+                        modifier = Modifier.fillMaxWidth(),
+                        required = true
+                    ) {
+                        val editor =
+                            rememberRaftDesignSystemEditor(
+                                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                                keyboardActions = KeyboardActions.Default,
+                                keyboardHeightChange = {},
+                                focusRequester = remember { FocusRequester() },
+                                autoFocus = false,
+                                onFocus = {},
+                                onBlur = {}
+                            )
+                        RaftTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                            placeholder = stringResource(Res.string.thread_settings_name_placeholder),
+                            keyboardOptions = editor.keyboardOptions
+                        )
+                    }
                 }
                 item {
-                    RaftBrutalTextField(
+                    RaftField(
                         label = stringResource(Res.string.thread_settings_description),
-                        value = description,
-                        placeholder = stringResource(Res.string.thread_settings_description_placeholder),
-                        onValueChange = { description = it },
-                        optional = true,
-                        fieldMinHeight = 66.dp,
-                        maxLines = 2,
-                        password = false
-                    )
+                        modifier = Modifier.fillMaxWidth(),
+                        optional = true
+                    ) {
+                        // Two 24dp field lines inside the 10dp padding, then it scrolls.
+                        RaftTextarea(
+                            value = description,
+                            onValueChange = { description = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = stringResource(Res.string.thread_settings_description_placeholder),
+                            minHeight = 66.dp,
+                            maxHeight = 68.dp,
+                            inputModifier = rememberRaftTextareaEditorModifier()
+                        )
+                    }
                 }
                 if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     item {

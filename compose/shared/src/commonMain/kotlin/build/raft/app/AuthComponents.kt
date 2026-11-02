@@ -3,7 +3,9 @@ package build.raft.app
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.app.resources.*
 import build.raft.app.components.RaftLinkButton
-import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldAction
 import build.raft.app.components.raftButtonChrome
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
@@ -66,9 +68,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.app.components.RaftSlotIcon
 
 internal enum class AuthButtonTone {
@@ -85,16 +84,6 @@ internal enum class AuthActionButtonVariant {
     Large
 }
 
-private val AuthInputTextStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.Input.copy(
-            fontSize = 16.sp,
-            lineHeight = 24.sp,
-            color = RaftColor.TextBlack
-        ).withRaftFontWeight(FontWeight.Normal)
-
-private val AuthInputPlaceholderColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
 private val AuthTopBarHeight = 62.dp
 private val AuthTopBarBrandWidth = 81.dp
 private val AuthTopBarBrandHeight = 20.dp
@@ -420,42 +409,37 @@ internal fun AuthTextField(
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         AuthFieldLabel(label = label, required = required, optional = optional)
-        val borderColor = if (isError) RaftColor.AccentRed else RaftColor.BorderBlack
-        RaftBrutalInputField(
+        val editor =
+            rememberRaftDesignSystemEditor(
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                keyboardHeightChange = resolvedKeyboardHeightChange,
+                focusRequester = focusRequester ?: remember { FocusRequester() },
+                autoFocus = false,
+                onFocus = { authFocusChanged(true) },
+                onBlur = { authFocusChanged(false) }
+            )
+        RaftTextField(
             value = value,
             onValueChange = { nextValue ->
                 authTextFieldForwardValueChange(nextValue, onValueChange)
             },
-            placeholder = placeholder,
+            modifier = Modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
             enabled = enabled,
-            autoFocus = false,
-            maxLines = 1,
-            textStyle = AuthInputTextStyle,
-            fieldMinHeight = 44.dp,
-            horizontalPadding = 8.dp,
-            verticalPadding = 8.dp,
-            forceFocused = forceFocused,
-            borderColor = borderColor,
-            enabledBackgroundColor = RaftColor.Card,
-            disabledBackgroundColor = RaftColor.EmptyStateGray,
-            placeholderColor = AuthInputPlaceholderColor,
-            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = keyboardOptions,
+            invalid = isError,
+            keyboardOptions = editor.keyboardOptions,
             keyboardActions = keyboardActions,
-            keyboardHeightChange = resolvedKeyboardHeightChange,
-            onFocusChanged = authFocusChanged,
-            focusRequester = focusRequester ?: remember { FocusRequester() },
-            trailingContent =
+            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+            trailingAction =
                 if (password) {
                     {
-                        RaftIconButton(
+                        RaftTextFieldAction(
                             onClick = { passwordVisible = !passwordVisible },
-                            tooltip =
+                            label =
                                 stringResource(
                                     if (passwordVisible) Res.string.common_hide_password else Res.string.common_show_password
                                 ),
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Md,
                             enabled = enabled
                         ) {
                             RaftSlotIcon(if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye)

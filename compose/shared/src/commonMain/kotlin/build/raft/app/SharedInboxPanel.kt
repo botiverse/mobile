@@ -8,8 +8,6 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalTone
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
@@ -115,6 +113,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import build.raft.app.components.rememberRaftDelayedIndicatorVisible
 import androidx.compose.ui.Alignment
@@ -2648,12 +2647,12 @@ internal fun SharedActivityFooterBadge(
     modifier: Modifier = Modifier
 ) {
     val visual = slot.badgeVisual(taskStatus)
-    RaftBrutalBadge(
-        label = label,
+    RaftBadge(
+        text = label,
         modifier = modifier,
-        tone = visual.tone,
-        uppercase = false,
-        leadingIcon = visual.leadingIcon
+        appearance = RaftBadgeAppearance.Soft,
+        variant = visual.variant,
+        icon = visual.leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
@@ -2962,7 +2961,7 @@ internal enum class SharedActivityFooterSlot {
 }
 
 internal data class SharedActivityFooterBadgeVisual(
-    val tone: RaftBrutalTone,
+    val variant: RaftBadgeVariant,
     val leadingIcon: RaftLucideIconName? = null
 )
 
@@ -2971,25 +2970,25 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
         SharedActivityFooterSlot.Task -> {
             val status = taskStatus ?: TaskStatus.Todo
             val statusMeta = status.sharedTaskStatusChipMeta()
-            val tone =
+            val variant =
                 when (status) {
-                    TaskStatus.Todo -> RaftBrutalTone.Orange
-                    TaskStatus.InProgress -> RaftBrutalTone.Cyan
-                    TaskStatus.InReview -> RaftBrutalTone.Lavender
-                    TaskStatus.Done -> RaftBrutalTone.Lime
-                    TaskStatus.Closed -> RaftBrutalTone.Stone
+                    TaskStatus.Todo -> RaftBadgeVariant.Warning
+                    TaskStatus.InProgress -> RaftBadgeVariant.Information
+                    TaskStatus.InReview -> RaftBadgeVariant.Information
+                    TaskStatus.Done -> RaftBadgeVariant.Success
+                    TaskStatus.Closed -> RaftBadgeVariant.Muted
                 }
             SharedActivityFooterBadgeVisual(
-                tone = tone,
+                variant = variant,
                 leadingIcon = statusMeta.icon
             )
         }
-        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White)
-        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Yellow, RaftLucideIconName.AtSign)
-        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Pink)
+        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default)
+        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Primary, RaftLucideIconName.AtSign)
+        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Accent)
         SharedActivityFooterSlot.Unfollowed ->
-            SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff)
-        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil)
+            SharedActivityFooterBadgeVisual(RaftBadgeVariant.Muted, RaftLucideIconName.BellOff)
+        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBadgeVariant.Default, RaftLucideIconName.Pencil)
     }
 
 internal fun activityShouldRequestLoadMore(

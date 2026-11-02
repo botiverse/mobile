@@ -1,7 +1,6 @@
 package build.raft.app.components
 
 import build.raft.app.resources.*
-import build.raft.app.raftMenuWidth
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingDefaultViewportGap
 import build.raft.app.RaftFloatingVerticalPlacement
@@ -509,6 +508,10 @@ internal fun RaftUiControlledSelect(
         onClear = onClear
     )
 }
+
+/** raft-ui menu popup width: the caller's width, never under `min-w-60`. */
+internal fun raftMenuWidth(width: Dp): Dp =
+    if (width < RaftMetrics.MenuMinWidth) RaftMetrics.MenuMinWidth else width
 
 @Composable
 internal fun RaftUiControlledMenu(

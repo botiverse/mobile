@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.components.RaftMetrics
+import build.raft.app.components.raftMenuWidth
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftMenuItem
 import build.raft.app.components.RaftLookSeparator
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
@@ -34,7 +37,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
-import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.model.MemberKind
@@ -222,8 +229,8 @@ internal fun RaftTaskStatusMenuPanel(
  * radius, popover layer, seam ring, float shadow) with a `p-1.5` inset; 36dp control-radius
  * rows (`px-2.5`, `gap-2.5`) in callout medium ink with a 16dp muted-ink icon; the selected
  * row is bold with a trailing 16dp check (no selected fill, no uppercase); `dividerBefore`
- * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. Rows are the shared
- * [RaftBrutalDropdownMenuRow] (BrandSoft press wash). The brutal colour / label tuning
+ * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. Rows are the design-system
+ * [RaftMenuItem] (BrandSoft press wash). The brutal colour / label tuning
  * parameters of the overlay do not apply here.
  */
 @Composable
@@ -301,18 +308,12 @@ internal fun RaftLookBaseMenuPanel(
             val selected = item.id == selectedId || item.checked
             // Rows sit in the popup's 6dp side inset; separators bleed through it.
             Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
-                RaftBrutalDropdownMenuRow(
-                    item =
-                        RaftBrutalDropdownMenuItem(
-                            id = item.id,
-                            label = item.label,
-                            icon = item.icon,
-                            trailingIcon = if (selected) RaftLucideIconName.Check else null,
-                            enabled = item.enabled
-                        ),
-                    rowHeight = RaftMetrics.MenuRowHeight,
-                    emphasized = selected,
-                    onClick = { if (item.enabled) onSelect(item.id) }
+                RaftMenuItem(
+                    text = item.label,
+                    onClick = { if (item.enabled) onSelect(item.id) },
+                    enabled = item.enabled,
+                    checked = selected,
+                    leadingIcon = item.icon?.let { icon -> { RaftSlotIcon(icon) } }
                 )
             }
         }
@@ -359,7 +360,7 @@ private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, minWidth: Dp): Dp {
  * Task #258 successor (artin msg=f65282d2 via Mahua msg=cf4c6b0a): the assignee
  * selector is a STANDALONE CENTERED modal (RaftUnifiedDialog, same shell family
  * as the channel add-member dialog), not an anchored expansion. It reuses the
- * channel add-user interaction verbatim: RaftBrutalSearchField with the Search
+ * channel add-user interaction verbatim: the design-system search RaftTextField with the Search
  * leading icon, RaftModalListShell + RaftModalSectionHeader (AGENTS then
  * HUMANS), and the exact RaftModalCompactMemberRow visuals extracted into
  * RowScope.RaftModalCompactMemberRowContent. One adaptation: rows are wrapped
@@ -402,12 +403,23 @@ internal fun RaftTaskAssigneeMenuOverlay(
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Same search field as the channel add-member dialog.
-            RaftBrutalSearchField(
+            val searchEditor =
+                rememberRaftDesignSystemEditor(
+                    keyboardOptions = KeyboardOptions.Default,
+                    keyboardActions = KeyboardActions.Default,
+                    keyboardHeightChange = {},
+                    focusRequester = remember { FocusRequester() },
+                    autoFocus = false,
+                    onFocus = {},
+                    onBlur = {}
+                )
+            RaftTextField(
                 value = searchValue,
-                placeholder = searchPlaceholder,
-                leadingIcon = RaftLucideIconName.Search,
-                enabled = true,
-                onValueChange = onSearchValueChange
+                onValueChange = onSearchValueChange,
+                modifier = Modifier.fillMaxWidth().then(searchEditor.modifier),
+                placeholder = searchPlaceholder.ifEmpty { null },
+                leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+                keyboardOptions = searchEditor.keyboardOptions
             )
             RaftModalListShell(height = listHeight) {
                 if (memberRows.isEmpty()) {
