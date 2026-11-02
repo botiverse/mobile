@@ -215,6 +215,8 @@ internal fun Modifier.raftMarkdownLinkDragSelect(
                         selection.select(start, focus)
                     }
                     PointerEventType.Release -> {
+                        // Another button let go while the primary is still down: the drag goes on.
+                        if (change.pressed) continue
                         if (anchor != null) change.consume()
                         pressedOnLink = false
                         anchor = null
