@@ -51,8 +51,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.theme.raftPlatformPointerIsFine
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -677,8 +677,8 @@ fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
  *   growing the header (`-my-1`), and the last one's icon box, not its button, ends on the
  *   header's line: the row of them hangs 5dp past it (`-mr-icon-inset`, 0.56 #922), as the
  *   chevron starts on the other end. Pass only [RaftSidebarSectionAction]s.
- *   On a touch screen they show at rest, after the attention pixel. With a mouse (the
- *   desktop app, [raftPlatformPointerIsFine]) they keep their place in the row but stay
+ *   For a finger they show at rest, after the attention pixel. While a mouse or trackpad is
+ *   in use ([RaftTheme.pointerInput], any platform) they keep their place in the row but stay
  *   invisible until the pointer is over the header, one of them has keyboard focus or one
  *   has its menu open (`menuOpen`), so a long title truncates before them and nothing moves
  *   when they show; the attention pixel then sits over that place and hides while the
@@ -719,7 +719,7 @@ fun RaftSidebarSectionHeader(
     val showAttention = attention && !expanded && !menuOpen
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
-    val pointerFine = raftPlatformPointerIsFine()
+    val pointerFine = RaftTheme.pointerInput == RaftPointerInput.Fine
     val headerHover = remember { MutableInteractionSource() }
     val headerHovered = raftIsHovered(headerHover)
     var controlsFocused by remember { mutableStateOf(false) }
@@ -728,7 +728,7 @@ fun RaftSidebarSectionHeader(
     Row(
         modifier
             .fillMaxWidth()
-            .raftPointerHover(headerHover, enabled = pointerFine)
+            .raftPointerHover(headerHover)
             .raftSafeAreaHorizontalPadding()
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

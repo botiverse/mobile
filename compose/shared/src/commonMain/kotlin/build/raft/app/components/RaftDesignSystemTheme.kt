@@ -70,8 +70,8 @@ internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -
         raftTheme = RaftAppThemeState.raftTheme,
         decor = RaftAppThemeState.decor,
     ) {
-        // The app's own RaftType roles follow the scale this theme resolved (desktop from 768dp
-        // with a mouse or trackpad). Written in composition, ahead of the content that reads it,
+        // The app's own RaftType roles follow the scale this theme resolved (wide from the wide
+        // breakpoint, by window width alone). Written in composition, ahead of the content that reads it,
         // so the first frame already has the right sizes; only on a change.
         val scale = RaftTheme.scale
         if (RaftAppTypeScale.scale != scale) RaftAppTypeScale.scale = scale

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
+import build.raft.designsystem.theme.RaftScale
 
 /**
  * Host-owned window context. It deliberately contains layout facts only: route and child-pager
@@ -243,9 +244,10 @@ private fun String.toRaftAdaptivePanePosture(): RaftAdaptivePanePosture =
  * the iPad mini's portrait width, so every iPad held upright gets the rail (artin 10-30). That is
  * 24 below the web's `md` breakpoint (packages/web MainLayout `(min-width: 768px)`): a browser
  * window that narrow is rare, an iPad mini is not. It was 840, Android's expanded width class.
- * Every wide/compact decision reads this constant.
+ * Every wide/compact decision reads this constant, and so does the type scale: it is the design
+ * system's [RaftScale.WideMinWidth], from where a window of any input takes the wide type.
  */
-internal const val DualPaneMinimumWidthDp = 744f
+internal val DualPaneMinimumWidthDp: Float = RaftScale.WideMinWidth.value
 
 internal fun RaftAdaptivePanePosture.toRaftAdaptivePanePostureWireName(): String =
     when (this) {

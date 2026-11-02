@@ -54,9 +54,9 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 /** raft-ui Input / InputGroup / Textarea box metrics. */
 object RaftTextFieldDefaults {
     /**
-     * `h-control`: an input (and an input group) is 44dp tall on a phone. On a desktop
-     * ([build.raft.designsystem.theme.RaftScale.Desktop]) it is 32dp: the field reads
-     * [RaftTheme.controls]`.height`; this is the mobile value.
+     * `h-control`: an input (and an input group) is 44dp tall for a finger. With a mouse or
+     * trackpad in use ([build.raft.designsystem.theme.RaftPointerInput.Fine]) it is 32dp: the
+     * field reads [RaftTheme.controls]`.height`; this is the touch value.
      */
     val Height: Dp = 44.dp
 
@@ -68,9 +68,9 @@ object RaftTextFieldDefaults {
 
     /**
      * `--control-embedded-size`: a chip or a button embedded in a field, the field's height
-     * less [EmbeddedInset] above and below, so the field keeps its height. 32dp on a phone,
-     * 20dp on a desktop: the components read [RaftTheme.controls]`.embeddedSize`; this is the
-     * mobile value.
+     * less [EmbeddedInset] above and below, so the field keeps its height. 32dp for a finger,
+     * 20dp for a mouse or trackpad: the components read [RaftTheme.controls]`.embeddedSize`;
+     * this is the touch value.
      */
     val EmbeddedControlSize: Dp = 32.dp
 

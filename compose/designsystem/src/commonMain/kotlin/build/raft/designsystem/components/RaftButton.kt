@@ -109,7 +109,7 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
 
     /**
      * `--control-height` with a `--control-icon-size` icon: 44dp / 22dp (32dp / 18dp on a
-     * desktop, [RaftControlMetrics]); a phone top bar, next to an input. [box] and [glyph] are
+     * mouse or trackpad, [RaftControlMetrics]); a phone top bar, next to an input. [box] and [glyph] are
      * the mobile values; components read [boxIn] / [glyphIn].
      */
     Lg(44.dp, 22.dp),
@@ -462,8 +462,10 @@ val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
  * - Box: 1.5dp border, `radius-control`, Space Grotesk bold, one line. `md` 32dp tall,
  *   12dp padding (10dp on an icon's side), 13/18 text, 16dp icons; `lg` 44dp, 16dp
  *   (14dp), 15/20, 18dp icons; `xl` 52dp, 20dp, 16/24, 18dp icons; gap 8dp. Under
- *   [build.raft.designsystem.theme.RaftScale.Desktop] `md` text is 14/22, `lg` 32dp at
- *   14/22 and `xl` 40dp at 14/22 (raft-ui `text-control`, `h-control`, `h-control-cta`).
+ *   [build.raft.designsystem.theme.RaftScale.Wide] `md` text is 14/22 (raft-ui
+ *   `text-control`); with a mouse or trackpad in use
+ *   ([build.raft.designsystem.theme.RaftPointerInput.Fine]) `lg` is 32dp and `xl` 40dp
+ *   (`h-control`, `h-control-cta`).
  * - Stickers ([RaftButtonVariant.Primary], `Warning`, `Danger`): `sticker-ink` border and
  *   type, plus a 1.5dp `sticker-edge` ring outside (the die-cut edge in dark).
  * - Pressed, and hovered by a mouse or trackpad: one overlay over the resting fill

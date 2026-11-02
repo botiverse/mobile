@@ -63,8 +63,8 @@ fun rememberRaftFonts(): RaftFonts {
  * ([LineHeightStyle.Alignment.Center], no trim), so a 24sp line box puts the glyphs
  * where the web puts them.
  *
- * The sizes below are the default (mobile) scale. Under [RaftScale.Desktop] (raft-ui 0.54
- * styles.css "Desktop type", foundation.css "Desktop": a mouse or trackpad, from 768 wide)
+ * The sizes below are the default ([RaftScale.Compact]) scale. Under [RaftScale.Wide] (raft-ui
+ * 0.54 styles.css "Desktop type"; the app takes it from its wide breakpoint, any input)
  * headline is 16/24; body, subhead, callout, control, field and card title 14/22; footnote,
  * caption and mono-meta 12/18; mono-code stays 13/20. Hero, display, title and label do
  * not change. Weights and tracking are the same in both.
@@ -118,19 +118,19 @@ data class RaftTypography(
          * The scale in [fonts]. [localeList] goes on every style (null: none, the platform
          * uses the device locale): it picks the CJK fallback glyphs, so a Japanese,
          * Korean or Traditional Chinese UI passes its language and Han characters take
-         * that language's forms. [scale] picks the default (mobile) or the desktop sizes.
+         * that language's forms. [scale] picks the default (compact) or the wide sizes.
          */
         fun from(
             fonts: RaftFonts,
             localeList: LocaleList? = null,
-            scale: RaftScale = RaftScale.Mobile,
+            scale: RaftScale = RaftScale.Compact,
         ): RaftTypography {
             fun sans(size: Int, lineHeight: Int, weight: FontWeight, tracking: TextUnit = 0.sp) =
                 style(fonts.sans, size, lineHeight, weight, tracking, localeList)
 
             fun mono(size: Int, lineHeight: Int) = style(fonts.mono, size, lineHeight, FontWeight.Normal, 0.sp, localeList)
 
-            if (scale == RaftScale.Desktop) {
+            if (scale == RaftScale.Wide) {
                 return RaftTypography(
                     hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
                     display = sans(34, 40, FontWeight.Bold, (-0.02).em),
@@ -168,8 +168,8 @@ data class RaftTypography(
             )
         }
 
-        /** [from] at [RaftScale.Desktop]: the scale raft-ui switches to with a mouse or trackpad from 768 wide. */
-        fun desktop(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography = from(fonts, localeList, RaftScale.Desktop)
+        /** [from] at [RaftScale.Wide]: raft-ui's desktop type, which the app takes from its wide breakpoint. */
+        fun wide(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography = from(fonts, localeList, RaftScale.Wide)
 
         private fun style(
             family: FontFamily,

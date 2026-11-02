@@ -30,6 +30,7 @@ import build.raft.designsystem.components.RaftTextSelectionToolbarSeparator
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -78,8 +79,8 @@ class MessageItemToolbarScreenshotTest {
                 SelectionToolbar(hovered = 0, pressed = 1)
                 Caption("Quote focused")
                 SelectionToolbar(focused = 0)
-                Caption("Desktop scale: text-control 14/22")
-                RaftTheme(appearance = appearance, systemDark = false, scale = RaftScale.Desktop) {
+                Caption("Wide scale: text-control 14/22")
+                RaftTheme(appearance = appearance, systemDark = false, scale = RaftScale.Wide, pointerInput = RaftPointerInput.Fine) {
                     SelectionToolbar()
                 }
             }
