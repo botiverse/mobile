@@ -132,7 +132,7 @@ class ThreadInPlaceLinkDragSelectUiTest {
             val selected = controller!!.selectedTexts().joinToString("")
             assertTrue(selected.isNotEmpty(), "a drag from the link selects")
             assertTrue(selected.startsWith("he docs") || selected.startsWith("e docs"), "from the press point: '$selected'")
-            assertTrue(selected.contains("tomo"), "to the pointer: '$selected'")
+            assertTrue(selected.contains("tom"), "to the pointer (the caret nearest it, before or after its character): '$selected'")
             assertTrue(opened.isEmpty(), "a drag opens no link: $opened")
             assertLinkSemantics()
         }
