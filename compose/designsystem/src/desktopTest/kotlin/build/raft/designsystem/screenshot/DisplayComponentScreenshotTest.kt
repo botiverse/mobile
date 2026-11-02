@@ -1349,12 +1349,12 @@ class DisplayComponentScreenshotTest {
                     RaftMessageImageGallery(listOf(RaftMessageImageDimensions(300, 1000)), Modifier.width(80.dp)) { FakeImage(9f / 16f, it.fit) }
                 }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions())) { FakeImage(9f / 19f, it.fit) }
-                Caption("At its full 360dp: two (144dp rows), then three (128dp; the third wraps)")
+                Caption("At its full 360dp: two, then three (rows of two, 144dp; the third sits alone)")
                 RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }) { FakeImage(4f / 3f, it.fit) }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600))) {
                     FakeImage(if (it.index == 1) 0.3f else 4f / 3f, it.fit)
                 }
-                Caption("Narrower, 300dp: two (128dp rows), then three (112dp)")
+                Caption("Narrower, 300dp: two, then three (rows of two, 128dp)")
                 RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }, Modifier.width(300.dp)) { FakeImage(4f / 3f, it.fit) }
                 RaftMessageImageGallery(
                     listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600)),
