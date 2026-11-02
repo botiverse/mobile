@@ -268,6 +268,18 @@ internal class RaftChildPageOriginState(origin: Offset = Offset.Zero) {
     }
 }
 
+/**
+ * The WINDOW-space point a child page hands to the app-shell overlay host for [anchor].
+ *
+ * CMP composes a [RaftChildPage] inline, in the same composition and root as the shell (Kuikly
+ * gave each child page its own native render view, whose root was the page). The anchor's root
+ * offset therefore already IS window space. Do not add [RaftChildPageOriginState.windowOrigin] on
+ * top: that counts the pane's position twice, and a right-click / long-press menu in the thread
+ * pane of the wide layout opened a pane-width (rail + list) to the right of the pointer.
+ * The measured origin is still the right input for "is this page a narrow split pane".
+ */
+internal fun raftChildPageWindowAnchor(anchor: RaftPopoverAnchor): Offset? = anchor.rootOffsetOrNull()
+
 internal object RaftChildPageOriginRegistry {
     private val states = mutableMapOf<String, RaftChildPageOriginState>()
 
