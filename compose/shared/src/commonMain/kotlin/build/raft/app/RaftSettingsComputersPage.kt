@@ -59,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -429,7 +430,25 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     ) {
         // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
         RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
+        // A usage line's card on hover (web rack `UsageCardTrigger` → RuntimeUsageHoverCard).
+        val usageCard: RaftRackUsageCard? =
+            usageAccess.owner?.let { owner ->
+                usageServerId?.let { serverId ->
+                    RaftRackUsageCard { machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit ->
+                        val key = remember(owner, serverId, machineId, column.provider) {
+                            RuntimeAccountUsageKey(owner, serverId, machineId, column.provider)
+                        }
+                        val runtimeVersion =
+                            (settingsState.computers as? ScreenLoadState.Content)?.data?.computers
+                                ?.firstOrNull { it.id == machineId }
+                                ?.runtimeVersions
+                                ?.get(column.runtimeId)
+                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, trigger)
+                    }
+                }
+            }
         RaftComputersTheme {
+          CompositionLocalProvider(LocalRaftRackUsageCard provides usageCard) {
             RaftSettingsComputersContent(
                 model = model,
                 refreshErrorCode = refreshErrorCode,
@@ -485,6 +504,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                     }
                 },
             )
+          }
         }
         }
     }
@@ -946,6 +966,8 @@ private class RaftRackLine(
     val dimmed: Boolean = false,
     val semantics: String,
     val onClick: (() -> Unit)? = null,
+    /** A usage line wears its usage card (hover, a click pins); its click is then the card's. */
+    val usageCard: (@Composable (trigger: @Composable () -> Unit) -> Unit)? = null,
 )
 
 /**
@@ -964,7 +986,7 @@ private fun RaftComputerRackMeters(
     val diskLabel = stringResource(Res.string.agent_migration_target_disk)
     val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
     val resources = listOf(raftRackResourceLine(diskLabel, row.disk), raftRackResourceLine(memoryLabel, row.memory))
-    val usage = columns.usage.map { column -> raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage) }
+    val usage = columns.usage.map { column -> raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id) }
     val style = RaftTheme.typography.monoMeta
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -986,7 +1008,16 @@ private fun RaftComputerRackMeters(
 
 @Composable
 private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
-    val click = line.onClick
+    val card = line.usageCard
+    if (card != null) {
+        card { RaftRackLineRowContent(line, valueWidth, click = null) }
+    } else {
+        RaftRackLineRowContent(line, valueWidth, click = line.onClick)
+    }
+}
+
+@Composable
+private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: (() -> Unit)?) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -1055,6 +1086,7 @@ private fun raftRackUsageLine(
     runtimeCatalog: ServerRuntimeCatalog,
     canView: Boolean,
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
+    machineId: String,
 ): RaftRackLine {
     val runtimeId = cell.column.runtimeId
     val name = runtimeCatalog.entry(runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
@@ -1067,6 +1099,13 @@ private fun raftRackUsageLine(
         }
     }
     val onClick = if (canView) ({ onOpenUsage(cell.column, name) }) else null
+    val cardHost = LocalRaftRackUsageCard.current
+    val usageCard: (@Composable (@Composable () -> Unit) -> Unit)? =
+        if (canView && cardHost != null) {
+            { trigger -> cardHost.card(machineId, cell.column, name, trigger) }
+        } else {
+            null
+        }
     return when (cell) {
         is RaftRackUsageCell.Unavailable ->
             RaftRackLine(
@@ -1077,6 +1116,7 @@ private fun raftRackUsageLine(
                 attention = cell.attention,
                 semantics = stringResource(Res.string.settings_computers_rack_usage_unavailable, name),
                 onClick = onClick,
+                usageCard = usageCard,
             )
         is RaftRackUsageCell.Value -> {
             val value =
@@ -1107,6 +1147,7 @@ private fun raftRackUsageLine(
                         value,
                     ),
                 onClick = onClick,
+                usageCard = usageCard,
             )
         }
     }
@@ -2421,3 +2462,32 @@ private fun raftComputerActionErrorTitle(action: SharedSettingsActionState): Str
     }
 
 // endregion
+
+/** Draws a rack usage line's usage card round [trigger] (the page knows the viewer and server). */
+internal class RaftRackUsageCard(
+    val card: @Composable (machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit) -> Unit,
+)
+
+internal val LocalRaftRackUsageCard = staticCompositionLocalOf<RaftRackUsageCard?> { null }
+
+/**
+ * A Computers card's usage line with its usage card (web rack `UsageCardTrigger`): it opens on
+ * hover and pins on a click. The controller reads only when the card opens (the page already
+ * read every line for the meters), so a page of Computers asks for nothing more at rest.
+ */
+@Composable
+private fun RaftRackUsagePreviewCard(
+    label: String,
+    key: RuntimeAccountUsageKey,
+    access: MembersRuntimeAccountUsageAccess,
+    runtimeVersion: String?,
+    trigger: @Composable () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val controller =
+        remember(key, access.store) {
+            ComputerRuntimeUsageController(key = key, store = access.store, scope = scope, log = access.log, onIdentityChanged = access.onIdentityChanged)
+        }
+    DisposableEffect(controller) { onDispose { controller.cancel() } }
+    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, trigger = trigger)
+}
