@@ -107,11 +107,18 @@ data class RaftTypography(
     val control: TextStyle,
 ) {
     companion object {
-        /** CSS half-leading: extra line height split above and below, nothing trimmed. */
+        /**
+         * CSS half-leading: extra line height split above and below, nothing trimmed, and
+         * [LineHeightStyle.Mode.Tight] so the line box is never padded past the line height.
+         * Android still grows a line holding Han text to its fallback font's height (Noto Sans
+         * CJK, ~1.45em); [build.raft.designsystem.text.RaftText] swaps in a trimming style for
+         * such text there (artin 2026-11-02, the typography specimen).
+         */
         val CssLineHeightStyle =
             LineHeightStyle(
                 alignment = LineHeightStyle.Alignment.Center,
                 trim = LineHeightStyle.Trim.None,
+                mode = LineHeightStyle.Mode.Tight,
             )
 
         /**
