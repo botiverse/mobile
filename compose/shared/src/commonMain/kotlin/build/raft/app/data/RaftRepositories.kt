@@ -227,6 +227,13 @@ interface ConversationRepository {
         channelId: ChannelId? = null,
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> = getMessageContext(messageId, channelId)
+    /**
+     * A message's context for resolving a reference (a `#channel:shortid` chip) before opening it:
+     * only `messages/context`, without [getMessageContext]'s follow-up `channels/{id}` request, whose
+     * header detail the opened page loads itself. One round trip instead of two while the chip waits.
+     */
+    suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        getMessageContext(messageId, channelId)
     suspend fun loadOlderMessages(
         threadId: ThreadId,
         beforeSeq: Long,

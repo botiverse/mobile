@@ -13440,12 +13440,17 @@ private fun SharedThreadRouteContentContent(
                     !itemId.isNullOrBlank() -> {
                     val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
                     if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
+                    // How long the chip waits for its target (a local hit, or messages/context).
+                    val resolveStartedAt = TimeSource.Monotonic.markNow()
+                    var resolveOutcome = "cancelled"
+                    bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
                     coroutineScope.launch {
                         try {
                             val provenance =
                                 dataSource.replyCacheProvenanceState.value
                                     .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
                             if (provenance == null) {
+                                resolveOutcome = "no_provenance"
                                 bridge.toast(unableToOpenThreadRefLabel)
                                 return@launch
                             }
@@ -13465,6 +13470,7 @@ private fun SharedThreadRouteContentContent(
                                     )
                             ) {
                                 is DataResult.Content -> {
+                                    resolveOutcome = "opened"
                                     bridge.log(
                                         "thread_markdown_ref_open label=${itemId.take(32)} " +
                                             "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
@@ -13489,17 +13495,24 @@ private fun SharedThreadRouteContentContent(
                                     }
                                 }
                                 is DataResult.Empty -> {
+                                    resolveOutcome = "empty"
                                     bridge.toast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.Error -> {
+                                    resolveOutcome = "error"
                                     bridge.toast(unableToOpenThreadRefLabel)
                                 }
                                 is DataResult.NoPermission -> {
+                                    resolveOutcome = "no_permission"
                                     routeAuthRequired(result)
                                 }
                             }
                         } finally {
                             finishMarkdownReferencePending(markdownPendingToken)
+                            bridge.log(
+                                "thread_markdown_ref_resolve result=$resolveOutcome label=${itemId.take(32)} " +
+                                    "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                            )
                         }
                     }
                 }

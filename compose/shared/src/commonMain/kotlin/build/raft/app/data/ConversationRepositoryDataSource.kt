@@ -795,6 +795,16 @@ class RealConversationRepository private constructor(
         messageId: MessageId,
         channelId: ChannelId?,
         priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> = loadMessageContext(messageId, channelId, priority, includeConversationDetail = true)
+
+    override suspend fun resolveMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        loadMessageContext(messageId, channelId, DataRequestPriority.Foreground, includeConversationDetail = false)
+
+    private suspend fun loadMessageContext(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        priority: DataRequestPriority,
+        includeConversationDetail: Boolean,
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         var canonicalTargetKind: String? = null
@@ -827,6 +837,7 @@ class RealConversationRepository private constructor(
                 ).copy(rawMessagePage = rawMessagePageWitness(bodyText, requestedLimit = 0))
             }
         )
+        if (!includeConversationDetail) return result
         val snapshot = (result as? DataResult.Content)?.data ?: return result
         val detailChannelId = snapshot.conversation.channelId ?: channelId ?: return result
         val detail = loadConversationDetail(detailChannelId, priority, context.server.id)
